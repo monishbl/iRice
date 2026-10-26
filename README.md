@@ -57,7 +57,7 @@ A Hyprland desktop shell in the style of macOS Tahoe, with Liquid Glass, everyth
 **System**
 - Lock screen, power dialog, polkit password prompt, volume and brightness HUD.
 - **Login screen** that matches the lock screen (greetd), set up with `./install.sh --greeter`.
-- **Wallpapers:** dynamic (time of day using sunrise and sunset, or light/dark pictures), live video wallpapers that pause when covered, and an Auto appearance that turns light at sunrise and dark at sunset.
+- **Wallpapers:** dynamic (time of day using sunrise and sunset, or light/dark pictures), live video wallpapers that pause when covered, and an Auto appearance that turns light at sunrise and dark at sunset. **Wallpaper sets** are found in your wallpaper folder automatically: pictures named "Name Light" and "Name Dark" switch with the theme, and a sub-folder of pictures follows the time of day; pick one in Settings → Wallpaper. (macOS wallpapers are Apple's and aren't included; if you have them, name them that way, e.g. "Tahoe Light.jpg" / "Tahoe Dark.jpg".)
 - Battery warnings, update notices, idle handling (hypridle).
 - Settings app (Super+,) for appearance, wallpaper, menu bar, dock, desktop and weather, notifications, Focus, calendar, AI, sidebar and shortcuts.
 
