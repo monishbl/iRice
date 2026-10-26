@@ -1,0 +1,78 @@
+pragma Singleton
+import QtQuick
+import Quickshell
+
+// Which popover is open, and on which screen. Only one at a time, like macOS.
+Singleton {
+    id: root
+
+    property string open: ""
+    property var screen: null
+    property real anchorX: 0 // left edge of the menu bar item that opened a menu
+    property string ccPage: "" // Control Center detail page: "" | wifi | bluetooth | sound
+    property bool ccEditing: false // Control Center "Edit Controls"
+    property bool widgetEditing: false // desktop widgets: Edit Widgets (gallery open)
+    signal addWidget(string kind, string size) // from the gallery to the desktop of Panels.screen
+    property bool settingsOpen: false
+    property string settingsPage: "appearance"
+    property bool osdVisible: false // banners move down while the HUD shows
+    property int sidebarTab: 0
+    property int ncTab: 0 // Notification Center widgets: 0 calendar, 1 to-do, 2 focus // 0 AI, 1 Translate, 2 Anime
+    property var trayMenu: null // QsMenuHandle of the tray item whose menu is open
+    property string lastClosed: ""
+    property real lastClosedAt: 0
+
+    // Menu bar items, so an open popover can pass clicks and hovers on the bar
+    // strip to them (switch menus by clicking or sliding across, like macOS)
+    property var barItems: []
+    function registerBarItem(item) {
+        barItems = barItems.concat([item]);
+    }
+    function unregisterBarItem(item) {
+        barItems = barItems.filter(i => i !== item);
+    }
+    function barItemAt(scr, x) {
+        return barItems.find(i => {
+            if (!i.visible || i.QsWindow.window?.screen !== scr)
+                return false;
+            const p = i.mapToItem(null, 0, 0);
+            return x >= p.x && x < p.x + i.width;
+        }) ?? null;
+    }
+
+    function isOpen(name, scr) {
+        return open === name && (!scr || screen === scr);
+    }
+
+    function show(name, scr, x) {
+        open = name;
+        screen = scr ?? Quickshell.screens[0];
+        if (x !== undefined)
+            anchorX = x;
+    }
+
+    // A click on a menu bar item first dismisses the open popover (focus grab
+    // cleared), then reaches the item; don't let that reopen the same popover.
+    function toggle(name, scr, x) {
+        if (isOpen(name, scr) || (lastClosed === name && Date.now() - lastClosedAt < 250))
+            close();
+        else
+            show(name, scr, x);
+    }
+
+    function openSettings(page) {
+        close();
+        if (page)
+            settingsPage = page;
+        settingsOpen = true;
+    }
+
+    function close() {
+        if (open !== "") {
+            lastClosed = open;
+            lastClosedAt = Date.now();
+        }
+        open = "";
+        ccPage = "";
+    }
+}

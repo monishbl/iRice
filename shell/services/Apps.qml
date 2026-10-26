@@ -1,0 +1,136 @@
+pragma Singleton
+import QtQuick
+import Quickshell
+import Quickshell.Hyprland
+import Quickshell.Wayland
+import qs.common
+
+// Desktop entries joined with open windows: names, icons, launching, and the
+// dock's list of pinned + running apps.
+Singleton {
+    id: root
+
+    readonly property var active: ToplevelManager.activeToplevel
+    // The focused window as a HyprlandToplevel. Hyprland.activeToplevel stays
+    // empty until focus changes after the shell starts, so match the
+    // Wayland-level active window instead.
+    readonly property var activeHyprland: Hyprland.toplevels.values.find(t => t.wayland && t.wayland === active) ?? Hyprland.activeToplevel
+    readonly property var activeEntry: {
+        DesktopEntries.applications.values; // re-evaluate once entries load
+        return active ? entryFor(active.appId) : null;
+    }
+    readonly property string activeName: active?.appId === "org.quickshell" ? "System Settings" : activeEntry?.name ?? (active?.appId || "Desktop")
+
+    function entryFor(appId) {
+        if (!appId)
+            return null;
+        return DesktopEntries.byId(appId) ?? DesktopEntries.heuristicLookup(appId);
+    }
+
+    function iconFor(entryOrId) {
+        if (entryOrId === "org.quickshell" || entryOrId?.id === "org.quickshell")
+            return IconLookup.path("preferences-system", "application-x-executable");
+        const entry = typeof entryOrId === "string" ? entryFor(entryOrId) : entryOrId;
+        const name = entry?.icon || (typeof entryOrId === "string" ? entryOrId : "");
+        if (name.startsWith("/")) // some desktop files give a file path
+            return "file://" + name;
+        return IconLookup.path(name, "application-x-executable");
+    }
+
+    function windowsOf(entryId) {
+        return ToplevelManager.toplevels.values.filter(t => entryFor(t.appId)?.id === entryId || t.appId === entryId);
+    }
+
+    // [{ id, entry, windows, pinned }] — pinned first in config order, then
+    // running unpinned apps in the order they were opened.
+    readonly property var dockApps: {
+        DesktopEntries.applications.values; // re-evaluate once entries (re)load
+        const pinned = Config.options.dock.pinned;
+        const out = [];
+        const seen = new Set();
+        for (const id of pinned) {
+            const entry = DesktopEntries.byId(id);
+            if (!entry)
+                continue;
+            seen.add(entry.id);
+            out.push({ id: entry.id, entry: entry, pinned: true });
+        }
+        for (const t of ToplevelManager.toplevels.values) {
+            const entry = entryFor(t.appId);
+            const id = entry?.id ?? t.appId;
+            if (!id || seen.has(id))
+                continue;
+            seen.add(id);
+            out.push({ id: id, entry: entry, pinned: false });
+        }
+        return out;
+    }
+
+    // Runs a Hyprland window dispatcher on the focused window, e.g.
+    // windowAction("float", { action: "toggle" }).
+    function windowAction(name, args) {
+        windowActionFor(activeHyprland, name, args);
+    }
+
+    // Same, for a given HyprlandToplevel.
+    function windowActionFor(toplevel, name, args) {
+        const addr = toplevel?.address;
+        if (!addr)
+            return;
+        const fields = Object.assign({}, args ?? {}, { window: "address:" + (addr.startsWith("0x") ? addr : "0x" + addr) });
+        const lua = Object.entries(fields).map(([k, v]) => k + " = " + (typeof v === "string" ? JSON.stringify(v) : v)).join(", ");
+        Hyprland.dispatch("hl.dsp.window." + name + "({ " + lua + " })");
+    }
+
+    // Minimize: Hyprland has none, so windows park on a hidden special
+    // workspace; the dock lists them and restores them on click.
+    readonly property var minimized: Hyprland.toplevels.values.filter(t => t.workspace?.name === "special:minimized")
+    function minimize(toplevel) {
+        windowActionFor(toplevel ?? activeHyprland, "move", { workspace: "special:minimized", follow: false });
+    }
+    function restore(toplevel) {
+        const ws = Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1;
+        windowActionFor(toplevel, "move", { workspace: ws, follow: true });
+        Qt.callLater(() => toplevel?.wayland?.activate());
+    }
+
+    // Recently used apps (for the dock's Recent section), most recent first
+    onActiveEntryChanged: {
+        const id = activeEntry?.id;
+        if (!id || id === "org.quickshell")
+            return;
+        const r = UiState.data.recentApps.filter(x => x !== id);
+        UiState.data.recentApps = [id].concat(r).slice(0, 12);
+    }
+    function recentFor(limit) {
+        const pinned = Config.options.dock.pinned;
+        const running = new Set(ToplevelManager.toplevels.values.map(t => entryFor(t.appId)?.id ?? t.appId));
+        return UiState.data.recentApps.filter(id => !pinned.includes(id) && !running.has(id) && DesktopEntries.byId(id)).slice(0, limit).map(id => ({ id: id, entry: DesktopEntries.byId(id), pinned: false, recent: true }));
+    }
+
+    function pin(id) {
+        if (!Config.options.dock.pinned.includes(id))
+            Config.options.dock.pinned = Config.options.dock.pinned.concat([id]);
+    }
+    function unpin(id) {
+        Config.options.dock.pinned = Config.options.dock.pinned.filter(p => p !== id);
+    }
+
+    function quit(appId) {
+        for (const t of windowsOf(entryFor(appId)?.id ?? appId))
+            t.close();
+    }
+
+    function launch(entry) {
+        entry?.execute();
+    }
+
+    // Focus the app's most recent window, or launch it.
+    function activateOrLaunch(app) {
+        const windows = windowsOf(app.id);
+        if (windows.length > 0)
+            windows[windows.length - 1].activate();
+        else
+            launch(app.entry);
+    }
+}

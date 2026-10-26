@@ -1,0 +1,126 @@
+import QtQuick
+import qs.common
+
+// Reminders (the to-do list in Notification Center). Tick to complete.
+// Large also has a field to add one.
+Item {
+    id: root
+
+    property string size: "m"
+    property bool preview: false
+    readonly property var todos: UiState.data.todos ?? []
+    readonly property var open: todos.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done)
+    readonly property int rows: size === "l" ? 8 : size === "m" ? 3 : 2
+
+    function toggle(i) {
+        if (preview)
+            return;
+        const l = todos.slice();
+        l[i] = Object.assign({}, l[i], { done: !l[i].done });
+        UiState.data.todos = l;
+    }
+
+    Row {
+        id: header
+        spacing: 8
+        width: parent.width
+        Rectangle {
+            width: 26
+            height: 26
+            radius: 13
+            color: Theme.accents.orange
+            Icon { anchors.centerIn: parent; name: "list-checks"; fill: true; size: 15; color: "white" }
+        }
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Reminders"
+            color: Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+        }
+    }
+    Text {
+        anchors { right: parent.right; top: parent.top }
+        text: root.open.length
+        color: Theme.color.label
+        font { family: Theme.font.family; pixelSize: 24; weight: Font.DemiBold; features: { "tnum": 1 } }
+    }
+
+    Column {
+        anchors { left: parent.left; right: parent.right; top: header.bottom; topMargin: 12 }
+        spacing: 8
+        Text {
+            visible: root.open.length === 0
+            text: root.todos.length === 0 ? "No reminders" : "All done"
+            color: Theme.color.secondary
+            font { family: Theme.font.family; pixelSize: Theme.font.small }
+        }
+        Repeater {
+            model: root.open.slice(0, root.rows)
+            Row {
+                id: item
+                required property var modelData
+                spacing: 8
+                width: parent.width
+                Rectangle {
+                    width: 16
+                    height: 16
+                    radius: 8
+                    color: "transparent"
+                    border.width: 1.5
+                    border.color: Theme.color.tertiary
+                    anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        anchors { fill: parent; margins: -6 }
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggle(item.modelData.i)
+                    }
+                }
+                Text {
+                    width: parent.width - 24
+                    text: item.modelData.text
+                    elide: Text.ElideRight
+                    color: Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+            }
+        }
+        Text {
+            visible: root.open.length > root.rows
+            text: (root.open.length - root.rows) + " more"
+            color: Theme.color.secondary
+            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+        }
+    }
+
+    // Large: add one
+    Rectangle {
+        visible: root.size === "l"
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 32
+        radius: 10
+        color: Theme.color.fill
+        Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "plus"; bold: true; size: 12; color: Theme.color.secondary }
+        TextInput {
+            id: input
+            anchors { fill: parent; leftMargin: 30; rightMargin: 10 }
+            verticalAlignment: TextInput.AlignVCenter
+            color: Theme.color.label
+            clip: true
+            enabled: !root.preview
+            font { family: Theme.font.family; pixelSize: Theme.font.small }
+            onAccepted: {
+                if (text.trim() === "")
+                    return;
+                UiState.data.todos = root.todos.concat([{ text: text.trim(), done: false }]);
+                text = "";
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: input.text === "" && !input.activeFocus
+                text: "New reminder"
+                color: Theme.color.tertiary
+                font: input.font
+            }
+        }
+    }
+}

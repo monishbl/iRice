@@ -1,0 +1,75 @@
+import QtQuick
+import qs.common
+
+// A selectable row in a Control Center page: leading icon, title, status
+// text, trailing icons. `busy` shows a spinner in place of the trailing icon.
+Rectangle {
+    id: root
+
+    property string icon
+    property bool iconFill: false
+    property bool highlighted: false
+    property string title
+    property string status
+    property string trailingIcon
+    property bool busy: false
+    signal clicked
+
+    width: parent?.width ?? 0
+    height: 40
+    radius: Theme.radius.control
+    color: mouse.pressed ? Theme.color.fillPressed : mouse.containsMouse ? Theme.color.fill : "transparent"
+
+    Rectangle {
+        id: badge
+        x: 6
+        anchors.verticalCenter: parent.verticalCenter
+        width: 28
+        height: 28
+        radius: 14
+        color: root.highlighted ? Theme.accent : Theme.color.toggleOff
+        Icon {
+            anchors.centerIn: parent
+            name: root.icon
+            fill: root.iconFill || root.highlighted
+            size: 15
+            color: root.highlighted ? Theme.color.onAccent : Theme.color.label
+        }
+    }
+
+    Column {
+        anchors { left: badge.right; leftMargin: 10; right: trailing.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+        Text {
+            width: parent.width
+            text: root.title
+            elide: Text.ElideRight
+            color: Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: root.highlighted ? Font.DemiBold : Font.Normal }
+        }
+        Text {
+            width: parent.width
+            visible: text !== ""
+            text: root.status
+            elide: Text.ElideRight
+            color: Theme.color.secondary
+            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+        }
+    }
+
+    Icon {
+        id: trailing
+        anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+        name: root.busy ? "circle-notch" : root.trailingIcon
+        size: 14
+        color: Theme.color.secondary
+        RotationAnimation on rotation { running: root.busy; from: 0; to: 360; duration: 800; loops: Animation.Infinite }
+        onNameChanged: if (!root.busy) rotation = 0
+    }
+
+    MouseArea {
+        id: mouse
+        anchors.fill: parent
+        hoverEnabled: true
+        onClicked: root.clicked()
+    }
+}

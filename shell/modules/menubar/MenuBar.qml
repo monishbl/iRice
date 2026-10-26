@@ -1,0 +1,398 @@
+import QtQuick
+import Quickshell
+import Quickshell.Bluetooth
+import Quickshell.Networking
+import Quickshell.Services.SystemTray
+import Quickshell.Services.UPower
+import Quickshell.Wayland
+import qs.common
+import qs.glass
+import qs.services
+
+// Tahoe-style menu bar: transparent over the wallpaper, text that flips dark
+// over light wallpapers. Left: system menu, active app (and window title),
+// Window menu. Centre: Spaces. Right: extra buttons, tray, Now Playing,
+// status items with their menus, sidebar, Spotlight, Control Center, clock.
+// Scroll the left half for brightness, the right half for volume.
+Variants {
+    model: Quickshell.screens.filter(s => Config.options.menubar.screens.length === 0 || Config.options.menubar.screens.includes(s.name))
+
+    GlassWindow {
+        id: bar
+        required property var modelData
+        screen: modelData
+        name: "menubar"
+
+        readonly property var cfg: Config.options.menubar
+        readonly property bool autoHide: cfg.autoHide
+        readonly property bool revealed: !autoHide || reveal.hovered || (Panels.open !== "" && Panels.screen === screen)
+
+        WlrLayershell.layer: autoHide ? WlrLayer.Overlay : WlrLayer.Top
+        anchors { top: true; left: true; right: true }
+        // Taller than the bar so the dynamic island can open below it; only the
+        // 30px bar is reserved, and input is masked to the bar and the island
+        readonly property bool islandOn: Config.options.island.enabled
+        implicitHeight: islandOn ? 340 : 30
+        exclusionMode: autoHide ? ExclusionMode.Ignore : ExclusionMode.Normal
+        exclusiveZone: autoHide ? 0 : 30
+        // Auto-hide: only a 2px strip catches the pointer while hidden
+        mask: Region {
+            Region { item: bar.revealed ? fullArea : revealStrip }
+            Region {
+                x: island.shape.x
+                y: island.shape.y + content.y
+                width: bar.islandOn && bar.revealed ? island.shape.width : 0
+                height: island.shape.height
+            }
+        }
+        Item { id: fullArea; width: parent.width; height: 30 }
+        Item { id: revealStrip; width: parent.width; height: 2 }
+        HoverHandler { id: reveal }
+        // Pointer for the island. On the window root, like `reveal`: a
+        // HoverHandler on an item laid over the bar swallows the bar items'
+        // hover (no chips, stale highlights)
+        HoverHandler { id: tracker }
+        Item {
+            anchors.fill: parent
+            z: 100
+            // Touchscreen edge swipe: pull down from the bar, as on iPad.
+            // Right third opens Control Center, elsewhere Notification Center.
+            DragHandler {
+                target: null
+                acceptedDevices: PointerDevice.TouchScreen
+                yAxis.minimum: 0
+                xAxis.enabled: false
+                property bool fired: false
+                onActiveChanged: fired = false
+                onTranslationChanged: {
+                    if (fired || translation.y < 48)
+                        return;
+                    fired = true;
+                    Panels.show(centroid.pressPosition.x > bar.width * 2 / 3 ? "controlCenter" : "notificationCenter", bar.screen);
+                }
+            }
+        }
+
+        readonly property bool opaque: cfg.background || autoHide || Theme.glass.tier === "solid"
+        readonly property color fg: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
+
+        IdleInhibitor {
+            window: bar
+            enabled: System.keepAwake
+        }
+        Binding {
+            target: Resources
+            property: "menubarActive"
+            value: bar.cfg.resources
+        }
+
+        Item {
+            id: content
+            width: parent.width
+            height: 30
+            y: bar.revealed ? 0 : -height
+            opacity: bar.revealed ? 1 : 0
+            Behavior on y { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
+            Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
+
+            Rectangle {
+                anchors.fill: parent
+                visible: bar.opaque
+                color: Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
+            }
+
+            // Top rounded screen corners (bottom ones: ScreenCorners)
+            Corner { visible: Config.options.appearance.screenCorners; x: 0; radius: Config.options.appearance.screenCornerRadius }
+            Corner { visible: Config.options.appearance.screenCorners; x: bar.width - width; atRight: true; radius: Config.options.appearance.screenCornerRadius }
+
+            // Scroll gestures: left half brightness, right half volume
+            WheelHandler {
+                enabled: bar.cfg.scrollGestures
+                onWheel: e => {
+                    const step = e.angleDelta.y > 0 ? 0.05 : -0.05;
+                    if (point.position.x < bar.width / 2)
+                        Brightness.set(Brightness.value + step);
+                    else
+                        Audio.setVolume(Audio.volume + step);
+                }
+            }
+
+            // ── Left ────────────────────────────────────────────────────
+            Row {
+                id: left
+                anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                spacing: 0
+
+                // The system menu: iRice's drop, your distro's logo, or a
+                // brand mark (Settings → Appearance → Menu icon)
+                MenuBarItem {
+                    readonly property string choice: Config.options.appearance.menuIcon
+                    readonly property string distroIcon: choice === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
+                    icon: distroIcon !== "" ? "" : ({ linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo" })[choice] ?? "drop"
+                    image: distroIcon
+                    tintImage: true
+                    fill: true
+                    iconSize: 16
+                    color: bar.fg
+                    active: Panels.isOpen("systemMenu", bar.screen)
+                    menu: "systemMenu"
+                    onClicked: Panels.toggle("systemMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+                MenuBarItem {
+                    visible: bar.cfg.appMenu
+                    text: Apps.activeName
+                    bold: true
+                    color: bar.fg
+                    active: Panels.isOpen("appMenu", bar.screen)
+                    menu: "appMenu"
+                    onClicked: Panels.toggle("appMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+                MenuBarItem {
+                    visible: bar.cfg.windowMenu
+                    text: "Window"
+                    color: bar.fg
+                    active: Panels.isOpen("windowMenu", bar.screen)
+                    menu: "windowMenu"
+                    onClicked: Panels.toggle("windowMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+                Text {
+                    visible: bar.cfg.windowTitle && text !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    leftPadding: 6
+                    width: Math.min(implicitWidth, bar.width / 2 - left.x - 360)
+                    elide: Text.ElideRight
+                    text: Apps.active?.title ?? ""
+                    color: Qt.alpha(bar.fg, 0.65)
+                    font { family: Theme.font.family; pixelSize: Theme.font.body }
+                }
+            }
+
+            // ── Centre: Spaces ──────────────────────────────────────────
+            Workspaces {
+                visible: bar.cfg.workspaces !== "off" && !Config.options.island.enabled // the island shows them instead
+                anchors.centerIn: parent
+                screen: bar.screen
+                fg: bar.fg
+            }
+
+            // ── Centre: the dynamic island (it shows the spaces) ────────
+            IslandView {
+                id: island
+                visible: bar.islandOn
+                width: parent.width
+                height: 340
+                screen: bar.screen
+                fg: bar.fg
+                pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
+            }
+
+            // ── Right ───────────────────────────────────────────────────
+            Row {
+                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                spacing: 0
+
+                // Extra buttons (Settings → Menu Bar)
+                Repeater {
+                    model: bar.cfg.utilButtons.filter(b => b !== "colorPicker" || Tools.has("hyprpicker"))
+                    MenuBarItem {
+                        required property string modelData
+                        readonly property var def: ({
+                                screenshot: { icon: "camera", act: () => Panels.toggle("screenTools", bar.screen) },
+                                colorPicker: { icon: "eyedropper", act: () => System.run(["hyprpicker", "-a"]) },
+                                mic: { icon: Audio.micMuted ? "microphone-slash" : "microphone", act: () => Audio.toggleMic() },
+                                keyboard: { icon: "keyboard", act: () => Panels.toggle("keyboard", bar.screen) },
+                                darkMode: { icon: "circle-half", act: () => System.toggleDarkMode() },
+                                powerProfile: { icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : PowerProfiles.profile === PowerProfile.Performance ? "lightning" : "scales", act: () => PowerProfiles.profile = PowerProfiles.profile === PowerProfile.PowerSaver ? PowerProfile.Balanced : PowerProfiles.profile === PowerProfile.Balanced && PowerProfiles.hasPerformanceProfile ? PowerProfile.Performance : PowerProfile.PowerSaver },
+                                record: { icon: "record", act: () => ScreenTools.recording ? ScreenTools.stopRecording() : ScreenTools.select("record") }
+                            })[modelData]
+                        visible: !!def
+                        icon: def?.icon ?? ""
+                        color: bar.fg
+                        onClicked: def?.act()
+                    }
+                }
+
+                // Recording in progress: click to stop
+                MenuBarItem {
+                    visible: ScreenTools.recording
+                    icon: "record"
+                    fill: true
+                    color: Theme.color.danger
+                    property real now: Date.now()
+                    readonly property int elapsed: Math.max(0, Math.floor((now - ScreenTools.recordingStarted) / 1000))
+                    text: Math.floor(elapsed / 60) + ":" + String(elapsed % 60).padStart(2, "0")
+                    onClicked: ScreenTools.stopRecording()
+                    Timer { running: ScreenTools.recording; interval: 1000; repeat: true; triggeredOnStart: true; onTriggered: parent.now = Date.now() }
+                }
+
+                Repeater {
+                    model: SystemTray.items
+                    MenuBarItem {
+                        required property var modelData
+                        image: modelData.icon
+                        color: bar.fg
+                        active: Panels.open === "trayMenu" && Panels.trayMenu === modelData.menu
+                        onClicked: m => {
+                            if (m.button === Qt.LeftButton && !modelData.onlyMenu) {
+                                modelData.activate();
+                            } else if (modelData.hasMenu) {
+                                Panels.trayMenu = modelData.menu;
+                                Panels.toggle("trayMenu", bar.screen, mapToItem(null, 0, 0).x);
+                            }
+                        }
+                    }
+                }
+
+                // Now Playing (the dynamic island shows music itself when it's on)
+                MenuBarItem {
+                    visible: !bar.islandOn && Media.player !== null && (Media.player.trackTitle ?? "") !== ""
+                    icon: Media.player?.isPlaying ? "waveform" : "music-note"
+                    fill: true
+                    color: bar.fg
+                    text: {
+                        const t = Media.player?.trackTitle ?? "";
+                        return t.length > 28 ? t.slice(0, 27) + "…" : t;
+                    }
+                    active: Panels.isOpen("nowPlaying", bar.screen)
+                    menu: "nowPlaying"
+                    onClicked: Panels.toggle("nowPlaying", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Resources
+                MenuBarItem {
+                    visible: bar.cfg.resources
+                    icon: "cpu"
+                    color: Resources.cpu > 0.9 || Resources.memory > 0.95 ? Theme.color.danger : bar.fg
+                    text: Math.round(Resources.cpu * 100) + "% · " + Math.round(Resources.memory * 100) + "%"
+                    active: Panels.isOpen("resourcesMenu", bar.screen)
+                    menu: "resourcesMenu"
+                    onClicked: Panels.toggle("resourcesMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Weather
+                MenuBarItem {
+                    visible: bar.cfg.weather && Weather.ready
+                    icon: Weather.icon
+                    fill: true
+                    color: bar.fg
+                    text: Weather.temp + "°"
+                    active: Panels.isOpen("weatherMenu", bar.screen)
+                    menu: "weatherMenu"
+                    onClicked: Panels.toggle("weatherMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Keyboard layout (only with two or more layouts)
+                MenuBarItem {
+                    visible: bar.cfg.keyboardLayout && KeyboardLayout.multiple
+                    text: KeyboardLayout.short
+                    color: bar.fg
+                    onClicked: KeyboardLayout.next()
+                }
+
+                // Battery
+                MenuBarItem {
+                    readonly property var battery: UPower.displayDevice
+                    readonly property real level: battery.percentage > 1 ? battery.percentage / 100 : battery.percentage
+                    readonly property bool charging: battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged
+                    visible: bar.cfg.battery && battery.isLaptopBattery
+                    color: !charging && level <= 0.1 ? Theme.color.danger : bar.fg
+                    text: bar.cfg.batteryPercent || level <= 0.2 ? Math.round(level * 100) + "%" : ""
+                    icon: charging ? "battery-charging" : level > 0.85 ? "battery-full" : level > 0.6 ? "battery-high" : level > 0.35 ? "battery-medium" : level > 0.12 ? "battery-low" : "battery-warning"
+                    iconSize: 18
+                    active: Panels.isOpen("batteryMenu", bar.screen)
+                    menu: "batteryMenu"
+                    onClicked: Panels.toggle("batteryMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Bluetooth
+                MenuBarItem {
+                    readonly property var adapter: Bluetooth.defaultAdapter
+                    readonly property bool connected: Bluetooth.devices.values.some(d => d.connected)
+                    visible: bar.cfg.bluetooth && adapter !== null
+                    icon: !adapter?.enabled ? "bluetooth-slash" : connected ? "bluetooth-connected" : "bluetooth"
+                    color: bar.fg
+                    active: Panels.isOpen("bluetoothMenu", bar.screen)
+                    menu: "bluetoothMenu"
+                    onClicked: Panels.toggle("bluetoothMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Wi-Fi
+                MenuBarItem {
+                    readonly property var wifi: Networking.devices.values.find(d => d.type === DeviceType.Wifi) ?? null
+                    readonly property var network: wifi?.networks.values.find(n => n.connected) ?? null
+                    readonly property real strength: network?.signalStrength ?? 0
+                    visible: bar.cfg.wifi && wifi !== null
+                    color: bar.fg
+                    icon: !Networking.wifiEnabled ? "wifi-slash" : !network ? "wifi-none" : strength > 0.66 ? "wifi-high" : strength > 0.33 ? "wifi-medium" : "wifi-low"
+                    fill: network !== null
+                    active: Panels.isOpen("wifiMenu", bar.screen)
+                    menu: "wifiMenu"
+                    onClicked: Panels.toggle("wifiMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Sound (scroll to change volume)
+                MenuBarItem {
+                    visible: bar.cfg.sound
+                    icon: Audio.icon
+                    fill: true
+                    color: bar.fg
+                    active: Panels.isOpen("soundMenu", bar.screen)
+                    menu: "soundMenu"
+                    onClicked: Panels.toggle("soundMenu", bar.screen, mapToItem(null, 0, 0).x)
+                }
+
+                // Focus: the active mode's icon; click for the Focus page
+                MenuBarItem {
+                    visible: Focus.on
+                    icon: Focus.mode?.icon ?? "moon"
+                    fill: true
+                    color: bar.fg
+                    onClicked: {
+                        Panels.ccPage = "focus";
+                        Panels.show("controlCenter", bar.screen);
+                    }
+                }
+
+                MenuBarItem {
+                    visible: bar.cfg.ai
+                    icon: "sparkle"
+                    fill: Panels.isOpen("sidebar", bar.screen)
+                    color: bar.fg
+                    active: Panels.isOpen("sidebar", bar.screen)
+                    onClicked: Panels.toggle("sidebar", bar.screen)
+                }
+                MenuBarItem {
+                    visible: bar.cfg.search
+                    icon: "magnifying-glass"
+                    bold: true
+                    color: bar.fg
+                    active: Panels.isOpen("spotlight", bar.screen)
+                    onClicked: Panels.toggle("spotlight", bar.screen)
+                }
+                MenuBarItem {
+                    visible: bar.cfg.controlCenter
+                    icon: "sliders-horizontal"
+                    color: bar.fg
+                    active: Panels.isOpen("controlCenter", bar.screen)
+                    menu: "controlCenter"
+                    onClicked: Panels.toggle("controlCenter", bar.screen)
+                }
+                MenuBarItem {
+                    visible: bar.cfg.clock
+                    color: bar.fg
+                    active: Panels.isOpen("notificationCenter", bar.screen)
+                    menu: "notificationCenter"
+                    onClicked: Panels.toggle("notificationCenter", bar.screen)
+                    indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
+                    unread: Notifications.unread
+                    text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? "h:mm:ss AP" : "h:mm AP"))
+
+                    SystemClock {
+                        id: clock
+                        precision: bar.cfg.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
+                    }
+                }
+            }
+        }
+    }
+}

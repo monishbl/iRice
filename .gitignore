@@ -1,0 +1,7 @@
+.sandbox/
+reference/
+*.qsb
+Quickshell_*.qmltypes
+sandbox/tools/gen/
+# Built per machine (tools/build-plugin.sh)
+*.so
