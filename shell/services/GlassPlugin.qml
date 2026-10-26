@@ -7,8 +7,13 @@ import Quickshell.Io
 // Talks to the irice-glass Hyprland plugin (hypr/plugin/irice-glass), which
 // draws Liquid Glass inside the compositor. `available` says whether it's
 // loaded; when it isn't, glass falls back to Frosted (Hyprland's blur).
-// Shapes go over Hyprland's request socket as `irice-glass set ...`, one
-// request at a time; only the latest pending update per window is kept.
+// Shapes go over Hyprland's request socket as `irice-glass set ...`: one
+// request at a time, carrying every window's latest pending update together
+// (a Hyprland batch), so an animation costs one request per frame. Requests go
+// through a small helper (assets/scripts/glass-ipc.py), never a socket of our
+// own: Hyprland blocks while waiting for a request on a connection it has
+// accepted, and if the shell is waiting on Hyprland at that moment (creating
+// a popup), both stall for Hyprland's 5-second timeout.
 Singleton {
     id: root
 
@@ -20,7 +25,6 @@ Singleton {
     property var pending: ({})
     property var order: []
     property string inFlight: ""
-    property int serial: 0 // of the request in flight; late callbacks for older ones are ignored
     signal ready // answered a ping: (re)loaded plugins start blank, so resend state
 
     function update(monitor, ns, shapes) {
@@ -37,44 +41,31 @@ Singleton {
             order = order.concat([key]);
         p[key] = cmd;
         pending = p;
-        pump();
+        Qt.callLater(pump); // after this frame's other windows have queued theirs
     }
 
     function pump() {
-        if (inFlight !== "" || order.length === 0)
-            return;
-        const key = order[0];
-        order = order.slice(1);
-        const cmd = pending[key];
-        const p = Object.assign({}, pending);
-        delete p[key];
-        pending = p;
-        if (cmd === undefined)
-            return pump();
-        send(cmd);
+        if (inFlight !== "" || order.length === 0 || !ipc.running)
+            return; // (a restarted helper pumps when it's up)
+        const cmds = order.map(k => pending[k]).filter(c => c !== undefined);
+        order = [];
+        pending = {};
+        if (cmds.length === 1)
+            send(cmds[0]);
+        else if (cmds.length > 1)
+            send("[[BATCH]]" + cmds.join(";"));
     }
 
-    function finish(s) {
-        if (s !== undefined && s !== serial)
-            return; // belongs to an earlier request
+    function finish() {
         watchdog.stop();
-        if (sock.connected)
-            sock.connected = false; // the state change continues with pump()
-        else if (inFlight !== "") {
-            inFlight = "";
-            pump();
-        }
+        inFlight = "";
+        Qt.callLater(pump);
     }
 
     function send(cmd) {
-        // Hyprland reads requests in 1023-byte chunks and waits for more when a
-        // chunk is exactly full; pad so a request never ends on that edge
-        if (cmd.length % 1023 === 0)
-            cmd += " ";
-        serial++;
         inFlight = cmd;
         watchdog.restart();
-        sock.connected = true;
+        ipc.write(cmd.replace(/\n/g, " ") + "\n");
     }
     // A request that never gets an answer mustn't block every later update
     Timer {
@@ -83,36 +74,29 @@ Singleton {
         onTriggered: {
             if (root.inFlight === "")
                 return;
+            // The helper is stuck: start it again (answers from the old one
+            // can't arrive late, it's gone)
             root.inFlight = "";
-            root.serial++;
-            if (sock.connected)
-                sock.connected = false;
-            Qt.callLater(root.pump);
+            ipc.running = false;
+            restart.restart();
         }
     }
 
-    Socket {
-        id: sock
-        path: root.socketPath
-        onConnectionStateChanged: {
-            if (connected) {
-                write(root.inFlight);
-            } else if (root.inFlight !== "") {
-                root.inFlight = "";
-                Qt.callLater(root.pump); // reconnect outside this callback
-            }
+    Process {
+        id: ipc
+        running: true
+        stdinEnabled: true
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/glass-ipc.py").toString().replace("file://", "")), root.socketPath]
+        onStarted: Qt.callLater(root.pump)
+        onExited: {
+            root.inFlight = "";
+            watchdog.stop();
+            restart.restart();
         }
-        // Never change `connected` inside the socket's own callbacks (Qt is
-        // still using the socket there; Quickshell crashes). Hyprland closes
-        // the connection after answering, which also arrives as an error.
-        onError: if (!connected) {
-            const s = root.serial;
-            Qt.callLater(() => root.finish(s));
-        }
-        parser: SplitParser {
-            splitMarker: ""
+        stdout: SplitParser {
+            splitMarker: "\x1e"
             onRead: data => {
-                if (sock.isPing) {
+                if (root.isPing) {
                     root.available = data.startsWith("irice-glass");
                     root.version = root.available ? (parseInt(data.split(" ")[1]) || 1) : 0;
                     if (root.available)
@@ -123,13 +107,17 @@ Singleton {
                     root.available = false;
                     root.version = 0;
                 }
-                sock.isPing = false;
-                const s = root.serial;
-                Qt.callLater(() => root.finish(s)); // one answer per connection
+                root.isPing = false;
+                root.finish(); // one answer per request
             }
         }
-        property bool isPing: false
     }
+    Timer {
+        id: restart
+        interval: 1000
+        onTriggered: ipc.running = true
+    }
+    property bool isPing: false
 
     // Is the plugin there? Asked at start, after config reloads (plugins load
     // then), and now and then while it's missing.
@@ -138,7 +126,7 @@ Singleton {
             pingLater.restart(); // busy: try again shortly
             return;
         }
-        sock.isPing = true;
+        isPing = true;
         send("irice-glass ping");
     }
     Timer {

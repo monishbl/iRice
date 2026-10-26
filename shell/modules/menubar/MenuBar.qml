@@ -22,6 +22,7 @@ Variants {
         required property var modelData
         screen: modelData
         name: "menubar"
+        visible: Wallpaper.started // after the wallpaper at login
 
         readonly property var cfg: Config.options.menubar
         readonly property bool autoHide: cfg.autoHide
@@ -226,6 +227,18 @@ Variants {
                     Timer { running: ScreenTools.recording; interval: 1000; repeat: true; triggeredOnStart: true; onTriggered: parent.now = Date.now() }
                 }
 
+                // Caffeine on: a cup; click for its options (or to turn it off)
+                MenuBarItem {
+                    visible: System.keepAwake
+                    icon: "coffee"
+                    fill: true
+                    color: bar.fg
+                    onClicked: {
+                        Panels.show("controlCenter", bar.screen);
+                        Panels.ccPage = "caffeine";
+                    }
+                }
+
                 Repeater {
                     model: SystemTray.items
                     MenuBarItem {
@@ -369,6 +382,10 @@ Variants {
                     color: bar.fg
                     active: Panels.isOpen("spotlight", bar.screen)
                     onClicked: Panels.toggle("spotlight", bar.screen)
+                }
+                PrivacyDots {
+                    active: Panels.isOpen("privacyMenu", bar.screen)
+                    onClicked: Panels.toggle("privacyMenu", bar.screen, mapToItem(null, 0, 0).x)
                 }
                 MenuBarItem {
                     visible: bar.cfg.controlCenter

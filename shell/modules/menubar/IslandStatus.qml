@@ -3,8 +3,9 @@ import Quickshell.Services.UPower
 import qs.common
 import qs.services
 
-// The quiet last line of the expanded island: battery, CPU and memory, and
-// the next calendar event. Staggers in after the activities.
+// The quiet last line of the expanded island: battery, CPU (with the live
+// package temperature, reddish when running hot) and memory, and the next
+// calendar event. Staggers in after the activities.
 Item {
     id: root
 
@@ -43,12 +44,14 @@ Item {
     transform: Translate { y: (1 - root.appear) * 8 }
 
     Row {
+        id: stats
         anchors.verticalCenter: parent.verticalCenter
         spacing: 14
         Repeater {
             model: [
                 ...(Island.hasBattery ? [{ icon: Island.charging ? "battery-charging" : "battery-high", text: Math.round(Island.level * 100) + "%" }] : []),
                 { icon: "cpu", text: Math.round(Resources.cpu * 100) + "%" },
+                ...(Resources.temperature > 0 ? [{ icon: "thermometer-simple", text: Math.round(Resources.temperature) + "°", hot: Island.hot }] : []),
                 { icon: "memory", text: Math.round(Resources.memory * 100) + "%" }
             ]
             Row {
@@ -58,12 +61,12 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     name: parent.modelData.icon
                     size: 13
-                    color: Qt.rgba(1, 1, 1, 0.6)
+                    color: parent.modelData.hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: parent.modelData.text
-                    color: Qt.rgba(1, 1, 1, 0.6)
+                    color: parent.modelData.hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
                     font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                 }
             }
@@ -72,8 +75,9 @@ Item {
 
     Text {
         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-        width: Math.min(implicitWidth, root.width * 0.5)
-        visible: root.next !== null
+        // What's left after the stats (hidden when too little to read)
+        width: Math.min(implicitWidth, root.width - stats.width - 16)
+        visible: root.next !== null && width >= 60
         text: root.next ? root.next.title + " · " + root.when(root.next) : ""
         elide: Text.ElideRight
         color: Qt.rgba(1, 1, 1, 0.6)

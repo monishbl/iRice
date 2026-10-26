@@ -16,6 +16,12 @@ SB="$ROOT/.sandbox/home"
 export IRICE_SANDBOX=1 IRICE_ROOT="$ROOT" IRICE_TTY=1
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
 SHELL_DIR="$ROOT/shell"
+# The Quickshell the shell runs on (iRice's own build when there is one; see
+# launch-shell.sh): asking it over IPC needs the same version
+QS=qs
+for d in "$XDG_DATA_HOME" "$HOME/.local/share"; do
+    [[ -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]] && { QS="$d/irice/quickshell/bin/qs"; break; }
+done
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:?not inside a Hyprland session}"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 LOCKDIR="$RUN/hypr/$SIG"
@@ -82,12 +88,19 @@ case "${1:-start}" in
         flock -n 8 || exit 0 # this session already has one
         reap
         sleep 20 # let it start
-        misses=0
+        misses=0 gone=0
         while sleep 10; do
+            # The session ended: don't outlive it. One slow answer isn't an
+            # ending (a busy compositor can take over 3 s): only a missing
+            # socket, or three missed checks in a row
             if ! alive; then
-                stop # the session ended: don't outlive it
-                exit 0
+                if [[ ! -S "$LOCKDIR/.socket.sock" ]] || (( ++gone >= 3 )); then
+                    stop
+                    exit 0
+                fi
+                continue
             fi
+            gone=0
             pids=($(shell_pids))
             if (( ${#pids[@]} == 0 )); then
                 start # crashed
@@ -98,7 +111,7 @@ case "${1:-start}" in
             if (( ${#pids[@]} > 1 )); then
                 kill "${pids[@]:1}" 2>/dev/null # keep the oldest
             fi
-            if timeout 4 qs ipc --pid "${pids[0]}" show >/dev/null 2>&1; then
+            if timeout 4 "$QS" ipc --pid "${pids[0]}" show >/dev/null 2>&1; then
                 misses=0
             elif (( ++misses >= 2 )); then
                 notify-send -a iRice "Restarting the shell" "It stopped responding." 2>/dev/null

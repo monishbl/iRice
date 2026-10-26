@@ -17,6 +17,10 @@ Singleton {
             "orange": dark ? "#FF9F0A" : "#FF9500",
             "yellow": dark ? "#FFD60A" : "#FFCC00",
             "green": dark ? "#30D158" : "#34C759",
+            // (not offered as swatches; the wallpaper accent snaps to them too)
+            "teal": dark ? "#40C8E0" : "#30B0C7",
+            "cyan": dark ? "#64D2FF" : "#32ADE6",
+            "indigo": dark ? "#5E5CE6" : "#5856D6",
             "graphite": dark ? "#98989D" : "#8E8E93"
         })
     readonly property color accent: Config.options.appearance.accent === "wallpaper" ? Wallpaper.accent : (accents[Config.options.appearance.accent] ?? accents.blue)
@@ -32,11 +36,16 @@ Singleton {
         readonly property int display: 24
     }
 
+    readonly property bool reduceTransparency: Config.options.appearance.reduceTransparency
+    readonly property bool contrast: Config.options.appearance.increaseContrast
+
     readonly property QtObject color: QtObject {
-        readonly property color label: root.dark ? Qt.rgba(1, 1, 1, 0.92) : Qt.rgba(0, 0, 0, 0.85)
-        readonly property color secondary: root.dark ? Qt.rgba(1, 1, 1, 0.58) : Qt.rgba(0, 0, 0, 0.52)
-        readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, 0.34) : Qt.rgba(0, 0, 0, 0.3)
-        readonly property color separator: root.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.1)
+        readonly property color label: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 1 : 0.92) : Qt.rgba(0, 0, 0, root.contrast ? 0.95 : 0.85)
+        readonly property color secondary: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.78 : 0.58) : Qt.rgba(0, 0, 0, root.contrast ? 0.72 : 0.52)
+        readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.6 : 0.34) : Qt.rgba(0, 0, 0, root.contrast ? 0.56 : 0.3)
+        readonly property color separator: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.3 : 0.12) : Qt.rgba(0, 0, 0, root.contrast ? 0.28 : 0.1)
+        // Outline around glass surfaces with Increase contrast
+        readonly property color outline: root.dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.38)
         readonly property color fill: root.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.06)
         readonly property color fillHover: root.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.1)
         readonly property color fillPressed: root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.15)
@@ -57,7 +66,7 @@ Singleton {
         // presets; Custom uses your own (Settings → Appearance → Advanced).
         // [lens, frost, solid, tint]
         readonly property var presets: ({ liquid: [1, 0.1, 0.12, 0.45], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
-        readonly property string material: Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        readonly property string material: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
         readonly property real lensAmount: amounts[0]
         readonly property real frostAmount: amounts[1]
@@ -71,7 +80,7 @@ Singleton {
         // Lens thickness: thin | depth | auto (thick on small controls)
         readonly property string depth: Config.options.appearance.glassDepth
         readonly property color base: root.dark ? Qt.rgba(0.08, 0.08, 0.1, 0.16) : Qt.rgba(0.98, 0.98, 1.0, 0.3)
-        readonly property color tint: Config.options.appearance.wallpaperTint ? Qt.tint(base, Qt.alpha(Wallpaper.accent, root.dark ? 0.1 : 0.08)) : base
+        readonly property color tint: Config.options.appearance.wallpaperTint ? Qt.tint(base, Qt.alpha(Wallpaper.tone, root.dark ? 0.1 : 0.08)) : base
         readonly property color solid: root.dark ? "#26262A" : "#F2F2F5"
         // Frosted sits over compositor-blurred windows, so it needs more body
         readonly property color frost: root.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.62) : Qt.rgba(0.97, 0.97, 0.98, 0.66)

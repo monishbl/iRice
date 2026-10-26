@@ -7,8 +7,11 @@ import qs.common
 import qs.glass
 import qs.services
 
-// Mission Control: Spaces along the top, the current Space's windows spread
-// out below as live previews. Click a window to focus it, a Space to switch.
+// Mission Control: Spaces along the top (plain containers with a tile per
+// window), the current Space's windows spread out below as live previews.
+// Click a window to focus it, a Space to switch.
+// App Exposé (Panels.appExpose): the same, but only one app's windows from
+// every space, with the app's name on top instead of the Spaces.
 Variants {
     model: Quickshell.screens
 
@@ -28,7 +31,21 @@ Variants {
             readonly property var monitor: Hyprland.monitorFor(screen)
             readonly property int activeWs: monitor?.activeWorkspace?.id ?? 1
             readonly property var spaces: Hyprland.workspaces.values.filter(w => w.id > 0 && w.monitor === monitor).sort((a, b) => a.id - b.id)
-            readonly property var windows: Hyprland.toplevels.values.filter(t => t.workspace?.id === activeWs && t.lastIpcObject?.size)
+            // App Exposé: the app this opened for (kept while it animates out)
+            property string exposeFor: ""
+            readonly property var exposeEntry: exposeFor ? (DesktopEntries.byId(exposeFor) ?? Apps.entryFor(exposeFor)) : null
+            function ofApp(t) {
+                const cls = t.lastIpcObject?.class ?? "";
+                return cls === exposeFor || Apps.entryFor(cls)?.id === exposeFor;
+            }
+            readonly property var windows: exposeFor ? Hyprland.toplevels.values.filter(t => t.lastIpcObject?.size && (t.workspace?.id ?? 0) > 0 && ofApp(t)) : Windows.on(activeWs).filter(t => t.lastIpcObject?.size)
+            Connections {
+                target: Panels
+                function onExposeAppChanged() {
+                    if (Panels.exposeApp !== "" && win.shown)
+                        win.exposeFor = Panels.exposeApp;
+                }
+            }
 
             // Starts at 0 so the window animates in when it is created
             property real progress: 0
@@ -47,11 +64,17 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-            onShownChanged: if (shown) Hyprland.refreshToplevels()
+            onShownChanged: if (shown) {
+                exposeFor = Panels.exposeApp;
+                Hyprland.refreshToplevels();
+            }
 
             function focusWindow(t) {
                 Panels.close();
-                t.wayland?.activate();
+                const id = t.workspace?.id ?? 0;
+                if (id > 0 && id !== activeWs) // App Exposé: a window on another space
+                    focusSpace(id);
+                Qt.callLater(() => t.wayland?.activate());
             }
             function focusSpace(id) {
                 Hyprland.dispatch("hl.dsp.focus({ workspace = " + id + " })");
@@ -83,9 +106,37 @@ Variants {
                 onClicked: Panels.close()
             }
 
+            // App Exposé: the app's icon and name where the Spaces would be
+            Row {
+                visible: win.exposeFor !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 56 + (1 - win.progress) * -30
+                opacity: win.progress
+                spacing: 12
+                AppIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 40
+                    source: Apps.iconFor(win.exposeEntry ?? win.exposeFor)
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: win.exposeEntry?.name ?? win.exposeFor
+                        color: "white"
+                        font { family: Theme.font.family; pixelSize: 20; weight: Font.DemiBold }
+                    }
+                    Text {
+                        text: win.windows.length + (win.windows.length === 1 ? " window" : " windows")
+                        color: Qt.rgba(1, 1, 1, 0.7)
+                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                    }
+                }
+            }
+
             // Spaces bar
             Row {
                 id: spacesBar
+                visible: win.exposeFor === ""
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 44 + (1 - win.progress) * -30
                 opacity: win.progress
@@ -105,19 +156,11 @@ Variants {
                             width: 150
                             height: Math.round((win.screen?.height ?? 1080) * space.s)
                             radius: 8
-                            color: "black"
+                            // A plain container, like Overview (no wallpaper)
+                            color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
                             border.width: space.current ? 2 : 1
-                            border.color: space.current ? Theme.accent : Qt.rgba(1, 1, 1, 0.25)
+                            border.color: space.current ? Theme.accent : (Theme.dark ? "#36363C" : "#D4D4D8")
                             clip: true
-
-                            Image {
-                                anchors.fill: parent
-                                anchors.margins: parent.border.width
-                                source: Wallpaper.source
-                                fillMode: Image.PreserveAspectCrop
-                                sourceSize: Qt.size(300, 170)
-                                asynchronous: true
-                            }
 
                             Repeater {
                                 model: space.modelData.toplevels.values.filter(t => t.lastIpcObject?.at)
@@ -129,9 +172,9 @@ Variants {
                                     width: ipc.size[0] * space.s
                                     height: ipc.size[1] * space.s
                                     radius: 3
-                                    color: Qt.rgba(0.15, 0.15, 0.17, 0.85)
+                                    color: Theme.dark ? "#2C2C31" : "#FFFFFF"
                                     border.width: 1
-                                    border.color: Qt.rgba(1, 1, 1, 0.2)
+                                    border.color: Theme.dark ? "#36363C" : "#E4E4E7"
                                     IconImage {
                                         anchors.centerIn: parent
                                         implicitSize: Math.min(20, parent.height * 0.6)
@@ -160,7 +203,7 @@ Variants {
             // Windows of the current Space, laid out in the grid that keeps them largest.
             Item {
                 id: stage
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; top: spacesBar.bottom; margins: 48; topMargin: 40 }
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; top: parent.top; margins: 48; topMargin: 44 + spacesBar.height + 40 }
                 opacity: win.progress
                 scale: 0.96 + 0.04 * win.progress
 
@@ -187,7 +230,7 @@ Variants {
                 Text {
                     anchors.centerIn: parent
                     visible: win.windows.length === 0
-                    text: "No windows on this desktop"
+                    text: win.exposeFor !== "" ? "No open windows" : "No windows on this desktop"
                     color: Qt.rgba(1, 1, 1, 0.7)
                     font { family: Theme.font.family; pixelSize: Theme.font.title }
                 }

@@ -8,8 +8,11 @@ endif
 INCLUDES = `pkg-config --cflags pixman-1 libdrm hyprland libinput libudev wayland-server xkbcommon`
 LIBS = -lGLESv2
 
+# Built beside it, then swapped in: a running Hyprland that has the old one
+# loaded keeps its copy (overwriting a loaded library in place crashes it)
 irice-glass.so: main.cpp controls.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $^ -o $@.new $(LIBS)
+	mv -f $@.new $@
 
 clean:
 	rm -f irice-glass.so

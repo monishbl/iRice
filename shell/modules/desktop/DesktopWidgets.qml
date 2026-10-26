@@ -81,7 +81,7 @@ Item {
             Island.post({ kind: "custom", icon: "squares-four", title: "No room on the desktop", subtitle: "Remove or shrink a widget first", color: Theme.accents.orange });
             return;
         }
-        list.push({ kind: kind, size: size, col: spot.col, row: spot.row });
+        list.push({ kind: kind, size: size, col: spot.col, row: spot.row, id: defs.kind(kind)?.ownId ? Math.random().toString(36).slice(2, 8) : "" });
         save(list);
     }
     function remove(i) {
@@ -199,12 +199,18 @@ Item {
             const w = widgets[i];
             for (const s of defs.kind(w.kind).sizes)
                 items.push({ text: (s === w.size ? "✓ " : "    ") + defs.sizeNames[s], action: () => root.resize(i, s), enabled: s !== w.size });
+            // The widget's own items (Edit Stack, Change Buttons...)
+            const own = frames.itemAt(i)?.extraMenu() ?? [];
+            items.push(...own);
             items.push({ separator: true });
             items.push({ text: "Edit Widgets…", action: () => root.startEditing() });
             items.push({ text: "Remove Widget", danger: true, action: () => root.remove(i) });
         } else {
             items.push({ text: "Edit Widgets…", action: () => root.startEditing() });
             items.push({ text: "Change Wallpaper…", action: () => Panels.show("wallpaper", root.screen) });
+            items.push({ separator: true });
+            items.push({ text: (Config.options.desktop.useStacks ? "✓ " : "    ") + "Use Stacks", action: () => Config.options.desktop.useStacks = !Config.options.desktop.useStacks });
+            items.push({ text: (Config.options.desktop.icons ? "✓ " : "    ") + "Show Files on Desktop", action: () => Config.options.desktop.icons = !Config.options.desktop.icons });
             items.push({ separator: true });
             items.push({ text: "Desktop Settings…", action: () => Panels.openSettings("desktop") });
         }
@@ -227,10 +233,38 @@ Item {
         }
     }
 
+    // ── Files on the desktop (under the widgets) ────────────────────────
+    DesktopIcons {
+        desk: root
+        visible: Config.options.desktop.icons
+    }
+
     // ── Widgets ─────────────────────────────────────────────────────────
-    // By count, so saving a move or resize keeps the same delegates (no reload)
+    // One slot per widget, changed in place: a move or resize keeps every
+    // delegate, and adding or removing one inserts or removes just that one
+    // (a count model would rebuild them all, and they'd all flicker)
+    ListModel { id: slots }
+    property var slotKeys: []
+    function syncSlots() {
+        const next = widgets.map(w => w.kind + ":" + (w.id ?? ""));
+        const prev = slotKeys;
+        let head = 0;
+        while (head < prev.length && head < next.length && prev[head] === next[head])
+            head++;
+        let tail = 0;
+        while (tail < prev.length - head && tail < next.length - head && prev[prev.length - 1 - tail] === next[next.length - 1 - tail])
+            tail++;
+        if (prev.length - head - tail > 0)
+            slots.remove(head, prev.length - head - tail);
+        for (let i = head; i < next.length - tail; i++)
+            slots.insert(i, { key: next[i] });
+        slotKeys = next;
+    }
+    onWidgetsChanged: syncSlots()
+    Component.onCompleted: syncSlots()
     Repeater {
-        model: root.widgets.length
+        id: frames
+        model: slots
         WidgetFrame {
             widget: root.placed[index] ?? { kind: "", size: "s", col: 0, row: 0 }
             defs: widgetDefs

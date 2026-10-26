@@ -73,6 +73,8 @@ Item {
             cursorShape: Qt.PointingHandCursor
             function update(x) { root.moved(Math.max(0, Math.min(1, x / width))); }
             onPressed: m => update(m.x)
+            onPressedChanged: Panels.holdPull += pressed ? 1 : -1 // the panel holds still while dragging
+            Component.onDestruction: if (pressed) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
             onPositionChanged: m => { if (pressed) update(m.x); }
             onWheel: w => root.moved(Math.max(0, Math.min(1, root.value + (w.angleDelta.y > 0 ? 0.05 : -0.05))))
         }

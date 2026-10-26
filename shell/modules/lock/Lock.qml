@@ -22,6 +22,14 @@ Scope {
         pam.start();
     }
 
+    // StandBy: on a charging laptop left alone for 5 minutes, lock the
+    // screen; the lock screen then shows StandBy (see LockSurface)
+    IdleMonitor {
+        timeout: 300
+        enabled: Config.options.lock.standby && Island.charging && !System.locked
+        onIsIdleChanged: if (isIdle && enabled) System.locked = true
+    }
+
     WlSessionLock {
         id: lock
         locked: System.locked

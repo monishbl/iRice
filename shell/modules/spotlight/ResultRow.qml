@@ -30,7 +30,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignHCenter
         text: root.result.emoji ?? ""
-        font { family: "Noto Color Emoji"; pixelSize: 20 }
+        font { family: EmojiFont.family; pixelSize: 20 }
     }
     Icon {
         visible: !root.result.icon && !root.result.emoji
@@ -68,5 +68,15 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         onClicked: root.activated()
+    }
+    // Files: Quick Look (also Shift+Space)
+    IconButton {
+        visible: !!root.result.path && (mouse.containsMouse || hovered || root.selected)
+        readonly property bool hovered: false
+        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+        icon: "eye"
+        iconColor: root.selected ? Theme.color.onAccent : Theme.color.secondary
+        tooltip: "Quick Look"
+        onClicked: Panels.quickLook(root.result.path)
     }
 }

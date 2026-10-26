@@ -29,7 +29,7 @@ Column {
                 radius: 13
                 color: Theme.color.fill
                 Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
-                MouseArea { anchors.fill: parent; onClicked: Qt.openUrlExternally("file://" + Config.dir + "/config.json") }
+                MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
             }
         }
     }

@@ -156,9 +156,40 @@ Singleton {
         backdropVersions = v;
     }
 
-    readonly property color accent: pickAccent(palette.colors)
+    // The wallpaper's own most colourful shade: tints glass so it sits with
+    // the picture
+    readonly property color tone: pickAccent(palette.colors)
+    // The accent: that hue snapped to the nearest system colour (the vivid set
+    // the system monitor and the accent swatches use, each tuned for light and
+    // dark), so it's never a muddy or too-dark wallpaper shade
+    readonly property color accent: snapAccent(tone)
+    function snapAccent(c) {
+        if (c.hsvSaturation < 0.15)
+            return Theme.accents.blue; // no real colour in the picture
+        let best = "blue", dist = 2;
+        for (const n of ["red", "orange", "yellow", "green", "teal", "cyan", "blue", "indigo", "purple", "pink"]) {
+            let d = Math.abs(Qt.color(Theme.accents[n]).hsvHue - c.hsvHue);
+            d = Math.min(d, 1 - d); // hue wraps around
+            if (d < dist) {
+                dist = d;
+                best = n;
+            }
+        }
+        return Theme.accents[best];
+    }
     // Set by the background window, which samples the menu bar strip
     property bool topIsLight: false
+
+    // The desktop has appeared: the first wallpaper finished fading in (set by
+    // the background window). Until then the menu bar, dock and widgets stay
+    // hidden, so logging in goes black, wallpaper, then the rest (Hyprland
+    // fades each in as it maps) instead of UI over a black screen.
+    property bool started: false
+    Timer {
+        running: !root.started
+        interval: 3000 // a picture that won't load mustn't hide the desktop
+        onTriggered: root.started = true
+    }
 
     function luminance(c) {
         return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;

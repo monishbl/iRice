@@ -15,7 +15,7 @@ Variants {
         required property var modelData
         panel: "sidebar"
         screen: modelData
-        keepLoaded: true
+        linger: 60000 // freed a minute after closing (the chat lives in the Ai service)
 
         GlassWindow {
             id: win

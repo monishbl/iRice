@@ -7,13 +7,79 @@ import "../common/emoji.js" as Emoji
 
 // Spotlight's result providers. query() returns rows:
 //   { section, title, subtitle, icon (image path) | glyph (Phosphor name), run() }
-// Prefixes: ">" runs a command, ";" clipboard history, ":" emoji, "/" files,
-// "?" asks AI. Rows with ai: true answer inline instead of closing Spotlight.
+// Prefixes: ">" runs a command, ";" clipboard history, ":" emoji, "/" files
+// (names, then what's inside documents), "?" asks AI. Rows with ai: true
+// answer inline instead of closing Spotlight. Also: conversions ("10 km to
+// mi", "100 usd in eur", through qalc) and definitions ("define serendipity",
+// online). Slow answers arrive later; `revision` goes up when they do.
 Singleton {
     id: root
 
     property var files: [] // [{ type, path }] for fileQuery
+    property var contents: [] // [path] of documents containing fileQuery
     property string fileQuery: ""
+    property int revision: 0 // bumped when async results arrive
+
+    // Conversions: "10 km to mi", "$20 in eur", "72 f to c"
+    property string convQuery: ""
+    property string convResult: ""
+    function looksLikeConversion(q) {
+        return /^[-$€£¥₹]?\s*\d[\d.,]*\s*\S.*\s(to|in|as|into)\s+\S+$/i.test(q);
+    }
+    Timer {
+        id: convDebounce
+        interval: 180
+        onTriggered: {
+            conv.running = false;
+            conv.command = [decodeURIComponent(Qt.resolvedUrl("../assets/scripts/convert.sh").toString().replace("file://", "")), root.convQuery];
+            conv.running = true;
+        }
+    }
+    Process {
+        id: conv
+        property string asked: ""
+        onRunningChanged: if (running) asked = root.convQuery
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (conv.asked !== root.convQuery)
+                    return;
+                root.convResult = text.trim();
+                root.revision++;
+            }
+        }
+    }
+
+    // Definitions: "define word", "word meaning" (dictionaryapi.dev)
+    property string defWord: ""
+    property var definition: null // { word, phonetic, part, text }
+    function wordToDefine(q) {
+        const m = q.match(/^(?:define|definition of|meaning of|what does)\s+([a-z][a-z'-]*)(?:\s+mean)?\??$/i) ?? q.match(/^([a-z][a-z'-]*)\s+(?:meaning|definition|define)$/i);
+        return m ? m[1].toLowerCase() : "";
+    }
+    Timer {
+        id: defDebounce
+        interval: 300
+        onTriggered: {
+            dict.running = false;
+            dict.command = ["curl", "-sf", "--max-time", "5", "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(root.defWord)];
+            dict.running = true;
+        }
+    }
+    Process {
+        id: dict
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const e = JSON.parse(text)[0];
+                    const m = e.meanings[0];
+                    root.definition = { word: e.word, phonetic: e.phonetic ?? (e.phonetics ?? []).find(p => p.text)?.text ?? "", part: m.partOfSpeech, text: m.definitions[0].definition };
+                } catch (err) {
+                    root.definition = { word: root.defWord, part: "", text: "", missing: true };
+                }
+                root.revision++;
+            }
+        }
+    }
 
     // Fuzzy match score, 0 = no match. Prefers whole-string prefix, then word
     // prefix, then substring, then in-order subsequence.
@@ -99,7 +165,7 @@ Singleton {
 
         if (raw.startsWith(">")) {
             const cmd = raw.slice(1).trim();
-            return cmd === "" ? [] : [{ section: "Command", title: cmd, subtitle: "Run in terminal", glyph: "terminal-window", run: () => Quickshell.execDetached(["foot", "-H", "sh", "-c", cmd]) }];
+            return cmd === "" ? [] : [{ section: "Command", title: cmd, subtitle: "Run in terminal", glyph: "terminal-window", run: () => Launch.terminal(["sh", "-c", cmd], true) }];
         }
 
         if (raw.startsWith(":")) {
@@ -125,13 +191,22 @@ Singleton {
                 fileDebounce.restart();
             }
             const home = Quickshell.env("HOME");
+            const named = new Set(files.map(f => f.path));
             return files.map(f => ({
                 section: "Files",
                 title: f.path.split("/").pop(),
                 subtitle: f.path.slice(0, f.path.lastIndexOf("/")).replace(home, "~"),
                 icon: IconLookup.path(f.type === "d" ? "folder" : iconForFile(f.path), "text-x-generic"),
-                run: () => Qt.openUrlExternally("file://" + f.path)
-            }));
+                path: f.path,
+                run: () => Files.open(f.path)
+            })).concat(contents.filter(p => !named.has(p)).map(p => ({
+                section: "File contents",
+                title: p.split("/").pop(),
+                subtitle: p.slice(0, p.lastIndexOf("/")).replace(home, "~"),
+                icon: IconLookup.path(iconForFile(p), "text-x-generic"),
+                path: p,
+                run: () => Files.open(p)
+            })));
         }
 
         if (raw.startsWith(";")) {
@@ -150,8 +225,32 @@ Singleton {
         if (value !== null)
             out.push({ section: "Calculator", title: String(value), subtitle: raw + " =", glyph: "calculator", run: () => Quickshell.execDetached(["wl-copy", String(value)]) });
 
+        if (value === null && Tools.has("qalc") && looksLikeConversion(raw)) {
+            if (raw !== convQuery) {
+                convQuery = raw;
+                convResult = "";
+                convDebounce.restart();
+            } else if (convResult !== "") {
+                const r = convResult;
+                out.push({ section: "Conversion", title: r, subtitle: raw, glyph: "arrows-left-right", run: () => Quickshell.execDetached(["wl-copy", r.replace(/^[^\d−-]*/, "").split(" ")[0]]) });
+            }
+        }
+
+        const word = wordToDefine(raw);
+        if (word) {
+            if (word !== defWord) {
+                defWord = word;
+                definition = null;
+                defDebounce.restart();
+            } else if (definition && !definition.missing) {
+                const d = definition;
+                out.push({ section: "Dictionary", title: d.word + (d.part ? " · " + d.part : ""), subtitle: d.text, glyph: "book-open", run: () => Launch.open("https://en.wiktionary.org/wiki/" + encodeURIComponent(d.word)) });
+            }
+        }
+
         // Reminders in plain words: "remind me to call mum at 5pm", "stretch in 20 minutes"
-        if (/^(remind|add (an? )?(event|reminder))/i.test(raw) || /\s(at\s+\d|in\s+\d+\s*(m|h))/i.test(raw)) {
+        // ("remind me …" is a to-do: see Intents)
+        if (!/^remind/i.test(raw) && (/^add (an? )?reminder/i.test(raw) || /\s(at\s+\d|in\s+\d+\s*(m|h))/i.test(raw))) {
             const r = Calendar.parseQuick(raw);
             if (r)
                 out.push({ section: "Calendar", title: "Add reminder: " + r.title, subtitle: Qt.formatDateTime(r.start, "ddd d MMM, h:mm AP"), glyph: "bell-ringing", run: () => {
@@ -165,7 +264,7 @@ Singleton {
             s: Math.max(score(a.name, q), score(a.genericName, q) * 0.8, score((a.keywords ?? []).join(" "), q) * 0.6, score(a.id, q) * 0.7)
         })).filter(x => x.s >= 30).sort((a, b) => b.s - a.s).slice(0, 8);
         for (const x of apps)
-            out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => x.entry.execute() });
+            out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry) });
 
         const acts = actions.map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
         for (const x of acts)
@@ -180,11 +279,23 @@ Singleton {
 
         if (raw.length >= 3)
             out.push(aiRow(raw));
-        out.push({ section: "Web", title: "Search the web for “" + raw + "”", subtitle: "", glyph: "globe", run: () => Qt.openUrlExternally("https://duckduckgo.com/?q=" + encodeURIComponent(raw)) });
+        out.push({ section: "Web", title: "Search the web for “" + raw + "”", subtitle: "", glyph: "globe", run: () => Launch.open("https://duckduckgo.com/?q=" + encodeURIComponent(raw)) });
 
-        // Best app or action becomes the top hit
-        const top = out.findIndex(r => r.section === "Applications" || r.section === "Actions" || r.section === "Calculator");
-        if (top > 0 || (top === 0 && out[0].section !== "Calculator")) {
+        // Notes by name
+        if (q.length >= 3)
+            for (const n of Notes.search(raw, 4))
+                out.push({ section: "Notes", title: n.name.replace(/^\d{4}-\d{2}-\d{2} \d{4} /, ""), subtitle: Qt.formatDate(n.modified, "d MMM yyyy"), glyph: "note", run: () => Notes.open(n.path) });
+
+        // Plain-language actions ("remind me…", "timer 5 min", "wifi off")
+        // come first; otherwise the best app or action becomes the top hit
+        const intents = Intents.rows(raw);
+        if (intents.length > 0)
+            return intents.concat(out);
+
+        // Best app or action becomes the top hit (answers stay on top)
+        const answers = ["Calculator", "Conversion", "Dictionary"];
+        const top = out.findIndex(r => r.section === "Applications" || r.section === "Actions" || answers.includes(r.section));
+        if (top > 0 || (top === 0 && !answers.includes(out[0].section))) {
             const hit = Object.assign({}, out[top], { section: "Top Hit" });
             out.splice(top, 1);
             out.unshift(hit);
@@ -211,14 +322,36 @@ Singleton {
         interval: 200
         onTriggered: {
             fileProc.running = false;
-            fileProc.command = ["sh", "-c", "find \"$HOME\" -maxdepth 6 \\( -name '.*' -o -name node_modules -o -name target \\) -prune -o -iname \"*$1*\" -printf '%y\\t%p\\n' 2>/dev/null | head -25", "sh", root.fileQuery];
+            // Names: plocate's index when there is one (instant), else find
+            fileProc.command = Tools.has("plocate")
+                ? ["sh", "-c", "plocate -i -l 60 -- \"$1\" 2>/dev/null | grep -F \"$HOME/\" | grep -v '/\\.' | head -25 | while IFS= read -r p; do [ -d \"$p\" ] && t=d || t=f; printf '%s\\t%s\\n' \"$t\" \"$p\"; done", "sh", root.fileQuery]
+                : ["sh", "-c", "find \"$HOME\" -maxdepth 6 \\( -name '.*' -o -name node_modules -o -name target \\) -prune -o -iname \"*$1*\" -printf '%y\\t%p\\n' 2>/dev/null | head -25", "sh", root.fileQuery];
             fileProc.running = true;
+            // Contents: documents and notes in the usual folders (not code trees)
+            root.contents = [];
+            contentProc.running = false;
+            if (Tools.has("rg") && root.fileQuery.length >= 3) {
+                contentProc.command = ["sh", "-c", "cd \"$HOME\" && timeout 3 rg -l -i -F --max-filesize 4M --max-depth 5 -g '!.*' -g '!node_modules' -t txt -t markdown -t org -t tex -t csv -t json -t yaml -t html -t py -- \"$1\" Documents Desktop Downloads Notes notes 2>/dev/null | head -15 | sed \"s|^|$HOME/|\"", "sh", root.fileQuery];
+                contentProc.running = true;
+            }
         }
     }
     Process {
         id: fileProc
         stdout: StdioCollector {
-            onStreamFinished: root.files = text.split("\n").filter(l => l.includes("\t")).map(l => ({ type: l.slice(0, l.indexOf("\t")), path: l.slice(l.indexOf("\t") + 1) }))
+            onStreamFinished: {
+                root.files = text.split("\n").filter(l => l.includes("\t")).map(l => ({ type: l.slice(0, l.indexOf("\t")), path: l.slice(l.indexOf("\t") + 1) }));
+                root.revision++;
+            }
+        }
+    }
+    Process {
+        id: contentProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.contents = text.split("\n").filter(l => l.trim() !== "");
+                root.revision++;
+            }
         }
     }
 

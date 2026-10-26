@@ -29,25 +29,48 @@ Singleton {
             })
         property var crosshair: ({ enabled: false, color: "#30D158", size: 12, thickness: 2, gap: 4, dot: true })
         property string floatingImage: ""
-        property var todos: [] // [{ text, done }]
+        property var todos: [] // [{ text, done, due? (ms) }]
+        property var alarms: [] // [{ id, at (ms), label, kind: "timer" | "alarm" }]
         property var clipPins: [] // [{ text } | { image, source }]
         property var recentApps: [] // desktop entry ids, most recent first
-        property string desktopNote: "" // the Notes desktop widget
+        property string desktopNote: "" // the first Note widget (no id)
+        property var desktopNotes: ({}) // each other Note widget: id -> text
+        property var screenTime: ({}) // "YYYY-MM-DD" -> { app id: seconds } (last 7 days)
+        property var stacks: ({}) // Smart Stack widget id -> [widget kinds]
+        property var shortcutButtons: ({}) // Shortcuts widget id -> [action titles]
+        property bool appThemeOn: false // Match apps wrote colour files (so turning it off empties them)
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
         onFloatingImageChanged: root.scheduleSave()
         onTodosChanged: root.scheduleSave()
         onClipPinsChanged: root.scheduleSave()
-        onRecentAppsChanged: root.scheduleSave()
+        onRecentAppsChanged: root.scheduleSave(true)
         onDesktopNoteChanged: root.scheduleSave()
+        onDesktopNotesChanged: root.scheduleSave()
+        onScreenTimeChanged: root.scheduleSave(true)
+        onStacksChanged: root.scheduleSave()
+        onShortcutButtonsChanged: root.scheduleSave()
+        onAppThemeOnChanged: root.scheduleSave()
     }
 
     property bool loaded: false
-    function scheduleSave() {
-        if (loaded)
+    // `lazy`: changes that may come often and matter little if lost (the
+    // recent apps order on every focus change) are saved within 30 s
+    function scheduleSave(lazy) {
+        if (!loaded)
+            return;
+        if (lazy !== true)
             saveTimer.restart();
+        else if (!saveTimer.running && !lazySave.running)
+            lazySave.start();
     }
+    Timer {
+        id: lazySave
+        interval: 30000
+        onTriggered: saveTimer.restart()
+    }
+    Component.onDestruction: if (lazySave.running) saveTimer.triggered()
 
     Process {
         running: true
@@ -62,9 +85,15 @@ Singleton {
             crosshair: store.crosshair,
             floatingImage: store.floatingImage,
             todos: store.todos,
+            alarms: store.alarms,
             clipPins: store.clipPins,
             recentApps: store.recentApps,
-            desktopNote: store.desktopNote
+            desktopNote: store.desktopNote,
+            desktopNotes: store.desktopNotes,
+            screenTime: store.screenTime,
+            stacks: store.stacks,
+            shortcutButtons: store.shortcutButtons,
+            appThemeOn: store.appThemeOn
         }, null, 2))
     }
 
@@ -88,12 +117,21 @@ Singleton {
                     store.floatingImage = j.floatingImage;
                 if (Array.isArray(j.todos))
                     store.todos = j.todos;
+                if (Array.isArray(j.alarms))
+                    store.alarms = j.alarms;
                 if (Array.isArray(j.clipPins))
                     store.clipPins = j.clipPins;
                 if (Array.isArray(j.recentApps))
                     store.recentApps = j.recentApps;
                 if (typeof j.desktopNote === "string")
                     store.desktopNote = j.desktopNote;
+                if (j.desktopNotes && typeof j.desktopNotes === "object")
+                    store.desktopNotes = j.desktopNotes;
+                if (typeof j.appThemeOn === "boolean")
+                    store.appThemeOn = j.appThemeOn;
+                for (const k of ["screenTime", "stacks", "shortcutButtons"])
+                    if (j[k] && typeof j[k] === "object")
+                        store[k] = j[k];
             } catch (e) {}
             root.loaded = true;
         }

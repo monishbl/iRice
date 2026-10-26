@@ -145,7 +145,7 @@ Item {
             color: Theme.color.label
             selectionColor: Qt.alpha(Theme.accent, 0.4)
             font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Qt.openUrlExternally(link)
+            onLinkActivated: link => Launch.open(link)
         }
 
         // Error / refusal

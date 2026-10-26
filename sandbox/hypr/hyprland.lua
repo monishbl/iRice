@@ -4,6 +4,7 @@
 
 local root = os.getenv("IRICE_ROOT")
 IRICE_MOD = "ALT"
+IRICE_HYPR_DIR = root .. "/hypr/irice"
 
 hl.monitor({ output = "WAYLAND-1", mode = "preferred", position = "0x0", scale = 1 })
 -- Headless test output (created by dev.sh up). It renders even when the sandbox
@@ -17,7 +18,10 @@ hl.config({
 })
 
 dofile(root .. "/hypr/irice/look.lua")
+pcall(dofile, root .. "/hypr/irice/cursor.lua") -- macOS cursor when installed
+pcall(dofile, root .. "/hypr/irice/tabs.lua") -- window tabs
 dofile(root .. "/hypr/irice/rules.lua")
+pcall(dofile, (os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/irice/window-rules.lua")
 dofile(root .. "/hypr/irice/keybinds.lua")
 dofile(root .. "/hypr/irice/gestures.lua")
 pcall(dofile, root .. "/hypr/irice/titlebars.lua") -- only with the hyprbars plugin

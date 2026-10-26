@@ -61,8 +61,11 @@ Item {
         readonly property bool launcherThemed: launcherIcon !== "" && !launcherIcon.includes("application-x-executable") && !launcherIcon.includes("default-icon") && !launcherIcon.includes("-symbolic")
         AppIcon {
             visible: root.kind === "launcher" && art.launcherThemed
-            anchors.fill: parent
             size: root.size
+            // Rendered once at the largest magnified size, like the other
+            // icons (sized to the live size, it re-rendered on every step of
+            // the hover magnification and flickered)
+            renderSize: Math.ceil(root.base * Math.max(1, root.dock.maxScale))
             mipmap: true
             source: art.launcherThemed ? art.launcherIcon : ""
         }
@@ -112,8 +115,33 @@ Item {
             x: root.kind === "minimized" ? parent.width * 0.5 : 0
             y: root.kind === "minimized" ? parent.height * 0.5 : 0
             size: root.kind === "minimized" ? root.size * 0.5 : root.size
+            renderSize: Math.ceil((root.kind === "minimized" ? 0.5 : 1) * root.base * Math.max(1, root.dock.maxScale))
             mipmap: true
             source: root.kind === "launcher" ? "" : root.kind === "downloads" ? IconLookup.path(["folder-download", "folder-downloads", "folder_download", "folder-download-open"], ["folder", "inode-directory"]) : root.kind === "trash" ? IconLookup.path(trashFiles.count > 0 ? ["user-trash-full", "trash-full", "user-trash"] : ["user-trash", "trash-empty", "user-trash-empty"], ["edit-delete"]) : Apps.iconFor(root.item.entry ?? (root.kind === "minimized" ? (root.item.minimized?.lastIpcObject?.class ?? "") : root.item.id))
+        }
+
+        // Badge: the app's unread count, or a dot when it wants attention
+        Rectangle {
+            readonly property int count: root.item.entry ? Badges.countFor(root.item.id) : 0
+            readonly property bool dot: count === 0 && (root.item.entry ? Badges.urgentFor(root.item.id) : false)
+            visible: count > 0 || dot
+            anchors { right: parent.right; top: parent.top; rightMargin: -root.size * 0.06; topMargin: -root.size * 0.06 }
+            height: Math.round(Math.max(14, root.size * 0.34))
+            width: dot ? height : Math.max(height, badgeText.implicitWidth + height * 0.6)
+            radius: height / 2
+            color: "#FF3B30"
+            border.width: 1
+            border.color: Qt.rgba(0, 0, 0, 0.15)
+            scale: visible ? 1 : 0
+            Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+            Text {
+                id: badgeText
+                anchors.centerIn: parent
+                visible: !parent.dot
+                text: parent.count > 99 ? "99+" : String(parent.count)
+                color: "white"
+                font { family: Theme.font.family; pixelSize: Math.round(parent.height * 0.62); weight: Font.DemiBold; features: { "tnum": 1 } }
+            }
         }
     }
 
@@ -202,12 +230,16 @@ Item {
                 root.dock.stackOpen = !root.dock.stackOpen;
                 break;
             case "trash":
-                Qt.openUrlExternally("trash:///");
+                Files.openTrash();
                 break;
             default:
                 if (!root.running)
                     bounceAnim.restart();
-                Apps.activateOrLaunch(root.item);
+                // Clicking the app that's already in front: App Exposé
+                if (root.running && Apps.activeEntry?.id === root.item.id)
+                    Panels.appExpose(root.item.id, root.dock.screen);
+                else
+                    Apps.activateOrLaunch(root.item);
             }
         }
     }

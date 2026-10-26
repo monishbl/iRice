@@ -6,8 +6,9 @@ import qs.services
 // One side of a live activity in the collapsed island.
 //   part "info":     album art + song title (scrolling when long) + three
 //                    playing bars (only while playing), or the icon, label
-//                    and time of a timer / stopwatch / recording
-//   part "controls": previous / play-pause / next, or the timer's controls
+//                    and time of a timer / stopwatch / recording / transfer / call
+//   part "controls": previous / play-pause / next, or the activity's controls
+// (What each kind says and does: LiveInfo.)
 // Each piece can be switched off (Settings → Menu bar, see Island.shows).
 // `maxWidth` limits the info side (the title gives way first).
 Item {
@@ -26,12 +27,6 @@ Item {
     implicitWidth: part === "info" ? info.implicitWidth : controls.implicitWidth
     implicitHeight: 22
 
-    SystemClock { id: clock; precision: SystemClock.Seconds; enabled: root.kind === "recording" }
-    function timeText() {
-        return kind === "timer" ? Timers.format(Timers.remaining)
-            : kind === "stopwatch" ? Timers.format(Math.floor(Timers.swElapsed / 1000))
-            : kind === "recording" ? Timers.format(Math.floor((clock.date - ScreenTools.recordingStarted) / 1000)) : "";
-    }
 
     // ── Info ────────────────────────────────────────────────────────────
     Row {
@@ -61,7 +56,7 @@ Item {
                     asynchronous: true
                 }
             }
-            // Recording: a pulsing red dot
+            // Recording: a pulsing red dot (1.4 s, on a slow clock)
             Rectangle {
                 visible: root.kind === "recording"
                 anchors.centerIn: parent
@@ -69,12 +64,8 @@ Item {
                 height: 9
                 radius: 4.5
                 color: Theme.accents.red
-                SequentialAnimation on opacity {
-                    running: root.kind === "recording" && root.part === "info" && root.visible
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.35; duration: 700; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
-                }
+                opacity: 0.675 + 0.325 * Math.cos(dotClock.time * Math.PI / 0.7)
+                Ticker { id: dotClock; running: root.kind === "recording" && root.part === "info" && root.visible; fps: 15 }
             }
             Icon {
                 anchors.centerIn: parent
@@ -86,12 +77,12 @@ Item {
             }
         }
 
-        // Song title, or the timer's label (Focus / Break)
+        // Song title, the timer's label (Focus / Break), the file or the call's app
         Marquee {
             id: title
-            visible: text !== "" && (root.kind === "music" ? root.on("title") : root.kind === "timer" && root.on("label"))
+            visible: text !== "" && (root.kind === "music" ? root.on("title") : root.kind === "timer" ? root.on("label") : root.on("name"))
             anchors.verticalCenter: parent.verticalCenter
-            text: root.kind === "music" ? (root.player?.trackTitle || root.player?.identity || "") : root.kind === "timer" ? (Timers.phase === "focus" ? "Focus" : "Break") : ""
+            text: root.kind === "music" ? (root.player?.trackTitle || root.player?.identity || "") : LiveInfo.title(root.kind)
             scroll: root.kind === "music" && root.on("scroll")
             color: root.ink
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
@@ -102,7 +93,7 @@ Item {
             id: time
             anchors.verticalCenter: parent.verticalCenter
             visible: root.kind !== "music" && root.on("time")
-            text: root.timeText()
+            text: LiveInfo.time(root.kind)
             color: root.kind === "recording" ? Theme.accents.red : root.activity?.color ?? root.ink
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold; features: { "tnum": 1 } }
         }
@@ -117,6 +108,8 @@ Item {
             width: on ? implicitWidth : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
             spacing: 2
+            // 30 fps is plenty for bars this small (half the redraws of 60)
+            Ticker { id: barClock; running: bars.on; fps: 30 }
             Repeater {
                 model: 3
                 Rectangle {
@@ -125,14 +118,12 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 2.5
                     radius: 1.25
-                    height: 4
+                    // each bar swings between its own low and high, out of step
+                    readonly property real lo: [5, 4, 4][index]
+                    readonly property real hi: [11, 10, 13][index]
+                    readonly property real period: [0.70, 0.66, 0.74][index]
+                    height: lo + (hi - lo) * (0.5 - 0.5 * Math.cos(2 * Math.PI * barClock.time / period + index * 1.9))
                     color: Theme.accents.green
-                    SequentialAnimation on height {
-                        running: bars.on
-                        loops: Animation.Infinite
-                        NumberAnimation { to: [11, 7, 13][bar.index]; duration: [380, 300, 440][bar.index]; easing.type: Easing.InOutSine }
-                        NumberAnimation { to: [5, 10, 4][bar.index]; duration: [320, 360, 300][bar.index]; easing.type: Easing.InOutSine }
-                    }
                 }
             }
         }
@@ -145,27 +136,15 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 0
         Repeater {
-            model: (root.kind === "music" ? [
-                { piece: "prev", icon: "skip-back", act: () => root.player?.previous(), on: root.player?.canGoPrevious ?? false },
-                { piece: "play", icon: Island.musicPlaying ? "pause" : "play", act: () => root.player?.togglePlaying(), on: true },
-                { piece: "next", icon: "skip-forward", act: () => root.player?.next(), on: root.player?.canGoNext ?? false }
-            ] : root.kind === "timer" ? [
-                { piece: "play", icon: Timers.running ? "pause" : "play", act: () => Timers.toggle(), on: true },
-                { piece: "skip", icon: "skip-forward", act: () => Timers.skip(), on: true }
-            ] : root.kind === "stopwatch" ? [
-                { piece: "play", icon: Timers.swRunning ? "pause" : "play", act: () => Timers.swToggle(), on: true },
-                { piece: "reset", icon: "arrow-counter-clockwise", act: () => Timers.swReset(), on: !Timers.swRunning }
-            ] : root.kind === "recording" ? [
-                { piece: "stop", icon: "stop", act: () => ScreenTools.stopRecording(), on: true }
-            ] : []).filter(b => root.on(b.piece))
+            model: LiveInfo.controls(root.kind).filter(b => root.on(b.piece))
             IconButton {
                 required property var modelData
                 width: 24
                 height: 22
                 icon: modelData.icon
-                fill: true
+                fill: modelData.fill
                 iconSize: 13
-                iconColor: root.ink
+                iconColor: modelData.danger ? Theme.accents.red : root.ink
                 opacity: modelData.on ? 1 : 0.4
                 enabled: modelData.on
                 onClicked: modelData.act()

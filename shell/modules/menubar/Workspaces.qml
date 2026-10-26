@@ -21,14 +21,34 @@ Item {
     readonly property int activeId: monitor?.activeWorkspace?.id ?? 1
     readonly property var occupied: {
         const m = {};
-        for (const t of Hyprland.toplevels.values) {
-            const id = t.workspace?.id;
-            if (id > 0 && t.workspace?.monitor === monitor)
-                (m[id] = m[id] ?? []).push(t.lastIpcObject?.class ?? "");
+        for (const id of Windows.occupiedIds) {
+            const wins = Windows.on(id);
+            if (wins[0].workspace?.monitor === monitor)
+                m[id] = wins.map(t => t.lastIpcObject?.class ?? "");
         }
         return m;
     }
-    readonly property int count: Math.max(Config.options.menubar.workspaceCount, activeId, ...Object.keys(occupied).map(Number))
+    // This monitor's spaces: the ones living on it, and on the first screen
+    // also 1..workspaceCount (ids are global in Hyprland, so a second
+    // monitor mustn't show the first one's spaces)
+    readonly property bool primary: screen === Quickshell.screens[0]
+    readonly property var ids: {
+        const mine = new Set(), elsewhere = new Set();
+        for (const w of Hyprland.workspaces.values) {
+            if (w.id <= 0)
+                continue; // special workspaces
+            (w.monitor === monitor ? mine : elsewhere).add(w.id);
+        }
+        mine.add(activeId);
+        for (const id of Object.keys(occupied))
+            mine.add(Number(id));
+        if (primary)
+            for (let i = 1; i <= Config.options.menubar.workspaceCount; i++)
+                if (!elsewhere.has(i))
+                    mine.add(i);
+        return [...mine].sort((a, b) => a - b);
+    }
+    readonly property int count: ids.length
 
     implicitWidth: row.implicitWidth + 8
     implicitHeight: 22
@@ -50,11 +70,11 @@ Item {
         spacing: 2
 
         Repeater {
-            model: root.count
+            model: root.ids
             Rectangle {
                 id: ws
-                required property int index
-                readonly property int wsId: index + 1
+                required property int modelData
+                readonly property int wsId: modelData
                 readonly property bool active: wsId === root.activeId
                 readonly property var apps: [...new Set(root.occupied[wsId] ?? [])].slice(0, 3)
                 readonly property bool showIcons: root.style === "icons" && apps.length > 0
@@ -63,8 +83,9 @@ Item {
                 radius: 9
                 color: active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
                 function report() {
-                    if (active)
-                        root.activeCenter = mapToItem(root, width / 2, 0).x;
+                    // (may run late, after the chip list was rebuilt)
+                    if (active && ws.parent && root)
+                        root.activeCenter = ws.mapToItem(root, ws.width / 2, 0).x;
                 }
                 onActiveChanged: Qt.callLater(report)
                 onXChanged: report()

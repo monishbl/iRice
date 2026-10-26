@@ -1,5 +1,6 @@
 import QtQuick
 import qs.common
+import qs.services
 import qs.modules.controlcenter
 
 // To-do list: add with Enter, tick to complete, remove with the × on hover.
@@ -35,13 +36,13 @@ Platter {
                 onAccepted: {
                     if (text.trim() === "")
                         return;
-                    root.save(root.todos.concat([{ text: text.trim(), done: false }]));
+                    Todos.add(text); // "pay rent tomorrow 5pm" gets a due time
                     text = "";
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === ""
-                    text: "Add a to-do"
+                    text: "Add a to-do (e.g. call mum tomorrow 6pm)"
                     color: Theme.color.tertiary
                     font: input.font
                 }
@@ -66,7 +67,7 @@ Platter {
                 required property var modelData
                 required property int index
                 width: column.width
-                height: 30
+                height: Todos.dueLabel(modelData) ? 40 : 30
 
                 Rectangle {
                     id: box
@@ -82,17 +83,27 @@ Platter {
                         anchors { fill: parent; margins: -6 }
                         onClicked: {
                             const l = root.todos.slice();
-                            l[item.index] = { text: item.modelData.text, done: !item.modelData.done };
+                            l[item.index] = Object.assign({}, item.modelData, { done: !item.modelData.done });
                             root.save(l);
                         }
                     }
                 }
-                Text {
+                Column {
                     anchors { left: box.right; leftMargin: 10; right: del.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                    text: item.modelData.text
-                    elide: Text.ElideRight
-                    color: item.modelData.done ? Theme.color.tertiary : Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; strikeout: item.modelData.done }
+                    Text {
+                        width: parent.width
+                        text: item.modelData.text
+                        elide: Text.ElideRight
+                        color: item.modelData.done ? Theme.color.tertiary : Theme.color.label
+                        font { family: Theme.font.family; pixelSize: Theme.font.body; strikeout: item.modelData.done }
+                    }
+                    // When it's due; red once overdue
+                    Text {
+                        visible: text !== ""
+                        text: Todos.dueLabel(item.modelData)
+                        color: Todos.overdue(item.modelData) ? Theme.color.danger : Theme.color.secondary
+                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                    }
                 }
                 Icon {
                     id: del

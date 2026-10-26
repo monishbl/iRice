@@ -5,7 +5,8 @@ import qs.glass
 import qs.services
 
 // Clipboard manager (Super+V): search, pins, image previews. Enter pastes
-// into the previous window, Shift+Enter pastes as plain text, Ctrl+P pins,
+// into the previous window, Shift+Enter only copies, Alt+Enter pastes as
+// plain text, Ctrl+P pins,
 // Delete removes. Tab switches All / Text / Images.
 Variants {
     model: Quickshell.screens
@@ -48,12 +49,17 @@ Variants {
             Component.onCompleted: reset()
             onTabPressed: kind = (kind + 1) % kinds.length
 
-            function activate(i, plain) {
+            // Enter pastes into the app; Shift+Enter (or Shift+click) only
+            // copies; Alt+Enter pastes as plain text
+            function activate(i, plain, copyOnly) {
                 const r = rows[i];
                 if (!r)
                     return;
                 Panels.close();
-                Clipboard.paste(r.pinned ? r.pin : r.item, plain);
+                if (copyOnly)
+                    Clipboard.copy(r.pinned ? r.pin : r.item, plain);
+                else
+                    Clipboard.paste(r.pinned ? r.pin : r.item, plain);
             }
             function togglePin(i) {
                 const r = rows[i];
@@ -94,8 +100,8 @@ Variants {
                     onTextChanged: dialog.selected = 0
                     Keys.onDownPressed: dialog.selected = Math.min(dialog.rows.length - 1, dialog.selected + 1)
                     Keys.onUpPressed: dialog.selected = Math.max(0, dialog.selected - 1)
-                    Keys.onReturnPressed: e => dialog.activate(dialog.selected, e.modifiers & Qt.ShiftModifier)
-                    Keys.onEnterPressed: e => dialog.activate(dialog.selected, e.modifiers & Qt.ShiftModifier)
+                    Keys.onReturnPressed: e => dialog.activate(dialog.selected, e.modifiers & Qt.AltModifier, e.modifiers & Qt.ShiftModifier)
+                    Keys.onEnterPressed: e => dialog.activate(dialog.selected, e.modifiers & Qt.AltModifier, e.modifiers & Qt.ShiftModifier)
                     Keys.onPressed: e => {
                         if (e.key === Qt.Key_P && (e.modifiers & Qt.ControlModifier)) {
                             dialog.togglePin(dialog.selected);
@@ -164,7 +170,7 @@ Variants {
                             anchors.fill: parent
                             hoverEnabled: true
                             onEntered: dialog.selected = rowItem.index
-                            onClicked: dialog.activate(rowItem.index, false)
+                            onClicked: m => dialog.activate(rowItem.index, false, m.modifiers & Qt.ShiftModifier)
                         }
 
                         readonly property bool isColor: /^#[0-9a-f]{6}$/i.test(rowItem.modelData.text.trim())
@@ -272,7 +278,7 @@ Variants {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 14
                     Repeater {
-                        model: [["↵", "Paste"], ["⇧↵", "Plain text"], ["Ctrl P", "Pin"], ["Del", "Remove"]]
+                        model: [["↵", "Paste"], ["⇧↵", "Copy"], ["Alt ↵", "Plain text"], ["Ctrl P", "Pin"], ["Del", "Remove"]]
                         Row {
                             required property var modelData
                             spacing: 6

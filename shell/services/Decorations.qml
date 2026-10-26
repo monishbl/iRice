@@ -45,7 +45,7 @@ Singleton {
     // Opens a terminal that builds the plugin (the user runs it)
     function installPlugin() {
         const script = decodeURIComponent(Qt.resolvedUrl("../assets/scripts/install-hyprbars.sh").toString().replace("file://", ""));
-        Quickshell.execDetached(["sh", "-c", "xdg-terminal-exec \"$1\" || foot \"$1\" || kitty \"$1\" || alacritty -e \"$1\"", "sh", script]);
+        Launch.terminal([script], false);
     }
 
     Component.onCompleted: refresh()

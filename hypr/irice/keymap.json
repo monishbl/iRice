@@ -1,0 +1,1389 @@
+[
+ {
+  "id": "spotlight-tap",
+  "keys": "$MOD + $MODKEY",
+  "group": "Shell",
+  "label": "Spotlight (tap Super)",
+  "action": {
+   "shell": "spotlight"
+  },
+  "opts": {
+   "release": true
+  }
+ },
+ {
+  "id": "spotlight",
+  "keys": "$MOD + Space",
+  "group": "Shell",
+  "label": "Spotlight",
+  "action": {
+   "shell": "spotlight"
+  }
+ },
+ {
+  "id": "overview",
+  "keys": "$MOD + Tab",
+  "group": "Shell",
+  "label": "Overview",
+  "action": {
+   "shell": "overview"
+  }
+ },
+ {
+  "id": "switcher",
+  "keys": "ALT + Tab",
+  "group": "Shell",
+  "label": "Switch windows",
+  "action": {
+   "shell": "switcher"
+  }
+ },
+ {
+  "id": "switcher-back",
+  "keys": "ALT + SHIFT + Tab",
+  "group": "Shell",
+  "label": "Switch windows backwards",
+  "action": {
+   "shell": "switcherBack"
+  }
+ },
+ {
+  "id": "switcher-commit",
+  "keys": "ALT + Alt_L",
+  "group": "Shell",
+  "label": "Switch windows (finish when Alt is let go)",
+  "action": {
+   "shell": "switcherCommit"
+  },
+  "opts": {
+   "release": true,
+   "non_consuming": true,
+   "transparent": true,
+   "ignore_mods": true
+  }
+ },
+ {
+  "id": "mission-control",
+  "keys": "$MOD + SHIFT + Tab",
+  "group": "Shell",
+  "label": "Mission Control",
+  "action": {
+   "shell": "missionControl"
+  }
+ },
+ {
+  "id": "launchpad",
+  "keys": "$MOD + SHIFT + Space",
+  "group": "Shell",
+  "label": "App Library",
+  "action": {
+   "shell": "launchpad"
+  }
+ },
+ {
+  "id": "clipboard",
+  "keys": "$MOD + V",
+  "group": "Shell",
+  "label": "Clipboard history",
+  "action": {
+   "shell": "clipboard"
+  }
+ },
+ {
+  "id": "emoji",
+  "keys": "$MOD + Period",
+  "group": "Shell",
+  "label": "Emoji and symbols",
+  "action": {
+   "shell": "emoji"
+  }
+ },
+ {
+  "id": "sidebar",
+  "keys": "$MOD + A",
+  "group": "Shell",
+  "label": "AI and tools sidebar",
+  "action": {
+   "shell": "sidebar"
+  }
+ },
+ {
+  "id": "sidebar-b",
+  "keys": "$MOD + B",
+  "group": "Shell",
+  "label": "AI and tools sidebar (alternative)",
+  "action": {
+   "shell": "sidebar"
+  }
+ },
+ {
+  "id": "sidebar-o",
+  "keys": "$MOD + O",
+  "group": "Shell",
+  "label": "AI and tools sidebar (alternative)",
+  "action": {
+   "shell": "sidebar"
+  }
+ },
+ {
+  "id": "notifications",
+  "keys": "$MOD + N",
+  "group": "Shell",
+  "label": "Notification Center",
+  "action": {
+   "shell": "notificationCenter"
+  }
+ },
+ {
+  "id": "control-center",
+  "keys": "$MOD + ALT + C",
+  "group": "Shell",
+  "label": "Control Center",
+  "action": {
+   "shell": "controlCenter"
+  }
+ },
+ {
+  "id": "settings",
+  "keys": "$MOD + I",
+  "group": "Shell",
+  "label": "Settings",
+  "action": {
+   "shell": "settings"
+  }
+ },
+ {
+  "id": "settings-comma",
+  "keys": "$MOD + Comma",
+  "group": "Shell",
+  "label": "Settings (macOS key)",
+  "action": {
+   "shell": "settings"
+  }
+ },
+ {
+  "id": "cheatsheet",
+  "keys": "$MOD + Slash",
+  "group": "Shell",
+  "label": "Keyboard shortcuts",
+  "action": {
+   "shell": "cheatsheet"
+  }
+ },
+ {
+  "id": "keyboard",
+  "keys": "$MOD + K",
+  "group": "Shell",
+  "label": "On-screen keyboard",
+  "action": {
+   "shell": "keyboard"
+  }
+ },
+ {
+  "id": "overlay",
+  "keys": "$MOD + G",
+  "group": "Shell",
+  "label": "Overlay widgets",
+  "action": {
+   "shell": "overlay"
+  }
+ },
+ {
+  "id": "wallpaper",
+  "keys": "CTRL + $MOD + T",
+  "group": "Shell",
+  "label": "Change wallpaper",
+  "action": {
+   "shell": "wallpaper"
+  }
+ },
+ {
+  "id": "dark-mode",
+  "keys": "CTRL + $MOD + SHIFT + D",
+  "group": "Shell",
+  "label": "Light or dark appearance",
+  "action": {
+   "shell": "darkMode"
+  }
+ },
+ {
+  "id": "quick-note",
+  "keys": "$MOD + ALT + N",
+  "group": "Shell",
+  "label": "Quick note",
+  "action": {
+   "shell": "quickNote"
+  }
+ },
+ {
+  "id": "session",
+  "keys": "CTRL + ALT + Delete",
+  "group": "Shell",
+  "label": "Power options",
+  "action": {
+   "shell": "session"
+  }
+ },
+ {
+  "id": "reset",
+  "keys": "$MOD + Escape",
+  "group": "Shell",
+  "label": "Close everything (if something is stuck)",
+  "action": {
+   "shell": "reset"
+  }
+ },
+ {
+  "id": "repair",
+  "keys": "CTRL + $MOD + R",
+  "group": "Shell",
+  "label": "Restart the shell (apps keep running)",
+  "action": {
+   "exec": "setsid -f \"$IRICE_SHELL/assets/scripts/repair-shell.sh\""
+  }
+ },
+ {
+  "id": "repair-escape",
+  "keys": "$MOD + CTRL + Escape",
+  "group": "Shell",
+  "label": "Restart the shell (alternative)",
+  "action": {
+   "exec": "setsid -f \"$IRICE_SHELL/assets/scripts/repair-shell.sh\""
+  }
+ },
+ {
+  "id": "snip",
+  "keys": "$MOD + SHIFT + S",
+  "group": "Screen",
+  "label": "Screenshot of an area",
+  "action": {
+   "shell": "screenshotRegion"
+  }
+ },
+ {
+  "id": "lens",
+  "keys": "$MOD + SHIFT + A",
+  "group": "Screen",
+  "label": "Search an area with Google Lens",
+  "action": {
+   "shell": "lens"
+  }
+ },
+ {
+  "id": "ocr",
+  "keys": "$MOD + SHIFT + X",
+  "group": "Screen",
+  "label": "Copy text from the screen",
+  "action": {
+   "shell": "ocr"
+  }
+ },
+ {
+  "id": "translate",
+  "keys": "$MOD + SHIFT + T",
+  "group": "Screen",
+  "label": "Translate text on the screen",
+  "action": {
+   "shell": "screenTranslate"
+  }
+ },
+ {
+  "id": "ask-screen",
+  "keys": "$MOD + ALT + A",
+  "group": "Screen",
+  "label": "Ask AI about part of the screen",
+  "action": {
+   "shell": "askScreen"
+  }
+ },
+ {
+  "id": "color-picker",
+  "keys": "$MOD + SHIFT + C",
+  "group": "Screen",
+  "label": "Pick a colour",
+  "action": {
+   "exec": "hyprpicker -a"
+  }
+ },
+ {
+  "id": "record",
+  "keys": "$MOD + SHIFT + R",
+  "group": "Screen",
+  "label": "Record an area (again to stop)",
+  "action": {
+   "shell": "record"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "record-alt",
+  "keys": "$MOD + ALT + R",
+  "group": "Screen",
+  "label": "Record an area (alternative)",
+  "action": {
+   "shell": "record"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "screenshot-print",
+  "keys": "Print",
+  "group": "Screen",
+  "label": "Screenshot of the screen",
+  "action": {
+   "shell": "screenshotScreen"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "screenshot-ctrl-print",
+  "keys": "CTRL + Print",
+  "group": "Screen",
+  "label": "Screenshot of the screen (alternative)",
+  "action": {
+   "shell": "screenshotScreen"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "screen-tools",
+  "keys": "$MOD + Print",
+  "group": "Screen",
+  "label": "Screenshot and recording tools",
+  "action": {
+   "shell": "screenTools"
+  }
+ },
+ {
+  "id": "zoom-in",
+  "keys": "$MOD + Equal",
+  "group": "Screen",
+  "label": "Zoom in",
+  "action": {
+   "zoom": 0.3
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "zoom-out",
+  "keys": "$MOD + Minus",
+  "group": "Screen",
+  "label": "Zoom out",
+  "action": {
+   "zoom": -0.3
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "zoom-in-pad",
+  "keys": "$MOD + code:86",
+  "group": "Screen",
+  "label": "Zoom in (keypad)",
+  "action": {
+   "zoom": 0.3
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "zoom-out-pad",
+  "keys": "$MOD + code:82",
+  "group": "Screen",
+  "label": "Zoom out (keypad)",
+  "action": {
+   "zoom": -0.3
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "media-play",
+  "keys": "$MOD + SHIFT + P",
+  "group": "Media",
+  "label": "Play or pause",
+  "action": {
+   "exec": "playerctl play-pause"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "media-next",
+  "keys": "$MOD + SHIFT + N",
+  "group": "Media",
+  "label": "Next track",
+  "action": {
+   "exec": "playerctl next"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "media-prev",
+  "keys": "$MOD + SHIFT + B",
+  "group": "Media",
+  "label": "Previous track",
+  "action": {
+   "exec": "playerctl previous"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "mute",
+  "keys": "$MOD + SHIFT + M",
+  "group": "Media",
+  "label": "Mute sound",
+  "action": {
+   "shell": "volumeMute"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "mic-mute",
+  "keys": "$MOD + ALT + M",
+  "group": "Media",
+  "label": "Mute microphone",
+  "action": {
+   "shell": "micMute"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "vol-up",
+  "keys": "XF86AudioRaiseVolume",
+  "group": "Media",
+  "label": "Volume up",
+  "action": {
+   "shell": "volumeUp"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "vol-down",
+  "keys": "XF86AudioLowerVolume",
+  "group": "Media",
+  "label": "Volume down",
+  "action": {
+   "shell": "volumeDown"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "vol-mute",
+  "keys": "XF86AudioMute",
+  "group": "Media",
+  "label": "Mute (key)",
+  "action": {
+   "shell": "volumeMute"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "mic-key",
+  "keys": "XF86AudioMicMute",
+  "group": "Media",
+  "label": "Mute microphone (key)",
+  "action": {
+   "shell": "micMute"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "bright-up",
+  "keys": "XF86MonBrightnessUp",
+  "group": "Media",
+  "label": "Brightness up",
+  "action": {
+   "shell": "brightnessUp"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "bright-down",
+  "keys": "XF86MonBrightnessDown",
+  "group": "Media",
+  "label": "Brightness down",
+  "action": {
+   "shell": "brightnessDown"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "play-key",
+  "keys": "XF86AudioPlay",
+  "group": "Media",
+  "label": "Play or pause (key)",
+  "action": {
+   "exec": "playerctl play-pause"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "pause-key",
+  "keys": "XF86AudioPause",
+  "group": "Media",
+  "label": "Pause (key)",
+  "action": {
+   "exec": "playerctl play-pause"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "next-key",
+  "keys": "XF86AudioNext",
+  "group": "Media",
+  "label": "Next track (key)",
+  "action": {
+   "exec": "playerctl next"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "prev-key",
+  "keys": "XF86AudioPrev",
+  "group": "Media",
+  "label": "Previous track (key)",
+  "action": {
+   "exec": "playerctl previous"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "close",
+  "keys": "$MOD + Q",
+  "group": "Window",
+  "label": "Close",
+  "action": {
+   "dsp": "hl.dsp.window.close()"
+  }
+ },
+ {
+  "id": "close-altf4",
+  "keys": "ALT + F4",
+  "group": "Window",
+  "label": "Close (alternative)",
+  "action": {
+   "dsp": "hl.dsp.window.close()"
+  }
+ },
+ {
+  "id": "kill",
+  "keys": "$MOD + SHIFT + ALT + Q",
+  "group": "Window",
+  "label": "Force quit",
+  "action": {
+   "exec": "hyprctl kill"
+  }
+ },
+ {
+  "id": "fullscreen",
+  "keys": "$MOD + F",
+  "group": "Window",
+  "label": "Full screen",
+  "action": {
+   "dsp": "hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"toggle\" })"
+  }
+ },
+ {
+  "id": "maximize",
+  "keys": "$MOD + D",
+  "group": "Window",
+  "label": "Maximise (zoom)",
+  "action": {
+   "dsp": "hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"toggle\" })"
+  }
+ },
+ {
+  "id": "fullscreen-spoof",
+  "keys": "$MOD + ALT + F",
+  "group": "Window",
+  "label": "Full screen inside its tile",
+  "action": {
+   "dsp": "hl.dsp.window.fullscreen_state({ internal = 0, client = 3, action = \"toggle\" })"
+  }
+ },
+ {
+  "id": "float",
+  "keys": "$MOD + ALT + Space",
+  "group": "Window",
+  "label": "Float or tile",
+  "action": {
+   "dsp": "hl.dsp.window.float({ action = \"toggle\" })"
+  }
+ },
+ {
+  "id": "pin",
+  "keys": "$MOD + P",
+  "group": "Window",
+  "label": "Keep on all workspaces",
+  "action": {
+   "dsp": "hl.dsp.window.pin()"
+  }
+ },
+ {
+  "id": "pip",
+  "keys": "$MOD + ALT + P",
+  "group": "Window",
+  "label": "Picture in Picture",
+  "action": {
+   "shell": "pip"
+  }
+ },
+ {
+  "id": "tabs",
+  "keys": "$MOD + ALT + T",
+  "group": "Window",
+  "label": "Merge into tabs / move tab out",
+  "action": {
+   "shell": "tabs"
+  }
+ },
+ {
+  "id": "tab-next",
+  "keys": "$MOD + bracketright",
+  "group": "Window",
+  "label": "Next tab",
+  "action": {
+   "dsp": "hl.dsp.group.next()"
+  }
+ },
+ {
+  "id": "tab-prev",
+  "keys": "$MOD + bracketleft",
+  "group": "Window",
+  "label": "Previous tab",
+  "action": {
+   "dsp": "hl.dsp.group.prev()"
+  }
+ },
+ {
+  "id": "split-less",
+  "keys": "$MOD + Semicolon",
+  "group": "Window",
+  "label": "Shrink split",
+  "action": {
+   "dsp": "hl.dsp.layout(\"splitratio -0.1\")"
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "split-more",
+  "keys": "$MOD + Apostrophe",
+  "group": "Window",
+  "label": "Grow split",
+  "action": {
+   "dsp": "hl.dsp.layout(\"splitratio +0.1\")"
+  },
+  "opts": {
+   "repeating": true
+  }
+ },
+ {
+  "id": "drag",
+  "keys": "$MOD + mouse:272",
+  "group": "Window",
+  "label": "Move with the mouse",
+  "action": {
+   "dsp": "hl.dsp.window.drag()"
+  },
+  "opts": {
+   "mouse": true
+  }
+ },
+ {
+  "id": "drag-middle",
+  "keys": "$MOD + mouse:274",
+  "group": "Window",
+  "label": "Move with the mouse (middle button)",
+  "action": {
+   "dsp": "hl.dsp.window.drag()"
+  },
+  "opts": {
+   "mouse": true
+  }
+ },
+ {
+  "id": "resize",
+  "keys": "$MOD + mouse:273",
+  "group": "Window",
+  "label": "Resize with the mouse",
+  "action": {
+   "dsp": "hl.dsp.window.resize()"
+  },
+  "opts": {
+   "mouse": true
+  }
+ },
+ {
+  "id": "focus-left",
+  "keys": "$MOD + Left",
+  "group": "Window",
+  "label": "Focus left",
+  "action": {
+   "dsp": "hl.dsp.focus({ direction = \"l\" })"
+  }
+ },
+ {
+  "id": "move-left",
+  "keys": "$MOD + SHIFT + Left",
+  "group": "Window",
+  "label": "Move left",
+  "action": {
+   "dsp": "hl.dsp.window.move({ direction = \"l\" })"
+  }
+ },
+ {
+  "id": "focus-right",
+  "keys": "$MOD + Right",
+  "group": "Window",
+  "label": "Focus right",
+  "action": {
+   "dsp": "hl.dsp.focus({ direction = \"r\" })"
+  }
+ },
+ {
+  "id": "move-right",
+  "keys": "$MOD + SHIFT + Right",
+  "group": "Window",
+  "label": "Move right",
+  "action": {
+   "dsp": "hl.dsp.window.move({ direction = \"r\" })"
+  }
+ },
+ {
+  "id": "focus-up",
+  "keys": "$MOD + Up",
+  "group": "Window",
+  "label": "Focus up",
+  "action": {
+   "dsp": "hl.dsp.focus({ direction = \"u\" })"
+  }
+ },
+ {
+  "id": "move-up",
+  "keys": "$MOD + SHIFT + Up",
+  "group": "Window",
+  "label": "Move up",
+  "action": {
+   "dsp": "hl.dsp.window.move({ direction = \"u\" })"
+  }
+ },
+ {
+  "id": "focus-down",
+  "keys": "$MOD + Down",
+  "group": "Window",
+  "label": "Focus down",
+  "action": {
+   "dsp": "hl.dsp.focus({ direction = \"d\" })"
+  }
+ },
+ {
+  "id": "move-down",
+  "keys": "$MOD + SHIFT + Down",
+  "group": "Window",
+  "label": "Move down",
+  "action": {
+   "dsp": "hl.dsp.window.move({ direction = \"d\" })"
+  }
+ },
+ {
+  "id": "snap-left",
+  "keys": "$MOD + CTRL + ALT + Left",
+  "group": "Window",
+  "label": "Tile left half",
+  "action": {
+   "shell": "snap-left"
+  }
+ },
+ {
+  "id": "snap-right",
+  "keys": "$MOD + CTRL + ALT + Right",
+  "group": "Window",
+  "label": "Tile right half",
+  "action": {
+   "shell": "snap-right"
+  }
+ },
+ {
+  "id": "snap-top",
+  "keys": "$MOD + CTRL + Up",
+  "group": "Window",
+  "label": "Tile top half",
+  "action": {
+   "shell": "snap-top"
+  }
+ },
+ {
+  "id": "snap-bottom",
+  "keys": "$MOD + CTRL + Down",
+  "group": "Window",
+  "label": "Tile bottom half",
+  "action": {
+   "shell": "snap-bottom"
+  }
+ },
+ {
+  "id": "snap-fill",
+  "keys": "$MOD + CTRL + F",
+  "group": "Window",
+  "label": "Fill the screen",
+  "action": {
+   "shell": "snap-fill"
+  }
+ },
+ {
+  "id": "snap-center",
+  "keys": "$MOD + CTRL + C",
+  "group": "Window",
+  "label": "Centre",
+  "action": {
+   "shell": "snap-center"
+  }
+ },
+ {
+  "id": "snap-restore",
+  "keys": "$MOD + CTRL + BackSpace",
+  "group": "Window",
+  "label": "Back to the previous size",
+  "action": {
+   "shell": "snap-restore"
+  }
+ },
+ {
+  "id": "ws-1",
+  "keys": "$MOD + 1",
+  "group": "Workspace",
+  "label": "Go to workspace 1",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 1 })"
+  }
+ },
+ {
+  "id": "ws-send-1",
+  "keys": "$MOD + ALT + 1",
+  "group": "Workspace",
+  "label": "Send window to workspace 1",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 1, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-1",
+  "keys": "$MOD + SHIFT + 1",
+  "group": "Workspace",
+  "label": "Move window to workspace 1 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 1 })"
+  }
+ },
+ {
+  "id": "ws-2",
+  "keys": "$MOD + 2",
+  "group": "Workspace",
+  "label": "Go to workspace 2",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 2 })"
+  }
+ },
+ {
+  "id": "ws-send-2",
+  "keys": "$MOD + ALT + 2",
+  "group": "Workspace",
+  "label": "Send window to workspace 2",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 2, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-2",
+  "keys": "$MOD + SHIFT + 2",
+  "group": "Workspace",
+  "label": "Move window to workspace 2 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 2 })"
+  }
+ },
+ {
+  "id": "ws-3",
+  "keys": "$MOD + 3",
+  "group": "Workspace",
+  "label": "Go to workspace 3",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 3 })"
+  }
+ },
+ {
+  "id": "ws-send-3",
+  "keys": "$MOD + ALT + 3",
+  "group": "Workspace",
+  "label": "Send window to workspace 3",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 3, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-3",
+  "keys": "$MOD + SHIFT + 3",
+  "group": "Workspace",
+  "label": "Move window to workspace 3 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 3 })"
+  }
+ },
+ {
+  "id": "ws-4",
+  "keys": "$MOD + 4",
+  "group": "Workspace",
+  "label": "Go to workspace 4",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 4 })"
+  }
+ },
+ {
+  "id": "ws-send-4",
+  "keys": "$MOD + ALT + 4",
+  "group": "Workspace",
+  "label": "Send window to workspace 4",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 4, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-4",
+  "keys": "$MOD + SHIFT + 4",
+  "group": "Workspace",
+  "label": "Move window to workspace 4 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 4 })"
+  }
+ },
+ {
+  "id": "ws-5",
+  "keys": "$MOD + 5",
+  "group": "Workspace",
+  "label": "Go to workspace 5",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 5 })"
+  }
+ },
+ {
+  "id": "ws-send-5",
+  "keys": "$MOD + ALT + 5",
+  "group": "Workspace",
+  "label": "Send window to workspace 5",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 5, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-5",
+  "keys": "$MOD + SHIFT + 5",
+  "group": "Workspace",
+  "label": "Move window to workspace 5 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 5 })"
+  }
+ },
+ {
+  "id": "ws-6",
+  "keys": "$MOD + 6",
+  "group": "Workspace",
+  "label": "Go to workspace 6",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 6 })"
+  }
+ },
+ {
+  "id": "ws-send-6",
+  "keys": "$MOD + ALT + 6",
+  "group": "Workspace",
+  "label": "Send window to workspace 6",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 6, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-6",
+  "keys": "$MOD + SHIFT + 6",
+  "group": "Workspace",
+  "label": "Move window to workspace 6 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 6 })"
+  }
+ },
+ {
+  "id": "ws-7",
+  "keys": "$MOD + 7",
+  "group": "Workspace",
+  "label": "Go to workspace 7",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 7 })"
+  }
+ },
+ {
+  "id": "ws-send-7",
+  "keys": "$MOD + ALT + 7",
+  "group": "Workspace",
+  "label": "Send window to workspace 7",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 7, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-7",
+  "keys": "$MOD + SHIFT + 7",
+  "group": "Workspace",
+  "label": "Move window to workspace 7 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 7 })"
+  }
+ },
+ {
+  "id": "ws-8",
+  "keys": "$MOD + 8",
+  "group": "Workspace",
+  "label": "Go to workspace 8",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 8 })"
+  }
+ },
+ {
+  "id": "ws-send-8",
+  "keys": "$MOD + ALT + 8",
+  "group": "Workspace",
+  "label": "Send window to workspace 8",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 8, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-8",
+  "keys": "$MOD + SHIFT + 8",
+  "group": "Workspace",
+  "label": "Move window to workspace 8 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 8 })"
+  }
+ },
+ {
+  "id": "ws-9",
+  "keys": "$MOD + 9",
+  "group": "Workspace",
+  "label": "Go to workspace 9",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 9 })"
+  }
+ },
+ {
+  "id": "ws-send-9",
+  "keys": "$MOD + ALT + 9",
+  "group": "Workspace",
+  "label": "Send window to workspace 9",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 9, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-9",
+  "keys": "$MOD + SHIFT + 9",
+  "group": "Workspace",
+  "label": "Move window to workspace 9 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 9 })"
+  }
+ },
+ {
+  "id": "ws-10",
+  "keys": "$MOD + 0",
+  "group": "Workspace",
+  "label": "Go to workspace 10",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = 10 })"
+  }
+ },
+ {
+  "id": "ws-send-10",
+  "keys": "$MOD + ALT + 0",
+  "group": "Workspace",
+  "label": "Send window to workspace 10",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 10, follow = false })"
+  }
+ },
+ {
+  "id": "ws-move-10",
+  "keys": "$MOD + SHIFT + 0",
+  "group": "Workspace",
+  "label": "Move window to workspace 10 (and follow)",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = 10 })"
+  }
+ },
+ {
+  "id": "ws-prev",
+  "keys": "CTRL + $MOD + Left",
+  "group": "Workspace",
+  "label": "Previous workspace",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = \"r-1\" })"
+  }
+ },
+ {
+  "id": "ws-next",
+  "keys": "CTRL + $MOD + Right",
+  "group": "Workspace",
+  "label": "Next workspace",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = \"r+1\" })"
+  }
+ },
+ {
+  "id": "ws-send-prev",
+  "keys": "$MOD + SHIFT + Page_Up",
+  "group": "Workspace",
+  "label": "Send window to the previous workspace",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = \"r-1\" })"
+  }
+ },
+ {
+  "id": "ws-send-next",
+  "keys": "$MOD + SHIFT + Page_Down",
+  "group": "Workspace",
+  "label": "Send window to the next workspace",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = \"r+1\" })"
+  }
+ },
+ {
+  "id": "ws-scroll-down",
+  "keys": "$MOD + mouse_down",
+  "group": "Workspace",
+  "label": "Next workspace (scroll)",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = \"e+1\" })"
+  }
+ },
+ {
+  "id": "ws-scroll-up",
+  "keys": "$MOD + mouse_up",
+  "group": "Workspace",
+  "label": "Previous workspace (scroll)",
+  "action": {
+   "dsp": "hl.dsp.focus({ workspace = \"e-1\" })"
+  }
+ },
+ {
+  "id": "scratchpad",
+  "keys": "$MOD + S",
+  "group": "Workspace",
+  "label": "Show or hide the scratchpad",
+  "action": {
+   "dsp": "hl.dsp.workspace.toggle_special(\"special\")"
+  }
+ },
+ {
+  "id": "scratchpad-ctrl",
+  "keys": "CTRL + $MOD + S",
+  "group": "Workspace",
+  "label": "Show or hide the scratchpad (alternative)",
+  "action": {
+   "dsp": "hl.dsp.workspace.toggle_special(\"special\")"
+  }
+ },
+ {
+  "id": "scratchpad-mouse",
+  "keys": "$MOD + mouse:275",
+  "group": "Workspace",
+  "label": "Show or hide the scratchpad (mouse)",
+  "action": {
+   "dsp": "hl.dsp.workspace.toggle_special(\"special\")"
+  }
+ },
+ {
+  "id": "scratchpad-send",
+  "keys": "$MOD + ALT + S",
+  "group": "Workspace",
+  "label": "Send window to the scratchpad",
+  "action": {
+   "dsp": "hl.dsp.window.move({ workspace = \"special:special\", follow = false })"
+  }
+ },
+ {
+  "id": "lock",
+  "keys": "$MOD + L",
+  "group": "Session",
+  "label": "Lock",
+  "action": {
+   "shell": "lock"
+  }
+ },
+ {
+  "id": "lock-mac",
+  "keys": "$MOD + CTRL + Q",
+  "group": "Session",
+  "label": "Lock (macOS key)",
+  "action": {
+   "shell": "lock"
+  }
+ },
+ {
+  "id": "sleep",
+  "keys": "$MOD + SHIFT + L",
+  "group": "Session",
+  "label": "Sleep",
+  "action": {
+   "exec": "systemctl suspend || loginctl suspend"
+  },
+  "opts": {
+   "locked": true
+  }
+ },
+ {
+  "id": "poweroff",
+  "keys": "CTRL + SHIFT + ALT + $MOD + Delete",
+  "group": "Session",
+  "label": "Shut down",
+  "action": {
+   "exec": "systemctl poweroff || loginctl poweroff"
+  }
+ },
+ {
+  "id": "terminal",
+  "keys": "$MOD + Return",
+  "group": "Apps",
+  "label": "Terminal",
+  "action": {
+   "app": "terminal"
+  }
+ },
+ {
+  "id": "terminal-t",
+  "keys": "$MOD + T",
+  "group": "Apps",
+  "label": "Terminal (alternative)",
+  "action": {
+   "app": "terminal"
+  }
+ },
+ {
+  "id": "terminal-ctrl",
+  "keys": "CTRL + ALT + T",
+  "group": "Apps",
+  "label": "Terminal (alternative)",
+  "action": {
+   "app": "terminal"
+  }
+ },
+ {
+  "id": "files",
+  "keys": "$MOD + E",
+  "group": "Apps",
+  "label": "Files",
+  "action": {
+   "app": "files"
+  }
+ },
+ {
+  "id": "browser",
+  "keys": "$MOD + W",
+  "group": "Apps",
+  "label": "Browser",
+  "action": {
+   "app": "browser"
+  }
+ },
+ {
+  "id": "code",
+  "keys": "$MOD + C",
+  "group": "Apps",
+  "label": "Code editor",
+  "action": {
+   "app": "code"
+  }
+ },
+ {
+  "id": "text",
+  "keys": "$MOD + X",
+  "group": "Apps",
+  "label": "Text editor",
+  "action": {
+   "app": "text"
+  }
+ },
+ {
+  "id": "office",
+  "keys": "CTRL + $MOD + SHIFT + ALT + W",
+  "group": "Apps",
+  "label": "Office",
+  "action": {
+   "app": "office"
+  }
+ },
+ {
+  "id": "mixer",
+  "keys": "CTRL + $MOD + V",
+  "group": "Apps",
+  "label": "Volume mixer",
+  "action": {
+   "app": "mixer"
+  }
+ },
+ {
+  "id": "tasks",
+  "keys": "CTRL + SHIFT + Escape",
+  "group": "Apps",
+  "label": "Task manager",
+  "action": {
+   "app": "tasks"
+  }
+ }
+]

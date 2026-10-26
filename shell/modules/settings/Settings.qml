@@ -24,11 +24,15 @@ Scope {
                 { id: "desktop", name: "Desktop & Weather", icon: "squares-four", color: "#FF9F0A" },
                 { id: "controlcenter", name: "Control Center", icon: "sliders-horizontal", color: "#64D2FF" },
                 { id: "dock", name: "Dock", icon: "dots-three-outline", color: "#0A84FF" },
+                { id: "windowrules", name: "Window Rules", icon: "app-window", color: "#FF375F" },
                 { id: "notifications", name: "Notifications", icon: "bell", color: "#FF453A" },
+                { id: "lock", name: "Lock Screen", icon: "lock", color: "#636366" },
+                { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF" },
                 { id: "focus", name: "Focus", icon: "moon", color: "#5E5CE6" },
                 { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A" },
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A" },
+                { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366" },
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366" },
                 { id: "about", name: "About", icon: "info", color: "#30D158" }
             ]

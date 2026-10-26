@@ -10,6 +10,8 @@ import qs.services
 //   timer      the time left, the phase, progress, play-pause / skip / reset
 //   stopwatch  the time, laps, lap / play-pause / reset
 //   recording  how long, and stop
+//   transfer   the file, how far and how fast, open Downloads / cancel a copy
+//   call       the app, how long, mute / open / leave
 Item {
     id: root
 
@@ -20,6 +22,10 @@ Item {
     readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
 
     readonly property bool overlay: Config.options.island.playerLayout !== "side"
+    // Hundredths shown: ask for the fast stopwatch tick while visible
+    readonly property bool fineClock: visible && Timers.swRunning && kind === "stopwatch"
+    onFineClockChanged: Timers.swFine = Math.max(0, Timers.swFine + (fineClock ? 1 : -1))
+    Component.onDestruction: if (fineClock) Timers.swFine = Math.max(0, Timers.swFine - 1)
     implicitHeight: kind === "music" ? (overlay ? 200 : 132) : 80
 
     // MPRIS doesn't push the position; ask for it while visible
@@ -29,7 +35,6 @@ Item {
         interval: 1000
         onTriggered: root.player?.positionChanged()
     }
-    SystemClock { id: clock; precision: SystemClock.Seconds; enabled: root.visible && root.kind === "recording" }
 
     function fmt(s) {
         s = Math.max(0, Math.floor(s || 0));
@@ -352,7 +357,7 @@ Item {
         }
     }
 
-    // ── Timer, stopwatch, recording ─────────────────────────────────────
+    // ── Timer, stopwatch, recording, transfer, call ─────────────────────
     Item {
         visible: root.kind !== "music" && root.kind !== ""
         anchors.fill: parent
@@ -365,57 +370,57 @@ Item {
             color: Qt.alpha(root.activity?.color ?? root.ink, 0.22)
             Icon {
                 anchors.centerIn: parent
-                name: root.kind === "recording" ? "record" : root.kind === "timer" && Timers.phase !== "focus" ? "coffee" : "timer"
+                name: LiveInfo.icon(root.kind)
                 fill: true
                 size: 22
                 color: root.activity?.color ?? root.ink
             }
         }
+        // Timer, stopwatch, recording: a small caption over a big number.
+        // Transfer and call: the file / app over what's happening.
+        readonly property bool wordy: root.kind === "transfer" || root.kind === "call"
         Column {
-            anchors { left: badge.right; leftMargin: 14; verticalCenter: badge.verticalCenter }
+            anchors { left: badge.right; leftMargin: 14; right: buttons.left; rightMargin: 10; verticalCenter: badge.verticalCenter }
             spacing: 0
             Text {
-                text: root.kind === "timer" ? (Timers.phase === "focus" ? "Focus" : "Break") + (Timers.running ? "" : " · paused") : root.kind === "stopwatch" ? "Stopwatch" + (Timers.laps.length ? " · " + Timers.laps.length + (Timers.laps.length === 1 ? " lap" : " laps") : "") : "Recording"
-                color: root.ink2
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                width: parent.width
+                elide: Text.ElideRight
+                text: parent.parent.wordy ? LiveInfo.title(root.kind) : root.kind === "timer" ? LiveInfo.title("timer") + (Timers.running ? "" : " · paused") : root.kind === "stopwatch" ? "Stopwatch" + (Timers.laps.length ? " · " + Timers.laps.length + (Timers.laps.length === 1 ? " lap" : " laps") : "") : "Recording"
+                color: parent.parent.wordy ? root.ink : root.ink2
+                font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.body : Theme.font.small; weight: parent.parent.wordy ? Font.DemiBold : Font.Medium }
             }
             Text {
-                text: root.kind === "timer" ? Timers.format(Timers.remaining) : root.kind === "stopwatch" ? Timers.formatMs(Timers.swElapsed) : Timers.format(Math.floor((clock.date - ScreenTools.recordingStarted) / 1000))
-                color: root.kind === "recording" ? Theme.accents.red : root.ink
-                font { family: Theme.font.family; pixelSize: 24; weight: Font.DemiBold; features: { "tnum": 1 } }
+                width: parent.width
+                elide: Text.ElideRight
+                text: parent.parent.wordy ? LiveInfo.detail(root.kind) : root.kind === "stopwatch" ? Timers.formatMs(Timers.swElapsed) : LiveInfo.time(root.kind)
+                color: root.kind === "recording" ? Theme.accents.red : parent.parent.wordy ? root.ink2 : root.ink
+                font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.small : 24; weight: parent.parent.wordy ? Font.Normal : Font.DemiBold; features: { "tnum": 1 } }
             }
         }
         Row {
+            id: buttons
             anchors { right: parent.right; verticalCenter: badge.verticalCenter }
             spacing: 4
             Repeater {
-                model: root.kind === "timer" ? [
-                    { icon: "arrow-counter-clockwise", act: () => Timers.reset() },
-                    { icon: Timers.running ? "pause" : "play", act: () => Timers.toggle() },
-                    { icon: "skip-forward", act: () => Timers.skip() }
-                ] : root.kind === "stopwatch" ? [
-                    { icon: "arrow-counter-clockwise", act: () => Timers.swReset() },
-                    { icon: "flag", act: () => Timers.swLap() },
-                    { icon: Timers.swRunning ? "pause" : "play", act: () => Timers.swToggle() }
-                ] : [
-                    { icon: "stop", act: () => ScreenTools.stopRecording() }
-                ]
+                model: LiveInfo.controls(root.kind)
                 Ctl {
                     required property var modelData
                     icon: modelData.icon
+                    enabled: modelData.on
+                    opacity: enabled ? 1 : 0.4
                     onClicked: modelData.act()
                 }
             }
         }
-        // Timer progress
+        // Timer and transfer progress
         Rectangle {
-            visible: root.kind === "timer"
+            visible: LiveInfo.progress(root.kind) >= 0
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 8 }
             height: 4
             radius: 2
             color: Qt.rgba(1, 1, 1, 0.16)
             Rectangle {
-                width: parent.width * Timers.progress
+                width: parent.width * Math.max(0, LiveInfo.progress(root.kind))
                 height: parent.height
                 radius: 2
                 color: root.activity?.color ?? root.ink

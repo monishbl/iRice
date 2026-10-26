@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# irice: look after an iRice install.
+#   irice doctor            check that everything is in place and running
+#   irice update            get the latest iRice and install it
+#   irice rebuild [--load]  rebuild the glass plugin and shaders (after a Hyprland update)
+#   irice repair            restart the shell (duplicated bars, a frozen shell); apps keep running
+#   irice logs              the shell's log
+#   irice uninstall         remove iRice and put your previous Hyprland config back
+set -uo pipefail
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+SRC="$(cat "$DATA/irice/source" 2>/dev/null || true)"
+need_src() {
+    [[ -n "$SRC" && -x "$SRC/install.sh" ]] && return 0
+    echo "Can't find the iRice source (expected in $DATA/irice/source). Reinstall with setup.sh."
+    exit 1
+}
+
+case "${1:-help}" in
+    doctor|check)
+        need_src
+        exec "$SRC/install.sh" --verify
+        ;;
+    update)
+        need_src
+        if [[ -d "$SRC/.git" ]]; then
+            echo "Getting the latest iRice…"
+            git -C "$SRC" pull --ff-only || { echo "Couldn't update $SRC (local changes?)."; exit 1; }
+        fi
+        "$SRC/install.sh" --yes --no-extras --no-greeter "${@:2}" || exit 1
+        # AUR extras (themes, cursors) too
+        if command -v yay >/dev/null; then
+            echo "Updating AUR packages…"
+            yay -Sua --noconfirm --answerdiff None --answerclean None
+        fi
+        ;;
+    rebuild)
+        need_src
+        "$SRC/tools/build-shaders.sh" || exit 1
+        # The installed shell is a copy (unless installed with --dev): refresh its shaders
+        if [[ ! -L "$CONFIG/quickshell/irice" && -d "$CONFIG/quickshell/irice" ]]; then
+            (cd "$SRC/shell" && find . -name '*.qsb' -exec cp --parents {} "$CONFIG/quickshell/irice/" \;)
+        fi
+        make -C "$DATA/irice/src/hypr/plugin/irice-glass" clean >/dev/null 2>&1
+        "$DATA/irice/src/tools/build-plugin.sh" "${@:2}" || exit 1
+        pacman -Q hyprland 2>/dev/null | awk '{print $2}' | sed 's/-[0-9.]*$//; s/^[0-9]*://; s/\.r[0-9].*//' >"$DATA/irice/irice-glass.built-for"
+        ;;
+    repair)
+        exec "$CONFIG/quickshell/irice/assets/scripts/repair-shell.sh"
+        ;;
+    logs)
+        exec qs log -c irice -t "${2:-80}" -f
+        ;;
+    uninstall)
+        need_src
+        exec "$SRC/uninstall.sh" "${@:2}"
+        ;;
+    *)
+        sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+        ;;
+esac

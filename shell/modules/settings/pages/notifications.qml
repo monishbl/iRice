@@ -17,6 +17,50 @@ Column {
     }
     Group {
         width: parent.width
+        footer: "Without it, notifications and the calendar, to-do and focus widgets are each their own piece of glass, like Control Center's controls."
+        Row {
+            label: "Notification Center panel"
+            Switch { checked: Config.options.notificationCenter.background; onToggled: Config.options.notificationCenter.background = !checked }
+        }
+    }
+    Group {
+        width: parent.width
+        title: "Sound effects"
+        Row {
+            label: "Play sound effects"
+            Switch { checked: Config.options.sounds.enabled; onToggled: Config.options.sounds.enabled = !checked }
+        }
+        Row {
+            visible: Config.options.sounds.enabled
+            label: "When you log in"
+            Switch { checked: Config.options.sounds.startup; onToggled: Config.options.sounds.startup = !checked }
+        }
+        Row {
+            visible: Config.options.sounds.enabled
+            label: "Screenshots"
+            Switch { checked: Config.options.sounds.screenshot; onToggled: Config.options.sounds.screenshot = !checked }
+        }
+        Row {
+            visible: Config.options.sounds.enabled
+            label: "Emptying the Trash"
+            Switch { checked: Config.options.sounds.trash; onToggled: Config.options.sounds.trash = !checked }
+        }
+        Row {
+            visible: Config.options.sounds.enabled
+            label: "Volume"
+            detail: Math.round(Config.options.sounds.volume * 100) + "%"
+            Slider {
+                width: 220
+                from: 0
+                to: 1
+                value: Config.options.sounds.volume
+                onMoved: v => Config.options.sounds.volume = v
+                onPressedChanged: if (!pressed) Sounds.play("screenshot") // hear the level
+            }
+        }
+    }
+    Group {
+        width: parent.width
         Row {
             label: "Notification history"
             detail: Notifications.list.length + " kept"

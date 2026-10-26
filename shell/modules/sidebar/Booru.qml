@@ -170,7 +170,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Qt.openUrlExternally(cell.modelData.page)
+                    onClicked: Launch.open(cell.modelData.page)
                 }
             }
         }

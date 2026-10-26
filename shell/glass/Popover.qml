@@ -70,6 +70,8 @@ GlassWindow {
 
     name: popoverName
     visible: progress > 0 && closeGuard.open
+    // While closing, input passes through (the layer stays for the fade)
+    mask: Region { width: root.shown ? root.width : 0; height: root.shown ? root.height : 0 }
     CloseGuard { id: closeGuard; shown: root.shown }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -79,7 +81,7 @@ GlassWindow {
     ElasticPull {
         id: pull
         target: body
-        active: grab.active
+        active: grab.active && Panels.holdPull === 0 && !Panels.ccEditing
         from: grab.point.scenePressPosition
         pointer: grab.point.scenePosition
     }

@@ -44,6 +44,12 @@ Variants {
         Item {
             id: wallpaper
             anchors.fill: parent
+            // Opaque behind the pictures, so the first fade-in comes from
+            // black and never shows the blur bake underneath
+            Rectangle {
+                anchors.fill: parent
+                color: "black"
+            }
             property int front: 0
             readonly property var buffers: [bufA, bufB]
             readonly property url want: Wallpaper.source
@@ -69,6 +75,7 @@ Variants {
                 fadeIn.oldBuffer = old;
                 fadeIn.restart();
             }
+            // The first picture fades in from black (see Wallpaper.started)
             Image {
                 id: bufA
                 anchors.fill: parent
@@ -76,7 +83,19 @@ Variants {
                 sourceSize: Qt.size(width, height)
                 asynchronous: true
                 cache: false
-                onStatusChanged: if (status === Image.Ready) wallpaper.buffers[wallpaper.front] === bufA ? bakeTimer.restart() : wallpaper.swap(bufA)
+                opacity: 0
+                onStatusChanged: {
+                    if (status === Image.Ready) {
+                        if (wallpaper.buffers[wallpaper.front] !== bufA)
+                            wallpaper.swap(bufA);
+                        else if (opacity < 1)
+                            firstFade.start();
+                        else
+                            bakeTimer.restart();
+                    } else if (status === Image.Error && opacity < 1) {
+                        Wallpaper.started = true;
+                    }
+                }
             }
             Image {
                 id: bufB
@@ -87,6 +106,16 @@ Variants {
                 cache: false
                 opacity: 0
                 onStatusChanged: if (status === Image.Ready) wallpaper.buffers[wallpaper.front] === bufB ? bakeTimer.restart() : wallpaper.swap(bufB)
+            }
+            NumberAnimation {
+                id: firstFade
+                target: bufA
+                property: "opacity"
+                to: 1
+                duration: 450
+                easing.type: Easing.OutCubic
+                onStarted: bakeTimer.restart()
+                onFinished: Wallpaper.started = true
             }
             NumberAnimation {
                 id: fadeIn
@@ -203,7 +232,7 @@ Variants {
         // Widgets live on the first screen (one layout; macOS shows them on one display)
         DesktopWidgets {
             id: desktopWidgets
-            visible: win.screen === Quickshell.screens[0]
+            visible: win.screen === Quickshell.screens[0] && Wallpaper.started
             enabled: visible
             screen: win.screen
         }

@@ -1,6 +1,9 @@
 -- iRice Hyprland config. Your own changes go in ~/.config/hypr/custom.lua,
 -- which is loaded last and survives iRice updates.
-local dir = os.getenv("HOME") .. "/.config/hypr"
+local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+local dir = cfg .. "/hypr"
+IRICE_HYPR_DIR = dir .. "/irice"
+IRICE_USER_DIR = cfg .. "/irice"
 
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 hl.config({
@@ -9,12 +12,18 @@ hl.config({
         follow_mouse = 1,
         repeat_delay = 250,
         repeat_rate = 35,
-        touchpad = { natural_scroll = true, clickfinger_behavior = true, scroll_factor = 0.7 }
+        numlock_by_default = true,
+        off_window_axis_events = 2, -- (end4) scrolling outside a window goes to the nearest one
+        touchpad = { natural_scroll = true, disable_while_typing = false, clickfinger_behavior = true, scroll_factor = 0.7 }
     }
 })
 
 dofile(dir .. "/irice/look.lua")
+pcall(dofile, dir .. "/irice/cursor.lua") -- macOS cursor when installed
+pcall(dofile, dir .. "/irice/tabs.lua") -- window tabs
+pcall(dofile, dir .. "/irice/vm.lua") -- only in a virtual machine (written by the installer)
 dofile(dir .. "/irice/rules.lua")
+pcall(dofile, cfg .. "/irice/window-rules.lua") -- per-app rules from Settings → Window Rules
 dofile(dir .. "/irice/keybinds.lua")
 dofile(dir .. "/irice/gestures.lua")
 dofile(dir .. "/irice/execs.lua")

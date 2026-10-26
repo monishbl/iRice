@@ -105,8 +105,19 @@ GlassWindow {
                         hoverEnabled: true
                         onClicked: {
                             root.dock.stackOpen = false;
-                            Qt.openUrlExternally("file://" + fileCell.path);
+                            Files.open(fileCell.path);
                         }
+                    }
+                    // Quick Look without opening the app
+                    IconButton {
+                        visible: fileMouse.containsMouse || hovered
+                        readonly property bool hovered: false
+                        anchors { right: parent.right; top: parent.top; margins: 2 }
+                        width: 24
+                        height: 24
+                        icon: "eye"
+                        iconSize: 14
+                        onClicked: Panels.quickLook(fileCell.path)
                     }
                 }
             }
@@ -141,7 +152,7 @@ GlassWindow {
                 hoverEnabled: true
                 onClicked: {
                     root.dock.stackOpen = false;
-                    Qt.openUrlExternally("file://" + root.dir);
+                    Files.openFolder(root.dir);
                 }
             }
         }

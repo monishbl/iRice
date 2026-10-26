@@ -19,10 +19,10 @@ Item {
 
     TapHandler {
         onTapped: {
-            const def = root.notification.actions.find(a => a.identifier === "default");
+            const def = root.notification?.actions.find(a => a.identifier === "default");
             if (def)
                 def.invoke();
-            root.notification.dismiss();
+            root.notification?.dismiss();
         }
     }
 
@@ -46,7 +46,7 @@ Item {
             Text {
                 id: appName
                 anchors { left: parent.left; right: time.left; rightMargin: 8 }
-                text: root.notification.appName || "Notification"
+                text: root.notification?.appName || "Notification"
                 elide: Text.ElideRight
                 color: Theme.color.secondary
                 font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold; capitalization: Font.AllUppercase; letterSpacing: 0.3 }
@@ -62,7 +62,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: root.notification.summary
+            text: root.notification?.summary
             visible: text !== ""
             elide: Text.ElideRight
             color: Theme.color.label
@@ -70,7 +70,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: root.notification.body
+            text: root.notification?.body
             visible: text !== ""
             textFormat: Text.StyledText
             wrapMode: Text.Wrap
@@ -79,7 +79,7 @@ Item {
             color: Theme.color.label
             opacity: 0.85
             font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Qt.openUrlExternally(link)
+            onLinkActivated: link => Launch.open(link)
         }
 
         Row {
@@ -88,7 +88,7 @@ Item {
             spacing: 6
             Repeater {
                 id: actionRepeater
-                model: root.notification.actions.filter(a => a.identifier !== "default")
+                model: root.notification?.actions.filter(a => a.identifier !== "default")
                 Rectangle {
                     required property var modelData
                     width: actionLabel.implicitWidth + 24

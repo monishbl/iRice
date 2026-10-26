@@ -43,6 +43,39 @@ Singleton {
     // address -> { floating, at, size } before the first snap
     property var previous: ({})
 
+    // Drag a window to an edge or corner (reported by the irice-glass plugin):
+    // a preview shows where it will go; letting go there tiles it
+    property string dragZone: "none"
+    property string dragMonitor: ""
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "irice-drag")
+                return;
+            const [kind, mon, zone, addr] = event.data.split(",");
+            if (kind === "zone") {
+                root.dragMonitor = mon;
+                root.dragZone = zone;
+            } else if (kind === "drop") {
+                root.dragZone = "none";
+                if (zone !== "none" && root.layouts[zone]) {
+                    // Hyprland finishes the move first; then tile it
+                    Hyprland.refreshToplevels();
+                    Qt.callLater(() => {
+                        const t = Hyprland.toplevels.values.find(w => "0x" + w.address.replace(/^0x/, "") === addr);
+                        if (t)
+                            root.snap(zone, t);
+                    });
+                }
+            }
+        }
+    }
+    // The usable area of a monitor (by name), in global coordinates
+    function areaOf(monName) {
+        const mon = Hyprland.monitors.values.find(m => m.name === monName);
+        return area({ monitor: mon });
+    }
+
     function ipcOf(t) {
         return t?.lastIpcObject ?? null;
     }
@@ -102,6 +135,33 @@ Singleton {
         place(t, rect(layout, area(t)));
     }
 
+    // Picture in Picture for any window: small, in the bottom-right corner,
+    // on every space; again to put it back where it was
+    property var pipped: ({}) // address -> true
+    function isPip(toplevel) {
+        return !!pipped[(toplevel ?? Apps.activeHyprland)?.address];
+    }
+    function pip(toplevel) {
+        const t = toplevel ?? Apps.activeHyprland;
+        if (!t?.address)
+            return;
+        const sel = "address:" + (t.address.startsWith("0x") ? t.address : "0x" + t.address);
+        const p = Object.assign({}, pipped);
+        if (p[t.address]) {
+            delete p[t.address];
+            pipped = p;
+            Hyprland.dispatch("hl.dsp.window.pin({ action = \"disable\", window = \"" + sel + "\" })");
+            restore(t);
+            return;
+        }
+        const o = ipcOf(t), a = area(t);
+        const w = 480, h = Math.round(w * Math.max(0.3, Math.min(1.6, (o?.size?.[1] ?? 9) / Math.max(1, o?.size?.[0] ?? 16))));
+        place(t, { x: a.x + a.w - w - 14, y: a.y + a.h - h - 14, w: w, h: h });
+        Hyprland.dispatch("hl.dsp.window.pin({ action = \"enable\", window = \"" + sel + "\" })");
+        p[t.address] = true;
+        pipped = p;
+    }
+
     function canRestore(toplevel) {
         return !!previous[(toplevel ?? Apps.activeHyprland)?.address];
     }
@@ -146,5 +206,6 @@ Singleton {
         function snap(layout: string): void { root.snap(layout); }
         function arrange(kind: string): void { root.arrange(kind); }
         function restore(): void { root.restore(); }
+        function pip(): void { root.pip(); }
     }
 }

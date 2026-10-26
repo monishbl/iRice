@@ -10,7 +10,11 @@ import Quickshell.Widgets
 IconImage {
     id: root
 
-    property int size: 48
+    property real size: 48
+    // The icon is drawn (and styled) once at this size, and `size` only
+    // scales that finished tile: a dock icon growing under the pointer
+    // doesn't reload its image or redraw its layer every frame
+    property int renderSize: Math.ceil(size)
     property bool styled: true // false for non-app icons (files, folders)
     readonly property var cfg: Config.options.appearance
     readonly property string style: {
@@ -29,10 +33,13 @@ IconImage {
         return Theme.dark ? Qt.rgba(c.r * 0.32 + 0.07, c.g * 0.32 + 0.07, c.b * 0.32 + 0.08, 1) : Qt.rgba(c.r * 0.16 + 0.84, c.g * 0.16 + 0.84, c.b * 0.16 + 0.85, 1);
     }
 
-    implicitSize: size
+    implicitSize: renderSize
+    transformOrigin: Item.TopLeft
+    scale: renderSize === Math.ceil(size) ? 1 : size / Math.max(1, renderSize)
     asynchronous: true
     layer.enabled: mode !== 0 || (tiled && info !== null)
     layer.smooth: true
+    layer.mipmap: renderSize > size + 0.5 // crisp when shown smaller than drawn
     layer.effect: ShaderEffect {
         property real mode: root.mode
         property real tile: root.tiled && root.info ? 1 : 0

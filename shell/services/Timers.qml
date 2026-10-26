@@ -23,6 +23,9 @@ Singleton {
     property real swStarted: 0
     property real swAccum: 0
     property real swNow: 0
+    // Views showing hundredths while on screen; otherwise the stopwatch
+    // ticks once a second, on the second
+    property int swFine: 0
     readonly property real swElapsed: swAccum + (swRunning ? swNow - swStarted : 0)
     property var laps: []
 
@@ -95,10 +98,21 @@ Singleton {
         }
     }
     Timer {
-        interval: 47
+        id: swTick
         running: root.swRunning
         repeat: true
-        onTriggered: root.swNow = Date.now()
+        interval: 47
+        // fast, or wake just after the next whole second
+        function next() {
+            root.swNow = Date.now();
+            interval = root.swFine > 0 ? 47 : 1000 - (root.swElapsed % 1000) + 5;
+        }
+        onTriggered: next()
+        onRunningChanged: if (running) next()
+    }
+    onSwFineChanged: if (swRunning) {
+        swTick.next();
+        swTick.restart();
     }
 
     // qs ipc call timer toggle | skip | reset | stopwatch | stopwatchReset

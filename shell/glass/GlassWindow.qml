@@ -45,6 +45,8 @@ PanelWindow {
     // fade glass through their parents), sending only when shapes differ.
     property string sentShapes: ""
     property string sentMonitor: "" // where they went (a window can move to another screen)
+    property int materialSerial: 0 // bumped when the material changes: glass rebuilds its shape
+    property var lastShapes: [] // the arrays sent last (each glass returns the same one while unchanged)
     function glassChanged() {
         syncWindow.restart();
         if (!syncFrames.running)
@@ -55,7 +57,11 @@ PanelWindow {
         const mon = screen?.name ?? "";
         if (!mon)
             return;
-        const shapes = visible ? glasses.filter(g => g.pluginMode).map(g => g.pluginShape()).filter(s => s !== null) : [];
+        const shapes = visible ? glasses.filter(g => g.pluginMode).map(g => g.pluginShape(materialSerial)).filter(s => s !== null) : [];
+        // Nothing moved (the common case while syncing): skip the rest
+        if (mon === sentMonitor && shapes.length === lastShapes.length && shapes.every((s, i) => s === lastShapes[i]))
+            return;
+        lastShapes = shapes;
         const key = JSON.stringify(shapes);
         if (key === sentShapes && mon === sentMonitor)
             return;
@@ -71,18 +77,24 @@ PanelWindow {
     // The material (and its colours) changed: shapes carry it, so re-send
     Connections {
         target: Theme.glass
-        function onAmountsChanged() { root.glassChanged(); }
-        function onTintChanged() { root.glassChanged(); }
-        function onDepthChanged() { root.glassChanged(); }
+        function onAmountsChanged() { root.materialChanged(); }
+        function onTintChanged() { root.materialChanged(); }
+        function onDepthChanged() { root.materialChanged(); }
     }
     Connections {
         target: Theme
-        function onDarkChanged() { root.glassChanged(); }
+        function onDarkChanged() { root.materialChanged(); }
+    }
+    function materialChanged() {
+        materialSerial++;
+        glassChanged();
     }
     Connections {
         target: GlassPlugin
         function onReady() {
             root.sentShapes = ""; // the plugin may have been reloaded with no shapes
+            root.lastShapes = [];
+            root.materialSerial++; // and its version may differ
             root.syncGlass();
         }
     }

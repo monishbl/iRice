@@ -84,7 +84,7 @@ Singleton {
 
     // Minimize: Hyprland has none, so windows park on a hidden special
     // workspace; the dock lists them and restores them on click.
-    readonly property var minimized: Hyprland.toplevels.values.filter(t => t.workspace?.name === "special:minimized")
+    readonly property var minimized: Windows.minimized
     function minimize(toplevel) {
         windowActionFor(toplevel ?? activeHyprland, "move", { workspace: "special:minimized", follow: false });
     }
@@ -97,7 +97,7 @@ Singleton {
     // Recently used apps (for the dock's Recent section), most recent first
     onActiveEntryChanged: {
         const id = activeEntry?.id;
-        if (!id || id === "org.quickshell")
+        if (!id || id === "org.quickshell" || UiState.data.recentApps[0] === id)
             return;
         const r = UiState.data.recentApps.filter(x => x !== id);
         UiState.data.recentApps = [id].concat(r).slice(0, 12);
@@ -122,7 +122,30 @@ Singleton {
     }
 
     function launch(entry) {
-        entry?.execute();
+        Launch.app(entry);
+    }
+
+    // Window tabs: the focused window becomes a tab group, and the same
+    // app's other windows on this space join it (each steps toward the
+    // group until it's in; Hyprland merges by direction)
+    function mergeIntoTabs() {
+        const t = activeHyprland;
+        const o = t?.lastIpcObject;
+        if (!o)
+            return;
+        const sel = a => "address:0x" + a.replace(/^0x/, "");
+        if ((o.grouped?.length ?? 0) === 0)
+            Hyprland.dispatch("hl.dsp.group.toggle()");
+        const others = Hyprland.toplevels.values.filter(w => w !== t && w.workspace === t.workspace && w.lastIpcObject?.class === o.class && (w.lastIpcObject?.grouped?.length ?? 0) === 0);
+        const cx = o.at[0] + o.size[0] / 2, cy = o.at[1] + o.size[1] / 2;
+        for (const w of others) {
+            const p = w.lastIpcObject;
+            const dx = cx - (p.at[0] + p.size[0] / 2), dy = cy - (p.at[1] + p.size[1] / 2);
+            const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "r" : "l") : (dy > 0 ? "d" : "u");
+            Hyprland.dispatch("hl.dsp.focus({ window = \"" + sel(w.address) + "\" })");
+            Hyprland.dispatch("hl.dsp.window.move({ into_group = \"" + dir + "\" })");
+        }
+        Hyprland.dispatch("hl.dsp.focus({ window = \"" + sel(t.address) + "\" })");
     }
 
     // Focus the app's most recent window, or launch it.

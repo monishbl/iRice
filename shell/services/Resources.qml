@@ -40,7 +40,10 @@ Singleton {
         onTriggered: {
             stat.reload();
             meminfo.reload();
-            temp.running = true;
+            if (root.tempPath !== "")
+                tempFile.reload();
+            else if (!root.tempSearched)
+                findTemp.running = true;
         }
     }
 
@@ -78,12 +81,31 @@ Singleton {
 
     // The CPU package temperature (what throttling is based on): Intel's
     // x86_pkg_temp zone, else coretemp / k10temp / zenpower's package
-    // reading, else the hottest CPU-ish zone
+    // reading, else the hottest CPU-ish zone. The sensor file is found once;
+    // each sample then just reads it (no process per sample).
+    property string tempPath: ""
+    property bool tempSearched: false
     Process {
-        id: temp
-        command: ["sh", "-c", "for z in /sys/class/thermal/thermal_zone*; do [ \"$(cat $z/type 2>/dev/null)\" = x86_pkg_temp ] && { cat $z/temp; exit; }; done; for h in /sys/class/hwmon/hwmon*; do case \"$(cat $h/name 2>/dev/null)\" in coretemp|k10temp|zenpower) cat $h/temp1_input 2>/dev/null && exit;; esac; done; for z in /sys/class/thermal/thermal_zone*; do case \"$(cat $z/type 2>/dev/null)\" in cpu*|acpitz|TCPU) cat $z/temp;; esac; done 2>/dev/null | sort -n | tail -1"]
+        id: findTemp
+        command: ["sh", "-c", "for z in /sys/class/thermal/thermal_zone*; do [ \"$(cat $z/type 2>/dev/null)\" = x86_pkg_temp ] && { echo $z/temp; exit; }; done; for h in /sys/class/hwmon/hwmon*; do case \"$(cat $h/name 2>/dev/null)\" in coretemp|k10temp|zenpower) [ -r $h/temp1_input ] && { echo $h/temp1_input; exit; };; esac; done; for z in /sys/class/thermal/thermal_zone*; do case \"$(cat $z/type 2>/dev/null)\" in cpu*|acpitz|TCPU) echo \"$(cat $z/temp) $z/temp\";; esac; done 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2"]
         stdout: StdioCollector {
-            onStreamFinished: root.temperature = (parseInt(text.trim()) || 0) / 1000
+            onStreamFinished: {
+                root.tempSearched = true;
+                root.tempPath = text.trim();
+                if (root.tempPath !== "")
+                    tempFile.reload();
+            }
+        }
+    }
+    FileView {
+        id: tempFile
+        path: root.tempPath
+        blockLoading: false
+        onLoaded: root.temperature = (parseInt(text().trim()) || 0) / 1000
+        // The sensor went away (a module reloaded, hwmon renumbered): find it again
+        onLoadFailed: {
+            root.tempPath = "";
+            root.tempSearched = false;
         }
     }
 }

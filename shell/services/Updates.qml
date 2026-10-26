@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.common
 
 // Available package updates (pacman via checkupdates, which never touches the
 // real package database). Checked hourly.
@@ -17,7 +18,7 @@ Singleton {
             Quickshell.execDetached(["notify-send", "-a", "iRice", "Sandbox", "Install Updates would run: sudo pacman -Syu"]);
             return;
         }
-        Quickshell.execDetached(["sh", "-c", "xdg-terminal-exec sh -c 'sudo pacman -Syu; read -p \"Press Enter to close\"' || foot sh -c 'sudo pacman -Syu; read -p \"Press Enter to close\"'"]);
+        Launch.terminal(["sh", "-c", "command -v yay >/dev/null && yay -Syu || sudo pacman -Syu; read -p 'Press Enter to close'"], false);
     }
 
     Timer {

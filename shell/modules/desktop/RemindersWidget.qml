@@ -1,15 +1,17 @@
 import QtQuick
 import qs.common
+import qs.services
 
 // Reminders (the to-do list in Notification Center). Tick to complete.
-// Large also has a field to add one.
+// Soonest due first, with when (red once overdue). Large also has a field
+// to add one ("call mum tomorrow 6pm" gets a due time).
 Item {
     id: root
 
     property string size: "m"
     property bool preview: false
     readonly property var todos: UiState.data.todos ?? []
-    readonly property var open: todos.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done)
+    readonly property var open: Todos.sorted(todos.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
     readonly property int rows: size === "l" ? 8 : size === "m" ? 3 : 2
 
     function toggle(i) {
@@ -76,11 +78,20 @@ Item {
                     }
                 }
                 Text {
-                    width: parent.width - 24
+                    id: todoText
+                    width: parent.width - 24 - (due.visible ? due.implicitWidth + 6 : 0)
                     text: item.modelData.text
                     elide: Text.ElideRight
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+                Text {
+                    id: due
+                    visible: text !== "" && root.size !== "s"
+                    anchors.baseline: todoText.baseline
+                    text: Todos.dueLabel(item.modelData)
+                    color: Todos.overdue(item.modelData) ? Theme.color.danger : Theme.color.tertiary
+                    font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                 }
             }
         }
@@ -111,7 +122,7 @@ Item {
             onAccepted: {
                 if (text.trim() === "")
                     return;
-                UiState.data.todos = root.todos.concat([{ text: text.trim(), done: false }]);
+                Todos.add(text);
                 text = "";
             }
             Text {

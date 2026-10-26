@@ -24,7 +24,7 @@ QtObject {
             focus: { label: Focus.on ? Focus.mode.name : "Focus", kind: "toggle", sizes: ["2x1", "1x1"], icon: Focus.mode?.icon ?? "moon", on: Focus.on, status: Focus.on && Focus.until > 0 ? Focus.statusText : "", page: "focus", act: () => Focus.on ? Focus.deactivate() : Focus.activate("dnd", 0, false) },
             nightLight: { label: "Night Light", kind: "toggle", sizes: ["1x1", "2x1"], icon: "moon-stars", on: System.nightLight, status: System.nightLight ? System.nightLightTemp + "K" : "Off", act: () => System.nightLight = !System.nightLight },
             darkMode: { label: Theme.dark ? "Dark Mode" : "Light Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "circle-half", on: Theme.dark, status: Config.options.appearance.mode === "auto" ? "Auto" : "", act: () => System.toggleDarkMode() },
-            keepAwake: { label: "Keep Awake", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: "", act: () => System.keepAwake = !System.keepAwake },
+            keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
             stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic() },
             lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => PowerProfiles.profile = PowerProfiles.profile === PowerProfile.PowerSaver ? PowerProfile.Balanced : PowerProfile.PowerSaver },
@@ -38,7 +38,7 @@ QtObject {
             colorPicker: { label: "Colour Picker", kind: "action", sizes: ["1x1", "2x1"], icon: "eyedropper", needs: "hyprpicker", act: () => { Panels.close(); System.run(["sh", "-c", "sleep 0.3; hyprpicker -a"]); } },
             musicRecognition: { label: "Identify Song", kind: "action", sizes: ["1x1", "2x1"], icon: "music-notes", needs: "songrec", act: () => { Panels.close(); System.identifySong(); } },
             clipboard: { label: "Clipboard", kind: "action", sizes: ["1x1", "2x1"], icon: "clipboard-text", act: () => Panels.show("clipboard") },
-            calculator: { label: "Calculator", kind: "action", sizes: ["1x1", "2x1"], icon: "calculator", act: () => { Panels.close(); Quickshell.execDetached(["sh", "-c", "gnome-calculator || qalculate-gtk || kcalc || galculator"]); } },
+            calculator: { label: "Calculator", kind: "action", sizes: ["1x1", "2x1"], icon: "calculator", act: () => { Panels.close(); Launch.run(["sh", "-c", "gnome-calculator || qalculate-gtk || kcalc || galculator"]); } },
             timer: { label: "Timer", kind: "action", sizes: ["1x1", "2x1"], icon: "timer", act: () => { Panels.ncTab = 2; Panels.show("notificationCenter"); } },
             tileWindows: { label: "Tile Left & Right", kind: "action", sizes: ["2x1", "1x1"], icon: "square-split-horizontal", act: () => { Panels.close(); Tiling.arrange("leftRight"); } },
             appLibrary: { label: "App Library", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
@@ -50,7 +50,7 @@ QtObject {
             weather: { label: "Weather", kind: "info", sizes: ["2x1", "2x2"], icon: Weather.icon }
         })
 
-    readonly property var defaultLayout: ["wifi:2x1", "nowPlaying:2x2", "bluetooth:1x1", "nightLight:1x1", "focus:2x1", "stageManager:1x1", "darkMode:1x1", "display:4x1", "sound:4x1", "screenshot:1x1", "record:1x1", "keyboard:1x1", "clipboard:1x1"]
+    readonly property var defaultLayout: ["wifi:2x1", "nowPlaying:2x2", "bluetooth:1x1", "nightLight:1x1", "focus:2x1", "stageManager:1x1", "darkMode:1x1", "display:4x1", "sound:4x1", "screenshot:1x1", "record:1x1", "keepAwake:1x1", "clipboard:1x1"]
 
     function usable(id) {
         const d = all[id];

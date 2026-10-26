@@ -49,7 +49,7 @@ GlassWindow {
     ElasticPull {
         id: pull
         target: body
-        active: grab.active
+        active: grab.active && Panels.holdPull === 0 && !Panels.ccEditing
         from: grab.point.scenePressPosition
         pointer: grab.point.scenePosition
     }

@@ -49,6 +49,10 @@ Singleton {
             a.push({ kind: "music", icon: "music-notes", color: Theme.accent });
         if (swStarted)
             a.push({ kind: "stopwatch", icon: "timer", color: Theme.accents.green });
+        if (Calls.active)
+            a.push({ kind: "call", icon: Privacy.camera ? "video-camera" : "phone", color: Theme.accents.green });
+        if (Transfers.active)
+            a.push({ kind: "transfer", icon: Transfers.first?.kind === "copy" ? "copy" : "download-simple", color: Theme.accents.blue });
         return a;
     }
     // The one shown when collapsed (and when open, in one-at-a-time mode).
@@ -71,8 +75,24 @@ Singleton {
     }
 
     // Is this piece of a collapsed live activity switched on? ("music", "bars")
+    // Kinds added later start with their defaults until changed in Settings.
+    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"] })
+    function customised(kind) {
+        return !liveDefaults[kind] || (cfg.known ?? []).includes("live." + kind) || (cfg.livePieces ?? []).some(x => x.startsWith(kind + "."));
+    }
     function shows(kind, piece) {
-        return (cfg.livePieces ?? []).includes(kind + "." + piece);
+        return customised(kind) ? (cfg.livePieces ?? []).includes(kind + "." + piece) : liveDefaults[kind].includes(piece);
+    }
+    function setShows(kind, piece, on) {
+        const pieces = liveDefaults[kind] ?? [];
+        let list = (cfg.livePieces ?? []).slice();
+        // First change to a newer kind: write its defaults out, then change
+        if (!customised(kind))
+            list = list.concat(pieces.map(x => kind + "." + x));
+        list = list.filter(x => x !== kind + "." + piece).concat(on ? [kind + "." + piece] : []);
+        Config.options.island.livePieces = list;
+        if (liveDefaults[kind] && !(cfg.known ?? []).includes("live." + kind))
+            Config.options.island.known = (cfg.known ?? []).concat(["live." + kind]);
     }
 
     // Kept open even with nothing happening (pin button, or right-click)
@@ -178,7 +198,7 @@ Singleton {
 
     // Kinds added after the setting existed count as on until the user has
     // touched them (cfg.known), so upgrades get the new alerts by default
-    readonly property var newKinds: ["usb", "displays", "audio", "temperature"]
+    readonly property var newKinds: ["usb", "displays", "audio", "temperature", "network", "transfers", "calls"]
     function wants(kind) {
         return (cfg.events ?? []).includes(kind) || (newKinds.includes(kind) && !(cfg.known ?? []).includes(kind));
     }
@@ -357,6 +377,8 @@ Singleton {
                 audio: { kind: "audio", icon: "headphones", title: "Headphones", subtitle: "Built-in Audio", color: Theme.accents.purple },
                 charging: { kind: "charging", icon: "lightning", title: "Charging", subtitle: "64% · on power", value: 0.64, color: Theme.accents.green },
                 battery: { kind: "battery", icon: "battery-warning", title: "Low battery", subtitle: "10% left · plug in soon", value: 0.1, color: Theme.accents.red },
+                wifi: { kind: "network", icon: "wifi-high", title: "Home Wi-Fi", subtitle: "Wi-Fi connected", color: Theme.accents.blue },
+                vpn: { kind: "network", icon: "shield-check", title: "Work VPN", subtitle: "VPN connected", color: Theme.accents.green, ripple: true },
                 temperature: { kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU 94 °C · close heavy apps or let it cool", value: 0.9, color: Theme.accents.red },
                 notification: { kind: "notification", headline: "Here, I found the door code in your messages from Mac.", card: { name: "Mac Tyler", time: "Thursday", text: "There's a spare key on the hook by the coat rack! The front door code is #1997", initials: "MT", appIcon: "org.gnome.Polari" } },
                 music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" }

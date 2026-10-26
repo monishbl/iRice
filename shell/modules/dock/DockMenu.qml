@@ -33,17 +33,20 @@ ContextMenu {
             ];
         case "downloads":
             return [
-                { text: "Open Downloads", action: () => Qt.openUrlExternally("file://" + Quickshell.env("HOME") + "/Downloads") },
+                { text: "Open Downloads", action: () => Files.openFolder(Transfers.downloadsDir) },
                 { text: "Show Recent Files", action: () => dock.stackOpen = true },
                 { separator: true },
                 { text: "Remove from Dock", action: () => Config.options.dock.downloads = false }
             ];
         case "trash":
             return [
-                { text: "Open Trash", action: () => Qt.openUrlExternally("trash:///") },
+                { text: "Open Trash", action: () => Files.openTrash() },
                 { separator: true },
                 // Emptying the trash can't be undone, so it asks once
-                { text: "Empty Trash…", enabled: (it.trashCount ?? 0) > 0, danger: true, confirm: "Delete " + (it.trashCount ?? 0) + ((it.trashCount ?? 0) === 1 ? " item" : " items") + " for good", action: () => Quickshell.execDetached(["gio", "trash", "--empty"]) }
+                { text: "Empty Trash…", enabled: (it.trashCount ?? 0) > 0, danger: true, confirm: "Delete " + (it.trashCount ?? 0) + ((it.trashCount ?? 0) === 1 ? " item" : " items") + " for good", action: () => {
+                    Quickshell.execDetached(["gio", "trash", "--empty"]);
+                    Sounds.play("trash");
+                } }
             ];
         default:
             return [

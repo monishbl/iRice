@@ -69,6 +69,42 @@ Column {
                 }
             }
         }
+        Row {
+            label: "Emoji"
+            detail: EmojiFont.available ? "In the emoji picker (Super+.) and Spotlight" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Android's until it is"
+            Flow { // (Row here is the settings row)
+                spacing: 8
+                width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
+                Rectangle {
+                    visible: !EmojiFont.available
+                    width: emojiInstall.implicitWidth + 24
+                    height: 28
+                    radius: Theme.radius.control
+                    color: emojiInstallMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                    Text {
+                        id: emojiInstall
+                        anchors.centerIn: parent
+                        text: "Install font"
+                        color: Theme.color.label
+                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                    }
+                    MouseArea {
+                        id: emojiInstallMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: EmojiFont.install(EmojiFont.style)
+                    }
+                }
+                Segmented {
+                    width: 300
+                    readonly property var values: ["android", "apple", "windows"]
+                    options: ["Android", "Apple", "Windows"]
+                    current: Math.max(0, values.indexOf(EmojiFont.style))
+                    onSelected: i => Config.options.emoji.style = values[i]
+                }
+            }
+        }
     }
 
     Group {
@@ -179,6 +215,39 @@ Column {
             }
         }
         Row {
+            label: "Pointer"
+            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
+            Segmented {
+                width: 300
+                readonly property var values: ["macos", "bibata"]
+                options: ["macOS", "Bibata"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
+                onSelected: i => Config.options.appearance.cursor = values[i]
+            }
+        }
+        Row {
+            label: "Window transparency"
+            detail: Config.options.appearance.windowOpacity === "off" ? "Windows are fully opaque" : "Video, games and fullscreen stay opaque"
+            Segmented {
+                width: 300
+                readonly property var values: ["off", "subtle", "more"]
+                options: ["Off", "Subtle", "More"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.windowOpacity))
+                onSelected: i => Config.options.appearance.windowOpacity = values[i]
+            }
+        }
+        Row {
+            label: "Window tabs"
+            detail: Config.options.appearance.windowTabs === "finder" ? "Finder-style tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
+            Segmented {
+                width: 300
+                readonly property var values: ["hyprland", "finder"]
+                options: ["Hyprland", "Finder"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
+                onSelected: i => Config.options.appearance.windowTabs = values[i]
+            }
+        }
+        Row {
             visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
             label: "hyprbars plugin"
             detail: "Builds the official plugin with hyprpm in a terminal."
@@ -211,6 +280,23 @@ Column {
             Switch {
                 checked: Config.options.stageManager.strip
                 onToggled: Config.options.stageManager.strip = !checked
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Overview"
+        footer: "Live previews use more power while the Overview is open. Nothing is captured while it's closed."
+        Row {
+            label: "Window previews"
+            detail: Config.options.overview.previews === "live" ? "Every window keeps updating" : Config.options.overview.previews === "hybrid" ? "Windows on the current space keep updating; the rest are pictures" : "A picture of each window, taken when the Overview opens"
+            Segmented {
+                width: 260
+                readonly property var values: ["snapshot", "hybrid", "live"]
+                options: ["Snapshot", "Hybrid", "Live"]
+                current: Math.max(0, values.indexOf(Config.options.overview.previews))
+                onSelected: i => Config.options.overview.previews = values[i]
             }
         }
     }
@@ -352,7 +438,7 @@ Column {
                     id: buildMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: Quickshell.execDetached(["foot", "-H", "sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"])
+                    onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"], true)
                 }
             }
             Icon {
@@ -398,6 +484,59 @@ Column {
             Switch {
                 checked: Config.options.appearance.wallpaperTint
                 onToggled: Config.options.appearance.wallpaperTint = !checked
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Match apps"
+        footer: !AppTheme.available ? "Install matugen to colour your apps to match." : Config.options.appearance.appTheme === "off" ? "Apps keep their own colours." : "Apps get colours from your " + (Config.options.appearance.appTheme === "wallpaper" ? "wallpaper" : "accent colour") + ", light or dark with iRice. Open apps update when they can; others on their next start. Turning this off removes the colours again."
+        Row {
+            label: "Colours from"
+            Segmented {
+                width: 260
+                enabled: AppTheme.available
+                readonly property var values: ["off", "accent", "wallpaper"]
+                options: ["Off", "Accent", "Wallpaper"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.appTheme))
+                onSelected: i => Config.options.appearance.appTheme = values[i]
+            }
+        }
+        Repeater {
+            model: Config.options.appearance.appTheme === "off" ? [] : [["gtk", "GTK apps"], ["qt", "Qt and KDE apps"], ["terminals", "Terminals (foot, kitty, Alacritty)"], ["browsers", "Firefox (with Pywalfox) and Chromium"]]
+            Row {
+                id: targetRow
+                required property var modelData
+                label: modelData[1]
+                Switch {
+                    checked: Config.options.appearance.appThemeTargets.includes(targetRow.modelData[0])
+                    onToggled: {
+                        const t = Config.options.appearance.appThemeTargets.filter(x => x !== targetRow.modelData[0]);
+                        Config.options.appearance.appThemeTargets = checked ? t : t.concat([targetRow.modelData[0]]);
+                    }
+                }
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Accessibility"
+        Row {
+            label: "Reduce transparency"
+            detail: "Solid surfaces instead of glass, whatever the material above"
+            Switch {
+                checked: Config.options.appearance.reduceTransparency
+                onToggled: Config.options.appearance.reduceTransparency = !checked
+            }
+        }
+        Row {
+            label: "Increase contrast"
+            detail: "Stronger secondary text and separators, and an outline around panels and controls"
+            Switch {
+                checked: Config.options.appearance.increaseContrast
+                onToggled: Config.options.appearance.increaseContrast = !checked
             }
         }
     }

@@ -1,0 +1,59 @@
+[
+ {
+  "id": "move",
+  "fingers": 3,
+  "direction": "swipe",
+  "label": "Move the window under the fingers",
+  "action": "move"
+ },
+ {
+  "id": "fullscreen",
+  "fingers": 3,
+  "direction": "pinch",
+  "label": "Full screen",
+  "action": "fullscreen"
+ },
+ {
+  "id": "workspaces",
+  "fingers": 4,
+  "direction": "horizontal",
+  "label": "Switch workspace",
+  "action": "workspace"
+ },
+ {
+  "id": "overview-up",
+  "fingers": 4,
+  "direction": "up",
+  "label": "Overview",
+  "action": {
+   "shell": "overview"
+  }
+ },
+ {
+  "id": "overview-down",
+  "fingers": 4,
+  "direction": "down",
+  "label": "Overview",
+  "action": {
+   "shell": "overview"
+  }
+ },
+ {
+  "id": "launchpad",
+  "fingers": 4,
+  "direction": "pinchin",
+  "label": "App Library",
+  "action": {
+   "shell": "launchpad"
+  }
+ },
+ {
+  "id": "show-desktop",
+  "fingers": 4,
+  "direction": "pinchout",
+  "label": "Show desktop",
+  "action": {
+   "shell": "showDesktop"
+  }
+ }
+]

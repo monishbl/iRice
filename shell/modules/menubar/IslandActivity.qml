@@ -14,7 +14,7 @@ Item {
     readonly property string kind: activity.kind
     readonly property var player: Island.player
 
-    implicitHeight: kind === "music" ? 52 : 36
+    implicitHeight: kind === "music" ? 52 : LiveInfo.progress(kind) >= 0 ? 42 : 36
 
     property real appear: shown ? 1 : 0
     Behavior on appear {
@@ -58,18 +58,33 @@ Item {
         spacing: 1
         Text {
             width: parent.width
-            text: root.kind === "music" ? (root.player?.trackTitle || "Playing") : root.kind === "timer" ? (Timers.phase === "focus" ? "Focus" : "Break") : root.kind === "stopwatch" ? "Stopwatch" : "Recording"
+            text: LiveInfo.title(root.kind)
             elide: Text.ElideRight
             color: "#F5F5F7"
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
         Text {
             width: parent.width
-            text: root.kind === "music" ? (root.player?.trackArtist ?? "") : root.kind === "timer" ? Timers.format(Timers.remaining) + " left" : root.kind === "stopwatch" ? Timers.format(Math.floor(Timers.swElapsed / 1000)) : Timers.format(Math.floor((clock.date - ScreenTools.recordingStarted) / 1000))
+            text: LiveInfo.detail(root.kind)
             elide: Text.ElideRight
             color: Qt.rgba(1, 1, 1, 0.6)
             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
-            SystemClock { id: clock; precision: SystemClock.Seconds; enabled: root.kind === "recording" && root.shown }
+        }
+        // Timer and transfer progress
+        Rectangle {
+            readonly property real p: LiveInfo.progress(root.kind)
+            visible: p >= 0 && root.kind !== "music"
+            width: parent.width
+            height: 3
+            radius: 1.5
+            color: Qt.rgba(1, 1, 1, 0.16)
+            Rectangle {
+                width: parent.width * Math.max(0, parent.p)
+                height: parent.height
+                radius: 1.5
+                color: root.activity.color
+                Behavior on width { NumberAnimation { duration: 900 } }
+            }
         }
     }
 
@@ -78,19 +93,7 @@ Item {
         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
         spacing: 2
         Repeater {
-            model: root.kind === "music" ? [
-                { icon: "skip-back", fill: true, act: () => root.player?.previous() },
-                { icon: root.player?.isPlaying ? "pause" : "play", fill: true, act: () => root.player?.togglePlaying() },
-                { icon: "skip-forward", fill: true, act: () => root.player?.next() }
-            ] : root.kind === "timer" ? [
-                { icon: Timers.running ? "pause" : "play", fill: true, act: () => Timers.toggle() },
-                { icon: "skip-forward", fill: true, act: () => Timers.skip() }
-            ] : root.kind === "stopwatch" ? [
-                { icon: "flag", fill: false, act: () => Timers.swLap() },
-                { icon: Timers.swRunning ? "pause" : "play", fill: true, act: () => Timers.swToggle() }
-            ] : [
-                { icon: "stop", fill: true, act: () => ScreenTools.stopRecording() }
-            ]
+            model: LiveInfo.controls(root.kind).filter(b => b.piece !== "reset")
             IconButton {
                 required property var modelData
                 width: 32
@@ -98,7 +101,9 @@ Item {
                 icon: modelData.icon
                 fill: modelData.fill
                 iconSize: 16
-                iconColor: "#F5F5F7"
+                iconColor: modelData.danger ? Theme.accents.red : "#F5F5F7"
+                enabled: modelData.on
+                opacity: enabled ? 1 : 0.4
                 onClicked: modelData.act()
             }
         }

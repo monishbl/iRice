@@ -125,7 +125,7 @@ Variants {
                             hoverEnabled: true
                             onClicked: {
                                 Panels.close();
-                                Qt.openUrlExternally(Wallpaper.fileUrl(Wallpaper.directory));
+                                Files.openFolder(Wallpaper.directory);
                             }
                         }
                     }

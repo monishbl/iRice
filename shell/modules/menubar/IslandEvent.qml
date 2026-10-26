@@ -118,11 +118,12 @@ Item {
             }
         }
 
-        // Trailing: a device battery ring, or an action
+        // Trailing: a device battery ring, or an action (and a second one,
+        // e.g. Decline before Accept)
         Item {
             id: trailing
             anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-            width: root.event?.battery !== undefined ? 34 : root.event?.action ? actionPill.width : 0
+            width: root.event?.battery !== undefined ? 34 : root.event?.action ? actionPill.width + (root.event?.action2 ? secondPill.width + 6 : 0) : 0
             height: 34
             opacity: root.ease(root.step(0.4))
             scale: 0.7 + 0.3 * root.ease(root.step(0.4))
@@ -156,8 +157,37 @@ Item {
             }
 
             Rectangle {
+                id: secondPill
+                visible: !!root.event?.action2
+                anchors.verticalCenter: parent.verticalCenter
+                width: secondText.implicitWidth + 24
+                height: 28
+                radius: 14
+                color: secondMouse.pressed ? Qt.rgba(1, 1, 1, 0.16) : secondMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.2)
+                Text {
+                    id: secondText
+                    anchors.centerIn: parent
+                    text: root.event?.action2 ?? ""
+                    color: root.ink
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                }
+                MouseArea {
+                    id: secondMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.event?.onAction2?.();
+                        root.acted();
+                    }
+                }
+            }
+            Rectangle {
                 id: actionPill
                 visible: !!root.event?.action
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: actionText.implicitWidth + 24
                 height: 28

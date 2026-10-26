@@ -7,6 +7,14 @@ Item {
 
     property string size: "s"
     property bool preview: false
+    property string widgetId: "" // its own text; "" = the first note (older layouts)
+    readonly property string savedText: widgetId === "" ? UiState.data.desktopNote : (UiState.data.desktopNotes[widgetId] ?? "")
+    function store(t) {
+        if (widgetId === "")
+            UiState.data.desktopNote = t;
+        else
+            UiState.data.desktopNotes = Object.assign({}, UiState.data.desktopNotes, { [widgetId]: t });
+    }
 
     Row {
         id: header
@@ -35,7 +43,7 @@ Item {
         TextEdit {
             id: edit
             width: parent.width
-            text: UiState.data.desktopNote
+            text: root.savedText
             wrapMode: TextEdit.Wrap
             color: Theme.color.label
             selectionColor: Qt.alpha(Theme.accent, 0.4)
@@ -54,6 +62,6 @@ Item {
     Timer {
         id: saveTimer
         interval: 500
-        onTriggered: UiState.data.desktopNote = edit.text
+        onTriggered: root.store(edit.text)
     }
 }

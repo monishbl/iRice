@@ -27,7 +27,9 @@ ln -s "$HOST_RT/$HOST_WL" "$RT/wayland-host"
 # Host audio, so volume/media widgets have something real to show
 if [[ "${IRICE_HOST_AUDIO:-1}" == 1 ]]; then
     [[ -S "$HOST_RT/pipewire-0" ]] && ln -s "$HOST_RT/pipewire-0" "$RT/pipewire-0"
-    [[ -d "$HOST_RT/pulse" ]] && ln -s "$HOST_RT/pulse" "$RT/pulse"
+    # A real directory with the socket linked in: PulseAudio clients refuse a
+    # symlinked $XDG_RUNTIME_DIR/pulse ("Too many levels of symbolic links")
+    [[ -S "$HOST_RT/pulse/native" ]] && mkdir -m 700 "$RT/pulse" && ln -s "$HOST_RT/pulse/native" "$RT/pulse/native"
 fi
 
 # Never let the sandbox spend real money with host API keys

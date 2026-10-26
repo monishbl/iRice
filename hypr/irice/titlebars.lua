@@ -6,7 +6,8 @@ if not (hl.plugin and hl.plugin.hyprbars) then
 end
 
 local function iriceDecorations()
-    local f = io.open(os.getenv("HOME") .. "/.config/irice/config.json", "r")
+    local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+    local f = io.open(cfg .. "/irice/config.json", "r")
     if not f then return "none" end
     local s = f:read("*a")
     f:close()

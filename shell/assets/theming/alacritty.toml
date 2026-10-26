@@ -1,0 +1,28 @@
+# iRice: terminal colours (Settings → Appearance → Match apps). Generated.
+[colors.primary]
+background = "{{colors.surface.default.hex}}"
+foreground = "{{colors.on_surface.default.hex}}"
+[colors.selection]
+background = "{{irice.accent}}"
+text = "#ffffff"
+[colors.cursor]
+cursor = "{{irice.accent}}"
+text = "{{colors.surface.default.hex}}"
+[colors.normal]
+black = "{{colors.surface_container_highest.default.hex}}"
+red = "#{{irice.red}}"
+green = "#{{irice.green}}"
+yellow = "#{{irice.yellow}}"
+blue = "#{{irice.blue}}"
+magenta = "#{{irice.magenta}}"
+cyan = "#{{irice.cyan}}"
+white = "{{colors.on_surface_variant.default.hex}}"
+[colors.bright]
+black = "{{colors.outline.default.hex}}"
+red = "#{{irice.red}}"
+green = "#{{irice.green}}"
+yellow = "#{{irice.yellow}}"
+blue = "#{{irice.blue}}"
+magenta = "#{{irice.magenta}}"
+cyan = "#{{irice.cyan}}"
+white = "{{colors.on_surface.default.hex}}"

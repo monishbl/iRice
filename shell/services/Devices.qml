@@ -135,7 +135,7 @@ Singleton {
             if (p.ACTION === "add")
                 Island.post({
                     kind: "usb", icon: "hard-drive", title: label, subtitle: "Drive connected", color: Theme.accents.orange, action: "Open",
-                    onAction: () => Quickshell.execDetached(["sh", "-c", "m=$(findmnt -nro TARGET \"$1\" | head -1); [ -z \"$m\" ] && m=$(udisksctl mount -b \"$1\" 2>/dev/null | sed -n 's/.* at //p'); xdg-open \"${m:-$HOME}\"", "sh", dev])
+                    onAction: () => Launch.run(["sh", "-c", "m=$(findmnt -nro TARGET \"$1\" | head -1); [ -z \"$m\" ] && m=$(udisksctl mount -b \"$1\" 2>/dev/null | sed -n 's/.* at //p'); ${2:-xdg-open} \"${m:-$HOME}\"", "sh", dev, Files.manager])
                 }, 6000);
             else if (p.ACTION === "remove")
                 Island.post({ kind: "usb", icon: "hard-drive", title: label, subtitle: "Drive removed", color: Qt.rgba(1, 1, 1, 0.55) }, 2500);
@@ -145,9 +145,6 @@ Singleton {
         id: udevRetry
         interval: 10000
     }
-    // Runs a watcher that ends with the shell (stdin closes) and ends the
-    // shell side when it stops, so it can be restarted
-    readonly property string watch: "\"$@\" & w=$!; while read -t 5 _ || [ $? -gt 128 ]; do kill -0 $w 2>/dev/null || exit 1; done; kill $w"
     Timer {
         id: usbWait
         interval: 1200
@@ -161,7 +158,7 @@ Singleton {
         id: udev
         running: Island.enabled && Tools.has("udevadm") && !udevRetry.running
         stdinEnabled: true
-        command: ["bash", "-c", root.watch, "sh", "udevadm", "monitor", "--udev", "--property", "--subsystem-match=usb", "--subsystem-match=block"]
+        command: [Tools.watcher, "udevadm", "monitor", "--udev", "--property", "--subsystem-match=usb", "--subsystem-match=block"]
         onExited: udevRetry.start()
         property var cur: ({})
         stdout: SplitParser {
@@ -222,7 +219,7 @@ Singleton {
         id: subscribe
         running: Island.enabled && Tools.has("pactl") && !pactlRetry.running
         stdinEnabled: true
-        command: ["bash", "-c", root.watch, "sh", "pactl", "subscribe"]
+        command: [Tools.watcher, "pactl", "subscribe"]
         onExited: pactlRetry.start()
         stdout: SplitParser {
             onRead: line => {

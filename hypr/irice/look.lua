@@ -42,7 +42,12 @@ hl.config({
     misc = {
         disable_hyprland_logo = true,
         disable_splash_rendering = true,
-        force_default_wallpaper = 0
+        force_default_wallpaper = 0,
+        -- Black until the wallpaper fades in (the shell's background is black too)
+        background_color = 0xff000000,
+        -- If the shell restarts while the screen is locked, its new copy takes
+        -- the lock back (instead of Hyprland's "lockscreen app died" screen)
+        allow_session_lock_restore = true
     }
 })
 

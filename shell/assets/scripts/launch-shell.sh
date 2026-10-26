@@ -22,6 +22,11 @@ cfg="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
 if [[ -f "$cfg" ]]; then
     pick="$(sed -n 's/.*"iconTheme"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)"
 fi
+# Tahoe-like default: MacTahoe icons when installed (light or dark with iRice)
+if [[ -z "$pick" ]] && installed MacTahoe; then
+    if [[ -f "$cfg" ]] && grep -q '"mode"[[:space:]]*:[[:space:]]*"light"' "$cfg"; then pick=MacTahoe; else pick=MacTahoe-dark; fi
+    installed "$pick" || pick=MacTahoe
+fi
 if [[ -z "$pick" && -f "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" ]]; then
     pick="$(sed -n '/^\[Icons\]/,/^\[/{s/^Theme=//p}' "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" | head -1)"
 fi
@@ -38,4 +43,27 @@ if [[ -z "$pick" ]] || ! installed "$pick"; then
     done
 fi
 [[ -n "$pick" ]] && export QS_ICON_THEME="$pick"
-exec qs "$@"
+
+# Live wallpapers: decode video on the GPU (VA-API) when there is one
+if [[ -z "${QT_FFMPEG_DECODING_HW_DEVICE_TYPES:-}" ]] && compgen -G "/dev/dri/renderD*" >/dev/null; then
+    export QT_FFMPEG_DECODING_HW_DEVICE_TYPES=vaapi,drm
+fi
+# iRice's own Quickshell (tools/build-quickshell.sh), when there is one:
+# kept in step with the system's Qt even if the system's Quickshell is pinned
+# by another setup. Its QML modules come first on the import path.
+QS=qs
+LOCAL=""
+for d in "${XDG_DATA_HOME:-}" "$HOME/.local/share"; do
+    [[ -n "$d" && -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]] && { LOCAL="$d/irice/quickshell"; break; }
+done
+if [[ -n "$LOCAL" ]]; then
+    QS="$LOCAL/bin/qs"
+    export QML_IMPORT_PATH="$LOCAL/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+    export QML2_IMPORT_PATH="$QML_IMPORT_PATH"
+fi
+# Qt's SVG renderer can't size the tiny drop-shadow blur in a couple of icon
+# theme files (MacTahoe's Google Maps and Android Studio), skips just that
+# blur (it's invisible at icon sizes) and logs a warning each time one loads.
+# Only that category is muted; every other warning still shows.
+export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.svg.draw.warning=false"
+exec "$QS" "$@"

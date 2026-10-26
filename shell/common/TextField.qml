@@ -9,6 +9,10 @@ Rectangle {
     property bool secret: false
     property bool commitOnBlur: true
     signal committed(string text)
+    // Put the cursor in the field (focusing the field itself wouldn't)
+    function focusInput() {
+        input.forceActiveFocus();
+    }
 
     implicitWidth: 220
     implicitHeight: 28

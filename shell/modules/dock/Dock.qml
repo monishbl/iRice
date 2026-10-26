@@ -18,6 +18,7 @@ Variants {
         required property var modelData
         screen: modelData
         name: "dock"
+        visible: Wallpaper.started // after the wallpaper at login
 
         readonly property var cfg: Config.options.dock
         readonly property int iconSize: cfg.iconSize

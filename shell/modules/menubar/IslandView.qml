@@ -126,31 +126,21 @@ Item {
                 maskSpreadAtMin: 1
             }
             // Running hot, while open: a faint red arch rising from the bottom
-            // edge (a blurred ellipse), breathing slowly, behind the black so
-            // it only glows through the glassy lower part
-            Rectangle {
+            // edge, breathing slowly, behind the black so it only glows
+            // through the glassy lower part. A pre-blurred glow image that only
+            // fades, on a slow clock: nothing is re-blurred per frame.
+            Image {
                 id: arch
                 visible: Island.showHot && root.expanded
-                property real breath: 0
-                width: ink.width * 0.8
-                height: 96
-                opacity: 0.1 + 0.4 * breath // fades slowly between faint and half
+                source: "../../assets/images/heat-glow.png"
+                smooth: true
+                width: ink.width * 0.95
+                height: 150
                 x: (ink.width - width) / 2
-                y: ink.height - height * 0.45
-                radius: height / 2
-                color: Qt.rgba(0.9, 0.16, 0.12, 0.28)
-                layer.enabled: visible
-                layer.effect: MultiEffect {
-                    blurEnabled: true
-                    blur: 1
-                    blurMax: 64
-                }
-                SequentialAnimation on breath {
-                    running: arch.visible
-                    loops: Animation.Infinite
-                    NumberAnimation { from: 0; to: 1; duration: 4000; easing.type: Easing.InOutSine }
-                    NumberAnimation { from: 1; to: 0; duration: 4000; easing.type: Easing.InOutSine }
-                }
+                y: ink.height + 4 - height / 2
+                // fades slowly between faint and half (8 s a breath)
+                opacity: 0.16 * (0.1 + 0.4 * (0.5 - 0.5 * Math.cos(archClock.time * Math.PI / 4)))
+                Ticker { id: archClock; running: arch.visible; fps: 12 }
             }
             Rectangle {
                 id: inkFill
@@ -183,37 +173,28 @@ Item {
                 maskSpreadAtMin: 1
             }
             readonly property real cx: dots.x + dots.activeCenter
-            // Only soft, blurred ripples (no glow under the chip)
-            Item {
-                id: ripples
-                anchors.fill: parent
-                layer.enabled: hotPill.visible
-                layer.effect: MultiEffect {
-                    blurEnabled: true
-                    blur: 1
-                    blurMax: 28
-                }
-                Repeater {
+            // Only soft ripples (no glow under the chip): three pre-blurred
+            // glows that swell and fade in turn, 1.5 s apart, on a slow clock
+            Ticker { id: rippleClock; running: hotPill.visible; fps: 20 }
+            Repeater {
                 model: 3
-                Rectangle {
+                Image {
                     id: ripple
                     required property int index
-                    property real t: 0
-                    width: 20 + t * Math.max(80, shape.width * 0.9)
-                    height: 14 + t * 34
+                    // 0..1 through this ripple's 4.5 s swell, every 7.5 s
+                    readonly property real u: {
+                        const s = rippleClock.time - index * 1.5;
+                        return s < 0 ? 1 : (s % 7.5) / 4.5;
+                    }
+                    readonly property real t: Math.sin(Math.min(u, 1) * Math.PI / 2) // ease out
+                    visible: u < 1
+                    source: "../../assets/images/heat-glow.png"
+                    smooth: true
+                    width: 60 + t * Math.max(80, shape.width * 0.9)
+                    height: 54 + t * 34
                     x: hotPill.cx - width / 2
                     y: 13 - height / 2
-                    radius: height / 2
-                    // A soft filled glow that swells and fades (blurred above)
-                    color: Qt.rgba(1, 0.3, 0.26, 0.2 * Math.sin(Math.PI * t))
-                    SequentialAnimation on t {
-                        running: hotPill.visible
-                        loops: Animation.Infinite
-                        PauseAnimation { duration: ripple.index * 1500 }
-                        NumberAnimation { from: 0; to: 1; duration: 4500; easing.type: Easing.OutSine }
-                        PauseAnimation { duration: (2 - ripple.index) * 1500 }
-                    }
-                }
+                    opacity: 0.32 * Math.sin(Math.PI * t)
                 }
             }
         }

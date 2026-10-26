@@ -8,6 +8,7 @@ Item {
     property real to: 1
     property real stepSize: 0
     property real value: 0
+    readonly property alias pressed: area.pressed
     signal moved(real value)
 
     implicitWidth: 180
@@ -39,6 +40,7 @@ Item {
         border.color: Qt.rgba(0, 0, 0, 0.15)
     }
     MouseArea {
+        id: area
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         function set(x) {
@@ -48,6 +50,8 @@ Item {
             root.moved(v);
         }
         onPressed: m => set(m.x)
+        onPressedChanged: Panels.holdPull += pressed ? 1 : -1 // the panel holds still while dragging
+        Component.onDestruction: if (pressed) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
         onPositionChanged: m => { if (pressed) set(m.x); }
     }
 }

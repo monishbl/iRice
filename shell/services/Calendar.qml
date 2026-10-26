@@ -94,6 +94,11 @@ Singleton {
         saveLocal();
         return e;
     }
+    // Change one of your events (subscribed calendars are read-only)
+    function update(id, patch) {
+        local = local.map(e => e.id === id ? Object.assign({}, e, patch) : e);
+        saveLocal();
+    }
     function remove(id) {
         const e = local.find(x => x.id === id);
         local = local.filter(x => x.id !== id);

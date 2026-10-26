@@ -62,7 +62,12 @@ ShaderEffect {
 
     // The plugin's parameters for this shape, in window coordinates (follows
     // parent moves, scales and fades), or null when it shouldn't show
-    function pluginShape() {
+    // The last shape sent, rebuilt only when the geometry, opacity or material
+    // (`material`, bumped by the window) changed; the same array otherwise,
+    // so the window can tell nothing moved without comparing numbers
+    property var cachedShape: null
+    property string cachedKey: ""
+    function pluginShape(material) {
         let o = 1;
         for (let it = root; it; it = it.parent) {
             if (!it.visible)
@@ -76,11 +81,16 @@ ShaderEffect {
         const w = p1.x - p0.x, h = p1.y - p0.y;
         if (w < 1 || h < 1)
             return null;
+        const key = p0.x + " " + p0.y + " " + w + " " + h + " " + o + " " + radius + " " + material + " " + GlassPlugin.version;
+        if (key === cachedKey)
+            return cachedShape;
         const k = w / Math.max(1, width - 2 * shadowMargin);
         const pr = Theme.glass.preset(Math.min(w, h));
         const t = pr.tint;
         const shape = [p0.x, p0.y, w, h, radius * k, pr.mode, pr.refraction, pr.depth, Math.min(pr.bevel, radius) * k, pr.frost, pr.chroma, pr.rim, t.r, t.g, t.b, t.a, pr.saturation, o];
-        return GlassPlugin.version >= 2 ? shape.concat([pr.gloss]) : shape;
+        cachedKey = key;
+        cachedShape = GlassPlugin.version >= 2 ? shape.concat([pr.gloss]) : shape;
+        return cachedShape;
     }
     onXChanged: updatePosition()
     onYChanged: updatePosition()
@@ -116,5 +126,14 @@ ShaderEffect {
         y: root.shadowMargin
         width: root.width - 2 * root.shadowMargin
         height: root.height - 2 * root.shadowMargin
+    }
+    // Increase contrast: a clear outline, so surfaces never melt into what's behind
+    Rectangle {
+        visible: Theme.contrast
+        anchors.fill: shapeItem
+        radius: root.radius
+        color: "transparent"
+        border.width: 1
+        border.color: Theme.color.outline
     }
 }

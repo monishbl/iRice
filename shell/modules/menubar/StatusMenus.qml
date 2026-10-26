@@ -68,6 +68,67 @@ Scope {
         }
     }
 
+    // Who uses the microphone, camera or screen right now
+    StatusMenu {
+        panel: "privacyMenu"
+        width_: 260
+        body: Component {
+            Column {
+                spacing: 10
+                Text {
+                    text: "In use"
+                    color: Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
+                }
+                Text {
+                    visible: !Privacy.any
+                    text: "Nothing is using your microphone, camera or screen."
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    color: Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+                Repeater {
+                    model: [
+                        ...Privacy.cameraApps.map(a => ({ app: a, icon: "video-camera", what: "Camera", color: "#30D158" })),
+                        ...Privacy.micApps.map(a => ({ app: a, icon: "microphone", what: "Microphone", color: "#FF9F0A" })),
+                        ...(Privacy.screenShared ? [{ app: Privacy.screenApp || "Screen sharing", icon: "screencast", what: "Screen", color: "#BF5AF2" }] : [])
+                    ]
+                    Row {
+                        required property var modelData
+                        spacing: 10
+                        Rectangle {
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: Qt.alpha(parent.modelData.color, 0.18)
+                            Icon {
+                                anchors.centerIn: parent
+                                name: parent.parent.modelData.icon
+                                fill: true
+                                size: 15
+                                color: parent.parent.modelData.color
+                            }
+                        }
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            Text {
+                                text: parent.parent.modelData.app
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
+                            }
+                            Text {
+                                text: parent.parent.modelData.what
+                                color: Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.font.small }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     StatusMenu {
         panel: "batteryMenu"
         width_: 280

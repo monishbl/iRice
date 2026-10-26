@@ -8,6 +8,10 @@ Platter {
     id: root
 
     property int mode: 0 // 0 focus timer, 1 stopwatch
+    // Hundredths shown: ask for the fast stopwatch tick while visible
+    readonly property bool fineClock: visible && Timers.swRunning && mode === 1
+    onFineClockChanged: Timers.swFine = Math.max(0, Timers.swFine + (fineClock ? 1 : -1))
+    Component.onDestruction: if (fineClock) Timers.swFine = Math.max(0, Timers.swFine - 1)
     implicitHeight: column.implicitHeight + 24
 
     Column {

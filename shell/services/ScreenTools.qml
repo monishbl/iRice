@@ -25,6 +25,12 @@ Singleton {
     // Last screen translation, shown by TranslationCard
     property var translation: null // { x, y, w, h, screen, source, text, busy, error }
 
+    // The iRice screenshot editor (modules/screentools/editor) sets this while
+    // it's in use (screenshot.editor isn't "swappy"); screenshots then go to
+    // it through `shot` instead of Swappy and the notification.
+    property bool hasEditor: false
+    signal shot(string path)
+
     function stamp() {
         return Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss");
     }
@@ -56,7 +62,7 @@ Singleton {
         selecting = "";
         const geo = geometry(screen, rect);
         if (mode === "screenshot")
-            shoot(["-g", geo]);
+            shoot(["-g", geo], true);
         else if (mode === "ocr")
             run("ocr", "grim -g '" + geo + "' - | tesseract stdin stdout -l eng 2>/dev/null");
         else if (mode === "translate") {
@@ -86,10 +92,11 @@ Singleton {
         Qt.callLater(() => shoot(mon ? ["-o", mon.name] : []));
     }
 
-    function shoot(args) {
+    // `area`: an area screenshot, which opens for markup (Swappy) when that's on
+    function shoot(args, area) {
         const file = shotsDir + "/Screenshot " + stamp() + ".png";
         const q = a => "'" + a.replace(/'/g, "'\\''") + "'";
-        run("shot", "mkdir -p " + q(shotsDir) + " && grim " + args.map(q).join(" ") + " " + q(file) + " && wl-copy < " + q(file) + " && echo " + q(file));
+        run(area === true && !hasEditor && Config.options.screenshot.markup && Tools.has("swappy") ? "shotMarkup" : "shot", "mkdir -p " + q(shotsDir) + " && grim " + args.map(q).join(" ") + " " + q(file) + " && wl-copy < " + q(file) + " && echo " + q(file));
     }
 
     function startRecording(geo) {
@@ -116,7 +123,7 @@ Singleton {
         id: recorder
         onExited: code => {
             root.recording = false;
-            Quickshell.execDetached(["sh", "-c", "a=$(notify-send -a 'Screen Recording' -i video-x-generic -A open=Open -A folder='Show in Folder' 'Recording saved' \"$(basename \"$1\")\"); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && xdg-open \"$(dirname \"$1\")\"", "sh", root.recordingFile]);
+            Launch.run(["sh", "-c", "a=$(notify-send -a 'Screen Recording' -i video-x-generic -A open=Open -A folder='Show in Folder' 'Recording saved' \"$(basename \"$1\")\"); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", root.recordingFile, Files.manager]);
         }
     }
 
@@ -145,9 +152,20 @@ Singleton {
     }
 
     function finish(kind, out) {
-        if (kind === "shot" && out.trim() !== "") {
+        if ((kind === "shot" || kind === "shotMarkup") && out.trim() !== "") {
             const file = out.trim();
-            Quickshell.execDetached(["sh", "-c", "a=$(notify-send -a Screenshot -i \"$1\" -A open=Open -A folder='Show in Folder' 'Screenshot saved' 'Copied to the clipboard'); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && xdg-open \"$(dirname \"$1\")\"", "sh", file]);
+            Sounds.play("screenshot");
+            if (hasEditor) {
+                shot(file); // floating thumbnail; click it to mark up
+                return;
+            }
+            // Markup: Swappy edits the saved file (its Save writes it back;
+            // Copy puts the edited image on the clipboard)
+            if (kind === "shotMarkup") {
+                Launch.run(["swappy", "-f", file, "-o", file]);
+                return;
+            }
+            Launch.run(["sh", "-c", "a=$(notify-send -a Screenshot -i \"$1\" -A open=Open -A folder='Show in Folder' 'Screenshot saved' 'Copied to the clipboard'); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", file, Files.manager]);
         } else if (kind === "ocr") {
             const text = out.trim();
             if (text === "") {
@@ -179,7 +197,7 @@ Singleton {
     }
 
     function failed(kind) {
-        if (kind === "shot" || kind === "ask")
+        if (kind === "shot" || kind === "shotMarkup" || kind === "ask")
             Quickshell.execDetached(["notify-send", "-a", "Screenshot", "Couldn't take the screenshot", "Make sure grim is installed."]);
         else if (kind === "ocr" || kind === "translate")
             Quickshell.execDetached(["notify-send", "-a", "Text Capture", "Couldn't read the screen", "Make sure tesseract and its English data are installed."]);

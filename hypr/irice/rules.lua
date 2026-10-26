@@ -11,3 +11,22 @@ hl.layer_rule({ match = { namespace = "irice:(wallpaper|corners)" }, blur = fals
 hl.window_rule({ match = { title = "^iRice Settings$" }, float = true })
 hl.window_rule({ match = { title = "^iRice Settings$" }, center = true })
 hl.window_rule({ match = { class = "^(org.pulseaudio.pavucontrol|nm-connection-editor|blueman-manager)$" }, float = true })
+
+-- Fully opaque whatever the window transparency setting (Settings →
+-- Appearance): video, games and YouTube keep their colours exact
+for _, m in ipairs({
+    { class = "(?i)^(mpv|vlc|org\\.videolan\\.VLC|io\\.github\\.celluloid_player\\.Celluloid|smplayer|com\\.github\\.rafostar\\.Clapper|org\\.gnome\\.Totem|com\\.obsproject\\.Studio)$" },
+    { class = "(?i)^(steam_app.*|gamescope|heroic|lutris|net\\.lutris\\.Lutris|com\\.heroicgameslauncher\\.hgl|.*\\.exe)$" },
+    { title = "(?i).*YouTube.*" },
+    { title = "^(Picture[- ]in[- ][Pp]icture)$" },
+}) do
+    hl.window_rule({ match = m, opacity = "1.0 override 1.0 override" })
+end
+
+-- Picture in Picture (Firefox, Chromium): a small video in the bottom-right
+-- corner, on every space, keeping its shape. (Move takes plain numbers here.)
+hl.window_rule({
+    match = { title = "^(Picture[- ]in[- ][Pp]icture)$" },
+    float = true, pin = true, keep_aspect_ratio = true,
+    size = "480 270", move = "monitor_w-480-24 monitor_h-270-24"
+})

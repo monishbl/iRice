@@ -24,18 +24,32 @@ import qs.modules.notifications
 import qs.modules.osd
 import qs.modules.osk
 import qs.modules.overview
+import qs.modules.quicklook
 import qs.modules.overlay
 import qs.modules.polkit
 import qs.modules.screentools
+import qs.modules.screentools.editor
 import qs.modules.session
 import qs.modules.settings
+import qs.modules.share
 import qs.modules.sidebar
 import qs.modules.spotlight
 import qs.modules.stagemanager
+import qs.modules.tabs
+import qs.modules.tiling
 import qs.modules.wallpaper
+import qs.modules.switcher
+import qs.modules.emoji
+import qs.modules.notes
+import qs.modules.hotcorners
 
 ShellRoot {
     id: root
+
+    // Don't restart the whole shell whenever a file in its folder changes
+    // (a session running straight from the repo would reload on every edit);
+    // reload by hand instead (irice repair). IRICE_LIVE_RELOAD=1 turns it on.
+    settings.watchFiles: Quickshell.env("IRICE_LIVE_RELOAD") === "1"
 
     // Escape hatch (Super+Escape): close every panel, overlay and selection,
     // in case something is stuck holding the keyboard or pointer
@@ -46,7 +60,7 @@ ShellRoot {
         ScreenTools.translation = null;
     }
     // Services that must run without a UI referencing them
-    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices]
+    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices, Privacy, NetworkAlerts, Sounds, Transfers, Calls, Badges, ScreenTime, Todos, AppTheme, LocalSend, WindowRules]
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Bold.ttf") }
@@ -71,6 +85,14 @@ ShellRoot {
     Osd {}
     MissionControl {}
     Overview {}
+    Switcher {}
+    EmojiPicker {}
+    QuickNote {}
+    HotCorners {}
+    SnapPreview {}
+    TabStrip {}
+    QuickLook {}
+    ShareSheet {}
     WidgetGallery {}
     Sidebar {}
     Polkit {}
@@ -83,6 +105,7 @@ ShellRoot {
     RegionSelector {}
     ScreenToolbar {}
     TranslationCard {}
+    ScreenshotEditor {}
 
     // Compositor keybinds: bind = hl.dsp.global("irice:<name>")
     component Shortcut: GlobalShortcut {
@@ -103,6 +126,18 @@ ShellRoot {
     Shortcut { panel: "keyboard"; description: "On-screen keyboard" }
     Shortcut { panel: "clipboard"; description: "Clipboard history" }
     Shortcut { panel: "launchpad"; description: "App Library" }
+    Shortcut { panel: "quickNote"; description: "Quick note" }
+    GlobalShortcut {
+        appid: "irice"
+        name: "appExpose"
+        description: "App Exposé: the focused app's windows"
+        onPressed: {
+            const t = Hyprland.activeToplevel;
+            const cls = t?.lastIpcObject?.class ?? t?.wayland?.appId ?? "";
+            Panels.appExpose(Apps.entryFor(cls)?.id ?? cls, Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name));
+        }
+    }
+    GlobalShortcut { appid: "irice"; name: "showDesktop"; description: "Show Desktop (again to bring the windows back)"; onPressed: Desktop.showDesktop() }
     GlobalShortcut { appid: "irice"; name: "settings"; description: "Open Settings"; onPressed: Panels.settingsOpen ? Panels.settingsOpen = false : Panels.openSettings() }
     Shortcut { panel: "screenTools"; description: "Screenshot and recording tools" }
     GlobalShortcut { appid: "irice"; name: "screenshotScreen"; description: "Screenshot of the screen"; onPressed: ScreenTools.screenshotScreen() }
@@ -110,6 +145,9 @@ ShellRoot {
     GlobalShortcut { appid: "irice"; name: "ocr"; description: "Copy text from the screen"; onPressed: ScreenTools.select("ocr") }
     GlobalShortcut { appid: "irice"; name: "screenTranslate"; description: "Translate text on the screen"; onPressed: ScreenTools.select("translate") }
     GlobalShortcut { appid: "irice"; name: "record"; description: "Start or stop recording"; onPressed: ScreenTools.recording ? ScreenTools.stopRecording() : ScreenTools.select("record") }
+    GlobalShortcut { appid: "irice"; name: "lens"; description: "Search an area with Google Lens"; onPressed: Launch.run([decodeURIComponent(Qt.resolvedUrl("assets/scripts/lens-search.sh").toString().replace("file://", ""))]) }
+    GlobalShortcut { appid: "irice"; name: "darkMode"; description: "Light or dark appearance"; onPressed: System.toggleDarkMode() }
+    GlobalShortcut { appid: "irice"; name: "caffeine"; description: "Caffeine on or off"; onPressed: System.setKeepAwake(!System.keepAwake, 0) }
     GlobalShortcut { appid: "irice"; name: "askScreen"; description: "Ask AI about part of the screen"; onPressed: ScreenTools.select("ask") }
     component Snap: GlobalShortcut {
         required property string layout
@@ -124,6 +162,13 @@ ShellRoot {
     Snap { layout: "bottom" }
     Snap { layout: "fill" }
     Snap { layout: "center" }
+    GlobalShortcut {
+        appid: "irice"
+        name: "tabs"
+        description: "Merge windows into tabs, or move a tab out"
+        onPressed: (Hyprland.activeToplevel?.lastIpcObject?.grouped?.length ?? 0) > 1 ? Hyprland.dispatch("hl.dsp.window.move({ out_of_group = true })") : Apps.mergeIntoTabs()
+    }
+    GlobalShortcut { appid: "irice"; name: "pip"; description: "Picture in Picture"; onPressed: Tiling.pip() }
     GlobalShortcut { appid: "irice"; name: "snap-restore"; description: "Return window to previous size"; onPressed: Tiling.restore() }
     // Tap Super: overview. Hyprland sends this on release, and only when no
     // other key was pressed while Super was held.
@@ -168,6 +213,10 @@ ShellRoot {
         }
         function nctab(index: int): void {
             Panels.ncTab = index;
+        }
+        // qs ipc call panels quicklook /path/to/file  ("" closes it)
+        function quicklook(path: string): void {
+            Panels.quickLookPath = path;
         }
     }
 

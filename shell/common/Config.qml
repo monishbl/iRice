@@ -19,7 +19,7 @@ Singleton {
 
     Timer {
         id: writeTimer
-        interval: 100
+        interval: 300 // after a slider stops moving, not on every step
         onTriggered: file.writeAdapter()
     }
 
@@ -55,12 +55,65 @@ Singleton {
                 property bool wallpaperTint: true
                 property bool screenCorners: true
                 property string decorations: "none" // none | controls | titlebars
+                property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by iRice)
                 property string iconStyle: "default" // default | dark | clear | tinted | auto (dark in dark mode)
                 property string iconShape: "squircle" // squircle (every icon on the same tile) | original
                 property string iconTile: "auto" // tile behind transparent logos: auto (from the logo) | neutral | accent
                 property int screenCornerRadius: 12
                 property int windowRadius: 20 // app window corners (continuous curve)
+                property string cursor: "macos" // pointer: macos | bibata (end4's)
+                property string windowOpacity: "subtle" // app windows see-through: off | subtle | more (fullscreen, video and games stay opaque)
                 property string motion: "subtle" // subtle (macOS) | expressive (iOS 26: more pull and bounce)
+                // Accessibility (like macOS): solid surfaces instead of glass;
+                // stronger text, separators and outlines
+                property bool reduceTransparency: false
+                property bool increaseContrast: false
+                // Match apps: GTK, Qt, terminal and browser colours follow the
+                // accent or the wallpaper (needs matugen): off | accent | wallpaper
+                property string appTheme: "off"
+                property list<string> appThemeTargets: ["gtk", "qt", "terminals", "browsers"]
+            }
+
+            property JsonObject lock: JsonObject {
+                property string layout: "ios" // ios (clock, widgets, notifications, Now Playing) | macos (clock; avatar and field)
+                property string material: "system" // cards and field: glass | frost | solid | system (follows Appearance)
+                property string text: "auto" // light | dark | auto (from the wallpaper)
+                property bool previews: false // notification text on the lock screen (else app names only)
+                property bool standby: true // StandBy: charging and idle shows a full-screen clock
+                property bool standbyShift: true // StandBy moves a little every minute and rests dark for a minute every 15 (burn-in)
+            }
+
+            property JsonObject notificationCenter: JsonObject {
+                // The panel behind notifications and widgets; without it (the
+                // default) each is its own glass card, like Control Center's chips
+                property bool background: false
+            }
+
+            property JsonObject sharing: JsonObject {
+                // Nearby devices can send you files (LocalSend), like AirDrop:
+                // off | 10min (everyone, for 10 minutes) | everyone
+                property string receiving: "off"
+                property string name: "" // how you appear to others; empty = "<user>'s computer"
+            }
+
+            property JsonObject input: JsonObject {
+                // Three fingers move the window under them; space swipes move
+                // to four fingers (read by hypr/irice/gestures.lua)
+                property bool threeFingerDrag: false
+            }
+
+            property JsonObject sounds: JsonObject {
+                property bool enabled: true
+                property bool startup: true // when you log in (not on shell reloads)
+                property bool screenshot: true
+                property bool trash: true // emptying the Trash
+                property real volume: 0.6
+            }
+
+            property JsonObject screenshot: JsonObject {
+                property string editor: "irice" // irice (floating thumbnail, click to mark up) | swappy
+                property bool thumbnail: true // iRice editor: floating thumbnail after a screenshot; off = a notification with Edit
+                property bool markup: true // Swappy only: area screenshots open in Swappy to crop, draw and annotate
             }
 
             property JsonObject wallpaper: JsonObject {
@@ -142,7 +195,13 @@ Singleton {
                 // Widgets on the desktop grid: "kind:size:col:row", size s | m | l
                 property list<string> widgets: ["clock:m:0:0", "weather:m:0:1", "calendar:s:0:2", "batteries:s:1:2"]
                 property string photosFolder: "" // empty = ~/Pictures
+                property string fileManager: "" // opens folders and the Trash: nautilus | dolphin | thunar | ...; empty = automatic
                 property list<string> worldClocks: ["Cupertino|America/Los_Angeles", "London|Europe/London", "Tokyo|Asia/Tokyo", "Sydney|Australia/Sydney"]
+                property bool icons: true // files and folders in ~/Desktop on the desktop
+                property bool useStacks: false // grouped by kind into stacks
+                property list<string> iconPositions: [] // "path\tcol\trow" in icon spots (half a widget cell)
+                property bool smartRotate: true // Smart Stacks bring forward what matters now
+                property list<string> stocks: ["AAPL", "MSFT", "^GSPC", "BTC-USD", "NVDA", "GOOGL"] // Yahoo Finance symbols for the Stocks widget
             }
 
             property JsonObject weather: JsonObject {
@@ -168,6 +227,49 @@ Singleton {
                 property list<string> livePieces: ["music.art", "music.title", "music.scroll", "music.bars", "music.prev", "music.play", "music.next", "timer.icon", "timer.label", "timer.time", "timer.play", "timer.skip", "stopwatch.icon", "stopwatch.time", "stopwatch.play", "stopwatch.reset", "recording.icon", "recording.time", "recording.stop"]
                 // Open island music player: overlay (controls over the album art) | side (art beside the controls)
                 property string playerLayout: "overlay"
+            }
+
+            property JsonObject windowRules: JsonObject {
+                // Per-app window rules (Settings → Window Rules), one JSON string per app:
+                // {"class","name","float","workspace" (0 = any),"opaque","start" ("" | "maximize" | "fullscreen"),"pin","width","height" (0 = none)}
+                // Written to window-rules.lua for Hyprland. Plain strings: JsonAdapter 0.2 is unreliable with var.
+                property list<string> rules: []
+            }
+
+            property JsonObject defaultApps: JsonObject {
+                // A command per role for keybinds and the shell (Settings → Desktop); empty = automatic
+                // (the first installed: kitty, Nautilus, your system browser, VS Code…; see open-app.sh)
+                property string terminal: ""
+                property string browser: ""
+                property string code: ""
+                property string text: ""
+                property string office: ""
+                property string mixer: ""
+                property string tasks: ""
+            }
+            property JsonObject notes: JsonObject {
+                property string folder: "" // Markdown notes (Spotlight "note …", quick note); empty = ~/Documents/Notes
+            }
+            property JsonObject emoji: JsonObject {
+                property string style: "android" // emoji drawn by the shell: android (Noto) | apple | windows (Fluent)
+                property string klipyKey: "" // your KLIPY app key for the picker's GIF tab (partner.klipy.com/api-keys); KLIPY_API_KEY in the environment wins
+                property string gifFilter: "medium" // GIF safety filter: off | low | medium | high
+            }
+            property JsonObject switcher: JsonObject {
+                property bool enabled: true // Alt+Tab window switcher with previews
+            }
+            property JsonObject hotCorners: JsonObject {
+                // none | overview | missionControl | desktop | notificationCenter | launchpad | lock | standby | quickNote
+                property string topLeft: "overview"
+                property string topRight: "none"
+                property string bottomLeft: "none"
+                property string bottomRight: "none"
+                property int delay: 200 // ms the pointer rests in the corner before the action runs
+            }
+
+            property JsonObject overview: JsonObject {
+                // Window previews: snapshot (captured once each time the Overview opens) | live (keep updating while open) | hybrid (live for the current space, snapshots for the rest)
+                property string previews: "snapshot"
             }
 
             property JsonObject stageManager: JsonObject {

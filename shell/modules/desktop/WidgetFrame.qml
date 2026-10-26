@@ -18,6 +18,10 @@ Item {
     signal removeRequested(int index)
 
     readonly property var def: defs.kind(widget.kind)
+    // Items the widget adds to its right-click menu
+    function extraMenu() {
+        return loader.item?.menuItems?.() ?? [];
+    }
     readonly property size px: defs.pixelSize(widget.size)
     readonly property int m: 20 // shadow margin
     readonly property real homeX: origin.x + widget.col * (defs.cell + defs.gap)
@@ -75,6 +79,8 @@ Item {
             source: root.def ? Qt.resolvedUrl(root.def.file) : ""
             onLoaded: {
                 item.size = Qt.binding(() => root.widget.size);
+                if (item.widgetId !== undefined)
+                    item.widgetId = Qt.binding(() => root.widget.id ?? "");
                 if (item.radius !== undefined)
                     item.radius = 22;
             }

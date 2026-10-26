@@ -9,9 +9,24 @@ Singleton {
     property string open: ""
     property var screen: null
     property real anchorX: 0 // left edge of the menu bar item that opened a menu
-    property string ccPage: "" // Control Center detail page: "" | wifi | bluetooth | sound
+    property string ccPage: "" // Control Center detail page: "" | wifi | bluetooth | sound | focus | caffeine
+    // Share sheet: send these files to a nearby device
+    property var sharePaths: []
+    function share(paths, scr) {
+        sharePaths = paths;
+        show("share", scr);
+    }
+    // Quick Look: a preview of this file over whatever is open ("" = none)
+    property string quickLookPath: ""
+    function quickLook(path) {
+        quickLookPath = quickLookPath === path ? "" : (path ?? "");
+    }
+    property string exposeApp: "" // App Exposé: Mission Control shows only this app's windows (entry id or class)
     property bool ccEditing: false // Control Center "Edit Controls"
     property bool widgetEditing: false // desktop widgets: Edit Widgets (gallery open)
+    // A control is being dragged (slider, reordering): panels hold still
+    // instead of rubber-banding under the pointer
+    property int holdPull: 0
     signal addWidget(string kind, string size) // from the gallery to the desktop of Panels.screen
     property bool settingsOpen: false
     property string settingsPage: "appearance"
@@ -44,7 +59,17 @@ Singleton {
         return open === name && (!scr || screen === scr);
     }
 
+    // App Exposé: one app's windows, from every space
+    function appExpose(app, scr) {
+        if (!app)
+            return;
+        exposeApp = app;
+        show("missionControl", scr);
+    }
+
     function show(name, scr, x) {
+        if (name !== "missionControl")
+            exposeApp = "";
         open = name;
         screen = scr ?? Quickshell.screens[0];
         if (x !== undefined)
@@ -68,6 +93,7 @@ Singleton {
     }
 
     function close() {
+        exposeApp = ""; // Mission Control keeps its own copy while it animates out
         if (open !== "") {
             lastClosed = open;
             lastClosedAt = Date.now();

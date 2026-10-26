@@ -112,7 +112,9 @@ Column {
                 { kind: "music", label: "Music shows", pieces: [["art", "Album art"], ["title", "Title"], ["scroll", "Scroll long titles"], ["bars", "Playing bars"], ["prev", "Previous"], ["play", "Play/Pause"], ["next", "Next"]] },
                 { kind: "timer", label: "Focus timer shows", pieces: [["icon", "Icon"], ["label", "Focus/Break"], ["time", "Time left"], ["play", "Pause"], ["skip", "Skip"]] },
                 { kind: "stopwatch", label: "Stopwatch shows", pieces: [["icon", "Icon"], ["time", "Time"], ["play", "Pause"], ["reset", "Reset"]] },
-                { kind: "recording", label: "Recording shows", pieces: [["icon", "Red dot"], ["time", "Time"], ["stop", "Stop"]] }
+                { kind: "recording", label: "Recording shows", pieces: [["icon", "Red dot"], ["time", "Time"], ["stop", "Stop"]] },
+                { kind: "transfer", label: "Transfers show", pieces: [["icon", "Icon"], ["name", "File name"], ["time", "Progress"], ["open", "Open Downloads"], ["cancel", "Cancel copy"]] },
+                { kind: "call", label: "Calls show", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["mute", "Mute"], ["open", "Open"], ["leave", "Leave"]] }
             ] : []
             Row {
                 id: pieceRow
@@ -127,7 +129,7 @@ Column {
                             id: chip
                             required property var modelData
                             readonly property string key: pieceRow.modelData.kind + "." + modelData[0]
-                            readonly property bool on: Config.options.island.livePieces.includes(key)
+                            readonly property bool on: { Config.options.island.livePieces; Config.options.island.known; return Island.shows(pieceRow.modelData.kind, modelData[0]); }
                             width: chipText.implicitWidth + 20
                             height: 26
                             radius: 13
@@ -146,10 +148,7 @@ Column {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    const l = Config.options.island.livePieces.filter(x => x !== chip.key);
-                                    Config.options.island.livePieces = chip.on ? l : l.concat([chip.key]);
-                                }
+                                onClicked: Island.setShows(pieceRow.modelData.kind, chip.modelData[0], !chip.on)
                             }
                         }
                     }
@@ -182,7 +181,7 @@ Column {
             Switch { checked: Config.options.island.hud; onToggled: Config.options.island.hud = !checked }
         }
         Repeater {
-            model: Config.options.island.enabled ? [["music", "New song"], ["charging", "Charger connected or removed"], ["battery", "Low battery"], ["timers", "Focus timer"], ["recording", "Screen recording"], ["focus", "Focus mode"], ["bluetooth", "Bluetooth devices connect or disconnect"], ["usb", "USB devices and drives"], ["displays", "Displays connect or disconnect"], ["audio", "Sound moves to another output"], ["resources", "CPU or memory stays high"], ["temperature", "CPU running hot (alert, and the island turns red)"], ["notifications", "Notifications as cards in the island (instead of banners)"]] : []
+            model: Config.options.island.enabled ? [["music", "New song"], ["charging", "Charger connected or removed"], ["battery", "Low battery"], ["timers", "Focus timer"], ["recording", "Screen recording"], ["focus", "Focus mode"], ["bluetooth", "Bluetooth devices connect or disconnect"], ["usb", "USB devices and drives"], ["displays", "Displays connect or disconnect"], ["audio", "Sound moves to another output"], ["network", "Wi-Fi, VPN, hotspot and Ethernet changes"], ["transfers", "Downloads and file copies (live)"], ["calls", "Calls and meetings (live)"], ["resources", "CPU or memory stays high"], ["temperature", "CPU running hot (alert, and the island turns red)"], ["notifications", "Notifications as cards in the island (instead of banners)"]] : []
             Row {
                 id: ev
                 required property var modelData

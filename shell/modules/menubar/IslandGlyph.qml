@@ -12,6 +12,8 @@ import qs.common
 //   timer, focus                   the icon turns in, a ring sweeps
 //   temperature                    a ring fills and warms from orange to red,
 //                                  then the thermometer pulses with a red glow
+//   network                        Wi-Fi: the arcs fill in one by one; VPN,
+//                                  hotspot, Ethernet: ripples
 // Everything stops a moment after the alert opens (nothing loops forever).
 Item {
     id: root
@@ -29,7 +31,8 @@ Item {
     // Restart the motion whenever a new alert arrives
     // (deferred: bindings that depend on `event`, like kind, update after this handler)
     // The owner calls play() when it appears (stacked alerts start later)
-    readonly property bool rippled: ["device", "usb", "display", "custom", "notification"].includes(kind)
+    readonly property bool wifiFill: kind === "network" && event?.icon === "wifi-high"
+    readonly property bool rippled: ["device", "usb", "display", "custom", "notification"].includes(kind) || (kind === "network" && !wifiFill && event?.ripple === true)
     signal played
     function play() {
         enter.restart();
@@ -42,6 +45,9 @@ Item {
             bolt.restart();
         if (kind === "temperature")
             heat.restart();
+        wifiStep = wifiFill ? 0 : -1;
+        if (wifiFill)
+            wifiAnim.restart();
         played();
     }
 
@@ -118,7 +124,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: glyphDrop.y
             visible: !root.hasArt
-            name: root.event?.icon ?? ""
+            name: root.wifiStep >= 0 ? ["wifi-none", "wifi-low", "wifi-medium", "wifi-high"][root.wifiStep] : (root.event?.icon ?? "")
             fill: true
             size: Math.round(root.size * (root.ringed ? 0.42 : 0.48))
             color: root.tint
@@ -249,6 +255,20 @@ Item {
                 NumberAnimation { target: glyph; property: "scale"; to: 1; duration: 520; easing.type: Easing.InOutSine }
             }
         }
+    }
+
+    // Wi-Fi joined: the signal fills in, arc by arc
+    property int wifiStep: -1
+    SequentialAnimation {
+        id: wifiAnim
+        PauseAnimation { duration: 260 }
+        PropertyAction { target: root; property: "wifiStep"; value: 1 }
+        PauseAnimation { duration: 170 }
+        PropertyAction { target: root; property: "wifiStep"; value: 2 }
+        PauseAnimation { duration: 170 }
+        PropertyAction { target: root; property: "wifiStep"; value: 3 }
+        NumberAnimation { target: glyph; property: "scale"; to: 1.15; duration: 140; easing.type: Easing.OutCubic }
+        NumberAnimation { target: glyph; property: "scale"; to: 1; duration: 220; easing.type: Easing.InOutCubic }
     }
 
     // Charging: the bolt pulses twice

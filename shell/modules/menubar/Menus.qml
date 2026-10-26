@@ -79,6 +79,7 @@ Scope {
                 readonly property bool has: !!win
                 readonly property bool floating: win?.lastIpcObject?.floating ?? false
                 readonly property bool pinned: win?.lastIpcObject?.pinned ?? false
+                readonly property bool grouped: (win?.lastIpcObject?.grouped?.length ?? 0) > 1
                 function tiles(names) {
                     return names.map(n => ({ frac: Tiling.layouts[n], label: Tiling.names[n], action: () => Tiling.snap(n) }));
                 }
@@ -88,6 +89,8 @@ Scope {
                     { text: "Minimize", enabled: has, action: () => Apps.minimize() },
                     { text: "Float", checked: floating, enabled: has, action: () => Apps.windowAction("float", { action: "toggle" }) },
                     { text: "Keep on All Spaces", checked: pinned, enabled: has && floating, action: () => Apps.windowAction("pin", { action: "toggle" }) },
+                    { text: grouped ? "Move Tab to New Window" : "Merge into Tabs", shortcut: KeyNames.combo("SUPER T"), enabled: has, action: () => grouped ? Hyprland.dispatch("hl.dsp.window.move({ out_of_group = true })") : Apps.mergeIntoTabs() },
+                    { text: "Picture in Picture", checked: has && Tiling.isPip(win), shortcut: KeyNames.combo("SUPER SHIFT P"), enabled: has, action: () => Tiling.pip() },
                     { separator: true },
                     { header: "Move & Resize" },
                     { tiles: tiles(["left", "right", "top", "bottom"]) },

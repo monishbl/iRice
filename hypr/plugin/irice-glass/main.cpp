@@ -28,6 +28,14 @@
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
+#include <hyprland/src/event/EventBus.hpp>
+#include <hyprland/src/layout/LayoutManager.hpp>
+#include <hyprland/src/desktop/view/Group.hpp>
+#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/managers/EventManager.hpp>
+#include <hyprland/src/managers/input/InputManager.hpp>
+#include <hyprland/src/devices/IPointer.hpp>
+#include <format>
 #include <GLES3/gl32.h>
 #include <map>
 #include <mutex>
@@ -297,7 +305,8 @@ struct SGLState {
     }
 };
 
-static bool g_lastBlur = false;
+static bool          g_lastBlur = false;
+static unsigned long g_blits = 0, g_blitPx = 0;
 static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon) {
     auto& rd = g_pHyprRenderer->m_renderData;
     if (!rd.currentFB || !ensureProgram())
@@ -317,26 +326,51 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     GLuint blurTex = data.blurredBG ? data.blurredBG->m_texID : 0;
     g_lastBlur      = blurTex != 0;
 
+    // Which shapes this frame's damage touches, and one copy of the screen
+    // behind all of them (plus room for the refraction to reach in from
+    // outside), cut to the damaged part: one blit per layer per frame.
+    struct SPlaced {
+        const float* v;
+        float        x, y, w, h;
+        CRegion      region;
+    };
+    std::vector<SPlaced> placed;
+    placed.reserve(shapes.size());
+    int cx0 = fbW, cy0 = fbH, cx1 = 0, cy1 = 0;
     for (const auto& s : shapes) {
         const float* v = s.v;
         if (v[17] <= 0.001f || v[2] < 1 || v[3] < 1)
             continue;
         // Shape in FB pixels. Hyprland's framebuffers are stored top-down, so
         // FB rows (and gl_FragCoord.y) already count from the top.
-        const float x = box.x + v[0] * scale, yTop = box.y + v[1] * scale, w = v[2] * scale, h = v[3] * scale;
-        const float yGL = yTop;
-
-        // Copy what's behind (plus room for the refraction to reach in from outside)
-        const int margin = (int)std::ceil(v[6] * scale + 4 + v[7] * std::max(w, h) * 0.08f);
-        int cx0 = std::max(0, (int)std::floor(x) - margin), cy0 = std::max(0, (int)std::floor(yGL) - margin);
-        int cx1 = std::min(fbW, (int)std::ceil(x + w) + margin), cy1 = std::min(fbH, (int)std::ceil(yGL + h) + margin);
-        if (cx1 <= cx0 || cy1 <= cy0)
+        const float x = box.x + v[0] * scale, y = box.y + v[1] * scale, w = v[2] * scale, h = v[3] * scale;
+        CRegion     region(x - 1, y - 1, w + 2, h + 2);
+        if (data.damage)
+            region.intersect(*data.damage);
+        if (region.empty())
             continue;
-        glDisable(GL_SCISSOR_TEST);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, fb->getFBID());
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_copyFB);
-        glBlitFramebuffer(cx0, cy0, cx1, cy1, cx0, cy0, cx1, cy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        const int  margin = (int)std::ceil(v[6] * scale + 4 + v[7] * std::max(w, h) * 0.08f);
+        const auto ext    = region.getExtents(); // the part drawn, grown by how far it samples
+        cx0 = std::min(cx0, std::max(0, (int)std::floor(ext.x) - margin));
+        cy0 = std::min(cy0, std::max(0, (int)std::floor(ext.y) - margin));
+        cx1 = std::max(cx1, std::min(fbW, (int)std::ceil(ext.x + ext.w) + margin));
+        cy1 = std::max(cy1, std::min(fbH, (int)std::ceil(ext.y + ext.h) + margin));
+        placed.push_back({v, x, y, w, h, std::move(region)});
+    }
+    if (placed.empty() || cx1 <= cx0 || cy1 <= cy0) {
+        st.restore();
+        return;
+    }
+    glDisable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fb->getFBID());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_copyFB);
+    glBlitFramebuffer(cx0, cy0, cx1, cy1, cx0, cy0, cx1, cy1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    g_blits++;
+    g_blitPx += (unsigned long)(cx1 - cx0) * (cy1 - cy0);
 
+    for (auto& ps : placed) {
+        const float* v = ps.v;
+        const float  x = ps.x, yGL = ps.y, w = ps.w, h = ps.h;
         // Draw the glass into the current framebuffer, only where damaged
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->getFBID());
         glViewport(0, 0, fbW, fbH);
@@ -370,10 +404,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         glDisable(GL_STENCIL_TEST);
         glEnable(GL_SCISSOR_TEST);
 
-        CRegion region(x - 1, yTop - 1, w + 2, h + 2);
-        if (data.damage)
-            region.intersect(*data.damage);
-        for (auto& r : region.getRects()) {
+        for (auto& r : ps.region.getRects()) {
             glScissor(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
@@ -383,8 +414,11 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
 
 typedef void (*origRenderTextureWithBlur)(void*, SP<ITexture>, const CBox&, const CHyprOpenGLImpl::STextureRenderData&);
 
-// Diagnostics for `hyprctl irice-glass stats`
+// Diagnostics for `hyprctl irice-glass stats` (frames: per monitor, for
+// ./dev.sh perf to see what keeps redrawing)
 static unsigned long g_calls = 0, g_drawn = 0;
+static std::map<std::string, unsigned long> g_frames;
+static CHyprSignalListener                  g_frameListener;
 static std::string   g_lastNs, g_lastBox;
 
 static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data) {
@@ -410,6 +444,76 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
     ((origRenderTextureWithBlur)g_hook->m_original)(thisptr, tex, box, data);
 }
 
+// ── Drag to an edge to tile (macOS Sequoia) ─────────────────────────────────
+// While a window is being moved, tell the shell which snap zone the pointer
+// is in (only when it changes), and where it was dropped:
+//   irice-drag>>zone,<monitor>,<zone>,<window>   zone: left right fill topLeft
+//   irice-drag>>drop,<monitor>,<zone>,<window>         topRight bottomLeft bottomRight none
+// The shell shows the preview and tiles the window on drop.
+static CHyprSignalListener g_dragMove, g_dragButton;
+static bool                g_dragging = false;
+static std::string         g_dragZone = "none", g_dragMon, g_dragWin;
+
+static void dragUpdate() {
+    if (!g_layoutManager) {
+        g_dragging = false;
+        return;
+    }
+    const auto& dc  = g_layoutManager->dragController();
+    auto        tgt = dc && dc->mode() == MBIND_MOVE ? dc->target() : nullptr;
+    auto        w   = tgt ? tgt->window() : nullptr;
+    if (!w) { // (the drag threshold only applies to tiled windows; a still click reports "none")
+        g_dragging = false;
+        return;
+    }
+    const Vector2D pos = g_pInputManager->getMouseCoordsInternal();
+    PHLMONITOR     mon;
+    for (auto& m : State::monitorState()->monitors())
+        if (m->logicalBox().containsPoint(pos))
+            mon = m;
+    std::string zone = "none";
+    if (mon) {
+        const CBox  b = mon->logicalBox();
+        const double e = 6, c = std::min(b.w, b.h) * 0.08; // edge, corner reach
+        const bool  L = pos.x <= b.x + e, R = pos.x >= b.x + b.w - e, T = pos.y <= b.y + e, B = pos.y >= b.y + b.h - e;
+        const bool  nearT = pos.y <= b.y + c, nearB = pos.y >= b.y + b.h - c, nearL = pos.x <= b.x + c, nearR = pos.x >= b.x + b.w - c;
+        if ((L && nearT) || (T && nearL))
+            zone = "topLeft";
+        else if ((R && nearT) || (T && nearR))
+            zone = "topRight";
+        else if ((L && nearB) || (B && nearL))
+            zone = "bottomLeft";
+        else if ((R && nearB) || (B && nearR))
+            zone = "bottomRight";
+        else if (L)
+            zone = "left";
+        else if (R)
+            zone = "right";
+        else if (T)
+            zone = "fill";
+    }
+    const std::string win = std::format("0x{:x}", (uintptr_t)w.get());
+    const std::string mn  = mon ? mon->m_name : "";
+    if (!g_dragging || zone != g_dragZone || mn != g_dragMon) {
+        g_dragZone = zone;
+        g_dragMon  = mn;
+        g_dragWin  = win;
+        g_pEventManager->postEvent(SHyprIPCEvent{"irice-drag", "zone," + mn + "," + zone + "," + win});
+    }
+    g_dragging = true;
+}
+
+static void dragInit(HANDLE) {
+    g_dragMove   = Event::bus()->m_events.input.mouse.move.listen([](Vector2D, Event::SCallbackInfo&) { dragUpdate(); });
+    g_dragButton = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo&) {
+        if (e.state != WL_POINTER_BUTTON_STATE_RELEASED || !g_dragging)
+            return;
+        g_dragging = false;
+        g_pEventManager->postEvent(SHyprIPCEvent{"irice-drag", "drop," + g_dragMon + "," + g_dragZone + "," + g_dragWin});
+        g_dragZone = "none";
+    });
+}
+
 // hyprctl irice-glass ...
 static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     std::istringstream in(request);
@@ -422,8 +526,31 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
         in >> state >> theme;
         return controlsCommand(state, theme);
     }
-    if (verb == "stats")
-        return "calls " + std::to_string(g_calls) + " drawn " + std::to_string(g_drawn) + " last " + g_lastNs + " " + g_lastBox + " shapesets " + std::to_string(g_shapes.size()) + " blur " + (g_lastBlur ? "yes" : "no");
+    // Window tabs: every group's windows in order and which one is in front
+    // (Hyprland's own IPC doesn't say), for the shell's tab strip:
+    // [{"current":"0x..","windows":["0x..",...],"locked":false}]
+    if (verb == "groups") {
+        std::string out = "[";
+        for (auto& wg : Desktop::View::groups()) {
+            auto g = wg.lock();
+            if (!g || g->size() == 0)
+                continue;
+            auto cur = g->current();
+            std::string ws;
+            for (auto& wr : g->windows())
+                if (auto w = wr.lock())
+                    ws += (ws.empty() ? "\"" : ",\"") + std::format("0x{:x}", (uintptr_t)w.get()) + "\"";
+            out += (out.size() > 1 ? "," : "") + std::format("{{\"current\":\"0x{:x}\",\"windows\":[{}],\"locked\":{}}}", (uintptr_t)cur.get(), ws, g->locked() ? "true" : "false");
+        }
+        return out + "]";
+    }
+    if (verb == "stats") {
+        std::string frames;
+        for (auto& [m, n] : g_frames)
+            frames += " frames:" + m + " " + std::to_string(n);
+        return "calls " + std::to_string(g_calls) + " drawn " + std::to_string(g_drawn) + " blits " + std::to_string(g_blits) + " blitpx " + std::to_string(g_blitPx) + frames +
+            " last " + g_lastNs + " " + g_lastBox + " shapesets " + std::to_string(g_shapes.size()) + " blur " + (g_lastBlur ? "yes" : "no");
+    }
     if (verb == "clear") {
         std::string mon, ns;
         if (in >> mon >> ns)
@@ -461,7 +588,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
                 g_pHyprRenderer->damageMonitor(m);
         return "ok";
     }
-    return "error: unknown verb (set, clear, ping, stats, controls)";
+    return "error: unknown verb (set, clear, ping, stats, controls, groups)";
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -489,12 +616,20 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         throw std::runtime_error("[irice-glass] hook failed");
 
     controlsInit(handle);
+    dragInit(handle);
+    g_frameListener = Event::bus()->m_events.render.pre.listen([](PHLMONITOR m) {
+        if (m)
+            g_frames[m->m_name]++;
+    });
     g_cmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "irice-glass", .exact = false, .fn = onCommand});
     return {"irice-glass", "Liquid Glass for the iRice shell", "iRice", "1.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
     g_shapes.clear();
+    g_frameListener.reset();
+    g_dragMove.reset();
+    g_dragButton.reset();
     controlsExit();
     if (g_cmd)
         HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_cmd);

@@ -7,10 +7,16 @@ import qs.glass
 import qs.services
 import qs.modules.spotlight
 
-// Overview (tap Super): every space as a small screen with its windows, plus
-// a search field. Click a space to go there, a window to focus it, drag a
-// window onto another space to move it. Typing searches apps and actions
-// like Spotlight; Enter opens the first result. Arrows pick a space.
+// Overview (tap Super): this monitor's spaces as miniatures of the screen,
+// each window a preview of its content at its real place and size (floating
+// windows above tiled ones, the most recently focused on top; fullscreen
+// fills the miniature), plus a search field. Click a space to go there, a
+// window to focus it, drag a window onto another space to move it. Typing
+// searches apps and actions like Spotlight; Enter opens the first result.
+// Arrows pick a space.
+// Previews (Config overview.previews): "snapshot" captures each window once
+// per open, "live" keeps them updating, "hybrid" is live for the current
+// space only. Nothing is captured while the Overview is closed.
 Variants {
     model: Quickshell.screens
 
@@ -29,22 +35,40 @@ Variants {
             readonly property bool shown: Panels.isOpen("overview", screen)
             readonly property var monitor: Hyprland.monitorFor(screen)
             readonly property int activeWs: monitor?.activeWorkspace?.id ?? 1
-            readonly property var occupiedIds: Hyprland.toplevels.values.map(t => t.workspace?.id ?? 0).filter(id => id > 0)
-            readonly property int count: Math.max(Config.options.menubar.workspaceCount, activeWs, ...occupiedIds, 1)
+            readonly property var ids: Windows.spaceIds(monitor, screen === Quickshell.screens[0])
+            readonly property int count: Math.max(1, ids.length)
             readonly property int columns: Math.min(5, count)
             readonly property real cellW: Math.min(300, (width - 160 - (columns - 1) * 24) / columns)
             readonly property real cellH: cellW * (screen?.height ?? 1080) / (screen?.width ?? 1920)
             readonly property real scaleK: cellW / (screen?.width ?? 1920)
             property int picked: activeWs
             property bool dragging: false // a window is being dragged to another space
+            property int dragFrom: 0 // the space it's dragged from (drawn above the others)
             property var results: []
             property int selected: 0
+
+            // Window previews: snapshot | live | hybrid (live on the current space)
+            readonly property string previewMode: {
+                const m = Config.options.overview?.previews;
+                return m === "live" || m === "hybrid" ? m : "snapshot";
+            }
+            function liveFor(wsId) {
+                return shown && (previewMode === "live" || (previewMode === "hybrid" && wsId === activeWs));
+            }
+            // True from open until the close animation ends: previews hold
+            // their source (and last frame) while it fades out, and drop it after
+            property bool capturing: false
+            signal recapture() // reopened mid-close: snapshots take a new picture
+            onVisibleChanged: if (!visible) capturing = false
 
             property real progress: 0
             Component.onCompleted: if (shown) open()
             onShownChanged: shown ? open() : closeAnim.start()
             function open() {
                 Hyprland.refreshToplevels();
+                if (capturing)
+                    recapture();
+                capturing = true;
                 picked = activeWs;
                 field.text = "";
                 results = [];
@@ -61,6 +85,19 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
+            // Move the picked space by `n` places in the grid
+            function step(n) {
+                const i = Math.max(0, ids.indexOf(picked));
+                picked = ids[Math.max(0, Math.min(ids.length - 1, i + n))] ?? picked;
+            }
+            // Search answers that arrive later (files, conversions)
+            Connections {
+                target: Search
+                function onRevisionChanged() {
+                    if (win.shown && field.text !== "")
+                        win.results = Search.query(field.text).filter(r => !r.ai);
+                }
+            }
             function go(id) {
                 Panels.close();
                 Hyprland.dispatch("hl.dsp.focus({ workspace = " + id + " })");
@@ -131,10 +168,10 @@ Variants {
                         Keys.onEscapePressed: text !== "" ? text = "" : Panels.close()
                         Keys.onReturnPressed: win.results.length > 0 ? (Panels.close(), win.results[win.selected].run()) : win.go(win.picked)
                         Keys.onEnterPressed: win.results.length > 0 ? (Panels.close(), win.results[win.selected].run()) : win.go(win.picked)
-                        Keys.onLeftPressed: e => { if (text === "") win.picked = Math.max(1, win.picked - 1); else e.accepted = false; }
-                        Keys.onRightPressed: e => { if (text === "") win.picked = Math.min(win.count, win.picked + 1); else e.accepted = false; }
-                        Keys.onUpPressed: text !== "" ? win.selected = Math.max(0, win.selected - 1) : win.picked = Math.max(1, win.picked - win.columns)
-                        Keys.onDownPressed: text !== "" ? win.selected = Math.min(win.results.length - 1, win.selected + 1) : win.picked = Math.min(win.count, win.picked + win.columns)
+                        Keys.onLeftPressed: e => { if (text === "") win.step(-1); else e.accepted = false; }
+                        Keys.onRightPressed: e => { if (text === "") win.step(1); else e.accepted = false; }
+                        Keys.onUpPressed: text !== "" ? win.selected = Math.max(0, win.selected - 1) : win.step(-win.columns)
+                        Keys.onDownPressed: text !== "" ? win.selected = Math.min(win.results.length - 1, win.selected + 1) : win.step(win.columns)
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
@@ -192,34 +229,38 @@ Variants {
                     spacing: 24
 
                     Repeater {
-                        model: win.count
+                        // ScriptModel keeps delegates (and their captures) when the list is rebuilt
+                        model: ScriptModel { values: win.ids }
                         Column {
                             id: space
-                            required property int index
-                            readonly property int wsId: index + 1
-                            readonly property var wins: Hyprland.toplevels.values.filter(t => t.workspace?.id === space.wsId && t.lastIpcObject?.at)
+                            required property int modelData
+                            readonly property int wsId: modelData
+                            // Grouped windows behind their tab are hidden
+                            readonly property var wins: Windows.on(space.wsId).filter(t => t.lastIpcObject?.at && t.lastIpcObject?.size && !t.lastIpcObject.hidden)
+                            readonly property bool live: win.liveFor(space.wsId)
+                            z: win.dragFrom === space.wsId ? 1 : 0 // a dragged window passes over the other spaces
                             spacing: 8
 
+                            // The space: a plain neutral container
                             Rectangle {
                                 id: screenRect
                                 width: win.cellW
                                 height: win.cellH
                                 radius: 14
-                                clip: !win.dragging // let a dragged window leave its space
+                                clip: !win.dragging // let a dragged tile leave its space
                                 z: win.dragging ? 1 : 0
-                                color: "black"
-                                border.width: space.wsId === win.picked || dropArea.containsDrag ? 3 : space.wsId === win.activeWs ? 2 : 1
-                                border.color: dropArea.containsDrag ? Theme.accent : space.wsId === win.picked ? Theme.accent : space.wsId === win.activeWs ? Qt.alpha("white", 0.6) : Qt.alpha("white", 0.15)
+                                color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
+                                border.width: space.wsId === win.picked || dropArea.containsDrag ? 2 : 1
+                                border.color: dropArea.containsDrag || space.wsId === win.picked ? Theme.accent : space.wsId === win.activeWs ? (Theme.dark ? "#36363C" : "#D4D4D8") : (Theme.dark ? "#26262A" : "#E4E4E7")
                                 scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                 Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
 
-                                Image {
-                                    anchors.fill: parent
-                                    source: Wallpaper.source
-                                    fillMode: Image.PreserveAspectCrop
-                                    sourceSize: Qt.size(win.cellW * 2, win.cellH * 2)
-                                    asynchronous: true
-                                    opacity: 0.85
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: space.wins.length === 0
+                                    text: "No windows"
+                                    color: Theme.dark ? "#94949D" : "#6B6B74"
+                                    font { family: Theme.font.family; pixelSize: Theme.font.small }
                                 }
                                 MouseArea {
                                     id: spaceMouse
@@ -232,45 +273,69 @@ Variants {
                                     id: dropArea
                                     anchors.fill: parent
                                     onDropped: drop => {
-                                        if (drop.source?.toplevel)
-                                            win.moveWindow(drop.source.toplevel, space.wsId);
+                                        const t = drop.source?.toplevel;
+                                        if (t && (t.workspace?.id ?? 0) !== space.wsId) {
+                                            drop.accept(Qt.MoveAction);
+                                            win.moveWindow(t, space.wsId);
+                                        } else {
+                                            drop.accepted = false; // its own space: it springs back
+                                        }
                                     }
                                 }
 
-                                // Windows, at their real positions
+                                // A preview per window, at its real place and size
                                 Repeater {
-                                    model: space.wins
-                                    Rectangle {
+                                    model: ScriptModel { values: space.wins }
+                                    Item {
                                         id: thumb
                                         required property var modelData
                                         readonly property var toplevel: modelData
-                                        readonly property var o: modelData.lastIpcObject
-                                        x: (o.at[0] - (win.monitor?.x ?? 0)) * win.scaleK
-                                        y: (o.at[1] - (win.monitor?.y ?? 0)) * win.scaleK
-                                        width: Math.max(16, o.size[0] * win.scaleK)
-                                        height: Math.max(12, o.size[1] * win.scaleK)
-                                        radius: 6
-                                        color: Theme.dark ? "#1A1A1D" : "#FFFFFF"
-                                        border.width: 1
-                                        border.color: Qt.alpha("white", 0.2)
-                                        clip: true
+                                        readonly property var o: modelData.lastIpcObject ?? ({})
+                                        // fullscreen: 0 none, 1 maximized, 2 fullscreen (bit flags; a bool on old Hyprland)
+                                        readonly property int fsMode: o.fullscreen === true ? 2 : (o.fullscreen | 0)
+                                        readonly property bool full: (fsMode & 2) !== 0
+                                        // Stacking like Hyprland: tiled, then floating by focus (recent on
+                                        // top), then fullscreen and maximized
+                                        readonly property int stack: fsMode > 0 ? 3000 : o.floating ? 2000 - Math.max(0, Math.min(999, o.focusHistoryID ?? 999)) : 1
+                                        // Fullscreen fills the miniature, inside its 1px border
+                                        readonly property real homeX: full ? 1 : ((o.at?.[0] ?? 0) - (win.monitor?.x ?? 0)) * win.scaleK
+                                        readonly property real homeY: full ? 1 : ((o.at?.[1] ?? 0) - (win.monitor?.y ?? 0)) * win.scaleK
+                                        property bool gone: false // dropped on another space, until the move lands
+                                        x: homeX
+                                        y: homeY
+                                        width: full ? screenRect.width - 2 : Math.max(16, (o.size?.[0] ?? 0) * win.scaleK)
+                                        height: full ? screenRect.height - 2 : Math.max(12, (o.size?.[1] ?? 0) * win.scaleK)
+                                        opacity: gone ? 0 : 1
                                         Drag.active: thumbDrag.active
                                         Drag.source: thumb
                                         Drag.hotSpot.x: width / 2
                                         Drag.hotSpot.y: height / 2
-                                        z: thumbDrag.active ? 10 : 1
-                                        ScreencopyView {
+                                        z: thumbDrag.active ? 5000 : stack
+                                        scale: thumbDrag.active ? 1.04 : 1
+                                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                                        WindowPreview {
+                                            id: preview
                                             anchors.fill: parent
-                                            captureSource: win.shown ? (thumb.modelData.wayland ?? null) : null
-                                            live: false
-                                            constraintSize: Qt.size(thumb.width * 2, thumb.height * 2)
+                                            toplevel: thumb.modelData
+                                            radius: thumb.full ? 13 : 4 // the space's 14 minus its border
+                                            capture: win.capturing
+                                            live: space.live
+                                            hovered: tileMouse.containsMouse || thumbDrag.active
                                         }
-                                        AppIcon {
-                                            anchors.centerIn: parent
-                                            size: Math.min(28, thumb.height * 0.6)
-                                            source: Apps.iconFor(thumb.o.class ?? "")
+                                        Connections {
+                                            target: win
+                                            function onRecapture() {
+                                                preview.recapture();
+                                            }
+                                        }
+                                        Timer {
+                                            running: thumb.gone
+                                            interval: 1500 // the move didn't happen: show it again
+                                            onTriggered: thumb.gone = false
                                         }
                                         MouseArea {
+                                            id: tileMouse
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             onEntered: win.picked = space.wsId
@@ -279,9 +344,15 @@ Variants {
                                         DragHandler {
                                             id: thumbDrag
                                             onActiveChanged: {
+                                                win.dragFrom = active ? space.wsId : 0;
                                                 win.dragging = active;
-                                                if (!active)
-                                                    thumb.Drag.drop();
+                                                if (!active) {
+                                                    thumb.gone = thumb.Drag.drop() === Qt.MoveAction;
+                                                    // Back home (the drag broke the bindings); if it moved,
+                                                    // it stays hidden until it shows up on the new space
+                                                    thumb.x = Qt.binding(() => thumb.homeX);
+                                                    thumb.y = Qt.binding(() => thumb.homeY);
+                                                }
                                             }
                                         }
                                     }

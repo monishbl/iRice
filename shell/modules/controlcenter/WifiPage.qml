@@ -11,7 +11,17 @@ DetailPage {
     property var asking: null // network waiting for a password
     property var failed: null // last network that failed to connect
 
-    readonly property var networks: (device?.networks.values ?? []).slice().sort((a, b) => (b.connected - a.connected) || (b.known - a.known) || (b.signalStrength - a.signalStrength)).slice(0, 12)
+    readonly property var sorted: (device?.networks.values ?? []).slice().sort((a, b) => (b.connected - a.connected) || (b.known - a.known) || (b.signalStrength - a.signalStrength)).slice(0, 12)
+    // While a password is being typed the list holds still: re-sorting on
+    // signal changes would rebuild the rows and wipe the field
+    property var frozen: []
+    onAskingChanged: {
+        if (asking)
+            frozen = sorted;
+        typed = "";
+    }
+    readonly property var networks: asking ? frozen : sorted
+    property string typed: "" // the password being typed (outlives a row rebuild)
 
     title: "Wi-Fi"
     hasSwitch: true
@@ -99,8 +109,12 @@ DetailPage {
                         echoMode: TextInput.Password
                         color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.body }
-                        onVisibleChanged: if (visible) { text = ""; forceActiveFocus(); }
+                        text: root.typed
+                        onTextChanged: root.typed = text
+                        onVisibleChanged: if (visible) forceActiveFocus()
+                        Component.onCompleted: if (visible) forceActiveFocus()
                         onAccepted: join.clicked()
+                        Keys.onEscapePressed: root.asking = null
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: password.text === ""

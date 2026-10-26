@@ -1,87 +1,100 @@
--- iRice keybinds. Descriptions ("Group: Action") feed the cheatsheet and
--- Settings → Keyboard Shortcuts. MOD is SUPER normally (ALT in the sandbox).
+-- iRice keybinds. The defaults are data (keymap.json next to this file,
+-- written by tools/gen-keymap.py; they follow end4); your changes from
+-- Settings → Keyboard Shortcuts live in ~/.config/irice/keybinds.json:
+--   keybinds   { id = { keys = "...", disabled = true } }  changes to defaults
+--   shortcuts  [ { id, keys, label, action } ]           your own shortcuts
+-- Labels ("Group: Action") feed the cheatsheet and Settings. MOD is SUPER
+-- normally (ALT in the nested sandbox). A bad entry is skipped and logged;
+-- it never stops the rest from loading.
 local MOD = IRICE_MOD or "SUPER"
-local function shell(name) return hl.dsp.global("irice:" .. name) end
-local function run(cmd) return hl.dsp.exec_cmd(cmd) end
+local here = IRICE_HYPR_DIR or (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".")
+local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+local userDir = IRICE_USER_DIR or (cfg .. "/irice")
+-- The shell's folder (repair script, app launcher)
+local shellDir = os.getenv("IRICE_ROOT") and (os.getenv("IRICE_ROOT") .. "/shell") or (cfg .. "/quickshell/irice")
+local json = dofile(here .. "/json.lua")
 
--- Shell
-hl.bind(MOD .. " + Space", shell("spotlight"), { description = "Shell: Spotlight" })
--- Tap the modifier alone for the overview (a release bind: Hyprland skips it
--- when another key was pressed while the modifier was held)
-hl.bind(MOD .. " + " .. (MOD == "SUPER" and "Super_L" or "Alt_L"), shell("overview"), { release = true, description = "Shell: Overview (tap)" })
-hl.bind(MOD .. " + Tab", shell("missionControl"), { description = "Shell: Mission Control" })
-hl.bind(MOD .. " + SHIFT + Space", shell("launchpad"), { description = "Shell: App Library" })
-hl.bind(MOD .. " + A", shell("sidebar"), { description = "Shell: AI and tools sidebar" })
-hl.bind(MOD .. " + C", shell("controlCenter"), { description = "Shell: Control Center" })
-hl.bind(MOD .. " + N", shell("notificationCenter"), { description = "Shell: Notification Center" })
-hl.bind(MOD .. " + Comma", shell("settings"), { description = "Shell: Settings" })
-hl.bind(MOD .. " + Slash", shell("cheatsheet"), { description = "Shell: Keyboard shortcuts" })
-hl.bind(MOD .. " + CTRL + T", shell("wallpaper"), { description = "Shell: Change wallpaper" })
-hl.bind(MOD .. " + G", shell("overlay"), { description = "Shell: Overlay widgets" })
-hl.bind(MOD .. " + K", shell("keyboard"), { description = "Shell: On-screen keyboard" })
-hl.bind(MOD .. " + V", shell("clipboard"), { description = "Shell: Clipboard history" })
-hl.bind(MOD .. " + CTRL + Q", shell("lock"), { description = "Shell: Lock screen" })
-hl.bind("CTRL + ALT + Delete", shell("session"), { description = "Shell: Power options" })
-hl.bind(MOD .. " + Escape", shell("reset"), { description = "Shell: Close everything (if something is stuck)" })
--- Runs even when the shell is frozen (Hyprland starts the script, not the shell)
-local shellDir = os.getenv("IRICE_ROOT") and (os.getenv("IRICE_ROOT") .. "/shell") or (os.getenv("HOME") .. "/.config/quickshell/irice")
-hl.bind(MOD .. " + CTRL + Escape", run("setsid -f '" .. shellDir .. "/assets/scripts/repair-shell.sh'"), { description = "Shell: Repair (duplicated or stuck shell; apps keep running)" })
-
--- Screenshots and screen tools
-hl.bind(MOD .. " + SHIFT + 3", shell("screenshotScreen"), { description = "Screen: Screenshot of the screen" })
-hl.bind(MOD .. " + SHIFT + 4", shell("screenshotRegion"), { description = "Screen: Screenshot of an area" })
-hl.bind(MOD .. " + SHIFT + S", shell("screenshotScreen"), { description = "Screen: Screenshot of the screen (saved, no selection)" })
-hl.bind(MOD .. " + CTRL + SHIFT + S", shell("screenshotRegion"), { description = "Screen: Screenshot of an area" })
-hl.bind(MOD .. " + SHIFT + 5", shell("screenTools"), { description = "Screen: Screenshot and recording tools" })
-hl.bind("Print", shell("screenshotRegion"), { description = "Screen: Screenshot of an area" })
-hl.bind(MOD .. " + SHIFT + T", shell("ocr"), { description = "Screen: Copy text from screen" })
-hl.bind(MOD .. " + SHIFT + Y", shell("screenTranslate"), { description = "Screen: Translate screen text" })
-hl.bind(MOD .. " + SHIFT + A", shell("askScreen"), { description = "Screen: Ask AI about part of the screen" })
-hl.bind(MOD .. " + SHIFT + C", run("hyprpicker -a"), { description = "Screen: Pick a colour" })
-hl.bind(MOD .. " + SHIFT + R", shell("record"), { description = "Screen: Start or stop recording" })
-
--- Apps
--- The first terminal that's installed, once (`a || b` would open b too when a's shell exits with an error)
-hl.bind(MOD .. " + Return", run("sh -c 'for t in xdg-terminal-exec foot kitty alacritty; do command -v \"$t\" >/dev/null && exec \"$t\"; done'"), { description = "Apps: Terminal" })
-hl.bind(MOD .. " + E", run("xdg-open ~"), { description = "Apps: Files" })
-
--- Windows
-hl.bind(MOD .. " + Q", hl.dsp.window.close(), { description = "Window: Close" })
-hl.bind(MOD .. " + F", hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }), { description = "Window: Full screen" })
-hl.bind(MOD .. " + D", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }), { description = "Window: Zoom" })
--- (with ALT as the modifier, MOD + ALT would be plain Alt+Space, which is Spotlight)
-hl.bind(MOD .. (MOD == "ALT" and " + CTRL" or " + ALT") .. " + Space", hl.dsp.window.float({ action = "toggle" }), { description = "Window: Float or tile" })
-hl.bind(MOD .. " + P", hl.dsp.window.pin(), { description = "Window: Keep on all spaces" })
-hl.bind(MOD .. " + mouse:272", hl.dsp.window.drag(), { mouse = true, description = "Window: Move" })
-hl.bind(MOD .. " + mouse:273", hl.dsp.window.resize(), { mouse = true, description = "Window: Resize" })
-hl.bind(MOD .. " + CTRL + Left", shell("snap-left"), { description = "Window: Tile left half" })
-hl.bind(MOD .. " + CTRL + Right", shell("snap-right"), { description = "Window: Tile right half" })
-hl.bind(MOD .. " + CTRL + Up", shell("snap-top"), { description = "Window: Tile top half" })
-hl.bind(MOD .. " + CTRL + Down", shell("snap-bottom"), { description = "Window: Tile bottom half" })
-hl.bind(MOD .. " + CTRL + F", shell("snap-fill"), { description = "Window: Fill screen" })
-hl.bind(MOD .. " + CTRL + C", shell("snap-center"), { description = "Window: Center" })
-hl.bind(MOD .. " + CTRL + R", shell("snap-restore"), { description = "Window: Return to previous size" })
-local dirs = { Left = "l", Right = "r", Up = "u", Down = "d" }
-for key, d in pairs(dirs) do
-    hl.bind(MOD .. " + " .. key, hl.dsp.focus({ direction = d }), { description = "Window: Focus " .. key:lower() })
-    hl.bind(MOD .. " + SHIFT + " .. key, hl.dsp.window.move({ direction = d }), { description = "Window: Move " .. key:lower() })
+local function log(msg)
+    io.stderr:write("[irice keybinds] " .. msg .. "\n")
 end
 
--- Spaces
-for i = 1, 9 do
-    hl.bind(MOD .. " + " .. i, hl.dsp.focus({ workspace = i }), { description = "Spaces: Go to space " .. i })
-    hl.bind(MOD .. " + SHIFT + " .. i, hl.dsp.window.move({ workspace = i, follow = false }), { description = "Spaces: Move window to space " .. i })
+local function keysOf(k)
+    k = k:gsub("%$MODKEY", MOD == "SUPER" and "Super_L" or "Alt_L"):gsub("%$MOD", MOD)
+    return k
 end
-hl.bind(MOD .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }), { description = "Spaces: Next space" })
-hl.bind(MOD .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }), { description = "Spaces: Previous space" })
 
--- Media and hardware keys
-hl.bind("XF86AudioRaiseVolume", shell("volumeUp"), { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume", shell("volumeDown"), { locked = true, repeating = true })
-hl.bind("XF86AudioMute", shell("volumeMute"), { locked = true })
-hl.bind("XF86AudioMicMute", shell("micMute"), { locked = true })
-hl.bind("XF86MonBrightnessUp", shell("brightnessUp"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", shell("brightnessDown"), { locked = true, repeating = true })
-hl.bind("XF86AudioPlay", run("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioNext", run("playerctl next"), { locked = true })
-hl.bind("XF86AudioPrev", run("playerctl previous"), { locked = true })
+-- A bind's action as a Hyprland dispatcher (or function)
+local function zoom(step)
+    return function()
+        local z = (hl.get_config("cursor:zoom_factor") or 1) + step
+        hl.config({ cursor = { zoom_factor = math.max(1.0, math.min(3.0, z)) } })
+    end
+end
+local function actionOf(a)
+    if type(a) ~= "table" then return nil, "no action" end
+    if a.shell then return hl.dsp.global("irice:" .. a.shell) end
+    if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$IRICE_SHELL", shellDir))) end
+    if a.app then return hl.dsp.exec_cmd("IRICE_USER_DIR='" .. userDir .. "' '" .. shellDir .. "/assets/scripts/open-app.sh' " .. a.app) end
+    if a.zoom then return zoom(a.zoom) end
+    if a.dsp then
+        local f, err = load("return " .. a.dsp, "dispatcher", "t", { hl = hl })
+        if not f then return nil, err end
+        local ok, d = pcall(f)
+        if not ok then return nil, d end
+        return d
+    end
+    return nil, "unknown action"
+end
+
+-- Keys already taken: a second bind on the same keys is skipped (it happens
+-- when MOD is ALT in the sandbox, or a custom shortcut reuses a default's keys)
+local taken = {}
+local function bind(e, user)
+    local keys = keysOf(e.keys)
+    local norm = keys:upper():gsub("%s", "")
+    if taken[norm] then
+        log("skipped " .. tostring(e.id) .. ": " .. keys .. " is already " .. taken[norm])
+        return
+    end
+    local action, err = actionOf(e.action)
+    if not action then
+        log("skipped " .. tostring(e.id) .. ": " .. tostring(err))
+        return
+    end
+    local opts = {}
+    for k, v in pairs(e.opts or {}) do opts[k] = v end
+    opts.description = (e.group or (user and "Custom" or "Other")) .. ": " .. (e.label or e.id)
+    local ok, berr = pcall(hl.bind, keys, action, opts)
+    if ok then
+        taken[norm] = tostring(e.id)
+    else
+        log("couldn't bind " .. tostring(e.id) .. " (" .. keys .. "): " .. tostring(berr))
+    end
+end
+
+local defaults = json.read(here .. "/keymap.json")
+if not defaults then
+    log("keymap.json is missing or broken; no default keybinds")
+    defaults = {}
+end
+local user = json.read(userDir .. "/keybinds.json") or {}
+local changes = user.keybinds or {}
+
+-- Changed defaults first, then your own shortcuts, then the untouched
+-- defaults: what you set wins a clash
+local later = {}
+for _, e in ipairs(defaults) do
+    local c = changes[e.id]
+    if not (c and c.disabled) then
+        if c and c.keys then
+            e.keys = c.keys
+            bind(e, false)
+        else
+            later[#later + 1] = e
+        end
+    end
+end
+for _, e in ipairs(user.shortcuts or {}) do
+    if type(e) == "table" and e.keys and not e.disabled then bind(e, true) end
+end
+for _, e in ipairs(later) do bind(e, false) end

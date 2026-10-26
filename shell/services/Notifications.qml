@@ -58,16 +58,20 @@ Singleton {
         }
     }
 
+    function forget(id) {
+        if (byId[id] === undefined && received[id] === undefined)
+            return;
+        const b = Object.assign({}, byId), r = Object.assign({}, received);
+        delete b[id];
+        delete r[id];
+        byId = b;
+        received = r;
+    }
+
     function dismissPopup(n) {
         if (!n)
             return;
         popups = popups.filter(p => p !== n);
-        // Forget it in the lookup maps too (they'd otherwise grow forever)
-        const b = Object.assign({}, byId), r = Object.assign({}, received);
-        delete b[n.id];
-        delete r[n.id];
-        byId = b;
-        received = r;
         for (let i = 0; i < popupList.count; i++)
             if (popupList.get(i).nid === n.id) {
                 popupList.remove(i);
@@ -84,6 +88,8 @@ Singleton {
     }
 
     function iconFor(n) {
+        if (!n)
+            return "";
         if (n.image)
             return n.image;
         const icon = n.appIcon || Apps.entryFor(n.desktopEntry)?.icon || "";
@@ -93,7 +99,7 @@ Singleton {
     }
 
     function timeLabel(n, now) {
-        const t = received[n.id];
+        const t = n ? received[n.id] : undefined;
         if (!t)
             return "";
         const mins = Math.floor((now - t) / 60000);
@@ -118,6 +124,9 @@ Singleton {
 
         onNotification: n => {
             n.tracked = true;
+            // Forget it in the lookup maps once it's closed for good (they'd
+            // otherwise grow forever); later, so cards animating out still have it
+            n.closed.connect(() => Qt.callLater(() => root.forget(n.id)));
             // keepOnReload: after a shell reload the server hands back the
             // notifications it kept; they were shown already
             if (n.lastGeneration)

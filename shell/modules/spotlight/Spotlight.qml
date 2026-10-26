@@ -59,12 +59,17 @@ Variants {
                 Search.refreshClipboard();
             }
 
-            // File results arrive asynchronously
+            // Files, conversions and definitions arrive later
             Connections {
                 target: Search
-                function onFilesChanged() {
-                    if (win.shown && field.text.startsWith("/"))
-                        win.results = Search.query(field.text);
+                function onRevisionChanged() {
+                    if (!win.shown || win.answering)
+                        return;
+                    // Keep the row you moved to; otherwise the new answer leads
+                    const keep = win.selected > 0 ? win.results[win.selected]?.title : undefined;
+                    win.results = Search.query(field.text);
+                    const i = win.results.findIndex(r => r.title === keep);
+                    win.selected = i >= 0 ? i : 0;
                 }
             }
 
@@ -146,6 +151,14 @@ Variants {
                     Keys.onDownPressed: win.selected = Math.min(win.results.length - 1, win.selected + 1)
                     Keys.onUpPressed: win.selected = Math.max(0, win.selected - 1)
                     Keys.onTabPressed: win.selected = (win.selected + 1) % Math.max(1, win.results.length)
+                    // Quick Look the selected file: Shift+Space or Ctrl+Y
+                    Keys.onPressed: e => {
+                        const r = win.results[win.selected];
+                        if (r?.path && ((e.key === Qt.Key_Space && (e.modifiers & Qt.ShiftModifier)) || (e.key === Qt.Key_Y && (e.modifiers & Qt.ControlModifier)))) {
+                            Panels.quickLook(r.path);
+                            e.accepted = true;
+                        }
+                    }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

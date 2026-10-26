@@ -23,6 +23,9 @@ Variants {
             contentWidth: 340
             targetX: (screen?.width ?? 1920) - implicitWidth
             radius: Theme.radius.module + padding // concentric with the platters inside
+            // Without the panel (Settings → Notifications), every card is its
+            // own glass; solid glass always has the panel
+            bare: Theme.glass.tier !== "solid" && !Config.options.notificationCenter.background
             property alias widgetTab: ncTabState.value
             QtObject {
                 id: ncTabState
@@ -41,7 +44,9 @@ Variants {
                         anchors.verticalCenter: parent.verticalCenter
                         x: 4
                         text: "Notifications"
-                        color: Theme.color.label
+                        color: nc.bare ? "white" : Theme.color.label
+                        style: nc.bare ? Text.Raised : Text.Normal // readable straight on the desktop
+                        styleColor: Qt.rgba(0, 0, 0, 0.45)
                         font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
                     }
                     Rectangle {
@@ -69,6 +74,7 @@ Variants {
 
                 // Empty state
                 Platter {
+                    chip: nc.bare
                     visible: Notifications.list.length === 0
                     width: parent.width
                     height: 84
@@ -86,6 +92,7 @@ Variants {
 
                 Flickable {
                     visible: Notifications.list.length > 0
+                    onContentYChanged: if (nc.bare) nc.glassChanged() // cards' glass follows the scroll
                     width: parent.width
                     height: Math.min(list.implicitHeight, 420)
                     contentHeight: list.implicitHeight
@@ -182,6 +189,7 @@ Variants {
                                             model: group.stacked && !group.open ? Math.min(group.modelData.items.length - 1, 2) : 0
                                             Platter {
                                                 required property int index
+                                                chip: nc.bare
                                                 x: (index + 1) * 8
                                                 // Just the lower edge, below the front card
                                                 y: card.implicitHeight - 4 + index * 8
@@ -193,6 +201,7 @@ Variants {
                                             }
                                         }
                                         Platter {
+                                            chip: nc.bare
                                             width: list.width
                                             height: card.implicitHeight
                                             radius: 18
@@ -220,23 +229,36 @@ Variants {
                     }
                 }
 
-                Segmented {
+                // The tabs: on a glass card of their own without the panel
+                Platter {
                     width: parent.width
-                    options: ["Calendar", "To-do", "Focus"]
-                    current: nc.widgetTab
-                    onSelected: i => nc.widgetTab = i
+                    height: tabs.height + (nc.bare ? 8 : 0)
+                    chip: nc.bare
+                    color: nc.bare ? Qt.alpha("white", Theme.dark ? 0.07 : 0.28) : "transparent"
+                    radius: Theme.radius.control + 4
+                    Segmented {
+                        id: tabs
+                        anchors.centerIn: parent
+                        width: parent.width - (nc.bare ? 8 : 0)
+                        options: ["Calendar", "To-do", "Focus"]
+                        current: nc.widgetTab
+                        onSelected: i => nc.widgetTab = i
+                    }
                 }
                 CalendarWidget {
                     width: parent.width
                     visible: nc.widgetTab === 0
+                    chip: nc.bare
                 }
                 TodoWidget {
                     width: parent.width
                     visible: nc.widgetTab === 1
+                    chip: nc.bare
                 }
                 FocusWidget {
                     width: parent.width
                     visible: nc.widgetTab === 2
+                    chip: nc.bare
                 }
             }
         }

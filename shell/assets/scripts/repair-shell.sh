@@ -93,6 +93,13 @@ if [[ -n "$template" ]] && env_of "$template" | grep -qx "IRICE_TTY=1"; then
     [[ -x "$tty_ctl" ]] || tty_ctl=""
 fi
 
+# Hold the shell lock while swapping (keep-shell.sh mustn't start one in the
+# gap); the test session's own starter takes it itself
+if [[ -z "$tty_ctl" && -d "$RUN/hypr/$SIG" ]]; then
+    exec 7>"$RUN/hypr/$SIG/irice-shell.lock"
+    flock -w 10 7
+fi
+
 if [[ ${#mine[@]} -gt 0 ]]; then
     kill "${mine[@]}" 2>/dev/null
     for _ in $(seq 20); do
@@ -114,12 +121,14 @@ elif [[ ${#tcmd[@]} -gt 0 ]]; then
     # (so a theme changed in Settings applies)
     fresh=()
     for e in "${tenv[@]}"; do [[ $e == QS_ICON_THEME=* ]] || fresh+=("$e"); done
-    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1
+    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 7>&-
 elif [[ -n "${IRICE_ROOT:-}" && -f "$IRICE_ROOT/shell/shell.qml" ]]; then
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$IRICE_ROOT/shell" >/dev/null 2>&1
+    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$IRICE_ROOT/shell" >/dev/null 2>&1 7>&-
 else
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c irice >/dev/null 2>&1
+    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c irice >/dev/null 2>&1 7>&-
 fi
+sleep 2 # let it register, then let keep-shell.sh look again
+exec 7>&-
 echo "started a fresh shell; removed $removed stale and $extra duplicate"
 
 # Tell the user once the new shell can show it

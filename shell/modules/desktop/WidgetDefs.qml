@@ -18,7 +18,12 @@ QtObject {
         { id: "nowPlaying", file: "NowPlayingWidget.qml", label: "Now Playing", icon: "music-notes", desc: "What's playing, with controls.", sizes: ["s", "m"] },
         { id: "system", file: "SystemWidget.qml", label: "System", icon: "cpu", desc: "CPU and memory; medium adds temperature and swap.", sizes: ["s", "m"] },
         { id: "photos", file: "PhotosWidget.qml", label: "Photos", icon: "image", desc: "A picture from your Pictures folder, changing every 15 minutes.", sizes: ["s", "m", "l"], bleed: true },
-        { id: "notes", file: "NotesWidget.qml", label: "Note", icon: "note-pencil", desc: "A note you can type into on the desktop.", sizes: ["s", "m", "l"] }
+        { id: "notes", file: "NotesWidget.qml", label: "Note", icon: "note-pencil", desc: "A note you can type into on the desktop.", sizes: ["s", "m", "l"], ownId: true },
+        { id: "stack", file: "StackWidget.qml", label: "Smart Stack", icon: "stack", desc: "Several widgets in one place: scroll to flip; it brings forward what matters now.", sizes: ["s", "m", "l"], ownId: true },
+        { id: "shortcuts", file: "ShortcutsWidget.qml", label: "Shortcuts", icon: "lightning", desc: "One-click buttons: screenshot, dark mode, lock... Right-click to choose.", sizes: ["s", "m"], ownId: true, bleed: true },
+        { id: "screenTime", file: "ScreenTimeWidget.qml", label: "Screen Time", icon: "hourglass-medium", desc: "How long you've used the computer today, and on which apps.", sizes: ["s", "m"] },
+        { id: "batteryHistory", file: "BatteryHistoryWidget.qml", label: "Battery History", icon: "battery-charging", desc: "Your battery over the last 24 hours.", sizes: ["s", "m"] },
+        { id: "stocks", file: "StocksWidget.qml", label: "Stocks", icon: "chart-line-up", desc: "Today's prices for your symbols (Settings → Desktop).", sizes: ["s", "m", "l"] }
     ]
     function kind(id) {
         return kinds.find(k => k.id === id) ?? null;
@@ -28,12 +33,13 @@ QtObject {
         return Qt.size(u[0] * cell + (u[0] - 1) * gap, u[1] * cell + (u[1] - 1) * gap);
     }
 
-    // "kind:size:col:row" <-> { kind, size, col, row }
+    // "kind:size:col:row[:id]" <-> { kind, size, col, row, id }
+    // (id: widgets with their own content, like each Note)
     function parse(entry) {
-        const [kind, size, col, row] = entry.split(":");
-        return { kind: kind, size: units[size] ? size : "s", col: Number(col) || 0, row: Number(row) || 0 };
+        const [kind, size, col, row, id] = entry.split(":");
+        return { kind: kind, size: units[size] ? size : "s", col: Number(col) || 0, row: Number(row) || 0, id: id ?? "" };
     }
     function format(w) {
-        return w.kind + ":" + w.size + ":" + w.col + ":" + w.row;
+        return w.kind + ":" + w.size + ":" + w.col + ":" + w.row + (w.id ? ":" + w.id : "");
     }
 }

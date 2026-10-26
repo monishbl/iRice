@@ -4,8 +4,8 @@
 set -euo pipefail
 if ! command -v hyprpm >/dev/null; then
     echo "hyprpm (Hyprland's plugin manager) isn't installed."
-    echo "On Arch-based systems it ships with the hyprland package; you may also need:"
-    echo "  sudo pacman -S --needed cmake meson cpio pkgconf git gcc"
+    echo "On Arch-based systems it's its own package (matching your Hyprland), plus the build tools:"
+    echo "  sudo pacman -S --needed hyprpm cmake meson cpio pkgconf git gcc"
     read -rp "Press Enter to close" _
     exit 1
 fi

@@ -105,7 +105,7 @@ Variants {
                     x: sub.pad
                     y: sub.pad
                     width: 320
-                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : 0
+                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : caffeinePage.visible ? caffeinePage.height : 0
                     Behavior on height { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.3 } }
                     clip: true
                     WifiPage {
@@ -131,6 +131,12 @@ Variants {
                         width: parent.width
                         showBack: false
                         visible: cc.page === "focus"
+                    }
+                    CaffeinePage {
+                        id: caffeinePage
+                        width: parent.width
+                        showBack: false
+                        visible: cc.page === "caffeine"
                     }
                 }
             }

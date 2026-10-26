@@ -13,7 +13,8 @@ PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
       libnotify mesa-utils mesa vulkan-intel intel-media-driver dbus
       grim slurp wl-clipboard cliphist wf-recorder tesseract tesseract-data-eng wtype translate-shell curl jq
       inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji papirus-icon-theme
-      foot thunar mousepad gnome-calculator imagemagick ffmpeg)
+      foot thunar mousepad gnome-calculator imagemagick ffmpeg
+      libqalculate ripgrep plocate swappy psmisc poppler ffmpegthumbnailer python-gobject matugen)
 
 box() { distrobox enter "$BOX" -- "$@"; }
 # Runs a command inside the box, pointed at the nested compositor.
@@ -25,7 +26,19 @@ nested() {
         DBUS_SESSION_BUS_ADDRESS="$(cat "$RT/session-bus" 2>/dev/null)" \
         HYPRLAND_INSTANCE_SIGNATURE="$(ls "$RT/hypr" 2>/dev/null | head -1)" "$@"
 }
-running() { [[ -f "$RT/hyprland.pid" ]] && kill -0 "$(cat "$RT/hyprland.pid")" 2>/dev/null; }
+# The sandbox compositor's pid, only if the pid file (in a shared /tmp) really
+# names our own nested Hyprland: a real directory we own, a number, our user,
+# and a start-hyprland running one of this repo's sandbox configs.
+sandbox_pid() {
+    local p
+    [[ -d "$RT" && ! -L "$RT" && -O "$RT" && -f "$RT/hyprland.pid" ]] || return 1
+    p="$(head -c 16 "$RT/hyprland.pid")"
+    [[ "$p" =~ ^[0-9]+$ && -O "/proc/$p" ]] || return 1
+    [[ "$(cat "/proc/$p/comm" 2>/dev/null)" == start-hyprland ]] || return 1
+    [[ "$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null)" == *"--config $ROOT/sandbox/hypr/"* ]] || return 1
+    echo "$p"
+}
+running() { sandbox_pid >/dev/null; }
 
 case "${1:-help}" in
     create)
@@ -36,13 +49,14 @@ case "${1:-help}" in
         ;;
     up)
         running && { echo "Sandbox already running."; exit 0; }
+        stop_sandbox_apps # left behind by a sandbox that crashed
         : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
         setsid -f distrobox enter "$BOX" -- env IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
             "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
         # Park the sandbox window alone on host workspace 1 (only touches that window).
-        hpid="$(pgrep -P "$(cat "$RT/hyprland.pid")" -x Hyprland | head -1 || true)"
+        hpid="$(pgrep -P "$(sandbox_pid)" -x Hyprland | head -1 || true)"
         found=0
         if [[ $hpid =~ ^[0-9]+$ ]]; then
             for _ in $(seq 25); do
@@ -56,14 +70,15 @@ case "${1:-help}" in
         # Layer surfaces in the nested output keep their first size after the host
         # resizes the window, so restart the shell once it has settled.
         sleep 1.5 && nested "$ROOT/sandbox/reload-shell.sh" >/dev/null
-        echo "Sandbox up (pid $(cat "$RT/hyprland.pid")). Mod key is ALT."
+        echo "Sandbox up (pid $(sandbox_pid)). Mod key is ALT."
         ;;
     down)
+        stop_sandbox_apps
         stop_sandbox_shells
-        running && kill "$(cat "$RT/hyprland.pid")" && echo "Sandbox stopped." \
+        running && kill "$(sandbox_pid)" && echo "Sandbox stopped." \
             || echo "Sandbox not running."
         ;;
-    status)  running && echo "running (pid $(cat "$RT/hyprland.pid"))" || echo "stopped" ;;
+    status)  running && echo "running (pid $(sandbox_pid))" || echo "stopped" ;;
     reload)  "$ROOT/tools/build-shaders.sh" && nested env IRICE_LAB="${IRICE_LAB:-0}" "$ROOT/sandbox/reload-shell.sh" ;;
     # Screenshots come from the headless IRICE-TEST output, which renders even
     # while the sandbox window is on a hidden host workspace.
@@ -73,6 +88,8 @@ case "${1:-help}" in
     ipc)     shift; nested qs -p "$ROOT/shell" ipc call "$@" ;;
     pointer) shift; nested "$ROOT/.sandbox/bin/vptr" "$@" ;;
     enter)   box ;;
+    # CPU / memory / frames per scripted phase: ./dev.sh perf [secs] [phase...]
+    perf)    shift; "$ROOT/sandbox/perf.sh" "$@" ;;
     logs)    tail -n "${2:-60}" "$RT/hyprland.log" "$RT/quickshell.log" 2>/dev/null ;;
     tty-stop)
         # Ends a ./dev.sh tty session from anywhere (another console, or your
@@ -125,7 +142,7 @@ case "${1:-help}" in
             echo "  Ctrl+Alt+F3, log in, then: cd $ROOT && ./dev.sh tty"
             exit 1
         fi
-        running && kill "$(cat "$RT/hyprland.pid")" 2>/dev/null || true
+        running && kill "$(sandbox_pid)" 2>/dev/null || true
         export IRICE_ROOT="$ROOT"
         # Don't redirect XDG dirs here: podman keeps its containers under
         # XDG_DATA_HOME. The shell runs in the container, whose HOME is
