@@ -62,6 +62,12 @@ Singleton {
         if (!n)
             return;
         popups = popups.filter(p => p !== n);
+        // Forget it in the lookup maps too (they'd otherwise grow forever)
+        const b = Object.assign({}, byId), r = Object.assign({}, received);
+        delete b[n.id];
+        delete r[n.id];
+        byId = b;
+        received = r;
         for (let i = 0; i < popupList.count; i++)
             if (popupList.get(i).nid === n.id) {
                 popupList.remove(i);
@@ -112,6 +118,10 @@ Singleton {
 
         onNotification: n => {
             n.tracked = true;
+            // keepOnReload: after a shell reload the server hands back the
+            // notifications it kept; they were shown already
+            if (n.lastGeneration)
+                return;
             if (Panels.open !== "notificationCenter")
                 root.unread++;
             const r = Object.assign({}, root.received);
@@ -120,7 +130,7 @@ Singleton {
             if (!Focus.allows(n))
                 return;
             // Optionally as an iOS-style card in the dynamic island instead of a banner
-            if (Island.enabled && Island.wants("notifications") && n.urgency !== NotificationUrgency.Critical)
+            if (Island.enabled && Island.armed && Island.wants("notifications") && n.urgency !== NotificationUrgency.Critical)
                 root.toIsland(n);
             else
                 root.addPopup(n);

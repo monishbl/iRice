@@ -67,7 +67,7 @@ Column {
                         Image {
                             width: setTile.modelData.kind === "pair" ? parent.width / 2 : parent.width
                             height: parent.height
-                            source: "file://" + setTile.modelData.preview
+                            source: Wallpaper.fileUrl(setTile.modelData.preview)
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(300, 180)
                             asynchronous: true
@@ -77,7 +77,7 @@ Column {
                             x: parent.width / 2
                             width: parent.width / 2
                             height: parent.height
-                            source: setTile.modelData.kind === "pair" ? "file://" + setTile.modelData.dark : ""
+                            source: setTile.modelData.kind === "pair" ? Wallpaper.fileUrl(setTile.modelData.dark) : ""
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(300, 180)
                             asynchronous: true
@@ -203,20 +203,27 @@ Column {
                 radius: 14
                 color: Theme.color.fill
                 Text { id: setLabel; anchors.centerIn: parent; text: "Use wallpaper"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: copyWallpaper.running = true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: {
+                        // The dev sandbox must not change the real login screen
+                        if (System.sandboxed) {
+                            loginGroup.status = "Sandbox: would copy this wallpaper to the login screen.";
+                            return;
+                        }
+                        copyWallpaper.running = true;
+                    } }
             }
         }
     }
 
     FolderListModel {
         id: folder
-        folder: "file://" + Wallpaper.directory
+        folder: Wallpaper.fileUrl(Wallpaper.directory)
         nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.JPG", "*.PNG"]
         showDirs: false
     }
     FolderListModel {
         id: bundled
-        folder: "file://" + Wallpaper.bundledDir
+        folder: Wallpaper.fileUrl(Wallpaper.bundledDir)
         nameFilters: ["*.jpg"]
         showDirs: false
     }
@@ -242,7 +249,7 @@ Column {
                 border.color: Theme.accent
                 Image {
                     anchors.fill: parent
-                    source: "file://" + thumb.modelData
+                    source: Wallpaper.fileUrl(thumb.modelData)
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(320, 180)
                     asynchronous: true

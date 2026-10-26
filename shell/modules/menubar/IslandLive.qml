@@ -70,7 +70,7 @@ Item {
                 radius: 4.5
                 color: Theme.accents.red
                 SequentialAnimation on opacity {
-                    running: root.kind === "recording"
+                    running: root.kind === "recording" && root.part === "info" && root.visible
                     loops: Animation.Infinite
                     NumberAnimation { to: 0.35; duration: 700; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
@@ -110,7 +110,7 @@ Item {
         // Three bars that dance while playing; gone when paused
         Row {
             id: bars
-            readonly property bool on: root.kind === "music" && Island.musicPlaying && root.on("bars")
+            readonly property bool on: root.kind === "music" && Island.musicPlaying && root.on("bars") && root.part === "info" && root.visible
             anchors.verticalCenter: parent.verticalCenter
             visible: opacity > 0.01
             opacity: on ? 1 : 0

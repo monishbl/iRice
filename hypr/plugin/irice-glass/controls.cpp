@@ -76,9 +76,16 @@ class CIriceControls : public IHyprWindowDecoration {
     }
     ~CIriceControls() override {
         std::erase(g_decos, this);
+        shutdown();
+    }
+    // Drop input listeners and the timer (before the plugin's code goes away)
+    void shutdown() {
+        m_move.reset();
+        m_button.reset();
         if (m_tileTimer) {
             m_tileTimer->cancel();
             g_pEventLoopManager->removeTimer(m_tileTimer);
+            m_tileTimer.reset();
         }
     }
 
@@ -307,8 +314,9 @@ static void setEnabled(bool on) {
         return;
     g_enabled = on;
     if (on) {
+        // Every mapped window, also ones on other spaces or minimized
         for (auto& w : Desktop::windowState()->windows())
-            if (w->m_isMapped && !w->isHidden())
+            if (w->m_isMapped)
                 addTo(w);
     } else {
         for (auto* d : std::vector<CIriceControls*>(g_decos))
@@ -326,9 +334,22 @@ void controlsInit(HANDLE handle) {
     });
 }
 
+// On unload: remove our decorations now, while this code is still loaded
+// (Hyprland may defer removal for hidden windows, and a deferred destructor
+// or a listener left behind would call into the unloaded plugin)
 void controlsExit() {
     g_enabled = false;
     g_pHyprRenderer->m_renderPass.removeAllOfType("CIriceControlsPass");
+    for (auto* d : g_decos)
+        d->shutdown();
+    for (auto& w : Desktop::windowState()->windows()) {
+        auto& decos = w->m_windowDecorations;
+        for (auto& d : decos)
+            if (d && d->getDisplayName() == "iRiceControls")
+                g_pDecorationPositioner->uncacheDecoration(d.get());
+        std::erase_if(decos, [](const auto& d) { return d && d->getDisplayName() == "iRiceControls"; });
+    }
+    g_decos.clear();
 }
 
 // "controls on [dark|light]" / "controls off"

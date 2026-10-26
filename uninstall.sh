@@ -15,7 +15,16 @@ for a in "$@"; do
 done
 run() { if [[ $DRY == 1 ]]; then printf '  would run: %s\n' "$*"; else "$@"; fi; }
 
-BACKUP="$(ls -d "$CONFIG"/hypr.backup-* 2>/dev/null | sort | tail -1 || true)"
+# The config from before iRice (older installers made timestamped backups;
+# the oldest of those is the one from before iRice)
+BACKUP=""
+if [[ -d "$CONFIG/hypr.pre-irice" ]]; then
+    BACKUP="$CONFIG/hypr.pre-irice"
+else
+    BACKUP="$(ls -d "$CONFIG"/hypr.backup-* 2>/dev/null | sort | head -1 || true)"
+fi
+# Already uninstalled (no iRice config in place): nothing to swap back
+[[ -d "$CONFIG/hypr/irice" ]] || BACKUP=""
 echo "This will remove $CONFIG/quickshell/irice"
 if [[ -n "$BACKUP" ]]; then
     echo "and restore $CONFIG/hypr from $BACKUP (the current one moves to hypr.irice-removed)."

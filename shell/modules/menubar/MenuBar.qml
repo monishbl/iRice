@@ -25,7 +25,8 @@ Variants {
 
         readonly property var cfg: Config.options.menubar
         readonly property bool autoHide: cfg.autoHide
-        readonly property bool revealed: !autoHide || reveal.hovered || (Panels.open !== "" && Panels.screen === screen)
+        // Auto-hide also reveals the bar while the island has something to say
+        readonly property bool revealed: !autoHide || reveal.hovered || (Panels.open !== "" && Panels.screen === screen) || (islandOn && Island.event !== null)
 
         WlrLayershell.layer: autoHide ? WlrLayer.Overlay : WlrLayer.Top
         anchors { top: true; left: true; right: true }
@@ -231,7 +232,7 @@ Variants {
                         required property var modelData
                         image: modelData.icon
                         color: bar.fg
-                        active: Panels.open === "trayMenu" && Panels.trayMenu === modelData.menu
+                        active: Panels.isOpen("trayMenu", bar.screen) && Panels.trayMenu === modelData.menu
                         onClicked: m => {
                             if (m.button === Qt.LeftButton && !modelData.onlyMenu) {
                                 modelData.activate();

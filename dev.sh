@@ -42,12 +42,16 @@ case "${1:-help}" in
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
         # Park the sandbox window alone on host workspace 1 (only touches that window).
-        hpid="$(pgrep -P "$(cat "$RT/hyprland.pid")" -x Hyprland || true)"
-        for _ in $(seq 25); do
-            hyprctl -j clients | jq -e ".[] | select(.pid == ${hpid:-0})" >/dev/null && break
-            sleep 0.2
-        done
-        hyprctl dispatch "hl.dsp.window.move({ workspace = ${IRICE_HOST_WORKSPACE:-1}, follow = false, window = \"pid:$hpid\" })" >/dev/null
+        hpid="$(pgrep -P "$(cat "$RT/hyprland.pid")" -x Hyprland | head -1 || true)"
+        found=0
+        if [[ $hpid =~ ^[0-9]+$ ]]; then
+            for _ in $(seq 25); do
+                hyprctl -j clients | jq -e ".[] | select(.pid == $hpid)" >/dev/null && { found=1; break; }
+                sleep 0.2
+            done
+        fi
+        # Only when that exact window exists; never a bare "pid:" to the real compositor
+        [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = ${IRICE_HOST_WORKSPACE:-1}, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
         nested hyprctl output create headless IRICE-TEST >/dev/null
         # Layer surfaces in the nested output keep their first size after the host
         # resizes the window, so restart the shell once it has settled.

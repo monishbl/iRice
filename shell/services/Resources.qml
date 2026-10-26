@@ -12,7 +12,7 @@ Singleton {
     property bool overlayActive: false
     property bool menubarActive: false
     property bool islandActive: false // the island only needs a slow sample (alerts when it stays high)
-    property int desktopUsers: 0 // System widgets on the desktop (slow sampling is enough)
+    property int desktopUsers: 0 // things showing CPU/memory now (System widgets, the open island); slow sampling is enough
     readonly property bool active: overlayActive || menubarActive || islandActive || desktopUsers > 0
     readonly property bool fast: overlayActive || menubarActive
     property real cpu: 0 // 0..1

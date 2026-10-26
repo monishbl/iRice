@@ -44,6 +44,7 @@ PanelWindow {
     // compositor. A change starts a short per-frame sync (animations move and
     // fade glass through their parents), sending only when shapes differ.
     property string sentShapes: ""
+    property string sentMonitor: "" // where they went (a window can move to another screen)
     function glassChanged() {
         syncWindow.restart();
         if (!syncFrames.running)
@@ -56,12 +57,28 @@ PanelWindow {
             return;
         const shapes = visible ? glasses.filter(g => g.pluginMode).map(g => g.pluginShape()).filter(s => s !== null) : [];
         const key = JSON.stringify(shapes);
-        if (key === sentShapes)
+        if (key === sentShapes && mon === sentMonitor)
             return;
+        // Moved to another screen: clear the shapes left on the old one
+        if (sentMonitor !== "" && sentMonitor !== mon && sentShapes !== "" && sentShapes !== "[]")
+            GlassPlugin.update(sentMonitor, ns, []);
         sentShapes = key;
+        sentMonitor = mon;
         GlassPlugin.update(mon, ns, shapes);
     }
     onVisibleChanged: glassChanged()
+    onScreenChanged: glassChanged()
+    // The material (and its colours) changed: shapes carry it, so re-send
+    Connections {
+        target: Theme.glass
+        function onAmountsChanged() { root.glassChanged(); }
+        function onTintChanged() { root.glassChanged(); }
+        function onDepthChanged() { root.glassChanged(); }
+    }
+    Connections {
+        target: Theme
+        function onDarkChanged() { root.glassChanged(); }
+    }
     Connections {
         target: GlassPlugin
         function onReady() {
@@ -81,5 +98,5 @@ PanelWindow {
             root.syncGlass();
         }
     }
-    Component.onDestruction: if (sentShapes !== "" && sentShapes !== "[]") GlassPlugin.update(screen?.name ?? "", WlrLayershell.namespace, [])
+    Component.onDestruction: if (sentMonitor !== "" && sentShapes !== "" && sentShapes !== "[]") GlassPlugin.update(sentMonitor, WlrLayershell.namespace, [])
 }

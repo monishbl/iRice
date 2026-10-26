@@ -106,10 +106,11 @@ elif ! "$DATA/irice/src/tools/build-plugin.sh"; then
 fi
 
 say "Installing the Hyprland config"
-if [[ -d "$CONFIG/hypr" ]]; then
-    BACKUP="$CONFIG/hypr.backup-$(date +%Y%m%d-%H%M%S)"
-    run cp -a "$CONFIG/hypr" "$BACKUP"
-    echo "  backed up to $BACKUP"
+# Your own config is backed up once, before iRice first replaces it; running
+# the installer again (to update) must not back up iRice over it.
+if [[ -d "$CONFIG/hypr" && ! -d "$CONFIG/hypr/irice" && ! -e "$CONFIG/hypr.pre-irice" ]]; then
+    run cp -a "$CONFIG/hypr" "$CONFIG/hypr.pre-irice"
+    echo "  backed up your Hyprland config to $CONFIG/hypr.pre-irice"
 fi
 run mkdir -p "$CONFIG/hypr/irice"
 run cp "$ROOT/hypr/hyprland.lua" "$CONFIG/hypr/hyprland.lua"
@@ -131,7 +132,7 @@ if [[ $GREETER == 1 ]]; then
     run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/irice/greeter.lua
     run sudo cp "$WALL" /usr/share/irice/wallpaper.jpg
     run sudo chmod -R a+rX /usr/share/irice
-    if [[ -f /etc/greetd/config.toml ]]; then
+    if [[ -f /etc/greetd/config.toml && ! -e /etc/greetd/config.toml.pre-irice ]]; then
         run sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.pre-irice
         echo "  backed up /etc/greetd/config.toml to config.toml.pre-irice"
     fi

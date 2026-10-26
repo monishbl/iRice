@@ -25,10 +25,10 @@ pcall(dofile, root .. "/hypr/irice/titlebars.lua") -- only with the hyprbars plu
 IRICE_GLASS_PLUGIN = root .. "/hypr/plugin/irice-glass/irice-glass.so"
 pcall(dofile, root .. "/hypr/irice/glass.lua")
 
-hl.bind(IRICE_MOD .. " + SHIFT + R", hl.dsp.exec_cmd(root .. "/sandbox/reload-shell.sh"), { description = "Sandbox: Reload shell" })
-hl.bind(IRICE_MOD .. " + Return", hl.dsp.exec_cmd("foot"), { description = "Apps: Terminal" })
+-- (MOD + SHIFT + R is recording, MOD + Return the terminal: see keybinds.lua)
+hl.bind(IRICE_MOD .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd(root .. "/sandbox/reload-shell.sh"), { description = "Sandbox: Reload shell" })
 
 hl.on("hyprland.start", function()
-    hl.exec_cmd("qs -p " .. root .. "/shell")
+    hl.exec_cmd("'" .. root .. "/shell/assets/scripts/launch-shell.sh' -p '" .. root .. "/shell'")
     hl.exec_cmd("wl-paste --watch cliphist store")
 end)

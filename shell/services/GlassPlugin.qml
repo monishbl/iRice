@@ -20,6 +20,7 @@ Singleton {
     property var pending: ({})
     property var order: []
     property string inFlight: ""
+    property int serial: 0 // of the request in flight; late callbacks for older ones are ignored
     signal ready // answered a ping: (re)loaded plugins start blank, so resend state
 
     function update(monitor, ns, shapes) {
@@ -53,7 +54,10 @@ Singleton {
         send(cmd);
     }
 
-    function finish() {
+    function finish(s) {
+        if (s !== undefined && s !== serial)
+            return; // belongs to an earlier request
+        watchdog.stop();
         if (sock.connected)
             sock.connected = false; // the state change continues with pump()
         else if (inFlight !== "") {
@@ -63,8 +67,28 @@ Singleton {
     }
 
     function send(cmd) {
+        // Hyprland reads requests in 1023-byte chunks and waits for more when a
+        // chunk is exactly full; pad so a request never ends on that edge
+        if (cmd.length % 1023 === 0)
+            cmd += " ";
+        serial++;
         inFlight = cmd;
+        watchdog.restart();
         sock.connected = true;
+    }
+    // A request that never gets an answer mustn't block every later update
+    Timer {
+        id: watchdog
+        interval: 2000
+        onTriggered: {
+            if (root.inFlight === "")
+                return;
+            root.inFlight = "";
+            root.serial++;
+            if (sock.connected)
+                sock.connected = false;
+            Qt.callLater(root.pump);
+        }
     }
 
     Socket {
@@ -81,7 +105,10 @@ Singleton {
         // Never change `connected` inside the socket's own callbacks (Qt is
         // still using the socket there; Quickshell crashes). Hyprland closes
         // the connection after answering, which also arrives as an error.
-        onError: if (!connected) Qt.callLater(root.finish)
+        onError: if (!connected) {
+            const s = root.serial;
+            Qt.callLater(() => root.finish(s));
+        }
         parser: SplitParser {
             splitMarker: ""
             onRead: data => {
@@ -90,9 +117,15 @@ Singleton {
                     root.version = root.available ? (parseInt(data.split(" ")[1]) || 1) : 0;
                     if (root.available)
                         Qt.callLater(root.ready);
+                } else if (!data.startsWith("ok") && !data.startsWith("error")) {
+                    // Not the plugin answering (it was unloaded): fall back
+                    // to Frosted until a ping finds it again
+                    root.available = false;
+                    root.version = 0;
                 }
                 sock.isPing = false;
-                Qt.callLater(root.finish); // one answer per connection
+                const s = root.serial;
+                Qt.callLater(() => root.finish(s)); // one answer per connection
             }
         }
         property bool isPing: false

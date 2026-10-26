@@ -411,22 +411,38 @@ Singleton {
 
     function saveSources() {
         sourcesFile.setText(JSON.stringify({ sources: sources, defaultAlert: defaultAlert }, null, 2));
+        sourcesPrivate.running = true;
+    }
+    // Calendar links can carry secret tokens: owner-only
+    Process {
+        id: sourcesPrivate
+        command: ["chmod", "600", root.configPath]
     }
     function saveLocal() {
         localSaver.payload = JSON.stringify(local, null, 1);
-        localSaver.running = true;
+        if (localSaver.running)
+            localSaver.again = true; // save again once this write finishes
+        else
+            localSaver.running = true;
     }
     // Owner-only: events can be private
     Process {
         id: localSaver
         property string payload
+        property bool again: false
         command: ["sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\"; cat > \"$1\"", "sh", root.statePath]
         stdinEnabled: true
         onStarted: {
             write(payload);
             stdinEnabled = false;
         }
-        onExited: stdinEnabled = true
+        onExited: {
+            stdinEnabled = true;
+            if (again) {
+                again = false;
+                running = true;
+            }
+        }
     }
 
     FileView {

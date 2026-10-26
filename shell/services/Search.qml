@@ -46,7 +46,7 @@ Singleton {
             return null;
         if (!/^(?:[0-9.+\-*/%^()]|sqrt|sin|cos|tan|log|ln|pi|e)+$/.test(expr))
             return null;
-        const js = expr.replace(/\^/g, "**").replace(/sqrt/g, "Math.sqrt").replace(/sin/g, "Math.sin").replace(/cos/g, "Math.cos").replace(/tan/g, "Math.tan").replace(/ln/g, "Math.log").replace(/log/g, "Math.log10").replace(/pi/g, "Math.PI").replace(/(^|[^a-zA-Z.])e(?![a-zA-Z])/g, "$1Math.E");
+        const js = expr.replace(/\^/g, "**").replace(/sqrt/g, "Math.sqrt").replace(/sin/g, "Math.sin").replace(/cos/g, "Math.cos").replace(/tan/g, "Math.tan").replace(/log/g, "Math.log10").replace(/ln/g, "Math.log").replace(/pi/g, "Math.PI").replace(/(^|[^a-zA-Z.])e(?![a-zA-Z])/g, "$1Math.E");
         try {
             const v = Function('"use strict"; return (' + js + ");")();
             if (typeof v !== "number" || !isFinite(v))

@@ -55,7 +55,12 @@ static std::map<std::string, std::vector<SShape>> g_shapes;
 
 // ── GL resources ────────────────────────────────────────────────────────────
 static GLuint g_prog = 0, g_vao = 0, g_copyFB = 0, g_copyTex = 0;
-static int    g_copyW = 0, g_copyH = 0;
+// One copy target per framebuffer size, so monitors of different resolution
+// don't reallocate it every frame (at most a few kept)
+struct SCopyTarget {
+    GLuint fb = 0, tex = 0;
+};
+static std::map<std::pair<int, int>, SCopyTarget> g_copyTargets;
 static GLint  u_sharp, u_blurred, u_fbSize, u_rect, u_copyRect, u_radius, u_mode, u_refraction, u_depth, u_bevel, u_frost, u_chroma, u_rim, u_tint, u_saturation,
     u_opacity, u_solid, u_hasBlur, u_gloss;
 
@@ -223,22 +228,29 @@ static bool ensureProgram() {
 }
 
 static void ensureCopyTarget(int w, int h) {
-    if (g_copyTex && g_copyW == w && g_copyH == h)
-        return;
-    if (!g_copyTex) {
-        glGenTextures(1, &g_copyTex);
-        glGenFramebuffers(1, &g_copyFB);
+    auto it = g_copyTargets.find({w, h});
+    if (it == g_copyTargets.end()) {
+        if (g_copyTargets.size() >= 4) { // drop one we haven't needed lately
+            auto old = g_copyTargets.begin();
+            glDeleteFramebuffers(1, &old->second.fb);
+            glDeleteTextures(1, &old->second.tex);
+            g_copyTargets.erase(old);
+        }
+        SCopyTarget t;
+        glGenTextures(1, &t.tex);
+        glGenFramebuffers(1, &t.fb);
+        glBindTexture(GL_TEXTURE_2D, t.tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, t.fb);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
+        it = g_copyTargets.emplace(std::make_pair(w, h), t).first;
     }
-    glBindTexture(GL_TEXTURE_2D, g_copyTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindFramebuffer(GL_FRAMEBUFFER, g_copyFB);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_copyTex, 0);
-    g_copyW = w;
-    g_copyH = h;
+    g_copyFB  = it->second.fb;
+    g_copyTex = it->second.tex;
 }
 
 // Saves and restores the GL state we touch, so Hyprland's own state caches
@@ -486,5 +498,16 @@ APICALL EXPORT void PLUGIN_EXIT() {
     controlsExit();
     if (g_cmd)
         HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_cmd);
-    // GL objects die with the context; the hook is removed by Hyprland
+    // Free our GL objects (the plugin can be reloaded many times)
+    for (auto& [size, t] : g_copyTargets) {
+        glDeleteFramebuffers(1, &t.fb);
+        glDeleteTextures(1, &t.tex);
+    }
+    g_copyTargets.clear();
+    if (g_vao)
+        glDeleteVertexArrays(1, &g_vao);
+    if (g_prog)
+        glDeleteProgram(g_prog);
+    g_vao = g_prog = 0;
+    // The hook itself is removed by Hyprland
 }

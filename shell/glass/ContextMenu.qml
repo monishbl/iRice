@@ -92,6 +92,12 @@ GlassWindow {
             id: glass
             anchors.fill: parent
             radius: Theme.radius.menu + 2
+            // Follow the elastic pull (the plugin draws the glass from its position)
+            Connections {
+                target: pull
+                function onLxChanged() { glass.updatePosition(); }
+                function onLyChanged() { glass.updatePosition(); }
+            }
         }
         MouseArea { anchors.fill: parent; anchors.margins: body.m }
 

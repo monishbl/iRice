@@ -41,6 +41,19 @@ Variants {
                 out.push(...endItems.map((x, i) => Object.assign({ divider: i === 0 }, x)));
             return out;
         }
+        // The Repeater's model only changes when the set of items does: the
+        // recent-apps list is rewritten on every focus change, and a new
+        // array would rebuild every icon (reloading icons, cutting animations)
+        property var shownItems: []
+        property string shownKey: ""
+        onItemsChanged: {
+            const key = items.map(i => i.kind + ":" + i.id + (i.divider ? "|" : "")).join(",");
+            if (key !== shownKey) {
+                shownKey = key;
+                shownItems = items;
+            }
+        }
+        Component.onCompleted: itemsChanged()
         readonly property int dividers: items.filter(i => i.divider).length
         readonly property real restWidth: items.length * iconSize + (items.length - 1) * gap + dividers * dividerWidth
 
@@ -183,7 +196,7 @@ Variants {
                 spacing: win.gap
 
                 Repeater {
-                    model: win.items
+                    model: win.shownItems
                     DockItem {
                         required property var modelData
                         required property int index

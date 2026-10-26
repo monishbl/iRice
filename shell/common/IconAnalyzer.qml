@@ -33,6 +33,8 @@ Canvas {
     function finish(result) {
         const src = current;
         current = "";
+        if (src)
+            unloadImage(src); // analysed: don't keep the full-size icon in memory
         IconInfo.done(src, result);
         Qt.callLater(start);
     }

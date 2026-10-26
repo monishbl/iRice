@@ -50,12 +50,15 @@ Singleton {
         const m = modeById(id);
         if (!m)
             return;
-        if (on && active !== id)
+        const again = on && active === id; // same mode, new duration
+        if (on && !again)
             undoEffects();
         active = id;
         source = fromSchedule ? "schedule" : "manual";
         until = durationMs > 0 ? Date.now() + durationMs : durationMs === -1 ? untilEvening() : 0;
-        applyEffects(m);
+        // Re-applying would overwrite what to restore with the mode's own look
+        if (!again)
+            applyEffects(m);
         save();
     }
 

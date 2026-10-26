@@ -54,7 +54,8 @@ removed=0
 for p in $(shells); do
     s="$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)"
     r="$(var_of "$p" XDG_RUNTIME_DIR)"
-    [[ "$s" == "$SIG" ]] && continue
+    # No readable session (e.g. a host process seen from a container): not ours to judge
+    [[ -z "$s" || "$s" == "$SIG" ]] && continue
     if ! alive "$s" "${r:-$RUN}"; then
         echo "stale shell $p (session $s)"
         kill -9 "$p" 2>/dev/null && removed=$((removed + 1))
@@ -62,7 +63,7 @@ for p in $(shells); do
 done
 for p in $(pgrep -f "tty-shell.sh watchdog"); do
     s="$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)"
-    if [[ "$s" != "$SIG" ]] && ! alive "$s" "$(var_of "$p" XDG_RUNTIME_DIR)"; then
+    if [[ -n "$s" && "$s" != "$SIG" ]] && ! alive "$s" "$(var_of "$p" XDG_RUNTIME_DIR)"; then
         echo "stale watchdog $p"
         kill "$p" 2>/dev/null
     fi

@@ -41,14 +41,16 @@ hl.bind(MOD .. " + SHIFT + C", run("hyprpicker -a"), { description = "Screen: Pi
 hl.bind(MOD .. " + SHIFT + R", shell("record"), { description = "Screen: Start or stop recording" })
 
 -- Apps
-hl.bind(MOD .. " + Return", run("xdg-terminal-exec || foot || kitty"), { description = "Apps: Terminal" })
+-- The first terminal that's installed, once (`a || b` would open b too when a's shell exits with an error)
+hl.bind(MOD .. " + Return", run("sh -c 'for t in xdg-terminal-exec foot kitty alacritty; do command -v \"$t\" >/dev/null && exec \"$t\"; done'"), { description = "Apps: Terminal" })
 hl.bind(MOD .. " + E", run("xdg-open ~"), { description = "Apps: Files" })
 
 -- Windows
 hl.bind(MOD .. " + Q", hl.dsp.window.close(), { description = "Window: Close" })
 hl.bind(MOD .. " + F", hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }), { description = "Window: Full screen" })
 hl.bind(MOD .. " + D", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }), { description = "Window: Zoom" })
-hl.bind(MOD .. " + ALT + Space", hl.dsp.window.float({ action = "toggle" }), { description = "Window: Float or tile" })
+-- (with ALT as the modifier, MOD + ALT would be plain Alt+Space, which is Spotlight)
+hl.bind(MOD .. (MOD == "ALT" and " + CTRL" or " + ALT") .. " + Space", hl.dsp.window.float({ action = "toggle" }), { description = "Window: Float or tile" })
 hl.bind(MOD .. " + P", hl.dsp.window.pin(), { description = "Window: Keep on all spaces" })
 hl.bind(MOD .. " + mouse:272", hl.dsp.window.drag(), { mouse = true, description = "Window: Move" })
 hl.bind(MOD .. " + mouse:273", hl.dsp.window.resize(), { mouse = true, description = "Window: Resize" })

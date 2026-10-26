@@ -34,6 +34,7 @@ Variants {
                 onTriggered: pop.position = pop.player?.position ?? 0
             }
             onShownChanged: position = player?.position ?? 0
+            onPlayerChanged: position = player?.position ?? 0 // another player was picked
 
             function fmt(s) {
                 s = Math.max(0, Math.floor(s));
@@ -105,7 +106,7 @@ Variants {
                         value: pop.position
                         onMoved: v => {
                             if (pop.player?.canSeek) {
-                                pop.player.seek(v - pop.position);
+                                pop.player.position = v; // absolute, so a stale position can't skew it
                                 pop.position = v;
                             }
                         }

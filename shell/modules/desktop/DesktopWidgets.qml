@@ -19,13 +19,30 @@ Item {
     readonly property point origin: Qt.point(32, 54) // below the menu bar
     readonly property int cols: Math.max(1, Math.floor((width - 2 * origin.x + defs.gap) / (defs.cell + defs.gap)))
     readonly property int rows: Math.max(1, Math.floor((height - origin.y - 110 + defs.gap) / (defs.cell + defs.gap))) // leave the dock clear
+    // Saved entries this shell doesn't know (a newer build added the kind)
+    // are kept when saving, not dropped
+    readonly property var unknownEntries: Config.options.desktop.widgets.filter(e => !defs.kind(defs.parse(e).kind))
+    // As saved; shown positions come from `placed` (moved inside this screen's
+    // grid if the saved cell doesn't fit, without rewriting the layout)
     readonly property var widgets: Config.options.desktop.widgets.map(e => defs.parse(e)).filter(w => defs.kind(w.kind))
+    readonly property var placed: {
+        const out = [];
+        for (const w of widgets) {
+            if (fits(out, w.col, w.row, w.size, -1)) {
+                out.push(w);
+                continue;
+            }
+            const spot = nearestFree(out, w.col, w.row, w.size, -1);
+            out.push(spot ? Object.assign({}, w, spot) : w);
+        }
+        return out;
+    }
     readonly property bool editing: Panels.widgetEditing && Panels.screen === screen
     // A note or the large reminders widget takes typing
     readonly property bool wantsKeys: widgets.some(w => w.kind === "notes" || (w.kind === "reminders" && w.size === "l"))
 
     function save(list) {
-        Config.options.desktop.widgets = list.map(w => defs.format(w));
+        Config.options.desktop.widgets = list.map(w => defs.format(w)).concat(unknownEntries);
     }
 
     // ── Grid placement ──────────────────────────────────────────────────
@@ -166,8 +183,8 @@ Item {
 
     // Index of the widget under a point, or -1 for the bare desktop
     function widgetAt(x, y) {
-        for (let i = 0; i < widgets.length; i++) {
-            const w = widgets[i], px = defs.pixelSize(w.size);
+        for (let i = 0; i < placed.length; i++) {
+            const w = placed[i], px = defs.pixelSize(w.size);
             const wx = origin.x + w.col * (defs.cell + defs.gap), wy = origin.y + w.row * (defs.cell + defs.gap);
             if (x >= wx && x < wx + px.width && y >= wy && y < wy + px.height)
                 return i;
@@ -215,7 +232,7 @@ Item {
     Repeater {
         model: root.widgets.length
         WidgetFrame {
-            widget: root.widgets[index] ?? { kind: "", size: "s", col: 0, row: 0 }
+            widget: root.placed[index] ?? { kind: "", size: "s", col: 0, row: 0 }
             defs: widgetDefs
             origin: root.origin
             editing: root.editing

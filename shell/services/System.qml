@@ -32,7 +32,7 @@ Singleton {
     // leftover and duplicate shells and starts one fresh. Apps keep running.
     function repairShell() {
         Panels.close();
-        const script = Qt.resolvedUrl("../assets/scripts/repair-shell.sh").toString().replace("file://", "");
+        const script = decodeURIComponent(Qt.resolvedUrl("../assets/scripts/repair-shell.sh").toString().replace("file://", ""));
         Quickshell.execDetached(["setsid", "-f", script]);
     }
 
@@ -74,13 +74,12 @@ Singleton {
             hyprEval('hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false }, rounding = 0 }, general = { gaps_in = 0, gaps_out = 0 } })');
         else
             Quickshell.execDetached(["sh", "-c", "hyprctl reload config-only >/dev/null"]);
-        if (!gameMode && antiFlashbang)
-            Qt.callLater(applyShader);
+        // (the reload's configreloaded event re-applies corners and the shader)
     }
 
     // Anti-flashbang: a screen shader that tames very bright content.
     property bool antiFlashbang: false
-    readonly property string shaderPath: Qt.resolvedUrl("../assets/hypr/antiflashbang.glsl").toString().replace("file://", "")
+    readonly property string shaderPath: decodeURIComponent(Qt.resolvedUrl("../assets/hypr/antiflashbang.glsl").toString().replace("file://", ""))
     onAntiFlashbangChanged: applyShader()
     function applyShader() {
         hyprEval('hl.config({ decoration = { screen_shader = "' + (antiFlashbang ? shaderPath : "") + '" } })');
@@ -111,7 +110,23 @@ Singleton {
 
     // Window corners follow Settings → Appearance (continuous curve)
     readonly property int windowRadius: Config.ready ? Config.options.appearance.windowRadius : -1
-    onWindowRadiusChanged: if (windowRadius >= 0) hyprEval("hl.config({ decoration = { rounding = " + windowRadius + ", rounding_power = 4.0 } })")
+    onWindowRadiusChanged: applyRadius()
+    function applyRadius() {
+        if (windowRadius >= 0 && !gameMode)
+            hyprEval("hl.config({ decoration = { rounding = " + windowRadius + ", rounding_power = 4.0 } })");
+    }
+    // A config reload (saving a config file, or leaving game mode) puts back
+    // the file's values; re-apply what the shell sets
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "configreloaded")
+                return;
+            root.applyRadius();
+            if (root.antiFlashbang)
+                root.applyShader();
+        }
+    }
 
     // Listen for a few seconds and name the song that's playing (SongRec).
     function identifySong() {

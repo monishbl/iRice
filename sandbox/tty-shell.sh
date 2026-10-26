@@ -54,7 +54,9 @@ start() {
     (
         flock -n 9 || exit 0 # another start is running
         [[ -n "$(shell_pids)" ]] && exit 0
-        setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$SHELL_DIR" >/dev/null 2>&1
+        # The locks' descriptors must not leak into the shell (and the apps it
+        # opens), or they'd hold the locks and block every later start
+        setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$SHELL_DIR" >/dev/null 2>&1 8>&- 9>&-
         sleep 2 # let it register before the lock is released
     ) 9>"$LOCKDIR/irice-shell.lock"
 }

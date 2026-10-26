@@ -8,13 +8,17 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string bundledDir: Qt.resolvedUrl("../assets/wallpapers").toString().replace("file://", "")
+    readonly property string bundledDir: decodeURIComponent(Qt.resolvedUrl("../assets/wallpapers").toString().replace("file://", ""))
     readonly property var cfg: Config.options.wallpaper
     readonly property string stillPath: cfg.path || bundledDir + "/tahoe-dusk.jpg"
     // The picture showing now: the chosen one, or the dynamic one for this time
     // of day / appearance. A live wallpaper uses its first frame here (for glass).
     readonly property string path: livePoster !== "" ? livePoster : cfg.dynamic === "time" ? timePicture : cfg.dynamic === "appearance" ? (Theme.dark ? (cfg.darkPath || bundledDir + "/tahoe-dusk.jpg") : (cfg.lightPath || bundledDir + "/tahoe-day.jpg")) : stillPath
-    readonly property url source: "file://" + path
+    // Each path segment encoded, so names with # % ? still load
+    readonly property url source: fileUrl(path)
+    function fileUrl(p) {
+        return p ? "file://" + p.split("/").map(encodeURIComponent).join("/") : "";
+    }
 
     // Time of day: a folder's pictures in name order. The first half spans
     // sunrise to sunset, the rest the night. The bundled set gets phases that
@@ -24,9 +28,11 @@ Singleton {
         const m = Daylight.minute, r = Daylight.sunrise, st = Daylight.sunset;
         if (!cfg.dynamicFolder) {
             const p = n => bundledDir + "/tahoe-" + n + ".jpg";
-            if (m >= r - 60 && m < r + 90) return p("dawn");
-            if (m >= r + 90 && m < st - 60) return p("day");
-            if (m >= st - 60 && m < st + 90) return p("dusk");
+            // Minutes since an event, wrapped, so phases crossing midnight work
+            const since = t => (m - t + 1440) % 1440;
+            if (since(r - 60) < 150) return p("dawn"); // sunrise -60 .. +90
+            if (since(st - 60) < 150) return p("dusk"); // sunset -60 .. +90
+            if (since(r + 90) < ((st - 60) - (r + 90) + 1440) % 1440) return p("day");
             return p("night");
         }
         const pics = folderPictures;
@@ -40,11 +46,20 @@ Singleton {
     }
     Process {
         id: folderList
-        running: root.cfg.dynamic === "time" && root.cfg.dynamicFolder !== ""
-        command: ["sh", "-c", "find \"$1\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) | sort", "sh", root.cfg.dynamicFolder]
+        command: ["sh", "-c", "find -L \"$1\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) | sort", "sh", root.cfg.dynamicFolder]
         stdout: StdioCollector {
             onStreamFinished: root.folderPictures = text.split("\n").filter(l => l !== "")
         }
+    }
+
+    // Re-list whenever the folder (or the mode) changes; set imperatively so
+    // the command already has the new folder when it starts
+    readonly property string timeFolder: cfg.dynamic === "time" ? cfg.dynamicFolder : ""
+    onTimeFolderChanged: {
+        folderPictures = [];
+        folderList.running = false;
+        if (timeFolder !== "")
+            folderList.running = true;
     }
 
     // Live wallpaper poster: one frame, extracted once with ffmpeg (if present)
@@ -57,14 +72,18 @@ Singleton {
         if (liveVideo === "")
             return;
         const out = cacheDir + "/live-poster-" + Qt.md5(liveVideo) + ".jpg";
+        posterProc.running = false; // a run for an older video is abandoned
         posterProc.out = out;
+        posterProc.video = liveVideo;
         posterProc.command = ["sh", "-c", "[ -s \"$2\" ] || ffmpeg -loglevel error -y -ss 1 -i \"$1\" -frames:v 1 -q:v 3 \"$2\"; [ -s \"$2\" ]", "sh", liveVideo, out];
         posterProc.running = true;
     }
     Process {
         id: posterProc
         property string out
-        onExited: code => root.livePoster = code === 0 ? out : ""
+        property string video
+        // Only if it's still the video in use (it may have changed meanwhile)
+        onExited: code => root.livePoster = code === 0 && video === root.liveVideo && video !== "" ? out : ""
     }
     readonly property string directory: Config.options.wallpaper.directory || Quickshell.env("HOME") + "/Pictures/Wallpapers"
 
@@ -81,7 +100,7 @@ Singleton {
     Process {
         id: setScan
         running: true
-        command: [Qt.resolvedUrl("../assets/scripts/wallpaper-sets.sh").toString().replace("file://", ""), root.directory]
+        command: [decodeURIComponent(Qt.resolvedUrl("../assets/scripts/wallpaper-sets.sh").toString().replace("file://", "")), root.directory]
         stdout: StdioCollector {
             onStreamFinished: {
                 // Newest macOS first, then the rest by name
@@ -91,7 +110,7 @@ Singleton {
                     return i < 0 ? order.length : i;
                 };
                 root.sets = text.split("\n").filter(l => l !== "").map(l => {
-                    const [kind, name, a, b] = l.split("|");
+                    const [kind, name, a, b] = l.split("\t");
                     return kind === "pair" ? { kind: kind, name: name, light: a, dark: b, preview: a } : { kind: kind, name: name, folder: a, preview: b };
                 }).sort((x, y) => rank(x.name) - rank(y.name) || x.name.localeCompare(y.name));
             }

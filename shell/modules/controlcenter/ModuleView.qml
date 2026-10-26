@@ -55,6 +55,7 @@ Item {
 
     // As a chip: liquid glass of its own
     Glass {
+        id: chipGlass
         visible: root.chip
         anchors.fill: parent
         anchors.margins: -shadowMargin
@@ -299,4 +300,16 @@ Item {
         pressed: bgMouse.pressed
     }
     transform: root.preview ? [] : elastic.effects
+
+    // Chip glass is drawn by the compositor from its position: follow the
+    // press squish and drag, the focus lift and the dim fade
+    Connections {
+        target: elastic
+        enabled: root.chip
+        function onPxChanged() { chipGlass.updatePosition(); }
+        function onPyChanged() { chipGlass.updatePosition(); }
+        function onSChanged() { chipGlass.updatePosition(); }
+    }
+    onScaleChanged: if (chip) chipGlass.updatePosition()
+    onDimChanged: if (chip) chipGlass.updatePosition()
 }

@@ -35,11 +35,15 @@ Variants {
             readonly property var wifiNetwork: wifiDevice?.networks.values.find(n => n.connected) ?? null
             readonly property var bt: Bluetooth.defaultAdapter
             readonly property var btConnected: Bluetooth.devices.values.filter(d => d.connected)
-            property alias page: pageState.value
-            QtObject {
-                id: pageState
-                property string value: Panels.ccPage
-                onValueChanged: Panels.ccPage = value
+            // The open detail page, kept in step with Panels.ccPage both ways
+            // (without a binding that the first local change would break)
+            property string page: Panels.ccPage
+            Connections {
+                target: Panels
+                function onCcPageChanged() {
+                    if (Panels.screen === cc.screen)
+                        cc.page = Panels.ccPage;
+                }
             }
 
             // Detail pages (Wi-Fi, Bluetooth, Sound, Focus) open as a second
@@ -55,7 +59,12 @@ Variants {
             }
             // Opened from elsewhere (e.g. the menu bar): belongs to the module with that page
             readonly property string focusedModule: page === "" ? "" : subFrom !== "" && moduleDefs.all[subFrom]?.page === page ? subFrom : (layout.find(e => moduleDefs.all[e.id]?.page === page)?.id ?? "")
-            onPageChanged: if (page === "") subFrom = ""
+            onPageChanged: {
+                if (page === "")
+                    subFrom = "";
+                if (Panels.screen === cc.screen && Panels.ccPage !== page)
+                    Panels.ccPage = page;
+            }
             dim: page !== "" ? 1 : 0
             sideOpen: page !== ""
             onCloseSide: page = ""
@@ -127,13 +136,18 @@ Variants {
             }
 
             readonly property bool editing: Panels.ccEditing
-            onShownChanged: if (!shown) { Panels.ccEditing = false; page = ""; }
+            // Only the screen that closed resets the shared state
+            onShownChanged: if (!shown && Panels.screen === cc.screen) { Panels.ccEditing = false; page = ""; }
             ModuleDefs { id: moduleDefs }
 
             // Saved layout ("id:WxH"), modules whose tool is missing left out
             readonly property var layout: (Config.options.controlCenter.layout.length > 0 ? Config.options.controlCenter.layout : moduleDefs.defaultLayout).map(e => moduleDefs.parse(e)).filter(e => moduleDefs.usable(e.id))
             function saveLayout(entries) {
-                Config.options.controlCenter.layout = entries.map(e => e.id + ":" + e.w + "x" + e.h);
+                // Keep modules that are only unavailable right now (no display
+                // brightness while undocked, a tool not installed yet)
+                const saved = Config.options.controlCenter.layout.length > 0 ? Config.options.controlCenter.layout : moduleDefs.defaultLayout;
+                const resting = saved.filter(e => !moduleDefs.usable(moduleDefs.parse(e).id));
+                Config.options.controlCenter.layout = entries.map(e => e.id + ":" + e.w + "x" + e.h).concat(resting);
             }
             function removeModule(id) {
                 saveLayout(layout.filter(e => e.id !== id));

@@ -37,16 +37,23 @@ Singleton {
     function skip() {
         advance();
     }
+    // A phase ended (by time or Skip; not by Reset). The island announces it
+    // when it can; otherwise a notification does.
+    signal phaseEnded(string next)
     function advance() {
+        const island = Island.enabled && Island.wants("timers");
         if (phase === "focus") {
             completed++;
             phase = completed % 4 === 0 ? "longBreak" : "break";
-            Quickshell.execDetached(["notify-send", "-a", "Focus", "Time for a break", (phase === "longBreak" ? longBreakMinutes : breakMinutes) + " minutes. Stand up and stretch."]);
+            if (!island)
+                Quickshell.execDetached(["notify-send", "-a", "Focus", "Time for a break", (phase === "longBreak" ? longBreakMinutes : breakMinutes) + " minutes. Stand up and stretch."]);
         } else {
             phase = "focus";
-            Quickshell.execDetached(["notify-send", "-a", "Focus", "Break's over", focusMinutes + " minutes of focus starting now."]);
+            if (!island)
+                Quickshell.execDetached(["notify-send", "-a", "Focus", "Break's over", focusMinutes + " minutes of focus starting now."]);
         }
         remaining = phaseLength;
+        phaseEnded(phase);
     }
 
     function swToggle() {

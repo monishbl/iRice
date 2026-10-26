@@ -24,7 +24,7 @@ Variants {
         WlrLayershell.namespace: "irice:wallpaper"
         WlrLayershell.layer: WlrLayer.Background
         // A note on the desktop takes typing (focus only when clicked)
-        WlrLayershell.keyboardFocus: desktopWidgets.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: desktopWidgets.visible && desktopWidgets.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         anchors { top: true; bottom: true; left: true; right: true }
         color: "black"
@@ -97,7 +97,9 @@ Variants {
                 duration: 700
                 easing.type: Easing.InOutQuad
                 onStarted: bakeTimer.restart()
-                onFinished: if (oldBuffer) oldBuffer.source = ""
+                // Release the old picture, unless a newer change is already
+                // loading into that buffer
+                onFinished: if (oldBuffer && oldBuffer !== wallpaper.buffers[wallpaper.front] && oldBuffer.source !== wallpaper.want) oldBuffer.source = ""
             }
         }
 
@@ -181,6 +183,8 @@ Variants {
             id: bakeTimer
             interval: 300 // let the small image load and the blur render
             onTriggered: {
+                if (small.status === Image.Error)
+                    return; // unloadable picture: don't retry forever
                 if (small.status !== Image.Ready) {
                     restart();
                     return;
@@ -196,8 +200,11 @@ Variants {
         }
         onWidthChanged: bakeTimer.restart()
 
+        // Widgets live on the first screen (one layout; macOS shows them on one display)
         DesktopWidgets {
             id: desktopWidgets
+            visible: win.screen === Quickshell.screens[0]
+            enabled: visible
             screen: win.screen
         }
 

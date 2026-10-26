@@ -82,6 +82,7 @@ Singleton {
     property var pendingUsb: null
     property bool driveSeen: false
     property var block: ({})
+    property var driveSeenAt: ({}) // "add:/dev/sdb" -> when it was announced
     function usbIcon(p) {
         const ifs = p.ID_USB_INTERFACES ?? "";
         const name = ((p.ID_MODEL_FROM_DATABASE ?? "") + " " + (p.ID_MODEL ?? "")).toLowerCase();
@@ -125,6 +126,12 @@ Singleton {
             pendingUsb = null;
             const label = p.ID_FS_LABEL ? p.ID_FS_LABEL.replace(/\\x20/g, " ") : usbName(p);
             const dev = p.DEVNAME;
+            // One alert per drive, not per partition (sdb1, sdb2… or nvme0n1p1…)
+            const disk = (dev ?? "").replace(/p?\d+$/, "");
+            const seenKey = p.ACTION + ":" + disk;
+            if (Date.now() - (root.driveSeenAt[seenKey] ?? 0) < 8000)
+                return;
+            root.driveSeenAt = Object.assign({}, root.driveSeenAt, { [seenKey]: Date.now() });
             if (p.ACTION === "add")
                 Island.post({
                     kind: "usb", icon: "hard-drive", title: label, subtitle: "Drive connected", color: Theme.accents.orange, action: "Open",
@@ -254,5 +261,5 @@ Singleton {
     }
     // Fallback without pactl
     readonly property var sink: Pipewire.defaultAudioSink
-    onSinkChanged: if (!subscribe.running && sink) outputChanged(sink.name, sink.description || sink.nickname || sink.name, "Sound output")
+    onSinkChanged: if (!Tools.has("pactl") && sink) outputChanged(sink.name, sink.description || sink.nickname || sink.name, "Sound output")
 }

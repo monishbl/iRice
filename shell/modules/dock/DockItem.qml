@@ -160,12 +160,19 @@ Item {
         }
     }
 
-    // Trash: full or empty
-    FolderListModel {
-        id: trashFiles
-        folder: root.kind === "trash" ? "file://" + (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/Trash/files" : ""
-        showHidden: true
-        showDirsFirst: false
+    // Trash: full or empty. Only the Trash item has the model (an empty
+    // folder makes FolderListModel list and watch the working folder)
+    Loader {
+        id: trashLoader
+        active: root.kind === "trash"
+        sourceComponent: FolderListModel {
+            folder: "file://" + (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/Trash/files"
+            showHidden: true
+            showDirsFirst: false
+        }
+    }
+    readonly property QtObject trashFiles: QtObject {
+        readonly property int count: trashLoader.item?.count ?? 0
     }
 
     MouseArea {

@@ -74,7 +74,8 @@ Singleton {
         id: file
         path: root.dir + "/state.json"
         watchChanges: true
-        onFileChanged: reload()
+        // (not while our own change is waiting to be saved: it would be lost)
+        onFileChanged: if (!saveTimer.running) reload()
         onLoaded: {
             root.loaded = false; // applying the file isn't a change to save
             try {

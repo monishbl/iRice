@@ -59,14 +59,14 @@ Variants {
 
             FolderListModel {
                 id: userFolder
-                folder: "file://" + Wallpaper.directory
+                folder: Wallpaper.fileUrl(Wallpaper.directory)
                 nameFilters: ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.JPG", "*.PNG"]
                 showDirs: false
                 sortField: FolderListModel.Time
             }
             FolderListModel {
                 id: bundled
-                folder: "file://" + Wallpaper.bundledDir
+                folder: Wallpaper.fileUrl(Wallpaper.bundledDir)
                 nameFilters: ["*.jpg"]
                 showDirs: false
             }
@@ -125,7 +125,7 @@ Variants {
                             hoverEnabled: true
                             onClicked: {
                                 Panels.close();
-                                Qt.openUrlExternally("file://" + Wallpaper.directory);
+                                Qt.openUrlExternally(Wallpaper.fileUrl(Wallpaper.directory));
                             }
                         }
                     }
@@ -166,7 +166,7 @@ Variants {
                                 Image {
                                     anchors.fill: parent
                                     anchors.margins: thumb.border.width
-                                    source: "file://" + cell.modelData
+                                    source: Wallpaper.fileUrl(cell.modelData)
                                     fillMode: Image.PreserveAspectCrop
                                     sourceSize: Qt.size(win.thumbW * 2, win.thumbH * 2)
                                     asynchronous: true

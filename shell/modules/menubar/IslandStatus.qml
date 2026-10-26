@@ -22,6 +22,16 @@ Item {
         return e.allDay ? (diff === 0 ? "Today" : prefix.trim()) : prefix + Qt.formatTime(e.start, "h:mm AP");
     }
 
+    // Make sure CPU and memory are sampled while this shows them
+    property bool counted: false
+    onShownChanged: {
+        if (shown !== counted) {
+            Resources.desktopUsers += shown ? 1 : -1;
+            counted = shown;
+        }
+    }
+    Component.onDestruction: if (counted) Resources.desktopUsers--
+
     property real appear: shown ? 1 : 0
     Behavior on appear {
         SequentialAnimation {

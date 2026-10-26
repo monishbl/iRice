@@ -218,14 +218,12 @@ Singleton {
             lowStep = 100;
     }
 
-    // Timers
-    property string lastPhase: Timers.phase
+    // Timers: a phase ended (not a reset)
     Connections {
         target: Timers
-        function onPhaseChanged() {
-            if (root.wants("timers") && Timers.phase !== root.lastPhase)
-                root.post({ kind: "timer", icon: Timers.phase === "focus" ? "timer" : "coffee", title: Timers.phase === "focus" ? "Break's over" : "Focus session done", subtitle: Timers.phase === "focus" ? "Time to focus" : "Take a break", color: Theme.color.warning }, 4000);
-            root.lastPhase = Timers.phase;
+        function onPhaseEnded(next) {
+            if (root.wants("timers"))
+                root.post({ kind: "timer", icon: next === "focus" ? "timer" : "coffee", title: next === "focus" ? "Break's over" : "Focus session done", subtitle: next === "focus" ? "Time to focus" : "Take a break", color: Theme.accents.orange }, 4000);
         }
     }
 
@@ -266,6 +264,10 @@ Singleton {
     property bool hotPreview: false // `qs ipc call island hot true`
     readonly property bool showHot: hot || hotPreview
     property int hotUid: 0
+    // When temperature isn't watched any more (alert switched off, island
+    // off), end the hot state so Low Power is given back
+    readonly property bool tempWatch: enabled && wants("temperature")
+    onTempWatchChanged: if (!tempWatch) hot = false
     property var savedProfile: null // the profile before throttling
     function hotText(t) {
         return "CPU " + Math.round(t) + " °C · " + (savedProfile !== null ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
