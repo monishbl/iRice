@@ -41,14 +41,13 @@ Variants {
         // Two buffers: a new picture decodes in the hidden one (off the GUI
         // thread) and fades in over the old one, which keeps showing until
         // then; the old one is released afterwards. No blank frames.
-        // Unlock (LockFx): the wallpaper settles from a touch larger, the
-        // widgets from further in, for depth
-        readonly property real setBack: 1 - LockFx.desktop
+        // Lock and unlock (LockFx): the wallpaper settles from a touch larger;
+        // widgets and icons zoom on their own (WidgetFrame, DesktopIcons)
 
         Item {
             id: wallpaper
             anchors.fill: parent
-            scale: LockFx.zoom ? 1 + 0.03 * win.setBack : 1
+            scale: LockFx.wallpaperScale
             // Opaque behind the pictures, so the first fade-in comes from
             // black and never shows the blur bake underneath
             Rectangle {
@@ -240,8 +239,6 @@ Variants {
             id: desktopWidgets
             visible: win.screen === Quickshell.screens[0] && Wallpaper.started
             enabled: visible
-            opacity: LockFx.desktop
-            scale: LockFx.zoom ? 1 + 0.1 * win.setBack : 1
             screen: win.screen
         }
 

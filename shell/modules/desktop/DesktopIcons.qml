@@ -194,6 +194,15 @@ Item {
             width: root.spot - 6
             height: root.spot - 2
             z: drag.active ? 5 : 0
+            // Lock and unlock: zooms with the widgets (LockFx)
+            readonly property real fxScale: LockFx.active ? LockFx.itemScale(x + width / 2, y + height / 2, root.width, root.height) : 1
+            opacity: LockFx.active ? LockFx.itemOpacity(x + width / 2, y + height / 2, root.width, root.height) : 1
+            transform: Scale {
+                origin.x: icon.parent.width / 2 - icon.x
+                origin.y: icon.parent.height / 2 - icon.y
+                xScale: icon.fxScale
+                yScale: icon.fxScale
+            }
             Behavior on x { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
             Behavior on y { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
 

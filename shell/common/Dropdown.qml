@@ -56,6 +56,7 @@ Rectangle {
         background: GlassPopupBackground {}
 
         contentItem: Flickable {
+            id: flick
             clip: true
             contentHeight: column.implicitHeight
             Column {
@@ -96,6 +97,11 @@ Rectangle {
                         }
                     }
                 }
+            }
+            ScrollIndicator {
+                target: flick
+                x: flick.width - width
+                height: flick.height
             }
         }
     }

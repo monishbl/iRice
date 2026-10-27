@@ -13,6 +13,14 @@ Item {
     property var items: []
     property Item anchor: null
     property int current: -1
+    // The keyboard's choice stays in view
+    onCurrentChanged: if (current >= 0) {
+        const top = current * 32, bottom = top + 32;
+        if (top < flick.contentY)
+            flick.contentY = top;
+        else if (bottom > flick.contentY + flick.height)
+            flick.contentY = bottom - flick.height;
+    }
     readonly property bool shown: menu.visible
 
     width: parent?.width ?? 0
@@ -24,6 +32,7 @@ Item {
         anchor = anchorItem;
         items = list;
         current = -1;
+        flick.contentY = Math.max(0, Math.min(list.findIndex(it => it.checked === true) * 32 - 120, list.length * 32 - 310));
         const p = anchorItem.mapToItem(root, 0, 0);
         const page = root.parent;
         const below = p.y + anchorItem.height + 4;
@@ -99,6 +108,7 @@ Item {
                 id: flick
                 anchors { fill: parent; margins: 5 }
                 contentHeight: list.implicitHeight
+                clip: true // long lists scroll inside the menu, not past it
                 boundsBehavior: Flickable.StopAtBounds
                 Column {
                     id: list
@@ -143,6 +153,10 @@ Item {
                         }
                     }
                 }
+            }
+            ScrollIndicator {
+                target: flick
+                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: 6; bottomMargin: 6; rightMargin: 1 }
             }
         }
     }

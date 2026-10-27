@@ -26,7 +26,7 @@ Column {
         width: parent.width
         footer: !IriceUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of iRice)." : IriceUpdate.result ? "Installed. Your settings and shortcuts were backed up to " + IriceUpdate.result.backup.replace(Quickshell.env("HOME"), "~") + "." : ""
         Row {
-            label: IriceUpdate.applying ? "Installing the update…" : IriceUpdate.result ? "Update installed: restarting the shell" : IriceUpdate.checking ? "Checking for updates…" : IriceUpdate.available ? "An update is ready" : page.report && !page.report.error ? "iRice is up to date" : "iRice updates"
+            label: IriceUpdate.applying ? "Installing the update…" : IriceUpdate.result ? "Update installed" : IriceUpdate.checking ? "Checking for updates…" : IriceUpdate.available ? "An update is ready" : page.report && !page.report.error ? "iRice is up to date" : "iRice updates"
             detail: page.report ? "This copy: " + page.report.current + (IriceUpdate.available ? " · latest: " + page.report.latest : "") : "Checked automatically every six hours."
             SettingsButton {
                 visible: IriceUpdate.allowed && !IriceUpdate.applying

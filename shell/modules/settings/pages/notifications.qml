@@ -55,10 +55,31 @@ Column {
     Group {
         width: parent.width
         title: "Sound effects"
-        footer: "Choose… plays your own file instead of iRice's sound."
+        footer: "Choose… plays your own file instead of the style's sound."
         Row {
             label: "Play sound effects"
             Switch { checked: Config.options.sounds.enabled; onToggled: Config.options.sounds.enabled = !checked }
+        }
+        Row {
+            visible: Config.options.sounds.enabled
+            label: "Style"
+            detail: ({ soft: "Low, rounded tones", marimba: "Warm wooden mallets", keys: "A soft electric piano", taps: "Short, low taps", minimal: "Quiet ticks", glass: "Bright glass and pops" })[Config.options.sounds.pack] ?? ""
+            Dropdown {
+                width: 200
+                options: [
+                    { value: "marimba", label: "Marimba" },
+                    { value: "taps", label: "Taps" },
+                    { value: "soft", label: "Soft" },
+                    { value: "keys", label: "Keys" },
+                    { value: "minimal", label: "Minimal" },
+                    { value: "glass", label: "Glass" }
+                ]
+                value: Config.options.sounds.pack
+                onChosen: v => {
+                    Config.options.sounds.pack = v;
+                    Qt.callLater(() => Sounds.play("notifications", true)); // hear it
+                }
+            }
         }
         SoundRow { key: "startup"; label: "When you log in" }
         SoundRow { key: "charging"; label: "Plugging in the charger" }

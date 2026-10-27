@@ -48,12 +48,25 @@ Item {
     scale: drag.active ? 1.04 : 1
     Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
 
+    // Lock and unlock: zooms toward or away from the screen's centre, in
+    // turn with the other widgets and icons (LockFx)
+    readonly property real fxW: parent?.width ?? 0
+    readonly property real fxH: parent?.height ?? 0
+    readonly property real fxScale: LockFx.active ? LockFx.itemScale(x + width / 2, y + height / 2, fxW, fxH) : 1
+    opacity: shown * (LockFx.active ? LockFx.itemOpacity(x + width / 2, y + height / 2, fxW, fxH) : 1)
+    transform: Scale {
+        origin.x: root.fxW / 2 - root.x
+        origin.y: root.fxH / 2 - root.y
+        xScale: root.fxScale
+        yScale: root.fxScale
+    }
+
     // Appear: grow in from slightly smaller
-    opacity: 0
+    property real shown: 0
     Component.onCompleted: appear.start()
     ParallelAnimation {
         id: appear
-        NumberAnimation { target: root; property: "opacity"; to: 1; duration: 260; easing.type: Easing.OutCubic }
+        NumberAnimation { target: root; property: "shown"; to: 1; duration: 260; easing.type: Easing.OutCubic }
         NumberAnimation { target: content; property: "scale"; from: 0.9; to: 1; duration: 420; easing.type: Easing.OutBack }
     }
 

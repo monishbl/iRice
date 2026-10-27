@@ -259,7 +259,7 @@ Singleton {
                     } });
         }
 
-        const apps = DesktopEntries.applications.values.filter(a => !a.noDisplay).map(a => ({
+        const apps = Apps.entries.filter(a => !a.noDisplay).map(a => ({
             entry: a,
             s: Math.max(score(a.name, q), score(a.genericName, q) * 0.8, score((a.keywords ?? []).join(" "), q) * 0.6, score(a.id, q) * 0.7)
         })).filter(x => x.s >= 30).sort((a, b) => b.s - a.s).slice(0, 8);

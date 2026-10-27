@@ -186,7 +186,7 @@ Singleton {
         if (a.app !== undefined)
             return "Opens your " + roleLabel(a.app).toLowerCase();
         if (a.desktop) {
-            const e = DesktopEntries.byId(a.desktop);
+            const e = Apps.byId(a.desktop);
             return "Opens " + (e?.name ?? a.desktop);
         }
         if (a.exec !== undefined)

@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.common
 
 // Small system switches shown in Control Center.
@@ -51,13 +52,23 @@ Singleton {
             root.keepAwake = true;
         }
     }
-    // A logind inhibitor while it's on: the menu bar's Wayland inhibitor only
-    // reaches this compositor, while idle daemons in other sessions (hypridle
-    // in a desktop on another console) and logind follow these. Closing the
-    // lid, or choosing Sleep, still sleeps.
+    // A logind "idle" inhibitor while Caffeine is on, and in the tty session
+    // while you're using it. Idle daemons of other sessions follow these
+    // (hypridle in the desktop on another console counts only its own input,
+    // so it put the laptop to sleep while you worked here). The menu bar's
+    // Wayland inhibitor only reaches this compositor. Released after two idle
+    // minutes, so leaving the laptop still lets it sleep; closing the lid, or
+    // choosing Sleep, always does.
+    IdleMonitor {
+        id: inUse
+        enabled: Quickshell.env("IRICE_TTY") === "1"
+        timeout: 120
+        respectInhibitors: true // (a playing video counts as use)
+    }
+    readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && Quickshell.env("IRICE_TTY") !== "1")
     Process {
-        running: root.keepAwake && !(root.sandboxed && Quickshell.env("IRICE_TTY") !== "1")
-        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=Caffeine is on", "--mode=block", "sleep", "infinity"]
+        running: root.holdAwake
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "sleep", "infinity"]
     }
     readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), "h:mm AP") : "Until off"
     Timer {

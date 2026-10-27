@@ -33,7 +33,7 @@ Variants {
             readonly property var spaces: Hyprland.workspaces.values.filter(w => w.id > 0 && w.monitor === monitor).sort((a, b) => a.id - b.id)
             // App Exposé: the app this opened for (kept while it animates out)
             property string exposeFor: ""
-            readonly property var exposeEntry: exposeFor ? (DesktopEntries.byId(exposeFor) ?? Apps.entryFor(exposeFor)) : null
+            readonly property var exposeEntry: exposeFor ? Apps.entryFor(exposeFor) : null
             function ofApp(t) {
                 const cls = t.lastIpcObject?.class ?? "";
                 return cls === exposeFor || Apps.entryFor(cls)?.id === exposeFor;

@@ -195,6 +195,12 @@ def write_json(path, data):
 
 # ── Check ──────────────────────────────────────────────────────────────────
 
+def progress(percent, text):
+    """A step for the update screen (shell/assets/updater), on stderr so
+    stdout stays the JSON report."""
+    print(f"PROGRESS {int(percent)} {text}", file=sys.stderr, flush=True)
+
+
 def upstream():
     r = subprocess.run(["git", "-C", REPO, "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else "origin/main"
@@ -354,6 +360,7 @@ def apply(config_dir, choices):
     if missing:
         raise SystemExit("Decide every conflict first: " + ", ".join(missing))
 
+    progress(5, "Backing up your settings")
     # Back up settings and shortcuts
     stamp = time.strftime("%Y%m%d-%H%M%S")
     backup = os.path.join(config_dir, "backups", "update-" + stamp)
@@ -362,6 +369,7 @@ def apply(config_dir, choices):
         if os.path.exists(os.path.join(config_dir, name)):
             shutil.copy2(os.path.join(config_dir, name), backup)
 
+    progress(15, "Installing the new version")
     # Code: set your edits aside, take the update, put back what you keep
     edited = [l for l in git("diff", "--name-only", "HEAD").splitlines() if l]
     merged = {}  # files kept as both: your edits with the update's merged in
@@ -390,6 +398,7 @@ def apply(config_dir, choices):
         with open(os.path.join(REPO, f), "w") as fh:
             fh.write(text)
 
+    progress(35, "Updating settings and shortcuts")
     # Settings and shortcuts
     config_path = os.path.join(config_dir, "config.json")
     config = load_json(config_path, {})
@@ -434,9 +443,13 @@ def apply(config_dir, choices):
     steps = {"plugin": ["make", "-C", os.path.join(REPO, "hypr/plugin/irice-glass")],
              "native": [os.path.join(REPO, "shell/native/build.sh")],
              "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
-    for r in report.get("rebuild", []):
+    names = {"plugin": "Building Liquid Glass", "native": "Building native helpers", "shaders": "Building shaders"}
+    todo = report.get("rebuild", [])
+    for i, r in enumerate(todo):
+        progress(45 + 40 * i / max(1, len(todo)), names[r])
         res = subprocess.run(steps[r], capture_output=True, text=True)
         (built if res.returncode == 0 else failed).append(r)
+    progress(85, "Finishing up")
     return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed,
             "now": git("rev-parse", "--short", "HEAD").strip()}
 

@@ -46,12 +46,12 @@ Column {
         title: "Transitions"
         Row {
             label: "Unlocking"
-            detail: Config.options.lock.unlockTransition === "zoom" ? "The lock lifts away and the desktop settles into place, like iPhone" : ""
+            detail: Config.options.lock.unlockTransition === "zoom" ? "The lock lifts away, widgets and icons zoom into place and windows fade in, like iPhone" : Config.options.lock.unlockTransition === "fade" ? "The lock fades away and the desktop fades in" : ""
             Choice { key: "unlockTransition"; values: ["zoom", "fade", "none"]; options: ["Zoom", "Fade", "None"]; width: 240 }
         }
         Row {
             label: "Locking"
-            Choice { key: "lockTransition"; values: ["fade", "none"]; options: ["Fade", "None"]; width: 160 }
+            Choice { key: "lockTransition"; values: ["zoom", "fade", "none"]; options: ["Zoom", "Fade", "None"]; width: 240 }
         }
         Row {
             label: "Into StandBy"

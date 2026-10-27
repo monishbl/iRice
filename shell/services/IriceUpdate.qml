@@ -77,45 +77,49 @@ Singleton {
     }
     property string notified: "" // the version last announced
 
+    // Installing hands over to assets/scripts/update-run.sh, started detached
+    // from a copy (with the update screen's): it stops this shell, updates
+    // behind a full-screen "Installing update" screen, rebuilds, and starts
+    // the new shell once. Updating under a running shell made it reload
+    // halfway (its files change), which killed the update with it.
     function apply() {
         if (!ready || !allowed)
             return;
         applying = true;
         error = "";
         result = null;
-        applyProc.command = ["sh", "-c", "f=$(mktemp) && printf '%s' \"$1\" > \"$f\" && python3 -I \"$2\" apply --config \"$3\" --choices \"$f\"; s=$?; rm -f \"$f\"; exit $s", "sh", JSON.stringify(choices), helper, Config.dir];
-        applyProc.running = true;
+        Quickshell.execDetached(["sh", "-c",
+            "t=$(mktemp -d \"${XDG_RUNTIME_DIR:-/tmp}/irice-update.XXXXXX\") || exit 1; " +
+            "cp -r \"$1/shell/assets/updater\" \"$t/ui\" && cp \"$1/shell/assets/scripts/update-run.sh\" \"$t/run.sh\" && printf '%s' \"$2\" > \"$t/choices.json\" && " +
+            "exec setsid -f bash \"$t/run.sh\" \"$t\" \"$1\" \"$3\" </dev/null >/dev/null 2>&1",
+            "sh", repo, JSON.stringify(choices), Config.dir]);
+        startTimeout.start();
     }
-    Process {
-        id: applyProc
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.applying = false;
-                let r = null;
-                try {
-                    r = JSON.parse(text);
-                } catch (e) {
-                    root.error = "Installing the update failed partway. Your settings were backed up first; run tools/irice-update.py check in the iRice folder to see where it stands.";
-                    return;
-                }
-                if (r.error) {
-                    root.error = r.error;
-                    return;
-                }
-                root.result = r;
-                root.report = null;
-                root.choices = {};
-                restartTimer.start();
-            }
+    // If the update screen never took over (the helper couldn't start)
+    Timer {
+        id: startTimeout
+        interval: 20000
+        onTriggered: if (root.applying) {
+            root.applying = false;
+            root.error = "The update didn't start. Try again, or run tools/irice-update.py in the iRice folder.";
         }
     }
-    // The new version: Hyprland's config (keybinds, gestures, look) and the shell
-    Timer {
-        id: restartTimer
-        interval: 1500 // (long enough to read "Installed")
-        onTriggered: {
-            Quickshell.execDetached(["hyprctl", "reload", "config-only"]);
-            Quickshell.execDetached(root.tty ? [root.repo + "/sandbox/tty-shell.sh", "restart"] : [Quickshell.shellDir + "/assets/scripts/repair-shell.sh"]);
+
+    // After the restart: what the last install did, for Software Update
+    FileView {
+        id: lastResult
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-update-result.json"
+        blockLoading: false
+        printErrors: false
+        onLoaded: {
+            try {
+                const r = JSON.parse(text());
+                if (r.error)
+                    root.error = r.error;
+                else if (r.applied)
+                    root.result = r;
+            } catch (e) {}
+            Quickshell.execDetached(["rm", "-f", path]);
         }
     }
 

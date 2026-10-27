@@ -9,12 +9,13 @@ import qs.services
 // Session lock. Every screen shows the clock; the password field lives on each
 // screen too, sharing one PAM conversation.
 //
-// Transitions (Settings → Lock Screen):
-//   locking    fade: the wallpaper fades in over the desktop, then the lock
-//              takes over showing the same picture (lockTransition)
-//   unlocking  zoom: the lock's content lifts away, growing and fading, then
-//              the desktop settles from a little closer (LockFx); fade: the
-//              same without the zoom (unlockTransition)
+// Transitions (Settings → Lock Screen), like iPhone:
+//   unlocking  zoom: the lock's content lifts away; the wallpaper settles from
+//              a little larger, widgets and icons zoom in from the centre in
+//              turn, and windows, dock and menu bar fade in (LockFx and the
+//              veil below); fade: the same without movement (unlockTransition)
+//   locking    the same, played backwards, then the lock takes over showing
+//              the same picture (lockTransition)
 // StandBy state (idle, burn-in rests and shifts) lives here, shared by every
 // screen, so they wake together and can keep their clocks in step.
 Scope {
@@ -36,89 +37,122 @@ Scope {
     // `held` is what the compositor sees; System.locked is what was asked
     property bool held: false
     Component.onCompleted: held = System.locked // locked at start (a restart while locked): no transition
-    property bool fading: false // the wallpaper fading in before the lock
     property bool leaving: false // the lock's content lifting away
-    readonly property int leaveMs: cfg.unlockTransition === "zoom" ? 200 : 160
+    readonly property int leaveMs: 220
+    // The veil: the wallpaper in a layer above the windows, showing exactly
+    // what the desktop's own wallpaper shows (same picture, same zoom). It
+    // covers the windows, dock and menu bar while the lock comes and goes,
+    // and fading it is what fades them; the wallpaper underneath and the
+    // widgets and icons do their own zoom (LockFx).
+    property bool veiled: false
 
     Connections {
         target: System
         function onLockedChanged() {
+            leaveTimer.stop();
+            enterTimer.stop();
             if (System.locked) {
-                leaveTimer.stop();
                 root.leaving = false;
-                LockFx.desktop = 1; // an unlock cut short: nothing stays set back
                 if (root.held)
                     return;
-                if (root.cfg.lockTransition === "fade" && Wallpaper.started) {
-                    root.fading = true;
-                    fadeTimer.restart();
-                } else {
+                const t = root.cfg.lockTransition;
+                if (t === "none" || !Wallpaper.started) {
+                    LockFx.rest();
                     root.held = true;
-                }
-            } else {
-                fadeTimer.stop();
-                root.fading = false;
-                if (!root.held)
                     return;
+                }
+                // Desktop → lock: widgets and icons zoom away, the veil
+                // covers the windows, then the lock takes over the same picture
+                root.veiled = true;
+                LockFx.leave(t === "zoom", 380);
+                enterTimer.restart();
+            } else {
+                if (!root.held) { // locked and unlocked again before the lock showed
+                    root.veiled = false;
+                    LockFx.reveal(300);
+                    return;
+                }
                 const t = root.cfg.unlockTransition;
                 if (t === "none") {
-                    LockFx.desktop = 1;
+                    root.veiled = false;
+                    LockFx.rest();
                     root.held = false;
                     return;
                 }
-                // The desktop is set back while still hidden, so its first
-                // frame after the lock is already the start of the settle
+                // Lock → desktop: while the lock's content lifts away, the
+                // desktop is set back behind it and the veil goes up, so the
+                // first frame without the lock looks just like the last one
                 LockFx.prepare(t === "zoom");
+                root.veiled = true;
                 root.leaving = true;
                 leaveTimer.restart();
             }
         }
     }
     Timer {
-        id: fadeTimer
-        interval: 240
+        id: enterTimer
+        interval: 400
         onTriggered: root.held = true
     }
     Timer {
         id: leaveTimer
         interval: root.leaveMs
         onTriggered: {
+            revealTimer.restart(); // (in case the lock doesn't report letting go)
             root.held = false;
             root.leaving = false;
-            LockFx.reveal(root.cfg.unlockTransition === "zoom" ? 420 : 300);
+        }
+    }
+    // The desktop settles once the compositor has let go of the lock and
+    // draws it again; started earlier, its first frames were never seen
+    Timer {
+        id: revealTimer
+        interval: 150
+        onTriggered: if (!System.locked && LockFx.desktop === 0) LockFx.reveal(root.cfg.unlockTransition === "zoom" ? 560 : 360)
+    }
+    // Lowered once the desktop is back at rest, or once the lock is up
+    Connections {
+        target: LockFx
+        function onActiveChanged() {
+            if (!LockFx.active && !System.locked)
+                root.veiled = false;
+        }
+    }
+    Connections {
+        target: lock
+        function onSecureChanged() {
+            if (lock.secure && System.locked) {
+                root.veiled = false;
+                LockFx.rest(); // (hidden behind the lock)
+            } else if (!lock.secure && !System.locked && revealTimer.running) {
+                revealTimer.interval = 60; // a frame or so for the desktop to show
+                revealTimer.restart();
+                revealTimer.interval = 150;
+            }
         }
     }
 
-    // Desktop → lock: the lock's wallpaper fades in over the desktop; the lock
-    // surface appears on top showing the same picture, then this goes away
     Variants {
-        model: root.fading || (root.held && !lock.secure) ? Quickshell.screens : []
+        model: root.veiled ? Quickshell.screens : []
         PanelWindow {
             required property var modelData
             screen: modelData
-            WlrLayershell.namespace: "irice:lockfade"
+            WlrLayershell.namespace: "irice:lockveil"
             WlrLayershell.layer: WlrLayer.Overlay
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             mask: Region { width: 0; height: 0 }
             Image {
-                id: fadePicture
                 anchors.fill: parent
                 source: Wallpaper.source
                 fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(width, height)
-                asynchronous: true
-                opacity: 0
-                // Starts once the picture is decoded, so it never pops in
-                onStatusChanged: if (status === Image.Ready) fadeIn.start()
-                NumberAnimation on opacity {
-                    id: fadeIn
-                    running: false
-                    to: 1
-                    duration: 220
-                    easing.type: Easing.OutCubic
-                }
+                // the screen's size from the start, so the first frame is
+                // already the same picture as the desktop's and the lock's
+                sourceSize: Qt.size(modelData.width, modelData.height)
+                asynchronous: false
+                scale: LockFx.wallpaperScale
+                opacity: LockFx.veil
             }
         }
     }

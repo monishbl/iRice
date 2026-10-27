@@ -15,16 +15,62 @@ Singleton {
     // empty until focus changes after the shell starts, so match the
     // Wayland-level active window instead.
     readonly property var activeHyprland: Hyprland.toplevels.values.find(t => t.wayland && t.wayland === active) ?? Hyprland.activeToplevel
+    // Bumped when the app list grows or shrinks. The first scan at start can
+    // finish without the list announcing it (a large list, on a slow first
+    // start), which left the dock without its apps until something else
+    // changed it; for the first minute the list is also checked every second
+    property int entriesGen: 0
+    property int entriesCount: -1
+    Timer {
+        id: entriesWatch
+        property int ticks: 0
+        interval: 1000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            root.noteEntries();
+            if (++ticks >= 60)
+                running = false;
+        }
+    }
+    Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() { root.noteEntries(); }
+    }
+    function noteEntries() {
+        const n = DesktopEntries.applications.values.length;
+        if (n !== entriesCount) {
+            entriesCount = n;
+            entriesGen++;
+        }
+    }
+
     readonly property var activeEntry: {
         DesktopEntries.applications.values; // re-evaluate once entries load
+        root.entriesGen; // (also when the first scan ends unannounced)
         return active ? entryFor(active.appId) : null;
     }
     readonly property string activeName: active?.appId === "org.quickshell" ? "System Settings" : activeEntry?.name ?? (active?.appId || "Desktop")
 
+    // Every app lookup goes through these: they read entriesGen, so a
+    // binding that looks an app up is re-run once the list has loaded
+    // (DesktopEntries.byId on its own isn't, which left the dock's recent
+    // apps, names and icons empty after a fresh start until a window opened)
+    readonly property var entries: {
+        DesktopEntries.applications.values;
+        root.entriesGen;
+        return DesktopEntries.applications.values;
+    }
+    function byId(id) {
+        root.entriesGen;
+        DesktopEntries.applications.values;
+        return id ? DesktopEntries.byId(id) : null;
+    }
     function entryFor(appId) {
         if (!appId)
             return null;
-        return DesktopEntries.byId(appId) ?? DesktopEntries.heuristicLookup(appId);
+        return byId(appId) ?? DesktopEntries.heuristicLookup(appId);
     }
 
     function iconFor(entryOrId) {
@@ -45,11 +91,12 @@ Singleton {
     // running unpinned apps in the order they were opened.
     readonly property var dockApps: {
         DesktopEntries.applications.values; // re-evaluate once entries (re)load
+        root.entriesGen; // (also when the first scan ends unannounced)
         const pinned = Config.options.dock.pinned;
         const out = [];
         const seen = new Set();
         for (const id of pinned) {
-            const entry = DesktopEntries.byId(id);
+            const entry = root.byId(id);
             if (!entry)
                 continue;
             seen.add(entry.id);
@@ -105,7 +152,7 @@ Singleton {
     function recentFor(limit) {
         const pinned = Config.options.dock.pinned;
         const running = new Set(ToplevelManager.toplevels.values.map(t => entryFor(t.appId)?.id ?? t.appId));
-        return UiState.data.recentApps.filter(id => !pinned.includes(id) && !running.has(id) && DesktopEntries.byId(id)).slice(0, limit).map(id => ({ id: id, entry: DesktopEntries.byId(id), pinned: false, recent: true }));
+        return UiState.data.recentApps.filter(id => !pinned.includes(id) && !running.has(id) && root.byId(id)).slice(0, limit).map(id => ({ id: id, entry: root.byId(id), pinned: false, recent: true }));
     }
 
     function pin(id) {

@@ -132,6 +132,109 @@ Column {
         }
     }
 
+    // ── Pointing, clicking and scrolling (services/Mouse.qml applies) ───
+    readonly property var tp: Config.options.trackpad
+    component TpScale: Column {
+        id: tpScale
+        property alias from: tpSlider.from
+        property alias to: tpSlider.to
+        property alias value: tpSlider.value
+        property string low
+        property string high
+        signal moved(real v)
+        width: 240
+        spacing: 2
+        Slider {
+            id: tpSlider
+            width: parent.width
+            onMoved: v => tpScale.moved(v)
+        }
+        Item {
+            width: parent.width
+            height: tpLow.implicitHeight
+            Text { id: tpLow; text: tpScale.low; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+            Text { anchors.right: parent.right; text: tpScale.high; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Point and click"
+        footer: Mouse.touchpads.length === 0 ? "No trackpad found. These settings apply when one is connected." : ""
+        Row {
+            label: "Tracking speed"
+            TpScale {
+                from: -1
+                to: 1
+                low: "Slow"
+                high: "Fast"
+                value: page.tp.speed
+                onMoved: v => page.tp.speed = Math.round(v * 20) / 20
+            }
+        }
+        Row {
+            label: "Tap to click"
+            detail: "Tap with one finger to click"
+            Switch { checked: page.tp.tapToClick; onToggled: page.tp.tapToClick = !checked }
+        }
+        Row {
+            label: "Tap to drag"
+            detail: "Tap, then keep the finger down and move it to drag"
+            enabled: page.tp.tapToClick
+            opacity: enabled ? 1 : 0.5
+            Switch { checked: page.tp.tapAndDrag; onToggled: page.tp.tapAndDrag = !checked }
+        }
+        Row {
+            label: "Drag lock"
+            detail: "A tap-drag keeps holding when you lift your finger, until you tap again"
+            enabled: page.tp.tapToClick && page.tp.tapAndDrag
+            opacity: enabled ? 1 : 0.5
+            Switch { checked: page.tp.dragLock; onToggled: page.tp.dragLock = !checked }
+        }
+        Row {
+            label: "Secondary click"
+            detail: page.tp.rightClick === "corner" ? "Click in the bottom-right corner" : "Click or tap with two fingers"
+            Segmented {
+                width: 240
+                readonly property var values: ["twoFingers", "corner"]
+                options: ["Two fingers", "Bottom right"]
+                current: Math.max(0, values.indexOf(page.tp.rightClick))
+                onSelected: i => page.tp.rightClick = values[i]
+            }
+        }
+        Row {
+            label: "Middle click"
+            detail: page.tp.rightClick === "corner" ? "Click both bottom corners together" : "Click or tap with three fingers"
+            Switch { checked: page.tp.middleClick; onToggled: page.tp.middleClick = !checked }
+        }
+        Row {
+            label: "Ignore the trackpad while typing"
+            detail: "Stops a resting palm from moving the pointer"
+            Switch { checked: page.tp.disableWhileTyping; onToggled: page.tp.disableWhileTyping = !checked }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Scrolling"
+        Row {
+            label: "Natural scrolling"
+            detail: "Content follows your fingers"
+            Switch { checked: page.tp.naturalScroll; onToggled: page.tp.naturalScroll = !checked }
+        }
+        Row {
+            label: "Scroll speed"
+            TpScale {
+                from: 0.2
+                to: 3
+                low: "Slow"
+                high: "Fast"
+                value: page.tp.scrollSpeed
+                onMoved: v => page.tp.scrollSpeed = Math.round(v * 20) / 20
+            }
+        }
+    }
+
     Group {
         width: parent.width
         Row {

@@ -95,7 +95,7 @@ Column {
             Row {
                 id: pinnedRow
                 required property string modelData
-                readonly property var entry: DesktopEntries.byId(modelData)
+                readonly property var entry: Apps.byId(modelData)
                 label: entry?.name ?? modelData
                 detail: entry ? "" : "Not installed"
                 Rectangle {
@@ -129,7 +129,7 @@ Column {
             }
         }
         Repeater {
-            model: filter.text.trim().length < 2 ? [] : DesktopEntries.applications.values.filter(a => !a.noDisplay && !Config.options.dock.pinned.includes(a.id) && a.name.toLowerCase().includes(filter.text.trim().toLowerCase())).slice(0, 6)
+            model: filter.text.trim().length < 2 ? [] : Apps.entries.filter(a => !a.noDisplay && !Config.options.dock.pinned.includes(a.id) && a.name.toLowerCase().includes(filter.text.trim().toLowerCase())).slice(0, 6)
             Row {
                 id: addRow
                 required property var modelData

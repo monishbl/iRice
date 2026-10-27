@@ -89,7 +89,7 @@ Singleton {
                 property bool standbyWakeOnMouse: true // moving the mouse leaves StandBy (keys always do)
                 property bool standbySameClock: true // every screen shows the clock in the same place
                 property string unlockTransition: "zoom" // lock → desktop: zoom (iOS parallax) | fade | none
-                property string lockTransition: "fade" // desktop → lock: fade | none
+                property string lockTransition: "zoom" // desktop → lock: zoom (unlocking in reverse) | fade | none
                 property string standbyTransition: "morph" // lock → StandBy: morph (the clock moves and thins) | fade | none
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
@@ -126,6 +126,7 @@ Singleton {
                 property string startupFile: "" // your own sound per event; empty = iRice's
                 property string chargingFile: ""
                 property string displaysFile: ""
+                property string pack: "marimba" // style of iRice's sounds: marimba | soft | keys | taps | minimal | glass (assets/sounds/<pack>)
                 property real volume: 0.6
             }
 
@@ -304,6 +305,18 @@ Singleton {
                 property bool leftHanded: false
                 property bool middleEmulation: false // left + right together = middle click
                 property string focus: "hover" // window focus: hover (follows the pointer; Hyprland's default) | click
+            }
+            property JsonObject trackpad: JsonObject {
+                // Trackpads (Settings → Trackpad); gestures live in keybinds.json
+                property real speed: 0 // -1 .. 1
+                property bool tapToClick: true
+                property bool tapAndDrag: true // tap, then drag with the finger still down
+                property bool dragLock: false // a tap-drag keeps holding after you lift, until the next tap
+                property bool naturalScroll: true
+                property real scrollSpeed: 0.7 // 0.2 .. 3
+                property bool disableWhileTyping: false
+                property string rightClick: "twoFingers" // twoFingers (click with two fingers) | corner (click the bottom-right corner)
+                property bool middleClick: false // three-finger click / both bottom corners = middle click
             }
             property JsonObject displays: JsonObject {
                 // Settings → Displays: "name\tmode\tx\ty\tscale\ttransform\tenabled\tmirror" per display, written to hypr/irice monitors

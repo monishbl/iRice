@@ -370,7 +370,7 @@ Column {
         }
         function action() {
             if (kind === "app") {
-                const e = DesktopEntries.byId(appId);
+                const e = Apps.byId(appId);
                 return e ? Keymap.appAction(e) : (page.editing?.action?.desktop === appId ? page.editing.action : null);
             }
             if (kind === "role")
@@ -586,7 +586,7 @@ Column {
             readonly property var all: {
                 if (page.view !== "form" || form.kind !== "app")
                     return [];
-                return DesktopEntries.applications.values.filter(e => !e.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name));
+                return Apps.entries.filter(e => !e.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name));
             }
             readonly property var matched: all.filter(e => q === "" || e.name.toLowerCase().includes(q) || (e.genericName ?? "").toLowerCase().includes(q) || e.id.toLowerCase().includes(q))
             // The chosen app first, then up to 30

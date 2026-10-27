@@ -271,7 +271,7 @@ Column {
         readonly property var openApps: {
             if (page.view !== "pick")
                 return [];
-            DesktopEntries.applications.values; // re-evaluate once entries load
+            Apps.entries; // re-evaluate once entries load
             const seen = new Set(), out = [];
             for (const t of ToplevelManager.toplevels.values) {
                 const cls = t.appId;
@@ -287,7 +287,7 @@ Column {
             if (page.view !== "pick")
                 return [];
             const open = new Set(openApps.map(a => a.cls)), seen = new Set(), out = [];
-            for (const e of DesktopEntries.applications.values) {
+            for (const e of Apps.entries) {
                 const cls = e.startupClass || e.id;
                 if (e.noDisplay || !cls || open.has(cls) || seen.has(cls))
                     continue;
@@ -336,7 +336,7 @@ Column {
     }
 
     Text {
-        visible: page.view === "pick" && DesktopEntries.applications.values.length === 0 && picker.openApps.length === 0
+        visible: page.view === "pick" && Apps.entries.length === 0 && picker.openApps.length === 0
         leftPadding: 4
         text: "Loading apps…"
         color: Theme.color.secondary

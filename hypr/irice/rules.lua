@@ -5,7 +5,7 @@ hl.layer_rule({ match = { namespace = "irice:.*" }, no_anim = true }) -- the she
 hl.layer_rule({ match = { namespace = "irice:.*" }, blur = true })
 hl.layer_rule({ match = { namespace = "irice:.*" }, ignore_alpha = 0.4 })
 -- (The menu bar takes blur: the island's glass is drawn there.)
-hl.layer_rule({ match = { namespace = "irice:(wallpaper|corners)" }, blur = false })
+hl.layer_rule({ match = { namespace = "irice:(wallpaper|corners|lockveil|dim)" }, blur = false }) -- (fading veils would blur, then snap sharp)
 
 -- Settings window floats like an app window
 hl.window_rule({ match = { title = "^iRice Settings$" }, float = true })

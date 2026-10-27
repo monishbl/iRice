@@ -78,7 +78,9 @@ WlSessionLockSurface {
     Image {
         id: wallpaper
         anchors.fill: parent
-        scale: surface.zoomOut ? 1 + 0.03 * surface.exit : 1
+        // Unlocking it leans in to where the desktop's wallpaper starts
+        // (LockFx); after a zoomed lock it settles from there
+        scale: 1 + 0.05 * Math.max(surface.zoomOut ? surface.exit : 0, surface.enter)
         source: Wallpaper.source
         fillMode: Image.PreserveAspectCrop
         sourceSize: Qt.size(width, height)
@@ -107,7 +109,15 @@ WlSessionLockSurface {
     }
 
     property real reveal: 0
-    Component.onCompleted: reveal = 1
+    property real enter: 0
+    Component.onCompleted: {
+        reveal = 1;
+        if (cfg.lockTransition === "zoom" && LockFx.zoom && LockFx.desktop < 0.5) {
+            enter = 1;
+            settleIn.start();
+        }
+    }
+    NumberAnimation { id: settleIn; target: surface; property: "enter"; to: 0; duration: 450; easing.type: Easing.OutCubic }
     Behavior on reveal { NumberAnimation { duration: Theme.motion.large; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
 
     SystemClock { id: clock; precision: SystemClock.Minutes }

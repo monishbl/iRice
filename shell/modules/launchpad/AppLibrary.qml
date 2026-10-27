@@ -38,7 +38,7 @@ Variants {
                 ["System", ["System", "Settings", "Monitor", "PackageManager", "HardwareSettings"]]
             ]
 
-            readonly property var apps: DesktopEntries.applications.values.filter(a => !a.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name))
+            readonly property var apps: Apps.entries.filter(a => !a.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name))
             readonly property var folders: {
                 const map = {};
                 for (const a of apps) {
