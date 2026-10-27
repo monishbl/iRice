@@ -144,7 +144,7 @@ Variants {
                         anchors { fill: parent; leftMargin: 34; rightMargin: 10 }
                         verticalAlignment: TextInput.AlignVCenter
                         color: Theme.color.label
-                        selectionColor: Qt.alpha(Theme.accent, 0.4)
+                        selectionColor: Theme.accentAlpha(0.4)
                         clip: true
                         font { family: Theme.font.family; pixelSize: Theme.font.body + 1 }
                         onTextChanged: dialog.selected = 0
@@ -213,7 +213,7 @@ Variants {
                             size: 56
                             source: dialog.showingApps ? Apps.iconFor(cell.modelData) : ""
                             scale: appMouse.pressed ? 0.94 : 1
-                            Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                            Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                         }
                         Text {
                             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 10 }
@@ -247,7 +247,7 @@ Variants {
                             border.width: cell.isSelected ? 2 : 1
                             border.color: cell.isSelected ? Theme.accent : Theme.color.separator
                             scale: folderMouse.pressed ? 0.97 : 1
-                            Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                            Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                             readonly property var list: dialog.showingApps ? [] : cell.modelData.apps
 
                             Grid {

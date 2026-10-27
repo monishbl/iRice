@@ -11,16 +11,47 @@ DetailPage {
     property var asking: null // network waiting for a password
     property var failed: null // last network that failed to connect
 
-    readonly property var sorted: (device?.networks.values ?? []).slice().sort((a, b) => (b.connected - a.connected) || (b.known - a.known) || (b.signalStrength - a.signalStrength)).slice(0, 12)
-    // While a password is being typed the list holds still: re-sorting on
-    // signal changes would rebuild the rows and wipe the field
-    property var frozen: []
-    onAskingChanged: {
-        if (asking)
-            frozen = sorted;
-        typed = "";
+    function sortedNow() {
+        return (device?.networks.values ?? []).slice().sort((a, b) => (b.connected - a.connected) || (b.known - a.known) || (b.signalStrength - a.signalStrength)).slice(0, 12);
     }
-    readonly property var networks: asking ? frozen : sorted
+    // The rows shown: a snapshot, not a live sort. Re-sorting on every signal
+    // change rebuilt every row under the pointer (clicks landed on rows that
+    // were gone, and a password being typed was wiped). It's refreshed every
+    // few seconds, not while the pointer is over the list or a password is
+    // being typed, and with the refresh button; a network that disappears
+    // is dropped at once.
+    property var networks: []
+    function refresh(force) {
+        const next = sortedNow();
+        if (!force && next.length === networks.length && next.every((n, i) => n === networks[i]))
+            return; // same rows, same order: nothing rebuilds
+        networks = next;
+    }
+    Timer {
+        running: root.visible
+        interval: 4000
+        repeat: true
+        onTriggered: if (!root.hovered && !root.asking) root.refresh(false)
+    }
+    Connections {
+        target: root.device?.networks ?? null
+        ignoreUnknownSignals: true
+        function onValuesChanged() {
+            const live = root.device?.networks.values ?? [];
+            // First results, or a shown network went away: don't wait
+            if (root.networks.length === 0 || root.networks.some(n => !n || !live.includes(n)))
+                root.refresh(false);
+        }
+    }
+    hasRefresh: true
+    onRefreshRequested: {
+        if (device) { // a fresh scan
+            device.scannerEnabled = false;
+            device.scannerEnabled = true;
+        }
+        refresh(true);
+    }
+    onAskingChanged: typed = ""
     property string typed: "" // the password being typed (outlives a row rebuild)
 
     title: "Wi-Fi"
@@ -36,7 +67,13 @@ DetailPage {
         when: root.visible && root.device !== null
         restoreMode: Binding.RestoreBindingOrValue
     }
-    onVisibleChanged: if (!visible) asking = null
+    Component.onCompleted: refresh(true) // (a page created already showing gets no visibility change)
+    onVisibleChanged: {
+        if (visible)
+            refresh(true);
+        else
+            asking = null;
+    }
 
     function strengthIcon(s) {
         return s > 0.66 ? "wifi-high" : s > 0.33 ? "wifi-medium" : "wifi-low";

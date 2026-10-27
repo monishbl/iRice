@@ -44,8 +44,16 @@ Variants {
                     continue;
                 out.push({ current: g.current, locked: g.locked, windows: wins, x: o.at[0] - (monitor?.x ?? 0), y: o.at[1] - (monitor?.y ?? 0) - gap - barHeight, w: o.size[0] });
             }
+            // Variants makes a window per strip and remakes them all for a new
+            // list: only replace it when something about the strips changed
+            // (most focus events don't), so they don't flash
+            const key = JSON.stringify(out.map(o => [o.current, o.locked, o.windows.map(t => t.address), o.x, o.y, o.w]));
+            if (key === stripsKey)
+                return;
+            stripsKey = key;
             strips = out;
         }
+        property string stripsKey: ""
 
         // Fresh group data after anything that can change it
         Process {
@@ -111,7 +119,7 @@ Variants {
                     readonly property var modelData: stripWin.modelData
                     anchors.fill: parent
                     opacity: win.settled ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: win.settled ? 150 : 60 } }
+                    Behavior on opacity { OpacityAnimator { duration: win.settled ? 150 : 60 } }
 
                     // The well the tabs sit in
                     Rectangle {

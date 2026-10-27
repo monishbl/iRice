@@ -133,6 +133,8 @@ Item {
             border.width: 1
             border.color: Qt.rgba(0, 0, 0, 0.15)
             scale: visible ? 1 : 0
+            // (a NumberAnimation: it pops in as it becomes visible, when a
+            // ScaleAnimator may not start and leave the badge at 0)
             Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
             Text {
                 id: badgeText

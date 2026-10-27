@@ -115,13 +115,8 @@ Singleton {
         // (the reload's configreloaded event re-applies corners and the shader)
     }
 
-    // Gestures are set in the Hyprland config, which reads this setting:
+    // The window tab style is read by the Hyprland config (hypr/irice/tabs.lua):
     // reload it once the change is saved
-    Connections {
-        target: Config.options.input
-        function onThreeFingerDragChanged() { gestureReload.restart(); }
-    }
-    // Same for the window tab style (hypr/irice/tabs.lua)
     Connections {
         target: Config.options.appearance
         function onWindowTabsChanged() { gestureReload.restart(); }

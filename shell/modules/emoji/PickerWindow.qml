@@ -95,6 +95,10 @@ GlassWindow {
         } else {
             openAnim.stop();
             closeAnim.start();
+            // Closed before warm-up finished: the window unmaps and may drop
+            // its glyphs, so start over next time
+            if (!warmed)
+                warmAt = 0;
         }
     }
     SpringAnimation {
@@ -423,7 +427,7 @@ GlassWindow {
                     anchors { fill: parent; leftMargin: 34; rightMargin: clearButton.visible ? 36 : 10 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
-                    selectionColor: Qt.alpha(Theme.accent, 0.4)
+                    selectionColor: Theme.accentAlpha(0.4)
                     selectByMouse: true
                     clip: true
                     focus: true

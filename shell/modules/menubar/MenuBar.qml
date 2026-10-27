@@ -243,7 +243,7 @@ Variants {
                     model: SystemTray.items
                     MenuBarItem {
                         required property var modelData
-                        image: modelData.icon
+                        image: IconLookup.safe(modelData.icon, "application-x-executable")
                         color: bar.fg
                         active: Panels.isOpen("trayMenu", bar.screen) && Panels.trayMenu === modelData.menu
                         onClicked: m => {

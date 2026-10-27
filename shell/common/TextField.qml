@@ -11,6 +11,7 @@ Rectangle {
     signal committed(string text)
     // Put the cursor in the field (focusing the field itself wouldn't)
     function focusInput() {
+        input.cursorPosition = input.length;
         input.forceActiveFocus();
     }
 
@@ -27,12 +28,20 @@ Rectangle {
         verticalAlignment: TextInput.AlignVCenter
         echoMode: root.secret ? TextInput.Password : TextInput.Normal
         color: Theme.color.label
-        selectionColor: Qt.alpha(Theme.accent, 0.4)
+        selectionColor: Theme.accentAlpha(0.4)
         selectByMouse: true
+        activeFocusOnTab: true // Tab moves on to the next control
         clip: true
         font { family: Theme.font.family; pixelSize: Theme.font.body }
         onAccepted: root.committed(text)
-        onActiveFocusChanged: if (!activeFocus && root.commitOnBlur) root.committed(text)
+        onActiveFocusChanged: {
+            if (activeFocus)
+                return;
+            cursorPosition = 0; // unfocused, a long value shows its start
+            if (root.commitOnBlur)
+                root.committed(text);
+        }
+        onTextChanged: if (!activeFocus) cursorPosition = 0
 
         Text {
             anchors.verticalCenter: parent.verticalCenter

@@ -28,8 +28,9 @@ Singleton {
                 time: "now",
                 text: (n.body ?? "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
                 initials: words.slice(0, 2).map(w => w[0].toUpperCase()).join(""),
-                avatar: n.image || "",
-                appIcon: n.appIcon || Apps.iconFor(n.desktopEntry || n.appName || "")
+                avatar: n.image ? IconLookup.safe(n.image, []) : "",
+                appIcon: n.appIcon ? IconLookup.safe(n.appIcon, "dialog-information") : Apps.iconFor(n.desktopEntry || n.appName || ""),
+                buttons: (n.actions ?? []).filter(a => a.identifier !== "default" && a.text).slice(0, 2).map(a => ({ text: a.text, invoke: () => a.invoke() }))
             },
             onAction: () => def ? def.invoke() : Panels.show("notificationCenter")
         }, 5000);
@@ -90,12 +91,14 @@ Singleton {
     function iconFor(n) {
         if (!n)
             return "";
+        // (theme names and image://icon URLs checked: a missing one would draw
+        // Qt's pink and black grid)
         if (n.image)
-            return n.image;
+            return IconLookup.safe(n.image, "dialog-information");
         const icon = n.appIcon || Apps.entryFor(n.desktopEntry)?.icon || "";
         if (icon.startsWith("/") || icon.startsWith("file:"))
             return icon;
-        return icon ? IconLookup.path(icon, "dialog-information") : IconLookup.path("dialog-information");
+        return icon ? IconLookup.safe(icon, "dialog-information") : IconLookup.path("dialog-information");
     }
 
     function timeLabel(n, now) {

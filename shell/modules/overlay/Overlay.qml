@@ -66,7 +66,7 @@ Scope {
                 anchors.fill: parent
                 color: "black"
                 opacity: root.open ? 0.3 : 0
-                Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
+                Behavior on opacity { OpacityAnimator { duration: Theme.motion.popover } }
                 MouseArea {
                     anchors.fill: parent
                     enabled: root.open
@@ -237,7 +237,7 @@ Scope {
                                             ctx.lineTo(off + i * step, height - h[i] * (height - 2));
                                         ctx.lineTo(off + (h.length - 1) * step, height);
                                         ctx.closePath();
-                                        ctx.fillStyle = Qt.alpha(Theme.accent, 0.25);
+                                        ctx.fillStyle = Theme.accentAlpha(0.25);
                                         ctx.fill();
                                         ctx.beginPath();
                                         for (let i = 0; i < h.length; i++)

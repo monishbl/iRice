@@ -593,6 +593,33 @@ Singleton {
     }
 
     // ── Editing gestures ─────────────────────────────────────────────────
+    // Three-finger drag (Settings → Trackpad), as on macOS: on, three fingers
+    // move the window under them and spaces swipe with four (the defaults);
+    // off, three fingers swipe between spaces and nothing drags
+    readonly property bool threeFingerDrag: {
+        const m = gestures.find(g => g.id === "move");
+        return !!m && !m.disabled && m.fingers === 3;
+    }
+    function setThreeFingerDrag(on) {
+        change(u => {
+            const ch = u.gestures.changes;
+            const set = (id, k, v) => {
+                const c = Object.assign({}, ch[id] ?? {});
+                if (v === undefined)
+                    delete c[k];
+                else
+                    c[k] = v;
+                if (Object.keys(c).length === 0)
+                    delete ch[id];
+                else
+                    ch[id] = c;
+            };
+            set("move", "disabled", on ? undefined : true);
+            set("move", "fingers", undefined);
+            set("workspaces", "fingers", on ? undefined : 3);
+        });
+    }
+
     // patch: any of { fingers, direction, action }
     function setGesture(id, patch) {
         const d = gestureDefaults.find(x => x.id === id);

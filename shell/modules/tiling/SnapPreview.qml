@@ -64,7 +64,7 @@ Variants {
             Rectangle {
                 anchors.fill: parent
                 radius: Config.options.appearance.windowRadius
-                color: Qt.alpha(Theme.accent, 0.12)
+                color: Theme.accentAlpha(0.12)
                 border.width: 1
                 border.color: Qt.alpha("white", 0.35)
             }

@@ -188,7 +188,7 @@ GlassWindow {
                 radius: 11
                 color: Qt.rgba(0.1, 0.1, 0.12, 0.78)
                 opacity: hover.hovered && win.mode === "" && preview.status === Image.Ready ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Text {
                     id: hintText
                     anchors.centerIn: parent
@@ -289,7 +289,7 @@ GlassWindow {
                 radius: Theme.radius.control
                 color: undoMouse.pressed ? Theme.color.fillPressed : undoMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                 scale: undoMouse.pressed ? 0.97 : 1
-                Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                 Text {
                     id: undoText
                     anchors.centerIn: parent

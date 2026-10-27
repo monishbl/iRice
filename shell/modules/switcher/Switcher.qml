@@ -342,7 +342,7 @@ Scope {
                         width: win.cellW
                         height: win.cellH
                         scale: mouse.pressed ? 0.97 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
+                        Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
                         // Selection (accent ring and tint) and hover
                         Rectangle {

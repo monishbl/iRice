@@ -5,12 +5,14 @@
 set -euo pipefail
 
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 YES=0 DRY=0
 for a in "$@"; do
     case "$a" in
         --yes|-y) YES=1 ;;
         --dry-run) DRY=1 ;;
-        *) echo "Unknown option: $a"; exit 1 ;;
+        -h|--help) sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "Unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
 run() { if [[ $DRY == 1 ]]; then printf '  would run: %s\n' "$*"; else "$@"; fi; }
@@ -25,7 +27,7 @@ else
 fi
 # Already uninstalled (no iRice config in place): nothing to swap back
 [[ -d "$CONFIG/hypr/irice" ]] || BACKUP=""
-echo "This will remove $CONFIG/quickshell/irice, the irice command and the iRice login screen"
+echo "This will remove $CONFIG/quickshell/irice, the glass plugin, the irice command and the iRice login screen"
 if [[ -n "$BACKUP" ]]; then
     echo "and restore $CONFIG/hypr from $BACKUP (the current one moves to hypr.irice-removed)."
 else
@@ -44,7 +46,6 @@ if [[ -n "$BACKUP" ]]; then
 fi
 # The iRice login screen: switch back to the login manager it replaced
 # (or none: then log in on a console and start your desktop yourself)
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 if [[ -d /usr/share/irice ]]; then
     PREV="$(cat "$DATA/irice/previous-login-manager" 2>/dev/null || true)"
     if systemctl is-enabled --quiet greetd 2>/dev/null && grep -q irice /etc/greetd/config.toml 2>/dev/null; then
@@ -56,6 +57,11 @@ if [[ -d /usr/share/irice ]]; then
         run sudo mv /etc/greetd/config.toml.pre-irice /etc/greetd/config.toml
     fi
 fi
+# The glass plugin and its source (the running session keeps its loaded copy
+# until you log out), and the installer's bookkeeping. Settings in ~/.config/irice stay.
+run rm -f "$DATA/irice/irice-glass.so" "$DATA/irice/irice-glass.so.new" "$DATA/irice/irice-glass.built-for"
+run rm -rf "$DATA/irice/src"
+run rm -f "$DATA/irice/source" "$DATA/irice/previous-login-manager"
 # The irice command, and starting Hyprland from tty1
 run rm -f "$HOME/.local/bin/irice" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/irice.fish"
 if grep -q 'irice: start Hyprland' "$HOME/.bash_profile" 2>/dev/null; then

@@ -84,8 +84,18 @@ GlassWindow {
         onScaleChanged: glass.updatePosition()
         focus: true
         Keys.onEscapePressed: root.dismissed()
-        Keys.onDownPressed: root.current = Math.min(root.items.length - 1, root.current + 1)
-        Keys.onUpPressed: root.current = Math.max(0, root.current - 1)
+        // (arrows skip separators and disabled rows)
+        function step(d) {
+            for (let i = root.current + d; i >= 0 && i < root.items.length; i += d) {
+                const it = root.items[i];
+                if (it && !it.separator && it.enabled !== false) {
+                    root.current = i;
+                    return;
+                }
+            }
+        }
+        Keys.onDownPressed: step(1)
+        Keys.onUpPressed: step(-1)
         Keys.onReturnPressed: root.activate(root.current)
 
         Glass {

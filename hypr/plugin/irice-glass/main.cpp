@@ -13,6 +13,7 @@
 // hyprctl irice-glass clear [<monitor> <namespace>]
 // hyprctl irice-glass ping            -> "irice-glass 2" (2: shapes may carry gloss)
 // hyprctl irice-glass controls on|off [dark|light]   (see controls.cpp)
+// hyprctl irice-glass window-frost <0..1>  extra frost where glass covers windows
 //
 // Shape floats (layer-local logical px): x y w h radius mode refraction depth
 // bevel frost chroma rim tintR tintG tintB tintA saturation opacity
@@ -28,6 +29,8 @@
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/desktop/view/Group.hpp>
@@ -38,6 +41,7 @@
 #include <format>
 #include <GLES3/gl32.h>
 #include <map>
+#include <chrono>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -56,8 +60,37 @@ static SP<SHyprCtlCommand> g_cmd;
 
 constexpr int kFloats = 19; // the 19th (gloss) is optional
 struct SShape {
-    float v[kFloats];
+    float         v[kFloats];
+    mutable float drawnFrost = -1; // frost it was last drawn with (over windows: see windowFrost)
 };
+
+// Glass over a window frosts a little more, so the window's text behind it
+// doesn't compete with the glass's own content: by how much of the shape
+// covers windows, times this (0..1, from the shell: `window-frost <amount>`)
+static float g_windowFrost = 0.f;
+
+// How much of a shape (global logical box) covers the windows showing on
+// its monitor, 0..1 (overlapping windows count once at most, roughly)
+static float windowCoverage(PHLMONITOR mon, const CBox& shape) {
+    if (g_windowFrost <= 0.f || shape.w <= 0 || shape.h <= 0)
+        return 0.f;
+    double covered = 0;
+    for (auto& w : Desktop::windowState()->windows()) {
+        if (!w || !w->m_isMapped || w->isHidden() || !w->m_workspace)
+            continue;
+        if (w->m_workspace != mon->m_activeWorkspace && w->m_workspace != mon->m_activeSpecialWorkspace)
+            continue;
+        CBox b = w->getWindowMainSurfaceBox();
+        b.translate(w->m_floatingOffset);
+        if (!w->m_pinned)
+            b.translate(w->m_workspace->m_renderOffset->value());
+        const double x0 = std::max(b.x, shape.x), y0 = std::max(b.y, shape.y);
+        const double x1 = std::min(b.x + b.w, shape.x + shape.w), y1 = std::min(b.y + b.h, shape.y + shape.h);
+        if (x1 > x0 && y1 > y0)
+            covered += (x1 - x0) * (y1 - y0);
+    }
+    return (float)std::min(1.0, covered / (shape.w * shape.h));
+}
 // key: monitor + "\n" + namespace
 static std::map<std::string, std::vector<SShape>> g_shapes;
 
@@ -330,7 +363,8 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     // behind all of them (plus room for the refraction to reach in from
     // outside), cut to the damaged part: one blit per layer per frame.
     struct SPlaced {
-        const float* v;
+        const SShape* shape;
+        const float*  v;
         float        x, y, w, h;
         CRegion      region;
     };
@@ -355,7 +389,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         cy0 = std::min(cy0, std::max(0, (int)std::floor(ext.y) - margin));
         cx1 = std::max(cx1, std::min(fbW, (int)std::ceil(ext.x + ext.w) + margin));
         cy1 = std::max(cy1, std::min(fbH, (int)std::ceil(ext.y + ext.h) + margin));
-        placed.push_back({v, x, y, w, h, std::move(region)});
+        placed.push_back({&s, v, x, y, w, h, std::move(region)});
     }
     if (placed.empty() || cx1 <= cx0 || cy1 <= cy0) {
         st.restore();
@@ -390,7 +424,18 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         glUniform1f(u_refraction, v[6] * scale);
         glUniform1f(u_depth, v[7]);
         glUniform1f(u_bevel, v[8] * scale);
-        glUniform1f(u_frost, v[9]);
+        // Frost, plus more where it covers windows. A change (a window moved
+        // under it) repaints the whole shape next frame, not just the damaged
+        // part, so it never shows two frosts at once
+        float frost = v[9];
+        if (g_windowFrost > 0.f) {
+            const CBox global{mon->m_position.x + x / scale, mon->m_position.y + yGL / scale, w / scale, h / scale};
+            frost += g_windowFrost * windowCoverage(mon, global) * (1.f - frost);
+        }
+        if (ps.shape->drawnFrost >= 0.f && std::abs(frost - ps.shape->drawnFrost) > 0.01f)
+            g_pHyprRenderer->damageBox(CBox{mon->m_position.x + x / scale - 1, mon->m_position.y + yGL / scale - 1, w / scale + 2, h / scale + 2});
+        ps.shape->drawnFrost = frost;
+        glUniform1f(u_frost, frost);
         glUniform1f(u_chroma, v[10]);
         glUniform1f(u_rim, v[11]);
         glUniform4f(u_tint, v[12], v[13], v[14], v[15]);
@@ -419,6 +464,16 @@ typedef void (*origRenderTextureWithBlur)(void*, SP<ITexture>, const CBox&, cons
 static unsigned long g_calls = 0, g_drawn = 0;
 static std::map<std::string, unsigned long> g_frames;
 static CHyprSignalListener                  g_frameListener;
+// Frame pacing per monitor, for `hyprctl irice-glass frametimes [reset]`:
+// gaps between consecutive frames (under 250 ms, so an idle screen doesn't
+// count), sorted into on time (<= 20 ms at 60 Hz), one vsync missed (<= 37),
+// two (<= 54) and longer stalls, plus the longest
+struct SPacing {
+    std::chrono::steady_clock::time_point last{};
+    unsigned long                         ok = 0, miss1 = 0, miss2 = 0, stall = 0;
+    double                                worst = 0;
+};
+static std::map<std::string, SPacing> g_pacing;
 static std::string   g_lastNs, g_lastBox;
 
 static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data) {
@@ -521,6 +576,28 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     in >> name >> verb;
     if (verb == "ping")
         return "irice-glass 2";
+    if (verb == "frametimes") {
+        std::string arg;
+        in >> arg;
+        if (arg == "reset") {
+            g_pacing.clear();
+            return "ok";
+        }
+        std::string out;
+        for (auto& [name, p] : g_pacing)
+            out += name + " ok " + std::to_string(p.ok) + " miss1 " + std::to_string(p.miss1) + " miss2 " + std::to_string(p.miss2) + " stall " + std::to_string(p.stall) +
+                " worst " + std::to_string((int)p.worst) + "ms\n";
+        return out.empty() ? "no frames" : out;
+    }
+    if (verb == "window-frost") {
+        float f = 0;
+        if (!(in >> f))
+            return "error: usage: window-frost <0..1>";
+        g_windowFrost = std::clamp(f, 0.f, 1.f);
+        for (auto& m : State::monitorState()->monitors())
+            g_pHyprRenderer->damageMonitor(m);
+        return "ok";
+    }
     if (verb == "controls") {
         std::string state, theme;
         in >> state >> theme;
@@ -557,6 +634,10 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             g_shapes.erase(mon + "\n" + ns);
         else
             g_shapes.clear();
+        // Repaint so the removed glass goes away now
+        for (auto& m : State::monitorState()->monitors())
+            if (mon.empty() || m->m_name == mon)
+                g_pHyprRenderer->damageMonitor(m);
         return "ok";
     }
     if (verb == "set") {
@@ -578,17 +659,47 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             if (per < kFloats)
                 shapes[i].v[kFloats - 1] = 1.f;
         }
-        if (n == 0)
-            g_shapes.erase(mon + "\n" + ns);
-        else
-            g_shapes[mon + "\n" + ns] = std::move(shapes);
-        // Repaint so the change shows even if nothing else moved
-        for (auto& m : State::monitorState()->monitors())
-            if (m->m_name == mon)
+        const std::string key = mon + "\n" + ns;
+        // Repaint so the change shows even if nothing else moved: only where
+        // the glass was and is now (an animation sends a set every frame, and
+        // a whole-screen repaint each time costs real power), or the whole
+        // screen while the layer isn't mapped yet
+        for (auto& m : State::monitorState()->monitors()) {
+            if (m->m_name != mon)
+                continue;
+            PHLLS layer;
+            for (auto& level : m->m_layerSurfaceLayers)
+                for (auto& ref : level)
+                    if (auto ls = ref.lock(); ls && ls->m_mapped && ls->m_namespace == ns)
+                        layer = ls;
+            // (not yet arranged: no size; position unknown)
+            if (!layer || layer->m_geometry.w <= 0 || layer->m_geometry.h <= 0) {
                 g_pHyprRenderer->damageMonitor(m);
+                continue;
+            }
+            const auto& g   = layer->m_geometry; // global, logical
+            CRegion     dmg;
+            // Each shape plus how far its refraction reaches out (as drawGlass
+            // samples), so glass nearby that bends this area redraws too
+            auto add = [&](const std::vector<SShape>& list) {
+                for (const auto& sh : list) {
+                    const float* v = sh.v;
+                    const double r = std::ceil(v[6] + 4 + v[7] * std::max(v[2], v[3]) * 0.08f) + 1;
+                    dmg.add(CBox{std::floor(g.x + v[0] - r), std::floor(g.y + v[1] - r), std::ceil(v[2] + 2 * r) + 1, std::ceil(v[3] + 2 * r) + 1});
+                }
+            };
+            if (auto old = g_shapes.find(key); old != g_shapes.end())
+                add(old->second);
+            add(shapes);
+            g_pHyprRenderer->damageRegion(dmg);
+        }
+        if (n == 0)
+            g_shapes.erase(key);
+        else
+            g_shapes[key] = std::move(shapes);
         return "ok";
     }
-    return "error: unknown verb (set, clear, ping, stats, controls, groups)";
+    return "error: unknown verb (set, clear, ping, stats, controls, groups, window-frost, frametimes)";
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -618,8 +729,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     controlsInit(handle);
     dragInit(handle);
     g_frameListener = Event::bus()->m_events.render.pre.listen([](PHLMONITOR m) {
-        if (m)
-            g_frames[m->m_name]++;
+        if (!m)
+            return;
+        g_frames[m->m_name]++;
+        auto&      p   = g_pacing[m->m_name];
+        const auto now = std::chrono::steady_clock::now();
+        if (p.last.time_since_epoch().count() != 0) {
+            const double ms = std::chrono::duration<double, std::milli>(now - p.last).count();
+            if (ms < 250) {
+                (ms <= 20 ? p.ok : ms <= 37 ? p.miss1 : ms <= 54 ? p.miss2 : p.stall)++;
+                p.worst = std::max(p.worst, ms);
+            }
+        }
+        p.last = now;
     });
     g_cmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "irice-glass", .exact = false, .fn = onCommand});
     return {"irice-glass", "Liquid Glass for the iRice shell", "iRice", "1.0"};

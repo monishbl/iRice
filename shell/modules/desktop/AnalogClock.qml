@@ -41,7 +41,7 @@ Item {
     Item {
         anchors.fill: parent
         rotation: (root.hours % 12) * 30 + root.minutes * 0.5
-        Behavior on rotation { RotationAnimation { duration: 400; direction: RotationAnimation.Clockwise; easing.type: Easing.OutBack } }
+        Behavior on rotation { RotationAnimator { duration: 400; direction: RotationAnimator.Clockwise; easing.type: Easing.OutBack } }
         Rectangle {
             x: (root.width - width) / 2
             y: root.height * 0.25
@@ -54,7 +54,7 @@ Item {
     Item {
         anchors.fill: parent
         rotation: root.minutes * 6
-        Behavior on rotation { RotationAnimation { duration: 400; direction: RotationAnimation.Clockwise; easing.type: Easing.OutBack } }
+        Behavior on rotation { RotationAnimator { duration: 400; direction: RotationAnimator.Clockwise; easing.type: Easing.OutBack } }
         Rectangle {
             x: (root.width - width) / 2
             y: root.height * 0.1

@@ -5,3 +5,6 @@ Quickshell_*.qmltypes
 sandbox/tools/gen/
 # Built per machine (tools/build-plugin.sh)
 *.so
+
+# Native helpers, built by shell/native/build.sh
+shell/native/build/

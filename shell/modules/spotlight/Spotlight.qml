@@ -44,6 +44,9 @@ Variants {
             visible: progress > 0 && closeGuard.open
 
             CloseGuard { id: closeGuard; shown: win.shown }
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
             anchors { top: true; bottom: true; left: true; right: true }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -133,7 +136,7 @@ Variants {
                     height: 56
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
-                    selectionColor: Qt.alpha(Theme.accent, 0.5)
+                    selectionColor: Theme.accentAlpha(0.5)
                     font { family: Theme.font.family; pixelSize: 22; weight: Font.Normal }
                     clip: true
 
@@ -277,7 +280,7 @@ Variants {
                                 textFormat: Ai.quick.error !== "" ? TextEdit.PlainText : TextEdit.MarkdownText
                                 text: Ai.quick.error !== "" ? Ai.quick.error : Ai.quick.answer
                                 color: Ai.quick.error !== "" ? Theme.color.danger : Theme.color.label
-                                selectionColor: Qt.alpha(Theme.accent, 0.4)
+                                selectionColor: Theme.accentAlpha(0.4)
                                 font { family: Theme.font.family; pixelSize: Theme.font.title }
                             }
                         }

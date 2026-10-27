@@ -46,7 +46,7 @@ Item {
             text: root.savedText
             wrapMode: TextEdit.Wrap
             color: Theme.color.label
-            selectionColor: Qt.alpha(Theme.accent, 0.4)
+            selectionColor: Theme.accentAlpha(0.4)
             readOnly: root.preview
             font { family: Theme.font.family; pixelSize: Theme.font.body }
             onTextChanged: if (activeFocus) saveTimer.restart()

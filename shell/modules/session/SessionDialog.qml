@@ -78,7 +78,7 @@ Variants {
                                 color: option.hot ? (option.modelData.id === "shutdown" || option.modelData.id === "restart" ? Theme.color.danger : Theme.accent) : Theme.color.toggleOff
                                 scale: mouse.pressed ? 0.94 : 1
                                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                                Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                                Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
 
                                 Icon {
                                     anchors.centerIn: parent

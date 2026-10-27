@@ -109,6 +109,9 @@ Scope {
             Component.onCompleted: progress = Qt.binding(() => shown ? 1 : 0)
             Behavior on progress { NumberAnimation { duration: win.shown ? 200 : 140; easing.type: win.shown ? Easing.OutCubic : Easing.InCubic } }
             visible: progress > 0.01 || shown
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
 
             function close() {
                 Panels.quickLookPath = "";
@@ -337,7 +340,7 @@ Scope {
                             text: win.kind === "text" ? textFile.text().slice(0, 200000) : ""
                             wrapMode: TextEdit.Wrap
                             color: Theme.color.label
-                            selectionColor: Qt.alpha(Theme.accent, 0.4)
+                            selectionColor: Theme.accentAlpha(0.4)
                             font { family: Theme.font.mono; pixelSize: 12 }
                             background: null
                         }

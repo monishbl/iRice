@@ -44,7 +44,7 @@ Variants {
                     width: 140
                     height: 104
                     scale: mouse.pressed ? 0.96 : mouse.containsMouse ? 1.04 : 1
-                    Behavior on scale { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+                    Behavior on scale { ScaleAnimator { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
 
                     // Up to three windows, stacked back to front
                     Repeater {

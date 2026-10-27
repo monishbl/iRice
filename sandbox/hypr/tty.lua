@@ -49,6 +49,10 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(ctl .. " start")
     hl.exec_cmd(ctl .. " watchdog")
     hl.exec_cmd("wl-paste --watch cliphist store")
+    -- ./demo.sh: a playing track and a few notifications once the shell is up
+    if os.getenv("IRICE_DEMO") == "1" then
+        hl.exec_cmd(root .. "/sandbox/demo-extras.sh")
+    end
 end)
 -- The watchdog keeps the shell going; this keeps the watchdog going (a second
 -- one exits at once, so starting it again is harmless)

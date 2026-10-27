@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Services.Pipewire
 import qs.common
 import qs.services
@@ -28,7 +29,7 @@ DetailPage {
     }
 
     Repeater {
-        model: root.outputs
+        model: ScriptModel { values: root.outputs } // (keeps rows, and a slider being dragged, when another device comes or goes)
         ListRow {
             required property var modelData
             icon: AudioStreams.outputIcon(modelData)
@@ -49,7 +50,7 @@ DetailPage {
     }
 
     Repeater {
-        model: root.streams
+        model: ScriptModel { values: root.streams } // (keeps rows when another app starts playing)
 
         Column {
             id: app
@@ -101,7 +102,7 @@ DetailPage {
                         size: 22
                         source: AudioStreams.icon(app.modelData)
                         opacity: app.muted ? 0.35 : 1
-                        Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                        Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                     }
                     // Muted badge
                     Rectangle {
@@ -202,7 +203,7 @@ DetailPage {
                 width: parent.width
                 spacing: 2
                 Repeater {
-                    model: app.choosing ? root.outputs : []
+                    model: ScriptModel { values: app.choosing ? root.outputs : [] }
                     ListRow {
                         required property var modelData
                         icon: AudioStreams.outputIcon(modelData)

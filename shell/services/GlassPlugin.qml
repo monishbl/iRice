@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import qs.common
 
 // Talks to the irice-glass Hyprland plugin (hypr/plugin/irice-glass), which
 // draws Liquid Glass inside the compositor. `available` says whether it's
@@ -27,20 +28,25 @@ Singleton {
     property string inFlight: ""
     signal ready // answered a ping: (re)loaded plugins start blank, so resend state
 
+    // Extra frost where glass covers windows (Settings → Appearance)
+    readonly property real windowFrost: Config.ready ? Config.options.appearance.glassWindowFrost : 0
+    function sendWindowFrost() {
+        if (available)
+            command("window-frost", "irice-glass window-frost " + windowFrost.toFixed(2));
+    }
+    onWindowFrostChanged: sendWindowFrost()
+    onReady: sendWindowFrost()
+
+    // `shapes`: the shape count, then each shape's numbers (see Glass.pluginShape)
     function update(monitor, ns, shapes) {
-        const parts = [];
-        for (const s of shapes)
-            parts.push(s.map(v => (Math.round(v * 1000) / 1000).toString()).join(" "));
-        command(monitor + "\n" + ns, "irice-glass set " + monitor + " " + ns + " " + shapes.length + (parts.length ? " " + parts.join(" ") : ""));
+        command(monitor + "\n" + ns, "irice-glass set " + monitor + " " + ns + " " + shapes);
     }
 
     // Queue a request; a newer one with the same key replaces it
     function command(key, cmd) {
-        const p = Object.assign({}, pending);
-        if (p[key] === undefined)
-            order = order.concat([key]);
-        p[key] = cmd;
-        pending = p;
+        if (pending[key] === undefined)
+            order.push(key);
+        pending[key] = cmd;
         Qt.callLater(pump); // after this frame's other windows have queued theirs
     }
 
@@ -77,6 +83,7 @@ Singleton {
             // The helper is stuck: start it again (answers from the old one
             // can't arrive late, it's gone)
             root.inFlight = "";
+            root.isPing = false;
             ipc.running = false;
             restart.restart();
         }
@@ -86,10 +93,19 @@ Singleton {
         id: ipc
         running: true
         stdinEnabled: true
-        command: ["setpriv", "--pdeathsig", "TERM", "--", "python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/glass-ipc.py").toString().replace("file://", "")), root.socketPath]
-        onStarted: Qt.callLater(root.pump)
+        // The C helper when it's built (shell/native/build.sh), else Python
+        command: ["sh", "-c", "c=\"$1/native/build/glass-ipc\"; if [ -x \"$c\" ]; then exec setpriv --pdeathsig TERM -- \"$c\" \"$2\"; fi; exec setpriv --pdeathsig TERM -- python3 -I \"$1/assets/scripts/glass-ipc.py\" \"$2\"", "sh", Quickshell.shellDir, root.socketPath]
+        onStarted: {
+            Qt.callLater(root.pump);
+            // A restart drops the request that was in flight: once the plugin
+            // answers again, every window sends its glass afresh (ready)
+            if (root.helperStarted)
+                pingLater.restart();
+            root.helperStarted = true;
+        }
         onExited: {
             root.inFlight = "";
+            root.isPing = false;
             watchdog.stop();
             restart.restart();
         }
@@ -118,6 +134,7 @@ Singleton {
         onTriggered: ipc.running = true
     }
     property bool isPing: false
+    property bool helperStarted: false
 
     // Is the plugin there? Asked at start, after config reloads (plugins load
     // then), and now and then while it's missing.

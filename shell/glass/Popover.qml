@@ -28,6 +28,7 @@ GlassWindow {
     // No panel: the content floats as its own glass pieces (Control Center's
     // chips in Liquid and Frosted). Clicks between the pieces stay inside.
     property bool bare: false
+    property real lens: 1 // lens strength of its glass (menus: less, see Glass.lensScale)
     // 0..1: darken the panel behind its content (a side panel has the focus)
     property real dim: 0
     property real dimShown: dim
@@ -103,12 +104,11 @@ GlassWindow {
 
     // The whole screen takes input while open: outside clicks close; clicks on
     // the menu bar strip go to the item there (another menu opens, the same
-    // one closes), and sliding along the bar switches between menus.
+    // one closes). Hovering other items doesn't switch menus: only clicks do.
     MouseArea {
         id: catcher
         anchors.fill: parent
         enabled: root.shown
-        hoverEnabled: true
         onPressed: root.wasDragged = false
         onClicked: m => {
             if (root.wasDragged)
@@ -119,13 +119,14 @@ GlassWindow {
             else
                 Panels.close();
         }
-        onPositionChanged: m => {
-            if (m.y >= 30 || pressed)
-                return;
-            const item = Panels.barItemAt(root.screen, m.x);
-            if (item && item.menu !== "" && item.menu !== root.popoverName && !Panels.isOpen(item.menu, root.screen))
-                item.clicked(m);
-        }
+    }
+    // Menus close by themselves once the pointer has been away from them
+    // for `autoClose` ms (0: never)
+    property int autoClose: 0
+    Timer {
+        running: root.autoClose > 0 && root.shown && !bodyHover.hovered
+        interval: Math.max(1, root.autoClose)
+        onTriggered: Panels.close()
     }
 
     Item {
@@ -139,12 +140,14 @@ GlassWindow {
         transform: [pull.translate, pull.stretch]
         focus: root.shown
         Keys.onEscapePressed: root.sideOpen ? root.closeSide() : Panels.close()
+        HoverHandler { id: bodyHover }
 
         Glass {
             id: glass
             anchors.fill: parent
             visible: !root.bare
             radius: root.radius
+            lensScale: root.lens
             Connections {
                 target: body
                 function onYChanged() { glass.updatePosition(); }

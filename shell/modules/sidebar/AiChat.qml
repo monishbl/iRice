@@ -203,7 +203,7 @@ Item {
         radius: 18
         color: Theme.color.fill
         border.width: 1
-        border.color: composer.activeFocus ? Qt.alpha(Theme.accent, 0.6) : Theme.color.separator
+        border.color: composer.activeFocus ? Theme.accentAlpha(0.6) : Theme.color.separator
 
         Flickable {
             id: scroller

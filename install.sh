@@ -43,8 +43,8 @@ for a in "$@"; do
 done
 
 # ── Output ──────────────────────────────────────────────────────────────
-mkdir -p "$(dirname "$LOG")"
 if [[ $VERIFY_ONLY == 0 && $DRY == 0 ]]; then
+    mkdir -p "$(dirname "$LOG")"
     exec > >(tee -a "$LOG") 2>&1
     echo "=== $(date '+%F %T') iRice install from $ROOT ($*)"
 fi
@@ -69,7 +69,7 @@ ask() { # question, default (y|n) -> 0 for yes
     [[ "$reply" == [yY]* ]]
 }
 
-STEP=0 TOTAL=9
+STEP=0 TOTAL=10
 # step "Title" function [optional]: runs it; on failure, offer Retry / Skip / Abort
 step() {
     local title="$1" fn="$2" optional="${3:-}"
@@ -98,21 +98,25 @@ PACKAGES=(
     # Compositor, shell, portals
     hyprland hypridle hyprpicker hyprsunset quickshell xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
     # Building the glass plugin and shaders
-    base-devel git pkgconf qt6-shadertools
+    base-devel git pkgconf qt6-shadertools cmake ninja
     qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg ffmpeg qt6-5compat qt6-wayland
     # Sound, network, Bluetooth, power, keyring, polkit
     pipewire pipewire-pulse pipewire-alsa wireplumber networkmanager bluez bluez-utils upower power-profiles-daemon
     gnome-keyring libsecret polkit brightnessctl playerctl libnotify mesa mesa-utils xdg-user-dirs
+    # Commands the shell runs: pactl/paplay, xdg-open, gio/gsettings/gdbus, gtk-launch, sound effects, drives, file dialogs
+    libpulse xdg-utils glib2 gtk3 libcanberra udisks2 zenity
     # Screen tools, clipboard, input
-    grim slurp wl-clipboard cliphist wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick hyprpicker
-    # Title bars (hyprbars, built with hyprpm when chosen in Settings)
-    hyprpm
+    grim slurp wl-clipboard cliphist wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
+    # (hyprpm, used for the optional hyprbars title bars, ships with the hyprland package)
     # Spotlight, Quick Look, sharing, widgets, privacy dots, updates
     libqalculate ripgrep plocate poppler ffmpegthumbnailer file psmisc python jq curl translate-shell pacman-contrib matugen
     # Fonts and icons
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji papirus-icon-theme
 )
 APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none: terminal, files (the most Finder-like), browser, player, viewer, volume mixer
+# Emoji styles beyond the default Noto Color Emoji (shell/common/EmojiFont.qml). Off by
+# default; Settings can also install them later, with yay.
+EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
 AUR=(mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
 NEED_HYPRLAND=0.56   # the Lua config
 NEED_QUICKSHELL=0.2
@@ -161,7 +165,9 @@ preflight() {
         say "  pacman's lock is left over from an interrupted run. Remove it with: sudo rm /var/lib/pacman/db.lck"
         return 1
     fi
-    VIRT=$(systemd-detect-virt --vm 2>/dev/null || echo none)
+    # (systemd-detect-virt prints "none" itself and then exits non-zero)
+    VIRT=$(systemd-detect-virt --vm 2>/dev/null || true)
+    VIRT=${VIRT:-none}
     note "System: $(. /etc/os-release && echo "$PRETTY_NAME"), $(uname -m)$([[ $VIRT != none ]] && echo ", virtual machine ($VIRT)")"
     if ! compgen -G "/dev/dri/renderD*" >/dev/null; then
         warn "No GPU render device found. Hyprland needs one; in a VM, turn on 3D acceleration"
@@ -247,6 +253,18 @@ aur_extras() {
     run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
 }
 
+# Optional emoji styles (default: no)
+emoji_extras() {
+    [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
+    local missing=() p helper
+    for p in "${EMOJI_AUR[@]}"; do pkg_installed "$p" || missing+=("$p"); done
+    [[ ${#missing[@]} == 0 ]] && { note "Apple and Fluent emoji are installed."; return 0; }
+    ask "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n || { note "Skipped (Settings can install them later)."; return 0; }
+    helper=$(command -v yay || command -v paru || true)
+    [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the step before installs it)."; return 1; }
+    run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
+}
+
 build() {
     # Shaders (compiled with Qt's qsb) and the Liquid Glass plugin, built
     # against the installed Hyprland. The plugin source is kept so it can be
@@ -261,6 +279,11 @@ build() {
     run make -C "$DATA/irice/src/hypr/plugin/irice-glass" clean >/dev/null 2>&1
     run "$DATA/irice/src/tools/build-plugin.sh" || return 1
     [[ $DRY == 1 ]] || hypr_version >"$DATA/irice/irice-glass.built-for"
+    # Native helpers (glass kept in step from C++, the C request helper),
+    # built inside the shell so they're copied with it. Optional: without
+    # them the shell uses its QML and Python fall-backs.
+    say "  Building the native helpers…"
+    run "$ROOT/shell/native/build.sh" || note "Native helpers skipped: the shell uses its slower fall-backs (rebuild later with: irice rebuild)"
 }
 
 # ~/.local/bin on your PATH (for the irice command), in bash, zsh and fish
@@ -296,7 +319,12 @@ install_files() {
     fi
     run mkdir -p "$CONFIG/hypr/irice"
     run cp "$ROOT/hypr/hyprland.lua" "$CONFIG/hypr/hyprland.lua"
-    run cp "$ROOT/hypr/irice/"*.lua "$CONFIG/hypr/irice/"
+    # Everything in hypr/irice (Lua modules and the json they read), but leave
+    # files the installer or the user added there (vm.lua) alone
+    local f
+    for f in "$ROOT/hypr/irice/"*; do
+        [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/irice/"
+    done
     run cp "$ROOT/hypr/hypridle.conf" "$CONFIG/hypr/hypridle.conf"
     # A hyprland.conf next to hyprland.lua would be ambiguous; move it aside
     if [[ -f "$CONFIG/hypr/hyprland.conf" ]]; then
@@ -554,6 +582,7 @@ step "Checking your system" preflight
 step "Installing packages" install_packages
 step "AUR helper (yay)" install_yay optional
 step "Tahoe themes (optional)" aur_extras optional
+step "Emoji styles (optional)" emoji_extras optional
 step "Building iRice" build optional
 step "Installing iRice" install_files
 step "Wallpapers (optional)" extras optional

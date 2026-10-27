@@ -21,15 +21,19 @@ Variants {
             screen: slot.modelData
             dialogName: "quickNote"
             contentWidth: 440
-            contentHeight: 300
             padding: 16
 
             // The draft survives closing (Escape), not saving
             property string draft: ""
-            onShownChanged: if (shown) {
+            function start() {
                 editor.text = draft;
                 editor.cursorPosition = editor.length;
                 editor.forceActiveFocus();
+            }
+            // (the window is created already shown the first time)
+            Component.onCompleted: if (shown) Qt.callLater(start)
+            onShownChanged: if (shown) {
+                start();
             } else {
                 draft = editor.text;
             }
@@ -83,7 +87,7 @@ Variants {
                             height: Math.max(flick.height, contentHeight)
                             wrapMode: TextEdit.Wrap
                             color: Theme.color.label
-                            selectionColor: Qt.alpha(Theme.accent, 0.35)
+                            selectionColor: Theme.accentAlpha(0.35)
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                             onCursorRectangleChanged: {
                                 if (cursorRectangle.y < flick.contentY)
@@ -130,7 +134,7 @@ Variants {
                         readonly property bool enabledNow: editor.text.trim() !== ""
                         color: !enabledNow ? Theme.color.fill : saveMouse.pressed ? Qt.darker(Theme.accent, 1.15) : saveMouse.containsMouse ? Qt.lighter(Theme.accent, 1.08) : Theme.accent
                         scale: saveMouse.pressed ? 0.97 : 1
-                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        Behavior on scale { ScaleAnimator { duration: 100 } }
                         Text {
                             id: saveLabel
                             anchors.centerIn: parent

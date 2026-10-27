@@ -94,7 +94,7 @@ Variants {
                     anchors { fill: parent; leftMargin: 34; rightMargin: 10 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
-                    selectionColor: Qt.alpha(Theme.accent, 0.4)
+                    selectionColor: Theme.accentAlpha(0.4)
                     clip: true
                     font { family: Theme.font.family; pixelSize: Theme.font.body + 1 }
                     onTextChanged: dialog.selected = 0

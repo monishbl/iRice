@@ -60,6 +60,9 @@ Variants {
             visible: progress > 0 && closeGuard.open
 
             CloseGuard { id: closeGuard; shown: win.shown }
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
             anchors { top: true; bottom: true; left: true; right: true }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -163,7 +166,8 @@ Variants {
                             clip: true
 
                             Repeater {
-                                model: space.modelData.toplevels.values.filter(t => t.lastIpcObject?.at)
+                                // (ScriptModel keeps the previews when the list is rebuilt)
+                                model: ScriptModel { values: space.modelData.toplevels.values.filter(t => t.lastIpcObject?.at) }
                                 Rectangle {
                                     required property var modelData
                                     readonly property var ipc: modelData.lastIpcObject
@@ -236,7 +240,7 @@ Variants {
                 }
 
                 Repeater {
-                    model: win.windows
+                    model: ScriptModel { values: win.windows } // (keeps each window's live preview when the list is rebuilt)
 
                     Item {
                         id: tile
@@ -261,7 +265,7 @@ Variants {
                             radius: 12
                             color: Qt.rgba(0.1, 0.1, 0.12, 1)
                             scale: hover.containsMouse ? 1.02 : 1
-                            Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
+                            Behavior on scale { ScaleAnimator { duration: Theme.motion.hover } }
                             border.width: hover.containsMouse ? 3 : 0
                             border.color: Theme.accent
 

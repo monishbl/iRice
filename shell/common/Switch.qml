@@ -9,6 +9,22 @@ Item {
 
     implicitWidth: 38
     implicitHeight: 22
+    activeFocusOnTab: true
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Space && !event.isAutoRepeat) {
+            root.toggled();
+            event.accepted = true;
+        }
+    }
+    // Keyboard focus (Tab)
+    Rectangle {
+        anchors { fill: parent; margins: -3 }
+        visible: root.activeFocus
+        radius: height / 2
+        color: "transparent"
+        border.width: 2
+        border.color: Theme.accent
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -23,7 +39,7 @@ Item {
             x: root.checked ? parent.width - width - 2 : 2
             y: 2
             color: "white"
-            Behavior on x { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
+            Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
         }
     }
 

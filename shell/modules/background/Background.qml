@@ -139,7 +139,7 @@ Variants {
             active: Wallpaper.liveVideo !== ""
             sourceComponent: Item {
                 id: live
-                readonly property bool paused: Desktop.mostlyCovered(win.screen) || (Config.options.wallpaper.livePauseOnBattery && UPower.onBattery)
+                readonly property bool paused: Desktop.mostlyCovered(win.screen) || (Config.options.wallpaper.livePauseOnBattery && UPower.onBattery) || CoolDown.pauseLive
                 onPausedChanged: paused ? player.pause() : player.play()
                 MediaPlayer {
                     id: player

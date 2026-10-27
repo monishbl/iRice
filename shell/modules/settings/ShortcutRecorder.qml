@@ -111,7 +111,7 @@ Column {
         color: checked ? Theme.accent : chipMouse.pressed ? Theme.color.fillPressed : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
         scale: chipMouse.pressed ? 0.97 : 1
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-        Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+        Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
         Accessible.role: Accessible.CheckBox
         Accessible.name: chipLabel.text
         Accessible.checked: checked
@@ -167,7 +167,7 @@ Column {
             width: 168
             height: 32
             radius: Theme.radius.control
-            color: activeFocus ? Qt.alpha(Theme.accent, 0.12) : Theme.color.fill
+            color: activeFocus ? Theme.accentAlpha(0.12) : Theme.color.fill
             border.width: activeFocus ? 2 : 1
             border.color: activeFocus ? Theme.accent : Theme.color.separator
             activeFocusOnTab: true

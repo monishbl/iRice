@@ -242,7 +242,7 @@ Item {
                 x: !root.compact || root.layout !== "beside" ? (root.w - width) / 2 : root.groupLeft
                 y: root.expanded ? 7 : 2
                 opacity: root.showingEvent || (root.compact && root.layout === "replace") ? 0 : 1
-                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Behavior on y { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.2 } }
             }
 
@@ -296,28 +296,80 @@ Item {
                 spacing: 10
                 visible: root.h > 30
                 opacity: root.expanded ? 1 : 0
+                // (a NumberAnimation: it becomes visible as it fades in, when an
+                // OpacityAnimator may not start and leave it invisible)
                 Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
 
-                // An event takes the whole body
-                // Live alerts, newest at the bottom; a burst staggers in
-                Repeater {
-                    model: Island.alerts
-                    IslandEvent {
-                        required property int uid
-                        required property int index
-                        width: body.width
-                        event: Island.byUid[uid] ?? null
-                        delay: event?.delay ?? 0
-                        onActed: Island.dismiss()
-                        // A hairline between stacked alerts
-                        Rectangle {
-                            visible: parent.index > 0
-                            y: -6
-                            width: parent.width
-                            height: 1
-                            color: Qt.rgba(1, 1, 1, 0.08)
+                // Live alerts, newest at the bottom; a burst staggers in.
+                // Up to four show, as many as fit in the island's window
+                // (the menu bar's, 340px); more scroll, newest in view
+                Flickable {
+                    id: alertScroll
+                    readonly property int cap: 4
+                    readonly property real room: root.height - shape.y - body.y - 16 - 22 // (and the hint)
+                    readonly property real capHeight: {
+                        const last = alertRepeater.count > cap ? alertRepeater.itemAt(cap - 1) : null;
+                        return Math.min(room, last ? last.y + last.height : alertCol.implicitHeight);
+                    }
+                    readonly property bool overflows: alertCol.implicitHeight > capHeight + 1
+                    width: body.width
+                    height: Math.min(alertCol.implicitHeight, capHeight)
+                    visible: alertRepeater.count > 0
+                    contentHeight: alertCol.implicitHeight
+                    interactive: overflows
+                    clip: overflows
+                    boundsBehavior: Flickable.StopAtBounds
+                    // A new alert scrolls the list to it
+                    onContentHeightChanged: if (overflows) contentY = Math.max(0, contentHeight - height)
+                    Column {
+                        id: alertCol
+                        width: parent.width
+                        spacing: 10
+                        Repeater {
+                            id: alertRepeater
+                            model: Island.alerts
+                            IslandEvent {
+                                required property int uid
+                                required property int index
+                                width: alertCol.width
+                                event: Island.byUid[uid] ?? null
+                                delay: event?.delay ?? 0
+                                onActed: Island.dismiss()
+                                // A hairline between stacked alerts
+                                Rectangle {
+                                    visible: parent.index > 0
+                                    y: -6
+                                    width: parent.width
+                                    height: 1
+                                    color: Qt.rgba(1, 1, 1, 0.08)
+                                }
+                            }
                         }
                     }
+                }
+                // How many more there are above, while scrolled to the newest
+                Text {
+                    visible: alertScroll.overflows
+                    width: body.width
+                    horizontalAlignment: Text.AlignHCenter
+                    // Alerts out of view above (earlier) and below
+                    readonly property var outside: {
+                        let above = 0, below = 0;
+                        const top = alertScroll.contentY, bottom = top + alertScroll.height;
+                        for (let i = 0; i < alertRepeater.count; i++) {
+                            const it = alertRepeater.itemAt(i);
+                            if (!it)
+                                continue;
+                            if (it.y + it.height / 2 < top)
+                                above++;
+                            else if (it.y + it.height / 2 > bottom)
+                                below++;
+                        }
+                        return [above, below];
+                    }
+                    text: outside[0] > 0 ? outside[0] + " earlier · scroll up" : outside[1] + " more · scroll down"
+                    color: Qt.rgba(1, 1, 1, 0.55)
+                    font { family: Theme.font.family; pixelSize: Theme.font.caption }
                 }
 
                 // Otherwise: what's live (one focused card, or all stacked),
@@ -396,7 +448,7 @@ Item {
             iconSize: 14
             iconColor: Island.pinned ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
             opacity: root.h > 40 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+            Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } } // (shown as it fades in: see the body above)
             onClicked: Island.togglePin()
         }
 

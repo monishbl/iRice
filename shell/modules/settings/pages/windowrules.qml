@@ -58,7 +58,7 @@ Column {
         radius: Theme.radius.control
         color: primary ? (tbMouse.pressed ? Qt.darker(Theme.accent, 1.2) : tbMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent) : tbMouse.pressed ? Theme.color.fillPressed : tbMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
         scale: tbMouse.pressed ? 0.97 : 1
-        Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+        Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         // (not a Row: in Settings pages Row is the settings row)
         Item {

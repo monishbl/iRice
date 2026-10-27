@@ -70,9 +70,11 @@ Rectangle {
         onClicked: root.activated()
     }
     // Files: Quick Look (also Shift+Space)
+    // (hover of the whole row, the button included: the row's MouseArea
+    // alone can lose it while the pointer is over the button)
+    HoverHandler { id: rowHover }
     IconButton {
-        visible: !!root.result.path && (mouse.containsMouse || hovered || root.selected)
-        readonly property bool hovered: false
+        visible: !!root.result.path && (rowHover.hovered || root.selected)
         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
         icon: "eye"
         iconColor: root.selected ? Theme.color.onAccent : Theme.color.secondary

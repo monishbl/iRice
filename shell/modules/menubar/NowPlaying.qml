@@ -22,6 +22,8 @@ Variants {
             readonly property var modelData: slot.modelData
             screen: modelData
             popoverName: "nowPlaying"
+            lens: 0.35 // a menu right under the menu bar (see MenuPopover)
+            autoClose: 5000
             contentWidth: 320
             targetX: Panels.anchorX - 120
 

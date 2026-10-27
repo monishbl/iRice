@@ -7,20 +7,41 @@ import qs.common
 // Hover or arrow keys highlight; click or Enter activates and closes.
 Popover {
     id: root
+    lens: 0.35 // right under the menu bar: full refraction ghosts its text into the menu
+    autoClose: 5000 // pointer away from the menu for 5 s
 
     property var items: []
+    // The rows shown: `items`, except that a rebuilt list showing exactly the
+    // same thing keeps the rows already there. Menus built from live state
+    // (the Window menu re-evaluates whenever the active window changes, the
+    // tray menu on every app update) otherwise rebuilt every row under the
+    // pointer: the highlight vanished and a click in progress was dropped.
+    property var rows: []
+    function rowKey(i) {
+        return [i.text, i.checked, i.enabled, i.separator, i.header, i.shortcut, i.icon, i.keepOpen, (i.tiles ?? []).map(t => t.label).join("|")].join("\u0001");
+    }
+    function sameRows(a, b) {
+        if (a.length !== b.length)
+            return false;
+        for (let k = 0; k < a.length; k++)
+            if (rowKey(a[k]) !== rowKey(b[k]) || a[k].entry !== b[k].entry)
+                return false;
+        return true;
+    }
+    onItemsChanged: if (!sameRows(rows, items)) rows = items
+    Component.onCompleted: rows = items
     property int current: -1
 
     targetX: Panels.anchorX
     contentWidth: Math.max(220, ...widths.map(w => w))
     padding: 5
     radius: Theme.radius.menu + 2
-    readonly property var widths: items.map(i => (i.text ?? "").length * 7.5 + (i.shortcut ? 60 : 0) + 48)
+    readonly property var widths: rows.map(i => (i.text ?? "").length * 7.5 + (i.shortcut ? 60 : 0) + 48)
 
     onShownChanged: current = -1
 
     function activate(i) {
-        const item = items[i];
+        const item = rows[i];
         if (!item || item.separator || item.enabled === false)
             return;
         if (!item.keepOpen)
@@ -30,9 +51,9 @@ Popover {
 
     function step(d) {
         let i = current;
-        for (let n = 0; n < items.length; n++) {
-            i = (i + d + items.length) % items.length;
-            if (!items[i].separator && !items[i].header && !items[i].tiles && items[i].enabled !== false) {
+        for (let n = 0; n < rows.length; n++) {
+            i = (i + d + rows.length) % rows.length;
+            if (!rows[i].separator && !rows[i].header && !rows[i].tiles && rows[i].enabled !== false) {
                 current = i;
                 return;
             }
@@ -52,7 +73,7 @@ Popover {
         width: root.contentWidth
 
         Repeater {
-            model: root.items
+            model: root.rows
 
             Item {
                 id: row

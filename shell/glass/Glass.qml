@@ -10,6 +10,9 @@ ShaderEffect {
     id: root
 
     property real radius: Theme.radius.panel
+    // How strongly the lens bends what's behind (refraction, depth, colour
+    // fringes): menus under the menu bar use less, so its text doesn't ghost
+    property real lensScale: 1
     property real bevel: Math.min(radius, 24)
     property real refraction: Theme.glass.refraction
     property real shadowMargin: 24
@@ -60,38 +63,52 @@ ShaderEffect {
     onVisibleChanged: if (pluginMode) host?.glassChanged?.()
     onPluginModeChanged: host?.glassChanged?.()
 
-    // The plugin's parameters for this shape, in window coordinates (follows
-    // parent moves, scales and fades), or null when it shouldn't show
-    // The last shape sent, rebuilt only when the geometry, opacity or material
-    // (`material`, bumped by the window) changed; the same array otherwise,
-    // so the window can tell nothing moved without comparing numbers
-    property var cachedShape: null
-    property string cachedKey: ""
-    function pluginShape(material) {
-        let o = 1;
-        for (let it = root; it; it = it.parent) {
-            if (!it.visible)
-                return null;
+    // The material's numbers for the plugin, the same every frame:
+    // [radius, mode, refraction, depth, bevel, frost, chroma, rim,
+    //  tintR, tintG, tintB, tintA, saturation, gloss] (radius and bevel in item
+    // pixels). Re-evaluated only when the material, radius or lens change, or
+    // the shape crosses the small/large line (thick lens on small controls).
+    readonly property bool smallShape: Math.min(width, height) - 2 * shadowMargin <= 140
+    readonly property var pluginParams: {
+        const pr = Theme.glass.preset(smallShape ? 140 : 141), t = pr.tint;
+        return [radius, pr.mode, pr.refraction * lensScale, pr.depth * lensScale, Math.min(pr.bevel, radius), pr.frost, pr.chroma * lensScale, pr.rim, t.r, t.g, t.b, t.a, pr.saturation, pr.gloss];
+    }
+
+    // QML fallback (no native module): the plugin's numbers for this shape, in
+    // window coordinates (follows parent moves, scales and fades), as the text
+    // sent to it, or null when it shouldn't show. Called every frame while a
+    // window syncs, so it's cheap when nothing changed: the same string comes
+    // back, rebuilt only when the geometry, opacity or material changed.
+    property string cachedShape: ""
+    property var cachedVals: []
+    function pluginShape() {
+        if (!visible) // (effective: false when any ancestor is hidden)
+            return null;
+        let o = opacity;
+        for (let it = parent; it; it = it.parent)
             o *= it.opacity;
-        }
         if (o <= 0.002)
             return null;
-        const p0 = root.mapToItem(null, shadowMargin, shadowMargin);
-        const p1 = root.mapToItem(null, width - shadowMargin, height - shadowMargin);
-        const w = p1.x - p0.x, h = p1.y - p0.y;
+        const r = mapToItem(null, shadowMargin, shadowMargin, width - 2 * shadowMargin, height - 2 * shadowMargin);
+        const w = r.width, h = r.height;
         if (w < 1 || h < 1)
             return null;
-        const key = p0.x + " " + p0.y + " " + w + " " + h + " " + o + " " + radius + " " + material + " " + GlassPlugin.version;
-        if (key === cachedKey)
+        const c = cachedVals, v = GlassPlugin.version, p = pluginParams;
+        if (c[0] === r.x && c[1] === r.y && c[2] === w && c[3] === h && c[4] === o && c[5] === p && c[6] === v)
             return cachedShape;
+        cachedVals = [r.x, r.y, w, h, o, p, v];
         const k = w / Math.max(1, width - 2 * shadowMargin);
-        const pr = Theme.glass.preset(Math.min(w, h));
-        const t = pr.tint;
-        const shape = [p0.x, p0.y, w, h, radius * k, pr.mode, pr.refraction, pr.depth, Math.min(pr.bevel, radius) * k, pr.frost, pr.chroma, pr.rim, t.r, t.g, t.b, t.a, pr.saturation, o];
-        cachedKey = key;
-        cachedShape = GlassPlugin.version >= 2 ? shape.concat([pr.gloss]) : shape;
-        return cachedShape;
+        const shape = [r.x, r.y, w, h, p[0] * k, p[1], p[2], p[3], p[4] * k, p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], o];
+        if (v >= 2)
+            shape.push(p[13]);
+        let text = "";
+        for (let i = 0; i < shape.length; i++)
+            text += (i ? " " : "") + Math.round(shape[i] * 1000) / 1000;
+        cachedShape = text;
+        return text;
     }
+    // A material change reaches the fallback sync through this
+    onPluginParamsChanged: if (pluginMode) host?.glassChanged?.()
     onXChanged: updatePosition()
     onYChanged: updatePosition()
     onWidthChanged: updatePosition()
@@ -118,7 +135,9 @@ ShaderEffect {
         updatePosition();
         register();
     }
-    Component.onDestruction: registeredHost?.unregisterGlass?.(root)
+    // (not when the whole window is going: it may already be gone, and
+    // calling into it then only logs "invalid context")
+    Component.onDestruction: if (registeredHost && !registeredHost.closing) registeredHost.unregisterGlass?.(root)
 
     Item {
         id: shapeItem
@@ -126,14 +145,5 @@ ShaderEffect {
         y: root.shadowMargin
         width: root.width - 2 * root.shadowMargin
         height: root.height - 2 * root.shadowMargin
-    }
-    // Increase contrast: a clear outline, so surfaces never melt into what's behind
-    Rectangle {
-        visible: Theme.contrast
-        anchors.fill: shapeItem
-        radius: root.radius
-        color: "transparent"
-        border.width: 1
-        border.color: Theme.color.outline
     }
 }

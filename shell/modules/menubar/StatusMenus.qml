@@ -26,6 +26,8 @@ Scope {
                 id: pop
                 screen: slot.modelData
                 popoverName: menu.panel
+                lens: 0.35 // a menu right under the menu bar (see MenuPopover)
+                autoClose: 5000
                 contentWidth: menu.width_
                 targetX: Panels.anchorX - 20
                 Loader {

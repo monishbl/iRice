@@ -48,7 +48,7 @@ Item {
                 radius: 12
                 color: mouse.pressed ? Qt.alpha(tints[index % 8], 0.32) : mouse.containsMouse ? Qt.alpha(tints[index % 8], 0.26) : Qt.alpha(tints[index % 8], 0.18)
                 scale: mouse.pressed ? 0.95 : 1
-                Behavior on scale { NumberAnimation { duration: 100 } }
+                Behavior on scale { ScaleAnimator { duration: 100 } }
                 Column {
                     anchors { left: parent.left; leftMargin: 8; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                     spacing: 4

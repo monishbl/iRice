@@ -48,7 +48,7 @@ Item {
         id: a
         visible: false
         asynchronous: true
-        cache: false
+        cache: true
         smooth: true
         onStatusChanged: if (status === Image.Ready) root.ready(a)
     }
@@ -56,7 +56,7 @@ Item {
         id: b
         visible: false
         asynchronous: true
-        cache: false
+        cache: true
         smooth: true
         onStatusChanged: if (status === Image.Ready) root.ready(b)
     }

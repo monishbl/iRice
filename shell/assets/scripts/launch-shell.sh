@@ -61,6 +61,18 @@ if [[ -n "$LOCAL" ]]; then
     export QML_IMPORT_PATH="$LOCAL/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
     export QML2_IMPORT_PATH="$QML_IMPORT_PATH"
 fi
+# iRice's native helpers (shell/native/build.sh), when built for this Qt: the
+# IRice.Native QML module (glass kept in step from C++). Without them the
+# shell uses its QML fallback. IRICE_NO_NATIVE=1 forces the fallback.
+NATIVE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/native/build"
+if [[ "${IRICE_NO_NATIVE:-}" != 1 && -d "$NATIVE/qml/IRice/Native" ]]; then
+    want=$(cat "$NATIVE/built-for-qt" 2>/dev/null || true)
+    have=$( { /usr/lib/qt6/bin/qtpaths --qt-version || qmake6 -query QT_VERSION; } 2>/dev/null || true)
+    if [[ -z "$want" || -z "$have" || "$want" == "$have" ]]; then
+        export QML_IMPORT_PATH="$NATIVE/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+        export QML2_IMPORT_PATH="$QML_IMPORT_PATH"
+    fi
+fi
 # Qt's SVG renderer can't size the tiny drop-shadow blur in a couple of icon
 # theme files (MacTahoe's Google Maps and Android Studio), skips just that
 # blur (it's invisible at icon sizes) and logs a warning each time one loads.

@@ -269,7 +269,7 @@ Column {
             height: ep.height - 4
             radius: height / 2
             color: Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : "white"
-            Behavior on x { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
+            Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
         }
         Repeater {
             model: ep.options
@@ -600,7 +600,7 @@ Column {
                 readonly property bool chosen: modelData.id === form.appId
                 width: parent?.width ?? 0
                 height: 40
-                color: chosen ? Qt.alpha(Theme.accent, 0.14) : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
+                color: chosen ? Theme.accentAlpha(0.14) : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
                 activeFocusOnTab: true
                 function choose() {
                     form.appId = modelData.id;

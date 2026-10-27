@@ -264,11 +264,11 @@ Singleton {
             s: Math.max(score(a.name, q), score(a.genericName, q) * 0.8, score((a.keywords ?? []).join(" "), q) * 0.6, score(a.id, q) * 0.7)
         })).filter(x => x.s >= 30).sort((a, b) => b.s - a.s).slice(0, 8);
         for (const x of apps)
-            out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry) });
+            out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry), score: x.s });
 
         const acts = actions.map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
         for (const x of acts)
-            out.push({ section: "Actions", title: x.a.title, subtitle: "", glyph: x.a.glyph, run: x.a.run });
+            out.push({ section: "Actions", title: x.a.title, subtitle: "", glyph: x.a.glyph, run: x.a.run, score: x.s });
 
         if (q.length >= 3)
             for (const e of Calendar.search(raw, 3))
@@ -294,7 +294,13 @@ Singleton {
 
         // Best app or action becomes the top hit (answers stay on top)
         const answers = ["Calculator", "Conversion", "Dictionary"];
-        const top = out.findIndex(r => r.section === "Applications" || r.section === "Actions" || answers.includes(r.section));
+        // (the better match of the two: an app that only matches by its
+        // generic name doesn't beat an action named for what was typed)
+        let top = out.findIndex(r => answers.includes(r.section));
+        if (top < 0)
+            for (let i = 0; i < out.length; i++)
+                if ((out[i].section === "Applications" || out[i].section === "Actions") && (top < 0 || out[i].score > out[top].score))
+                    top = i;
         if (top > 0 || (top === 0 && !answers.includes(out[0].section))) {
             const hit = Object.assign({}, out[top], { section: "Top Hit" });
             out.splice(top, 1);

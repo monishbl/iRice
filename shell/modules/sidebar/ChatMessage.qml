@@ -1,5 +1,6 @@
 import QtQuick
 import qs.common
+import qs.services
 import qs.modules.controlcenter
 
 // One chat row. User turns are accent bubbles on the right; assistant turns are
@@ -20,7 +21,8 @@ Item {
     // Attached screenshot, above the bubble
     Rectangle {
         id: shot
-        visible: root.role === "user" && root.image !== ""
+        // (a screenshot that's since been deleted leaves no empty box)
+        visible: root.role === "user" && root.image !== "" && shotImage.status !== Image.Error
         anchors.right: parent.right
         width: 200
         height: 120
@@ -28,8 +30,9 @@ Item {
         color: Theme.color.fill
         clip: true
         Image {
+            id: shotImage
             anchors.fill: parent
-            source: shot.visible ? "file://" + root.image : ""
+            source: root.role === "user" && root.image !== "" ? "file://" + root.image : ""
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(400, 240)
             asynchronous: true
@@ -143,7 +146,7 @@ Item {
             textFormat: TextEdit.MarkdownText
             text: root.role === "assistant" ? root.text : ""
             color: Theme.color.label
-            selectionColor: Qt.alpha(Theme.accent, 0.4)
+            selectionColor: Theme.accentAlpha(0.4)
             font { family: Theme.font.family; pixelSize: Theme.font.body }
             onLinkActivated: link => Launch.open(link)
         }

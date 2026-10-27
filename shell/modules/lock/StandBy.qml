@@ -122,7 +122,7 @@ Item {
         sourceSize: Qt.size(root.width, root.height)
         asynchronous: true
         opacity: status === Image.Ready && !root.resting ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 800 } }
+        Behavior on opacity { OpacityAnimator { duration: 800 } }
     }
 
     // ── Everything that stays put otherwise: moves and rests ────────────
@@ -133,10 +133,10 @@ Item {
         x: root.dx
         y: root.dy
         // Slow enough to go unnoticed; a jump while dark
-        Behavior on x { enabled: !root.resting; NumberAnimation { duration: 3000; easing.type: Easing.InOutSine } }
-        Behavior on y { enabled: !root.resting; NumberAnimation { duration: 3000; easing.type: Easing.InOutSine } }
+        Behavior on x { enabled: !root.resting; XAnimator { duration: 3000; easing.type: Easing.InOutSine } }
+        Behavior on y { enabled: !root.resting; YAnimator { duration: 3000; easing.type: Easing.InOutSine } }
         opacity: root.resting ? 0 : 1
-        Behavior on opacity { NumberAnimation { duration: 2000; easing.type: Easing.InOutQuad } }
+        Behavior on opacity { OpacityAnimator { duration: 2000; easing.type: Easing.InOutQuad } }
 
         // Clock
         Column {
@@ -224,7 +224,7 @@ Item {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
         spacing: 8
         opacity: dotsTimer.running ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 400 } }
+        Behavior on opacity { OpacityAnimator { duration: 400 } }
         function show() {
             dotsTimer.restart();
         }

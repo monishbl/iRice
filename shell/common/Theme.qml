@@ -37,20 +37,32 @@ Singleton {
     }
 
     readonly property bool reduceTransparency: Config.options.appearance.reduceTransparency
-    readonly property bool contrast: Config.options.appearance.increaseContrast
+    // Text contrast (Settings → Appearance): 0 standard (macOS vibrancy),
+    // 1 higher (text about 4.5:1 over glass), 2 maximum (about 7:1). It's
+    // for text, icons, controls and selection; borders barely change.
+    // ("increaseContrast" is the old on/off switch: on counts as higher.)
+    readonly property int contrastLevel: Config.options.appearance.contrast === "maximum" ? 2 : Config.options.appearance.contrast === "higher" || Config.options.appearance.increaseContrast ? 1 : 0
+    readonly property bool contrast: contrastLevel > 0
+    function level(standard, higher, maximum) {
+        return contrastLevel === 2 ? maximum : contrastLevel === 1 ? higher : standard;
+    }
+    // Selection and accent tints, stronger with more contrast
+    function accentAlpha(a) {
+        return Qt.alpha(accent, Math.min(1, a * level(1, 1.3, 1.6)));
+    }
 
     readonly property QtObject color: QtObject {
-        readonly property color label: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 1 : 0.92) : Qt.rgba(0, 0, 0, root.contrast ? 0.95 : 0.85)
-        readonly property color secondary: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.78 : 0.58) : Qt.rgba(0, 0, 0, root.contrast ? 0.72 : 0.52)
-        readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.6 : 0.34) : Qt.rgba(0, 0, 0, root.contrast ? 0.56 : 0.3)
-        readonly property color separator: root.dark ? Qt.rgba(1, 1, 1, root.contrast ? 0.3 : 0.12) : Qt.rgba(0, 0, 0, root.contrast ? 0.28 : 0.1)
-        // Outline around glass surfaces with Increase contrast
+        readonly property color label: root.dark ? Qt.rgba(1, 1, 1, root.level(0.92, 1, 1)) : Qt.rgba(0, 0, 0, root.level(0.85, 0.9, 0.95))
+        readonly property color secondary: root.dark ? Qt.rgba(1, 1, 1, root.level(0.58, 0.72, 0.85)) : Qt.rgba(0, 0, 0, root.level(0.52, 0.68, 0.8))
+        readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, root.level(0.34, 0.56, 0.7)) : Qt.rgba(0, 0, 0, root.level(0.3, 0.6, 0.7))
+        readonly property color separator: root.dark ? Qt.rgba(1, 1, 1, root.level(0.12, 0.14, 0.16)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.12, 0.14))
         readonly property color outline: root.dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.38)
-        readonly property color fill: root.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.06)
-        readonly property color fillHover: root.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.1)
-        readonly property color fillPressed: root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.15)
+        readonly property color fill: root.dark ? Qt.rgba(1, 1, 1, root.level(0.1, 0.14, 0.18)) : Qt.rgba(0, 0, 0, root.level(0.06, 0.09, 0.12))
+        readonly property color fillHover: root.dark ? Qt.rgba(1, 1, 1, root.level(0.16, 0.2, 0.24)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.13, 0.16))
+        readonly property color fillPressed: root.dark ? Qt.rgba(1, 1, 1, root.level(0.22, 0.26, 0.3)) : Qt.rgba(0, 0, 0, root.level(0.15, 0.18, 0.21))
         readonly property color platter: root.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.45)
-        readonly property color toggleOff: root.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08)
+        // Unchecked toggles, slider and segmented tracks
+        readonly property color toggleOff: root.dark ? Qt.rgba(1, 1, 1, root.level(0.14, 0.24, 0.32)) : Qt.rgba(0, 0, 0, root.level(0.08, 0.16, 0.24))
         readonly property color onAccent: "white"
         readonly property color danger: root.dark ? "#FF453A" : "#FF3B30"
         readonly property color success: root.dark ? "#30D158" : "#34C759"
@@ -65,8 +77,10 @@ Singleton {
         // (blurs it) and solid (opacity). Glass, Frost and Solid are tuned
         // presets; Custom uses your own (Settings → Appearance → Advanced).
         // [lens, frost, solid, tint]
-        readonly property var presets: ({ liquid: [1, 0.1, 0.12, 0.45], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
-        readonly property string material: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
+        readonly property string chosen: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        // Cool-down swaps in a cheaper material (never a heavier one)
+        readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
         readonly property real lensAmount: amounts[0]
         readonly property real frostAmount: amounts[1]
@@ -76,7 +90,7 @@ Singleton {
         // for clear glass, fading to an even hairline as it frosts, none solid
         readonly property real gloss: lensAmount * (1 - 0.85 * frostAmount) * (1 - solidAmount)
         // The nearest named material, for code that needs a yes/no answer
-        readonly property string tier: solidAmount >= 0.97 ? "solid" : (frostAmount < 0.4 && solidAmount < 0.4) ? "liquid" : "frosted"
+        readonly property string tier: solidAmount >= 0.97 ? "solid" : solidAmount < 0.4 && (frostAmount < 0.4 || lensAmount >= 0.6) ? "liquid" : "frosted" // (a strong lens reads as glass even when frosty)
         // Lens thickness: thin | depth | auto (thick on small controls)
         readonly property string depth: Config.options.appearance.glassDepth
         readonly property color base: root.dark ? Qt.rgba(0.08, 0.08, 0.1, 0.16) : Qt.rgba(0.98, 0.98, 1.0, 0.3)
@@ -144,11 +158,11 @@ Singleton {
         readonly property real pull: expressive ? 14 : 6 // how far a panel gives when pressed and dragged
         readonly property real controlPull: expressive ? 5 : 2.5 // same for small controls
         readonly property real squish: expressive ? 0.9 : 0.95 // press scale
-        readonly property int press: 100
-        readonly property int hover: 150
-        readonly property int popover: 220
-        readonly property int panel: 320
-        readonly property int large: 450
+        readonly property int press: Math.round(100 * CoolDown.motionScale)
+        readonly property int hover: Math.round(150 * CoolDown.motionScale)
+        readonly property int popover: Math.round(220 * CoolDown.motionScale)
+        readonly property int panel: Math.round(320 * CoolDown.motionScale)
+        readonly property int large: Math.round(450 * CoolDown.motionScale)
         // Apple-like decelerate; QML BezierSpline control points.
         readonly property var emphasized: [0.2, 0.9, 0.1, 1.0, 1, 1]
         readonly property var standard: [0.3, 0.0, 0.2, 1.0, 1, 1]

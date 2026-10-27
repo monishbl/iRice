@@ -39,7 +39,7 @@ Rectangle {
     }
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     scale: mouse.pressed && live ? 0.97 : 1
-    Behavior on scale { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
+    Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
     // Keyboard focus ring
     Rectangle {

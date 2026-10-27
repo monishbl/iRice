@@ -74,6 +74,9 @@ Item {
         border.color: Theme.color.separator
         clip: true
         opacity: visible ? 1 : 0
+        // (not an OpacityAnimator: it shows in the same frame it fades in, and
+        // an Animator started then can stay at 0: an invisible menu that
+        // lets clicks through to the settings under it)
         Behavior on opacity { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
 
         Keys.onPressed: event => {

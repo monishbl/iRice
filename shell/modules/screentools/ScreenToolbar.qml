@@ -46,6 +46,9 @@ Variants {
             visible: progress > 0 && closeGuard.open
 
             CloseGuard { id: closeGuard; shown: win.shown }
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors.bottom: true

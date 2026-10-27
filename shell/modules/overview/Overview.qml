@@ -81,6 +81,9 @@ Variants {
 
             visible: progress > 0 && closeGuard.open
             CloseGuard { id: closeGuard; shown: win.shown }
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
             anchors { top: true; bottom: true; left: true; right: true }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -94,8 +97,13 @@ Variants {
             Connections {
                 target: Search
                 function onRevisionChanged() {
-                    if (win.shown && field.text !== "")
-                        win.results = Search.query(field.text).filter(r => !r.ai);
+                    if (!win.shown || field.text === "")
+                        return;
+                    // Keep the row you moved to (rows shift as answers arrive)
+                    const keep = win.selected > 0 ? win.results[win.selected]?.title : undefined;
+                    win.results = Search.query(field.text).filter(r => !r.ai);
+                    const i = win.results.findIndex(r => r.title === keep);
+                    win.selected = i >= 0 ? i : 0;
                 }
             }
             function go(id) {
@@ -158,7 +166,7 @@ Variants {
                         width: 560 - 70
                         anchors.verticalCenter: parent.verticalCenter
                         color: Theme.color.label
-                        selectionColor: Qt.alpha(Theme.accent, 0.5)
+                        selectionColor: Theme.accentAlpha(0.5)
                         clip: true
                         font { family: Theme.font.family; pixelSize: 20 }
                         onTextChanged: {
@@ -312,7 +320,7 @@ Variants {
                                         Drag.hotSpot.y: height / 2
                                         z: thumbDrag.active ? 5000 : stack
                                         scale: thumbDrag.active ? 1.04 : 1
-                                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                                        Behavior on scale { ScaleAnimator { duration: 150; easing.type: Easing.OutCubic } }
 
                                         WindowPreview {
                                             id: preview

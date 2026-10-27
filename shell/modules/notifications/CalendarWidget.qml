@@ -230,7 +230,7 @@ Platter {
                         width: weekList.width
                         height: Math.max(34, weekCol.implicitHeight + 10)
                         radius: 8
-                        color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Qt.alpha(Theme.accent, 0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
+                        color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
                         Column {
                             x: 8
                             width: 44
@@ -526,7 +526,7 @@ Platter {
             radius: 13
             readonly property bool target: !!root.dropDay && root.sameDay(root.dropDay, cell.modelData)
             visible: cell.isToday || cell.isSelected || dayMouse.containsMouse || target
-            color: cell.isToday ? Theme.accent : target ? Qt.alpha(Theme.accent, 0.35) : cell.isSelected ? Theme.color.fillPressed : Theme.color.fill
+            color: cell.isToday ? Theme.accent : target ? Theme.accentAlpha(0.35) : cell.isSelected ? Theme.color.fillPressed : Theme.color.fill
         }
         Text {
             anchors.centerIn: parent

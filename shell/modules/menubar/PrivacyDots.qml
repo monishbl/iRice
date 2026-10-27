@@ -32,6 +32,8 @@ MenuBarItem {
                 // Appears with a small pop
                 scale: 0
                 Component.onCompleted: scale = 1
+                // (a NumberAnimation: started as it's created, a ScaleAnimator may
+                // never run and leave the dot invisible)
                 Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
             }
         }

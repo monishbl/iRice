@@ -33,74 +33,113 @@ PanelWindow {
     property var glasses: []
     function registerGlass(g) {
         glasses = glasses.concat([g]);
+        if (nativeSync)
+            native.item.add(g);
         glassChanged();
     }
     function unregisterGlass(g) {
         glasses = glasses.filter(x => x !== g);
+        if (nativeSync)
+            native.item.remove(g);
         glassChanged();
+    }
+
+    // With iRice's native module (shell/native), C++ keeps the plugin's shapes
+    // in step on every frame this window draws, and nothing below runs
+    readonly property bool nativeSync: native.status === Loader.Ready
+    Loader {
+        id: native
+        active: Native.glassSync
+        source: active ? "NativeSync.qml" : ""
+        onLoaded: {
+            item.monitor = Qt.binding(() => root.screen?.name ?? "");
+            item.ns = Qt.binding(() => root.WlrLayershell.namespace);
+            item.version = Qt.binding(() => GlassPlugin.version);
+            item.active = Qt.binding(() => root.visible && GlassPlugin.available);
+            for (const g of root.glasses)
+                item.add(g);
+        }
     }
 
     // With the irice-glass plugin, this window's glass shapes are sent to the
     // compositor. A change starts a short per-frame sync (animations move and
     // fade glass through their parents), sending only when shapes differ.
-    property string sentShapes: ""
+    property string sentShapes: "" // what went last: the shape count and shapes
     property string sentMonitor: "" // where they went (a window can move to another screen)
-    property int materialSerial: 0 // bumped when the material changes: glass rebuilds its shape
-    property var lastShapes: [] // the arrays sent last (each glass returns the same one while unchanged)
+    property var lastShapes: [] // the shapes sent last (each glass returns the same string while unchanged)
     function glassChanged() {
+        if (nativeSync) {
+            native.item.poke();
+            return;
+        }
+        idleFrames = 0;
         syncWindow.restart();
         if (!syncFrames.running)
             syncFrames.start();
     }
+    // Frames in a row where nothing moved: the per-frame sync stops early
+    // after a few (an animation in progress changes something every frame)
+    property int idleFrames: 0
     function syncGlass() {
-        const ns = WlrLayershell.namespace;
         const mon = screen?.name ?? "";
         if (!mon)
             return;
-        const shapes = visible ? glasses.filter(g => g.pluginMode).map(g => g.pluginShape(materialSerial)).filter(s => s !== null) : [];
+        const shapes = [];
+        if (visible) {
+            for (let i = 0; i < glasses.length; i++) {
+                const g = glasses[i];
+                if (!g.pluginMode)
+                    continue;
+                const s = g.pluginShape();
+                if (s !== null)
+                    shapes.push(s);
+            }
+        }
         // Nothing moved (the common case while syncing): skip the rest
-        if (mon === sentMonitor && shapes.length === lastShapes.length && shapes.every((s, i) => s === lastShapes[i]))
-            return;
+        const last = lastShapes;
+        if (mon === sentMonitor && shapes.length === last.length) {
+            let same = true;
+            for (let i = 0; same && i < shapes.length; i++)
+                same = shapes[i] === last[i];
+            if (same) {
+                idleFrames++;
+                return;
+            }
+        }
+        idleFrames = 0;
         lastShapes = shapes;
-        const key = JSON.stringify(shapes);
+        const key = shapes.length + (shapes.length ? " " + shapes.join(" ") : "");
         if (key === sentShapes && mon === sentMonitor)
             return;
+        const ns = WlrLayershell.namespace;
         // Moved to another screen: clear the shapes left on the old one
-        if (sentMonitor !== "" && sentMonitor !== mon && sentShapes !== "" && sentShapes !== "[]")
-            GlassPlugin.update(sentMonitor, ns, []);
+        if (sentMonitor !== "" && sentMonitor !== mon && sentShapes !== "" && sentShapes !== "0")
+            GlassPlugin.update(sentMonitor, ns, "0");
         sentShapes = key;
         sentMonitor = mon;
-        GlassPlugin.update(mon, ns, shapes);
+        GlassPlugin.update(mon, ns, key);
     }
     onVisibleChanged: glassChanged()
     onScreenChanged: glassChanged()
-    // The material (and its colours) changed: shapes carry it, so re-send
-    Connections {
-        target: Theme.glass
-        function onAmountsChanged() { root.materialChanged(); }
-        function onTintChanged() { root.materialChanged(); }
-        function onDepthChanged() { root.materialChanged(); }
-    }
-    Connections {
-        target: Theme
-        function onDarkChanged() { root.materialChanged(); }
-    }
-    function materialChanged() {
-        materialSerial++;
-        glassChanged();
-    }
     Connections {
         target: GlassPlugin
         function onReady() {
+            if (root.nativeSync) {
+                native.item.resend();
+                return;
+            }
             root.sentShapes = ""; // the plugin may have been reloaded with no shapes
             root.lastShapes = [];
-            root.materialSerial++; // and its version may differ
             root.syncGlass();
         }
     }
     FrameAnimation {
         id: syncFrames
-        onTriggered: root.syncGlass()
+        onTriggered: {
+            root.syncGlass();
+            if (root.idleFrames >= 8)
+                stop();
+        }
     }
     Timer {
         id: syncWindow
@@ -110,5 +149,10 @@ PanelWindow {
             root.syncGlass();
         }
     }
-    Component.onDestruction: if (sentMonitor !== "" && sentShapes !== "" && sentShapes !== "[]") GlassPlugin.update(sentMonitor, WlrLayershell.namespace, [])
+    property bool closing: false // being destroyed: its glass needn't unregister
+    Component.onDestruction: {
+        closing = true;
+        if (sentMonitor !== "" && sentShapes !== "" && sentShapes !== "0")
+            GlassPlugin.update(sentMonitor, WlrLayershell.namespace, "0");
+    }
 }

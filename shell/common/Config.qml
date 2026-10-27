@@ -48,9 +48,10 @@ Singleton {
                 property string keySymbols: "auto" // auto (follows menuIcon) | mac | windows | linux
                 // Custom material (Settings → Appearance → Advanced), each 0..1
                 property real glassLens: 1 // how much it bends what's behind
-                property real glassFrost: 0.1 // how much it blurs
-                property real glassSolid: 0.12 // how opaque it is
-                property real glassTint: 0.45 // how much it darkens what's behind (milky in light mode)
+                property real glassFrost: 0.75 // how much it blurs
+                property real glassSolid: 0 // how opaque it is
+                property real glassTint: 0.75 // how much it darkens what's behind (milky in light mode)
+                property real glassWindowFrost: 0.75 // extra frost where glass covers a window (0 off .. 1), drawn by the plugin
                 property string glassDepth: "auto" // thin | depth | auto (thick lens on small controls)
                 property bool wallpaperTint: true
                 property bool screenCorners: true
@@ -67,7 +68,8 @@ Singleton {
                 // Accessibility (like macOS): solid surfaces instead of glass;
                 // stronger text, separators and outlines
                 property bool reduceTransparency: false
-                property bool increaseContrast: false
+                property bool increaseContrast: false // the old switch: on counts as "higher" (see contrast)
+                property string contrast: "standard" // text contrast: standard | higher | maximum
                 // Match apps: GTK, Qt, terminal and browser colours follow the
                 // accent or the wallpaper (needs matugen): off | accent | wallpaper
                 property string appTheme: "off"
@@ -94,12 +96,6 @@ Singleton {
                 // off | 10min (everyone, for 10 minutes) | everyone
                 property string receiving: "off"
                 property string name: "" // how you appear to others; empty = "<user>'s computer"
-            }
-
-            property JsonObject input: JsonObject {
-                // Three fingers move the window under them; space swipes move
-                // to four fingers (read by hypr/irice/gestures.lua)
-                property bool threeFingerDrag: false
             }
 
             property JsonObject sounds: JsonObject {
@@ -254,6 +250,22 @@ Singleton {
                 property string style: "android" // emoji drawn by the shell: android (Noto) | apple | windows (Fluent)
                 property string klipyKey: "" // your KLIPY app key for the picker's GIF tab (partner.klipy.com/api-keys); KLIPY_API_KEY in the environment wins
                 property string gifFilter: "medium" // GIF safety filter: off | low | medium | high
+            }
+            property JsonObject cooling: JsonObject {
+                // Cool-down (Settings → Appearance): less work while hot, on battery or switched on
+                property bool whenHot: true // when the CPU is hot (Menu Bar → island → temperature threshold)
+                property bool onBattery: false // also on battery (off: the cheaper look only when it's needed)
+                property string glass: "frosted" // glass during cool-down: keep | frosted | solid
+                property bool lightBlur: true // fewer, smaller Hyprland blur passes
+                property bool shortAnimations: true
+                property bool pauseLiveWallpaper: true
+                property bool lowRefresh: true // the display's lowest refresh rate (48 Hz on most laptop panels)
+            }
+            property JsonObject performance: JsonObject {
+                // Spotlight, Control Center and Notification Center stay loaded
+                // after their first open: they open faster and take less CPU,
+                // for some memory (common/PanelLoader.qml)
+                property bool keepPanelsLoaded: false
             }
             property JsonObject switcher: JsonObject {
                 property bool enabled: true // Alt+Tab window switcher with previews

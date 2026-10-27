@@ -22,7 +22,7 @@ Column {
         }
         Row {
             label: "Effort"
-            detail: "How hard Claude thinks. Higher is slower and costs more."
+            detail: "How hard Claude models think (others ignore this). Higher is slower and costs more."
             Segmented {
                 width: 300
                 readonly property var values: ["low", "medium", "high", "xhigh", "max"]

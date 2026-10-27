@@ -7,7 +7,43 @@ DetailPage {
     id: root
 
     readonly property var adapter: Bluetooth.defaultAdapter
-    readonly property var devices: (adapter?.devices.values ?? []).filter(d => d.paired || d.name).slice().sort((a, b) => (b.connected - a.connected) || (b.paired - a.paired)).slice(0, 12)
+    function sortedNow() {
+        return (adapter?.devices.values ?? []).filter(d => d.paired || d.name).slice().sort((a, b) => (b.connected - a.connected) || (b.paired - a.paired) || (a.name ?? "").localeCompare(b.name ?? "")).slice(0, 12);
+    }
+    // The rows shown: a snapshot (see WifiPage), refreshed every few seconds
+    // unless the pointer is over the list, and with the refresh button
+    property var devices: []
+    function refresh(force) {
+        const next = sortedNow();
+        if (!force && next.length === devices.length && next.every((d, i) => d === devices[i]))
+            return;
+        devices = next;
+    }
+    Component.onCompleted: refresh(true) // (a page created already showing gets no visibility change)
+    onVisibleChanged: if (visible) refresh(true)
+    Timer {
+        running: root.visible
+        interval: 4000
+        repeat: true
+        onTriggered: if (!root.hovered) root.refresh(false)
+    }
+    Connections {
+        target: root.adapter?.devices ?? null
+        ignoreUnknownSignals: true
+        function onValuesChanged() {
+            const live = root.adapter?.devices.values ?? [];
+            if (root.devices.length === 0 || root.devices.some(d => !d || !live.includes(d)))
+                root.refresh(false);
+        }
+    }
+    hasRefresh: true
+    onRefreshRequested: {
+        if (adapter?.enabled) { // look again
+            adapter.discovering = false;
+            adapter.discovering = true;
+        }
+        refresh(true);
+    }
 
     title: "Bluetooth"
     hasSwitch: true

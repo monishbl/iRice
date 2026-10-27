@@ -145,6 +145,7 @@ Scope {
                     enabled: e.enabled,
                     checked: e.checkState === Qt.Checked,
                     keepOpen: e.hasChildren,
+                    entry: e, // (rows are kept only for the same entries: see MenuPopover)
                     action: () => {
                         if (e.hasChildren)
                             tray.handle = e;

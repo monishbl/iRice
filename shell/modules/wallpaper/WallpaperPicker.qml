@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.common
+import qs.services
 import qs.glass
 
 // Wallpaper picker: a glass strip above the dock. Arrow keys move, Enter
@@ -49,6 +50,9 @@ Variants {
             visible: progress > 0 && closeGuard.open
 
             CloseGuard { id: closeGuard; shown: win.shown }
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors.bottom: true
@@ -161,7 +165,7 @@ Variants {
                                 border.width: cell.current ? 3 : list.currentIndex === cell.index ? 2 : 0
                                 border.color: cell.current ? Theme.accent : Theme.color.label
                                 scale: thumbMouse.containsMouse ? 1.03 : 1
-                                Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
+                                Behavior on scale { ScaleAnimator { duration: Theme.motion.hover } }
 
                                 Image {
                                     anchors.fill: parent

@@ -287,7 +287,10 @@ Singleton {
     // When temperature isn't watched any more (alert switched off, island
     // off), end the hot state so Low Power is given back
     readonly property bool tempWatch: enabled && wants("temperature")
-    onTempWatchChanged: if (!tempWatch) hot = false
+    onTempWatchChanged: if (!tempWatch) {
+        hot = false;
+        hotTicks = 0;
+    }
     property var savedProfile: null // the profile before throttling
     function hotText(t) {
         return "CPU " + Math.round(t) + " °C · " + (savedProfile !== null ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
@@ -305,6 +308,7 @@ Singleton {
         }
     }
     onHotChanged: {
+        CoolDown.hot = hot;
         throttle(hot);
         if (!hot)
             hotUid = 0;
@@ -315,6 +319,7 @@ Singleton {
             const t = Resources.temperature;
             if (!root.wants("temperature")) {
                 root.hot = false;
+                root.hotTicks = 0;
                 return;
             }
             if (t <= 0)

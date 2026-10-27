@@ -521,7 +521,7 @@ GlassWindow {
                             y: win.editText?.y ?? 0
                             width: Math.max(contentWidth + 2, (win.editText?.size ?? 20) * 4)
                             color: win.editText?.color ?? "white"
-                            selectionColor: Qt.alpha(Theme.accent, 0.4)
+                            selectionColor: Theme.accentAlpha(0.4)
                             selectByMouse: true
                             font { family: Theme.font.family; pixelSize: win.editText?.size ?? 20; weight: Font.DemiBold }
                             onAccepted: win.commitText()
@@ -988,7 +988,7 @@ GlassWindow {
                                 radius: 8
                                 color: swatch.modelData
                                 scale: swatchMouse.pressed ? 0.9 : 1
-                                Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                                Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                             }
                             MouseArea {
                                 id: swatchMouse

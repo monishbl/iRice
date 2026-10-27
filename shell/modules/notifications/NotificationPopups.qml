@@ -33,6 +33,7 @@ Scope {
             readonly property int count: Notifications.popupModel.count
             property bool expanded: false
             onCountChanged: if (count <= 1) expanded = false
+            onVisibleChanged: if (!visible) expanded = false
             readonly property bool hovered: hover.hovered
 
             // Card heights by index (delegates report theirs)
@@ -61,7 +62,9 @@ Scope {
 
             name: "notifications"
             screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
-            visible: count > 0
+            // (not over Notification Center, which lists them anyway, or over
+            // Control Center, which opens in the same corner)
+            visible: count > 0 && !Panels.isOpen("notificationCenter", screen) && !Panels.isOpen("controlCenter", screen)
             WlrLayershell.layer: WlrLayer.Overlay
             anchors { top: true; right: true }
             margins.top: 30 + 6 - m + (Panels.osdVisible ? 62 : 0)
@@ -70,6 +73,15 @@ Scope {
             implicitHeight: Math.max(1, contentHeight + 2 * m + (count > 1 ? 36 : 0))
 
             HoverHandler { id: hover }
+            // Input only where the cards and the pill row are: the window's
+            // shadow margin overlaps the menu bar (clock, Control Center,
+            // tray), and without this it took their clicks while a banner showed
+            mask: Region {
+                x: win.m
+                y: win.m
+                width: win.cardWidth
+                height: win.contentHeight + (win.count > 1 ? 8 + 26 : 0)
+            }
 
             Item {
                 id: stack
@@ -119,6 +131,13 @@ Scope {
                         opacity: (shown ? (front || win.expanded ? 1 : 0.9 - 0.25 * (index - 1)) : 0) * enter
                         Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                         transform: Translate { x: (1 - banner.enter) * win.cardWidth * 0.55 }
+                        // The glass is drawn by the compositor from where it is: these
+                        // move or fade it without moving the glass item itself (the
+                        // fade-in can start after the window's first sync has ended)
+                        onEnterChanged: win.glassChanged()
+                        onOpacityChanged: win.glassChanged()
+                        onYChanged: win.glassChanged()
+                        onScaleChanged: win.glassChanged()
 
                         function leave() {
                             if (leaving)

@@ -31,7 +31,7 @@ Item {
                 const here = lines[0];
                 const t = {};
                 for (const l of lines.slice(1))
-                    t[l[0]] = { h: Number(l[1]), m: Number(l[2]), offset: (mins(l[3]) - mins(here[3])) / 60, day: (() => { const d = Number(l[4]) - Number(here[4]); return d > 1 ? -1 : d < -1 ? 1 : Math.sign(d); })() // day-of-year wraps at New Year };
+                    t[l[0]] = { h: Number(l[1]), m: Number(l[2]), offset: (mins(l[3]) - mins(here[3])) / 60, day: (() => { const d = Number(l[4]) - Number(here[4]); return d > 1 ? -1 : d < -1 ? 1 : Math.sign(d); })() }; // day-of-year wraps at New Year
                 root.times = t;
             }
         }

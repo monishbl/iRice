@@ -206,6 +206,10 @@ Singleton {
             return 0;
         if (n.startsWith(q))
             return 1 + n.length / 100;
+        // The query is a whole word of the name or keywords: the usual order
+        // decides (smileys before "cat with wry smile" for "smile")
+        if (hay.indexOf(" " + q + " ") >= 0 || hay.endsWith(" " + q))
+            return 1.5;
         if (n.includes(q))
             return 2 + n.length / 100;
         return 3 + n.length / 100;
@@ -223,14 +227,36 @@ Singleton {
             out.push(list[hits[i][1]]);
         return out;
     }
+    // Characters typed as they are (kaomoji and symbols: "^_^", "<3", "→")
+    function literal(list, raw, max) {
+        const out = [];
+        for (let i = 0; i < list.length && out.length < max; i++)
+            if (list[i].c.toLowerCase().includes(raw))
+                out.push(list[i]);
+        return out;
+    }
+    // Literal matches first, then the word matches not already in
+    function merge(a, b, max) {
+        const out = a.slice(0, max);
+        for (let i = 0; i < b.length && out.length < max; i++)
+            if (out.indexOf(b[i]) < 0)
+                out.push(b[i]);
+        return out;
+    }
     function search(query, max) {
-        const q = query.trim().toLowerCase().replace(/^:+|:+$/g, "").replace(/[_\s]+/g, " ").trim();
-        if (q === "")
+        const raw = query.trim().toLowerCase();
+        const q = raw.replace(/^:+|:+$/g, "").replace(/[_\s]+/g, " ").trim();
+        if (raw === "")
             return { emoji: [], kaomoji: [], symbols: [] };
-        const words = q.split(" ").map(w => w.replace(/[^a-z0-9]+/g, "")).filter(w => w !== "");
-        if (words.length === 0) // symbols only: match the characters themselves
-            return { emoji: emoji.filter(e => e.c.includes(q)).slice(0, max), kaomoji: kaomojiFlat.filter(e => e.c.includes(q)).slice(0, max), symbols: symbolsFlat.filter(e => e.c.includes(q)).slice(0, max) };
-        return { emoji: rank(emoji, words, q, max), kaomoji: rank(kaomojiFlat, words, q, max), symbols: rank(symbolsFlat, words, q, max) };
+        const words = q.replace(/-/g, " ").split(" ").map(w => w.replace(/[^a-z0-9]+/g, "")).filter(w => w !== "");
+        // Punctuation in the query (beyond a :shortcode:) means characters
+        const chars = /[^a-z0-9\s_:]/.test(raw);
+        if (words.length === 0)
+            return { emoji: literal(emoji, raw, max), kaomoji: literal(kaomojiFlat, raw, max), symbols: literal(symbolsFlat, raw, max) };
+        const em = rank(emoji, words, q, max), ka = rank(kaomojiFlat, words, q, max), sy = rank(symbolsFlat, words, q, max);
+        if (!chars)
+            return { emoji: em, kaomoji: ka, symbols: sy };
+        return { emoji: merge(literal(emoji, raw, max), em, max), kaomoji: merge(literal(kaomojiFlat, raw, max), ka, max), symbols: merge(literal(symbolsFlat, raw, max), sy, max) };
     }
 
     // ---- Placement -------------------------------------------------------

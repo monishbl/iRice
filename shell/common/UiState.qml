@@ -39,11 +39,13 @@ Singleton {
         property var stacks: ({}) // Smart Stack widget id -> [widget kinds]
         property var shortcutButtons: ({}) // Shortcuts widget id -> [action titles]
         property bool appThemeOn: false // Match apps wrote colour files (so turning it off empties them)
+        property var coolDown: null // what cool-down changed, to put back: { blur: { passes, size }, rates: { output: Hz } }
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
         onFloatingImageChanged: root.scheduleSave()
         onTodosChanged: root.scheduleSave()
+        onAlarmsChanged: root.scheduleSave()
         onClipPinsChanged: root.scheduleSave()
         onRecentAppsChanged: root.scheduleSave(true)
         onDesktopNoteChanged: root.scheduleSave()
@@ -52,6 +54,7 @@ Singleton {
         onStacksChanged: root.scheduleSave()
         onShortcutButtonsChanged: root.scheduleSave()
         onAppThemeOnChanged: root.scheduleSave()
+        onCoolDownChanged: root.scheduleSave()
     }
 
     property bool loaded: false
@@ -93,7 +96,8 @@ Singleton {
             screenTime: store.screenTime,
             stacks: store.stacks,
             shortcutButtons: store.shortcutButtons,
-            appThemeOn: store.appThemeOn
+            appThemeOn: store.appThemeOn,
+            coolDown: store.coolDown
         }, null, 2))
     }
 
@@ -132,6 +136,7 @@ Singleton {
                 for (const k of ["screenTime", "stacks", "shortcutButtons"])
                     if (j[k] && typeof j[k] === "object")
                         store[k] = j[k];
+                store.coolDown = j.coolDown && typeof j.coolDown === "object" ? j.coolDown : null;
             } catch (e) {}
             root.loaded = true;
         }

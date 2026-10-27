@@ -39,6 +39,27 @@ Singleton {
         onExited: cache.reload()
     }
 
+    // Any image source made safe: an "image://icon/<name>" URL (tray items,
+    // notifications) goes through the same checked lookup as a name, so a
+    // name the theme doesn't have never draws Qt's pink and black grid. Its
+    // "?path=<dir>" (an app's own icon folder) is tried after the theme.
+    // Other sources (files, pixmaps) pass through.
+    function safe(src, fallback) {
+        const s = String(src ?? "");
+        if (!s.startsWith("image://icon/"))
+            return s.startsWith("/") ? "file://" + s : s === "" ? path([], fallback) : s.includes("://") ? s : path(s, fallback);
+        const rest = s.slice("image://icon/".length);
+        const q = rest.indexOf("?");
+        const name = decodeURIComponent(q < 0 ? rest : rest.slice(0, q));
+        const dir = q < 0 ? "" : (rest.slice(q + 1).split("&").find(p => p.startsWith("path=")) ?? "").slice(5);
+        const themed = root.index[name] ? path(name) : "";
+        if (themed !== "")
+            return themed;
+        if (dir !== "")
+            return "file://" + decodeURIComponent(dir) + "/" + name + ".png";
+        return path(name, fallback);
+    }
+
     // name and fallback may each be a name or a list of names to try in turn
     function path(name, fallback) {
         const names = [].concat(name ?? []).map(n => String(n)).filter(n => n !== "");

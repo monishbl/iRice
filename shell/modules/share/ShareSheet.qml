@@ -39,6 +39,9 @@ Variants {
             }
             Behavior on progress { NumberAnimation { duration: win.shown ? 220 : 150; easing.type: win.shown ? Easing.OutCubic : Easing.InCubic } }
             visible: progress > 0.01 || shown
+            // Input only while shown: during the closing fade (or if it ever
+            // stalls) the window lets clicks through instead of eating them
+            mask: Region { width: win.shown ? win.width : 0; height: win.shown ? win.height : 0 }
 
             Rectangle {
                 anchors.fill: parent

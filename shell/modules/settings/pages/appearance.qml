@@ -126,7 +126,7 @@ Column {
                         width: 40
                         height: 32
                         radius: Theme.radius.control
-                        color: on ? Qt.alpha(Theme.accent, 0.25) : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        color: on ? Theme.accentAlpha(0.25) : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                         border.width: on ? 2 : 0
                         border.color: Theme.accent
                         Icon {
@@ -369,7 +369,7 @@ Column {
                                     { key: "glassLens", label: "Glass", hint: "How much it bends what's behind" },
                                     { key: "glassFrost", label: "Frost", hint: "How much it blurs" },
                                     { key: "glassSolid", label: "Solid", hint: "How opaque it is" },
-                                    { key: "glassTint", label: "Tint", hint: Theme.dark ? "How much it darkens what's behind" : "How milky it is" }
+                                    { key: "glassTint", label: "Tint", hint: Theme.dark ? "How much it darkens what's behind" : "How milky it is", max: 2 }
                                 ]
                                 Column {
                                     required property var modelData
@@ -393,7 +393,7 @@ Column {
                                     Slider {
                                         width: parent.width
                                         from: 0
-                                        to: 1
+                                        to: parent.modelData.max ?? 1 // tint goes to 200%
                                         value: Config.options.appearance[parent.modelData.key]
                                         onMoved: v => {
                                             Config.options.appearance[parent.modelData.key] = Math.round(v * 100) / 100;
@@ -486,6 +486,25 @@ Column {
                 onToggled: Config.options.appearance.wallpaperTint = !checked
             }
         }
+        Row {
+            visible: GlassPlugin.available && Theme.glass.tier !== "solid"
+            label: "Frost over windows"
+            detail: "Glass covering a window blurs it more, so its text doesn't compete with what's on the glass"
+            Segmented {
+                width: 300
+                readonly property var values: [0, 0.5, 0.75, 0.95]
+                options: ["Off", "Subtle", "Medium", "Strong"]
+                current: {
+                    const v = Config.options.appearance.glassWindowFrost;
+                    let best = 0;
+                    for (let i = 1; i < values.length; i++)
+                        if (Math.abs(values[i] - v) < Math.abs(values[best] - v))
+                            best = i;
+                    return best;
+                }
+                onSelected: i => Config.options.appearance.glassWindowFrost = values[i]
+            }
+        }
     }
 
     Group {
@@ -532,11 +551,78 @@ Column {
             }
         }
         Row {
-            label: "Increase contrast"
-            detail: "Stronger secondary text and separators, and an outline around panels and controls"
+            label: "Text contrast"
+            detail: ["Light secondary text, as on macOS", "Easier-to-read text, icons and controls", "The clearest text, icons and controls"][Theme.contrastLevel]
+            Segmented {
+                width: 280
+                readonly property var values: ["standard", "higher", "maximum"]
+                options: ["Standard", "Higher", "Maximum"]
+                current: Theme.contrastLevel
+                onSelected: i => {
+                    Config.options.appearance.contrast = values[i];
+                    Config.options.appearance.increaseContrast = false; // (the old switch)
+                }
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Cool-down"
+        footer: "Less work for the processor and graphics, so the laptop runs cooler and lasts longer: all of this comes back when cool-down ends. Also in Control Center."
+        Row {
+            label: "Cool-down"
+            detail: CoolDown.active ? "On · " + CoolDown.why : CoolDown.why !== "" ? CoolDown.why : "Off"
+            Switch { checked: CoolDown.active; onToggled: CoolDown.toggle() }
+        }
+        Row {
+            label: "When the CPU is hot"
+            detail: "At the island's temperature alert (Menu Bar → Dynamic Island)"
+            Switch { checked: Config.options.cooling.whenHot; onToggled: Config.options.cooling.whenHot = !checked }
+        }
+        Row {
+            label: "On battery"
+            Switch { checked: Config.options.cooling.onBattery; onToggled: Config.options.cooling.onBattery = !checked }
+        }
+        Row {
+            label: "Glass"
+            detail: "During cool-down"
+            Segmented {
+                width: 260
+                readonly property var values: ["keep", "frosted", "solid"]
+                options: ["Keep", "Frosted", "Solid"]
+                current: Math.max(0, values.indexOf(Config.options.cooling.glass))
+                onSelected: i => Config.options.cooling.glass = values[i]
+            }
+        }
+        Row {
+            label: "Lighter blur"
+            Switch { checked: Config.options.cooling.lightBlur; onToggled: Config.options.cooling.lightBlur = !checked }
+        }
+        Row {
+            label: "Shorter animations"
+            Switch { checked: Config.options.cooling.shortAnimations; onToggled: Config.options.cooling.shortAnimations = !checked }
+        }
+        Row {
+            label: "Lower refresh rate"
+            detail: "The display's lowest rate (48 Hz on most laptop screens); apps draw fewer frames too"
+            Switch { checked: Config.options.cooling.lowRefresh; onToggled: Config.options.cooling.lowRefresh = !checked }
+        }
+        Row {
+            label: "Pause live wallpaper"
+            Switch { checked: Config.options.cooling.pauseLiveWallpaper; onToggled: Config.options.cooling.pauseLiveWallpaper = !checked }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Performance"
+        Row {
+            label: "Keep panels loaded"
+            detail: "Spotlight, Control Center and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory"
             Switch {
-                checked: Config.options.appearance.increaseContrast
-                onToggled: Config.options.appearance.increaseContrast = !checked
+                checked: Config.options.performance.keepPanelsLoaded
+                onToggled: Config.options.performance.keepPanelsLoaded = !checked
             }
         }
     }

@@ -102,8 +102,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/monish-cosol/iRice/main/setu
 It downloads iRice to `~/.local/share/irice/repo` and runs the installer, which:
 1. checks your system (Arch, sudo, internet, disk space, a GPU render device, virtual machine)
 2. updates the system and installs Hyprland, Quickshell and everything iRice uses (all from the official repositories)
-3. optionally installs the Tahoe icons, macOS cursor and GTK theme from the AUR (it sets up `yay` if you have no AUR helper)
-4. compiles the shaders and builds the Liquid Glass plugin against your Hyprland
+3. optionally installs the Tahoe icons, macOS cursor and GTK theme from the AUR (it sets up `yay` if you have no AUR helper), and, if you say yes (default no), the Apple and Fluent emoji styles (Noto emoji is the default)
+4. compiles the shaders and builds the Liquid Glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
 5. installs the shell (`~/.config/quickshell/irice`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-irice`)
 6. optionally downloads macOS wallpapers and starts you on Tahoe (light by day, dark at night)
 7. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools

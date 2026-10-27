@@ -103,7 +103,7 @@ Scope {
                                 radius: 10
                                 color: latched ? Theme.accent : keyMouse.pressed ? Theme.color.fillPressed : keyMouse.containsMouse ? Theme.color.fillHover : (isMod || (modelData[3] ?? 1) > 1 ? Theme.color.toggleOff : Theme.color.fill)
                                 scale: keyMouse.pressed ? 0.95 : 1
-                                Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+                                Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
 
                                 Text {
                                     anchors.centerIn: parent

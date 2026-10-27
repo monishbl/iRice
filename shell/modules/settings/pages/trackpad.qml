@@ -132,6 +132,18 @@ Column {
         }
     }
 
+    Group {
+        width: parent.width
+        Row {
+            label: "Three-finger drag"
+            detail: Keymap.threeFingerDrag ? "Three fingers move the window under them; swipe with four to change spaces" : "Three fingers swipe between spaces"
+            Switch {
+                checked: Keymap.threeFingerDrag
+                onToggled: Keymap.setThreeFingerDrag(!checked)
+            }
+        }
+    }
+
     // ── Problems ─────────────────────────────────────────────────────────
     Repeater {
         model: [Keymap.userError, Keymap.saveError].filter(e => e !== "")

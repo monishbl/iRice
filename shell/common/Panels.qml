@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 
 // Which popover is open, and on which screen. Only one at a time, like macOS.
 Singleton {
@@ -71,7 +72,8 @@ Singleton {
         if (name !== "missionControl")
             exposeApp = "";
         open = name;
-        screen = scr ?? Quickshell.screens[0];
+        // No screen given (Spotlight actions, shortcuts): the focused one
+        screen = scr ?? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
         if (x !== undefined)
             anchorX = x;
     }

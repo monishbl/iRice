@@ -332,10 +332,47 @@ Item {
                         font { family: Theme.font.family; pixelSize: 14 }
                         opacity: root.ease(root.step(0.35))
                     }
+                    // The notification's own actions (Reply, OK…), up to two
+                    Row {
+                        visible: buttons.count > 0
+                        topPadding: 6
+                        spacing: 6
+                        opacity: root.ease(root.step(0.45))
+                        Repeater {
+                            id: buttons
+                            model: (root.event?.card?.buttons ?? []).slice(0, 2)
+                            Rectangle {
+                                required property var modelData
+                                width: buttonText.implicitWidth + 24
+                                height: 28
+                                radius: 14
+                                color: buttonMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : buttonMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
+                                Text {
+                                    id: buttonText
+                                    anchors.centerIn: parent
+                                    text: parent.modelData.text
+                                    color: root.ink
+                                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                                }
+                                MouseArea {
+                                    id: buttonMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        parent.modelData.invoke?.();
+                                        root.acted();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
+            // The whole card opens it (under the buttons, so they get their clicks)
             MouseArea {
+                z: -1
                 anchors.fill: parent
                 cursorShape: root.event?.onAction ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {

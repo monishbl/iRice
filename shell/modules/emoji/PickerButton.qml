@@ -15,7 +15,7 @@ Rectangle {
     radius: Theme.radius.control
     color: primary ? (mouse.pressed ? Qt.darker(Theme.accent, 1.2) : mouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent) : mouse.pressed ? Theme.color.fillPressed : mouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
     scale: mouse.pressed ? 0.97 : 1
-    Behavior on scale { NumberAnimation { duration: Theme.motion.press } }
+    Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
 
     Text {
