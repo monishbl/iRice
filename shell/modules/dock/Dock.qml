@@ -24,7 +24,11 @@ Variants {
         readonly property var cfg: Config.options.dock
         readonly property int iconSize: cfg.iconSize
         readonly property real maxScale: cfg.magnification ? cfg.magnifiedScale : 1
-        readonly property int pad: Math.round(iconSize * 0.14)
+        readonly property int pad: Math.round(iconSize * 0.17)
+        // Corners follow the icons' own (their tile is a squircle with about
+        // a 22.5% corner): outer = inner + padding, so the end icons sit
+        // evenly inside the curve instead of running into it
+        readonly property int corner: Math.round(iconSize * 0.225) + pad
         readonly property int gap: Math.round(iconSize * 0.1)
         readonly property int barHeight: iconSize + 2 * pad
         readonly property int bottomGap: 6
@@ -190,7 +194,7 @@ Variants {
                 id: glass
                 anchors.fill: parent
                 anchors.margins: -shadowMargin
-                radius: Math.round(win.barHeight * 0.36) + shadowMargin
+                radius: win.corner + shadowMargin
                 bevel: 14
             }
 
