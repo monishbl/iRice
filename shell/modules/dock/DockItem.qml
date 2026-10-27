@@ -170,17 +170,15 @@ Item {
         opacity: 0.8
     }
 
-    // Name above the hovered icon
-    Rectangle {
+    // Name above the hovered icon, on frosted glass (the dock's layer is blurred)
+    GlassPopupBackground {
         visible: root.hot
         x: root.lead + (root.size - width) / 2
         y: art.y - height - 10
         width: label.implicitWidth + 20
         height: 26
         radius: 13
-        color: Theme.dark ? "#232327" : "#FFFFFF"
-        border.width: 1
-        border.color: Theme.dark ? "#36363C" : "#E4E4E7"
+        blurContent: false // (the compositor blurs the dock's layer already)
         Text {
             id: label
             anchors.centerIn: parent

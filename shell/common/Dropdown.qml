@@ -1,6 +1,9 @@
 import QtQuick
+import QtQuick.Controls as QQC
 
 // Pop-up button: shows the current choice, opens a list of { value, label }.
+// The list is a Popup, drawn above the whole window: as a child of the row
+// it sat under every row after it, which drew over it and took its clicks.
 Rectangle {
     id: root
 
@@ -14,7 +17,6 @@ Rectangle {
     implicitHeight: 28
     radius: Theme.radius.control - 2
     color: mouse.containsMouse || menu.visible ? Theme.color.fillHover : Theme.color.fill
-    z: menu.visible ? 100 : 0
 
     Text {
         id: label
@@ -34,28 +36,31 @@ Rectangle {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: menu.visible = !menu.visible
+        onClicked: {
+            if (menu.visible)
+                return menu.close();
+            menu.x = root.width - menu.width; // right edges line up (set now: a window popup is placed once, as it opens)
+            menu.open();
+        }
     }
 
-    Rectangle {
+    QQC.Popup {
         id: menu
-        visible: false
         y: root.height + 4
-        anchors.right: parent.right
         width: Math.max(root.width, 200)
         height: Math.min(280, column.implicitHeight + 10)
-        radius: 12
-        color: Theme.dark ? Qt.rgba(0.16, 0.16, 0.18, 0.99) : Qt.rgba(0.99, 0.99, 1, 0.99)
-        border.width: 1
-        border.color: Theme.color.separator
-        clip: true
+        padding: 5
+        margins: 12 // stays inside the window (moves up when near the bottom)
+        modal: false
+        closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutsideParent
+        background: GlassPopupBackground {}
 
-        Flickable {
-            anchors { fill: parent; margins: 5 }
+        contentItem: Flickable {
+            clip: true
             contentHeight: column.implicitHeight
             Column {
                 id: column
-                width: parent.width
+                width: menu.availableWidth
                 Repeater {
                     model: root.options
                     Rectangle {
@@ -85,7 +90,7 @@ Rectangle {
                             anchors.fill: parent
                             hoverEnabled: true
                             onClicked: {
-                                menu.visible = false;
+                                menu.close();
                                 root.chosen(parent.modelData.value);
                             }
                         }

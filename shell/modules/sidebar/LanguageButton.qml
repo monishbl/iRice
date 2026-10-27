@@ -1,7 +1,10 @@
 import QtQuick
+import QtQuick.Controls as QQC
 import qs.common
 
 // Pill button that opens a scrollable list of [code, name] options below it.
+// The list is a Popup (above the whole window): inside the row it sat under
+// the text boxes after it, which drew over it and took its clicks.
 Rectangle {
     id: root
 
@@ -12,7 +15,6 @@ Rectangle {
     height: 30
     radius: 15
     color: mouse.containsMouse || list.visible ? Theme.color.fillHover : Theme.color.fill
-    z: list.visible ? 10 : 0
 
     Row {
         anchors.centerIn: parent
@@ -29,23 +31,21 @@ Rectangle {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: list.visible = !list.visible
+        onClicked: list.visible ? list.close() : list.open()
     }
 
-    Rectangle {
+    QQC.Popup {
         id: list
-        visible: false
         y: root.height + 4
         width: root.width
         height: Math.min(260, view.contentHeight + 10)
-        radius: 12
-        color: Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.98) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
-        border.width: 1
-        border.color: Theme.color.separator
+        padding: 5
+        margins: 8
+        closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutsideParent
+        background: GlassPopupBackground {}
 
-        ListView {
+        contentItem: ListView {
             id: view
-            anchors { fill: parent; margins: 5 }
             clip: true
             model: root.options
             delegate: Rectangle {
@@ -66,7 +66,7 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: {
-                        list.visible = false;
+                        list.close();
                         root.chosen(parent.modelData[0]);
                     }
                 }

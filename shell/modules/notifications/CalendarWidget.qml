@@ -676,9 +676,10 @@ Platter {
             width: parent.width - 24
             height: form.implicitHeight + 28
             radius: 16
-            color: Theme.dark ? "#232327" : "#FFFFFF"
+            // (frosted glass: Notification Center's layer is blurred)
+            color: Theme.glass.tier === "solid" ? Theme.glass.solid : Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.78) : Qt.rgba(0.97, 0.97, 0.99, 0.82)
             border.width: 1
-            border.color: Theme.dark ? "#36363C" : "#E4E4E7"
+            border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
             MouseArea { anchors.fill: parent } // clicks inside stay inside
             Keys.onEscapePressed: editor.close()
 

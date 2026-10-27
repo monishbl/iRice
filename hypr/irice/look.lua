@@ -34,7 +34,10 @@ hl.config({
             contrast = 1.0,
             brightness = 1.0,
             vibrancy = 0.2,
-            popups = false
+            -- Pop-up menus (iRice's dropdowns, and apps' translucent menus) are
+            -- frosted glass too; fully opaque menus look the same as before
+            popups = true,
+            popups_ignorealpha = 0.2 -- (not their soft shadows)
         }
     },
     animations = { enabled = true },

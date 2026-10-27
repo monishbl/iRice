@@ -351,12 +351,7 @@ Column {
                             Config.options.appearance.glassSolid = a[2];
                             Config.options.appearance.glassTint = a[3] ?? 0.45;
                         }
-                        background: Rectangle {
-                            radius: Theme.radius.control + 16
-                            color: Theme.dark ? "#232327" : "#FFFFFF" // raised surface
-                            border.width: 1
-                            border.color: Theme.color.separator
-                        }
+                        background: GlassPopupBackground { radius: Theme.radius.control + 16 }
                         contentItem: Column {
                             spacing: 14
                             Text {
