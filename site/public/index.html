@@ -128,17 +128,10 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 
 /* More features */
 .more-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+.more-grid .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
+.more-grid .stat p { color: var(--secondary); }
 .more-grid .stat h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
-.more-grid .stat p { margin: 8px 0 0; }
-
-/* Performance */
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
-.stat .num { font-size: 64px; line-height: 72px; font-weight: 600; letter-spacing: -0.035em; color: var(--text); font-variant-numeric: tabular-nums; }
-.stat .num small { font-size: 42px; letter-spacing: -0.025em; }
-.stat p { margin: 8px 0 0; color: var(--secondary); }
-.stat .vs { margin-top: 16px; font-size: 14px; line-height: 20px; color: var(--tertiary); font-variant-numeric: tabular-nums; }
-.note { margin: 24px auto 0; max-width: 72ch; text-align: center; font-size: 14px; line-height: 20px; color: var(--tertiary); }
+.more-grid .stat h3 + p { margin: 8px 0 0; }
 
 /* Install */
 .install { margin-top: 48px; padding: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
@@ -187,7 +180,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 .no-js .reveal { opacity: 1; transform: none; }
 
 @media (max-width: 860px) {
-  .grid2, .stats, .more-grid { grid-template-columns: 1fr; }
+  .grid2, .more-grid { grid-template-columns: 1fr; }
   ol.steps { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
@@ -206,8 +199,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
   .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
   .cmd code { font-size: 14px; line-height: 20px; }
   .cmd .btn { height: 44px; }
-  .stat .num { font-size: 42px; line-height: 48px; }
-  .stat .num small { font-size: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -221,7 +212,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
   <div class="wrap">
     <a class="brand" href="#top">iRice</a>
     <a class="link hide-sm" href="#features">Features</a>
-    <a class="link hide-sm" href="#performance">Performance</a>
     <a class="link" href="https://github.com/monishbl/iRice">GitHub</a>
     <a class="btn sm" href="#install">Get iRice</a>
   </div>
@@ -366,32 +356,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       <div class="stat reveal"><h3>Your own files</h3><p>Choose wallpapers, folders, videos and sounds with a file chooser instead of typing paths.</p></div>
       <div class="stat reveal"><h3>Window transparency</h3><p>Off, Subtle, More, or your own levels for the focused window and the rest.</p></div>
     </div>
-  </section>
-
-  <section class="feature wrap" id="performance">
-    <header class="reveal">
-      <p class="eyebrow">Performance</p>
-      <h2>Glass that keeps up.</h2>
-      <p class="sub">Native glass sync, and nothing redrawn that hasn't changed.</p>
-    </header>
-    <div class="stats">
-      <div class="stat reveal">
-        <div class="num">0</div>
-        <p>frame stalls over 50 ms while typing in Spotlight.</p>
-        <p class="vs">Results update without a hitch.</p>
-      </div>
-      <div class="stat reveal">
-        <div class="num">0.32<small>%</small></div>
-        <p>CPU when the desktop is idle.</p>
-        <p class="vs">Unchanged frames are skipped entirely.</p>
-      </div>
-      <div class="stat reveal">
-        <div class="num">4</div>
-        <p>windows per screen stay loaded.</p>
-        <p class="vs">Everything else opens on demand and lets go after.</p>
-      </div>
-    </div>
-    <p class="note">Measured at 1080p on a laptop with integrated Intel graphics.</p>
   </section>
 
   <section class="feature wrap" id="install">
