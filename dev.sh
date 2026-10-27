@@ -4,6 +4,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# This folder, always: inside an iRice session the environment says where
+# *that* iRice is (IRICE_ROOT), and the sandbox would run that copy instead
+export IRICE_ROOT="$ROOT"
 BOX=irice
 RT=/tmp/irice-rt
 source "$ROOT/sandbox/lib.sh"
