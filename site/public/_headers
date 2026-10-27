@@ -1,3 +1,6 @@
 /get
   Content-Type: text/plain; charset=utf-8
   Cache-Control: no-cache
+
+/media/*
+  Cache-Control: public, max-age=86400

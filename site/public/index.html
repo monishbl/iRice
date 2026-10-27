@@ -5,232 +5,482 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iRice</title>
 <meta name="description" content="A macOS Tahoe–style desktop for Hyprland: Liquid Glass, a dynamic island, Spotlight and Control Center. Try it on its own console, next to your usual desktop.">
+<meta property="og:title" content="iRice: Tahoe, on Hyprland">
+<meta property="og:description" content="Liquid Glass, a dynamic island, Spotlight and Control Center for Hyprland on Arch Linux.">
+<meta property="og:image" content="https://irice.monishbl.in/media/film.jpg">
+<meta name="theme-color" content="#111113">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* Blue accent to match the film's captions. */
 :root {
-  --canvas: #FAFAFA; --surface: #FFFFFF; --muted: #F4F4F5; --pressed: #E4E4E7;
+  --frame: #F4F4F5; --canvas: #FAFAFA; --surface: #FFFFFF; --muted: #F4F4F5; --pressed: #E4E4E7;
   --border: #E4E4E7; --border-strong: #D4D4D8;
   --text: #18181B; --body: #27272A; --secondary: #52525B; --tertiary: #6B6B74;
-  --accent: #4F46E5; --accent-hover: #4338CA; --on-accent: #FFFFFF; --focus: #6366F1;
-  --success: #15803D;
+  --accent: #0066CC; --accent-hover: #0055AA; --accent-pressed: #004488; --on-accent: #FFFFFF; --link: #0066CC;
+  --focus: #2997FF; --nav: rgba(250, 250, 250, 0.72);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
+    --frame: #0A0A0B; --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
     --border: #26262A; --border-strong: #36363C;
     --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
-    --accent: #818CF8; --accent-hover: #A5B4FC; --on-accent: #1E1B4B; --focus: #6366F1;
-    --success: #4ADE80;
+    --accent: #2997FF; --accent-hover: #5CB0FF; --accent-pressed: #8CC7FF; --on-accent: #06182B; --link: #5CB0FF;
+    --nav: rgba(17, 17, 19, 0.72);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
+  --frame: #0A0A0B; --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
   --border: #26262A; --border-strong: #36363C;
   --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
-  --accent: #818CF8; --accent-hover: #A5B4FC; --on-accent: #1E1B4B; --focus: #6366F1;
-  --success: #4ADE80;
+  --accent: #2997FF; --accent-hover: #5CB0FF; --accent-pressed: #8CC7FF; --on-accent: #06182B; --link: #5CB0FF;
+  --nav: rgba(17, 17, 19, 0.72);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 64px; }
 body {
   margin: 0; background: var(--canvas); color: var(--body);
-  font: 400 16px/24px Inter, system-ui, sans-serif; font-feature-settings: "tnum" 0;
+  font: 400 16px/24px Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased;
 }
-a { color: var(--accent); text-underline-offset: 3px; }
-a:hover { color: var(--accent-hover); }
+a { color: var(--link); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
-.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-.read { max-width: 65ch; }
+img, video { display: block; max-width: 100%; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
-header.top { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-.brand { font-weight: 600; color: var(--text); text-decoration: none; font-size: 18px; letter-spacing: -0.005em; }
-nav a { color: var(--secondary); text-decoration: none; font-size: 14px; margin-left: 20px; }
-nav a:hover { color: var(--text); }
-
-.hero { padding: 64px 0 48px; }
-.hero h1 { margin: 0; color: var(--text); font-size: 64px; line-height: 72px; font-weight: 600; letter-spacing: -0.035em; }
-.hero p { margin: 16px 0 0; font-size: 20px; line-height: 28px; color: var(--secondary); max-width: 40ch; }
-
-.cmd {
-  margin-top: 32px; display: flex; align-items: center; gap: 12px; max-width: 720px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 8px 8px 8px 16px;
+/* Nav */
+.nav {
+  position: sticky; top: 0; z-index: 10; height: 52px;
+  background: var(--nav); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
 }
-.cmd code { flex: 1; overflow-x: auto; white-space: nowrap; font: 500 14px/20px "JetBrains Mono", ui-monospace, monospace; color: var(--text); padding: 6px 0; }
-button.copy {
-  flex: none; height: 36px; padding: 0 16px; border-radius: 10px; border: 0; cursor: pointer;
-  background: var(--accent); color: var(--on-accent); font: 500 14px/20px Inter, system-ui, sans-serif;
+.nav .wrap { display: flex; align-items: center; height: 100%; gap: 24px; }
+.brand { font-weight: 600; font-size: 16px; color: var(--text); text-decoration: none; margin-right: auto; }
+.nav a.link { color: var(--secondary); text-decoration: none; font-size: 14px; }
+.nav a.link:hover { color: var(--text); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 24px;
+  border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; white-space: nowrap;
+  font: 500 16px/24px Inter, system-ui, sans-serif;
+  background: var(--accent); color: var(--on-accent);
   transition: background-color 150ms ease-out, transform 100ms ease-out;
 }
-button.copy:hover { background: var(--accent-hover); }
-button.copy:active { transform: scale(0.97); }
+.btn:hover { background: var(--accent-hover); color: var(--on-accent); }
+.btn:active { background: var(--accent-pressed); transform: scale(0.97); }
+.btn.sm { height: 28px; padding: 0 12px; font-size: 13px; line-height: 18px; }
+.more { font-size: 16px; text-decoration: none; }
+.more:hover { text-decoration: underline; }
+.more::after { content: " ›"; }
+
+/* Type: 64 / 42 / 20 / 16 / 14 / 13 */
+.eyebrow { margin: 0 0 12px; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--accent); }
+h1, h2 { margin: 0; color: var(--text); font-weight: 600; }
+h1 { font-size: 64px; line-height: 72px; letter-spacing: -0.035em; }
+h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
+.sub { margin: 16px auto 0; max-width: 40ch; font-size: 20px; line-height: 28px; color: var(--secondary); }
+
+/* Hero */
+.hero { padding-top: 96px; padding-bottom: 48px; text-align: center; }
+.hero .actions { display: flex; gap: 24px; align-items: center; justify-content: center; margin-top: 32px; flex-wrap: wrap; }
+.film { margin: 48px auto 0; max-width: 1280px; padding: 0 24px; }
+
+/* Media frames */
+.media { position: relative; border-radius: 20px; overflow: hidden; background: var(--frame); border: 1px solid var(--border); aspect-ratio: 16 / 9; }
+.media video, .media img { width: 100%; height: 100%; object-fit: cover; }
+.play {
+  position: absolute; right: 16px; bottom: 16px; width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(24, 24, 27, 0.56); color: #FAFAFA; display: grid; place-items: center;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  transition: background-color 150ms ease-out, transform 100ms ease-out;
+}
+.play:hover { background: rgba(24, 24, 27, 0.72); }
+.play:active { transform: scale(0.97); }
+.play::before { content: ""; position: absolute; inset: -4px; } /* 44px target */
+.play svg { width: 16px; height: 16px; }
+
+/* Feature sections */
+.feature { padding-top: 128px; }
+.feature header { text-align: center; margin-bottom: 48px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+.tile .copy { padding: 32px 32px 24px; }
+.tile h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+.tile p { margin: 8px 0 0; color: var(--secondary); }
+.tile .media { border-radius: 0; border: 0; border-top: 1px solid var(--border); }
+
+/* Segmented switch */
+.seg { display: inline-flex; gap: 4px; padding: 4px; margin-top: 24px; background: var(--muted); border-radius: 999px; }
+.seg button {
+  height: 36px; padding: 0 20px; border-radius: 999px; border: 0; cursor: pointer; background: transparent;
+  font: 500 14px/20px Inter, system-ui, sans-serif; color: var(--secondary);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.seg button:hover { color: var(--text); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(24, 24, 27, 0.08); }
+.swap { position: relative; }
+.swap img { position: absolute; inset: 0; opacity: 0; transition: opacity 300ms ease-out; }
+.swap img.on { opacity: 1; }
+
+/* Performance */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
+.stat .num { font-size: 64px; line-height: 72px; font-weight: 600; letter-spacing: -0.035em; color: var(--text); font-variant-numeric: tabular-nums; }
+.stat .num small { font-size: 42px; letter-spacing: -0.025em; }
+.stat p { margin: 8px 0 0; color: var(--secondary); }
+.stat .vs { margin-top: 16px; font-size: 14px; line-height: 20px; color: var(--tertiary); font-variant-numeric: tabular-nums; }
+.note { margin: 24px auto 0; max-width: 72ch; text-align: center; font-size: 14px; line-height: 20px; color: var(--tertiary); }
+
+/* Install */
+.install { margin-top: 48px; padding: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
+.cmd { display: flex; align-items: center; gap: 12px; background: var(--muted); border-radius: 14px; padding: 8px 8px 8px 20px; }
+.cmd code { flex: 1; overflow-x: auto; white-space: nowrap; font: 500 16px/24px "JetBrains Mono", ui-monospace, monospace; color: var(--text); padding: 6px 0; }
+.cmd .btn { height: 36px; padding: 0 16px; font-size: 14px; line-height: 20px; flex: none; }
 .hint { margin: 12px 0 0; font-size: 14px; line-height: 20px; color: var(--tertiary); }
-
-section { padding: 48px 0; border-top: 1px solid var(--border); }
-section h2 { margin: 0 0 8px; color: var(--text); font-size: 32px; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; }
-section > .wrap > p.lead { margin: 0 0 32px; color: var(--secondary); max-width: 60ch; }
-
-.features { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
-.feature h3 { margin: 0 0 8px; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--text); }
-.feature p { margin: 0; font-size: 14px; line-height: 20px; color: var(--secondary); }
-
-ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; max-width: 65ch; }
-ol.steps li { counter-increment: s; position: relative; padding: 0 0 24px 48px; }
+ol.steps { margin: 32px 0 0; padding: 0; list-style: none; counter-reset: s; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+ol.steps li { counter-increment: s; min-width: 0; }
 ol.steps li::before {
-  content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+  content: counter(s); display: block; width: 28px; height: 28px; border-radius: 50%; margin-bottom: 12px;
   background: var(--muted); color: var(--text); font: 600 14px/28px Inter, system-ui, sans-serif; text-align: center;
 }
-ol.steps strong { color: var(--text); font-weight: 600; }
+ol.steps strong { display: block; color: var(--text); font-weight: 600; }
+ol.steps span { color: var(--secondary); font-size: 14px; line-height: 20px; }
 pre {
-  margin: 8px 0 0; padding: 12px 16px; overflow-x: auto; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; font: 400 14px/20px "JetBrains Mono", ui-monospace, monospace; color: var(--text);
+  margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; padding: 12px 16px; overflow-x: auto; background: var(--muted); border-radius: 10px;
+  font: 400 13px/18px "JetBrains Mono", ui-monospace, monospace; color: var(--text);
 }
-kbd { font: 500 13px/18px Inter, system-ui, sans-serif; background: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; color: var(--text); }
+kbd { font: 500 13px/18px Inter, system-ui, sans-serif; background: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; color: var(--text); }
 code.inline { font: 400 14px/20px "JetBrains Mono", ui-monospace, monospace; background: var(--muted); padding: 1px 6px; border-radius: 6px; color: var(--text); }
 
-dl.faq { margin: 0; max-width: 65ch; }
-dl.faq dt { font-weight: 600; color: var(--text); margin-top: 24px; }
-dl.faq dt:first-child { margin-top: 0; }
-dl.faq dd { margin: 4px 0 0; color: var(--secondary); }
+/* Questions */
+.faq { max-width: 760px; margin: 48px auto 0; }
+details { border-top: 1px solid var(--border); }
+details:last-child { border-bottom: 1px solid var(--border); }
+summary {
+  list-style: none; cursor: pointer; padding: 20px 0; display: flex; justify-content: space-between; gap: 16px;
+  font-size: 16px; line-height: 24px; font-weight: 500; color: var(--text);
+}
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--tertiary); font-size: 20px; transition: transform 200ms ease-out; }
+details[open] summary::after { transform: rotate(45deg); }
+details .ans { padding: 0 0 24px; color: var(--secondary); max-width: 65ch; }
+details .ans p { margin: 0 0 12px; }
+details dl { margin: 0 0 12px; }
+details dt { color: var(--text); font-weight: 500; margin-top: 12px; }
+details dd { margin: 4px 0 0; }
 
-footer { padding: 32px 0 48px; border-top: 1px solid var(--border); font-size: 14px; line-height: 20px; color: var(--tertiary); }
+footer { margin-top: 128px; padding: 32px 0 48px; border-top: 1px solid var(--border); font-size: 13px; line-height: 18px; color: var(--tertiary); }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
 
-@media (max-width: 640px) {
-  .wrap { padding: 0 16px; }
-  .hero { padding: 40px 0 32px; }
-  .hero h1 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
-  .hero p { font-size: 18px; line-height: 26px; }
-  .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
-  button.copy { height: 44px; }
-  section h2 { font-size: 28px; line-height: 36px; }
-  nav a { margin-left: 14px; }
-  nav a.hide-sm { display: none; }
+/* Reveal on scroll */
+.reveal { opacity: 0; transform: translateY(8px); transition: opacity 500ms ease-out, transform 500ms ease-out; }
+.reveal.in { opacity: 1; transform: none; }
+.no-js .reveal { opacity: 1; transform: none; }
+
+@media (max-width: 860px) {
+  .grid2, .stats { grid-template-columns: 1fr; }
+  ol.steps { grid-template-columns: 1fr; }
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 640px) {
+  .wrap, .film { padding: 0 16px; }
+  .nav a.link.hide-sm { display: none; }
+  .nav .wrap { gap: 16px; }
+  .hero { padding-top: 64px; padding-bottom: 32px; }
+  h1 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
+  h2 { font-size: 32px; line-height: 40px; letter-spacing: -0.02em; }
+  .sub, .eyebrow { font-size: 16px; line-height: 24px; }
+  .feature { padding-top: 96px; }
+  .feature header { margin-bottom: 32px; }
+  .media { border-radius: 14px; }
+  .tile .copy { padding: 24px 20px 20px; }
+  .install { padding: 24px 16px; }
+  .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
+  .cmd code { font-size: 14px; line-height: 20px; }
+  .cmd .btn { height: 44px; }
+  .stat .num { font-size: 42px; line-height: 48px; }
+  .stat .num small { font-size: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, .reveal { transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
+}
 </style>
 </head>
-<body>
-<header class="wrap top">
-  <a class="brand" href="/">iRice</a>
-  <nav>
-    <a href="#install">Install</a>
-    <a href="#updates">Updates</a>
-    <a class="hide-sm" href="#look">Share a look</a>
-    <a href="https://github.com/monishbl/iRice">GitHub</a>
-  </nav>
-</header>
+<body class="no-js">
+<nav class="nav" aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="#top">iRice</a>
+    <a class="link hide-sm" href="#features">Features</a>
+    <a class="link hide-sm" href="#performance">Performance</a>
+    <a class="link" href="https://github.com/monishbl/iRice">GitHub</a>
+    <a class="btn sm" href="#install">Get iRice</a>
+  </div>
+</nav>
 
-<main>
-  <div class="wrap hero">
-    <h1>A Tahoe desktop for Hyprland.</h1>
-    <p>Liquid Glass, a dynamic island, Spotlight and Control Center, on Arch Linux. Try it on its own console, next to the desktop you have.</p>
-    <div class="cmd">
-      <code id="install-cmd">bash &lt;(curl -fsSL https://irice.monishbl.in/get)</code>
-      <button class="copy" type="button" data-copy="install-cmd" aria-live="polite">Copy command</button>
+<main id="top">
+  <section class="hero wrap">
+    <p class="eyebrow">iRice</p>
+    <h1>Tahoe, on Hyprland.</h1>
+    <p class="sub">Liquid Glass, a dynamic island, Spotlight and Control Center. On Arch Linux, next to the desktop you already have.</p>
+    <div class="actions">
+      <a class="btn" href="#install">Install iRice</a>
+      <a class="more" href="https://github.com/monishbl/iRice">View the source</a>
     </div>
-    <p class="hint">Arch Linux or Arch-based (CachyOS, EndeavourOS). It asks before installing any packages.</p>
+  </section>
+  <div class="film reveal">
+    <div class="media">
+      <video src="/media/film.mp4" poster="/media/film.jpg" muted loop playsinline preload="metadata" data-auto aria-label="iRice in 30 seconds: the island, Spotlight, Control Center, glass materials, Notification Center, light and dark, App Library and emoji."></video>
+    </div>
   </div>
 
-  <section>
-    <div class="wrap">
-      <h2>What you get</h2>
-      <p class="lead">A shell built from scratch in Quickshell, styled after macOS Tahoe and tuned for everyday laptops.</p>
-      <div class="features">
-        <div class="feature"><h3>Liquid Glass</h3><p>Real refraction drawn by the compositor. Glass, Frost and Solid materials, or your own mix, with clear text over anything.</p></div>
-        <div class="feature"><h3>Dynamic island</h3><p>Music, timers, calls, devices and notifications as live activities in the menu bar.</p></div>
-        <div class="feature"><h3>Spotlight and Control Center</h3><p>Apps, files, maths, conversions and actions in one search. Wi-Fi, Bluetooth, sound and focus in one panel.</p></div>
-        <div class="feature"><h3>Light on the battery</h3><p>Cool-down mode lightens the glass and slows the refresh rate when the laptop runs hot.</p></div>
-        <div class="feature"><h3>Your shortcuts, kept</h3><p>Every shortcut and gesture is editable, and updates never change yours without asking.</p></div>
-        <div class="feature"><h3>Leaves your desktop alone</h3><p>It runs from its own folder on its own console. Your ~/.config and usual session stay untouched.</p></div>
+  <section class="feature wrap" id="features">
+    <header class="reveal">
+      <p class="eyebrow">Dynamic island</p>
+      <h2>Live, at the top.</h2>
+      <p class="sub">Music, timers, calls and alerts open from the menu bar, with the controls right there.</p>
+    </header>
+    <div class="media reveal"><video src="/media/island.mp4" poster="/media/island.jpg" muted loop playsinline preload="none" data-auto aria-label="The island opening over the menu bar to show what's playing."></video></div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Spotlight</p>
+      <h2>Find anything.</h2>
+      <p class="sub">Apps, files, sums, conversions and the web, from one field.</p>
+    </header>
+    <div class="grid2">
+      <div class="tile reveal">
+        <div class="copy"><h3>Type a few letters.</h3><p>Results rank as you type. Arrow keys move, Return opens.</p></div>
+        <div class="media"><video src="/media/spotlight.mp4" poster="/media/spotlight.jpg" muted loop playsinline preload="none" data-auto aria-label="Typing terminal into Spotlight and moving through the results."></video></div>
+      </div>
+      <div class="tile reveal">
+        <div class="copy"><h3>Do the maths.</h3><p>Sums and unit conversions answer inline, ready to copy.</p></div>
+        <div class="media"><img src="/media/spotlight-calc.webp" alt="Spotlight answering 128 times 24." loading="lazy"></div>
       </div>
     </div>
   </section>
 
-  <section id="install">
-    <div class="wrap">
-      <h2>Install</h2>
-      <p class="lead">Two minutes plus package downloads.</p>
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Control Center</p>
+      <h2>Control, at a glance.</h2>
+      <p class="sub">Wi-Fi, Bluetooth, sound, brightness and focus, a click from the menu bar.</p>
+    </header>
+    <div class="media reveal"><video src="/media/control.mp4" poster="/media/control.jpg" muted loop playsinline preload="none" data-auto aria-label="Control Center opening from the menu bar."></video></div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Liquid Glass</p>
+      <h2>Real glass. Your way.</h2>
+      <p class="sub">Refraction drawn by the compositor, not a blur. Pick a material, or mix your own.</p>
+      <div class="seg" role="group" aria-label="Material">
+        <button type="button" aria-pressed="true" data-show="glass">Glass</button>
+        <button type="button" aria-pressed="false" data-show="frost">Frost</button>
+        <button type="button" aria-pressed="false" data-show="solid">Solid</button>
+      </div>
+    </header>
+    <div class="media swap reveal" data-swap>
+      <img class="on" data-name="glass" src="/media/glass.webp" alt="Control Center in the Glass material.">
+      <img data-name="frost" src="/media/frost.webp" alt="Control Center in the Frost material." loading="lazy">
+      <img data-name="solid" src="/media/solid.webp" alt="Control Center in the Solid material." loading="lazy">
+    </div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Notification Center</p>
+      <h2>Everything in its place.</h2>
+      <p class="sub">Alerts, your calendar, to-dos and the day ahead in one sheet.</p>
+    </header>
+    <div class="media reveal"><video src="/media/notifications.mp4" poster="/media/notifications.jpg" muted loop playsinline preload="none" data-auto aria-label="Notification Center opening with the calendar and today's events."></video></div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Appearance</p>
+      <h2>Light. Or dark.</h2>
+      <p class="sub">Everything retunes together, wallpaper included. Or let the time of day decide.</p>
+      <div class="seg" role="group" aria-label="Appearance">
+        <button type="button" aria-pressed="true" data-show="light">Light</button>
+        <button type="button" aria-pressed="false" data-show="dark">Dark</button>
+      </div>
+    </header>
+    <div class="media swap reveal" data-swap>
+      <img class="on" data-name="light" src="/media/control-light.webp" alt="The desktop in light mode with Control Center open." loading="lazy">
+      <img data-name="dark" src="/media/control-dark.webp" alt="The desktop in dark mode with Control Center open." loading="lazy">
+    </div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Launch</p>
+      <h2>One keystroke away.</h2>
+      <p class="sub">Every app, every emoji, without reaching for the mouse.</p>
+    </header>
+    <div class="grid2">
+      <div class="tile reveal">
+        <div class="copy"><h3>App Library</h3><p>Your apps, sorted into folders on their own.</p></div>
+        <div class="media"><video src="/media/library.mp4" poster="/media/library.jpg" muted loop playsinline preload="none" data-auto aria-label="App Library opening over the desktop."></video></div>
+      </div>
+      <div class="tile reveal">
+        <div class="copy"><h3>Emoji</h3><p>Search by name, press Return, and it's typed for you.</p></div>
+        <div class="media"><video src="/media/emoji.mp4" poster="/media/emoji.jpg" muted loop playsinline preload="none" data-auto aria-label="Searching heart in the emoji picker."></video></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feature wrap">
+    <header class="reveal">
+      <p class="eyebrow">Settings</p>
+      <h2>Make it yours.</h2>
+      <p class="sub">Glass, colours, menu bar, dock, shortcuts and gestures, each in plain words.</p>
+    </header>
+    <div class="media reveal"><img src="/media/settings.webp" alt="iRice Settings on the Appearance page." loading="lazy"></div>
+  </section>
+
+  <section class="feature wrap" id="performance">
+    <header class="reveal">
+      <p class="eyebrow">Performance</p>
+      <h2>Glass that keeps up.</h2>
+      <p class="sub">Native glass sync, and nothing redrawn that hasn't changed.</p>
+    </header>
+    <div class="stats">
+      <div class="stat reveal">
+        <div class="num">½</div>
+        <p>the CPU while typing in Spotlight.</p>
+        <p class="vs">Compared with end4's illogical-impulse.</p>
+      </div>
+      <div class="stat reveal">
+        <div class="num">0</div>
+        <p>frame stalls over 50 ms while typing.</p>
+        <p class="vs">end4: 2.7 per run.</p>
+      </div>
+      <div class="stat reveal">
+        <div class="num">0.32<small>%</small></div>
+        <p>CPU when the desktop is idle.</p>
+        <p class="vs">end4: 0.37%.</p>
+      </div>
+    </div>
+    <p class="note">Measured on a laptop's built-in display, each shell on its own console. Opening panels still costs about 25% more CPU than end4; that's next on the list.</p>
+  </section>
+
+  <section class="feature wrap" id="install">
+    <header class="reveal">
+      <p class="eyebrow">Install</p>
+      <h2>One line. Two minutes.</h2>
+      <p class="sub">It runs on its own console. Your ~/.config and usual session aren't touched.</p>
+    </header>
+    <div class="install reveal">
+      <div class="cmd">
+        <code id="install-cmd">bash &lt;(curl -fsSL https://irice.monishbl.in/get)</code>
+        <button class="btn copy" type="button" data-copy="install-cmd" aria-live="polite">Copy command</button>
+      </div>
+      <p class="hint">Arch Linux or Arch-based (CachyOS, EndeavourOS). It asks before installing packages. Add <code class="inline">--with-settings</code> to start from the shared look.</p>
       <ol class="steps">
-        <li><strong>Get iRice.</strong> In a terminal on your usual desktop:
-          <pre>bash &lt;(curl -fsSL https://irice.monishbl.in/get)</pre>
-          It goes into <code class="inline">~/iRice</code>; give a folder to put it elsewhere. Add <code class="inline">--with-settings</code> to start from the shared look.</li>
-        <li><strong>Switch to a free console.</strong> Press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F3</kbd> and log in.</li>
-        <li><strong>Start it.</strong>
-          <pre>cd ~/iRice &amp;&amp; ./demo.sh --check &amp;&amp; ./dev.sh tty</pre>
-          The check tells you what's missing, if anything.</li>
-        <li><strong>Leave when you like.</strong> <kbd>Super</kbd> <kbd>Shift</kbd> <kbd>Esc</kbd> ends it; <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F1</kbd> or <kbd>F2</kbd> takes you back.</li>
+        <li><strong>Switch to a free console.</strong><span>Press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F3</kbd> and log in.</span></li>
+        <li><strong>Start iRice.</strong><span>The check says what's missing, if anything.</span><pre>cd ~/iRice &amp;&amp; ./demo.sh --check &amp;&amp; ./dev.sh tty</pre></li>
+        <li><strong>Leave when you like.</strong><span><kbd>Super</kbd> <kbd>Shift</kbd> <kbd>Esc</kbd> ends it. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F1</kbd> takes you back.</span></li>
       </ol>
     </div>
   </section>
 
-  <section id="updates">
-    <div class="wrap">
-      <h2>Updates</h2>
-      <p class="lead">iRice checks for updates every few hours and tells you when one is ready.</p>
-      <div class="read">
-        <p>Open <strong>Settings → Software Update</strong> to see what's new. If the update touches something you've made your own, it asks first, and installs nothing until you've decided each one:</p>
-        <dl class="faq">
-          <dt>Settings with new defaults</dt><dd>Keep what you have, or take the new default.</dd>
-          <dt>Your glass material</dt><dd>When Glass or Frost looks different in the update: keep your look (saved as Custom) or take the new one.</dd>
-          <dt>Shortcut clashes</dt><dd>When a new shortcut uses keys you've given to something else: keep yours, or take the new one.</dd>
-          <dt>Files you edited</dt><dd>Keep both sets of changes when they fit together, or only yours, or only the update's.</dd>
-        </dl>
-        <p>Your settings and shortcuts are backed up before anything changes. Running the install command again also updates a copy that has no edits of its own.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="look">
-    <div class="wrap">
-      <h2>Share a look</h2>
-      <p class="lead">The shared settings: glass, colours, menu bar, dock and the rest. No personal data.</p>
-      <div class="read">
-        <p><a href="/config/irice-config.tar.gz">Download irice-config.tar.gz</a>, unpack it, then apply it to your iRice folder:</p>
-        <pre>./import.sh --repo ~/iRice</pre>
-        <p>Your current settings are backed up first, and your desktop widgets stay as they are.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="help">
-    <div class="wrap">
-      <h2>If something's off</h2>
-      <dl class="faq">
-        <dt>The glass looks flat or frosted, not refractive</dt>
-        <dd>The glass plugin didn't build for your Hyprland. Run <code class="inline">~/iRice/tools/setup-tty.sh</code> again after a Hyprland update.</dd>
-        <dt>Animations feel choppy on a laptop</dt>
-        <dd>Check your display isn't stuck at a low refresh rate: Cool-down lowers it while the laptop is hot, and gives it back after.</dd>
-        <dt>The screen froze</dt>
-        <dd>From another console (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F4</kbd>): <code class="inline">cd ~/iRice &amp;&amp; ./dev.sh tty-stop</code>.</dd>
-        <dt>Removing it</dt>
-        <dd>Delete the <code class="inline">~/iRice</code> folder. Nothing else was changed.</dd>
-      </dl>
+  <section class="feature wrap" id="updates">
+    <header class="reveal">
+      <p class="eyebrow">Updates</p>
+      <h2>New features. Your settings.</h2>
+      <p class="sub">iRice checks every few hours. If an update touches something you've changed, you decide before anything installs.</p>
+    </header>
+    <div class="faq reveal">
+      <details>
+        <summary>What happens when an update conflicts with my changes?</summary>
+        <div class="ans">
+          <p>Open Settings → Software Update. Each conflict waits for your choice:</p>
+          <dl>
+            <dt>Settings with new defaults</dt><dd>Keep yours, or take the new default.</dd>
+            <dt>Your glass material</dt><dd>Keep your look (saved as Custom), or take the new one.</dd>
+            <dt>Shortcut clashes</dt><dd>Keep yours, or take the new shortcut.</dd>
+            <dt>Files you edited</dt><dd>Keep both changes when they fit, or only yours, or only the update's.</dd>
+          </dl>
+          <p>Settings and shortcuts are backed up before anything changes.</p>
+        </div>
+      </details>
+      <details>
+        <summary>How do I share my look with a friend?</summary>
+        <div class="ans">
+          <p><a href="/config/irice-config.tar.gz">Download the shared look</a>, unpack it, and run <code class="inline">./import.sh --repo ~/iRice</code>. It carries glass, colours, menu bar and dock, and no personal data. Current settings are backed up first.</p>
+        </div>
+      </details>
+      <details>
+        <summary>The glass looks flat, not refractive</summary>
+        <div class="ans"><p>The glass plugin didn't build for your Hyprland. Run <code class="inline">~/iRice/tools/setup-tty.sh</code> again after a Hyprland update.</p></div>
+      </details>
+      <details>
+        <summary>Animations feel choppy on a laptop</summary>
+        <div class="ans"><p>Check the display isn't stuck at a low refresh rate. Cool-down lowers it while the laptop is hot, and gives it back after.</p></div>
+      </details>
+      <details>
+        <summary>The screen froze</summary>
+        <div class="ans"><p>From another console (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F4</kbd>), run <code class="inline">cd ~/iRice &amp;&amp; ./dev.sh tty-stop</code>.</p></div>
+      </details>
+      <details>
+        <summary>How do I remove it?</summary>
+        <div class="ans"><p>Delete the <code class="inline">~/iRice</code> folder. Nothing else was changed.</p></div>
+      </details>
     </div>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <span>iRice by Monish</span>
+    <span>iRice by Monish. Not affiliated with Apple.</span>
     <span><a href="https://github.com/monishbl/iRice">Source on GitHub</a></span>
   </div>
 </footer>
 
 <script>
+document.body.classList.remove("no-js");
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const icon = { play: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
+               pause: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>' };
+
+// Loops play while on screen; each has its own pause button. Reduced motion: they wait for a press.
+document.querySelectorAll("video[data-auto]").forEach(v => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "play";
+  v.after(b);
+  let held = still;
+  const draw = () => { b.innerHTML = v.paused ? icon.play : icon.pause; b.setAttribute("aria-label", v.paused ? "Play video" : "Pause video"); };
+  v.addEventListener("play", draw); v.addEventListener("pause", draw); draw();
+  b.addEventListener("click", () => { if (v.paused) { held = false; v.play(); } else { held = true; v.pause(); } });
+  new IntersectionObserver(([e]) => {
+    if (e.isIntersecting && !held) v.play().catch(() => {});
+    else if (!e.isIntersecting) v.pause();
+  }, { threshold: 0.4 }).observe(v);
+});
+
+// Segmented switches swap the image under them.
+document.querySelectorAll(".seg").forEach(seg => {
+  const swap = seg.closest("section").querySelector("[data-swap]");
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    swap.querySelectorAll("img").forEach(i => i.classList.toggle("on", i.dataset.name === b.dataset.show));
+  });
+});
+
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -10% 0px" });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
 document.querySelectorAll("button.copy").forEach(b => {
   b.addEventListener("click", async () => {
-    const text = document.getElementById(b.dataset.copy).textContent;
-    try {
-      await navigator.clipboard.writeText(text);
-      b.textContent = "Copied";
-    } catch (e) {
-      b.textContent = "Select and copy it";
-    }
+    try { await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent); b.textContent = "Copied"; }
+    catch (e) { b.textContent = "Select and copy it"; }
     setTimeout(() => { b.textContent = "Copy command"; }, 2000);
   });
 });
