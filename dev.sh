@@ -148,6 +148,9 @@ case "${1:-help}" in
         # XDG_DATA_HOME. The shell runs in the container, whose HOME is
         # .sandbox/home, so its config/state/cache stay isolated anyway.
         unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY
+        # Hyprland would put its display into the user systemd, which your
+        # usual desktop shares (and clear it on exit): keep it out of there
+        export HYPRLAND_NO_SD_VARS=1
         exec dbus-run-session -- start-hyprland -- --config "$ROOT/sandbox/hypr/tty.lua"
         ;;
     reset-home)

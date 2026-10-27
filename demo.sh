@@ -97,6 +97,7 @@ sleep 3
 "$ROOT/dev.sh" status 2>/dev/null | grep -q running && "$ROOT/dev.sh" down >/dev/null 2>&1
 
 export IRICE_ROOT="$ROOT" IRICE_DEMO=1
+export HYPRLAND_NO_SD_VARS=1 # don't touch the user systemd your usual desktop shares (sandbox/hypr/tty.lua)
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY
 dbus-run-session -- start-hyprland -- --config "$ROOT/sandbox/hypr/tty.lua"
 code=$?

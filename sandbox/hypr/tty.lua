@@ -47,6 +47,12 @@ hl.bind("CTRL + ALT + BackSpace", hl.dsp.exit(), { description = "Session: End t
 hl.bind("SUPER + CTRL + ALT + R", hl.dsp.exec_cmd(ctl .. " restart"), { description = "Session: Force-restart a frozen shell" })
 
 hl.on("hyprland.start", function()
+    -- This session's display for its own (private, dbus-run-session) bus, so
+    -- its portals open here. Not for the user systemd (HYPRLAND_NO_SD_VARS,
+    -- dev.sh/demo.sh): that one belongs to your usual desktop, which lost its
+    -- display to this session (and, at its exit, any display at all: apps
+    -- then waited ~25 s on portals that couldn't start)
+    hl.exec_cmd("dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME PATH XDG_DATA_DIRS")
     hl.exec_cmd(ctl .. " start")
     hl.exec_cmd(ctl .. " watchdog")
     hl.exec_cmd("wl-paste --watch cliphist store")

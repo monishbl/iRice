@@ -13,7 +13,11 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SB="$ROOT/.sandbox/home"
-export IRICE_SANDBOX=1 IRICE_ROOT="$ROOT" IRICE_TTY=1
+# A real desktop on this machine (./dev.sh tty, the demo, or "iRice" on the
+# login screen): not IRICE_SANDBOX, which is only for the nested test window
+# (it turns power actions into notes, leaves out the password agent and
+# updates, and lets tests unlock the lock screen without a password)
+export IRICE_ROOT="$ROOT" IRICE_TTY=1
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
 # Apps and icons installed for this user (~/.local/share: AppImages, Steam
 # games, web apps, icon themes) are still found, after iRice's own data

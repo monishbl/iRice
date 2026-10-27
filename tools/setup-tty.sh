@@ -67,6 +67,14 @@ if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
     fi
 fi
 
+# iRice on the login screen (ly, SDDM, GDM…), next to your usual Hyprland
+if [[ ! -f /usr/share/wayland-sessions/irice.desktop ]] || ! grep -q "$ROOT/sandbox/irice-session.sh" /usr/share/wayland-sessions/irice.desktop; then
+    say "Add \"iRice\" to the login screen, so you can pick it instead of your usual desktop?"
+    a=y
+    [[ $YES == 0 ]] && read -rp "Add it? [Y/n] " a
+    [[ "${a,,}" != n* ]] && "$ROOT/tools/setup-session.sh"
+fi
+
 say "Building the glass shaders…"
 "$ROOT/tools/build-shaders.sh" || { echo "The shaders didn't build (needs qt6-shadertools)."; exit 1; }
 say "Building the Liquid Glass plugin for Hyprland $(pkg-config --modversion hyprland 2>/dev/null)…"
