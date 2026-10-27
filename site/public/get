@@ -11,7 +11,7 @@
 # session aren't touched. Arch Linux and Arch-based systems only.
 set -euo pipefail
 
-repo=https://github.com/monish-cosol/iRice.git
+repo=https://github.com/monishbl/iRice.git
 site=https://irice.monishbl.in
 dest="$HOME/iRice"
 settings=0

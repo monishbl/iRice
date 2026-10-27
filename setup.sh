@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # iRice one-line setup, for a fresh or existing Arch Linux:
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/monish-cosol/iRice/main/setup.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
 #
 # Downloads iRice to ~/.local/share/irice/repo (or updates it) and runs its
 # installer, which installs everything iRice needs, builds it, sets it up and
@@ -9,7 +9,7 @@
 # ./install.sh --help), e.g. --yes for no questions.
 set -euo pipefail
 
-REPO="${IRICE_REPO:-https://github.com/monish-cosol/iRice.git}"
+REPO="${IRICE_REPO:-https://github.com/monishbl/iRice.git}"
 BRANCH="${IRICE_BRANCH:-main}"
 DIR="${XDG_DATA_HOME:-$HOME/.local/share}/irice/repo"
 

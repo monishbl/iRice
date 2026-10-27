@@ -96,7 +96,7 @@ The shell idles below 0.1% CPU. A live wallpaper is the exception while it's vis
 On Arch Linux (a fresh install or your current one), one line does everything:
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/monish-cosol/iRice/main/setup.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
 ```
 
 It downloads iRice to `~/.local/share/irice/repo` and runs the installer, which:
