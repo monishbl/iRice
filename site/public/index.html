@@ -78,7 +78,6 @@ img, video { display: block; max-width: 100%; }
 .more::after { content: " ›"; }
 
 /* Type: 64 / 42 / 20 / 16 / 14 / 13 */
-.eyebrow { margin: 0 0 12px; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--accent); }
 h1, h2 { margin: 0; color: var(--text); font-weight: 600; }
 h1 { font-size: 64px; line-height: 72px; letter-spacing: -0.035em; }
 h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
@@ -126,12 +125,26 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .swap img { position: absolute; inset: 0; opacity: 0; transition: opacity 300ms ease-out; }
 .swap img.on { opacity: 1; }
 
-/* More features */
-.more-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
-.more-grid .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
-.more-grid .stat p { color: var(--secondary); }
-.more-grid .stat h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
-.more-grid .stat h3 + p { margin: 8px 0 0; }
+/* And a lot more: mixed-size tiles */
+.bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+.bento .t { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; display: flex; flex-direction: column; }
+.bento .t.wide { grid-column: span 2; padding: 40px; }
+.bento svg { width: 28px; height: 28px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 24px; flex: none; }
+.bento h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+.bento .wide h3 { font-size: 32px; line-height: 40px; letter-spacing: -0.02em; }
+.bento p { margin: 8px 0 0; color: var(--secondary); max-width: 52ch; }
+.bento .wide p { margin-top: 12px; }
+.bento .t.wide { flex-direction: row; align-items: center; gap: 32px; }
+.bento .wide .txt { flex: 1; min-width: 0; }
+.bento .vis { flex: none; width: 260px; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; position: relative; border: 1px solid var(--border); }
+.vis.lockvis { background: #111113 url(/media/desktop-dark.webp) 72% 62% / 300% auto no-repeat; color: #fff; text-align: center; }
+.vis.lockvis .d { position: absolute; top: 18%; left: 0; right: 0; font-size: 13px; line-height: 18px; font-weight: 500; opacity: 0.85; }
+.vis.lockvis .c { position: absolute; top: 28%; left: 0; right: 0; font-size: 56px; line-height: 64px; font-weight: 400; letter-spacing: -0.03em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25); }
+.vis.updvis { background: #0A0A0B; color: #EDEDEF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.vis.updvis b { font-size: 20px; line-height: 28px; font-weight: 600; }
+.vis.updvis i { display: block; width: 46%; height: 4px; border-radius: 2px; background: #2C2C31; overflow: hidden; }
+.vis.updvis i::after { content: ""; display: block; width: 62%; height: 100%; background: #EDEDEF; border-radius: 2px; }
+.vis.updvis span { font-size: 12px; line-height: 16px; color: #A1A1AA; }
 
 /* Install */
 .install { margin-top: 48px; padding: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
@@ -180,7 +193,10 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 .no-js .reveal { opacity: 1; transform: none; }
 
 @media (max-width: 860px) {
-  .grid2, .more-grid { grid-template-columns: 1fr; }
+  .grid2, .bento { grid-template-columns: 1fr; }
+  .bento .t.wide { grid-column: auto; padding: 32px; flex-direction: column; align-items: stretch; }
+  .bento .vis { width: 100%; margin-top: 24px; }
+  .bento .wide h3 { font-size: 24px; line-height: 32px; }
   ol.steps { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
@@ -190,7 +206,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
   .hero { padding-top: 64px; padding-bottom: 32px; }
   h1 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
   h2 { font-size: 32px; line-height: 40px; letter-spacing: -0.02em; }
-  .sub, .eyebrow { font-size: 16px; line-height: 24px; }
+  .sub { font-size: 16px; line-height: 24px; }
   .feature { padding-top: 96px; }
   .feature header { margin-bottom: 32px; }
   .media { border-radius: 14px; }
@@ -219,7 +235,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
 <main id="top">
   <section class="hero wrap">
-    <p class="eyebrow">iRice</p>
     <h1>Tahoe, on Hyprland.</h1>
     <p class="sub">Liquid Glass, a dynamic island, Spotlight and Control Center. On Arch Linux, next to the desktop you already have.</p>
     <div class="actions">
@@ -235,7 +250,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap" id="features">
     <header class="reveal">
-      <p class="eyebrow">Dynamic island</p>
       <h2>Live, at the top.</h2>
       <p class="sub">Music, timers, calls and alerts open from the menu bar, with the controls right there.</p>
     </header>
@@ -244,7 +258,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Spotlight</p>
       <h2>Find anything.</h2>
       <p class="sub">Apps, files, sums, conversions and the web, from one field.</p>
     </header>
@@ -262,7 +275,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Control Center</p>
       <h2>Control, at a glance.</h2>
       <p class="sub">Wi-Fi, Bluetooth, sound, brightness and focus, a click from the menu bar.</p>
     </header>
@@ -271,7 +283,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Liquid Glass</p>
       <h2>Real glass. Your way.</h2>
       <p class="sub">Refraction drawn by the compositor, not a blur. Pick a material, or mix your own.</p>
       <div class="seg" role="group" aria-label="Material">
@@ -289,7 +300,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Notification Center</p>
       <h2>Everything in its place.</h2>
       <p class="sub">Alerts, your calendar, to-dos and the day ahead in one sheet.</p>
     </header>
@@ -298,7 +308,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Appearance</p>
       <h2>Light. Or dark.</h2>
       <p class="sub">Everything retunes together, wallpaper included. Or let the time of day decide.</p>
       <div class="seg" role="group" aria-label="Appearance">
@@ -314,7 +323,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Launch</p>
       <h2>One keystroke away.</h2>
       <p class="sub">Every app, every emoji, without reaching for the mouse.</p>
     </header>
@@ -332,7 +340,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <p class="eyebrow">Settings</p>
       <h2>Make it yours.</h2>
       <p class="sub">Glass, colours, menu bar, dock, shortcuts and gestures, each in plain words.</p>
     </header>
@@ -341,26 +348,24 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap" id="new">
     <header class="reveal">
-      <p class="eyebrow">New</p>
       <h2>And a lot more.</h2>
       <p class="sub">Small things that make it feel finished.</p>
     </header>
-    <div class="more-grid">
-      <div class="stat reveal"><h3>Displays</h3><p>Arrange screens by dragging, set resolution, refresh rate, scale and rotation, and mirror. Risky changes undo themselves unless you keep them.</p></div>
-      <div class="stat reveal"><h3>Mouse</h3><p>Tracking speed, acceleration on or off, natural scrolling, scroll speed, left-handed buttons and focus that follows the pointer.</p></div>
-      <div class="stat reveal"><h3>Sounds</h3><p>Original chimes for logging in, charging, displays, USB, locking, notifications and more. Each one can be switched off, or replaced with your own.</p></div>
-      <div class="stat reveal"><h3>Lock and StandBy</h3><p>Unlock with an iPhone-style zoom into the desktop. The clock glides into StandBy, thinner and dimmer, on the displays you choose.</p></div>
-      <div class="stat reveal"><h3>Search in Settings</h3><p>Type a word and jump straight to the setting, on any page.</p></div>
-      <div class="stat reveal"><h3>Across displays</h3><p>Super+number to a space on another display moves the pointer there and briefly dims the rest.</p></div>
-      <div class="stat reveal"><h3>Caffeine that holds</h3><p>Stays on across restarts, and keeps every session awake, not just this one.</p></div>
-      <div class="stat reveal"><h3>Your own files</h3><p>Choose wallpapers, folders, videos and sounds with a file chooser instead of typing paths.</p></div>
-      <div class="stat reveal"><h3>Window transparency</h3><p>Off, Subtle, More, or your own levels for the focused window and the rest.</p></div>
-    </div>
+    <div class="bento">
+      <div class="t wide reveal"><div class="txt"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Unlock like iPhone.</h3><p>The lock lifts away, your widgets and icons zoom into place and windows fade in. Locking plays it backwards, and the clock glides into StandBy on the displays you choose.</p></div><div class="vis lockvis" aria-hidden="true"><div class="d">Tuesday 27 October</div><div class="c">9:41</div></div></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg><h3>Six sound styles.</h3><p>Marimba, taps, keys and more for logging in, charging, displays, USB and notifications. Or use your own.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><h3>Displays</h3><p>Drag to arrange, then set resolution, refresh rate, scale and rotation. Risky changes undo themselves.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 6v4"/></svg><h3>Mouse and trackpad</h3><p>Speed, acceleration, tap to click, tap to drag, secondary click and scrolling, each set its own way.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><h3>Search Settings</h3><p>Type a word and land on the exact setting.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="9" height="7" rx="1.5"/><rect x="13" y="14" width="9" height="7" rx="1.5"/><path d="M6.5 10v4a3 3 0 0 0 3 3H13"/><path d="m11 15 2 2-2 2"/></svg><h3>Across displays</h3><p>Super+number to a space on another display: the pointer follows and the rest dim for a moment.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><path d="M7 2v3M11 2v3M15 2v3"/></svg><h3>Caffeine that holds</h3><p>Stays on through restarts, and keeps your other sessions from sleeping too.</p></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg><h3>Window transparency</h3><p>Off, Subtle, More, or exact levels for the focused window and the rest.</p></div>
+      <div class="t wide reveal"><div class="txt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg><h3>Updates, done properly.</h3><p>A full-screen progress view while iRice installs and restarts. Your settings are backed up first, and anything you changed waits for your say.</p></div><div class="vis updvis" aria-hidden="true"><b>iRice</b><i></i><span>Building the glass plugin…</span></div></div>
+      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><h3>Your own files</h3><p>Pick wallpapers, folders, videos and sounds with a file chooser.</p></div>
   </section>
 
   <section class="feature wrap" id="install">
     <header class="reveal">
-      <p class="eyebrow">Install</p>
       <h2>One line. Two minutes.</h2>
       <p class="sub">It runs on its own console. Your ~/.config and usual session aren't touched.</p>
     </header>
@@ -380,7 +385,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap" id="updates">
     <header class="reveal">
-      <p class="eyebrow">Updates</p>
       <h2>New features. Your settings.</h2>
       <p class="sub">iRice checks every few hours. If an update touches something you've changed, you decide before anything installs.</p>
     </header>
