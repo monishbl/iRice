@@ -220,6 +220,14 @@ ShellRoot {
     GlobalShortcut { appid: "irice"; name: "lock"; description: "Lock the screen"; onPressed: System.power("lock") }
 
     // qs ipc call panels toggle controlCenter [screenName]
+    // The desktop has drawn (the wallpaper is up, the bar and dock follow):
+    // the update screen waits for this before it fades out over it
+    IpcHandler {
+        target: "shell"
+        function ready(): string {
+            return Wallpaper.started && Config.ready ? "yes" : "no";
+        }
+    }
     IpcHandler {
         target: "panels"
         function toggle(name: string, screen: string): void {

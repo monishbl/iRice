@@ -124,7 +124,15 @@ for _ in $(seq 60); do
     fi
     sleep 0.5
 done
-sleep 1 # (its windows draw)
+# …and has drawn: the wallpaper is up (the bar and dock fade in after it).
+# Closing earlier left a black screen until it did.
+if [[ $up == 1 ]]; then
+    for _ in $(seq 40); do
+        [[ "$(timeout 3 "$QS" ipc --pid "$p" call shell ready 2>/dev/null)" == yes ]] && break
+        sleep 0.5
+    done
+fi
+sleep 1 # (the bar and dock fade in)
 if [[ -n "$err" ]]; then
     status error 100 "The update didn't finish" "$err"$'\x1f'"${backup:-}"
 elif [[ $up == 0 ]]; then

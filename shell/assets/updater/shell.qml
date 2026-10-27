@@ -101,6 +101,10 @@ ShellRoot {
             WlrLayershell.namespace: "irice:update"
             WlrLayershell.keyboardFocus: root.phase === "error" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             color: "transparent"
+            // Clicks do nothing while it works (only the error screen's Close
+            // button takes input)
+            mask: Region { item: root.phase === "error" ? fullArea : null }
+            Item { id: fullArea; anchors.fill: parent }
 
             Rectangle {
                 anchors.fill: parent

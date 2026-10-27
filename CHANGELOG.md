@@ -1,5 +1,11 @@
 # iRice changelog
 
+## The update screen waits for your desktop · 2026-10-28
+
+**Fixes**
+- After an update, the screen could go black for a few seconds before your wallpaper and menu bar came back. The update screen now stays until your desktop has drawn, then fades out over it.
+- Clicking the update screen while it works does nothing.
+
 ## One update for everything, a screen recorder, iOS-style Control Center · 2026-10-28
 
 **Software Update**
