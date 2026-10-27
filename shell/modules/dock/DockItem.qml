@@ -235,8 +235,9 @@ Item {
             default:
                 if (!root.running)
                     bounceAnim.restart();
-                // Clicking the app that's already in front: App Exposé
-                if (root.running && Apps.activeEntry?.id === root.item.id)
+                // Clicking the app that's already in front: App Exposé (only
+                // when some of its windows are in sight; else they come back)
+                if (root.running && Apps.activeEntry?.id === root.item.id && Apps.visibleWindowsOf(root.item.id).length > 0)
                     Panels.appExpose(root.item.id, root.dock.screen);
                 else
                     Apps.activateOrLaunch(root.item);

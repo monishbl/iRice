@@ -153,6 +153,28 @@ Item {
                     GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.12) }
                 }
             }
+            // Playing music, open: the album art is the island itself, with the
+            // same fall-off as the black (solid up top, melting into the glass
+            // below; common/edgefade.frag), dimmed a little for the text
+            Image {
+                id: islandArt
+                anchors.fill: parent
+                readonly property bool wanted: Config.options.island.playerArt === "island" && Config.options.island.playerLayout !== "side"
+                    && root.expanded && !Island.event && (Island.player?.trackArtUrl ?? "") !== ""
+                    && (root.oneAtATime ? root.shownAct?.kind === "music" : Island.activities.some(a => a.kind === "music"))
+                source: wanted || opacity > 0 ? (Island.player?.trackArtUrl ?? "") : ""
+                fillMode: Image.PreserveAspectCrop
+                sourceSize: Qt.size(width * 1.25, height * 1.25)
+                asynchronous: true
+                opacity: wanted && status === Image.Ready ? 0.82 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
+                visible: opacity > 0.01
+                layer.enabled: visible
+                layer.effect: ShaderEffect {
+                    property vector4d fade: Qt.vector4d(0, 0, 0, 1 - inkFill.solidTo)
+                    fragmentShader: Qt.resolvedUrl("../../common/edgefade.frag.qsb")
+                }
+            }
         }
 
         // Running hot (Island.showHot), closed: a soft red glow on the active
@@ -416,8 +438,17 @@ Item {
                         }
                     }
                 }
+                // All at once: music still gets the full player (big art,
+                // controls over it, open the app, volume), the rest are rows
+                IslandFocusCard {
+                    readonly property var musicAct: Island.activities.find(a => a.kind === "music") ?? null
+                    visible: !Island.event && !root.oneAtATime && musicAct !== null
+                    width: body.width
+                    height: visible ? implicitHeight : 0
+                    activity: musicAct ?? { kind: "music" }
+                }
                 Repeater {
-                    model: Island.event || root.oneAtATime ? [] : Island.activities
+                    model: Island.event || root.oneAtATime ? [] : Island.activities.filter(a => a.kind !== "music")
                     IslandActivity {
                         required property var modelData
                         required property int index

@@ -44,15 +44,33 @@ Singleton {
             const icon = btIcon(d);
             if (d.connected && (icon === "headphones" || icon === "speaker-hifi"))
                 lastBtAudio = Date.now();
-            Island.post(Object.assign({
-                kind: "device",
-                icon: icon,
-                title: d.name || d.deviceName || d.address,
-                subtitle: d.connected ? "Connected" : "Disconnected",
-                color: d.connected ? Theme.accents.blue : Qt.rgba(1, 1, 1, 0.55)
-            }, d.connected && d.batteryAvailable ? { battery: d.battery } : {}), 3500);
+            postBt(d, icon);
+            // Headphones often report their battery seconds after connecting:
+            // show it then (once), if it wasn't known yet
+            if (d.connected && !d.batteryAvailable)
+                awaitingBattery = Object.assign({}, awaitingBattery, { [d.address]: Date.now() });
         }
         btState = next;
+    }
+    function postBt(d, icon) {
+        Island.post(Object.assign({
+            kind: "device",
+            icon: icon,
+            title: d.name || d.deviceName || d.address,
+            subtitle: d.connected ? "Connected" : "Disconnected",
+            color: d.connected ? Theme.accents.blue : Qt.rgba(1, 1, 1, 0.55)
+        }, d.connected && d.batteryAvailable ? { battery: d.battery } : {}), 3500);
+    }
+    property var awaitingBattery: ({}) // address -> when it connected without a battery reading
+    function batteryArrived(d) {
+        const t = awaitingBattery[d.address];
+        if (!t || !d.connected || !d.batteryAvailable)
+            return;
+        const next = Object.assign({}, awaitingBattery);
+        delete next[d.address];
+        awaitingBattery = next;
+        if (Date.now() - t < 20000 && live && Island.wants("bluetooth"))
+            postBt(d, btIcon(d));
     }
     // Battery often arrives a moment after the connection; scan on any change
     Instantiator {
@@ -61,6 +79,8 @@ Singleton {
             required property var modelData
             target: modelData
             function onConnectedChanged() { btScan.restart(); }
+            function onBatteryAvailableChanged() { root.batteryArrived(modelData); }
+            function onBatteryChanged() { root.batteryArrived(modelData); }
         }
     }
     Connections {

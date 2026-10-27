@@ -53,6 +53,20 @@ if (( ${#missing[@]} > 0 )); then
     fi
 fi
 
+# Headphone battery levels: most headphones report them over the hands-free
+# channel, which BlueZ only passes on with its experimental features on
+conf=/etc/bluetooth/main.conf
+if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
+    say "Show Bluetooth headphone battery levels (turns on BlueZ's experimental features)?"
+    a=y
+    [[ $YES == 0 ]] && read -rp "Turn it on? [Y/n] " a
+    if [[ "${a,,}" != n* ]]; then
+        sudo sed -i -E 's/^\s*#?\s*Experimental\s*=.*/Experimental = true/' "$conf"
+        grep -qE '^Experimental = true' "$conf" || printf '\n[General]\nExperimental = true\n' | sudo tee -a "$conf" >/dev/null
+        sudo systemctl restart bluetooth && echo "Done: reconnect your headphones to see their battery."
+    fi
+fi
+
 say "Building the glass shaders…"
 "$ROOT/tools/build-shaders.sh" || { echo "The shaders didn't build (needs qt6-shadertools)."; exit 1; }
 say "Building the Liquid Glass plugin for Hyprland $(pkg-config --modversion hyprland 2>/dev/null)…"

@@ -196,11 +196,45 @@ Singleton {
     }
 
     // Focus the app's most recent window, or launch it.
+    // Windows put out of sight: minimized, or stepped aside for Show Desktop.
+    // They still count as the app's open windows everywhere (dock, App
+    // Exposé, the switcher); picking one brings it back first.
+    function hyprFor(t) {
+        return Hyprland.toplevels.values.find(h => h.wayland && h.wayland === t) ?? null;
+    }
+    function isHidden(h) {
+        const n = h?.workspace?.name ?? "";
+        return n === "special:minimized" || n === "special:irice-desktop";
+    }
+    function show(h) {
+        if (!h)
+            return;
+        const n = h.workspace?.name ?? "";
+        if (n === "special:irice-desktop" && Desktop.showingDesktop) {
+            Desktop.restoreDesktop(); // the whole desktop comes back, like on a Mac
+            Qt.callLater(() => h.wayland?.activate());
+        } else if (n === "special:minimized" || n === "special:irice-desktop") {
+            restore(h);
+        } else {
+            Hyprland.dispatch("hl.dsp.focus({ window = \"address:" + (h.address.startsWith("0x") ? h.address : "0x" + h.address) + "\" })");
+        }
+    }
+    // An app's windows you can see right now (not minimized or set aside)
+    function visibleWindowsOf(entryId) {
+        return windowsOf(entryId).filter(t => !isHidden(hyprFor(t)));
+    }
     function activateOrLaunch(app) {
         const windows = windowsOf(app.id);
-        if (windows.length > 0)
-            windows[windows.length - 1].activate();
+        if (windows.length === 0)
+            return launch(app.entry);
+        // Show Desktop is on and this app's windows stepped aside: end it
+        const aside = windows.find(t => hyprFor(t)?.workspace?.name === "special:irice-desktop");
+        if (aside && Desktop.showingDesktop)
+            return show(hyprFor(aside));
+        const seen = windows.filter(t => !isHidden(hyprFor(t)));
+        if (seen.length > 0)
+            seen[seen.length - 1].activate();
         else
-            launch(app.entry);
+            show(hyprFor(windows[windows.length - 1]));
     }
 }

@@ -156,6 +156,7 @@ Singleton {
                 property bool autoHide: false
                 property string workspaces: "icons" // off | dots | icons
                 property int workspaceCount: 5 // always shown; more appear when used
+                property bool otherSpaces: true // also list the spaces living on other displays (marked)
                 property bool windowTitle: false
                 property bool resources: false
                 property bool weather: true
@@ -247,6 +248,7 @@ Singleton {
                 property list<string> livePieces: ["music.art", "music.title", "music.scroll", "music.bars", "music.prev", "music.play", "music.next", "timer.icon", "timer.label", "timer.time", "timer.play", "timer.skip", "stopwatch.icon", "stopwatch.time", "stopwatch.play", "stopwatch.reset", "recording.icon", "recording.time", "recording.stop"]
                 // Open island music player: overlay (controls over the album art) | side (art beside the controls)
                 property string playerLayout: "overlay"
+                property string playerArt: "island" // controls over the art: island (the art is the island, fading like its black) | faded (fades out at its edges)
             }
 
             property JsonObject windowRules: JsonObject {

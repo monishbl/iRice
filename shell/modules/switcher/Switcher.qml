@@ -51,7 +51,7 @@ Scope {
     function candidates() {
         return Hyprland.toplevels.values.filter(t => {
             const ws = t.workspace;
-            return !ws || ws.id > 0 || ws.name === "special:minimized";
+            return !ws || ws.id > 0 || ws.name === "special:minimized" || ws.name === "special:irice-desktop";
         });
     }
 
@@ -129,8 +129,8 @@ Scope {
     // Focusing a window by address also switches to its space (on its own
     // monitor); minimized windows come back to the current space
     function focusWindow(t) {
-        if (t.workspace?.name === "special:minimized") {
-            Apps.restore(t);
+        if (Apps.isHidden(t)) { // minimized, or set aside by Show Desktop
+            Apps.show(t);
             return;
         }
         Hyprland.dispatch("hl.dsp.focus({ window = \"address:0x" + key(t.address) + "\" })");

@@ -14,7 +14,16 @@ Item {
     readonly property string kind: activity.kind
     readonly property var player: Island.player
 
-    implicitHeight: kind === "music" ? 52 : LiveInfo.progress(kind) >= 0 ? 42 : 36
+    readonly property bool hasTimeline: kind === "music" && (player?.lengthSupported ?? false) && (player?.length ?? 0) > 0
+    implicitHeight: kind === "music" ? (hasTimeline ? 60 : 52) : LiveInfo.progress(kind) >= 0 ? 42 : 36
+
+    // MPRIS doesn't push the position; ask for it while the row shows
+    Timer {
+        running: root.visible && root.hasTimeline && Island.musicPlaying
+        repeat: true
+        interval: 1000
+        onTriggered: root.player?.positionChanged()
+    }
 
     property real appear: shown ? 1 : 0
     Behavior on appear {
@@ -69,6 +78,33 @@ Item {
             elide: Text.ElideRight
             color: Qt.rgba(1, 1, 1, 0.6)
             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+        }
+        // Where the song is (click to seek)
+        Item { visible: root.hasTimeline; width: 1; height: 5 }
+        Rectangle {
+            visible: root.hasTimeline
+            width: parent.width
+            height: seek.containsMouse ? 5 : 3
+            radius: height / 2
+            color: Qt.rgba(1, 1, 1, 0.2)
+            Behavior on height { NumberAnimation { duration: Theme.motion.hover } }
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1, (root.player?.position ?? 0) / Math.max(1, root.player?.length ?? 1)))
+                height: parent.height
+                radius: parent.radius
+                color: "#F5F5F7"
+            }
+            MouseArea {
+                id: seek
+                anchors { fill: parent; topMargin: -6; bottomMargin: -6 }
+                hoverEnabled: true
+                enabled: root.player?.canSeek ?? false
+                cursorShape: Qt.PointingHandCursor
+                onClicked: m => {
+                    root.player.position = m.x / width * root.player.length;
+                    root.player.positionChanged();
+                }
+            }
         }
         // Timer and transfer progress
         Rectangle {

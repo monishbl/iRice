@@ -88,18 +88,29 @@ Item {
     }
 
     // ── Music, controls over the art ────────────────────────────────────
-    Rectangle {
+    // How the art shows (island.playerArt): island, the art is the island's
+    // background, fading like its black (IslandView's islandArt, not here);
+    // faded, the art here with its edges fading out (common/edgefade.frag).
+    // (The small player, art on the left, is playerLayout "side", below.)
+    readonly property string artStyle: Config.options.island.playerArt
+    Item {
         visible: root.kind === "music" && root.overlay
         anchors.fill: parent
-        radius: 18
-        color: Qt.rgba(1, 1, 1, 0.08)
-        clip: true
-        Image {
+        Item {
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
-            fillMode: Image.PreserveAspectCrop
-            sourceSize: Qt.size(parent.width * 1.5, parent.height * 1.5)
-            asynchronous: true
+            visible: root.artStyle === "faded"
+            Image {
+                anchors.fill: parent
+                source: parent.visible ? (root.player?.trackArtUrl ?? "") : ""
+                fillMode: Image.PreserveAspectCrop
+                sourceSize: Qt.size(parent.width * 1.5, parent.height * 1.5)
+                asynchronous: true
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property vector4d fade: Qt.vector4d(0.28, 0.22, 0.28, 0.6)
+                    fragmentShader: Qt.resolvedUrl("../../common/edgefade.frag.qsb")
+                }
+            }
         }
         Icon {
             anchors.centerIn: parent
@@ -108,15 +119,6 @@ Item {
             name: "music-notes"
             size: 40
             color: root.ink2
-        }
-        // Darkens toward the bottom so the controls read on any art
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.05) }
-                GradientStop { position: 0.4; color: Qt.rgba(0, 0, 0, 0.2) }
-                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.78) }
-            }
         }
         Column {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 12 }

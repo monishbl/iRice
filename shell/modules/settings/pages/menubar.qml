@@ -97,13 +97,20 @@ Column {
         Row {
             visible: Config.options.island.enabled
             label: "Music player"
-            detail: "In the open island"
+            detail: Config.options.island.playerLayout === "side" ? "Small album on the left, the song and its progress beside it" : Config.options.island.playerArt === "faded" ? "The album art fades out behind the controls" : "The album art fills the island and melts into its glass"
             Segmented {
-                width: 220
-                readonly property var values: ["overlay", "side"]
-                options: ["Over the art", "Beside the art"]
-                current: Math.max(0, values.indexOf(Config.options.island.playerLayout))
-                onSelected: i => Config.options.island.playerLayout = values[i]
+                width: 240
+                readonly property var values: ["island", "faded", "small"]
+                options: ["Island", "Faded", "Small"]
+                current: Config.options.island.playerLayout === "side" ? 2 : Math.max(0, values.indexOf(Config.options.island.playerArt))
+                onSelected: i => {
+                    if (values[i] === "small") {
+                        Config.options.island.playerLayout = "side";
+                    } else {
+                        Config.options.island.playerArt = values[i];
+                        Config.options.island.playerLayout = "overlay";
+                    }
+                }
             }
         }
         // What each live activity shows when the island is closed
@@ -219,6 +226,12 @@ Column {
             label: "Spaces always shown"
             detail: page.mb.workspaceCount + (page.mb.workspaceCount === 1 ? " space" : " spaces") + "; more appear when used"
             Slider { width: 200; from: 1; to: 10; stepSize: 1; value: page.mb.workspaceCount; onMoved: v => page.mb.workspaceCount = v }
+        }
+        Row {
+            visible: page.mb.workspaces !== "off"
+            label: "Spaces on other displays"
+            detail: "Listed with a small mark; click to go there, right-click to move a space to another display"
+            Switch { checked: page.mb.otherSpaces; onToggled: page.mb.otherSpaces = !checked }
         }
     }
 

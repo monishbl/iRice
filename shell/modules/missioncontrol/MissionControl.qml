@@ -38,7 +38,7 @@ Variants {
                 const cls = t.lastIpcObject?.class ?? "";
                 return cls === exposeFor || Apps.entryFor(cls)?.id === exposeFor;
             }
-            readonly property var windows: exposeFor ? Hyprland.toplevels.values.filter(t => t.lastIpcObject?.size && (t.workspace?.id ?? 0) > 0 && ofApp(t)) : Windows.on(activeWs).filter(t => t.lastIpcObject?.size)
+            readonly property var windows: exposeFor ? Hyprland.toplevels.values.filter(t => t.lastIpcObject?.size && ((t.workspace?.id ?? 0) > 0 || Apps.isHidden(t)) && ofApp(t)) : Windows.on(activeWs).filter(t => t.lastIpcObject?.size)
             Connections {
                 target: Panels
                 function onExposeAppChanged() {
@@ -74,6 +74,8 @@ Variants {
 
             function focusWindow(t) {
                 Panels.close();
+                if (Apps.isHidden(t)) // minimized or set aside by Show Desktop
+                    return Apps.show(t);
                 const id = t.workspace?.id ?? 0;
                 if (id > 0 && id !== activeWs) // App Exposé: a window on another space
                     focusSpace(id);
