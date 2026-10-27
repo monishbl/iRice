@@ -230,6 +230,25 @@ Variants {
                 // Spaces
                 Grid {
                     id: spaces
+                    // Drag a space by its empty area to put it elsewhere (it
+                    // takes the place of the one it's dropped on; Spaces.move).
+                    // Windows inside still drag to other spaces as before.
+                    property int dragSpace: 0
+                    property point dragD: Qt.point(0, 0)
+                    property int dropOn: 0
+                    function spaceAt(px, py) {
+                        let best = 0, dist = 1e9;
+                        for (const c of spaces.children) {
+                            if (c.wsId === undefined)
+                                continue;
+                            const d = Math.hypot(c.x + c.width / 2 - px, c.y + c.height / 2 - py);
+                            if (d < dist) {
+                                dist = d;
+                                best = c.wsId;
+                            }
+                        }
+                        return best;
+                    }
                     visible: win.results.length === 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: Math.max(searchBox.y + searchBox.height + 40, (parent.height - height) / 2)
@@ -246,8 +265,30 @@ Variants {
                             // Grouped windows behind their tab are hidden
                             readonly property var wins: Windows.on(space.wsId).filter(t => t.lastIpcObject?.at && t.lastIpcObject?.size && !t.lastIpcObject.hidden)
                             readonly property bool live: win.liveFor(space.wsId)
-                            z: win.dragFrom === space.wsId ? 1 : 0 // a dragged window passes over the other spaces
+                            readonly property bool dragged: spaces.dragSpace === space.wsId
+                            // Dragging the space (its empty area, or its title)
+                            function dragMove(dx, dy) {
+                                if (spaces.dragSpace === 0 && Math.hypot(dx, dy) > 10)
+                                    spaces.dragSpace = space.wsId;
+                                if (spaces.dragSpace === space.wsId) {
+                                    spaces.dragD = Qt.point(dx, dy);
+                                    spaces.dropOn = spaces.spaceAt(space.x + space.width / 2 + dx, space.y + space.height / 2 + dy);
+                                }
+                            }
+                            function dragEnd() { // true if it was a drag, not a click
+                                if (spaces.dragSpace !== space.wsId)
+                                    return false;
+                                if (spaces.dropOn > 0 && spaces.dropOn !== space.wsId)
+                                    Spaces.move(win.ids, space.wsId, spaces.dropOn);
+                                spaces.dragSpace = 0;
+                                spaces.dragD = Qt.point(0, 0);
+                                spaces.dropOn = 0;
+                                return true;
+                            }
+                            z: win.dragFrom === space.wsId || dragged ? 1 : 0 // a dragged window (or space) passes over the others
                             spacing: 8
+                            opacity: dragged ? 0.85 : 1
+                            transform: Translate { x: space.dragged ? spaces.dragD.x : 0; y: space.dragged ? spaces.dragD.y : 0 }
 
                             // The space: a plain neutral container
                             Rectangle {
@@ -258,8 +299,9 @@ Variants {
                                 clip: !win.dragging // let a dragged tile leave its space
                                 z: win.dragging ? 1 : 0
                                 color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
-                                border.width: space.wsId === win.picked || dropArea.containsDrag ? 2 : 1
-                                border.color: dropArea.containsDrag || space.wsId === win.picked ? Theme.accent : space.wsId === win.activeWs ? (Theme.dark ? "#36363C" : "#D4D4D8") : (Theme.dark ? "#26262A" : "#E4E4E7")
+                                readonly property bool target: spaces.dragSpace > 0 && spaces.dropOn === space.wsId && !space.dragged
+                                border.width: space.wsId === win.picked || dropArea.containsDrag || target ? 2 : 1
+                                border.color: dropArea.containsDrag || target || space.wsId === win.picked ? Theme.accent : space.wsId === win.activeWs ? (Theme.dark ? "#36363C" : "#D4D4D8") : (Theme.dark ? "#26262A" : "#E4E4E7")
                                 scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                 Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
 
@@ -274,8 +316,15 @@ Variants {
                                     id: spaceMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
+                                    cursorShape: spaces.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.ArrowCursor
+                                    property point pressAt: Qt.point(0, 0)
                                     onEntered: win.picked = space.wsId
-                                    onClicked: win.go(space.wsId)
+                                    onPressed: m => pressAt = Qt.point(m.x, m.y)
+                                    onPositionChanged: m => {
+                                        if (pressed)
+                                            space.dragMove(m.x - pressAt.x, m.y - pressAt.y);
+                                    }
+                                    onReleased: if (!space.dragEnd()) win.go(space.wsId)
                                 }
                                 DropArea {
                                     id: dropArea
@@ -371,6 +420,20 @@ Variants {
                                 text: "Space " + space.wsId + (space.wins.length > 0 ? " · " + space.wins.length + (space.wins.length === 1 ? " window" : " windows") : "")
                                 color: Qt.rgba(1, 1, 1, space.wsId === win.picked ? 0.95 : 0.7)
                                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                // The title is a handle too (a space full of windows has no empty area)
+                                MouseArea {
+                                    anchors { fill: parent; margins: -6 }
+                                    hoverEnabled: true
+                                    cursorShape: spaces.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                    property point pressAt: Qt.point(0, 0)
+                                    onEntered: win.picked = space.wsId
+                                    onPressed: m => pressAt = Qt.point(m.x, m.y)
+                                    onPositionChanged: m => {
+                                        if (pressed)
+                                            space.dragMove(m.x - pressAt.x, m.y - pressAt.y);
+                                    }
+                                    onReleased: if (!space.dragEnd()) win.go(space.wsId)
+                                }
                             }
                         }
                     }

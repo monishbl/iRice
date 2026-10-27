@@ -138,9 +138,26 @@ Variants {
                 }
             }
 
-            // Spaces bar
+            // Spaces bar. Drag a space sideways to put it elsewhere (Spaces.move:
+            // it takes the place of the one it's dropped on); click to go there
             Row {
                 id: spacesBar
+                property int dragSpace: 0 // the space being dragged
+                property real dragDx: 0
+                property int dropOn: 0 // the space it would take the place of
+                function spaceAt(px) {
+                    let best = 0, dist = 1e9;
+                    for (const c of spacesBar.children) {
+                        if (c.modelData === undefined || !c.visible)
+                            continue;
+                        const d = Math.abs(c.x + c.width / 2 - px);
+                        if (d < dist) {
+                            dist = d;
+                            best = c.modelData.id;
+                        }
+                    }
+                    return best;
+                }
                 visible: win.exposeFor === ""
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 44 + (1 - win.progress) * -30
@@ -155,7 +172,11 @@ Variants {
                         required property var modelData
                         readonly property bool current: modelData.id === win.activeWs
                         readonly property real s: 150 / (win.screen?.width ?? 1920)
+                        readonly property bool dragged: spacesBar.dragSpace === modelData.id
                         spacing: 6
+                        z: dragged ? 2 : 0
+                        opacity: dragged ? 0.85 : 1
+                        transform: Translate { x: space.dragged ? spacesBar.dragDx : 0 }
 
                         Rectangle {
                             width: 150
@@ -163,8 +184,8 @@ Variants {
                             radius: 8
                             // A plain container, like Overview (no wallpaper)
                             color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
-                            border.width: space.current ? 2 : 1
-                            border.color: space.current ? Theme.accent : (Theme.dark ? "#36363C" : "#D4D4D8")
+                            border.width: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? 2 : 1
+                            border.color: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? Theme.accent : (Theme.dark ? "#36363C" : "#D4D4D8")
                             clip: true
 
                             Repeater {
@@ -192,8 +213,31 @@ Variants {
                             MouseArea {
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: win.focusSpace(space.modelData.id)
+                                cursorShape: spacesBar.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                property real pressX: 0
+                                onPressed: m => pressX = m.x
+                                onPositionChanged: m => {
+                                    if (!pressed)
+                                        return;
+                                    const dx = m.x - pressX;
+                                    if (spacesBar.dragSpace === 0 && Math.abs(dx) > 8)
+                                        spacesBar.dragSpace = space.modelData.id;
+                                    if (spacesBar.dragSpace === space.modelData.id) {
+                                        spacesBar.dragDx = dx;
+                                        spacesBar.dropOn = spacesBar.spaceAt(space.x + space.width / 2 + dx);
+                                    }
+                                }
+                                onReleased: {
+                                    if (spacesBar.dragSpace === space.modelData.id) {
+                                        if (spacesBar.dropOn > 0 && spacesBar.dropOn !== space.modelData.id)
+                                            Spaces.move(win.spaces.map(w => w.id), space.modelData.id, spacesBar.dropOn);
+                                        spacesBar.dragSpace = 0;
+                                        spacesBar.dragDx = 0;
+                                        spacesBar.dropOn = 0;
+                                    } else {
+                                        win.focusSpace(space.modelData.id);
+                                    }
+                                }
                             }
                         }
                         Text {

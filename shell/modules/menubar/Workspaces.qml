@@ -55,6 +55,37 @@ Item {
     }
     readonly property int count: ids.length
 
+    // More spaces than "Spaces always shown": that many chips, a window
+    // that slides (the arrows, or switching spaces: the current one always
+    // stays in view), and an arrow at each end with more past it, dotted
+    // when something there has windows
+    readonly property int cap: Math.max(1, Config.options.menubar.workspaceCount)
+    readonly property bool overflow: (ids?.length ?? 0) > cap
+    property int start: 0
+    function clampStart(v) {
+        return Math.max(0, Math.min(Math.max(0, (ids?.length ?? 0) - cap), v));
+    }
+    function keepActive() {
+        if (!ids) // (still starting up)
+            return;
+        const i = ids.indexOf(activeId);
+        let st = clampStart(start);
+        if (i >= 0 && i < st)
+            st = i;
+        else if (i >= st + cap)
+            st = i - cap + 1;
+        start = clampStart(st);
+    }
+    onActiveIdChanged: keepActive()
+    onIdsChanged: keepActive()
+    onCapChanged: keepActive()
+    readonly property var shown: overflow ? ids.slice(start, start + cap) : ids
+    readonly property var hiddenLeft: overflow ? ids.slice(0, start) : []
+    readonly property var hiddenRight: overflow ? ids.slice(start + cap) : []
+    function busy(list) {
+        return list.some(id => !!occupied[id]);
+    }
+
     implicitWidth: row.implicitWidth + 8
     implicitHeight: 22
 
@@ -74,8 +105,15 @@ Item {
         anchors.centerIn: parent
         spacing: 2
 
+        Arrow {
+            visible: root.overflow
+            side: -1
+            more: root.hiddenLeft.length > 0
+            hot: root.busy(root.hiddenLeft)
+        }
+
         Repeater {
-            model: root.ids
+            model: root.shown
             Rectangle {
                 id: ws
                 required property int modelData
@@ -149,6 +187,48 @@ Item {
                     }
                 }
             }
+        }
+
+        Arrow {
+            visible: root.overflow
+            side: 1
+            more: root.hiddenRight.length > 0
+            hot: root.busy(root.hiddenRight)
+        }
+    }
+
+    component Arrow: Item {
+        id: arrow
+        property int side: 1 // -1 left, 1 right
+        property bool more: false
+        property bool hot: false
+        width: 12
+        height: 18
+        opacity: more ? 1 : 0.25
+        Icon {
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: arrow.hot ? -2 : 0
+            name: arrow.side < 0 ? "caret-left" : "caret-right"
+            bold: true
+            size: 10
+            color: root.fg
+            opacity: arrowMouse.containsMouse && arrow.more ? 1 : 0.7
+        }
+        // Something on that side has windows
+        Rectangle {
+            visible: arrow.hot
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 1 }
+            width: 3
+            height: 3
+            radius: 1.5
+            color: root.fg
+        }
+        MouseArea {
+            id: arrowMouse
+            anchors { fill: parent; margins: -4 }
+            hoverEnabled: true
+            enabled: arrow.more
+            onClicked: root.start = root.clampStart(root.start + arrow.side)
         }
     }
 
