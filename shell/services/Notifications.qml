@@ -141,6 +141,7 @@ Singleton {
             root.received = r;
             if (!Focus.allows(n))
                 return;
+            Sounds.notify(n);
             // Optionally as an iOS-style card in the dynamic island instead of a banner
             if (Island.enabled && Island.armed && Island.wants("notifications") && n.urgency !== NotificationUrgency.Critical)
                 root.toIsland(n);

@@ -20,8 +20,8 @@ Scope {
         property var screen
         property rect rect
         onTriggered: {
-            root.hiding = false;
             ScreenTools.captured(root.mode, screen, rect);
+            root.hiding = false;
         }
     }
 
@@ -116,7 +116,7 @@ Scope {
                 anchors.fill: parent
                 focus: true
                 Keys.onEscapePressed: ScreenTools.cancelSelect()
-                Keys.onReturnPressed: win.finish(Qt.rect(0, 0, win.width, win.height))
+                Keys.onReturnPressed: win.finish(win.selection.width > 0 ? Qt.rect(win.selection.x, win.selection.y, win.selection.width, win.selection.height) : Qt.rect(0, 0, win.width, win.height))
             }
 
             MouseArea {
@@ -144,7 +144,10 @@ Scope {
                     if (!win.dragging)
                         return;
                     const moved = Math.abs(win.end.x - win.start.x) > 4 || Math.abs(win.end.y - win.start.y) > 4;
-                    const r = moved ? win.selection : win.hovered;
+                    // A copy: a rect read from a property stays tied to it,
+                    // and the selection empties once dragging ends
+                    const s = moved ? win.selection : win.hovered;
+                    const r = s ? Qt.rect(s.x, s.y, s.width, s.height) : null;
                     win.dragging = false;
                     if (r)
                         win.finish(r);

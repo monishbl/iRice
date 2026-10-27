@@ -107,6 +107,8 @@ Singleton {
             if (p.ACTION === "add") {
                 const name = usbName(p);
                 usbNames = Object.assign({}, usbNames, { [p.DEVPATH]: name });
+                if (live)
+                    Sounds.play("usb");
                 if (live && Island.wants("usb")) {
                     driveSeen = false;
                     pendingUsb = { kind: "usb", icon: usbIcon(p), title: name, subtitle: "Connected", color: Theme.accents.orange };
@@ -114,6 +116,8 @@ Singleton {
                 }
             } else if (p.ACTION === "remove") {
                 const name = usbNames[p.DEVPATH];
+                if (name && live)
+                    Sounds.play("usbOff");
                 if (name && live && Island.wants("usb") && !driveSeen)
                     Island.post({ kind: "usb", icon: "usb", title: name, subtitle: "Disconnected", color: Qt.rgba(1, 1, 1, 0.55) }, 2500);
                 driveSeen = false;

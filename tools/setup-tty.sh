@@ -14,14 +14,7 @@ say() { printf '\033[1m%s\033[0m\n' "$*"; }
 
 command -v pacman >/dev/null || { echo "iRice needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
 
-PACKAGES=(
-    hyprland hypridle hyprpicker hyprsunset quickshell xdg-desktop-portal-hyprland
-    base-devel git pkgconf qt6-shadertools cmake ninja
-    qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg qt6-5compat qt6-wayland
-    pipewire wireplumber networkmanager bluez upower power-profiles-daemon brightnessctl playerctl libnotify
-    grim slurp wl-clipboard cliphist wtype python python-gobject jq libqalculate ripgrep zenity
-    inter-font noto-fonts noto-fonts-emoji papirus-icon-theme
-)
+source "$ROOT/tools/packages.sh"   # the same list as install.sh
 missing=()
 for p in "${PACKAGES[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if (( ${#missing[@]} > 0 )); then
@@ -31,6 +24,33 @@ if (( ${#missing[@]} > 0 )); then
         [[ "${a,,}" == n* ]] && { echo "Skipped. Install them yourself, then run this again."; exit 1; }
     fi
     sudo pacman -S --needed --noconfirm "${missing[@]}" || { echo "Package install failed: see above, then run this again."; exit 1; }
+fi
+
+# The Tahoe icons, cursors and GTK theme (from the AUR, through yay): without
+# them apps fall back to plain icons and the default GTK look
+missing=()
+for p in "${AUR[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p"); done
+if (( ${#missing[@]} > 0 )); then
+    say "Tahoe icons, cursors and GTK theme (AUR): ${missing[*]}"
+    a=y
+    [[ $YES == 0 ]] && read -rp "Install them now with yay? [Y/n] " a
+    if [[ "${a,,}" != n* ]]; then
+        if ! command -v yay >/dev/null && ! command -v paru >/dev/null; then
+            say "Installing yay (an AUR helper)…"
+            tmp=$(mktemp -d)
+            git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin" && (cd "$tmp/yay-bin" && makepkg -si --noconfirm)
+            rm -rf "$tmp"
+        fi
+        helper=$(command -v yay || command -v paru || true)
+        if [[ -n "$helper" ]]; then
+            # The GTK theme's own script needs sassc, which its package doesn't list
+            sudo pacman -S --needed --noconfirm sassc
+            TERM=${TERM:-xterm} "$helper" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}" ||
+                echo "Some themes didn't install: see above. iRice works without them; run this again to retry."
+        else
+            echo "yay didn't install: see above. iRice works without the themes; run this again to retry."
+        fi
+    fi
 fi
 
 say "Building the glass shaders…"

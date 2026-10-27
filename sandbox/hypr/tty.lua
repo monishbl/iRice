@@ -11,6 +11,7 @@ IRICE_HYPR_DIR = root .. "/hypr/irice"
 IRICE_USER_DIR = root .. "/.sandbox/home/.config/irice"
 
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
+pcall(dofile, IRICE_USER_DIR .. "/monitors.lua") -- per-display settings from Settings → Displays
 hl.config({
     input = {
         kb_layout = "us",

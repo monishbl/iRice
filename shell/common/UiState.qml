@@ -40,6 +40,7 @@ Singleton {
         property var shortcutButtons: ({}) // Shortcuts widget id -> [action titles]
         property bool appThemeOn: false // Match apps wrote colour files (so turning it off empties them)
         property var coolDown: null // what cool-down changed, to put back: { blur: { passes, size }, rates: { output: Hz } }
+        property var caffeine: null // on: { until (ms; 0 = until turned off), minutes }; survives shell restarts
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
@@ -55,6 +56,7 @@ Singleton {
         onShortcutButtonsChanged: root.scheduleSave()
         onAppThemeOnChanged: root.scheduleSave()
         onCoolDownChanged: root.scheduleSave()
+        onCaffeineChanged: root.scheduleSave()
     }
 
     property bool loaded: false
@@ -97,7 +99,8 @@ Singleton {
             stacks: store.stacks,
             shortcutButtons: store.shortcutButtons,
             appThemeOn: store.appThemeOn,
-            coolDown: store.coolDown
+            coolDown: store.coolDown,
+            caffeine: store.caffeine
         }, null, 2))
     }
 
@@ -137,6 +140,7 @@ Singleton {
                     if (j[k] && typeof j[k] === "object")
                         store[k] = j[k];
                 store.coolDown = j.coolDown && typeof j.coolDown === "object" ? j.coolDown : null;
+                store.caffeine = j.caffeine && typeof j.caffeine === "object" ? j.caffeine : null;
             } catch (e) {}
             root.loaded = true;
         }

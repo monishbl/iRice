@@ -18,15 +18,31 @@ Rectangle {
     border.width: 1
     border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
 
+    // What gets blurred: the window's content item that's under the popup.
+    // Not the content item itself: popups draw in its overlay, so copying
+    // all of it would copy this popup too (a feedback loop of smeared copies).
     readonly property Item content: Window.contentItem
-    readonly property bool blurring: blurContent && visible && content !== null && Theme.glass.tier !== "solid"
-    // Where this sits over the window's content (popups don't move while open)
+    property Item page: null
+    readonly property bool blurring: blurContent && visible && page !== null && Theme.glass.tier !== "solid"
+    readonly property int pad: 24 // blur reaches this far in from outside the edges
+    // Where this sits over `page`, padded (popups don't move while open)
     property rect area: Qt.rect(0, 0, 0, 0)
     function place() {
         if (!content)
             return;
         const p = mapToItem(content, 0, 0);
-        area = Qt.rect(p.x, p.y, width, height);
+        let best = null;
+        for (const c of content.children) {
+            if (!c.visible || String(c).startsWith("QQuickOverlay"))
+                continue;
+            if (p.x + width / 2 >= c.x && p.x + width / 2 <= c.x + c.width && p.y >= c.y && p.y <= c.y + c.height)
+                best = c;
+        }
+        page = best;
+        if (!best)
+            return;
+        const q = mapToItem(best, 0, 0);
+        area = Qt.rect(q.x - pad, q.y - pad, width + 2 * pad, height + 2 * pad);
     }
     onVisibleChanged: if (visible) Qt.callLater(place)
     onWidthChanged: place()
@@ -35,26 +51,36 @@ Rectangle {
     ShaderEffectSource {
         id: behind
         visible: false
-        sourceItem: root.blurring ? root.content : null
+        sourceItem: root.blurring ? root.page : null
         sourceRect: root.area
         live: root.blurring
-        width: root.width
-        height: root.height
+        width: root.area.width
+        height: root.area.height
     }
-    // The rounded shape, so the blur doesn't spill past the corners
-    Rectangle {
+    // The rounded shape inside the padding, so the blur doesn't spill past the corners
+    Item {
         id: shape
         visible: false
-        width: root.width
-        height: root.height
-        radius: root.radius
+        width: root.area.width
+        height: root.area.height
         layer.enabled: root.blurring
+        Rectangle {
+            x: root.pad
+            y: root.pad
+            width: root.width
+            height: root.height
+            radius: root.radius
+        }
     }
     MultiEffect {
         z: -1
         visible: root.blurring
-        anchors.fill: parent
+        x: -root.pad
+        y: -root.pad
+        width: root.area.width
+        height: root.area.height
         source: behind
+        autoPaddingEnabled: false
         blurEnabled: true
         blur: 1
         blurMax: 40

@@ -93,8 +93,13 @@ Variants {
                 Flickable {
                     visible: Notifications.list.length > 0
                     onContentYChanged: if (nc.bare) nc.glassChanged() // cards' glass follows the scroll
-                    width: parent.width
-                    height: Math.min(list.implicitHeight, 420)
+                    // Clipped 8 px further out, so cards' close buttons
+                    // (over the top-left corner) aren't cut off
+                    x: -8
+                    width: parent.width + 8
+                    height: Math.min(list.implicitHeight, 420) + 8
+                    leftMargin: 8
+                    topMargin: 8
                     contentHeight: list.implicitHeight
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds

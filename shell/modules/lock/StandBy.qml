@@ -10,10 +10,30 @@ import qs.modules.desktop
 // or use the arrow keys to change; anything else brings back the password
 // field (the owner handles that). At night everything turns a dim red.
 // Against burn-in (lock.standbyShift) the content glides to a new spot each
-// minute and every 15 minutes the screen rests dark for a minute; the view
-// dots only show for a moment after a change. Nothing else moves.
+// minute and every 15 minutes the screen rests dark for a minute (timing
+// shared by every screen, from Lock.qml); the view dots only show for a
+// moment after a change. Nothing else moves. A screen left out of
+// lock.standbyScreens stays dark (`blank`).
 Item {
     id: root
+
+    required property var lockScope
+    property bool blank: false
+    // Lock → StandBy morph: the owner flies its own clock here, so this one
+    // holds back until it lands (clockFade 0 .. 1)
+    property real clockFade: 1 // the time
+    property real dateFade: 1 // the line under it
+    readonly property var cfg: Config.options.lock
+    readonly property int clockWeight: cfg.standbyClockWeight === "bold" ? Font.DemiBold : cfg.standbyClockWeight === "regular" ? Font.Normal : Font.ExtraLight
+    readonly property real clockOpacity: Math.max(0.2, Math.min(1, cfg.standbyClockOpacity))
+    readonly property int clockSize: clockView.size
+    // Where the big clock's time sits once the content has settled, in this
+    // item's coordinates (the owner's morph flies to it)
+    readonly property rect clockTarget: {
+        const w = timeText.implicitWidth, h = timeText.implicitHeight;
+        const cy = (height - clockView.implicitHeight) / 2 + dy;
+        return Qt.rect((width - w) / 2 + dx, cy, w, h);
+    }
 
     property int view: 0 // 0 clock, 1 widgets, 2 photos
     readonly property int views: photos.count > 0 ? 3 : 2
@@ -22,7 +42,7 @@ Item {
     readonly property color ink2: night ? Qt.rgba(1, 0.23, 0.19, 0.6) : Qt.rgba(1, 1, 1, 0.6)
     function step(d) {
         view = (view + d + views) % views;
-        resting = false;
+        lockScope.endRest();
         dots.show();
         drift();
     }
@@ -31,11 +51,13 @@ Item {
     readonly property string time: ((clock.date.getHours() + 11) % 12 + 1) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
 
     // ── Burn-in protection ──────────────────────────────────────────────
-    readonly property bool shift: Config.options.lock.standbyShift
+    readonly property bool shift: cfg.standbyShift
+    readonly property bool resting: lockScope.resting
     property real dx: 0
     property real dy: 0
-    property bool resting: false
-    property int minutes: 0
+    property bool jump: false // place without gliding (on showing)
+    property real ownFx: 0
+    property real ownFy: 0
     // How far the current view's content can move and stay on screen
     readonly property size room: {
         const c = view === 0 ? clockView : view === 1 ? widgetsView : null;
@@ -43,52 +65,36 @@ Item {
             return Qt.size(24, 24);
         return Qt.size(Math.max(0, (width - c.width) / 2 - 48), Math.max(0, (height - c.height) / 2 - 48));
     }
+    // Every screen in the same spot (lock.standbySameClock), else each its own
     function drift() {
         if (!shift) {
             dx = 0;
             dy = 0;
             return;
         }
-        // A new spot well away from the last one, so no pixel holds the same
-        // colour for long
-        let x = 0, y = 0;
-        for (let i = 0; i < 6; i++) {
-            x = (Math.random() * 2 - 1) * room.width;
-            y = (Math.random() * 2 - 1) * room.height;
-            if (Math.hypot(x - dx, y - dy) > Math.min(room.width, room.height) * 0.5)
-                break;
+        let fx = lockScope.fx, fy = lockScope.fy;
+        if (!cfg.standbySameClock) {
+            for (let i = 0; i < 6; i++) {
+                fx = Math.random() * 2 - 1;
+                fy = Math.random() * 2 - 1;
+                if (Math.hypot(fx - ownFx, fy - ownFy) > 0.5)
+                    break;
+            }
+            ownFx = fx;
+            ownFy = fy;
         }
-        dx = x;
-        dy = y;
+        dx = fx * room.width;
+        dy = fy * room.height;
     }
     Connections {
-        target: clock
-        function onDateChanged() {
-            if (!root.visible || !root.shift || root.resting)
-                return;
-            if (++root.minutes >= 15) {
-                root.minutes = 0;
-                root.resting = true;
-                rest.restart();
-            } else {
-                root.drift();
-            }
-        }
-    }
-    Timer {
-        id: rest
-        interval: 60000
-        onTriggered: {
-            root.drift(); // moves while dark, so it comes back somewhere new
-            root.resting = false;
-        }
+        target: root.lockScope
+        function onDriftsChanged() { root.drift(); }
     }
     onVisibleChanged: {
-        minutes = 0;
-        resting = false;
-        rest.stop();
         if (visible) {
+            jump = true;
             drift();
+            jump = false;
             dots.show();
         }
     }
@@ -116,7 +122,7 @@ Item {
     Image {
         id: photo
         anchors.fill: parent
-        visible: root.view === 2
+        visible: root.view === 2 && !root.blank
         source: root.view === 2 && photos.count > 0 ? "file://" + photos.get(root.photoIndex % photos.count, "filePath") : ""
         fillMode: Image.PreserveAspectCrop
         sourceSize: Qt.size(root.width, root.height)
@@ -128,13 +134,14 @@ Item {
     // ── Everything that stays put otherwise: moves and rests ────────────
     Item {
         id: stage
+        visible: !root.blank
         width: root.width
         height: root.height
         x: root.dx
         y: root.dy
         // Slow enough to go unnoticed; a jump while dark
-        Behavior on x { enabled: !root.resting; XAnimator { duration: 3000; easing.type: Easing.InOutSine } }
-        Behavior on y { enabled: !root.resting; YAnimator { duration: 3000; easing.type: Easing.InOutSine } }
+        Behavior on x { enabled: !root.resting && !root.jump; XAnimator { duration: 3000; easing.type: Easing.InOutSine } }
+        Behavior on y { enabled: !root.resting && !root.jump; YAnimator { duration: 3000; easing.type: Easing.InOutSine } }
         opacity: root.resting ? 0 : 1
         Behavior on opacity { OpacityAnimator { duration: 2000; easing.type: Easing.InOutQuad } }
 
@@ -146,12 +153,15 @@ Item {
             readonly property int size: Math.round(Math.min(root.height * 0.16, root.width * 0.14))
             spacing: -Math.round(size * 0.06)
             Text {
+                id: timeText
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.time
                 color: root.ink
-                font { family: Theme.font.family; pixelSize: clockView.size; weight: Font.DemiBold; letterSpacing: -clockView.size * 0.03; features: { "tnum": 1 } }
+                opacity: root.clockOpacity * root.clockFade
+                font { family: Theme.font.family; pixelSize: clockView.size; weight: root.clockWeight; letterSpacing: -clockView.size * 0.03; features: { "tnum": 1 } }
             }
             Text {
+                opacity: root.clockOpacity * root.dateFade
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: Qt.formatDate(clock.date, "dddd d MMMM") + (Weather.ready ? "   " + Weather.temp + "° " + Weather.condition : "")
                 color: root.ink2
@@ -207,7 +217,7 @@ Item {
     // Night: everything a dim red (multiplied over the widgets and photos)
     Rectangle {
         anchors.fill: parent
-        visible: root.night && root.view !== 0
+        visible: root.night && root.view !== 0 && !root.blank
         color: "#FF2010"
         opacity: 0.55
     }
@@ -221,6 +231,7 @@ Item {
     // Which view: shown for a moment after a change, then out of the way
     Row {
         id: dots
+        visible: !root.blank
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
         spacing: 8
         opacity: dotsTimer.running ? 1 : 0

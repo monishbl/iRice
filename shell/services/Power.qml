@@ -22,6 +22,7 @@ Singleton {
             if (pct <= t && lastWarned > t) {
                 lastWarned = t;
                 Quickshell.execDetached(["notify-send", "-a", "Battery", "-u", t <= 5 ? "critical" : "normal", "-i", "battery-caution", "Battery at " + pct + "%", t <= 5 ? "Plug in now — your computer will sleep soon." : "Plug in soon, or turn on Low Power in Control Center."]);
+                Sounds.play("battery");
                 return;
             }
         }

@@ -48,7 +48,7 @@ Variants {
             // Full-screen transparent layer: the panel on the left, and a click
             // catcher everywhere below the menu bar that closes it.
             anchors { top: true; bottom: true; left: true; right: true }
-            readonly property int dockClearance: Config.options.dock.iconSize + 14 + 6 + 8
+            readonly property int dockClearance: Config.options.dock.enabled ? Config.options.dock.iconSize + 14 + 6 + 8 : 8
 
             mask: Region {
                 Region { item: catcher }

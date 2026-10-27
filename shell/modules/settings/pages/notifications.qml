@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import qs.common
 import qs.modules.settings
 import qs.services
@@ -23,28 +24,55 @@ Column {
             Switch { checked: Config.options.notificationCenter.background; onToggled: Config.options.notificationCenter.background = !checked }
         }
     }
+    // A sound event: switch, Play, and your own file instead of iRice's
+    component SoundRow: Row {
+        id: srow
+        required property string key
+        property string sound: key // what Play plays
+        property bool custom: true // can use your own file
+        readonly property string file: custom ? Config.options.sounds[key + "File"] : ""
+        visible: Config.options.sounds.enabled
+        detail: file !== "" ? file.split("/").pop() : ""
+
+        QQ.Row {
+            spacing: 8
+            SettingsButton { text: "Play"; icon: "play"; onClicked: Sounds.play(srow.sound, true) }
+            SettingsButton {
+                visible: srow.custom
+                text: "Choose…"
+                enabled: !FilePicker.busy
+                onClicked: FilePicker.pick({ title: "Choose a sound", start: "~/Music", filter: "Sounds|*.ogg *.oga *.wav *.mp3 *.flac" }, path => Config.options.sounds[srow.key + "File"] = path)
+            }
+            SettingsButton {
+                visible: srow.file !== ""
+                text: "Reset"
+                onClicked: Config.options.sounds[srow.key + "File"] = ""
+            }
+            Switch { checked: Config.options.sounds[srow.key]; onToggled: Config.options.sounds[srow.key] = !checked }
+        }
+    }
+
     Group {
         width: parent.width
         title: "Sound effects"
+        footer: "Choose… plays your own file instead of iRice's sound."
         Row {
             label: "Play sound effects"
             Switch { checked: Config.options.sounds.enabled; onToggled: Config.options.sounds.enabled = !checked }
         }
-        Row {
-            visible: Config.options.sounds.enabled
-            label: "When you log in"
-            Switch { checked: Config.options.sounds.startup; onToggled: Config.options.sounds.startup = !checked }
-        }
-        Row {
-            visible: Config.options.sounds.enabled
-            label: "Screenshots"
-            Switch { checked: Config.options.sounds.screenshot; onToggled: Config.options.sounds.screenshot = !checked }
-        }
-        Row {
-            visible: Config.options.sounds.enabled
-            label: "Emptying the Trash"
-            Switch { checked: Config.options.sounds.trash; onToggled: Config.options.sounds.trash = !checked }
-        }
+        SoundRow { key: "startup"; label: "When you log in" }
+        SoundRow { key: "charging"; label: "Plugging in the charger" }
+        SoundRow { key: "displays"; label: "Connecting a display" }
+        SoundRow { key: "lock"; label: "Locking and unlocking"; custom: false }
+        SoundRow { key: "notifications"; label: "Notifications"; custom: false; detail: "Not in a Focus mode, and not for apps that ask for silence" }
+        SoundRow { key: "battery"; label: "Low battery"; custom: false }
+        SoundRow { key: "volumeKeys"; label: "Volume keys"; custom: false }
+        SoundRow { key: "usb"; label: "USB devices"; custom: false }
+        SoundRow { key: "received"; label: "Files received"; custom: false }
+        SoundRow { key: "recording"; label: "Screen recording"; custom: false }
+        SoundRow { key: "error"; label: "Wrong password"; custom: false }
+        SoundRow { key: "screenshot"; label: "Screenshots"; custom: false }
+        SoundRow { key: "trash"; label: "Emptying the Trash"; custom: false }
         Row {
             visible: Config.options.sounds.enabled
             label: "Volume"
@@ -55,7 +83,7 @@ Column {
                 to: 1
                 value: Config.options.sounds.volume
                 onMoved: v => Config.options.sounds.volume = v
-                onPressedChanged: if (!pressed) Sounds.play("screenshot") // hear the level
+                onPressedChanged: if (!pressed) Sounds.play("charging", true) // hear the level
             }
         }
     }

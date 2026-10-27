@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.common
 import qs.modules.settings
 import qs.services
@@ -42,6 +43,26 @@ Column {
 
     Group {
         width: parent.width
+        title: "Transitions"
+        Row {
+            label: "Unlocking"
+            detail: Config.options.lock.unlockTransition === "zoom" ? "The lock lifts away and the desktop settles into place, like iPhone" : ""
+            Choice { key: "unlockTransition"; values: ["zoom", "fade", "none"]; options: ["Zoom", "Fade", "None"]; width: 240 }
+        }
+        Row {
+            label: "Locking"
+            Choice { key: "lockTransition"; values: ["fade", "none"]; options: ["Fade", "None"]; width: 160 }
+        }
+        Row {
+            label: "Into StandBy"
+            detail: Config.options.lock.standbyTransition === "morph" ? "The clock glides into place and thins" : ""
+            enabled: Config.options.lock.standby
+            Choice { key: "standbyTransition"; values: ["morph", "fade", "none"]; options: ["Morph", "Fade", "None"]; width: 240 }
+        }
+    }
+
+    Group {
+        width: parent.width
         title: "StandBy"
         footer: "While charging and left alone, the screen shows a large clock, your widgets or photos instead of going dark. Swipe or scroll to change; any key brings your desktop back."
         Row {
@@ -53,6 +74,72 @@ Column {
             detail: "Moves the clock every minute and turns the screen dark for a minute every 15 minutes"
             enabled: Config.options.lock.standby
             Switch { checked: Config.options.lock.standbyShift; onToggled: Config.options.lock.standbyShift = !checked }
+        }
+        Row {
+            label: "Wake with the mouse"
+            detail: "Off: only a key or a click brings the lock screen back"
+            enabled: Config.options.lock.standby
+            Switch { checked: Config.options.lock.standbyWakeOnMouse; onToggled: Config.options.lock.standbyWakeOnMouse = !checked }
+        }
+        Row {
+            label: "Clock brightness"
+            detail: Math.round(Config.options.lock.standbyClockOpacity * 100) + "%"
+            enabled: Config.options.lock.standby
+            Slider {
+                width: 220
+                from: 0.2
+                to: 1
+                stepSize: 0.05
+                value: Config.options.lock.standbyClockOpacity
+                onMoved: v => Config.options.lock.standbyClockOpacity = v
+            }
+        }
+        Row {
+            label: "Clock weight"
+            enabled: Config.options.lock.standby
+            Choice { key: "standbyClockWeight"; values: ["thin", "regular", "bold"]; options: ["Thin", "Regular", "Bold"]; width: 240 }
+        }
+    }
+
+    // Several displays: which show StandBy (the rest go dark), and whether
+    // their clocks keep to the same spot
+    Group {
+        width: parent.width
+        visible: Quickshell.screens.length > 1
+        enabled: Config.options.lock.standby
+        title: "StandBy on displays"
+        footer: "Displays that are off stay dark while StandBy shows."
+        Row {
+            label: "Same clock position"
+            detail: "Every display moves its clock to the same spot"
+            Switch { checked: Config.options.lock.standbySameClock; onToggled: Config.options.lock.standbySameClock = !checked }
+        }
+        Repeater {
+            model: Quickshell.screens
+            Row {
+                id: screenRow
+                required property var modelData
+                readonly property string name: modelData.name
+                readonly property var list: Config.options.lock.standbyScreens
+                // An empty list means every display
+                readonly property bool on: list.length === 0 || list.includes(name)
+                readonly property string model: modelData.model ?? ""
+                label: model !== "" ? model + "  ·  " + name : name
+                detail: modelData.width + " × " + modelData.height
+                Switch {
+                    checked: screenRow.on
+                    onToggled: {
+                        const row = screenRow;
+                        const all = Quickshell.screens.map(s => s.name);
+                        let next = row.list.length === 0 ? all : row.list.slice();
+                        next = row.on ? next.filter(n => n !== row.name) : next.concat([row.name]);
+                        // Every display on: back to "all" (so new displays join in)
+                        if (all.every(n => next.includes(n)))
+                            next = [];
+                        Config.options.lock.standbyScreens = next;
+                    }
+                }
+            }
         }
     }
 

@@ -140,8 +140,8 @@ Scope {
     }
 
     // Media keys: bind XF86 keys to hl.dsp.global("irice:<name>")
-    GlobalShortcut { appid: "irice"; name: "volumeUp"; onPressed: Audio.setVolume(Audio.volume + 0.05) }
-    GlobalShortcut { appid: "irice"; name: "volumeDown"; onPressed: Audio.setVolume(Audio.volume - 0.05) }
+    GlobalShortcut { appid: "irice"; name: "volumeUp"; onPressed: { Audio.setVolume(Audio.volume + 0.05); Sounds.play("volumeKeys"); } }
+    GlobalShortcut { appid: "irice"; name: "volumeDown"; onPressed: { Audio.setVolume(Audio.volume - 0.05); Sounds.play("volumeKeys"); } }
     GlobalShortcut { appid: "irice"; name: "volumeMute"; onPressed: Audio.toggleMute() }
     GlobalShortcut { appid: "irice"; name: "micMute"; onPressed: Audio.toggleMic() }
     GlobalShortcut { appid: "irice"; name: "brightnessUp"; onPressed: Brightness.set(Brightness.value + 0.05) }

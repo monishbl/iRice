@@ -15,6 +15,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SB="$ROOT/.sandbox/home"
 export IRICE_SANDBOX=1 IRICE_ROOT="$ROOT" IRICE_TTY=1
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
+# Apps and icons installed for this user (~/.local/share: AppImages, Steam
+# games, web apps, icon themes) are still found, after iRice's own data
+export XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 SHELL_DIR="$ROOT/shell"
 # The Quickshell the shell runs on (iRice's own build when there is one; see
 # launch-shell.sh): asking it over IPC needs the same version

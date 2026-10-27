@@ -56,7 +56,7 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors.bottom: true
-            margins.bottom: Config.options.dock.iconSize + 14 + 6 + 12 - m
+            margins.bottom: (Config.options.dock.enabled ? Config.options.dock.iconSize + 14 + 6 + 12 : 12) - m
             implicitWidth: Math.min((screen?.width ?? 1920) - 80, 1200) + 2 * m
             implicitHeight: thumbH + 78 + 2 * m
             onShownChanged: if (shown) list.currentIndex = Math.max(0, files.indexOf(Wallpaper.path))

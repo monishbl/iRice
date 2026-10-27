@@ -141,7 +141,7 @@ Singleton {
                         const first = ev.paths[0] ?? "";
                         Island.post({ kind: "custom", icon: "check-circle", title: "Received from " + ev.from, subtitle: ev.paths.length === 1 ? first.split("/").pop() : ev.paths.length + " files in Downloads", color: Theme.accents.green,
                             action: "Show", onAction: () => ev.paths.length === 1 ? Panels.quickLook(first) : Transfers.openDownloads() }, 6000);
-                        Sounds.play("screenshot");
+                        Sounds.play("received");
                     } else {
                         Island.post({ kind: "custom", icon: "paper-plane-tilt", title: "Sent to " + (ev.to ?? "device"), subtitle: ev.paths.length === 1 ? ev.paths[0].split("/").pop() : ev.paths.length + " files", color: Theme.accents.green }, 3000);
                     }

@@ -28,13 +28,23 @@ Column {
     Group {
         width: parent.width
         Row {
+            label: "Picture"
+            detail: "Any image on your computer, or pick one below"
+            SettingsButton {
+                text: FilePicker.busy ? "Choosing…" : "Choose Picture…"
+                enabled: !FilePicker.busy
+                onClicked: FilePicker.pick({ title: "Choose a wallpaper", start: "~/Pictures", filter: "Images|*.jpg *.jpeg *.png *.webp" }, p => Wallpaper.set(p))
+            }
+        }
+        Row {
             label: "Folder"
             detail: "Images in this folder appear below and in the wallpaper picker."
-            TextField {
-                width: 260
-                text: Config.options.wallpaper.directory
+            PathField {
+                folder: true
+                value: Config.options.wallpaper.directory
                 placeholder: "~/Pictures/Wallpapers"
-                onCommitted: t => Config.options.wallpaper.directory = t.replace(/^~/, Quickshell.env("HOME"))
+                start: "~/Pictures"
+                onPicked: p => Config.options.wallpaper.directory = p
             }
         }
     }
@@ -123,31 +133,34 @@ Column {
             visible: Config.options.wallpaper.dynamic === "time"
             label: "Pictures"
             detail: "A folder of pictures in name order: the first half spans the day, the rest the night. Empty uses the built-in Tahoe set."
-            TextField {
-                width: 260
-                text: Config.options.wallpaper.dynamicFolder
+            PathField {
+                folder: true
+                value: Config.options.wallpaper.dynamicFolder
                 placeholder: "Built-in Tahoe set"
-                onCommitted: t => Config.options.wallpaper.dynamicFolder = t.trim().replace(/^~/, Quickshell.env("HOME"))
+                start: "~/Pictures"
+                onPicked: p => Config.options.wallpaper.dynamicFolder = p
             }
         }
         Row {
             visible: Config.options.wallpaper.dynamic === "appearance"
             label: "Light picture"
-            TextField {
-                width: 260
-                text: Config.options.wallpaper.lightPath
+            PathField {
+                value: Config.options.wallpaper.lightPath
                 placeholder: "Built-in Tahoe day"
-                onCommitted: t => Config.options.wallpaper.lightPath = t.trim().replace(/^~/, Quickshell.env("HOME"))
+                filter: "Images|*.jpg *.jpeg *.png *.webp"
+                start: "~/Pictures"
+                onPicked: p => Config.options.wallpaper.lightPath = p
             }
         }
         Row {
             visible: Config.options.wallpaper.dynamic === "appearance"
             label: "Dark picture"
-            TextField {
-                width: 260
-                text: Config.options.wallpaper.darkPath
+            PathField {
+                value: Config.options.wallpaper.darkPath
                 placeholder: "Built-in Tahoe dusk"
-                onCommitted: t => Config.options.wallpaper.darkPath = t.trim().replace(/^~/, Quickshell.env("HOME"))
+                filter: "Images|*.jpg *.jpeg *.png *.webp"
+                start: "~/Pictures"
+                onPicked: p => Config.options.wallpaper.darkPath = p
             }
         }
     }
@@ -159,11 +172,12 @@ Column {
         Row {
             label: "Video"
             detail: Wallpaper.liveVideo !== "" && Wallpaper.livePoster === "" ? "Couldn't read this video. Check the path, or install ffmpeg." : "An .mp4, .webm or .mkv file"
-            TextField {
-                width: 260
-                text: Config.options.wallpaper.live
+            PathField {
+                value: Config.options.wallpaper.live
                 placeholder: "~/Videos/wallpaper.mp4"
-                onCommitted: t => Config.options.wallpaper.live = t.trim().replace(/^~/, Quickshell.env("HOME"))
+                filter: "Videos|*.mp4 *.webm *.mkv *.mov"
+                start: "~/Videos"
+                onPicked: p => Config.options.wallpaper.live = p
             }
         }
         Row {

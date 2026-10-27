@@ -76,11 +76,12 @@ Scope {
             // Input only where the cards and the pill row are: the window's
             // shadow margin overlaps the menu bar (clock, Control Center,
             // tray), and without this it took their clicks while a banner showed
+            // (from 8 px up and left: the close button sits over the corner)
             mask: Region {
-                x: win.m
-                y: win.m
-                width: win.cardWidth
-                height: win.contentHeight + (win.count > 1 ? 8 + 26 : 0)
+                x: win.m - 8
+                y: win.m - 8
+                width: win.cardWidth + 8
+                height: win.contentHeight + 8 + (win.count > 1 ? 8 + 26 : 0)
             }
 
             Item {

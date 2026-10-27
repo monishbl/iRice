@@ -10,8 +10,21 @@ Column {
     width: parent?.width ?? 0
     spacing: 22
 
+    readonly property bool on: Config.options.dock.enabled
+
     Group {
         width: parent.width
+        footer: root.on ? "" : "The App Library stays on Super+Shift+Space, and windows use the space at the bottom."
+        Row {
+            label: "Show the dock"
+            Switch { checked: Config.options.dock.enabled; onToggled: Config.options.dock.enabled = !checked }
+        }
+    }
+
+    Group {
+        width: parent.width
+        enabled: root.on
+        opacity: root.on ? 1 : 0.45
         Row {
             label: "Size"
             detail: Config.options.dock.iconSize + " px"
@@ -73,6 +86,8 @@ Column {
 
     Group {
         width: parent.width
+        enabled: root.on
+        opacity: root.on ? 1 : 0.45
         title: "Kept in Dock"
         footer: "Running apps that aren't kept appear after the divider."
         Repeater {
@@ -102,6 +117,8 @@ Column {
 
     Group {
         width: parent.width
+        enabled: root.on
+        opacity: root.on ? 1 : 0.45
         title: "Add to Dock"
         Row {
             label: "Search apps"

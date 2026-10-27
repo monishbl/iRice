@@ -63,7 +63,9 @@ Singleton {
                 property int screenCornerRadius: 12
                 property int windowRadius: 20 // app window corners (continuous curve)
                 property string cursor: "macos" // pointer: macos | bibata (end4's)
-                property string windowOpacity: "subtle" // app windows see-through: off | subtle | more (fullscreen, video and games stay opaque)
+                property string windowOpacity: "subtle" // app windows see-through: off | subtle | more | custom (fullscreen, video and games stay opaque)
+                property real windowOpacityActive: 0.97 // custom: the focused window
+                property real windowOpacityInactive: 0.93 // custom: the other windows
                 property string motion: "subtle" // subtle (macOS) | expressive (iOS 26: more pull and bounce)
                 // Accessibility (like macOS): solid surfaces instead of glass;
                 // stronger text, separators and outlines
@@ -83,6 +85,14 @@ Singleton {
                 property bool previews: false // notification text on the lock screen (else app names only)
                 property bool standby: true // StandBy: charging and idle shows a full-screen clock
                 property bool standbyShift: true // StandBy moves a little every minute and rests dark for a minute every 15 (burn-in)
+                property list<string> standbyScreens: [] // screens that show StandBy (others go dark); empty = every screen
+                property bool standbyWakeOnMouse: true // moving the mouse leaves StandBy (keys always do)
+                property bool standbySameClock: true // every screen shows the clock in the same place
+                property string unlockTransition: "zoom" // lock → desktop: zoom (iOS parallax) | fade | none
+                property string lockTransition: "fade" // desktop → lock: fade | none
+                property string standbyTransition: "morph" // lock → StandBy: morph (the clock moves and thins) | fade | none
+                property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
+                property string standbyClockWeight: "thin" // thin | regular | bold
             }
 
             property JsonObject notificationCenter: JsonObject {
@@ -103,6 +113,19 @@ Singleton {
                 property bool startup: true // when you log in (not on shell reloads)
                 property bool screenshot: true
                 property bool trash: true // emptying the Trash
+                property bool charging: true // plugging in the charger
+                property bool displays: true // connecting or removing a display
+                property bool lock: true // locking and unlocking
+                property bool notifications: true // banners (not in a Focus mode, not low urgency, not when the app asks for silence)
+                property bool battery: true // low battery (20%, 10%, 5%)
+                property bool volumeKeys: true // the volume keys
+                property bool usb: true // USB devices plugged in or removed
+                property bool received: true // files arriving over LocalSend
+                property bool recording: true // screen recording starts and stops
+                property bool error: true // a wrong password
+                property string startupFile: "" // your own sound per event; empty = iRice's
+                property string chargingFile: ""
+                property string displaysFile: ""
                 property real volume: 0.6
             }
 
@@ -267,6 +290,25 @@ Singleton {
                 // for some memory (common/PanelLoader.qml)
                 property bool keepPanelsLoaded: false
             }
+            property JsonObject workspaces: JsonObject {
+                // Super+number to a space on another display
+                property bool dimOthers: true // briefly dim the other displays
+                property bool warpPointer: true // move the pointer to that display
+            }
+            property JsonObject mouse: JsonObject {
+                // Mice (Settings → Mouse); trackpads keep their own settings
+                property string accelProfile: "adaptive" // adaptive (speeds up with faster moves) | flat (same distance at any speed)
+                property real speed: 0 // -1 .. 1
+                property bool naturalScroll: false
+                property real scrollSpeed: 1 // 0.2 .. 3
+                property bool leftHanded: false
+                property bool middleEmulation: false // left + right together = middle click
+                property string focus: "hover" // window focus: hover (follows the pointer; Hyprland's default) | click
+            }
+            property JsonObject displays: JsonObject {
+                // Settings → Displays: "name\tmode\tx\ty\tscale\ttransform\tenabled\tmirror" per display, written to hypr/irice monitors
+                property list<string> monitors: []
+            }
             property JsonObject switcher: JsonObject {
                 property bool enabled: true // Alt+Tab window switcher with previews
             }
@@ -290,6 +332,7 @@ Singleton {
             }
 
             property JsonObject dock: JsonObject {
+                property bool enabled: true // off: no dock (App Library stays on its shortcut)
                 property list<string> pinned: ["org.kde.dolphin", "thunar", "firefox", "code", "foot", "org.gnome.Calculator", "org.xfce.mousepad"]
                 property int iconSize: 48
                 property bool appsButton: true // App Library button at the start

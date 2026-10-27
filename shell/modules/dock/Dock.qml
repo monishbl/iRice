@@ -10,8 +10,9 @@ import qs.services
 // magnification is optional. The window has a fixed size (no per-frame
 // resizing, which made the old dock flicker); input is masked to what's visible.
 // Auto-hide: off, always, or only when a window overlaps the dock.
+// Settings → Dock → Show the dock off: no dock windows at all.
 Variants {
-    model: Quickshell.screens
+    model: Config.options.dock.enabled ? Quickshell.screens : []
 
     GlassWindow {
         id: win
@@ -49,7 +50,11 @@ Variants {
         property string shownKey: ""
         onItemsChanged: {
             const key = items.map(i => i.kind + ":" + i.id + (i.divider ? "|" : "")).join(",");
-            if (key !== shownKey) {
+            // Same ids but new entry objects: the app list reloaded (an app
+            // was installed or updated) and the old entries are gone, which
+            // left blank icons until something else changed the dock
+            const stale = items.some((x, i) => x.entry !== shownItems[i]?.entry);
+            if (key !== shownKey || stale) {
                 shownKey = key;
                 shownItems = items;
             }

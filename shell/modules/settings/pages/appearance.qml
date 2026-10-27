@@ -230,10 +230,28 @@ Column {
             detail: Config.options.appearance.windowOpacity === "off" ? "Windows are fully opaque" : "Video, games and fullscreen stay opaque"
             Segmented {
                 width: 300
-                readonly property var values: ["off", "subtle", "more"]
-                options: ["Off", "Subtle", "More"]
+                readonly property var values: ["off", "subtle", "more", "custom"]
+                options: ["Off", "Subtle", "More", "Custom"]
                 current: Math.max(0, values.indexOf(Config.options.appearance.windowOpacity))
                 onSelected: i => Config.options.appearance.windowOpacity = values[i]
+            }
+        }
+        Repeater {
+            model: Config.options.appearance.windowOpacity === "custom" ? [
+                { key: "windowOpacityActive", label: "Focused window" },
+                { key: "windowOpacityInactive", label: "Other windows" }
+            ] : []
+            Row {
+                required property var modelData
+                label: modelData.label
+                detail: Math.round(Config.options.appearance[modelData.key] * 100) + "% opaque"
+                Slider {
+                    width: 220
+                    from: 0.6
+                    to: 1
+                    value: Config.options.appearance[parent.parent.modelData.key]
+                    onMoved: v => Config.options.appearance[parent.parent.modelData.key] = Math.round(v * 100) / 100
+                }
             }
         }
         Row {

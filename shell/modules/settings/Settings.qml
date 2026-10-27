@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.common
 
 // iRice Settings: a regular app window. Translucent sidebar of sections on the
@@ -32,11 +33,92 @@ Scope {
                 { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A" },
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A" },
+                { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF" },
+                { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366" },
                 { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366" },
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366" },
                 { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93" },
                 { id: "about", name: "About", icon: "info", color: "#30D158" }
             ]
+
+            // Search: section names, plus every row and group caption in the
+            // pages (read from their files, so nothing has to load)
+            property string query: ""
+            property var index: [] // { page, text, detail }
+            readonly property var results: {
+                const q = query.trim().toLowerCase();
+                if (q === "")
+                    return [];
+                const words = q.split(/\s+/);
+                const hit = s => words.every(w => s.toLowerCase().includes(w));
+                const out = [];
+                for (const s of sections)
+                    if (hit(s.name))
+                        out.push({ page: s.id, text: s.name, detail: "", section: true });
+                for (const e of index)
+                    if (hit(e.text + " " + e.detail + " " + (sections.find(s => s.id === e.page)?.name ?? "")))
+                        out.push(e);
+                return out.slice(0, 60);
+            }
+            Process {
+                running: true
+                command: ["sh", "-c", "cd \"$1\" && grep -HnoE '(label|title|detail): \"[^\"]+\"' *.qml", "sh", Qt.resolvedUrl("pages").toString().replace("file://", "")]
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        const out = [];
+                        let last = null;
+                        for (const line of text.split("\n")) {
+                            const m = line.match(/^([a-z]+)\.qml:(\d+):(label|title|detail): "(.*)"$/);
+                            if (!m || m[4].includes("+") || m[4].length < 3)
+                                continue;
+                            if (m[3] === "detail") {
+                                if (last && last.page === m[1] && +m[2] - last.line <= 3)
+                                    last.detail = m[4];
+                                continue;
+                            }
+                            last = { page: m[1], line: +m[2], text: m[4], detail: "" };
+                            if (!out.some(e => e.page === last.page && e.text === last.text))
+                                out.push(last);
+                        }
+                        win.index = out;
+                    }
+                }
+            }
+
+            // Go to a page and, for a search result, scroll to its row and flash it
+            property string target: ""
+            function go(page, text) {
+                target = text ?? "";
+                if (Panels.settingsPage === page)
+                    Qt.callLater(reveal);
+                else
+                    Panels.settingsPage = page;
+            }
+            function reveal() {
+                if (target === "" || !pageLoader.item)
+                    return;
+                const find = it => {
+                    for (const c of it.children) {
+                        if ((c.label === target || c.title === target) && c.visible)
+                            return c;
+                        const f = find(c);
+                        if (f)
+                            return f;
+                    }
+                    return null;
+                };
+                const row = find(pageLoader.item);
+                target = "";
+                if (!row)
+                    return;
+                const p = row.mapToItem(scroller.contentItem, 0, 0);
+                scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, p.y - 80));
+                flash.x = p.x - 4;
+                flash.y = p.y;
+                flash.width = row.width + 8;
+                flash.height = Math.min(row.height, 64);
+                flashAnim.restart();
+            }
 
             Rectangle {
                 id: sidebar
@@ -44,45 +126,145 @@ Scope {
                 height: parent.height
                 color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.78) : Qt.rgba(0.94, 0.94, 0.96, 0.8)
 
-                Column {
-                    anchors { fill: parent; margins: 10; topMargin: 16 }
-                    spacing: 2
+                TextField {
+                    id: search
+                    x: 10
+                    y: 14
+                    width: parent.width - 20
+                    placeholder: "Search"
+                    commitOnBlur: false
+                    onTextChanged: win.query = text
+                    Keys.onEscapePressed: text = ""
+                    onCommitted: if (win.results.length > 0) win.go(win.results[0].page, win.results[0].section ? "" : win.results[0].text)
+                }
 
-                    Repeater {
-                        model: win.sections
-                        Rectangle {
-                            id: item
-                            required property var modelData
-                            readonly property bool current: Panels.settingsPage === modelData.id
-                            width: parent.width
-                            height: 32
-                            radius: 8
-                            color: current ? Theme.accent : mouse.containsMouse ? Theme.color.fill : "transparent"
+                Flickable {
+                    id: sideScroll
+                    anchors { left: parent.left; right: parent.right; top: search.bottom; topMargin: 10; bottom: parent.bottom }
+                    contentHeight: list.implicitHeight + 16
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
 
+                    Column {
+                        id: list
+                        x: 10
+                        width: sidebar.width - 20
+                        spacing: 2
+
+                        // Sections, or search results
+                        Repeater {
+                            model: win.query.trim() === "" ? win.sections : []
                             Rectangle {
-                                id: tile
-                                x: 6
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 22
-                                height: 22
-                                radius: 6
-                                color: item.modelData.color
-                                Icon { anchors.centerIn: parent; name: item.modelData.icon; fill: true; size: 13; color: "white" }
+                                id: item
+                                required property var modelData
+                                readonly property bool current: Panels.settingsPage === modelData.id
+                                width: list.width
+                                height: 32
+                                radius: 8
+                                color: current ? Theme.accent : mouse.containsMouse ? Theme.color.fill : "transparent"
+
+                                Rectangle {
+                                    id: tile
+                                    x: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 22
+                                    height: 22
+                                    radius: 6
+                                    color: item.modelData.color
+                                    Icon { anchors.centerIn: parent; name: item.modelData.icon; fill: true; size: 13; color: "white" }
+                                }
+                                Text {
+                                    anchors { left: tile.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                                    text: item.modelData.name
+                                    color: item.current ? Theme.color.onAccent : Theme.color.label
+                                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: item.current ? Font.DemiBold : Font.Normal }
+                                }
+                                MouseArea {
+                                    id: mouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: win.go(item.modelData.id)
+                                }
+                            }
+                        }
+
+                        Repeater {
+                            model: win.results
+                            Rectangle {
+                                id: result
+                                required property var modelData
+                                readonly property var section: win.sections.find(s => s.id === modelData.page)
+                                width: list.width
+                                height: Math.max(36, texts.implicitHeight + 12)
+                                radius: 8
+                                color: resultMouse.containsMouse ? Theme.color.fill : "transparent"
+
+                                Rectangle {
+                                    id: resultTile
+                                    x: 6
+                                    y: 8
+                                    width: 22
+                                    height: 22
+                                    radius: 6
+                                    color: result.section?.color ?? Theme.color.fill
+                                    Icon { anchors.centerIn: parent; name: result.section?.icon ?? "gear"; fill: true; size: 13; color: "white" }
+                                }
+                                Column {
+                                    id: texts
+                                    anchors { left: resultTile.right; leftMargin: 10; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                    spacing: 1
+                                    Text {
+                                        width: parent.width
+                                        text: result.modelData.text
+                                        elide: Text.ElideRight
+                                        color: Theme.color.label
+                                        font { family: Theme.font.family; pixelSize: Theme.font.body }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: !result.modelData.section
+                                        text: result.section?.name ?? ""
+                                        elide: Text.ElideRight
+                                        color: Theme.color.secondary
+                                        font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                                    }
+                                }
+                                MouseArea {
+                                    id: resultMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: win.go(result.modelData.page, result.modelData.section ? "" : result.modelData.text)
+                                }
+                            }
+                        }
+
+                        // No results
+                        Column {
+                            visible: win.query.trim() !== "" && win.results.length === 0
+                            width: list.width
+                            topPadding: 24
+                            spacing: 4
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "No results"
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                             }
                             Text {
-                                anchors { left: tile.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                                text: item.modelData.name
-                                color: item.current ? Theme.color.onAccent : Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: item.current ? Font.DemiBold : Font.Normal }
-                            }
-                            MouseArea {
-                                id: mouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: Panels.settingsPage = item.modelData.id
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.Wrap
+                                text: "Try a shorter word, like \"dock\" or \"sound\"."
+                                color: Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.font.caption }
                             }
                         }
                     }
+                }
+                ScrollIndicator {
+                    target: sideScroll
+                    anchors { right: sideScroll.right; top: sideScroll.top; bottom: sideScroll.bottom; rightMargin: 1 }
                 }
             }
 
@@ -111,11 +293,35 @@ Scope {
                         }
 
                         Loader {
+                            id: pageLoader
                             width: parent.width
                             source: Qt.resolvedUrl("pages/" + Panels.settingsPage + ".qml")
-                            onLoaded: scroller.contentY = 0
+                            onLoaded: {
+                                scroller.contentY = 0;
+                                Qt.callLater(win.reveal);
+                            }
                         }
                     }
+
+                    // Where a search result landed
+                    Rectangle {
+                        id: flash
+                        radius: 12
+                        color: "transparent"
+                        border.width: 2
+                        border.color: Theme.accent
+                        opacity: 0
+                        SequentialAnimation {
+                            id: flashAnim
+                            NumberAnimation { target: flash; property: "opacity"; to: 1; duration: 150; easing.type: Easing.OutCubic }
+                            PauseAnimation { duration: 900 }
+                            NumberAnimation { target: flash; property: "opacity"; to: 0; duration: 400; easing.type: Easing.InCubic }
+                        }
+                    }
+                }
+                ScrollIndicator {
+                    target: scroller
+                    anchors { right: scroller.right; top: scroller.top; bottom: scroller.bottom; rightMargin: 2 }
                 }
             }
         }

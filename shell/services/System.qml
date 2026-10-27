@@ -21,6 +21,7 @@ Singleton {
     function setKeepAwake(on, minutes) {
         keepAwakeUntil = on && minutes > 0 ? Date.now() + minutes * 60000 : 0;
         keepAwakeMinutes = on ? Math.max(0, minutes) : 0;
+        UiState.data.caffeine = on ? { until: keepAwakeUntil, minutes: keepAwakeMinutes } : null;
         if (keepAwake === on && !on)
             return;
         keepAwake = on;
@@ -32,6 +33,31 @@ Singleton {
         function toggle(): void { root.setKeepAwake(!root.keepAwake, 0); }
         function on(minutes: int): void { root.setKeepAwake(true, minutes); }
         function off(): void { root.setKeepAwake(false, 0); }
+    }
+    // Caffeine stays on across shell restarts and reloads (it used to switch
+    // itself off silently), and when another session is on screen
+    Connections {
+        target: UiState
+        function onLoadedChanged() {
+            const c = UiState.data.caffeine;
+            if (!UiState.loaded || !c || root.keepAwake)
+                return;
+            if (c.until > 0 && c.until <= Date.now()) {
+                UiState.data.caffeine = null;
+                return;
+            }
+            root.keepAwakeUntil = c.until;
+            root.keepAwakeMinutes = c.minutes ?? 0;
+            root.keepAwake = true;
+        }
+    }
+    // A logind inhibitor while it's on: the menu bar's Wayland inhibitor only
+    // reaches this compositor, while idle daemons in other sessions (hypridle
+    // in a desktop on another console) and logind follow these. Closing the
+    // lid, or choosing Sleep, still sleeps.
+    Process {
+        running: root.keepAwake && !(root.sandboxed && Quickshell.env("IRICE_TTY") !== "1")
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=Caffeine is on", "--mode=block", "sleep", "infinity"]
     }
     readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), "h:mm AP") : "Until off"
     Timer {
@@ -178,9 +204,17 @@ Singleton {
     // them. Fullscreen stays opaque, and so do video and games (rules.lua).
     readonly property string windowOpacity: Config.ready ? Config.options.appearance.windowOpacity : ""
     readonly property var opacityLevels: ({ "off": [1, 1], "subtle": [0.97, 0.93], "more": [0.92, 0.86] })
+    readonly property var customOpacity: Config.ready ? [Config.options.appearance.windowOpacityActive, Config.options.appearance.windowOpacityInactive] : [1, 1]
     onWindowOpacityChanged: applyOpacity()
+    onCustomOpacityChanged: if (windowOpacity === "custom") opacityTimer.restart()
+    Timer {
+        id: opacityTimer
+        interval: 80 // while a slider moves
+        onTriggered: root.applyOpacity()
+    }
     function applyOpacity() {
-        const o = opacityLevels[windowOpacity];
+        const c = customOpacity.map(v => Math.max(0.3, Math.min(1, v)));
+        const o = windowOpacity === "custom" ? c : opacityLevels[windowOpacity];
         if (!o || gameMode)
             return;
         hyprEval("hl.config({ decoration = { active_opacity = " + o[0] + ", inactive_opacity = " + o[1] + ", fullscreen_opacity = 1.0 } })");

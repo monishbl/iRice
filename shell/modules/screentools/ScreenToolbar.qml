@@ -52,7 +52,7 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors.bottom: true
-            margins.bottom: Config.options.dock.iconSize + 14 + 6 + 14 - m
+            margins.bottom: (Config.options.dock.enabled ? Config.options.dock.iconSize + 14 + 6 + 14 : 14) - m
             implicitWidth: row.implicitWidth + 24 + 2 * m
             implicitHeight: 64 + 2 * m
 
