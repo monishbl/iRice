@@ -82,10 +82,18 @@ Singleton {
         // Cool-down swaps in a cheaper material (never a heavier one)
         readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
-        readonly property real lensAmount: amounts[0]
-        readonly property real frostAmount: amounts[1]
-        readonly property real solidAmount: amounts[2]
-        readonly property real tintAmount: amounts[3] ?? 0.45
+        // Switching materials (Cool-down, or picking Glass, Frost or Solid)
+        // glides over about 0.6 s rather than snapping; Custom's sliders
+        // apply at once
+        property real lensAmount: amounts[0]
+        property real frostAmount: amounts[1]
+        property real solidAmount: amounts[2]
+        property real tintAmount: amounts[3] ?? 0.45
+        readonly property bool gliding: material !== "custom"
+        Behavior on lensAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
+        Behavior on frostAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
+        Behavior on solidAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
+        Behavior on tintAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
         // How much 3D lighting (specular, glint, sheen, inner shadow): full
         // for clear glass, fading to an even hairline as it frosts, none solid
         readonly property real gloss: lensAmount * (1 - 0.85 * frostAmount) * (1 - solidAmount)

@@ -22,7 +22,10 @@ Item {
     readonly property color ink: "#F5F5F7"
     readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
 
-    implicitHeight: isHud ? 34 : isCard ? cardLayout.implicitHeight : 52
+    // More buttons than the two beside the title (a notification's own,
+    // added to the alert): further rows under it
+    readonly property var more: event?.more ?? []
+    implicitHeight: isHud ? 34 : isCard ? cardLayout.implicitHeight : 52 + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
 
     // Appear after `delay`, sliding down into place; then the text staggers.
     // A new event (a different uid) replays it; an update in place doesn't.
@@ -85,9 +88,45 @@ Item {
     }
 
     // ── Alert ───────────────────────────────────────────────────────────
+    Flow {
+        id: moreRow
+        visible: !root.isHud && !root.isCard && root.more.length > 0
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 4; rightMargin: 4 }
+        layoutDirection: Qt.RightToLeft // under the buttons beside the title
+        spacing: 6
+        opacity: root.ease(root.step(0.45))
+        Repeater {
+            model: root.more
+            Rectangle {
+                required property var modelData
+                width: moreText.implicitWidth + 24
+                height: 28
+                radius: 14
+                color: moreMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : moreMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
+                Text {
+                    id: moreText
+                    anchors.centerIn: parent
+                    text: parent.modelData.text
+                    color: root.ink
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                }
+                MouseArea {
+                    id: moreMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        parent.modelData.act?.();
+                        root.acted();
+                    }
+                }
+            }
+        }
+    }
     Item {
         visible: !root.isHud && !root.isCard
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: 52
 
         IslandGlyph {
             id: glyph
@@ -118,19 +157,21 @@ Item {
             }
         }
 
-        // Trailing: a device battery ring, or an action (and a second one,
-        // e.g. Decline before Accept)
+        // Trailing: a device battery ring and/or an action (and a second one,
+        // e.g. Decline before Accept); the ring sits before the buttons
         Item {
             id: trailing
+            readonly property real pills: root.event?.action ? actionPill.width + (root.event?.action2 ? secondPill.width + 6 : 0) : 0
             anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-            width: root.event?.battery !== undefined ? 34 : root.event?.action ? actionPill.width + (root.event?.action2 ? secondPill.width + 6 : 0) : 0
+            width: (root.event?.battery !== undefined ? 34 + (pills > 0 ? 8 : 0) : 0) + pills
             height: 34
             opacity: root.ease(root.step(0.4))
             scale: 0.7 + 0.3 * root.ease(root.step(0.4))
 
             Shape {
                 id: batRing
-                anchors.fill: parent
+                width: 34
+                height: 34
                 visible: root.event?.battery !== undefined
                 preferredRendererType: Shape.CurveRenderer
                 readonly property real level: Math.max(0, Math.min(1, root.event?.battery ?? 0))

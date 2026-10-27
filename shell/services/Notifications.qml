@@ -21,8 +21,12 @@ Singleton {
     function toIsland(n) {
         const words = (n.summary || n.appName || "").split(/\s+/).filter(w => w.length > 0 && w[0].toUpperCase() !== w[0].toLowerCase() || /^[0-9]/.test(w));
         const def = (n.actions ?? []).find(a => a.identifier === "default");
+        const b = Object.assign({}, byId);
+        b[n.id] = n;
+        byId = b;
         Island.post({
             kind: "notification",
+            nid: n.id,
             card: {
                 name: n.summary || n.appName,
                 time: "now",
@@ -34,6 +38,99 @@ Singleton {
             },
             onAction: () => def ? def.invoke() : Panels.show("notificationCenter")
         }, 5000);
+    }
+
+    // A notification the island already shows: from the app behind a live
+    // activity (the music player), or naming the same thing as an island
+    // alert from the last 10 s (the same Bluetooth device, drive, download,
+    // timer). Anything with buttons of its own (Reply, Accept) still shows.
+    readonly property var islandKinds: ["music", "device", "usb", "display", "charging", "battery", "audio", "download", "transfer", "timer", "stopwatch", "recording", "trash"]
+    function norm(x) {
+        return String(x ?? "").toLowerCase().replace(/<[^>]*>/g, " ").replace(/[^a-z0-9\u00c0-\uffff]+/g, " ").trim();
+    }
+    function mentions(a, b) {
+        a = norm(a);
+        b = norm(b);
+        return a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a));
+    }
+    function actionable(n) {
+        return (n.actions ?? []).some(a => a.identifier !== "default");
+    }
+    // From the app that's playing, while the music activity is live (its
+    // controls are in the island)
+    function fromPlayer(n) {
+        if (!Island.activities.some(a => a.kind === "music"))
+            return false;
+        const app = norm(n.appName) + " " + norm(n.desktopEntry);
+        const p = Island.player;
+        const who = [p?.identity, p?.desktopEntry].map(norm).filter(x => x.length >= 3);
+        return who.some(w => app.includes(w) || w.includes(norm(n.appName)));
+    }
+    function duplicate(n) {
+        if (!Island.enabled)
+            return false;
+        if (fromPlayer(n))
+            return true;
+        // About something the island just showed (its title names the
+        // thing: the device, drive, file or timer; subtitles like
+        // "Connected" are too common to go by)
+        const now = Date.now();
+        return Island.recent.some(e => now - e.at <= 10000 && root.about(e, n));
+    }
+    function about(e, n) {
+        return islandKinds.includes(e.kind) && (mentions(e.title, n.summary) || mentions(e.title, n.body));
+    }
+    // A notification's own buttons on the island alert about the same
+    // thing, while that alert shows: the free places beside its title, the
+    // rest on rows under it, and a little longer on screen to use them
+    function attachToAlert(n) {
+        if (!Island.enabled)
+            return false;
+        const now = Date.now();
+        const e = Island.recent.slice().reverse().find(x => x.uid && now - x.at <= 10000 && about(x, n) && Island.byUid[x.uid]);
+        return e ? attach(e.uid, n) : false;
+    }
+    function attach(uid, n) {
+        const ev = Island.byUid[uid];
+        const acts = (n.actions ?? []).filter(a => a.identifier !== "default" && a.text);
+        if (!ev || acts.length === 0)
+            return false;
+        const patch = {};
+        let i = 0;
+        if (!ev.action && acts[i]) {
+            const a = acts[i++];
+            patch.action = a.text;
+            patch.onAction = () => a.invoke();
+        }
+        if (!ev.action2 && acts[i]) {
+            const a = acts[i++];
+            patch.action2 = a.text;
+            patch.onAction2 = () => a.invoke();
+        }
+        // The rest on rows under it
+        if (i < acts.length)
+            patch.more = (ev.more ?? []).concat(acts.slice(i).map(a => ({ text: a.text, act: () => a.invoke() })));
+        patch.expires = Math.max(ev.expires ?? 0, Date.now() + 8000);
+        Island.update(uid, patch);
+        return true;
+    }
+
+    // An island alert that came just after a notification about the same
+    // thing (Bluetooth and USB alerts wait a moment for names to settle):
+    // the notification leaves the screen (it stays in Notification Center,
+    // and the bell), its buttons moving onto the alert; one whose buttons
+    // don't fit stays where it is
+    function islandSaid(e) {
+        const now = Date.now();
+        const quietNow = n => n && now - (received[n.id]?.getTime() ?? 0) < 4000 && about(e, n) && (!actionable(n) || attach(e.uid, n));
+        for (const n of popups.slice())
+            if (quietNow(n))
+                dismissPopup(n);
+        for (let i = Island.alerts.count - 1; i >= 0; i--) {
+            const ev = Island.byUid[Island.alerts.get(i).uid];
+            if (ev?.kind === "notification" && ev.nid !== undefined && quietNow(byId[ev.nid]))
+                Island.remove(ev.uid);
+        }
     }
 
     function addPopup(n) {
@@ -140,6 +237,13 @@ Singleton {
             r[n.id] = new Date();
             root.received = r;
             if (!Focus.allows(n))
+                return;
+            // Already on show in the island (a live activity, or an alert a
+            // moment ago): only to Notification Center and the bell, quietly.
+            // One with buttons of its own (Reply, Accept) puts them on that
+            // island alert when it's still showing; otherwise it shows as
+            // usual, in the island or as a banner, as set.
+            if (root.actionable(n) ? root.attachToAlert(n) : root.duplicate(n))
                 return;
             Sounds.notify(n);
             // Optionally as an iOS-style card in the dynamic island instead of a banner

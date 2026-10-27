@@ -285,7 +285,8 @@ Singleton {
                 property bool lightBlur: true // fewer, smaller Hyprland blur passes
                 property bool shortAnimations: true
                 property bool pauseLiveWallpaper: true
-                property bool lowRefresh: true // the display's lowest refresh rate (48 Hz on most laptop panels)
+                property bool refreshDrop: false // also drop the laptop panel to its lowest refresh rate (48 Hz on most); the switch blanks the screen for a moment
+                property string hotAction: "auto" // when the CPU gets hot: auto (cool down by itself) | ask (an island alert asks first)
             }
             property JsonObject performance: JsonObject {
                 // Spotlight, Control Center and Notification Center stay loaded

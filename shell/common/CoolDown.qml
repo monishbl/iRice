@@ -20,11 +20,20 @@ Singleton {
 
     readonly property var cfg: Config.options.cooling
     property bool hot: false // set by the island's temperature watch (services/Island.qml)
+    // Ask mode (cooling.hotAction "ask"): hot only cools down once you say so
+    // in the island's alert; "Not now" keeps it off until the laptop cools
+    property bool accepted: false
+    property bool declined: false
+    onHotChanged: if (!hot) {
+        accepted = false;
+        declined = false;
+    }
     property bool manual: false // the Control Center control
     // Turned off by hand while hot or on battery: stays off until that ends
     property bool snoozed: false
     readonly property bool onBattery: UPower.onBattery
-    readonly property bool automatic: Config.ready && ((cfg.whenHot && hot) || (cfg.onBattery && onBattery))
+    readonly property bool hotOn: cfg.whenHot && hot && (cfg.hotAction !== "ask" || accepted)
+    readonly property bool automatic: Config.ready && (hotOn || (cfg.onBattery && onBattery))
     onAutomaticChanged: if (!automatic) snoozed = false
     readonly property bool active: Config.ready && (manual || (automatic && !snoozed))
     function toggle() {
@@ -37,7 +46,7 @@ Singleton {
             manual = true;
         }
     }
-    readonly property string why: !active ? (snoozed ? "Off until it cools or you plug in" : "") : manual ? "Turned on" : hot && cfg.whenHot ? "The CPU is hot" : "On battery"
+    readonly property string why: !active ? (snoozed || declined ? "Off until it cools or you plug in" : "") : manual ? "Turned on" : hotOn ? "The CPU is hot" : "On battery"
     // qs -c irice ipc call cooldown toggle | on | off
     IpcHandler {
         target: "cooldown"
@@ -113,7 +122,9 @@ Singleton {
     // The laptop's own panel switches to its lowest rate at the same
     // resolution (40 Hz or more); the rate it had comes back after. External
     // and mirrored screens are left alone.
-    readonly property bool lowRefresh: active && cfg.lowRefresh
+    // Only once per cool-down (it starts and ends steadily, Island.qml), and
+    // off unless asked for: the mode change blanks the screen for a moment
+    readonly property bool lowRefresh: active && cfg.refreshDrop
     onLowRefreshChanged: if (stateReady) monitorsRead.running = true
     property var savedRates: ({}) // output name -> refresh rate before cool-down
     function setRate(m, rate) {

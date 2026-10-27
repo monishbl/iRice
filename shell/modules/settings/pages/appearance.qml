@@ -594,6 +594,18 @@ Column {
             Switch { checked: Config.options.cooling.whenHot; onToggled: Config.options.cooling.whenHot = !checked }
         }
         Row {
+            visible: Config.options.cooling.whenHot
+            label: "When it gets hot"
+            detail: Config.options.cooling.hotAction === "ask" ? "The island asks first; the question stays until you answer. Not now keeps it off until the laptop cools." : "Starts by itself; ends after 3 minutes well below the alert temperature"
+            Segmented {
+                width: 240
+                readonly property var values: ["auto", "ask"]
+                options: ["Automatically", "Ask first"]
+                current: Math.max(0, values.indexOf(Config.options.cooling.hotAction))
+                onSelected: i => Config.options.cooling.hotAction = values[i]
+            }
+        }
+        Row {
             label: "On battery"
             Switch { checked: Config.options.cooling.onBattery; onToggled: Config.options.cooling.onBattery = !checked }
         }
@@ -618,8 +630,8 @@ Column {
         }
         Row {
             label: "Lower refresh rate"
-            detail: "The display's lowest rate (48 Hz on most laptop screens); apps draw fewer frames too"
-            Switch { checked: Config.options.cooling.lowRefresh; onToggled: Config.options.cooling.lowRefresh = !checked }
+            detail: "The laptop screen's lowest rate (48 Hz on most); apps draw fewer frames too. The screen goes black for a moment when it switches."
+            Switch { checked: Config.options.cooling.refreshDrop; onToggled: Config.options.cooling.refreshDrop = !checked }
         }
         Row {
             label: "Pause live wallpaper"

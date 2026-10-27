@@ -120,6 +120,15 @@ Singleton {
     property int burstIndex: 0
 
     readonly property bool armed: started.elapsed // ignore initial values
+    // What the island said lately (kind, title, subtitle, when), so a desktop
+    // notification about the same thing can stay quiet (Notifications.qml)
+    property var recent: []
+    function note(e, uid) {
+        const now = Date.now();
+        const r = { kind: e.kind ?? "", title: e.title ?? "", subtitle: e.subtitle ?? "", at: now, uid: uid };
+        recent = recent.filter(x => now - x.at < 20000).concat([r]);
+        return r;
+    }
     function post(e, ms) {
         if (!enabled || !armed)
             return;
@@ -131,6 +140,7 @@ Singleton {
                 if (byUid[u]?.kind === e.kind) {
                     const ev = Object.assign({ uid: u, delay: 0, expires: now + (ms ?? 3000) }, e);
                     byUid = Object.assign({}, byUid, { [u]: ev });
+                    note(e, u);
                     return;
                 }
             }
@@ -147,6 +157,10 @@ Singleton {
         newestUid = uid;
         count = alerts.count;
         sweep.restart();
+        // (a notification about the same thing may have arrived just before)
+        const said = note(e, uid);
+        if (said.kind !== "notification")
+            Qt.callLater(() => Notifications.islandSaid(said));
     }
     // Change a live alert in place (e.g. the temperature as it moves)
     function update(uid, patch) {
@@ -273,13 +287,18 @@ Singleton {
         property: "islandActive"
         value: root.enabled && (root.wants("resources") || root.wants("temperature"))
     }
-    // Temperature: hot after two readings at or above the threshold, cool
-    // again 5 °C below it. One alert per hot spell (its reading kept live
-    // while it shows); after that the closed island stays red until the CPU
-    // cools. Unless switched off, the Low Power profile is used meanwhile;
-    // the previous profile comes back after.
+    // Temperature: hot after two readings at or above the threshold; cool
+    // again only after 3 minutes at least 10 °C below it, so a CPU swinging
+    // around the line doesn't flip everything on and off. One alert per hot
+    // spell (its reading kept live while it shows); after that the closed
+    // island stays red until the CPU cools. Unless switched off, the Low
+    // Power profile is used meanwhile; the previous profile comes back after.
+    // With cooling.hotAction "ask", the alert asks before cooling down and
+    // stays until answered (or the spell ends).
     readonly property int hotTemp: cfg.hotTemp ?? 90
     property int hotTicks: 0
+    property real coolSince: 0 // when the CPU dropped well below the threshold
+    readonly property bool asking: Config.options.cooling.whenHot && Config.options.cooling.hotAction === "ask"
     property bool hot: false
     property bool hotPreview: false // `qs ipc call island hot true`
     readonly property bool showHot: hot || hotPreview
@@ -309,9 +328,20 @@ Singleton {
     }
     onHotChanged: {
         CoolDown.hot = hot;
-        throttle(hot);
-        if (!hot)
+        throttle(hot && (!asking || CoolDown.accepted));
+        if (!hot) {
+            if (hotUid && asking)
+                remove(hotUid); // an unanswered question about a spell that's over
             hotUid = 0;
+        }
+    }
+    // Ask mode: Low Power comes with the yes
+    Connections {
+        target: CoolDown
+        function onAcceptedChanged() {
+            if (CoolDown.accepted && root.hot)
+                root.throttle(true);
+        }
     }
     Connections {
         target: Resources
@@ -325,14 +355,24 @@ Singleton {
             if (t <= 0)
                 return; // a failed reading: ignore it rather than "cooling down"
             root.hotTicks = t >= root.hotTemp ? root.hotTicks + 1 : 0;
+            if (root.hot)
+                root.coolSince = t > root.hotTemp - 10 ? 0 : (root.coolSince || Date.now());
             if (!root.hot && root.hotTicks >= 2) {
                 root.hot = true;
-                root.post({ kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: root.hotText(t), value: Math.min(1, t / 105), color: Theme.accents.red }, 6000);
+                root.coolSince = 0;
+                if (root.asking)
+                    root.post({
+                        kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU " + Math.round(t) + " °C", value: Math.min(1, t / 105), color: Theme.accents.red,
+                        action: "Cool down", onAction: () => { CoolDown.accepted = true; root.remove(root.hotUid); },
+                        action2: "Not now", onAction2: () => { CoolDown.declined = true; root.remove(root.hotUid); }
+                    }, 86400000); // stays until answered, or the spell ends
+                else
+                    root.post({ kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: root.hotText(t), value: Math.min(1, t / 105), color: Theme.accents.red }, 6000);
                 root.hotUid = root.newestUid;
-            } else if (root.hot && t < root.hotTemp - 5) {
+            } else if (root.hot && root.coolSince && Date.now() - root.coolSince >= 180000) {
                 root.hot = false;
             } else if (root.hot && root.hotUid) {
-                root.update(root.hotUid, { subtitle: root.hotText(t), value: Math.min(1, t / 105) });
+                root.update(root.hotUid, { subtitle: root.asking ? "CPU " + Math.round(t) + " °C" : root.hotText(t), value: Math.min(1, t / 105) });
             }
         }
     }
