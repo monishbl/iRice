@@ -16,7 +16,7 @@ QtObject {
         { id: "reminders", file: "RemindersWidget.qml", label: "Reminders", icon: "list-checks", desc: "Your to-dos. Tick them off right on the desktop.", sizes: ["s", "m", "l"] },
         { id: "batteries", file: "BatteriesWidget.qml", label: "Batteries", icon: "battery-high", desc: "This computer and connected Bluetooth devices.", sizes: ["s", "m"] },
         { id: "nowPlaying", file: "NowPlayingWidget.qml", label: "Now Playing", icon: "music-notes", desc: "What's playing, with controls.", sizes: ["s", "m"] },
-        { id: "system", file: "SystemWidget.qml", label: "System", icon: "cpu", desc: "CPU and memory; medium adds temperature and swap.", sizes: ["s", "m"] },
+        { id: "system", file: "SystemWidget.qml", label: "System", icon: "cpu", desc: "The last minute of CPU and memory; bigger sizes add temperature, network and more.", sizes: ["s", "m", "l"] },
         { id: "photos", file: "PhotosWidget.qml", label: "Photos", icon: "image", desc: "A picture from your Pictures folder, changing every 15 minutes.", sizes: ["s", "m", "l"], bleed: true },
         { id: "notes", file: "NotesWidget.qml", label: "Note", icon: "note-pencil", desc: "A note you can type into on the desktop.", sizes: ["s", "m", "l"], ownId: true },
         { id: "stack", file: "StackWidget.qml", label: "Smart Stack", icon: "stack", desc: "Several widgets in one place: scroll to flip; it brings forward what matters now.", sizes: ["s", "m", "l"], ownId: true },

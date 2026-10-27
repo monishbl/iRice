@@ -206,6 +206,42 @@ def upstream():
     return r.stdout.strip() if r.returncode == 0 else "origin/main"
 
 
+# ── Update notes (CHANGELOG.md) ────────────────────────────────────────────
+# "# iRice changelog", then entries newest first: "## <Title> · <YYYY-MM-DD>"
+# and markdown under it. An entry may end with <!-- packages: +a -b --> (the
+# iRice packages it adds / drops).
+ENTRY = re.compile(r"^## (.+?)\s*$", re.M)
+PKGS = re.compile(r"<!--\s*packages:(.*?)-->", re.S)
+
+
+def changelog_entries(text):
+    if not text:
+        return []
+    heads = list(ENTRY.finditer(text))
+    out = []
+    for i, m in enumerate(heads):
+        body = text[m.end():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
+        add, drop = [], []
+        for pm in PKGS.finditer(body):
+            for w in pm.group(1).split():
+                (add if w.startswith("+") else drop if w.startswith("-") else add).append(w.lstrip("+-"))
+        body = PKGS.sub("", body).strip()
+        head = m.group(1).strip()
+        title, _, date = head.rpartition(" · ")
+        if not title:
+            title, date = head, ""
+        out.append({"heading": m.group(0).strip(), "title": title.strip(), "date": date.strip(),
+                    "body": body, "packages": {"add": add, "drop": drop}})
+    return out
+
+
+def new_entries(base, new):
+    """The entries in the new version's changelog that this copy doesn't have
+    (by their exact heading line), newest first."""
+    have = {e["heading"] for e in changelog_entries(show(base, "CHANGELOG.md"))}
+    return [e for e in changelog_entries(show(new, "CHANGELOG.md")) if e["heading"] not in have]
+
+
 def check(config_dir, fetch=True):
     if not os.path.isdir(os.path.join(REPO, ".git")):
         return {"error": "This copy of iRice isn't a git checkout, so it can't update itself. Get it with the install command from irice.monishbl.in."}
@@ -225,6 +261,8 @@ def check(config_dir, fetch=True):
     if ahead > 0:
         report["error"] = f"This copy has {ahead} commit(s) of its own, so the update can't be applied on top automatically. Ask for help, or move your changes out first."
     report["notes"] = [l for l in git("log", "--format=%s", f"{base}..{new}").splitlines() if l][:30]
+    # Proper notes when the changelog has them (the commit subjects otherwise)
+    report["changelog"] = new_entries(base, new)
 
     # Code: files edited here that the update changes too
     local = set(l for l in git("diff", "--name-only", "HEAD").splitlines() if l)
@@ -350,12 +388,36 @@ def load_json_text(text, fallback):
 
 # ── Apply ──────────────────────────────────────────────────────────────────
 
-def apply(config_dir, choices):
+def rebuild(todo, base=45, span=40):
+    """Rebuilds parts (plugin, native, shaders). Failures are reported, not
+    fatal: the shell falls back (frosted glass without the plugin)."""
+    built, failed = [], []
+    steps = {"plugin": ["make", "-C", os.path.join(REPO, "hypr/plugin/irice-glass")],
+             "native": [os.path.join(REPO, "shell/native/build.sh")],
+             "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
+    names = {"plugin": "Building Liquid Glass", "native": "Building native helpers", "shaders": "Building shaders"}
+    for i, r in enumerate(todo):
+        if r not in steps:
+            continue
+        progress(base + span * i / max(1, len(todo)), names[r])
+        res = subprocess.run(steps[r], capture_output=True, text=True)
+        (built if res.returncode == 0 else failed).append(r)
+    return built, failed
+
+
+def apply(config_dir, choices, extra=()):
+    """extra: parts to rebuild whatever the update says (the glass plugin
+    after a Hyprland update); with no iRice update, only those are rebuilt."""
     report = check(config_dir, fetch=False)
     if report.get("error"):
         raise SystemExit(report["error"])
     if not report["available"]:
-        return {"applied": False, "message": "Already up to date."}
+        if not extra:
+            return {"applied": False, "message": "Already up to date."}
+        built, failed = rebuild(list(extra), 10, 75)
+        progress(85, "Finishing up")
+        return {"applied": False, "rebuilt": True, "backup": "", "built": built, "failed": failed,
+                "now": git("rev-parse", "--short", "HEAD").strip()}
     missing = [c["id"] for c in report["conflicts"] if choices.get(c["id"]) not in c["choices"]]
     if missing:
         raise SystemExit("Decide every conflict first: " + ", ".join(missing))
@@ -438,20 +500,15 @@ def apply(config_dir, choices):
         write_json(config_path, config)
     write_json(user_path, user)
 
-    # Rebuild what changed (failures are reported, not fatal: the shell falls back)
-    built, failed = [], []
-    steps = {"plugin": ["make", "-C", os.path.join(REPO, "hypr/plugin/irice-glass")],
-             "native": [os.path.join(REPO, "shell/native/build.sh")],
-             "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
-    names = {"plugin": "Building Liquid Glass", "native": "Building native helpers", "shaders": "Building shaders"}
-    todo = report.get("rebuild", [])
-    for i, r in enumerate(todo):
-        progress(45 + 40 * i / max(1, len(todo)), names[r])
-        res = subprocess.run(steps[r], capture_output=True, text=True)
-        (built if res.returncode == 0 else failed).append(r)
+    # Rebuild what changed, and what was asked (Hyprland updated: the plugin)
+    todo = list(report.get("rebuild", []))
+    todo += [r for r in extra if r not in todo]
+    built, failed = rebuild(todo)
     progress(85, "Finishing up")
+    # (the notes, for the new shell's "What's new")
     return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed,
-            "now": git("rev-parse", "--short", "HEAD").strip()}
+            "now": git("rev-parse", "--short", "HEAD").strip(),
+            "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
 
 
 def main():
@@ -460,12 +517,13 @@ def main():
     ap.add_argument("--config", required=True, help="the shell's config folder (config.json, keybinds.json)")
     ap.add_argument("--choices", help="apply: JSON file mapping conflict ids to choices")
     ap.add_argument("--no-fetch", action="store_true")
+    ap.add_argument("--rebuild", default="", help="apply: also rebuild these (comma-separated: plugin,native,shaders)")
     a = ap.parse_args()
     try:
         if a.command == "check":
             out = check(a.config, fetch=not a.no_fetch)
         else:
-            out = apply(a.config, load_json(a.choices, {}) if a.choices else {})
+            out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r])
     except (RuntimeError, SystemExit) as e:
         out = {"error": str(e)}
     print(json.dumps(out, indent=1))

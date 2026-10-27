@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import qs.common
@@ -233,19 +234,38 @@ Item {
         visible: root.kind === "music" && !root.overlay
         anchors.fill: parent
 
-        Rectangle {
+        // Nested in the island's corner: its radius less the island's padding
+        Item {
             id: art
             width: 72
             height: 72
-            radius: 14
-            color: Qt.rgba(1, 1, 1, 0.1)
-            clip: true
+            readonly property real radius: Theme.radius.tile - 12
+            Squircle {
+                anchors.fill: parent
+                radius: art.radius
+                color: Qt.rgba(1, 1, 1, 0.1)
+            }
             Image {
                 anchors.fill: parent
                 source: root.player?.trackArtUrl ?? ""
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(144, 144)
                 asynchronous: true
+                layer.enabled: status === Image.Ready
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: artMask
+                    maskThresholdMin: 0.5
+                    maskSpreadAtMin: 1
+                }
+            }
+            Squircle {
+                id: artMask
+                anchors.fill: parent
+                radius: art.radius
+                color: "black"
+                visible: false
+                layer.enabled: true
             }
             Icon {
                 anchors.centerIn: parent
@@ -380,14 +400,14 @@ Item {
         }
         // Timer, stopwatch, recording: a small caption over a big number.
         // Transfer and call: the file / app over what's happening.
-        readonly property bool wordy: root.kind === "transfer" || root.kind === "call"
+        readonly property bool wordy: root.kind === "transfer" || root.kind === "call" || root.kind === "screenShare" || root.kind === "sysupdate"
         Column {
             anchors { left: badge.right; leftMargin: 14; right: buttons.left; rightMargin: 10; verticalCenter: badge.verticalCenter }
             spacing: 0
             Text {
                 width: parent.width
                 elide: Text.ElideRight
-                text: parent.parent.wordy ? LiveInfo.title(root.kind) : root.kind === "timer" ? LiveInfo.title("timer") + (Timers.running ? "" : " · paused") : root.kind === "stopwatch" ? "Stopwatch" + (Timers.laps.length ? " · " + Timers.laps.length + (Timers.laps.length === 1 ? " lap" : " laps") : "") : "Recording"
+                text: parent.parent.wordy ? LiveInfo.title(root.kind) : root.kind === "timer" ? LiveInfo.title("timer") + (Timers.running ? "" : " · paused") : root.kind === "stopwatch" ? "Stopwatch" + (Timers.laps.length ? " · " + Timers.laps.length + (Timers.laps.length === 1 ? " lap" : " laps") : "") : LiveInfo.title("recording") + (Recorder.cfg.mic !== "" && Recorder.micMuted ? " · mic off" : "")
                 color: parent.parent.wordy ? root.ink : root.ink2
                 font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.body : Theme.font.small; weight: parent.parent.wordy ? Font.DemiBold : Font.Medium }
             }
@@ -395,7 +415,7 @@ Item {
                 width: parent.width
                 elide: Text.ElideRight
                 text: parent.parent.wordy ? LiveInfo.detail(root.kind) : root.kind === "stopwatch" ? Timers.formatMs(Timers.swElapsed) : LiveInfo.time(root.kind)
-                color: root.kind === "recording" ? Theme.accents.red : parent.parent.wordy ? root.ink2 : root.ink
+                color: root.kind === "recording" ? (Recorder.paused ? root.ink2 : Theme.accents.red) : parent.parent.wordy ? root.ink2 : root.ink
                 font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.small : 24; weight: parent.parent.wordy ? Font.Normal : Font.DemiBold; features: { "tnum": 1 } }
             }
         }
@@ -408,10 +428,33 @@ Item {
                 Ctl {
                     required property var modelData
                     icon: modelData.icon
+                    iconColor: modelData.danger ? Theme.accents.red : root.ink
                     enabled: modelData.on
                     opacity: enabled ? 1 : 0.4
                     onClicked: modelData.act()
                 }
+            }
+        }
+        // Recording with a microphone: its level (grey while muted)
+        Item {
+            id: micMeter
+            readonly property bool active: root.visible && root.kind === "recording" && Recorder.cfg.mic !== "" && Recorder.micNode !== null
+            visible: active
+            onActiveChanged: Recorder.meterUsers += active ? 1 : -1
+            Component.onDestruction: if (active) Recorder.meterUsers--
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 8 }
+            height: 4
+            Rectangle {
+                anchors.fill: parent
+                radius: 2
+                color: Qt.rgba(1, 1, 1, 0.16)
+            }
+            Rectangle {
+                width: parent.width * (Recorder.micMuted ? 0 : Math.min(1, Math.sqrt(Recorder.micLevel)))
+                height: parent.height
+                radius: 2
+                color: Theme.accents.green
+                Behavior on width { NumberAnimation { duration: 80 } }
             }
         }
         // Timer and transfer progress

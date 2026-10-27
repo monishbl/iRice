@@ -207,7 +207,7 @@ WlSessionLockSurface {
             readonly property var next: Calendar.upcoming(1)[0] ?? null
             Repeater {
                 model: [
-                    { icon: Island.charging ? "battery-charging" : "battery-high", text: Island.hasBattery ? Math.round(Island.level * 100) + "%" : "", on: Island.hasBattery },
+                    { icon: "", battery: true, text: Island.hasBattery ? Math.round(Island.level * 100) + "%" : "", on: Island.hasBattery },
                     { icon: Weather.icon, text: Weather.temp + "°", on: Weather.ready },
                     { icon: "calendar-blank", text: complications.next ? (complications.next.allDay ? "Today" : Qt.formatTime(complications.next.start, "h:mm")) : "", on: !!complications.next },
                     { icon: "list-checks", text: String((UiState.data.todos ?? []).filter(t => !t.done).length), on: (UiState.data.todos ?? []).some(t => !t.done) }
@@ -221,10 +221,20 @@ WlSessionLockSurface {
                         anchors.centerIn: parent
                         spacing: 1
                         Icon {
+                            visible: !parent.parent.modelData.battery
                             anchors.horizontalCenter: parent.horizontalCenter
                             name: parent.parent.modelData.icon
                             fill: true
                             size: 18
+                            color: surface.ink
+                        }
+                        BatteryGlyph {
+                            visible: !!parent.parent.modelData.battery
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            size: 11
+                            level: Island.level
+                            charging: Island.charging && Island.level < 1
+                            plugged: Island.charging && Island.level >= 1
                             color: surface.ink
                         }
                         Text {

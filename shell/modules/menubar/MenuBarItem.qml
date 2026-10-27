@@ -18,6 +18,7 @@ Item {
     property bool active: false
     property color color: "white"
     property int iconSize: 15
+    property Component glyph: null // a drawn icon (battery, Wi-Fi) in place of `icon`
     property int badge: 0 // small count bubble, e.g. unread notifications
     property string menu // popover this item opens; sliding onto it while a menu is open switches to it
     // Unread notifications, drawn inline before the text: bellDot | dot | count | bellCount | off
@@ -116,6 +117,12 @@ Item {
                 colorizationColor: root.color
                 brightness: 1
             }
+        }
+        Loader {
+            active: root.glyph !== null
+            visible: active
+            anchors.verticalCenter: parent.verticalCenter
+            sourceComponent: root.glyph
         }
         Icon {
             visible: root.icon !== ""

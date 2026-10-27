@@ -19,7 +19,32 @@ ShellRoot {
     property string backup: ""
     property bool leaving: false
     property real shown: 0
-    Component.onCompleted: shown = 1
+    // Up for at least 5 s, however quick the update (it shouldn't flash by)
+    property real openedAt: 0
+    Component.onCompleted: {
+        shown = 1;
+        openedAt = Date.now();
+    }
+    // Your menu icon (written by the shell that started the update: its
+    // Phosphor glyph, or your distro's logo), in place of a big wordmark
+    property string glyph: ""
+    property string image: ""
+    FileView {
+        path: Quickshell.shellDir + "/../look.json"
+        blockLoading: true
+        printErrors: false
+        onLoaded: {
+            try {
+                const j = JSON.parse(text());
+                root.glyph = j.glyph ?? "";
+                root.image = j.image ?? "";
+            } catch (e) {}
+        }
+    }
+    FontLoader {
+        id: phosphor
+        source: Quickshell.shellDir + "/Phosphor-Fill.ttf"
+    }
     Behavior on shown { NumberAnimation { duration: root.leaving ? 400 : 300; easing.type: root.leaving ? Easing.InCubic : Easing.OutCubic } }
     Behavior on percent { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
 
@@ -56,7 +81,8 @@ ShellRoot {
     }
     SequentialAnimation {
         id: finish
-        PauseAnimation { duration: 600 } // "Update installed", briefly
+        // "Update installed", briefly, and the whole screen at least 5 s
+        PauseAnimation { duration: Math.max(600, 5000 - (Date.now() - root.openedAt)) }
         ScriptAction { script: { root.leaving = true; root.shown = 0; } }
         PauseAnimation { duration: 450 }
         ScriptAction { script: Qt.quit() }
@@ -88,32 +114,46 @@ ShellRoot {
                     // (moves up a little as it appears)
                     transform: Translate { y: (1 - root.shown) * 8 }
 
+                    // Your menu icon
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 56
+                        height: 56
+                        Text {
+                            anchors.centerIn: parent
+                            visible: root.image === ""
+                            text: root.glyph !== "" && phosphor.status === FontLoader.Ready ? root.glyph : ""
+                            color: "#EDEDEF"
+                            font { family: phosphor.name; pixelSize: 52 }
+                        }
+                        Image {
+                            anchors.centerIn: parent
+                            visible: root.image !== ""
+                            source: root.image !== "" ? "file://" + root.image : ""
+                            sourceSize: Qt.size(52, 52)
+                        }
+                    }
+                    Item { width: 1; height: 28 }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "iRice"
+                        text: root.phase === "error" ? root.step : root.phase === "done" ? "iRice is up to date" : root.phase === "restart" ? "iRice is restarting" : "iRice is updating"
                         color: "#EDEDEF"
-                        font { family: "Inter"; pixelSize: 42; weight: Font.DemiBold; letterSpacing: -1 }
+                        font { family: "Inter"; pixelSize: 14; weight: Font.Medium }
                     }
-                    Item { width: 1; height: 32 }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.phase === "error" ? root.step : root.phase === "done" ? "Update installed" : root.phase === "restart" ? "Restarting iRice" : "Installing update"
-                        color: "#EDEDEF"
-                        font { family: "Inter"; pixelSize: 16; weight: Font.Medium }
-                    }
-                    Item { width: 1; height: 16 }
+                    Item { width: 1; height: 14 }
 
                     // Progress
                     Rectangle {
                         visible: root.phase !== "error"
-                        width: parent.width
-                        height: 6
-                        radius: 3
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(200, parent.width)
+                        height: 4
+                        radius: 2
                         color: "#2C2C31"
                         Rectangle {
                             width: Math.max(height, parent.width * root.percent / 100)
                             height: parent.height
-                            radius: 3
+                            radius: 2
                             color: "#EDEDEF"
                         }
                     }
@@ -123,7 +163,7 @@ ShellRoot {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.phase === "done" ? "Your settings and shortcuts are as you left them." : root.step + "…"
                         color: "#A1A1AA"
-                        font { family: "Inter"; pixelSize: 13 }
+                        font { family: "Inter"; pixelSize: 12 }
                     }
 
                     // Something went wrong: what, that nothing was lost, and Close

@@ -1,11 +1,14 @@
 import QtQuick
+import Quickshell
 import Quickshell.Services.UPower
 import qs.common
+import qs.modules.resources
 import qs.services
 
 // The quiet last line of the expanded island: battery, CPU (with the live
 // package temperature, reddish when running hot) and memory, and the next
-// calendar event. Staggers in after the activities.
+// calendar event. Staggers in after the activities. Hovering CPU, memory or
+// the temperature shows its last minute in a glass popover (ResourceHover).
 Item {
     id: root
 
@@ -47,26 +50,49 @@ Item {
         id: stats
         anchors.verticalCenter: parent.verticalCenter
         spacing: 14
+        // By name, so the figures (and an open popover) stay put while the
+        // numbers change; each figure reads its own value
+        readonly property string figures: (Island.hasBattery ? "battery," : "") + "cpu," + (Resources.temperature > 0 ? "temperature," : "") + "memory"
         Repeater {
-            model: [
-                ...(Island.hasBattery ? [{ icon: Island.charging ? "battery-charging" : "battery-high", text: Math.round(Island.level * 100) + "%" }] : []),
-                { icon: "cpu", text: Math.round(Resources.cpu * 100) + "%" },
-                ...(Resources.temperature > 0 ? [{ icon: "thermometer-simple", text: Math.round(Resources.temperature) + "°", hot: Island.hot }] : []),
-                { icon: "memory", text: Math.round(Resources.memory * 100) + "%" }
-            ]
+            model: stats.figures.split(",")
             Row {
-                required property var modelData
+                id: figure
+                required property string modelData
+                readonly property bool isStat: modelData !== "battery"
+                readonly property bool hot: modelData === "temperature" && Island.hot
+                readonly property color tint: hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
                 spacing: 4
-                Icon {
+                HoverHandler {
+                    id: figureHover
+                    enabled: figure.isStat
+                }
+                ResourceHover {
+                    target: figure
+                    key: figure.isStat ? figure.modelData : "cpu"
+                    hovered: figureHover.hovered && root.shown
+                    screen: figure.QsWindow.window?.screen ?? null
+                    gap: 14 // clear of the island's rim
+                }
+                BatteryGlyph {
+                    visible: figure.modelData === "battery"
                     anchors.verticalCenter: parent.verticalCenter
-                    name: parent.modelData.icon
+                    size: 10
+                    level: Island.level
+                    charging: Island.charging && Island.level < 1
+                    plugged: Island.charging && Island.level >= 1
+                    color: figure.tint
+                }
+                Icon {
+                    visible: figure.modelData !== "battery"
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: figure.modelData === "temperature" ? "thermometer-simple" : figure.modelData
                     size: 13
-                    color: parent.modelData.hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
+                    color: figure.tint
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: parent.modelData.text
-                    color: parent.modelData.hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
+                    text: figure.modelData === "battery" ? Math.round(Island.level * 100) + "%" : figure.modelData === "temperature" ? Math.round(Resources.temperature) + "°" : Math.round((figure.modelData === "cpu" ? Resources.cpu : Resources.memory) * 100) + "%"
+                    color: figure.tint
                     font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                 }
             }

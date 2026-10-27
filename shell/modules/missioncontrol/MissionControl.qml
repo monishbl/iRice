@@ -182,8 +182,22 @@ Variants {
                             width: 150
                             height: Math.round((win.screen?.height ?? 1080) * space.s)
                             radius: 8
-                            // A plain container, like Overview (no wallpaper)
+                            // A plain container, like Overview; the wallpaper
+                            // behind its windows with overview.wallpapers
                             color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
+                            ClippingRectangle {
+                                anchors { fill: parent; margins: 1 }
+                                visible: Config.options.overview.wallpapers
+                                radius: 7
+                                color: "transparent"
+                                Image {
+                                    anchors.fill: parent
+                                    source: parent.visible ? Wallpaper.source : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    sourceSize: Qt.size(320, 200)
+                                    asynchronous: true
+                                }
+                            }
                             border.width: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? 2 : 1
                             border.color: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? Theme.accent : (Theme.dark ? "#36363C" : "#D4D4D8")
                             clip: true
@@ -315,11 +329,20 @@ Variants {
                             border.width: hover.containsMouse ? 3 : 0
                             border.color: Theme.accent
 
+                            // Settings → Overview → Window previews: Live and
+                            // Hybrid keep these updating (all of them are on the
+                            // current space), up to 30 times a second; Snapshot
+                            // takes one picture as Mission Control opens
                             ScreencopyView {
+                                id: shot
                                 anchors.fill: parent
                                 captureSource: win.shown ? tile.modelData.wayland : null
-                                live: win.shown
+                                live: false
                                 constraintSize: Qt.size(tile.width, tile.height)
+                            }
+                            LiveCapture {
+                                target: shot
+                                live: win.shown && (Config.options.overview.previews === "live" || Config.options.overview.previews === "hybrid")
                             }
                         }
 

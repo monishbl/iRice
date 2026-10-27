@@ -79,7 +79,7 @@ Item {
     readonly property real targetH: expanded ? body.y + body.implicitHeight + (showingEvent ? 16 : 14) : 26
     property real w: targetW
     property real h: targetH
-    property real r: expanded ? (Island.hasCard ? 32 : 26) : 13
+    property real r: expanded ? Math.min(Theme.radius.tile, h / 2) : 13 // open: iOS corners, like Control Center's tiles
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on r { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.08; epsilon: 0.1 } }

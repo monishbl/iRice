@@ -79,7 +79,10 @@ Item {
     onActiveIdChanged: keepActive()
     onIdsChanged: keepActive()
     onCapChanged: keepActive()
-    readonly property var shown: overflow ? ids.slice(start, start + cap) : ids
+    // Past the ends: arrows, or (dynamic) the next chips shrink and fade
+    // out like Instagram's dots and slide along as you move
+    readonly property bool dynamic: Config.options.menubar.workspaceOverflow === "dynamic"
+    readonly property var shown: overflow && !dynamic ? ids.slice(start, start + cap) : ids
     readonly property var hiddenLeft: overflow ? ids.slice(0, start) : []
     readonly property var hiddenRight: overflow ? ids.slice(start + cap) : []
     function busy(list) {
@@ -106,7 +109,7 @@ Item {
         spacing: 2
 
         Arrow {
-            visible: root.overflow
+            visible: root.overflow && !root.dynamic
             side: -1
             more: root.hiddenLeft.length > 0
             hot: root.busy(root.hiddenLeft)
@@ -117,16 +120,26 @@ Item {
             Rectangle {
                 id: ws
                 required property int modelData
+                required property int index
                 readonly property int wsId: modelData
+                // Dynamic overflow: how far past the shown window (0 inside);
+                // one past is smaller and fainter, two past smaller still,
+                // beyond that it's gone
+                readonly property int past: !root.overflow || !root.dynamic ? 0 : index < root.start ? root.start - index : Math.max(0, index - (root.start + root.cap - 1))
+                readonly property real fall: past === 0 ? 1 : past === 1 ? 0.7 : past === 2 ? 0.45 : 0
+                visible: fall > 0 || widthAnim.running
                 readonly property bool active: wsId === root.activeId
                 // Lives on another display (and, if shown there, is that one's current space)
                 readonly property bool elsewhere: !!root.monitorOf[wsId] && root.monitorOf[wsId] !== root.monitor
                 readonly property bool shownThere: elsewhere && root.monitorOf[wsId]?.activeWorkspace?.id === wsId
-                opacity: elsewhere ? 0.55 : 1
+                opacity: (elsewhere ? 0.55 : 1) * (past === 0 ? 1 : past === 1 ? 0.6 : 0.3)
+                scale: fall
+                Behavior on scale { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
                 readonly property var apps: [...new Set(root.occupied[wsId] ?? [])].slice(0, 3)
                 readonly property bool showIcons: root.style === "icons" && apps.length > 0
                 height: 18
-                width: showIcons ? apps.length * 14 + 10 : (active ? 26 : 18)
+                width: (showIcons ? apps.length * 14 + 10 : (active ? 26 : 18)) * fall
                 radius: 9
                 color: active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
                 function report() {
@@ -137,7 +150,7 @@ Item {
                 onActiveChanged: Qt.callLater(report)
                 onXChanged: report()
                 onWidthChanged: report()
-                Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
+                Behavior on width { NumberAnimation { id: widthAnim; duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
 
                 Row {
@@ -156,11 +169,12 @@ Item {
                 Rectangle {
                     anchors.centerIn: parent
                     visible: !ws.showIcons
-                    width: ws.active ? 12 : 5
+                    // empty: a faint dot; with windows: a short pill; current: longer
+                    width: ws.active ? 14 : root.occupied[ws.wsId] ? 10 : 5
                     height: 5
                     radius: 2.5
                     color: root.fg
-                    opacity: ws.active ? 1 : (root.occupied[ws.wsId] ? 0.8 : 0.35)
+                    opacity: ws.active ? 1 : (root.occupied[ws.wsId] ? 0.85 : 0.35)
                     Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
                 }
                 // On another display: a small bar under it (brighter while
@@ -190,7 +204,7 @@ Item {
         }
 
         Arrow {
-            visible: root.overflow
+            visible: root.overflow && !root.dynamic
             side: 1
             more: root.hiddenRight.length > 0
             hot: root.busy(root.hiddenRight)

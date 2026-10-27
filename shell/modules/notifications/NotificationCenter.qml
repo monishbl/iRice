@@ -22,7 +22,7 @@ Variants {
             popoverName: "notificationCenter"
             contentWidth: 340
             targetX: (screen?.width ?? 1920) - implicitWidth
-            radius: Theme.radius.module + padding // concentric with the platters inside
+            radius: Theme.radius.tile + padding // concentric with the platters inside
             // Without the panel (Settings → Notifications), every card is its
             // own glass; solid glass always has the panel
             bare: Theme.glass.tier !== "solid" && !Config.options.notificationCenter.background

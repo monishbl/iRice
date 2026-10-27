@@ -6,6 +6,7 @@ import Quickshell.Services.UPower
 import qs.common
 import qs.glass
 import qs.services
+import qs.modules.network
 
 // Control Center: connectivity, quick switches, display and sound, media.
 Variants {
@@ -23,7 +24,7 @@ Variants {
             screen: modelData
             popoverName: "controlCenter"
             targetX: (screen?.width ?? 1920) - implicitWidth
-            radius: Theme.radius.module + padding // concentric with the modules inside
+            radius: Theme.radius.tile + padding // concentric with the modules inside
             // Without the panel background (the default), every control is its
             // own glass chip, like Tahoe. Solid glass always has the panel.
             bare: Theme.glass.tier !== "solid" && !Config.options.controlCenter.background
@@ -105,7 +106,7 @@ Variants {
                     x: sub.pad
                     y: sub.pad
                     width: 320
-                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : caffeinePage.visible ? caffeinePage.height : 0
+                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : caffeinePage.visible ? caffeinePage.height : resourcesPage.visible ? resourcesPage.height : 0
                     Behavior on height { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.3 } }
                     clip: true
                     WifiPage {
@@ -137,6 +138,13 @@ Variants {
                         width: parent.width
                         showBack: false
                         visible: cc.page === "caffeine"
+                    }
+                    ResourcesPage {
+                        id: resourcesPage
+                        width: parent.width
+                        showBack: false
+                        visible: cc.page === "resources"
+                        networkExtra: Component { SpeedTestCard { compact: true; settingsLink: true } }
                     }
                 }
             }
@@ -324,6 +332,7 @@ Variants {
                                 cols: modelData.w
                                 rows: modelData.h
                                 defs: moduleDefs
+                                unit: grid.unit
                                 editing: cc.editing
                                 chip: cc.bare
                                 focused: cc.focusedModule === modelData.id

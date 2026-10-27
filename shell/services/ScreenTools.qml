@@ -18,9 +18,10 @@ Singleton {
     property string selecting: ""
     property var selectingScreen: null
 
-    property bool recording: false
-    property string recordingFile: ""
-    property real recordingStarted: 0
+    // Recording lives in Recorder; these forward to it
+    readonly property bool recording: Recorder.recording
+    readonly property string recordingFile: Recorder.file
+    readonly property real recordingStarted: Recorder.started
 
     // Last screen translation, shown by TranslationCard
     property var translation: null // { x, y, w, h, screen, source, text, busy, error }
@@ -46,7 +47,7 @@ Singleton {
     }
 
     function select(mode) {
-        if (mode === "record" && recording)
+        if ((mode === "record" || mode === "record-window") && recording)
             return stopRecording();
         Panels.close();
         selectingScreen = focusedScreen();
@@ -68,7 +69,7 @@ Singleton {
         else if (mode === "translate") {
             translation = { x: rect.x, y: rect.y, w: rect.width, h: rect.height, screen: screen, source: "", text: "", busy: true, error: "" };
             run("translate", "grim -g '" + geo + "' - | tesseract stdin stdout -l eng 2>/dev/null");
-        } else if (mode === "record")
+        } else if (mode === "record" || mode === "record-window")
             startRecording(geo);
         else if (mode === "ask")
             askAbout(["-g", geo]);
@@ -100,31 +101,16 @@ Singleton {
     }
 
     function startRecording(geo) {
-        const file = videosDir + "/Screen Recording " + stamp() + ".mp4";
-        recordingFile = file;
-        recorder.command = ["sh", "-c", "mkdir -p \"$1\" && exec wf-recorder -g \"$2\" -f \"$3\"", "sh", videosDir, geo, file];
-        recorder.running = true;
-        recording = true;
-        recordingStarted = Date.now();
+        Recorder.start({ region: geo });
     }
 
     function recordScreen() {
         Panels.close();
-        const s = focusedScreen();
-        startRecording(geometry(s, Qt.rect(0, 0, s.width, s.height)));
+        Recorder.start({ output: Hyprland.focusedMonitor?.name ?? "" });
     }
 
     function stopRecording() {
-        if (recorder.running)
-            recorder.signal(2); // SIGINT: wf-recorder finalises the file
-    }
-
-    Process {
-        id: recorder
-        onExited: code => {
-            root.recording = false;
-            Launch.run(["sh", "-c", "a=$(notify-send -a 'Screen Recording' -i video-x-generic -A open=Open -A folder='Show in Folder' 'Recording saved' \"$(basename \"$1\")\"); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", root.recordingFile, Files.manager]);
-        }
+        Recorder.stop();
     }
 
     // One shell job at a time per kind; output handled by kind.

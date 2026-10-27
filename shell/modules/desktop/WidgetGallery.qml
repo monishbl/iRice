@@ -154,7 +154,7 @@ Variants {
                                         height: sizeCol.px.height
                                         scale: win.previewScale
                                         transformOrigin: Item.TopLeft
-                                        radius: 22
+                                        radius: Theme.radius.tile
                                         color: Theme.color.platter
                                         border.width: addMouse.containsMouse ? 3 : 1
                                         border.color: addMouse.containsMouse ? Theme.accent : Qt.alpha("white", Theme.dark ? 0.08 : 0.4)

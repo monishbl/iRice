@@ -79,6 +79,16 @@ Column {
                 onToggled: Config.options.desktop.smartRotate = !checked
             }
         }
+        Row {
+            label: "Resource graphs"
+            detail: "How the System widget, the island and menu bar popovers and Control Center draw CPU, memory and network."
+            Segmented {
+                width: 200
+                options: ["Area", "Bars", "Line"]
+                current: Math.max(0, ["area", "bars", "line"].indexOf(Config.options.resources.graphStyle))
+                onSelected: i => Config.options.resources.graphStyle = ["area", "bars", "line"][i]
+            }
+        }
     }
 
     Group {
@@ -212,6 +222,17 @@ Column {
                 value: Config.options.hotCorners.bottomRight
                 onChosen: v => Config.options.hotCorners.bottomRight = v
             }
+        }
+    }
+
+    Group {
+        width: parent.width
+        SubpageLink {
+            icon: "record"
+            label: "Screen recording"
+            detail: "Frame rate, format, quality, sound and where recordings go"
+            value: Recorder.gsr ? "" : "Basic"
+            page: "desktop/recording"
         }
     }
 }

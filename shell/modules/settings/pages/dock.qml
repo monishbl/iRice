@@ -38,6 +38,17 @@ Column {
             }
         }
         Row {
+            label: "Space between icons"
+            detail: Math.round(Config.options.dock.iconSize * (Config.options.dock.gap ?? 0.18)) + " px"
+            Slider {
+                width: 220
+                from: 0.05
+                to: 0.4
+                value: Config.options.dock.gap ?? 0.18
+                onMoved: v => Config.options.dock.gap = Math.round(v * 100) / 100
+            }
+        }
+        Row {
             label: "Apps button"
             detail: "Opens the App Library (also Super+Shift+Space)"
             Switch { checked: Config.options.dock.appsButton; onToggled: Config.options.dock.appsButton = !checked }

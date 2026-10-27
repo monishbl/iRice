@@ -6,8 +6,9 @@ import qs.glass
 import qs.services
 
 // One Control Center module at its size. 1×1: a round button. 2×1: a pill
-// with the button, title and status. 2×2: a card. 4×1: a slider or wide
-// media row. In edit mode it shows a remove badge, cycles its size on click
+// with the button, title and status. 2×2: a card with iOS corners (half a
+// 1×1, continuous). Sliders are the whole module: a 4×1 or 1×2 capsule.
+// 4×1 media: a wide row. In edit mode it shows a remove badge, cycles its size on click
 // and can be dragged (the grid handles the drop).
 Item {
     id: root
@@ -39,9 +40,18 @@ Item {
     signal removeRequested
     signal resizeRequested
 
+    // The grid's cell: a 1×1 module's size (cards round their corners to half
+    // of it, like iOS, so every curve matches the round buttons')
+    property real unit: (width - (cols - 1) * 10) / Math.max(1, cols)
     readonly property var def: defs?.all[moduleId] ?? ({ label: moduleId, kind: "action", icon: "question", sizes: ["1x1"] })
     readonly property string size: cols + "x" + rows
     readonly property bool round: size === "1x1" && (def.kind === "toggle" || def.kind === "action")
+    // 2×1 toggles, actions and info tiles are pills (round ends), like iOS
+    readonly property bool pill: rows === 1 && cols === 2 && (def.kind === "toggle" || def.kind === "action" || def.kind === "info")
+    readonly property real shapeRadius: round || pill || def.kind === "slider" ? Math.min(width, height) / 2 : Math.min(unit / 2, Math.min(width, height) / 2)
+    // On: a white circle with the glyph in the accent colour (darkened if
+    // the accent is too light to read on white)
+    readonly property color ink: (0.2126 * Theme.accent.r + 0.7152 * Theme.accent.g + 0.0722 * Theme.accent.b) > 0.55 ? Qt.darker(Theme.accent, 1.7) : Theme.accent
     readonly property bool on: def.on ?? false
 
     function act() {
@@ -60,16 +70,18 @@ Item {
         anchors.fill: parent
         anchors.margins: -shadowMargin
         shadowMargin: 12
-        radius: root.round ? root.width / 2 : Theme.radius.module
+        radius: root.shapeRadius
     }
-    // Background: a circle for 1×1 buttons, a platter otherwise
-    Rectangle {
+    // Background: a circle for 1×1 buttons, a platter otherwise, with
+    // continuous (squircle) corners like the glass. Sliders draw their own.
+    Squircle {
+        visible: root.def.kind !== "slider"
         anchors.fill: parent
-        radius: root.round ? width / 2 : Theme.radius.module // concentric with the panel (module + padding)
+        radius: root.shapeRadius
         readonly property color idle: root.chip ? Qt.alpha("white", Theme.dark ? 0.07 : 0.28) : Theme.color.platter
-        color: root.round ? (root.on ? Theme.accent : bgMouse.containsMouse ? Theme.color.fillHover : idle) : idle
-        border.width: 1
-        border.color: Qt.alpha("white", Theme.dark ? 0.06 : 0.3)
+        color: root.round ? (root.on ? "white" : bgMouse.containsMouse ? Theme.color.fillHover : idle) : idle
+        borderWidth: 1
+        borderColor: Qt.alpha("white", Theme.dark ? 0.06 : 0.3)
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     }
 
@@ -80,7 +92,7 @@ Item {
         name: root.def.icon
         fill: root.on
         size: Math.round(root.width * 0.36)
-        color: root.on ? Theme.color.onAccent : Theme.color.label
+        color: root.on ? root.ink : Theme.color.label
     }
 
     // ── 2×1 / 2×2 toggles and actions: button, title, status ────────────
@@ -89,7 +101,7 @@ Item {
         anchors.fill: parent
         CircleToggle {
             id: btn
-            x: 10
+            x: root.pill ? Math.round((root.height - size) / 2) : 10 // concentric with the pill's round end
             anchors.verticalCenter: root.rows === 1 ? parent.verticalCenter : undefined
             y: root.rows === 1 ? 0 : 14
             size: Math.min(40, root.height - 20)
@@ -119,11 +131,11 @@ Item {
         }
     }
 
-    // ── Sliders (4×1) ───────────────────────────────────────────────────
-    CCSlider {
+    // ── Sliders (4×1 wide, 1×2 tall): the module is the capsule ──────────
+    // Icon only; right-click or press and hold opens its page (Sound)
+    CapsuleSlider {
         visible: root.def.kind === "slider"
-        anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 8; bottomMargin: 10 }
-        label: root.def.label
+        anchors.fill: parent
         icon: root.def.icon
         value: root.moduleId === "display" ? Brightness.value : (Audio.muted ? 0 : Audio.volume)
         hasMore: !!root.def.page && !root.editing
@@ -137,21 +149,42 @@ Item {
         visible: root.def.kind === "media"
         anchors.fill: parent
         readonly property var player: Media.player
-        Rectangle {
+        // Album art, nested in the module's corner: radius = outer - inset
+        Item {
             id: art
-            x: 12
+            readonly property real inset: root.rows === 2 ? 12 : 10
+            readonly property real radius: Math.max(6, root.shapeRadius - inset)
+            x: inset
             y: root.rows === 2 ? 12 : (parent.height - height) / 2
             width: root.rows === 2 ? 56 : parent.height - 20
             height: width
-            radius: 12
-            color: Theme.color.fill
-            clip: true
+            Squircle {
+                anchors.fill: parent
+                radius: art.radius
+                color: Theme.color.fill
+            }
             Image {
+                id: artImage
                 anchors.fill: parent
                 source: parent.parent.player?.trackArtUrl ?? ""
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(112, 112)
                 asynchronous: true
+                layer.enabled: status === Image.Ready
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: artMask
+                    maskThresholdMin: 0.5
+                    maskSpreadAtMin: 1
+                }
+            }
+            Squircle {
+                id: artMask
+                anchors.fill: parent
+                radius: art.radius
+                color: "black"
+                visible: false
+                layer.enabled: true
             }
             Icon {
                 anchors.centerIn: parent
@@ -208,14 +241,23 @@ Item {
     // ── Info cards ──────────────────────────────────────────────────────
     Item {
         visible: root.def.kind === "info"
-        anchors { fill: parent; margins: 12 }
-        Icon {
+        anchors { fill: parent; margins: root.pill ? Math.round((root.height - infoIcon.height) / 2) : 12 }
+        // In a pill, the icon sits in a circle like the toggles' (concentric
+        // with the round end), so the row of pills reads as one set
+        Rectangle {
             id: infoIcon
             visible: root.size === "1x1" || root.rows === 1
             anchors.verticalCenter: parent.verticalCenter
-            name: root.moduleId === "battery" ? (Island.charging ? "battery-charging" : "battery-high") : root.def.icon
-            size: 20
-            color: Theme.color.label
+            width: root.pill ? Math.min(40, root.height - 20) : 20
+            height: width
+            radius: width / 2
+            color: root.pill ? Theme.color.toggleOff : "transparent"
+            Icon {
+                anchors.centerIn: parent
+                name: root.moduleId === "battery" ? (Island.charging ? "battery-charging" : "battery-high") : root.def.icon
+                size: root.pill ? Math.round(infoIcon.width * 0.5) : 20
+                color: Theme.color.label
+            }
         }
         Column {
             visible: root.size !== "1x1"
@@ -225,7 +267,7 @@ Item {
                 width: parent.width
                 text: root.moduleId === "battery" ? Math.round(Island.level * 100) + "%" : root.moduleId === "weather" ? (Weather.ready ? Weather.temp + Weather.unit : "—") : "CPU " + Math.round(Resources.cpu * 100) + "%"
                 color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: root.rows === 2 ? Theme.font.large : Theme.font.body; weight: Font.DemiBold; features: { "tnum": 1 } }
+                font { family: Theme.font.family; pixelSize: root.rows === 2 ? Theme.font.large : Theme.font.small; weight: Font.DemiBold; features: { "tnum": 1 } }
             }
             Text {
                 width: parent.width

@@ -559,7 +559,7 @@ Platter {
     Rectangle {
         id: editor
         anchors.fill: parent
-        radius: root.radius
+        radius: root.shapeRadius
         color: Qt.rgba(0, 0, 0, 0.35)
         visible: opacity > 0.01
         opacity: open ? 1 : 0

@@ -23,7 +23,8 @@ IconImage {
     }
     readonly property int mode: styled ? (({ dark: 1, clear: 2, tinted: 3 })[style] ?? 0) : 0
     readonly property bool tiled: styled && cfg.iconShape === "squircle"
-    readonly property var info: tiled ? IconInfo.get(source.toString()) : null
+    // (measured for tiles, and for clear/tinted logos: their brightness and detail)
+    readonly property var info: tiled || mode >= 2 ? IconInfo.get(source.toString()) : null
 
     function tileFor(dominant) {
         const t = cfg.iconTile;
@@ -46,6 +47,9 @@ IconImage {
         property real square: root.info?.square ? 1 : 0
         property real logoScale: 0.7
         property real darkTheme: Theme.dark ? 1 : 0
+        property real contrast: Math.max(0, Math.min(1, root.cfg.iconContrast))
+        property real logoLum: root.info?.lum ?? 0.5
+        property real logoSpread: root.info?.spread ?? 0.25
         property color tint: Theme.accent
         property color tileColor: root.tileFor(root.info?.dominant ?? "#808080")
         property color bgColor: root.info?.bg ?? "#808080"

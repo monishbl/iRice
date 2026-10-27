@@ -84,6 +84,7 @@ ShellRoot {
     Lock {}
     Osd {}
     DisplayOverlay {}
+    DisplayConnect {}
     SpaceSwitch {}
     MissionControl {}
     Overview {}
@@ -106,6 +107,7 @@ ShellRoot {
     Keyboard {}
     RegionSelector {}
     ScreenToolbar {}
+    RecordCountdown {}
     TranslationCard {}
     ScreenshotEditor {}
 

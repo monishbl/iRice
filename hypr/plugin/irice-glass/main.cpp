@@ -125,8 +125,20 @@ uniform vec4  tint, solidColor;
 out vec4 fragColor;
 
 float sdRoundBox(vec2 p, vec2 b, float r) {
-    vec2 q = abs(p) - b + r;
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+    // Continuous (squircle) corners, like iOS and macOS: the corner is a
+    // superellipse (n = 4) reaching a little further along the sides than a
+    // circular arc of the same radius, so the curve eases in instead of
+    // starting abruptly. Near-pills blend back to circular ends (n -> 2), so
+    // capsules and circles stay round. Same function in shell/glass/glass.frag
+    // and the irice-glass plugin, so both draw the same shape.
+    float hm = min(b.x, b.y);
+    float k = smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0));
+    float n = mix(4.0, 2.0, k);
+    float re = min(r * mix(1.28, 1.0, k), hm);
+    vec2 q = abs(p) - b + re;
+    vec2 m = max(q, 0.0);
+    float l = pow(pow(m.x, n) + pow(m.y, n), 1.0 / n);
+    return l + min(max(q.x, q.y), 0.0) - re;
 }
 
 vec3 sampleSharp(vec2 px) {

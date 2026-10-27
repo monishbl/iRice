@@ -46,7 +46,7 @@ Scope {
             property bool dragging: false
             property var hovered: null // window rect under the pointer
             readonly property rect selection: dragging ? Qt.rect(Math.min(start.x, end.x), Math.min(start.y, end.y), Math.abs(end.x - start.x), Math.abs(end.y - start.y)) : (hovered ?? Qt.rect(0, 0, 0, 0))
-            readonly property string verb: ({ screenshot: "capture", ocr: "copy text", translate: "translate", record: "record", ask: "ask AI about" })[root.mode] ?? ""
+            readonly property string verb: ({ screenshot: "capture", ocr: "copy text", translate: "translate", record: "record", "record-window": "record", ask: "ask AI about" })[root.mode] ?? ""
 
             function finish(r) {
                 if (r.width < 4 || r.height < 4)
@@ -106,7 +106,7 @@ Scope {
                 Text {
                     id: hint
                     anchors.centerIn: parent
-                    text: "Drag to select an area to " + win.verb + ", or click a window. Esc to cancel."
+                    text: root.mode === "record-window" ? "Click a window to record it. Esc to cancel." : "Drag to select an area to " + win.verb + ", or click a window. Esc to cancel."
                     color: "white"
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
                 }

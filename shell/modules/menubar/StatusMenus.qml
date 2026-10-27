@@ -4,6 +4,7 @@ import Quickshell.Services.UPower
 import qs.common
 import qs.glass
 import qs.modules.controlcenter
+import qs.modules.network
 import qs.services
 
 // Menus behind the menu bar's status items: Wi-Fi, Bluetooth, Sound, battery,
@@ -41,7 +42,14 @@ Scope {
     StatusMenu {
         panel: "wifiMenu"
         width_: 300
-        body: Component { WifiPage { showBack: false } }
+        body: Component {
+            Column {
+                spacing: 12
+                WifiPage { width: parent.width; showBack: false }
+                Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+                SpeedTestCard { width: parent.width; compact: true }
+            }
+        }
     }
     StatusMenu {
         panel: "bluetoothMenu"
@@ -84,7 +92,7 @@ Scope {
                 }
                 Text {
                     visible: !Privacy.any
-                    text: "Nothing is using your microphone, camera or screen."
+                    text: "Nothing is using your microphone, camera, location or screen."
                     width: parent.width
                     wrapMode: Text.Wrap
                     color: Theme.color.secondary
@@ -94,7 +102,9 @@ Scope {
                     model: [
                         ...Privacy.cameraApps.map(a => ({ app: a, icon: "video-camera", what: "Camera", color: "#30D158" })),
                         ...Privacy.micApps.map(a => ({ app: a, icon: "microphone", what: "Microphone", color: "#FF9F0A" })),
-                        ...(Privacy.screenShared ? [{ app: Privacy.screenApp || "Screen sharing", icon: "screencast", what: "Screen", color: "#BF5AF2" }] : [])
+                        ...Privacy.locationApps.map(a => ({ app: a, icon: "navigation-arrow", what: "Location", color: "#0A84FF" })),
+                        // Shared screens, listed here whichever way they're shown
+                        ...Privacy.shares.map(x => ({ app: x.app, icon: x.window ? "app-window" : "screencast", what: "Sharing " + x.target, color: "#BF5AF2", stop: true }))
                     ]
                     Row {
                         required property var modelData
@@ -126,6 +136,37 @@ Scope {
                             }
                         }
                     }
+                }
+                // Stop sharing (every shared screen at once)
+                Rectangle {
+                    visible: Privacy.screenShared
+                    width: stopLabel.implicitWidth + 28
+                    height: 28
+                    radius: 14
+                    color: stopMouse.pressed ? Qt.darker(Theme.color.danger, 1.15) : Theme.color.danger
+                    opacity: Privacy.stopping ? 0.6 : 1
+                    Text {
+                        id: stopLabel
+                        anchors.centerIn: parent
+                        text: Privacy.stopping ? "Stopping…" : "Stop sharing"
+                        color: "white"
+                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                    }
+                    MouseArea {
+                        id: stopMouse
+                        anchors.fill: parent
+                        enabled: !Privacy.stopping
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Privacy.stopSharing()
+                    }
+                }
+                Text {
+                    visible: Privacy.stopFailed
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: Privacy.screenApp + " is still sharing. Stop it in " + Privacy.screenApp + "."
+                    color: Theme.color.danger
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
             }
         }

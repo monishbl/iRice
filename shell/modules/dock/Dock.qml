@@ -25,10 +25,10 @@ Variants {
         readonly property int iconSize: cfg.iconSize
         readonly property real maxScale: cfg.magnification ? cfg.magnifiedScale : 1
         // Tahoe's dock: a wide glass slab, not a pill. Generous padding, icons
-        // well apart, softly rounded corners (about a quarter of an icon)
+        // apart, softly rounded continuous corners (about a third of an icon)
         readonly property int pad: Math.round(iconSize * 0.26)
-        readonly property int corner: Math.round(iconSize * 0.27) // a rounded rectangle, never a pill
-        readonly property int gap: Math.round(iconSize * 0.26)
+        readonly property int corner: Math.round(iconSize * 0.32) // a rounded rectangle (continuous corners), never a pill
+        readonly property int gap: Math.round(iconSize * Math.max(0.05, Math.min(0.4, cfg.gap ?? 0.18))) // Settings → Dock → Space between icons
         readonly property int barHeight: iconSize + 2 * pad
         readonly property int bottomGap: 6
         readonly property int dividerWidth: 1 + 2 * gap

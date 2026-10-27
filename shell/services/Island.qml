@@ -42,7 +42,7 @@ Singleton {
     readonly property var activities: {
         const a = [];
         if (ScreenTools.recording)
-            a.push({ kind: "recording", icon: "record", color: Theme.accents.red });
+            a.push({ kind: "recording", icon: Recorder.paused ? "pause-circle" : "record", color: Recorder.paused ? Qt.rgba(1, 1, 1, 0.55) : Theme.accents.red }); // grey while paused
         if (timerStarted)
             a.push({ kind: "timer", icon: "timer", color: Theme.accents.orange });
         if (musicPlaying || (musicLingers && !!player))
@@ -51,6 +51,10 @@ Singleton {
             a.push({ kind: "stopwatch", icon: "timer", color: Theme.accents.green });
         if (Calls.active)
             a.push({ kind: "call", icon: Privacy.camera ? "video-camera" : "phone", color: Theme.accents.green });
+        if (Privacy.shareInIsland)
+            a.push({ kind: "screenShare", icon: "screencast", color: "#BF5AF2" });
+        if (Updates.running && wants("sysupdate"))
+            a.push({ kind: "sysupdate", icon: "arrow-circle-up", color: Theme.accents.blue });
         if (Transfers.active)
             a.push({ kind: "transfer", icon: Transfers.first?.kind === "copy" ? "copy" : "download-simple", color: Theme.accents.blue });
         return a;
@@ -76,7 +80,7 @@ Singleton {
 
     // Is this piece of a collapsed live activity switched on? ("music", "bars")
     // Kinds added later start with their defaults until changed in Settings.
-    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"] })
+    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"], screenShare: ["icon", "name", "time", "stop"], sysupdate: ["icon", "name", "time"] })
     function customised(kind) {
         return !liveDefaults[kind] || (cfg.known ?? []).includes("live." + kind) || (cfg.livePieces ?? []).some(x => x.startsWith(kind + "."));
     }
@@ -212,7 +216,7 @@ Singleton {
 
     // Kinds added after the setting existed count as on until the user has
     // touched them (cfg.known), so upgrades get the new alerts by default
-    readonly property var newKinds: ["usb", "displays", "audio", "temperature", "network", "transfers", "calls"]
+    readonly property var newKinds: ["usb", "displays", "audio", "temperature", "network", "transfers", "calls", "sysupdate"]
     function wants(kind) {
         return (cfg.events ?? []).includes(kind) || (newKinds.includes(kind) && !(cfg.known ?? []).includes(kind));
     }
@@ -261,12 +265,25 @@ Singleton {
         }
     }
 
-    // Recording
+    // Recording: started, then saved (Open, Show in Folder), discarded
+    // (Undo, for as long as the file is kept) or failed
     Connections {
-        target: ScreenTools
+        target: Recorder
         function onRecordingChanged() {
+            if (Recorder.recording && root.wants("recording"))
+                root.post({ kind: "recording", icon: "record", title: "Recording", subtitle: "Stop it here or with Super+Shift+R", color: Theme.color.danger });
+        }
+        function onSaved(file) {
             if (root.wants("recording"))
-                root.post({ kind: "recording", icon: "record", title: ScreenTools.recording ? "Recording" : "Recording saved", subtitle: ScreenTools.recording ? "Press Super+Shift+R to stop" : "In Videos", color: Theme.color.danger });
+                root.post({ kind: "recording", icon: "record", title: "Recording saved", subtitle: file.replace(/^.*\//, ""), color: Theme.color.danger, more: [{ text: "Open", act: () => Recorder.open(file) }, { text: "Show in Folder", act: () => Recorder.showInFolder(file) }] }, 6000);
+        }
+        function onDropped(file) {
+            if (root.wants("recording"))
+                root.post({ kind: "recording", icon: "trash", title: "Recording discarded", subtitle: file.replace(/^.*\//, ""), color: Theme.color.danger, more: [{ text: "Undo", act: () => Recorder.undoDiscard() }] }, 8000);
+        }
+        function onFailed(why) {
+            if (root.wants("recording"))
+                root.post({ kind: "recording", icon: "warning-circle", title: "Recording didn't work", subtitle: why, color: Theme.color.danger }, 6000);
         }
     }
 

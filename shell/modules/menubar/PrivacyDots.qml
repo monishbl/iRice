@@ -3,8 +3,9 @@ import qs.common
 import qs.services
 
 // The menu bar's privacy indicator, like macOS: an orange dot while the
-// microphone is in use, green for the camera, purple while the screen is
-// shared. Click for which apps.
+// microphone is in use, green for the camera, blue for your location,
+// purple while the screen is shared (when Settings → Menu Bar puts it here
+// and not only in the island). Click for which apps.
 MenuBarItem {
     id: root
 
@@ -21,7 +22,8 @@ MenuBarItem {
             model: [
                 { on: Privacy.camera, color: "#30D158" },
                 { on: Privacy.mic, color: "#FF9F0A" },
-                { on: Privacy.screenShared, color: "#BF5AF2" }
+                { on: Privacy.location, color: "#0A84FF" },
+                { on: Privacy.shareDot, color: "#BF5AF2" }
             ].filter(d => d.on)
             Rectangle {
                 required property var modelData

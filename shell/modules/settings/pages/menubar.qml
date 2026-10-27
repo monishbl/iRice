@@ -64,146 +64,12 @@ Column {
 
     Group {
         width: parent.width
-        title: "Dynamic island"
-        footer: "The spaces at the top centre become an island: it widens for something ongoing (music, a timer, recording) and springs open for a moment when something happens. Point at it to see what's live."
-        Row {
+        SubpageLink {
+            icon: "pill"
             label: "Dynamic island"
-            Switch { checked: Config.options.island.enabled; onToggled: Config.options.island.enabled = !checked }
-        }
-        Row {
-            visible: Config.options.island.enabled
-            label: "Live activities"
-            detail: "Music, timers and recording when the island is closed"
-            Segmented {
-                width: 270
-                readonly property var values: ["replace", "split", "beside"]
-                options: ["Replace spaces", "Around", "Beside"]
-                current: Math.max(0, values.indexOf(Config.options.island.activityLayout))
-                onSelected: i => Config.options.island.activityLayout = values[i]
-            }
-        }
-        Row {
-            visible: Config.options.island.enabled
-            label: "When several are live"
-            detail: Config.options.island.activityMode === "all" ? "The open island lists them all" : "One at a time; scroll over the island to switch"
-            Segmented {
-                width: 200
-                readonly property var values: ["one", "all"]
-                options: ["One at a time", "All"]
-                current: Math.max(0, values.indexOf(Config.options.island.activityMode))
-                onSelected: i => Config.options.island.activityMode = values[i]
-            }
-        }
-        Row {
-            visible: Config.options.island.enabled
-            label: "Music player"
-            detail: Config.options.island.playerLayout === "side" ? "Small album on the left, the song and its progress beside it" : Config.options.island.playerArt === "faded" ? "The album art fades out behind the controls" : "The album art fills the island and melts into its glass"
-            Segmented {
-                width: 240
-                readonly property var values: ["island", "faded", "small"]
-                options: ["Island", "Faded", "Small"]
-                current: Config.options.island.playerLayout === "side" ? 2 : Math.max(0, values.indexOf(Config.options.island.playerArt))
-                onSelected: i => {
-                    if (values[i] === "small") {
-                        Config.options.island.playerLayout = "side";
-                    } else {
-                        Config.options.island.playerArt = values[i];
-                        Config.options.island.playerLayout = "overlay";
-                    }
-                }
-            }
-        }
-        // What each live activity shows when the island is closed
-        Repeater {
-            model: Config.options.island.enabled ? [
-                { kind: "music", label: "Music shows", pieces: [["art", "Album art"], ["title", "Title"], ["scroll", "Scroll long titles"], ["bars", "Playing bars"], ["prev", "Previous"], ["play", "Play/Pause"], ["next", "Next"]] },
-                { kind: "timer", label: "Focus timer shows", pieces: [["icon", "Icon"], ["label", "Focus/Break"], ["time", "Time left"], ["play", "Pause"], ["skip", "Skip"]] },
-                { kind: "stopwatch", label: "Stopwatch shows", pieces: [["icon", "Icon"], ["time", "Time"], ["play", "Pause"], ["reset", "Reset"]] },
-                { kind: "recording", label: "Recording shows", pieces: [["icon", "Red dot"], ["time", "Time"], ["stop", "Stop"]] },
-                { kind: "transfer", label: "Transfers show", pieces: [["icon", "Icon"], ["name", "File name"], ["time", "Progress"], ["open", "Open Downloads"], ["cancel", "Cancel copy"]] },
-                { kind: "call", label: "Calls show", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["mute", "Mute"], ["open", "Open"], ["leave", "Leave"]] }
-            ] : []
-            Row {
-                id: pieceRow
-                required property var modelData
-                label: modelData.label
-                Flow { // (Row here is the settings row)
-                    width: 320
-                    spacing: 6
-                    Repeater {
-                        model: pieceRow.modelData.pieces
-                        Rectangle {
-                            id: chip
-                            required property var modelData
-                            readonly property string key: pieceRow.modelData.kind + "." + modelData[0]
-                            readonly property bool on: { Config.options.island.livePieces; Config.options.island.known; return Island.shows(pieceRow.modelData.kind, modelData[0]); }
-                            width: chipText.implicitWidth + 20
-                            height: 26
-                            radius: 13
-                            color: on ? Theme.accentAlpha(0.28) : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                            border.width: on ? 1 : 0
-                            border.color: Theme.accent
-                            Text {
-                                id: chipText
-                                anchors.centerIn: parent
-                                text: chip.modelData[1]
-                                color: chip.on ? Theme.color.label : Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: chip.on ? Font.Medium : Font.Normal }
-                            }
-                            MouseArea {
-                                id: chipMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Island.setShows(pieceRow.modelData.kind, chip.modelData[0], !chip.on)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Row {
-            visible: Config.options.island.enabled && Island.wants("temperature")
-            label: "Running hot at"
-            detail: Config.options.island.hotTemp + " °C · the CPU package is " + (Resources.temperature > 0 ? Math.round(Resources.temperature) + " °C now" : "not reporting")
-            Slider {
-                width: 220
-                from: 70
-                to: 100
-                stepSize: 1
-                value: Config.options.island.hotTemp
-                onMoved: v => Config.options.island.hotTemp = Math.round(v)
-            }
-        }
-        Row {
-            visible: Config.options.island.enabled
-            label: "Keep the island open"
-            detail: "Also with the pin in the island, or right-click it"
-            Switch { checked: Config.options.island.pinned; onToggled: Config.options.island.pinned = !checked }
-        }
-        Row {
-            visible: Config.options.island.enabled
-            label: "Volume and brightness in the island"
-            detail: "Off: a separate HUD below the menu bar"
-            Switch { checked: Config.options.island.hud; onToggled: Config.options.island.hud = !checked }
-        }
-        Repeater {
-            model: Config.options.island.enabled ? [["music", "New song"], ["charging", "Charger connected or removed"], ["battery", "Low battery"], ["timers", "Focus timer"], ["recording", "Screen recording"], ["focus", "Focus mode"], ["bluetooth", "Bluetooth devices connect or disconnect"], ["usb", "USB devices and drives"], ["displays", "Displays connect or disconnect"], ["audio", "Sound moves to another output"], ["network", "Wi-Fi, VPN, hotspot and Ethernet changes"], ["transfers", "Downloads and file copies (live)"], ["calls", "Calls and meetings (live)"], ["resources", "CPU or memory stays high"], ["temperature", "CPU running hot (alert, and the island turns red)"], ["notifications", "Notifications as cards in the island (instead of banners)"]] : []
-            Row {
-                id: ev
-                required property var modelData
-                label: modelData[1]
-                Switch {
-                    checked: Island.wants(ev.modelData[0])
-                    onToggled: {
-                        const k = ev.modelData[0];
-                        const l = Config.options.island.events.filter(x => x !== k);
-                        Config.options.island.events = Island.wants(k) ? l : l.concat([k]);
-                        if (!Config.options.island.known.includes(k))
-                            Config.options.island.known = Config.options.island.known.concat([k]);
-                    }
-                }
-            }
+            detail: "Live activities, alerts, the music player and what shows when you point at it"
+            value: Config.options.island.enabled ? "On" : "Off"
+            page: "menubar/island"
         }
     }
 
@@ -229,6 +95,18 @@ Column {
         }
         Row {
             visible: page.mb.workspaces !== "off"
+            label: "When there are more spaces"
+            detail: page.mb.workspaceOverflow === "dynamic" ? "The next spaces shrink and fade at the ends, and slide along as you move" : "Arrows at the ends; a dot under one means a space past it has windows"
+            Segmented {
+                width: 220
+                readonly property var values: ["arrows", "dynamic"]
+                options: ["Arrows", "Dynamic dots"]
+                current: Math.max(0, values.indexOf(page.mb.workspaceOverflow))
+                onSelected: i => page.mb.workspaceOverflow = values[i]
+            }
+        }
+        Row {
+            visible: page.mb.workspaces !== "off"
             label: "Spaces on other displays"
             detail: "Listed with a small mark; click to go there, right-click to move a space to another display"
             Switch { checked: page.mb.otherSpaces; onToggled: page.mb.otherSpaces = !checked }
@@ -239,7 +117,29 @@ Column {
         width: parent.width
         title: "Status items"
         Toggle { key: "battery"; text: "Battery" }
-        Toggle { key: "batteryPercent"; text: "Battery percentage"; hint: "Always shown below 20%." }
+        Row {
+            visible: page.mb.battery
+            label: "Battery percentage"
+            detail: "Inside is cut into the battery. Beside it, it always shows at 20% or less."
+            Segmented {
+                width: 240
+                readonly property var values: ["off", "inside", "outside"]
+                options: ["Off", "Inside", "Beside"]
+                current: Math.max(0, values.indexOf(({ "true": "outside", "false": "off" })[page.mb.batteryPercent] ?? page.mb.batteryPercent))
+                onSelected: i => page.mb.batteryPercent = values[i]
+            }
+        }
+        Row {
+            label: "Screen sharing shows"
+            detail: !Config.options.island.enabled ? "The island is off, so a share shows as the purple dot." : Config.options.privacy.screenShareIndicator === "island" ? "In the island while an app shares your screen, with a Stop button; no dot meanwhile." : Config.options.privacy.screenShareIndicator === "dot" ? "A purple dot with the other privacy dots; click it to see what's shared or stop it." : "In the island and as a purple dot."
+            Segmented {
+                width: 240
+                readonly property var values: ["island", "dot", "both"]
+                options: ["Island", "Dot", "Both"]
+                current: Math.max(0, values.indexOf(Config.options.privacy.screenShareIndicator))
+                onSelected: i => Config.options.privacy.screenShareIndicator = values[i]
+            }
+        }
         Toggle { key: "wifi"; text: "Wi-Fi" }
         Toggle { key: "bluetooth"; text: "Bluetooth" }
         Toggle { key: "sound"; text: "Sound" }

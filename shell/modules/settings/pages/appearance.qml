@@ -35,6 +35,18 @@ Column {
             }
         }
         Row {
+            visible: Config.options.appearance.iconStyle === "clear" || Config.options.appearance.iconStyle === "tinted"
+            label: "Icon contrast"
+            detail: "How clearly each logo stands out from its tile; every logo is also evened out on its own"
+            Slider {
+                width: 220
+                from: 0
+                to: 1
+                value: Config.options.appearance.iconContrast
+                onMoved: v => Config.options.appearance.iconContrast = Math.round(v * 100) / 100
+            }
+        }
+        Row {
             label: "Accent colour"
             detail: Config.options.appearance.accent === "wallpaper" ? "Following the wallpaper" : ""
             Flow {
@@ -110,14 +122,14 @@ Column {
     Group {
         width: parent.width
         title: "Menu bar and shortcuts"
-        footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Apple uses ⌘ ⌃ ⌥ ⇧, Windows uses Win Ctrl Alt, others Super Ctrl Alt." : ".")
+        footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Apple and Command use ⌘ ⌃ ⌥ ⇧, Windows uses Win Ctrl Alt, others Super Ctrl Alt." : ".")
         Row {
             label: "Menu icon"
             Flow { // (Row here is the settings row)
                 spacing: 4
-                width: 6 * 40 + 5 * 4
+                width: 8 * 40 + 7 * 4
                 Repeater {
-                    model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["windows", "windows-logo", "Windows"], ["apple", "apple-logo", "Apple"], ["android", "android-logo", "Android"]]
+                    model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["windows", "windows-logo", "Windows"], ["apple", "apple-logo", "Apple"], ["android", "android-logo", "Android"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["steam", "steam-logo", "Steam"], ["github", "github-logo", "GitHub"], ["circle", "circle-wavy", "Badge"]]
                     Rectangle {
                         id: choice
                         required property var modelData
@@ -202,353 +214,24 @@ Column {
 
     Group {
         width: parent.width
-        title: "Windows"
-        footer: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded ? "Title bars need the hyprbars plugin, which isn't installed." : Config.options.appearance.decorations === "controls" ? (Decorations.pluginControls ? "Hover the handle at the top of any window for close, minimize and zoom; rest on the green button to tile. Drawn by the compositor, so it moves with the window." : "Hover the handle at the top of the focused window for close, minimize and zoom. With the compositor glass plugin it's drawn on every window and never lags behind.") : Config.options.appearance.decorations === "titlebars" ? "macOS-style title bars with traffic lights. Double-click a title bar to zoom." : "Borderless windows; use the Window menu for window actions."
-        Row {
-            label: "Decorations"
-            Segmented {
-                width: 300
-                readonly property var values: ["none", "controls", "titlebars"]
-                options: ["None", "Window controls", "Title bars"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.decorations))
-                onSelected: i => Config.options.appearance.decorations = values[i]
-            }
+        SubpageLink {
+            icon: "drop-half"
+            label: "Glass"
+            detail: "Material, frost, lens and which apps match it"
+            value: ({ liquid: "Glass", frosted: "Frost", solid: "Solid", custom: "Custom" })[Theme.glass.material] ?? ""
+            page: "appearance/glass"
         }
-        Row {
-            label: "Pointer"
-            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
-            Segmented {
-                width: 300
-                readonly property var values: ["macos", "bibata"]
-                options: ["macOS", "Bibata"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
-                onSelected: i => Config.options.appearance.cursor = values[i]
-            }
+        SubpageLink {
+            icon: "app-window"
+            label: "Windows and Overview"
+            detail: "Window corners and borders, Stage Manager, Overview style"
+            page: "appearance/windows"
         }
-        Row {
-            label: "Window transparency"
-            detail: Config.options.appearance.windowOpacity === "off" ? "Windows are fully opaque" : "Video, games and fullscreen stay opaque"
-            Segmented {
-                width: 300
-                readonly property var values: ["off", "subtle", "more", "custom"]
-                options: ["Off", "Subtle", "More", "Custom"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.windowOpacity))
-                onSelected: i => Config.options.appearance.windowOpacity = values[i]
-            }
-        }
-        Repeater {
-            model: Config.options.appearance.windowOpacity === "custom" ? [
-                { key: "windowOpacityActive", label: "Focused window" },
-                { key: "windowOpacityInactive", label: "Other windows" }
-            ] : []
-            Row {
-                required property var modelData
-                label: modelData.label
-                detail: Math.round(Config.options.appearance[modelData.key] * 100) + "% opaque"
-                Slider {
-                    width: 220
-                    from: 0.6
-                    to: 1
-                    value: Config.options.appearance[parent.parent.modelData.key]
-                    onMoved: v => Config.options.appearance[parent.parent.modelData.key] = Math.round(v * 100) / 100
-                }
-            }
-        }
-        Row {
-            label: "Window tabs"
-            detail: Config.options.appearance.windowTabs === "finder" ? "Finder-style tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
-            Segmented {
-                width: 300
-                readonly property var values: ["hyprland", "finder"]
-                options: ["Hyprland", "Finder"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
-                onSelected: i => Config.options.appearance.windowTabs = values[i]
-            }
-        }
-        Row {
-            visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
-            label: "hyprbars plugin"
-            detail: "Builds the official plugin with hyprpm in a terminal."
-            Rectangle {
-                width: instLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: Theme.accent
-                Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
-                MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Stage Manager"
-        footer: "Keeps one group of windows in front and the others as thumbnails on the left. A new app opens in its own stage; Shift-click a thumbnail to add its windows to the stage in front. Also in Control Center."
-        Row {
-            label: "Stage Manager"
-            Switch {
-                checked: Config.options.stageManager.enabled
-                onToggled: Config.options.stageManager.enabled = !checked
-            }
-        }
-        Row {
-            visible: Config.options.stageManager.enabled
-            label: "Show recent stages"
-            detail: "Hide them to give windows the full width; switch with the dock or Mission Control."
-            Switch {
-                checked: Config.options.stageManager.strip
-                onToggled: Config.options.stageManager.strip = !checked
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Overview"
-        footer: "Live previews use more power while the Overview is open. Nothing is captured while it's closed."
-        Row {
-            label: "Window previews"
-            detail: Config.options.overview.previews === "live" ? "Every window keeps updating" : Config.options.overview.previews === "hybrid" ? "Windows on the current space keep updating; the rest are pictures" : "A picture of each window, taken when the Overview opens"
-            Segmented {
-                width: 260
-                readonly property var values: ["snapshot", "hybrid", "live"]
-                options: ["Snapshot", "Hybrid", "Live"]
-                current: Math.max(0, values.indexOf(Config.options.overview.previews))
-                onSelected: i => Config.options.overview.previews = values[i]
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Glass"
-        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges, like Tahoe." : Theme.glass.material === "frosted" ? "Frost blurs what's behind, with a thin lens at the edges." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
-        Row {
-            label: "Material"
-            Flow { // (Row here is the settings row)
-                spacing: 8
-                width: materialSeg.width + 8 + advButton.width
-                Segmented {
-                    id: materialSeg
-                    width: Theme.glass.material === "custom" ? 300 : 230
-                    readonly property var values: ["liquid", "frosted", "solid", "custom"]
-                    options: Theme.glass.material === "custom" ? ["Glass", "Frost", "Solid", "Custom"] : ["Glass", "Frost", "Solid"]
-                    current: Math.max(0, values.indexOf(Theme.glass.material))
-                    onSelected: i => Config.options.appearance.glass = values[i]
-                }
-                // The three amounts behind the presets, as sliders
-                Rectangle {
-                    id: advButton
-                    y: (materialSeg.height - height) / 2
-                    width: advLabel.implicitWidth + 20
-                    height: 28
-                    radius: 14
-                    color: advMouse.containsMouse || advanced.opened ? Theme.color.fillHover : Theme.color.fill
-                    Text { id: advLabel; anchors.centerIn: parent; text: "Advanced…"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
-                    MouseArea {
-                        id: advMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: advanced.open()
-                    }
-                    QQC.Popup {
-                        id: advanced
-                        y: parent.height + 8
-                        x: parent.width - width
-                        width: 300
-                        padding: 16
-                        modal: false
-                        margins: 12 // stays inside the Settings window (moves up when near the bottom)
-                        closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
-                        // Start from whatever is showing, so the sliders don't jump
-                        onAboutToShow: {
-                            const a = Theme.glass.amounts;
-                            Config.options.appearance.glassLens = a[0];
-                            Config.options.appearance.glassFrost = a[1];
-                            Config.options.appearance.glassSolid = a[2];
-                            Config.options.appearance.glassTint = a[3] ?? 0.45;
-                        }
-                        background: GlassPopupBackground { radius: Theme.radius.control + 16 }
-                        contentItem: Column {
-                            spacing: 14
-                            Text {
-                                text: "Custom material"
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-                            }
-                            Repeater {
-                                model: [
-                                    { key: "glassLens", label: "Glass", hint: "How much it bends what's behind" },
-                                    { key: "glassFrost", label: "Frost", hint: "How much it blurs" },
-                                    { key: "glassSolid", label: "Solid", hint: "How opaque it is" },
-                                    { key: "glassTint", label: "Tint", hint: Theme.dark ? "How much it darkens what's behind" : "How milky it is", max: 2 }
-                                ]
-                                Column {
-                                    required property var modelData
-                                    width: 268
-                                    spacing: 4
-                                    Item {
-                                        width: parent.width
-                                        height: 18
-                                        Text {
-                                            text: parent.parent.modelData.label
-                                            color: Theme.color.label
-                                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                                        }
-                                        Text {
-                                            anchors.right: parent.right
-                                            text: Math.round(Config.options.appearance[parent.parent.modelData.key] * 100) + "%"
-                                            color: Theme.color.secondary
-                                            font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
-                                        }
-                                    }
-                                    Slider {
-                                        width: parent.width
-                                        from: 0
-                                        to: parent.modelData.max ?? 1 // tint goes to 200%
-                                        value: Config.options.appearance[parent.modelData.key]
-                                        onMoved: v => {
-                                            Config.options.appearance[parent.modelData.key] = Math.round(v * 100) / 100;
-                                            Config.options.appearance.glass = "custom";
-                                        }
-                                    }
-                                    Text {
-                                        text: parent.modelData.hint
-                                        color: Theme.color.tertiary
-                                        font { family: Theme.font.family; pixelSize: Theme.font.caption }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Row {
-            visible: Theme.glass.lensAmount > 0.4 && Theme.glass.solidAmount < 0.9
-            label: "Lens"
-            Segmented {
-                width: 260
-                readonly property var values: ["thin", "depth", "auto"]
-                options: ["Thin", "Depth", "Auto"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.glassDepth))
-                onSelected: i => Config.options.appearance.glassDepth = values[i]
-            }
-        }
-        Row {
-            visible: Theme.glass.tier !== "solid"
-            label: "Compositor glass"
-            detail: GlassPlugin.available ? "Active: Hyprland draws the glass" : "Not loaded. Build it once (and again after Hyprland updates)."
-            Rectangle {
-                visible: !GlassPlugin.available
-                width: buildLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: buildMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
-                Text { id: buildLabel; anchors.centerIn: parent; text: "Build plugin…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
-                MouseArea {
-                    id: buildMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"], true)
-                }
-            }
-            Icon {
-                visible: GlassPlugin.available
-                name: "check-circle"
-                fill: true
-                size: 18
-                color: Theme.color.success
-            }
-        }
-        Row {
-            label: "Motion"
-            detail: Config.options.appearance.motion === "expressive" ? "More pull toward the pointer and bouncier springs, like iOS 26" : "Springs with a touch of overshoot, like macOS"
-            Segmented {
-                width: 220
-                readonly property var values: ["subtle", "expressive"]
-                options: ["Subtle", "Expressive"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.motion))
-                onSelected: i => Config.options.appearance.motion = values[i]
-            }
-        }
-        Row {
-            label: "Window corners"
-            detail: Config.options.appearance.windowRadius + " px, continuous curve"
-            Slider {
-                width: 220
-                from: 0
-                to: 32
-                stepSize: 1
-                value: Config.options.appearance.windowRadius
-                onMoved: v => Config.options.appearance.windowRadius = Math.round(v)
-            }
-        }
-        Row {
-            label: "Rounded screen corners"
-            Switch {
-                checked: Config.options.appearance.screenCorners
-                onToggled: Config.options.appearance.screenCorners = !checked
-            }
-        }
-        Row {
-            label: "Tint glass with wallpaper colour"
-            Switch {
-                checked: Config.options.appearance.wallpaperTint
-                onToggled: Config.options.appearance.wallpaperTint = !checked
-            }
-        }
-        Row {
-            visible: GlassPlugin.available && Theme.glass.tier !== "solid"
-            label: "Frost over windows"
-            detail: "Glass covering a window blurs it more, so its text doesn't compete with what's on the glass"
-            Segmented {
-                width: 300
-                readonly property var values: [0, 0.5, 0.75, 0.95]
-                options: ["Off", "Subtle", "Medium", "Strong"]
-                current: {
-                    const v = Config.options.appearance.glassWindowFrost;
-                    let best = 0;
-                    for (let i = 1; i < values.length; i++)
-                        if (Math.abs(values[i] - v) < Math.abs(values[best] - v))
-                            best = i;
-                    return best;
-                }
-                onSelected: i => Config.options.appearance.glassWindowFrost = values[i]
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Match apps"
-        footer: !AppTheme.available ? "Install matugen to colour your apps to match." : Config.options.appearance.appTheme === "off" ? "Apps keep their own colours." : "Apps get colours from your " + (Config.options.appearance.appTheme === "wallpaper" ? "wallpaper" : "accent colour") + ", light or dark with iRice. Open apps update when they can; others on their next start. Turning this off removes the colours again."
-        Row {
-            label: "Colours from"
-            Segmented {
-                width: 260
-                enabled: AppTheme.available
-                readonly property var values: ["off", "accent", "wallpaper"]
-                options: ["Off", "Accent", "Wallpaper"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.appTheme))
-                onSelected: i => Config.options.appearance.appTheme = values[i]
-            }
-        }
-        Repeater {
-            model: Config.options.appearance.appTheme === "off" ? [] : [["gtk", "GTK apps"], ["qt", "Qt and KDE apps"], ["terminals", "Terminals (foot, kitty, Alacritty)"], ["browsers", "Firefox (with Pywalfox) and Chromium"]]
-            Row {
-                id: targetRow
-                required property var modelData
-                label: modelData[1]
-                Switch {
-                    checked: Config.options.appearance.appThemeTargets.includes(targetRow.modelData[0])
-                    onToggled: {
-                        const t = Config.options.appearance.appThemeTargets.filter(x => x !== targetRow.modelData[0]);
-                        Config.options.appearance.appThemeTargets = checked ? t : t.concat([targetRow.modelData[0]]);
-                    }
-                }
-            }
+        SubpageLink {
+            icon: "thermometer-simple"
+            label: "Cool-down and performance"
+            detail: "What iRice turns down when the machine runs hot, and what stays loaded"
+            page: "appearance/cooldown"
         }
     }
 
@@ -575,79 +258,6 @@ Column {
                     Config.options.appearance.contrast = values[i];
                     Config.options.appearance.increaseContrast = false; // (the old switch)
                 }
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Cool-down"
-        footer: "Less work for the processor and graphics, so the laptop runs cooler and lasts longer: all of this comes back when cool-down ends. Also in Control Center."
-        Row {
-            label: "Cool-down"
-            detail: CoolDown.active ? "On · " + CoolDown.why : CoolDown.why !== "" ? CoolDown.why : "Off"
-            Switch { checked: CoolDown.active; onToggled: CoolDown.toggle() }
-        }
-        Row {
-            label: "When the CPU is hot"
-            detail: "At the island's temperature alert (Menu Bar → Dynamic Island)"
-            Switch { checked: Config.options.cooling.whenHot; onToggled: Config.options.cooling.whenHot = !checked }
-        }
-        Row {
-            visible: Config.options.cooling.whenHot
-            label: "When it gets hot"
-            detail: Config.options.cooling.hotAction === "ask" ? "The island asks first; the question stays until you answer. Not now keeps it off until the laptop cools." : "Starts by itself; ends after 3 minutes well below the alert temperature"
-            Segmented {
-                width: 240
-                readonly property var values: ["auto", "ask"]
-                options: ["Automatically", "Ask first"]
-                current: Math.max(0, values.indexOf(Config.options.cooling.hotAction))
-                onSelected: i => Config.options.cooling.hotAction = values[i]
-            }
-        }
-        Row {
-            label: "On battery"
-            Switch { checked: Config.options.cooling.onBattery; onToggled: Config.options.cooling.onBattery = !checked }
-        }
-        Row {
-            label: "Glass"
-            detail: "During cool-down"
-            Segmented {
-                width: 260
-                readonly property var values: ["keep", "frosted", "solid"]
-                options: ["Keep", "Frosted", "Solid"]
-                current: Math.max(0, values.indexOf(Config.options.cooling.glass))
-                onSelected: i => Config.options.cooling.glass = values[i]
-            }
-        }
-        Row {
-            label: "Lighter blur"
-            Switch { checked: Config.options.cooling.lightBlur; onToggled: Config.options.cooling.lightBlur = !checked }
-        }
-        Row {
-            label: "Shorter animations"
-            Switch { checked: Config.options.cooling.shortAnimations; onToggled: Config.options.cooling.shortAnimations = !checked }
-        }
-        Row {
-            label: "Lower refresh rate"
-            detail: "The laptop screen's lowest rate (48 Hz on most); apps draw fewer frames too. The screen goes black for a moment when it switches."
-            Switch { checked: Config.options.cooling.refreshDrop; onToggled: Config.options.cooling.refreshDrop = !checked }
-        }
-        Row {
-            label: "Pause live wallpaper"
-            Switch { checked: Config.options.cooling.pauseLiveWallpaper; onToggled: Config.options.cooling.pauseLiveWallpaper = !checked }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Performance"
-        Row {
-            label: "Keep panels loaded"
-            detail: "Spotlight, Control Center and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory"
-            Switch {
-                checked: Config.options.performance.keepPanelsLoaded
-                onToggled: Config.options.performance.keepPanelsLoaded = !checked
             }
         }
     }

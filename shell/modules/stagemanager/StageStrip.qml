@@ -64,10 +64,17 @@ Variants {
                             opacity: 1 - depth * 0.2
                             clip: true
                             ScreencopyView {
+                                id: stageShot
                                 anchors { fill: parent; margins: 1 }
                                 captureSource: parent.modelData.wayland ?? null
                                 live: false
                                 constraintSize: Qt.size(240, 160)
+                            }
+                            // Live previews (Settings → Overview): the strip's
+                            // windows keep updating too, up to 30 times a second
+                            LiveCapture {
+                                target: stageShot
+                                live: win.visible && Config.options.overview.previews === "live"
                             }
                         }
                     }

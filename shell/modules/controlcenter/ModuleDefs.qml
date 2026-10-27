@@ -31,7 +31,7 @@ QtObject {
             coolDown: { label: "Cool-down", kind: "toggle", sizes: ["1x1", "2x1"], icon: "snowflake", on: CoolDown.active, status: CoolDown.why, act: () => CoolDown.toggle() },
             gameMode: { label: "Game Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "game-controller", on: System.gameMode, status: "", act: () => System.gameMode = !System.gameMode },
             antiFlashbang: { label: "Anti-Flash", kind: "toggle", sizes: ["1x1", "2x1"], icon: "sun-dim", on: System.antiFlashbang, status: "", act: () => System.antiFlashbang = !System.antiFlashbang },
-            record: { label: "Record", kind: "toggle", sizes: ["1x1", "2x1"], icon: "record", on: ScreenTools.recording, status: ScreenTools.recording ? "Recording" : "", needs: "wf-recorder", act: () => { if (ScreenTools.recording) ScreenTools.stopRecording(); else ScreenTools.select("record"); } },
+            record: { label: "Record", kind: "toggle", sizes: ["1x1", "2x1"], icon: "record", on: ScreenTools.recording, status: ScreenTools.recording ? "Recording" : "", available: Recorder.available, act: () => Recorder.openToolbar() }, // the recording toolbar (again: stop)
             easyEffects: { label: "EasyEffects", kind: "toggle", sizes: ["1x1", "2x1"], icon: "faders", on: System.easyEffects, status: "", needs: "easyeffects", act: () => System.setEasyEffects(!System.easyEffects) },
             warp: { label: "WARP", kind: "toggle", sizes: ["1x1", "2x1"], icon: "cloud", on: System.warp, status: "", needs: "warp-cli", act: () => System.setWarp(!System.warp) },
             keyboard: { label: "Keyboard", kind: "action", sizes: ["1x1", "2x1"], icon: "keyboard", act: () => Panels.show("keyboard") },
@@ -43,11 +43,11 @@ QtObject {
             timer: { label: "Timer", kind: "action", sizes: ["1x1", "2x1"], icon: "timer", act: () => { Panels.ncTab = 2; Panels.show("notificationCenter"); } },
             tileWindows: { label: "Tile Left & Right", kind: "action", sizes: ["2x1", "1x1"], icon: "square-split-horizontal", act: () => { Panels.close(); Tiling.arrange("leftRight"); } },
             appLibrary: { label: "App Library", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
-            display: { label: "Display", kind: "slider", sizes: ["4x1"], icon: "sun", available: Brightness.available },
-            sound: { label: "Sound", kind: "slider", sizes: ["4x1"], icon: Audio.icon, page: "sound" },
+            display: { label: "Display", kind: "slider", sizes: ["4x1", "1x2"], icon: "sun", available: Brightness.available },
+            sound: { label: "Sound", kind: "slider", sizes: ["4x1", "1x2"], icon: Audio.icon, page: "sound" },
             nowPlaying: { label: "Now Playing", kind: "media", sizes: ["2x2", "4x1"], icon: "music-notes" },
             battery: { label: "Battery", kind: "info", sizes: ["2x1", "1x1"], icon: "battery-high", available: Island.hasBattery },
-            resources: { label: "CPU & Memory", kind: "info", sizes: ["2x1", "2x2"], icon: "cpu" },
+            resources: { label: "CPU & Memory", kind: "info", sizes: ["2x1", "2x2"], icon: "cpu", page: "resources" },
             weather: { label: "Weather", kind: "info", sizes: ["2x1", "2x2"], icon: Weather.icon }
         })
 

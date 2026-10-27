@@ -7,6 +7,7 @@ import Quickshell.Services.UPower
 import Quickshell.Wayland
 import qs.common
 import qs.glass
+import qs.modules.resources
 import qs.services
 
 // Tahoe-style menu bar: transparent over the wallpaper, text that flips dark
@@ -130,7 +131,7 @@ Variants {
                 MenuBarItem {
                     readonly property string choice: Config.options.appearance.menuIcon
                     readonly property string distroIcon: choice === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
-                    icon: distroIcon !== "" ? "" : ({ linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo" })[choice] ?? "drop"
+                    icon: distroIcon !== "" ? "" : ({ irice: "drop", linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", steam: "steam-logo", github: "github-logo", circle: "circle-wavy" })[choice] ?? "drop"
                     image: distroIcon
                     tintImage: true
                     fill: true
@@ -281,6 +282,13 @@ Variants {
                     active: Panels.isOpen("resourcesMenu", bar.screen)
                     menu: "resourcesMenu"
                     onClicked: Panels.toggle("resourcesMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    // Hovering it shows the last minute (not while its menu is open)
+                    ResourceHover {
+                        target: parent
+                        key: "cpu"
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                    }
                 }
 
                 // Weather
@@ -305,14 +313,28 @@ Variants {
 
                 // Battery
                 MenuBarItem {
+                    id: batteryItem
                     readonly property var battery: UPower.displayDevice
                     readonly property real level: battery.percentage > 1 ? battery.percentage / 100 : battery.percentage
                     readonly property bool charging: battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged
                     visible: bar.cfg.battery && battery.isLaptopBattery
-                    color: !charging && level <= 0.1 ? Theme.color.danger : bar.fg
-                    text: bar.cfg.batteryPercent || level <= 0.2 ? Math.round(level * 100) + "%" : ""
-                    icon: charging ? "battery-charging" : level > 0.85 ? "battery-full" : level > 0.6 ? "battery-high" : level > 0.35 ? "battery-medium" : level > 0.12 ? "battery-low" : "battery-warning"
-                    iconSize: 18
+                    readonly property bool plugged: battery.state === UPowerDeviceState.FullyCharged || battery.state === UPowerDeviceState.PendingCharge
+                    // Settings → Menu Bar → Battery percentage (older configs saved true/false)
+                    readonly property string percent: ({ "true": "outside", "false": "off" })[bar.cfg.batteryPercent] ?? bar.cfg.batteryPercent
+                    color: bar.fg
+                    // Beside the battery when asked, and always at 20% or less
+                    // (unless it's already inside)
+                    text: percent === "outside" || (percent !== "inside" && level <= 0.2 && !charging) ? Math.round(level * 100) + "%" : ""
+                    glyph: Component {
+                        BatteryGlyph {
+                            level: batteryItem.level
+                            charging: batteryItem.battery.state === UPowerDeviceState.Charging
+                            plugged: batteryItem.plugged
+                            lowPower: PowerProfiles.profile === PowerProfile.PowerSaver
+                            showPercent: batteryItem.percent === "inside"
+                            color: bar.fg
+                        }
+                    }
                     active: Panels.isOpen("batteryMenu", bar.screen)
                     menu: "batteryMenu"
                     onClicked: Panels.toggle("batteryMenu", bar.screen, mapToItem(null, 0, 0).x)
@@ -324,6 +346,7 @@ Variants {
                     readonly property bool connected: Bluetooth.devices.values.some(d => d.connected)
                     visible: bar.cfg.bluetooth && adapter !== null
                     icon: !adapter?.enabled ? "bluetooth-slash" : connected ? "bluetooth-connected" : "bluetooth"
+                    bold: true // the weight of the drawn battery and Wi-Fi
                     color: bar.fg
                     active: Panels.isOpen("bluetoothMenu", bar.screen)
                     menu: "bluetoothMenu"
@@ -332,13 +355,20 @@ Variants {
 
                 // Wi-Fi
                 MenuBarItem {
+                    id: wifiItem
                     readonly property var wifi: Networking.devices.values.find(d => d.type === DeviceType.Wifi) ?? null
                     readonly property var network: wifi?.networks.values.find(n => n.connected) ?? null
                     readonly property real strength: network?.signalStrength ?? 0
                     visible: bar.cfg.wifi && wifi !== null
                     color: bar.fg
-                    icon: !Networking.wifiEnabled ? "wifi-slash" : !network ? "wifi-none" : strength > 0.66 ? "wifi-high" : strength > 0.33 ? "wifi-medium" : "wifi-low"
-                    fill: network !== null
+                    glyph: Component {
+                        WifiGlyph {
+                            on: Networking.wifiEnabled
+                            connected: wifiItem.network !== null
+                            strength: wifiItem.strength
+                            color: bar.fg
+                        }
+                    }
                     active: Panels.isOpen("wifiMenu", bar.screen)
                     menu: "wifiMenu"
                     onClicked: Panels.toggle("wifiMenu", bar.screen, mapToItem(null, 0, 0).x)
@@ -390,6 +420,7 @@ Variants {
                 MenuBarItem {
                     visible: bar.cfg.controlCenter
                     icon: "sliders-horizontal"
+                    bold: true
                     color: bar.fg
                     active: Panels.isOpen("controlCenter", bar.screen)
                     menu: "controlCenter"

@@ -1,0 +1,12 @@
+{
+    "_": "What this version of iRice is tested with. Software Update reads the version it's about to install, so an Arch update can be held back until iRice supports it. Packages: tools/packages.sh.",
+    "hyprland": {
+        "min": "0.56.0",
+        "max": "0.56.x",
+        "why": "The Lua config and the Liquid Glass plugin (hypr/plugin/irice-glass) are built against Hyprland 0.56."
+    },
+    "quickshell": {
+        "bundled": "0.3.2",
+        "why": "Built by iRice (~/.local/share/irice/quickshell), so Arch's quickshell updates don't affect it."
+    }
+}

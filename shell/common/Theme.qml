@@ -155,6 +155,10 @@ Singleton {
         readonly property int menu: 12
         readonly property int popover: 18
         readonly property int module: 20
+        // iOS tiles and widgets: half a 1×1 Control Center button (a 320 px grid
+        // of four, 10 px apart), with continuous corners, so every card's curve
+        // matches the round buttons'
+        readonly property int tile: Math.round((320 - 3 * 10) / 8)
         readonly property int panel: 26
     }
 

@@ -73,7 +73,7 @@ Item {
     Glass {
         id: glass
         anchors.fill: parent
-        radius: 22
+        radius: Theme.radius.tile // iOS corners (continuous, like the glass)
         bevel: 20
         shadowMargin: root.m
         forceLiquid: true
@@ -95,7 +95,7 @@ Item {
                 if (item.widgetId !== undefined)
                     item.widgetId = Qt.binding(() => root.widget.id ?? "");
                 if (item.radius !== undefined)
-                    item.radius = 22;
+                    item.radius = Theme.radius.tile;
             }
         }
     }

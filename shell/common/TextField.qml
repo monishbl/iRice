@@ -9,6 +9,11 @@ Rectangle {
     property bool secret: false
     property bool commitOnBlur: true
     signal committed(string text)
+    readonly property bool editing: input.activeFocus // being typed in
+    function release() { // stop typing (focus goes back to the window)
+        input.focus = false;
+        root.Window.window?.contentItem?.forceActiveFocus();
+    }
     // Put the cursor in the field (focusing the field itself wouldn't)
     function focusInput() {
         input.cursorPosition = input.length;

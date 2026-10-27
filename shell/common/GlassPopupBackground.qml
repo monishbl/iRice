@@ -8,15 +8,13 @@ import QtQuick.Effects
 // content under them can be copied and blurred here (live while it's shown).
 // In layer windows the compositor already blurs what's behind the window, so
 // `blurContent: false` keeps just the tint.
-Rectangle {
+Item {
     id: root
 
     property bool blurContent: true
-    radius: 12
+    property real radius: 12 // continuous (squircle) corners, like the glass
     // As opaque as the material asks, never so clear that text gets hard to read
-    color: Theme.glass.tier === "solid" ? Theme.glass.solid : Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.55) : Qt.rgba(0.97, 0.97, 0.99, 0.62)
-    border.width: 1
-    border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
+    readonly property color color: Theme.glass.tier === "solid" ? Theme.glass.solid : Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.55) : Qt.rgba(0.97, 0.97, 0.99, 0.62)
 
     // What gets blurred: the window's content item that's under the popup.
     // Not the content item itself: popups draw in its overlay, so copying
@@ -64,12 +62,13 @@ Rectangle {
         width: root.area.width
         height: root.area.height
         layer.enabled: root.blurring
-        Rectangle {
+        Squircle {
             x: root.pad
             y: root.pad
             width: root.width
             height: root.height
             radius: root.radius
+            color: "white"
         }
     }
     MultiEffect {
@@ -89,10 +88,19 @@ Rectangle {
         maskSource: shape
     }
 
+    // The tint and its hairline edge, in the same shape
+    Squircle {
+        anchors.fill: parent
+        radius: root.radius
+        color: root.color
+        borderWidth: 1
+        borderColor: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
+    }
+
     // Light catching the top edge (a line, not a gradient: translucent
     // gradients on rounded rectangles draw as mismatched triangles)
     Rectangle {
-        anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: parent.radius; rightMargin: parent.radius; topMargin: 1 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: root.radius * 1.28; rightMargin: root.radius * 1.28; topMargin: 1 }
         height: 1
         color: Qt.rgba(1, 1, 1, Theme.dark ? 0.12 : 0.6)
     }

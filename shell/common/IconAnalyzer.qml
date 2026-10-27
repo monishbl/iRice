@@ -27,7 +27,7 @@ Canvas {
         id: timeout
         interval: 2000
         running: root.current !== ""
-        onTriggered: root.finish({ square: false, bg: "#808080", dominant: "#808080" })
+        onTriggered: root.finish({ square: false, bg: "#808080", dominant: "#808080", lum: 0.5, spread: 0.25 })
     }
 
     function finish(result) {
@@ -74,12 +74,32 @@ Canvas {
             b += d[i + 2] * wt;
             w += wt;
         }
+        // The logo's brightness and detail (for clear and tinted styles, which
+        // normalise them so every logo reads alike): over the logo's pixels,
+        // the opaque ones that differ from the tile (square icons) or just
+        // the opaque ones (transparent logos)
+        const tr = br / 4, tg = bgc / 4, tb = bb / 4;
+        let n = 0, sum = 0, sum2 = 0;
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] < 128)
+                continue;
+            if (square && Math.hypot(d[i] - tr, d[i + 1] - tg, d[i + 2] - tb) < 40)
+                continue;
+            const l = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+            n++;
+            sum += l;
+            sum2 += l * l;
+        }
+        const mean = n >= 12 ? sum / n : 0.5;
+        const spread = n >= 12 ? Math.sqrt(Math.max(0, sum2 / n - mean * mean)) : 0.25;
         const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
         timeout.stop();
         finish({
             square: square,
             bg: "#" + hex(br / 4) + hex(bgc / 4) + hex(bb / 4),
-            dominant: w > 0 ? "#" + hex(r / w) + hex(g / w) + hex(b / w) : "#808080"
+            dominant: w > 0 ? "#" + hex(r / w) + hex(g / w) + hex(b / w) : "#808080",
+            lum: mean,
+            spread: spread
         });
     }
 }

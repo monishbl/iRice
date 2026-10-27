@@ -6,8 +6,15 @@ import qs.common
 import qs.glass
 import qs.services
 import qs.modules.spotlight
+import Quickshell.Widgets
 
-// Overview (tap Super): this monitor's spaces as miniatures of the screen,
+// Overview (tap Super). Two styles (Config overview.style):
+//   grid   this monitor's spaces as miniatures of the screen (below)
+//   macos  like macOS: a strip of spaces on a glass bar at the top (the
+//          windows of each space, on the wallpaper if overview.wallpapers;
+//          drag one to reorder, + for a new space) and only a search in the
+//          middle
+// Grid: this monitor's spaces as miniatures of the screen,
 // each window a preview of its content at its real place and size (floating
 // windows above tiled ones, the most recently focused on top; fullscreen
 // fills the miniature), plus a search field. Click a space to go there, a
@@ -33,6 +40,7 @@ Variants {
             name: "overview"
 
             readonly property bool shown: Panels.isOpen("overview", screen)
+            readonly property bool mac: Config.options.overview?.style === "macos"
             readonly property var monitor: Hyprland.monitorFor(screen)
             readonly property int activeWs: monitor?.activeWorkspace?.id ?? 1
             readonly property var ids: Windows.spaceIds(monitor, screen === Quickshell.screens[0])
@@ -106,6 +114,14 @@ Variants {
                     win.selected = i >= 0 ? i : 0;
                 }
             }
+            // A new empty space: the first number after every space in use
+            function newSpace() {
+                const used = Hyprland.workspaces.values.map(w => w.id).concat(ids);
+                let n = Math.max(0, ...ids) + 1;
+                while (used.includes(n))
+                    n++;
+                go(n);
+            }
             function go(id) {
                 Panels.close();
                 Hyprland.dispatch("hl.dsp.focus({ workspace = " + id + " })");
@@ -126,7 +142,7 @@ Variants {
             // Dim the screen behind
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(0, 0, 0, 0.35 * Math.min(1, win.progress))
+                color: Qt.rgba(0, 0, 0, (win.mac ? 0.18 : 0.35) * Math.min(1, win.progress))
                 MouseArea {
                     anchors.fill: parent
                     onClicked: Panels.close()
@@ -145,7 +161,7 @@ Variants {
                     width: 560 + 2 * fieldGlass.shadowMargin
                     height: 52 + 2 * fieldGlass.shadowMargin
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: 64
+                    y: win.mac ? Math.round(parent.height * 0.36) : 64
                     Glass {
                         id: fieldGlass
                         anchors.fill: parent
@@ -178,12 +194,12 @@ Variants {
                         Keys.onEnterPressed: win.results.length > 0 ? (Panels.close(), win.results[win.selected].run()) : win.go(win.picked)
                         Keys.onLeftPressed: e => { if (text === "") win.step(-1); else e.accepted = false; }
                         Keys.onRightPressed: e => { if (text === "") win.step(1); else e.accepted = false; }
-                        Keys.onUpPressed: text !== "" ? win.selected = Math.max(0, win.selected - 1) : win.step(-win.columns)
-                        Keys.onDownPressed: text !== "" ? win.selected = Math.min(win.results.length - 1, win.selected + 1) : win.step(win.columns)
+                        Keys.onUpPressed: text !== "" ? win.selected = Math.max(0, win.selected - 1) : win.mac ? undefined : win.step(-win.columns)
+                        Keys.onDownPressed: text !== "" ? win.selected = Math.min(win.results.length - 1, win.selected + 1) : win.mac ? undefined : win.step(win.columns)
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
-                            text: "Search apps, or pick a space"
+                            text: win.mac ? "Search" : "Search apps, or pick a space"
                             color: Theme.color.tertiary
                             font: field.font
                         }
@@ -227,6 +243,184 @@ Variants {
                     }
                 }
 
+                // macOS style: the spaces in a strip on a glass bar at the top
+                // (the compositor blurs what's behind it). Drag a space
+                // sideways to put it elsewhere (Spaces.move: it takes the
+                // place of the one it's dropped on); click to go there; + adds
+                // a new empty space after the last
+                Item {
+                    id: macBar
+                    visible: win.mac
+                    width: parent.width
+                    height: 176
+                    y: -(1 - Math.min(1, win.progress)) * 40
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.6) : Qt.rgba(1, 1, 1, 0.5)
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: 1
+                            color: Theme.color.separator
+                        }
+                    }
+                    MouseArea { anchors.fill: parent } // (a click on the bar doesn't close)
+
+                    Row {
+                        id: strip
+                        readonly property int n: Math.max(1, win.ids.length)
+                        readonly property real tileW: Math.min(170, (macBar.width - 220 - (n - 1) * 24) / n)
+                        property int dragSpace: 0
+                        property real dragDx: 0
+                        property int dropOn: 0
+                        function spaceAt(px) {
+                            let best = 0, dist = 1e9;
+                            for (const c of strip.children) {
+                                if (c.wsId === undefined)
+                                    continue;
+                                const d = Math.abs(c.x + c.width / 2 - px);
+                                if (d < dist) {
+                                    dist = d;
+                                    best = c.wsId;
+                                }
+                            }
+                            return best;
+                        }
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 26
+                        spacing: 24
+
+                        Repeater {
+                            model: win.mac ? win.ids : []
+                            Column {
+                                id: tile
+                                required property int modelData
+                                readonly property int wsId: modelData
+                                readonly property real s: strip.tileW / (win.screen?.width ?? 1920)
+                                readonly property bool current: wsId === win.activeWs
+                                readonly property bool dragged: strip.dragSpace === wsId
+                                readonly property bool target: strip.dragSpace > 0 && strip.dropOn === wsId && !dragged
+                                spacing: 6
+                                z: dragged ? 2 : 0
+                                opacity: dragged ? 0.85 : 1
+                                transform: Translate { x: tile.dragged ? strip.dragDx : 0 }
+
+                                Item {
+                                    width: strip.tileW
+                                    height: Math.round((win.screen?.height ?? 1080) * tile.s)
+                                    scale: thumbMouse.pressed && !tile.dragged ? 0.97 : thumbMouse.containsMouse ? 1.03 : 1
+                                    Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
+                                    ClippingRectangle {
+                                        anchors.fill: parent
+                                        radius: 10
+                                        color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
+                                        border.width: 1
+                                        border.color: Theme.dark ? "#36363C" : "#D4D4D8"
+                                        Image {
+                                            anchors.fill: parent
+                                            visible: Config.options.overview.wallpapers
+                                            source: visible ? Wallpaper.source : ""
+                                            fillMode: Image.PreserveAspectCrop
+                                            sourceSize: Qt.size(340, 220)
+                                            asynchronous: true
+                                        }
+                                        // Its windows, at their places
+                                        Repeater {
+                                            model: Windows.on(tile.wsId).filter(t => t.lastIpcObject?.at && t.lastIpcObject?.size && !t.lastIpcObject.hidden)
+                                            Rectangle {
+                                                required property var modelData
+                                                readonly property var ipc: modelData.lastIpcObject
+                                                x: (ipc.at[0] - (win.monitor?.x ?? 0)) * tile.s
+                                                y: (ipc.at[1] - (win.monitor?.y ?? 0)) * tile.s
+                                                width: Math.max(4, ipc.size[0] * tile.s)
+                                                height: Math.max(4, ipc.size[1] * tile.s)
+                                                radius: 3
+                                                color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                                                border.width: 1
+                                                border.color: Theme.dark ? "#36363C" : "#E4E4E7"
+                                                IconImage {
+                                                    anchors.centerIn: parent
+                                                    implicitSize: Math.min(18, parent.height * 0.6)
+                                                    source: Apps.iconFor(parent.ipc.class)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // The current space, or where a dragged one would land
+                                    Rectangle {
+                                        anchors { fill: parent; margins: -3 }
+                                        radius: 13
+                                        color: "transparent"
+                                        border.width: 3
+                                        border.color: Theme.accent
+                                        visible: tile.current || tile.target
+                                    }
+                                    MouseArea {
+                                        id: thumbMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: strip.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                        property real pressX: 0
+                                        onPressed: m => pressX = m.x
+                                        onPositionChanged: m => {
+                                            if (!pressed)
+                                                return;
+                                            const dx = m.x - pressX;
+                                            if (strip.dragSpace === 0 && Math.abs(dx) > 8)
+                                                strip.dragSpace = tile.wsId;
+                                            if (strip.dragSpace === tile.wsId) {
+                                                strip.dragDx = dx;
+                                                strip.dropOn = strip.spaceAt(tile.x + tile.width / 2 + dx);
+                                            }
+                                        }
+                                        onReleased: {
+                                            if (strip.dragSpace === tile.wsId) {
+                                                if (strip.dropOn > 0 && strip.dropOn !== tile.wsId)
+                                                    Spaces.move(win.ids, tile.wsId, strip.dropOn);
+                                                strip.dragSpace = 0;
+                                                strip.dragDx = 0;
+                                                strip.dropOn = 0;
+                                            } else {
+                                                win.go(tile.wsId);
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Desktop " + tile.wsId
+                                    color: Theme.color.label
+                                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: tile.current ? Font.DemiBold : Font.Normal }
+                                }
+                            }
+                        }
+                    }
+
+                    // + a new empty space, after the last one in use
+                    Rectangle {
+                        anchors { right: parent.right; rightMargin: 28; top: parent.top; topMargin: 26 + Math.round(strip.tileW * (win.screen?.height ?? 1080) / (win.screen?.width ?? 1920)) / 2 - height / 2 }
+                        width: 36
+                        height: 36
+                        radius: 18
+                        color: plusMouse.pressed ? Theme.color.fillHover : plusMouse.containsMouse ? Theme.color.fill : Qt.rgba(0, 0, 0, 0)
+                        border.width: 1
+                        border.color: Theme.color.separator
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "plus"
+                            bold: true
+                            size: 18
+                            color: Theme.color.label
+                        }
+                        MouseArea {
+                            id: plusMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: win.newSpace()
+                        }
+                    }
+                }
+
                 // Spaces
                 Grid {
                     id: spaces
@@ -249,7 +443,7 @@ Variants {
                         }
                         return best;
                     }
-                    visible: win.results.length === 0
+                    visible: !win.mac && win.results.length === 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: Math.max(searchBox.y + searchBox.height + 40, (parent.height - height) / 2)
                     columns: win.columns
@@ -304,6 +498,21 @@ Variants {
                                 border.color: dropArea.containsDrag || target || space.wsId === win.picked ? Theme.accent : space.wsId === win.activeWs ? (Theme.dark ? "#36363C" : "#D4D4D8") : (Theme.dark ? "#26262A" : "#E4E4E7")
                                 scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                 Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
+
+                                // The wallpaper behind the windows (overview.wallpapers)
+                                ClippingRectangle {
+                                    anchors { fill: parent; margins: 1 }
+                                    visible: Config.options.overview.wallpapers
+                                    radius: 13
+                                    color: "transparent"
+                                    Image {
+                                        anchors.fill: parent
+                                        source: parent.visible ? Wallpaper.source : ""
+                                        fillMode: Image.PreserveAspectCrop
+                                        sourceSize: Qt.size(400, 250)
+                                        asynchronous: true
+                                    }
+                                }
 
                                 Text {
                                     anchors.centerIn: parent

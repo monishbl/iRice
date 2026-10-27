@@ -82,7 +82,7 @@ Item {
             id: title
             visible: text !== "" && (root.kind === "music" ? root.on("title") : root.kind === "timer" ? root.on("label") : root.on("name"))
             anchors.verticalCenter: parent.verticalCenter
-            text: root.kind === "music" ? (root.player?.trackTitle || root.player?.identity || "") : LiveInfo.title(root.kind)
+            text: root.kind === "music" ? (root.player?.trackTitle || root.player?.identity || "") : root.kind === "screenShare" ? Privacy.screenApp : LiveInfo.title(root.kind)
             scroll: root.kind === "music" && root.on("scroll")
             color: root.ink
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }

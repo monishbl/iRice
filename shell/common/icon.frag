@@ -7,7 +7,11 @@
 //   are scaled down onto a tile of tileColor.
 // mode 0 default, 1 dark, 2 clear, 3 tinted. Clear and tinted turn the
 //   artwork into a monochrome mask (its difference from the tile colour) and
-//   draw it as frosted/tinted glass with a specular rim, like Tahoe.
+//   draw it as frosted/tinted glass with a specular rim, like Tahoe. The
+//   logo keeps its inner detail as shades, normalised per icon (logoLum,
+//   logoSpread from IconAnalyzer) so dark logos are lifted and washed-out
+//   ones darkened toward the same look; `contrast` (Settings → Appearance →
+//   Icon contrast) sets how far the logo stands apart from its tile.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -20,6 +24,9 @@ layout(std140, binding = 0) uniform buf {
     float square;     // 1: the icon already has a full background
     float logoScale;  // transparent logos: size on the tile
     float darkTheme;
+    float contrast;   // 0..1, how strongly clear/tinted logos stand out
+    float logoLum;    // the logo's mean luminance (IconAnalyzer), 0..1
+    float logoSpread; // and how much it varies (its detail), 0..1
     vec4 tint;        // accent (straight alpha)
     vec4 tileColor;   // tile behind transparent logos
     vec4 bgColor;     // detected background of square icons
@@ -31,6 +38,24 @@ vec4 unpremul(vec4 c) {
 }
 float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
+
+// A pixel's luminance, normalised for this logo: its own mean moved to a
+// common middle, its spread stretched (or tamed) to a common amount
+float normLum(float lum) {
+    float gain = clamp(0.26 / max(logoSpread, 0.04), 0.8, 2.6);
+    return clamp((lum - logoLum) * gain + 0.55, 0.0, 1.0);
+}
+// The glyph's colour in clear mode: light on dark glass, dark on light glass,
+// its detail kept as a band of shades (wider with more contrast)
+vec3 clearGlyph(float n) {
+    float band = mix(0.28, 0.5, contrast);
+    return darkTheme > 0.5 ? vec3(1.0 - band + band * n) : vec3(0.08 + band * n * 0.8);
+}
+// …and in tinted mode, in the accent
+vec3 tintGlyph(float n) {
+    return darkTheme > 0.5 ? mix(tint.rgb * mix(0.75, 0.95, contrast), mix(tint.rgb, vec3(1.0), 0.55), n)
+                           : tint.rgb * mix(mix(0.5, 0.35, contrast), 0.85, n);
 }
 
 // Original styles for untiled icons
@@ -45,10 +70,10 @@ vec4 styleFree(vec4 c) {
         float bg = smoothstep(0.6, 0.85, lum) * (1.0 - smoothstep(0.12, 0.3, sat));
         rgb = mix(min(rgb * 1.12 + 0.03, vec3(1.0)), mix(vec3(0.16, 0.16, 0.18), vec3(0.24, 0.24, 0.27), lum), bg);
     } else if (mode < 2.5) {
-        rgb = mix(vec3(1.0), vec3(lum), 0.35);
-        a *= 0.45 + 0.5 * lum;
+        rgb = clearGlyph(normLum(lum));
+        a *= mix(0.72, 0.98, contrast);
     } else {
-        rgb = tint.rgb * (0.35 + 0.85 * lum);
+        rgb = tintGlyph(normLum(lum));
     }
     return vec4(rgb * a, a);
 }
@@ -87,8 +112,10 @@ void main() {
 
     // Glyph mask: how much a pixel differs from the tile, as Tahoe's
     // monochrome layer (black and white artwork)
-    float glyph = clamp(art.a * smoothstep(0.06, 0.32, distance(art.rgb, base)) + (square > 0.5 ? 0.0 : art.a * 0.6), 0.0, 1.0);
+    // (more contrast: fainter differences already count as logo)
+    float glyph = clamp(art.a * smoothstep(0.04, mix(0.32, 0.16, contrast), distance(art.rgb, base)) + (square > 0.5 ? 0.0 : art.a * 0.6), 0.0, 1.0);
     float lumArt = luma(art.rgb);
+    float lumN = normLum(lumArt);
     float rimShade = 0.5 + 0.5 * clamp((-p.x - p.y) * 0.7, -1.0, 1.0); // lit from the top left
     float rim = smoothstep(0.86, 0.995, d) * rimShade;
 
@@ -99,21 +126,21 @@ void main() {
         rgb = mix(tileDark, min(art.rgb * 1.1 + 0.04, vec3(1.0)), keep);
         rgb += rim * 0.10;
     } else if (mode > 1.5 && mode < 2.5) {
-        // Clear: frosted glass tile, glyph etched as brighter frost
-        float a = 0.32 + 0.08 * (1.0 - uv.y);
-        vec3 tileC = darkTheme > 0.5 ? vec3(0.62, 0.64, 0.68) : vec3(0.97, 0.97, 0.99);
-        vec3 glyphC = vec3(1.0);
-        float g = glyph * (0.75 + 0.25 * lumArt);
-        rgb = mix(tileC, glyphC, g * 0.9);
-        float alpha = mix(a, 0.92, g) + rim * 0.35;
-        rgb += rim * 0.35;
+        // Clear: frosted glass tile, the logo set apart from it: light on a
+        // darker glass in dark mode, dark on a pale glass in light mode
+        float a = mix(0.34, 0.5, contrast) + 0.08 * (1.0 - uv.y);
+        vec3 tileC = darkTheme > 0.5 ? vec3(0.17, 0.18, 0.2) : vec3(0.94, 0.95, 0.97);
+        float g = glyph * mix(0.8, 1.0, contrast);
+        rgb = mix(tileC, clearGlyph(lumN), g);
+        float alpha = mix(a, 0.96, g) + rim * 0.3;
+        rgb += rim * (darkTheme > 0.5 ? 0.3 : 0.12);
         fragColor = vec4(clamp(rgb, 0.0, 1.0) * alpha, alpha) * shape * qt_Opacity;
         return;
     } else if (mode > 2.5) {
-        // Tinted: dark tinted glass tile, glyph in the tint, lighter where the art is light
-        vec3 tileT = darkTheme > 0.5 ? mix(vec3(0.07), tint.rgb, 0.22) : mix(vec3(1.0), tint.rgb, 0.18);
-        vec3 glyphT = darkTheme > 0.5 ? mix(tint.rgb, vec3(1.0), 0.15 + 0.35 * lumArt) : tint.rgb * (0.55 + 0.45 * lumArt);
-        rgb = mix(tileT, glyphT, glyph);
+        // Tinted: dark tinted glass tile, glyph in the tint, lighter where
+        // the art is light (normalised, so every logo shows its detail)
+        vec3 tileT = darkTheme > 0.5 ? mix(vec3(0.06), tint.rgb, mix(0.2, 0.14, contrast)) : mix(vec3(1.0), tint.rgb, mix(0.16, 0.1, contrast));
+        rgb = mix(tileT, tintGlyph(lumN), glyph);
         rgb += rim * 0.22;
     } else {
         rgb += rim * 0.06; // default: a hint of edge light

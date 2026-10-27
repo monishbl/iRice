@@ -1,7 +1,9 @@
 import QtQuick
 import qs.common
 
-// Round on/off button: accent when on, translucent when off.
+// Round on/off button, like iOS and macOS 26: on is a white circle with the
+// glyph in the accent colour (darkened when the accent is too light to read
+// on white), off is translucent with a plain glyph.
 Rectangle {
     id: root
 
@@ -14,7 +16,8 @@ Rectangle {
     width: size
     height: size
     radius: size / 2
-    color: checked ? Theme.accent : mouse.containsMouse ? Theme.color.fillHover : Theme.color.toggleOff
+    readonly property color ink: (0.2126 * Theme.accent.r + 0.7152 * Theme.accent.g + 0.0722 * Theme.accent.b) > 0.55 ? Qt.darker(Theme.accent, 1.7) : Theme.accent
+    color: checked ? "white" : mouse.containsMouse ? Theme.color.fillHover : Theme.color.toggleOff
     opacity: enabled_ ? 1 : 0.4
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     transform: elastic.effects
@@ -24,7 +27,7 @@ Rectangle {
         name: root.icon
         fill: root.checked
         size: Math.round(root.size * 0.5)
-        color: root.checked ? Theme.color.onAccent : Theme.color.label
+        color: root.checked ? root.ink : Theme.color.label
     }
 
     MouseArea {

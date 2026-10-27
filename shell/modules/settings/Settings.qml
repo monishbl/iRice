@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import Quickshell
 import Quickshell.Io
 import qs.common
@@ -18,28 +19,76 @@ Scope {
             color: "transparent"
             onClosed: Panels.settingsOpen = false
 
+            // Sidebar sections, under group headings like System Settings.
+            // A page can open subpages (SubpageLink): "page/sub" is the file
+            // pages/page-sub.qml, whose pageTitle names it in the breadcrumb.
             readonly property var sections: [
-                { id: "appearance", name: "Appearance", icon: "circle-half", color: "#5E5CE6" },
-                { id: "wallpaper", name: "Wallpaper", icon: "image", color: "#32ADE6" },
-                { id: "menubar", name: "Menu Bar", icon: "list", color: "#8E8E93" },
-                { id: "desktop", name: "Desktop & Weather", icon: "squares-four", color: "#FF9F0A" },
-                { id: "controlcenter", name: "Control Center", icon: "sliders-horizontal", color: "#64D2FF" },
-                { id: "dock", name: "Dock", icon: "dots-three-outline", color: "#0A84FF" },
-                { id: "windowrules", name: "Window Rules", icon: "app-window", color: "#FF375F" },
-                { id: "notifications", name: "Notifications", icon: "bell", color: "#FF453A" },
-                { id: "lock", name: "Lock Screen", icon: "lock", color: "#636366" },
-                { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF" },
-                { id: "focus", name: "Focus", icon: "moon", color: "#5E5CE6" },
-                { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A" },
-                { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2" },
-                { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A" },
-                { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF" },
-                { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366" },
-                { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366" },
-                { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366" },
-                { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93" },
-                { id: "about", name: "About", icon: "info", color: "#30D158" }
+                { id: "appearance", name: "Appearance", icon: "circle-half", color: "#5E5CE6", group: "Personalisation" },
+                { id: "wallpaper", name: "Wallpaper", icon: "image", color: "#32ADE6", group: "Personalisation" },
+                { id: "desktop", name: "Desktop & Widgets", icon: "squares-four", color: "#FF9F0A", group: "Personalisation" },
+                { id: "dock", name: "Dock", icon: "dots-three-outline", color: "#0A84FF", group: "Personalisation" },
+                { id: "menubar", name: "Menu Bar", icon: "list", color: "#8E8E93", group: "Personalisation" },
+                { id: "lock", name: "Lock Screen", icon: "lock", color: "#636366", group: "Personalisation" },
+                { id: "notifications", name: "Notifications", icon: "bell", color: "#FF453A", group: "Notifications & Focus" },
+                { id: "focus", name: "Focus", icon: "moon", color: "#5E5CE6", group: "Notifications & Focus" },
+                { id: "controlcenter", name: "Control Center", icon: "sliders-horizontal", color: "#64D2FF", group: "Notifications & Focus" },
+                { id: "windowrules", name: "Windows", icon: "app-window", color: "#FF375F", group: "Windows & Spaces" },
+                { id: "network", name: "Network", icon: "wifi-high", color: "#0A84FF", group: "Devices & Input" },
+                { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF", group: "Devices & Input" },
+                { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366", group: "Devices & Input" },
+                { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366", group: "Devices & Input" },
+                { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366", group: "Devices & Input" },
+                { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF", group: "Devices & Input" },
+                { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A", group: "Apps" },
+                { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
+                { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },
+                { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93", group: "System" },
+                { id: "about", name: "About", icon: "info", color: "#30D158", group: "System" }
             ]
+            // The page on show: its section, and its subpage if any
+            readonly property string sectionId: Panels.settingsPage.split("/")[0]
+            readonly property var section: sections.find(x => x.id === sectionId) ?? null
+            readonly property bool isSub: Panels.settingsPage.includes("/")
+
+            // Back and forward, like a browser (the arrows, Alt+← / Alt+→,
+            // the mouse's side buttons)
+            property var back: []
+            property var forward: []
+            property string shown // (not a binding: it must still hold the old page when the page changes)
+            Component.onCompleted: shown = Panels.settingsPage
+            property bool stepping: false
+            Connections {
+                target: Panels
+                function onSettingsPageChanged() {
+                    if (!win.stepping && win.shown !== Panels.settingsPage) {
+                        win.back = win.back.concat([win.shown]).slice(-50);
+                        win.forward = [];
+                    }
+                    win.shown = Panels.settingsPage;
+                }
+            }
+            function goBack() {
+                if (back.length === 0)
+                    return;
+                stepping = true;
+                forward = [Panels.settingsPage].concat(forward);
+                const to = back[back.length - 1];
+                back = back.slice(0, -1);
+                Panels.settingsPage = to;
+                stepping = false;
+            }
+            function goForward() {
+                if (forward.length === 0)
+                    return;
+                stepping = true;
+                back = back.concat([Panels.settingsPage]);
+                const to = forward[0];
+                forward = forward.slice(1);
+                Panels.settingsPage = to;
+                stepping = false;
+            }
+            Shortcut { sequence: "Alt+Left"; onActivated: win.goBack() }
+            Shortcut { sequence: "Alt+Right"; onActivated: win.goForward() }
 
             // Search: section names, plus every row and group caption in the
             // pages (read from their files, so nothing has to load)
@@ -56,19 +105,19 @@ Scope {
                     if (hit(s.name))
                         out.push({ page: s.id, text: s.name, detail: "", section: true });
                 for (const e of index)
-                    if (hit(e.text + " " + e.detail + " " + (sections.find(s => s.id === e.page)?.name ?? "")))
+                    if (hit(e.text + " " + e.detail + " " + (sections.find(s => s.id === e.page.split("/")[0])?.name ?? "")))
                         out.push(e);
                 return out.slice(0, 60);
             }
             Process {
                 running: true
-                command: ["sh", "-c", "cd \"$1\" && grep -HnoE '(label|title|detail): \"[^\"]+\"' *.qml", "sh", Qt.resolvedUrl("pages").toString().replace("file://", "")]
+                command: ["sh", "-c", "cd \"$1\" && grep -HnoE '(label|title|detail|pageTitle): \"[^\"]+\"' *.qml", "sh", Qt.resolvedUrl("pages").toString().replace("file://", "")]
                 stdout: StdioCollector {
                     onStreamFinished: {
                         const out = [];
                         let last = null;
                         for (const line of text.split("\n")) {
-                            const m = line.match(/^([a-z]+)\.qml:(\d+):(label|title|detail): "(.*)"$/);
+                            const m = line.match(/^([a-z]+(?:-[a-z]+)?)\.qml:(\d+):(label|title|detail|pageTitle): "(.*)"$/);
                             if (!m || m[4].includes("+") || m[4].length < 3)
                                 continue;
                             if (m[3] === "detail") {
@@ -76,7 +125,7 @@ Scope {
                                     last.detail = m[4];
                                 continue;
                             }
-                            last = { page: m[1], line: +m[2], text: m[4], detail: "" };
+                            last = { page: m[1].replace("-", "/"), line: +m[2], text: m[4], detail: "" };
                             if (!out.some(e => e.page === last.page && e.text === last.text))
                                 out.push(last);
                         }
@@ -120,27 +169,73 @@ Scope {
                 flashAnim.restart();
             }
 
+            // The mouse's side buttons: back and forward
+            TapHandler {
+                acceptedButtons: Qt.BackButton | Qt.ForwardButton
+                onTapped: (point, button) => button === Qt.BackButton ? win.goBack() : win.goForward()
+            }
+            // A click anywhere but the search field ends the search (it stays
+            // put; the click still goes through to what's under it)
+            MouseArea {
+                anchors.fill: parent
+                z: 1000
+                enabled: search.editing
+                acceptedButtons: Qt.AllButtons
+                onPressed: mouse => {
+                    const p = mapToItem(search, mouse.x, mouse.y);
+                    if (p.x < 0 || p.y < 0 || p.x > search.width || p.y > search.height)
+                        search.release();
+                    mouse.accepted = false;
+                }
+            }
+
             Rectangle {
                 id: sidebar
                 width: 230
                 height: parent.height
                 color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.78) : Qt.rgba(0.94, 0.94, 0.96, 0.8)
 
-                TextField {
-                    id: search
+                // Search, sticky at the top. Expanded at the top of the list or
+                // while in use; scrolled down and idle it folds into a magnifier
+                // (hover or click opens it again)
+                readonly property bool searchFolded: sideScroll.contentY > 4 && !search.editing && win.query === ""
+                Item {
+                    id: searchBar
                     x: 10
                     y: 14
+                    z: 2
                     width: parent.width - 20
-                    placeholder: "Search"
-                    commitOnBlur: false
-                    onTextChanged: win.query = text
-                    Keys.onEscapePressed: text = ""
-                    onCommitted: if (win.results.length > 0) win.go(win.results[0].page, win.results[0].section ? "" : win.results[0].text)
+                    height: 28
+                    HoverHandler { id: barHover }
+
+                    TextField {
+                        id: search
+                        width: sidebar.searchFolded && !barHover.hovered ? 28 : parent.width
+                        height: parent.height
+                        opacity: sidebar.searchFolded && !barHover.hovered ? 0 : 1
+                        placeholder: "Search"
+                        commitOnBlur: false
+                        onTextChanged: win.query = text
+                        Keys.onEscapePressed: {
+                            text = "";
+                            release();
+                        }
+                        onCommitted: if (win.results.length > 0) win.go(win.results[0].page, win.results[0].section ? "" : win.results[0].text)
+                        Behavior on width { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                    }
+                    IconButton {
+                        visible: search.opacity < 1
+                        opacity: 1 - search.opacity
+                        icon: "magnifying-glass"
+                        tooltip: "Search"
+                        onClicked: search.focusInput()
+                    }
                 }
 
                 Flickable {
                     id: sideScroll
-                    anchors { left: parent.left; right: parent.right; top: search.bottom; topMargin: 10; bottom: parent.bottom }
+                    anchors { left: parent.left; right: parent.right; top: searchBar.bottom; topMargin: 10; bottom: parent.bottom }
                     contentHeight: list.implicitHeight + 16
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
@@ -154,10 +249,26 @@ Scope {
                         // Sections, or search results
                         Repeater {
                             model: win.query.trim() === "" ? win.sections : []
+                            Column {
+                                id: entry
+                                required property var modelData
+                                required property int index
+                                width: list.width
+                                // A group heading above the first section of each group
+                                Text {
+                                    visible: entry.index === 0 || win.sections[entry.index - 1].group !== entry.modelData.group
+                                    width: parent.width
+                                    leftPadding: 8
+                                    topPadding: entry.index === 0 ? 0 : 12
+                                    bottomPadding: 4
+                                    text: entry.modelData.group
+                                    color: Theme.color.tertiary
+                                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                                }
                             Rectangle {
                                 id: item
-                                required property var modelData
-                                readonly property bool current: Panels.settingsPage === modelData.id
+                                readonly property var modelData: entry.modelData
+                                readonly property bool current: win.sectionId === modelData.id
                                 width: list.width
                                 height: 32
                                 radius: 8
@@ -186,6 +297,7 @@ Scope {
                                     onClicked: win.go(item.modelData.id)
                                 }
                             }
+                            }
                         }
 
                         Repeater {
@@ -193,7 +305,7 @@ Scope {
                             Rectangle {
                                 id: result
                                 required property var modelData
-                                readonly property var section: win.sections.find(s => s.id === modelData.page)
+                                readonly property var section: win.sections.find(s => s.id === modelData.page.split("/")[0])
                                 width: list.width
                                 height: Math.max(36, texts.implicitHeight + 12)
                                 radius: 8
@@ -272,9 +384,80 @@ Scope {
                 anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: parent.bottom }
                 color: Theme.dark ? "#1E1E21" : "#F5F5F7"
 
+                // Toolbar: back and forward, and where you are (Section › Subpage;
+                // the section part goes back up to it)
+                Item {
+                    id: toolbar
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    height: 52
+                    QQ.Row {
+                        id: arrows
+                        x: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        IconButton {
+                            icon: "caret-left"
+                            iconSize: 16
+                            tooltip: "Back"
+                            enabled: win.back.length > 0
+                            opacity: enabled ? 1 : 0.35
+                            onClicked: win.goBack()
+                        }
+                        IconButton {
+                            icon: "caret-right"
+                            iconSize: 16
+                            tooltip: "Forward"
+                            enabled: win.forward.length > 0
+                            opacity: enabled ? 1 : 0.35
+                            onClicked: win.goForward()
+                        }
+                    }
+                    QQ.Row {
+                        anchors { left: arrows.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                        spacing: 6
+                        Text {
+                            id: crumb
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: win.section?.name ?? ""
+                            color: win.isSub ? (crumbMouse.containsMouse ? Theme.color.label : Theme.color.secondary) : Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
+                            MouseArea {
+                                id: crumbMouse
+                                anchors.fill: parent
+                                enabled: win.isSub
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.go(win.sectionId)
+                            }
+                        }
+                        Icon {
+                            visible: win.isSub
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "caret-right"
+                            bold: true
+                            size: 12
+                            color: Theme.color.tertiary
+                        }
+                        Text {
+                            visible: win.isSub
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: pageLoader.item?.pageTitle ?? ""
+                            color: Theme.color.label
+                            font: crumb.font
+                        }
+                    }
+                    Rectangle { // a hairline once the page scrolls under it
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: 1
+                        color: Theme.color.separator
+                        opacity: scroller.contentY > 2 ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                    }
+                }
+
                 Flickable {
                     id: scroller
-                    anchors.fill: parent
+                    anchors { left: parent.left; right: parent.right; top: toolbar.bottom; bottom: parent.bottom }
                     contentHeight: page.implicitHeight + 64
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
@@ -282,20 +465,14 @@ Scope {
                     Column {
                         id: page
                         x: 28
-                        y: 24
+                        y: 8
                         width: scroller.width - 56
                         spacing: 22
-
-                        Text {
-                            text: win.sections.find(s => s.id === Panels.settingsPage)?.name ?? ""
-                            color: Theme.color.label
-                            font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.Bold }
-                        }
 
                         Loader {
                             id: pageLoader
                             width: parent.width
-                            source: Qt.resolvedUrl("pages/" + Panels.settingsPage + ".qml")
+                            source: Qt.resolvedUrl("pages/" + Panels.settingsPage.replace("/", "-") + ".qml")
                             onLoaded: {
                                 scroller.contentY = 0;
                                 Qt.callLater(win.reveal);

@@ -43,7 +43,7 @@ Singleton {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
-                property string menuIcon: "irice" // leftmost menu: irice | distro | linux | windows | apple | android
+                property string menuIcon: "irice" // leftmost menu: irice | distro | linux | windows | apple | android | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | steam | github | circle
                 property string iconTheme: "" // app icon theme; empty = automatic (KDE / GNOME setting, else Papirus, Breeze, Adwaita)
                 property string keySymbols: "auto" // auto (follows menuIcon) | mac | windows | linux
                 // Custom material (Settings → Appearance → Advanced), each 0..1
@@ -59,6 +59,7 @@ Singleton {
                 property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by iRice)
                 property string iconStyle: "default" // default | dark | clear | tinted | auto (dark in dark mode)
                 property string iconShape: "squircle" // squircle (every icon on the same tile) | original
+                property real iconContrast: 0.6 // clear and tinted icons: how far the logo stands apart from its tile (0 .. 1)
                 property string iconTile: "auto" // tile behind transparent logos: auto (from the logo) | neutral | accent
                 property int screenCornerRadius: 12
                 property int windowRadius: 20 // app window corners (continuous curve)
@@ -130,6 +131,20 @@ Singleton {
                 property real volume: 0.6
             }
 
+            // Screen recording (services/Recorder.qml): gpu-screen-recorder,
+            // or wf-recorder when it isn't installed. The toolbar remembers
+            // the last choices here.
+            property JsonObject recorder: JsonObject {
+                property string area: "screen" // screen | window | region
+                property string mic: "" // "" off | default | a source's name
+                property bool systemAudio: true
+                property bool cursor: true
+                property int countdown: 0 // seconds: 0 | 3 | 5
+                property int fps: 60 // 30 | 60
+                property string codec: "h264" // h264 | hevc | av1
+                property string quality: "high" // medium | high | very_high | ultra
+                property string folder: "" // "" = ~/Videos/Screen Recordings
+            }
             property JsonObject screenshot: JsonObject {
                 property string editor: "irice" // irice (floating thumbnail, click to mark up) | swappy
                 property bool thumbnail: true // iRice editor: floating thumbnail after a screenshot; off = a notification with Edit
@@ -156,6 +171,7 @@ Singleton {
                 property bool autoHide: false
                 property string workspaces: "icons" // off | dots | icons
                 property int workspaceCount: 5 // always shown; more appear when used
+                property string workspaceOverflow: "arrows" // more spaces than shown: arrows | dynamic (shrinking, fading dots at the ends)
                 property bool otherSpaces: true // also list the spaces living on other displays (marked)
                 property bool windowTitle: false
                 property bool resources: false
@@ -167,7 +183,7 @@ Singleton {
                 property bool appMenu: true // the active app's name and menu, left
                 property bool windowMenu: true // the Window menu, left
                 property bool battery: true
-                property bool batteryPercent: false
+                property string batteryPercent: "off" // off | inside (cut into the battery) | outside (beside it); "true"/"false" from before mean outside/off
                 property bool wifi: true
                 property bool bluetooth: false
                 property bool sound: false // volume lives in Control Center
@@ -256,6 +272,7 @@ Singleton {
                 // {"class","name","float","workspace" (0 = any),"opaque","start" ("" | "maximize" | "fullscreen"),"pin","width","height" (0 = none)}
                 // Written to window-rules.lua for Hyprland. Plain strings: JsonAdapter 0.2 is unreliable with var.
                 property list<string> rules: []
+                property string defaultLayout: "tiled" // new windows open: tiled | floating (a rule can make an app the opposite; dialogs always float)
             }
 
             property JsonObject defaultApps: JsonObject {
@@ -276,6 +293,12 @@ Singleton {
                 property string style: "android" // emoji drawn by the shell: android (Noto) | apple | windows (Fluent)
                 property string klipyKey: "" // your KLIPY app key for the picker's GIF tab (partner.klipy.com/api-keys); KLIPY_API_KEY in the environment wins
                 property string gifFilter: "medium" // GIF safety filter: off | low | medium | high
+            }
+            property JsonObject resources: JsonObject {
+                property string graphStyle: "area" // CPU, memory, network… graphs: area (a line with a soft fill) | bars | line
+            }
+            property JsonObject network: JsonObject {
+                property string speedTest: "cloudflare" // speed test server: cloudflare (speed.cloudflare.com, needs only curl) | ookla (speedtest.net; needs speedtest or speedtest-cli)
             }
             property JsonObject cooling: JsonObject {
                 // Cool-down (Settings → Appearance): less work while hot, on battery or switched on
@@ -327,9 +350,17 @@ Singleton {
             property JsonObject displays: JsonObject {
                 // Settings → Displays: "name\tmode\tx\ty\tscale\ttransform\tenabled\tmirror" per display, written to hypr/irice monitors
                 property list<string> monitors: []
+                // When a display connects or leaves (services/DisplayFx.qml):
+                // off | extend | liquid | warp, and the sound panned toward it
+                property string connectAnimation: "extend"
+                property bool directionalSound: true
             }
             property JsonObject switcher: JsonObject {
                 property bool enabled: true // Alt+Tab window switcher with previews
+            }
+            property JsonObject privacy: JsonObject {
+                // Where a screen share shows (Settings → Menu Bar): island (a live activity; no dot meanwhile) | dot (the purple privacy dot) | both. With the island off, the dot.
+                property string screenShareIndicator: "island"
             }
             property JsonObject hotCorners: JsonObject {
                 // none | overview | missionControl | desktop | notificationCenter | launchpad | lock | standby | quickNote
@@ -341,8 +372,11 @@ Singleton {
             }
 
             property JsonObject overview: JsonObject {
-                // Window previews: snapshot (captured once each time the Overview opens) | live (keep updating while open) | hybrid (live for the current space, snapshots for the rest)
+                // Window previews (Overview, Mission Control, Stage Manager strip): snapshot (captured once each time it opens) | live (keep updating while open, up to 30 fps) | hybrid (live for the current space, snapshots for the rest)
                 property string previews: "snapshot"
+                // grid (the spaces as large previews, search on top) | macos (a strip of spaces on top, only a search in the middle)
+                property string style: "grid"
+                property bool wallpapers: false // space thumbnails (Overview, Mission Control) show the wallpaper behind their windows
             }
 
             property JsonObject stageManager: JsonObject {
@@ -354,6 +388,7 @@ Singleton {
                 property bool enabled: true // off: no dock (App Library stays on its shortcut)
                 property list<string> pinned: ["org.kde.dolphin", "thunar", "firefox", "code", "foot", "org.gnome.Calculator", "org.xfce.mousepad"]
                 property int iconSize: 48
+                property real gap: 0.18 // space between icons, as a fraction of the icon size (0.05 .. 0.4)
                 property bool appsButton: true // App Library button at the start
                 property bool magnification: false
                 property string autoHide: "off" // off | always | windows (hide when a window overlaps it)

@@ -14,7 +14,7 @@ Singleton {
     SystemClock {
         id: clock
         precision: SystemClock.Seconds
-        enabled: ScreenTools.recording || Calls.active
+        enabled: ScreenTools.recording || Calls.active || Privacy.shareInIsland
     }
     function since(t) {
         return Timers.format(Math.max(0, Math.floor((clock.date - t) / 1000)));
@@ -23,7 +23,7 @@ Singleton {
     function icon(kind) {
         switch (kind) {
         case "recording":
-            return "record";
+            return Recorder.paused ? "pause-circle" : "record";
         case "timer":
             return Timers.phase === "focus" ? "timer" : "coffee";
         case "stopwatch":
@@ -34,6 +34,10 @@ Singleton {
         }
         case "call":
             return Privacy.camera ? "video-camera" : "phone";
+        case "screenShare":
+            return Privacy.shares[0]?.window ? "app-window" : "screencast";
+        case "sysupdate":
+            return "arrow-circle-up";
         }
         return "music-notes";
     }
@@ -47,13 +51,17 @@ Singleton {
         case "stopwatch":
             return "Stopwatch";
         case "recording":
-            return "Recording";
+            return Recorder.paused ? "Recording paused" : "Recording";
         case "transfer": {
             const n = Transfers.items.length;
             return (Transfers.first?.name ?? "") + (n > 1 ? " and " + (n - 1) + " more" : "");
         }
         case "call":
             return Calls.call?.name ?? "Call";
+        case "screenShare":
+            return "Sharing screen · " + Privacy.screenApp + (Privacy.shares.length > 1 ? " and " + (Privacy.shares.length - 1) + " more" : "");
+        case "sysupdate":
+            return "Updating · " + SoftwareUpdate.stepName(SoftwareUpdate.stepNow || "system");
         }
         return "";
     }
@@ -68,7 +76,7 @@ Singleton {
         case "stopwatch":
             return Timers.format(Math.floor(Timers.swElapsed / 1000));
         case "recording":
-            return since(ScreenTools.recordingStarted);
+            return Timers.format(Recorder.elapsed);
         case "transfer": {
             const f = Transfers.first;
             if (!f)
@@ -79,6 +87,10 @@ Singleton {
         }
         case "call":
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");
+        case "screenShare":
+            return Privacy.stopFailed ? "Still sharing: stop it in " + Privacy.screenApp : Privacy.screenTarget + " · " + since(Privacy.screenStarted);
+        case "sysupdate":
+            return (Updates.job?.text ?? "") + (Updates.job?.package && (Updates.job.phase === "install" || Updates.job.phase === "download") ? " · " + Updates.job.package : "");
         }
         return "";
     }
@@ -91,18 +103,22 @@ Singleton {
         case "stopwatch":
             return Timers.format(Math.floor(Timers.swElapsed / 1000));
         case "recording":
-            return since(ScreenTools.recordingStarted);
+            return Timers.format(Recorder.elapsed);
         case "transfer":
             return Transfers.progress >= 0 ? Math.round(Transfers.progress * 100) + "%" : Transfers.label(Transfers.first);
         case "call":
             return since(Calls.started);
+        case "screenShare":
+            return since(Privacy.screenStarted);
+        case "sysupdate":
+            return Updates.job?.phase === "auth" ? "Password" : Math.round(Math.max(0, Updates.progress) * 100) + "%";
         }
         return "";
     }
 
     // 0..1 for a progress bar, or -1 for none
     function progress(kind) {
-        return kind === "timer" ? Timers.progress : kind === "transfer" ? Transfers.progress : -1;
+        return kind === "timer" ? Timers.progress : kind === "transfer" ? Transfers.progress : kind === "sysupdate" ? Math.max(0, Updates.progress) : -1;
     }
 
     // Every control a kind has, keyed by piece name: the pill shows the pieces
@@ -129,11 +145,26 @@ Singleton {
                 { piece: "play", icon: Timers.swRunning ? "pause" : "play", fill: true, act: () => Timers.swToggle(), on: true }
             ];
         case "recording":
-            return [{ piece: "stop", icon: "stop", fill: true, act: () => ScreenTools.stopRecording(), on: true }];
+            // the pill shows Stop; the open card all of them
+            return [
+                { piece: "discard", icon: "trash", fill: false, act: () => Recorder.discard(), on: true },
+                ...(Recorder.cfg.mic !== "" ? [{ piece: "mute", icon: Recorder.micMuted ? "microphone-slash" : "microphone", fill: true, act: () => Recorder.toggleMic(), on: Recorder.micNode !== null }] : []),
+                ...(Recorder.canPause ? [{ piece: "pause", icon: Recorder.paused ? "play" : "pause", fill: true, act: () => Recorder.togglePause(), on: true }] : []),
+                { piece: "stop", icon: "stop", fill: true, act: () => ScreenTools.stopRecording(), on: true, danger: true }
+            ];
         case "transfer": {
             const f = Transfers.first;
             return f?.kind === "copy" || f?.kind === "send" ? [{ piece: "cancel", icon: "x", fill: false, act: () => Transfers.cancel(f), on: true }] : [{ piece: "open", icon: "folder-open", fill: false, act: () => Transfers.openDownloads(), on: true }];
         }
+        case "screenShare":
+            return [{ piece: "stop", icon: "stop", fill: true, act: () => Privacy.stopSharing(), on: !Privacy.stopping, danger: true }];
+        case "sysupdate":
+            // Details: Software Update with the output open; Cancel only while
+            // it still waits for the password (never mid-transaction)
+            return [
+                { piece: "details", icon: "terminal-window", fill: false, act: () => { Updates.showDetails = true; Panels.openSettings("update"); }, on: true },
+                ...(Updates.cancellable ? [{ piece: "cancel", icon: "x", fill: false, act: () => Updates.cancel(), on: true }] : [])
+            ];
         case "call":
             return [
                 { piece: "mute", icon: Audio.micMuted ? "microphone-slash" : "microphone", fill: true, act: () => Audio.toggleMic(), on: true },

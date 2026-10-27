@@ -28,6 +28,10 @@ Singleton {
             charging: own + "charging.ogg",
             displays: own + "display-connect.ogg",
             displaysOff: own + "display-disconnect.ogg",
+            displaysLeft: own + "display-connect-left.ogg", // directional (DisplayFx)
+            displaysRight: own + "display-connect-right.ogg",
+            displaysOffLeft: own + "display-disconnect-left.ogg",
+            displaysOffRight: own + "display-disconnect-right.ogg",
             lock: own + "lock.ogg",
             unlock: own + "unlock.ogg",
             notifications: own + "notification.ogg",
@@ -44,7 +48,7 @@ Singleton {
         })
     // The setting a sound follows (and whose custom file replaces it), when
     // it isn't its own name
-    readonly property var setting: ({ displaysOff: "displays", unlock: "lock", usbOff: "usb", recordingOff: "recording" })
+    readonly property var setting: ({ displaysOff: "displays", displaysLeft: "displays", displaysRight: "displays", displaysOffLeft: "displays", displaysOffRight: "displays", unlock: "lock", usbOff: "usb", recordingOff: "recording" })
     // Sounds that may only play this often (ms): the volume keys repeat
     readonly property var spacing: ({ volumeKeys: 70, notifications: 600, usb: 400, usbOff: 400 })
     property var lastPlayed: ({})
@@ -128,7 +132,10 @@ Singleton {
         id: settle
         interval: 800
         onTriggered: {
-            if (root.screenCount > root.heardCount)
+            // Directional sound on: DisplayFx plays it, panned toward the display
+            if (Config.options.displays.directionalSound)
+                root.heardCount = root.screenCount;
+            else if (root.screenCount > root.heardCount)
                 root.play("displays");
             else if (root.screenCount < root.heardCount)
                 root.play("displaysOff");

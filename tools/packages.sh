@@ -12,7 +12,7 @@ PACKAGES=(
     # Commands the shell runs: pactl/paplay, xdg-open, gio/gsettings/gdbus, gtk-launch, sound effects, drives, file dialogs
     libpulse xdg-utils glib2 gtk3 libcanberra udisks2 zenity
     # Screen tools, clipboard, input
-    grim slurp wl-clipboard cliphist wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
+    grim slurp wl-clipboard cliphist gpu-screen-recorder wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
     # (hyprpm, used for the optional hyprbars title bars, ships with the hyprland package)
     # Spotlight, Quick Look, sharing, widgets, privacy dots, updates
     libqalculate ripgrep plocate poppler ffmpegthumbnailer file psmisc python jq curl translate-shell pacman-contrib matugen
@@ -24,3 +24,6 @@ APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none:
 # default; Settings can also install them later, with yay.
 EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
 AUR=(mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
+# Packages iRice used to need and no longer does. Software Update offers to
+# remove the ones still installed (pkexec pacman -Rns); install.sh ignores them.
+DROPPED=()

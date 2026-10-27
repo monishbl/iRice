@@ -377,6 +377,37 @@ Column {
 
     Group {
         width: parent.width
+        title: "When a display connects"
+        footer: "The new display fills from the side it shares with its neighbour, which comes from the arrangement above; a display that leaves pulls back from that side. Directional sound plays the connect sound from that side (with Sound effects on)."
+        Row {
+            label: "Animation"
+            Segmented {
+                width: 300
+                readonly property var values: ["off", "extend", "liquid", "warp"]
+                options: ["Off", "Extend", "Liquid", "Warp"]
+                current: Math.max(0, values.indexOf(Config.options.displays.connectAnimation))
+                onSelected: i => Config.options.displays.connectAnimation = values[i]
+            }
+        }
+        Row {
+            label: "Directional sound"
+            detail: "Heard from the side the display is on"
+            Switch { checked: Config.options.displays.directionalSound; onToggled: Config.options.displays.directionalSound = !checked }
+        }
+        Row {
+            label: "Preview"
+            detail: "On this display, as if one were plugged in on that side"
+            QQ.Row {
+                spacing: 8
+                SettingsButton { text: "Left"; icon: "arrow-left"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "left") }
+                SettingsButton { text: "Above"; icon: "arrow-up"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "top") }
+                SettingsButton { text: "Right"; icon: "arrow-right"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "right") }
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
         title: "Switching spaces"
         footer: "When Super+number or a shortcut takes you to a space on another display."
         Row {

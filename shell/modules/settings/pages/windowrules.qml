@@ -149,6 +149,25 @@ Column {
         }
     }
 
+    // New windows: tiled or floating, for every app (a rule below can make
+    // an app the opposite; dialogs and other child windows always float)
+    Group {
+        visible: page.view === "list" && WindowRules.available
+        width: parent.width
+        footer: WindowRules.floating ? "Every app opens as a free window; dialogs too. To tile an app anyway, add a rule for it and turn on Tile." : "Apps share the screen side by side; dialogs and pickers still float. To float an app anyway, add a rule for it and turn on Float."
+        Row {
+            label: "New windows open"
+            detail: "Changing it also re-arranges the windows on the spaces you can see"
+            Segmented {
+                width: 220
+                readonly property var values: ["tiled", "floating"]
+                options: ["Tiled", "Floating"]
+                current: Math.max(0, values.indexOf(Config.options.windowRules.defaultLayout))
+                onSelected: i => Config.options.windowRules.defaultLayout = values[i]
+            }
+        }
+    }
+
     // ── Errors ───────────────────────────────────────────────────────────
     Group {
         visible: !WindowRules.available || WindowRules.error !== ""
@@ -438,12 +457,23 @@ Column {
         visible: page.view === "edit"
         width: parent.width
         title: "When it opens"
+        // The opposite of what new windows do (Settings: New windows open)
         Row {
+            visible: !WindowRules.floating
             label: "Float"
             detail: "Opens as a free window instead of tiling"
             Switch {
                 checked: page.rule?.float || page.rule?.pin || false
-                onToggled: page.change(page.rule.pin ? { float: false, pin: false } : { float: !page.rule.float })
+                onToggled: page.change(page.rule.pin ? { float: false, pin: false } : { float: !page.rule.float, tile: false })
+            }
+        }
+        Row {
+            visible: WindowRules.floating
+            label: "Tile"
+            detail: "Tiles with the others, though new windows float"
+            Switch {
+                checked: page.rule?.tile || false
+                onToggled: page.change({ tile: !page.rule.tile, float: false, pin: false })
             }
         }
         Row {

@@ -82,7 +82,8 @@ if [[ ${#mine[@]} -gt 0 ]]; then
 fi
 
 # The update, its steps shown as they come (PROGRESS lines on stderr)
-python3 -I "$REPO/tools/irice-update.py" apply --config "$CONFIG" --choices "$T/choices.json" \
+# (rebuild: parts to rebuild anyway, e.g. "plugin" after a Hyprland update)
+python3 -I "$REPO/tools/irice-update.py" apply --config "$CONFIG" --choices "$T/choices.json" --rebuild "$(cat "$T/rebuild" 2>/dev/null)" \
     >"$T/result.json" 2> >(while IFS= read -r line; do
         echo "$line" >>"$T/log"
         [[ $line =~ ^PROGRESS\ ([0-9]+)\ (.*)$ ]] && status run "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"

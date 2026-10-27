@@ -9,7 +9,8 @@ import qs.services
 // taken, the icon sits in the middle instead (with the app's name when the
 // capture failed and there is room).
 // Nothing is captured while `capture` is false (the Overview is closed);
-// `live` keeps the picture updating, otherwise it is taken once.
+// `live` keeps the picture updating (up to 30 times a second: LiveCapture),
+// otherwise it is taken once.
 Item {
     id: root
 
@@ -29,7 +30,7 @@ Item {
     // Take a fresh picture (the Overview reopened before its window unloaded)
     function recapture() {
         failed = false;
-        if (!live && view.captureSource)
+        if (view.captureSource)
             view.captureFrame();
     }
     onCaptureChanged: if (capture) failed = false
@@ -43,13 +44,18 @@ Item {
             id: view
             anchors.fill: parent
             captureSource: root.capture ? (root.toplevel?.wayland ?? null) : null
-            live: root.live
+            live: false // LiveCapture below updates it, capped
             // Matches the miniature, so frames are no bigger than drawn
             constraintSize: Qt.size(Math.max(1, Math.ceil(root.width)), Math.max(1, Math.ceil(root.height)))
             opacity: root.loaded ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
             onStopped: if (root.capture && !hasContent) root.failed = true
         }
+    }
+
+    LiveCapture {
+        target: view
+        live: root.live
     }
 
     // Loading or failed: the icon in the middle

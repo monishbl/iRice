@@ -19,6 +19,10 @@ SB="$ROOT/.sandbox/home"
 # updates, and lets tests unlock the lock screen without a password)
 export IRICE_ROOT="$ROOT" IRICE_TTY=1
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
+# Clipboard history: the one the session's watcher (tty.lua: wl-paste --watch
+# cliphist store) writes, in your usual cache. With the cache above, the
+# shell read an empty history of its own and the clipboard panel was empty
+export CLIPHIST_DB_PATH="${CLIPHIST_DB_PATH:-$HOME/.cache/cliphist/db}"
 # Apps and icons installed for this user (~/.local/share: AppImages, Steam
 # games, web apps, icon themes) are still found, after iRice's own data
 export XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"

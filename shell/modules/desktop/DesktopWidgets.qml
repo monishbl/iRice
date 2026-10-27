@@ -147,7 +147,7 @@ Item {
                 y: root.origin.y + Math.floor(index / root.cols) * (defs.cell + defs.gap)
                 width: defs.cell
                 height: defs.cell
-                radius: 22
+                radius: Theme.radius.tile
                 color: Qt.rgba(1, 1, 1, 0.03)
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.12)
@@ -161,7 +161,7 @@ Item {
             y: root.origin.y + (root.ghost?.row ?? 0) * (defs.cell + defs.gap)
             width: px.width
             height: px.height
-            radius: 22
+            radius: Theme.radius.tile
             color: Qt.rgba(1, 1, 1, 0.1)
             border.width: 2
             border.color: Qt.rgba(1, 1, 1, 0.55)

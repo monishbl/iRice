@@ -3,13 +3,15 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.common
+import "../common/phosphor.js" as Phosphor
 
 // iRice's own updates (not the system's: that's Updates), from the git
-// repository this shell runs from, through tools/irice-update.py. Checked a
-// while after start and every six hours; when one is ready, a notification
-// points to Settings → Software Update, which shows what's new and every
-// conflict (your code edits, settings whose defaults change, the material
-// you use, shortcut clashes). Nothing is applied until each one is decided.
+// repository this shell runs from, through tools/irice-update.py. Checked
+// only when you ask (Software Update → Check for updates; SoftwareUpdate
+// runs this, the system check and the package check together). The report
+// lists what's new and every conflict (your code edits, settings whose
+// defaults change, the material you use, shortcut clashes); nothing is
+// applied until each one is decided.
 Singleton {
     id: root
 
@@ -50,11 +52,11 @@ Singleton {
         command: ["python3", "-I", root.helper, "check", "--config", Config.dir]
         stdout: StdioCollector {
             onStreamFinished: {
-                root.checking = false;
                 let r = null;
                 try {
                     r = JSON.parse(text);
                 } catch (e) {
+                    root.checking = false;
                     root.error = "The update check didn't answer properly. Try again later.";
                     return;
                 }
@@ -66,24 +68,23 @@ Singleton {
                         kept[c.id] = root.choices[c.id];
                 root.choices = kept;
                 root.report = r;
-                if (root.available && r.latest !== root.notified) {
-                    root.notified = r.latest;
-                    const n = (r.conflicts ?? []).length;
-                    Quickshell.execDetached(["notify-send", "-a", "iRice", "-i", "system-software-update", "iRice update ready",
-                        (r.notes?.length ?? 0) + " change" + (r.notes?.length === 1 ? "" : "s") + (n > 0 ? ", " + n + " thing" + (n === 1 ? "" : "s") + " for you to decide" : "") + ". Open Settings → Software Update to review and install it."]);
-                }
+                // The packages of the version that would be installed
+                root.checkPackages(r.available ? (r.upstream ?? "") : "");
+                root.checking = false; // (last: the package check is already under way)
             }
         }
     }
-    property string notified: "" // the version last announced
 
     // Installing hands over to assets/scripts/update-run.sh, started detached
     // from a copy (with the update screen's): it stops this shell, updates
-    // behind a full-screen "Installing update" screen, rebuilds, and starts
+    // behind a full-screen "iRice is updating" screen, rebuilds, and starts
     // the new shell once. Updating under a running shell made it reload
     // halfway (its files change), which killed the update with it.
-    function apply() {
-        if (!ready || !allowed)
+    // rebuild: parts to rebuild anyway ("plugin" after a Hyprland update);
+    // with no iRice update, only those are rebuilt (same screen, same restart).
+    // Started by SoftwareUpdate, after the system part.
+    function launch(rebuild) {
+        if (!allowed)
             return;
         applying = true;
         error = "";
@@ -91,10 +92,45 @@ Singleton {
         Quickshell.execDetached(["sh", "-c",
             "t=$(mktemp -d \"${XDG_RUNTIME_DIR:-/tmp}/irice-update.XXXXXX\") || exit 1; " +
             "cp -r \"$1/shell/assets/updater\" \"$t/ui\" && cp \"$1/shell/assets/scripts/update-run.sh\" \"$t/run.sh\" && printf '%s' \"$2\" > \"$t/choices.json\" && " +
+            // the update screen shows your menu icon: its glyph and font, copied
+            "printf '%s' \"$4\" > \"$t/look.json\" && printf '%s' \"$5\" > \"$t/rebuild\" && cp \"$1/shell/assets/fonts/Phosphor-Fill.ttf\" \"$t/ui/\" 2>/dev/null; " +
             "exec setsid -f bash \"$t/run.sh\" \"$t\" \"$1\" \"$3\" </dev/null >/dev/null 2>&1",
-            "sh", repo, JSON.stringify(choices), Config.dir]);
+            "sh", repo, JSON.stringify(choices), Config.dir, JSON.stringify(look()), (rebuild ?? []).join(",")]);
         startTimeout.start();
     }
+    // The menu icon (as the menu bar draws it: MenuBar.qml's system menu)
+    function look() {
+        const c = Config.options.appearance.menuIcon;
+        const names = { irice: "drop", linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", steam: "steam-logo", github: "github-logo", circle: "circle-wavy" };
+        const image = c === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : "";
+        return { glyph: Phosphor.glyphs[names[c] ?? "drop"] ?? "", image: image.replace("file://", "") };
+    }
+
+    // ── iRice's packages ────────────────────────────────────────────────
+    // tools/irice-packages.sh: what's missing from tools/packages.sh (of the
+    // version about to be installed) and what iRice dropped that's still
+    // installed. SoftwareUpdate installs / removes them in its root step.
+    property var packages: ({ missing: [], unavailable: [], dropped: [] })
+    property bool packagesChecking: pkgStatus.running
+    function checkPackages(ref) {
+        if (pkgStatus.running)
+            return;
+        pkgStatus.ref = ref ?? "";
+        pkgStatus.running = true;
+    }
+    Process {
+        id: pkgStatus
+        property string ref: ""
+        command: [root.repo + "/tools/irice-packages.sh", "status"].concat(ref !== "" ? [ref] : [])
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.packages = JSON.parse(text.trim());
+                } catch (e) {}
+            }
+        }
+    }
+
     // If the update screen never took over (the helper couldn't start)
     Timer {
         id: startTimeout
@@ -102,6 +138,25 @@ Singleton {
         onTriggered: if (root.applying) {
             root.applying = false;
             root.error = "The update didn't start. Try again, or run tools/irice-update.py in the iRice folder.";
+        }
+    }
+
+    // Kept on Software Update ("What's new") until Done
+    function dismissResult() {
+        result = null;
+    }
+    // Updated: an alert once the island is up, its button opens the notes
+    Timer {
+        id: announce
+        interval: 4000
+        onTriggered: {
+            const n = root.result?.changelog?.length ?? 0;
+            const title = "iRice updated";
+            const sub = n > 0 ? root.result.changelog[0].title + (n > 1 ? " and " + (n - 1) + " more" : "") : "Your settings and shortcuts are as you left them";
+            if (Island.enabled)
+                Island.post({ kind: "sysupdate", icon: "check-circle", title: title, subtitle: sub, color: Theme.accents.green, action: "What's new", onAction: () => Panels.openSettings("update") }, 10000);
+            else
+                Quickshell.execDetached(["notify-send", "-a", "iRice", "-i", "system-software-update", title, sub + ". Settings → Software Update shows what's new."]);
         }
     }
 
@@ -116,22 +171,13 @@ Singleton {
                 const r = JSON.parse(text());
                 if (r.error)
                     root.error = r.error;
-                else if (r.applied)
+                else if (r.applied || r.rebuilt) {
                     root.result = r;
+                    if (r.applied)
+                        announce.start();
+                }
             } catch (e) {}
             Quickshell.execDetached(["rm", "-f", path]);
         }
-    }
-
-    Timer {
-        running: root.allowed && Config.ready
-        interval: 6 * 60 * 60 * 1000
-        repeat: true
-        onTriggered: root.check()
-    }
-    Timer { // the first check, once the session has settled
-        running: root.allowed && Config.ready
-        interval: 2 * 60 * 1000
-        onTriggered: root.check()
     }
 }
