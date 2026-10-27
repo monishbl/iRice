@@ -1,0 +1,23 @@
+# Deploys irice.monishbl.in (site/) when it changes on main.
+# Needs the repository secret CLOUDFLARE_API_TOKEN (Cloudflare → My Profile →
+# API Tokens → "Edit Cloudflare Workers" template, account and zone monishbl.in).
+name: Site
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the settings package
+        run: site/build.sh
+      - name: Deploy
+        run: npx -y wrangler@4 deploy --config site/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

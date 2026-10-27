@@ -5,7 +5,11 @@
 #   site/build.sh [config.json]    then: npx wrangler deploy --config site/wrangler.jsonc
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Your settings when there are any here (and the cleaned copy is kept in
+# site/package/config.json, which is what GitHub's deploy builds from)
+SAVED="$HERE/package/config.json"
 SRC="${1:-$HERE/../.sandbox/home/.config/irice/config.json}"
+[[ -f "$SRC" ]] || SRC="$SAVED"
 OUT="$HERE/public/config"
 work=$(mktemp -d)
 mkdir -p "$work/irice-config" "$OUT"
@@ -27,6 +31,7 @@ json.dump(d, open(sys.argv[2], "w"), indent=2)
 text = json.dumps(d)
 assert "/home/" not in text, "a home path slipped into the shared settings"
 PY
+[[ "$SRC" == "$SAVED" ]] || cp "$work/irice-config/config.json" "$SAVED"
 cp "$HERE/package/import.sh" "$HERE/package/README.txt" "$work/irice-config/"
 chmod +x "$work/irice-config/import.sh"
 tar czf "$OUT/irice-config.tar.gz" -C "$work" irice-config

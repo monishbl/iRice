@@ -1,0 +1,283 @@
+{
+  "ai": {
+    "effort": "low",
+    "extraModels": [],
+    "model": "gemini-2.5-flash",
+    "ollamaUrl": "http://localhost:11434",
+    "showThinking": true,
+    "systemPrompt": "You are a helpful assistant in a Linux desktop sidebar (Hyprland). Be concise and direct. Use Markdown: short paragraphs, lists where they help, and fenced code blocks for commands or code."
+  },
+  "appearance": {
+    "accent": "wallpaper",
+    "appTheme": "wallpaper",
+    "appThemeTargets": [
+      "gtk",
+      "qt",
+      "terminals",
+      "browsers"
+    ],
+    "contrast": "standard",
+    "cursor": "macos",
+    "decorations": "none",
+    "glass": "liquid",
+    "glassDepth": "auto",
+    "glassFrost": 0.75,
+    "glassLens": 1,
+    "glassSolid": 0,
+    "glassTint": 0.75,
+    "glassWindowFrost": 0.95,
+    "iconShape": "squircle",
+    "iconStyle": "default",
+    "iconTheme": "",
+    "iconTile": "auto",
+    "increaseContrast": false,
+    "keySymbols": "auto",
+    "menuIcon": "apple",
+    "mode": "dark",
+    "motion": "expressive",
+    "reduceTransparency": false,
+    "screenCornerRadius": 12,
+    "screenCorners": true,
+    "wallpaperTint": true,
+    "windowOpacity": "off",
+    "windowRadius": 20,
+    "windowTabs": "finder"
+  },
+  "controlCenter": {
+    "background": false,
+    "layout": [
+      "wifi:2x1",
+      "nowPlaying:2x2",
+      "bluetooth:2x1",
+      "nightLight:1x1",
+      "display:4x1",
+      "sound:4x1",
+      "keepAwake:1x1",
+      "coolDown:1x1",
+      "resources:2x1",
+      "mic:1x1",
+      "focus:1x1",
+      "gameMode:1x1"
+    ],
+    "toggles": [
+      "mic",
+      "lowPower",
+      "stageManager",
+      "screenshot",
+      "colorPicker",
+      "gameMode",
+      "antiFlashbang",
+      "keyboard",
+      "musicRecognition",
+      "record",
+      "easyEffects",
+      "warp"
+    ]
+  },
+  "cooling": {
+    "glass": "frosted",
+    "lightBlur": true,
+    "lowRefresh": true,
+    "onBattery": false,
+    "pauseLiveWallpaper": true,
+    "shortAnimations": true,
+    "whenHot": true
+  },
+  "defaultApps": {
+    "browser": "",
+    "code": "",
+    "mixer": "",
+    "office": "",
+    "tasks": "",
+    "terminal": "",
+    "text": ""
+  },
+  "desktop": {
+    "clock": false,
+    "clockX": 48,
+    "clockY": 64,
+    "fileManager": "",
+    "icons": true,
+    "photosFolder": "",
+    "smartRotate": true,
+    "stocks": [
+      "AAPL",
+      "MSFT",
+      "^GSPC",
+      "BTC-USD",
+      "NVDA",
+      "GOOGL"
+    ],
+    "useStacks": true,
+    "weather": false,
+    "weatherX": 48,
+    "weatherY": 260,
+    "worldClocks": [
+      "Cupertino|America/Los_Angeles",
+      "London|Europe/London",
+      "Tokyo|Asia/Tokyo",
+      "Sydney|Australia/Sydney"
+    ]
+  },
+  "dock": {
+    "appsButton": true,
+    "autoHide": "windows",
+    "downloads": true,
+    "iconSize": 48,
+    "magnification": true,
+    "magnifiedScale": 1.6,
+    "pinned": [],
+    "recentApps": true,
+    "trash": true
+  },
+  "emoji": {
+    "gifFilter": "medium",
+    "klipyKey": "",
+    "style": "windows"
+  },
+  "hotCorners": {
+    "bottomLeft": "none",
+    "bottomRight": "none",
+    "delay": 200,
+    "topLeft": "overview",
+    "topRight": "none"
+  },
+  "island": {
+    "activityLayout": "split",
+    "activityMode": "all",
+    "enabled": true,
+    "events": [
+      "music",
+      "charging",
+      "battery",
+      "timers",
+      "recording",
+      "focus",
+      "bluetooth",
+      "resources",
+      "notifications"
+    ],
+    "hotTemp": 70,
+    "hotThrottle": true,
+    "hud": true,
+    "known": [
+      "notifications"
+    ],
+    "livePieces": [
+      "music.art",
+      "music.title",
+      "music.bars",
+      "music.prev",
+      "music.play",
+      "music.next",
+      "timer.icon",
+      "timer.label",
+      "timer.time",
+      "timer.play",
+      "timer.skip",
+      "stopwatch.icon",
+      "stopwatch.time",
+      "stopwatch.play",
+      "stopwatch.reset",
+      "recording.icon",
+      "recording.time",
+      "recording.stop",
+      "music.scroll"
+    ],
+    "pinned": false,
+    "playerLayout": "overlay"
+  },
+  "lock": {
+    "layout": "macos",
+    "material": "system",
+    "previews": false,
+    "standby": false,
+    "standbyShift": false,
+    "text": "auto"
+  },
+  "menubar": {
+    "ai": false,
+    "appMenu": true,
+    "autoHide": false,
+    "background": false,
+    "battery": true,
+    "batteryPercent": false,
+    "bluetooth": false,
+    "clock": true,
+    "controlCenter": true,
+    "keyboardLayout": false,
+    "notificationIndicator": "bellDot",
+    "resources": false,
+    "screens": [],
+    "scrollGestures": true,
+    "search": false,
+    "showDate": true,
+    "showSeconds": false,
+    "sound": false,
+    "utilButtons": [],
+    "weather": false,
+    "wifi": true,
+    "windowMenu": true,
+    "windowTitle": false,
+    "workspaceCount": 5,
+    "workspaces": "dots"
+  },
+  "notes": {
+    "folder": ""
+  },
+  "notificationCenter": {
+    "background": false
+  },
+  "overview": {
+    "previews": "snapshot"
+  },
+  "performance": {
+    "keepPanelsLoaded": false
+  },
+  "screenshot": {
+    "editor": "irice",
+    "markup": true,
+    "thumbnail": true
+  },
+  "sharing": {
+    "name": "",
+    "receiving": "off"
+  },
+  "sidebar": {
+    "booru": false,
+    "booruNsfw": false,
+    "booruProvider": "yandere",
+    "translateTarget": "en"
+  },
+  "sounds": {
+    "enabled": true,
+    "screenshot": true,
+    "startup": true,
+    "trash": true,
+    "volume": 0.3021306818181818
+  },
+  "stageManager": {
+    "enabled": false,
+    "strip": true
+  },
+  "switcher": {
+    "enabled": true
+  },
+  "wallpaper": {
+    "darkPath": "",
+    "directory": "",
+    "dynamic": "off",
+    "dynamicFolder": "",
+    "lightPath": "",
+    "live": "",
+    "livePauseOnBattery": false,
+    "path": ""
+  },
+  "weather": {
+    "location": "",
+    "units": "metric"
+  },
+  "windowRules": {
+    "rules": []
+  }
+}
