@@ -125,26 +125,22 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .swap img { position: absolute; inset: 0; opacity: 0; transition: opacity 300ms ease-out; }
 .swap img.on { opacity: 1; }
 
-/* And a lot more: mixed-size tiles */
-.bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
-.bento .t { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; display: flex; flex-direction: column; }
-.bento .t.wide { grid-column: span 2; padding: 40px; }
-.bento svg { width: 28px; height: 28px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 24px; flex: none; }
-.bento h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
-.bento .wide h3 { font-size: 32px; line-height: 40px; letter-spacing: -0.02em; }
-.bento p { margin: 8px 0 0; color: var(--secondary); max-width: 52ch; }
-.bento .wide p { margin-top: 12px; }
-.bento .t.wide { flex-direction: row; align-items: center; gap: 32px; }
-.bento .wide .txt { flex: 1; min-width: 0; }
-.bento .vis { flex: none; width: 260px; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; position: relative; border: 1px solid var(--border); }
+/* Made to feel native: four pillars, then the full list */
+.pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+.pillars .t { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; }
+.pillars svg { width: 32px; height: 32px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 24px; display: block; }
+.pillars h3 { margin: 0; font-size: 32px; line-height: 40px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
+.pillars p { margin: 12px 0 0; color: var(--secondary); max-width: 52ch; }
+.vis { width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; position: relative; border: 1px solid var(--border); margin-bottom: 32px; }
+.vis.glassvis { background: #111113 url(/media/glass.webp) 96% 8% / 230% auto no-repeat; }
 .vis.lockvis { background: #111113 url(/media/desktop-dark.webp) 72% 62% / 300% auto no-repeat; color: #fff; text-align: center; }
-.vis.lockvis .d { position: absolute; top: 18%; left: 0; right: 0; font-size: 13px; line-height: 18px; font-weight: 500; opacity: 0.85; }
-.vis.lockvis .c { position: absolute; top: 28%; left: 0; right: 0; font-size: 56px; line-height: 64px; font-weight: 400; letter-spacing: -0.03em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25); }
-.vis.updvis { background: #0A0A0B; color: #EDEDEF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.vis.updvis b { font-size: 20px; line-height: 28px; font-weight: 600; }
-.vis.updvis i { display: block; width: 46%; height: 4px; border-radius: 2px; background: #2C2C31; overflow: hidden; }
-.vis.updvis i::after { content: ""; display: block; width: 62%; height: 100%; background: #EDEDEF; border-radius: 2px; }
-.vis.updvis span { font-size: 12px; line-height: 16px; color: #A1A1AA; }
+.vis.lockvis .d { position: absolute; top: 20%; left: 0; right: 0; font-size: 14px; line-height: 20px; font-weight: 500; opacity: 0.85; }
+.vis.lockvis .c { position: absolute; top: 30%; left: 0; right: 0; font-size: 64px; line-height: 72px; font-weight: 400; letter-spacing: -0.03em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25); }
+.flist-wrap { margin-top: 64px; }
+.flist-wrap h3 { margin: 0 0 24px; font-size: 24px; line-height: 32px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; text-align: center; }
+.flist { list-style: none; margin: 0; padding: 0; columns: 3; column-gap: 32px; }
+.flist li { display: flex; gap: 12px; align-items: flex-start; break-inside: avoid; padding: 8px 0; color: var(--body); }
+.flist svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Install */
 .install { margin-top: 48px; padding: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
@@ -193,10 +189,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 .no-js .reveal { opacity: 1; transform: none; }
 
 @media (max-width: 860px) {
-  .grid2, .bento { grid-template-columns: 1fr; }
-  .bento .t.wide { grid-column: auto; padding: 32px; flex-direction: column; align-items: stretch; }
-  .bento .vis { width: 100%; margin-top: 24px; }
-  .bento .wide h3 { font-size: 24px; line-height: 32px; }
+  .grid2, .pillars { grid-template-columns: 1fr; }
+  .flist { columns: 2; }
   ol.steps { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
@@ -210,6 +204,9 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
   .feature { padding-top: 96px; }
   .feature header { margin-bottom: 32px; }
   .media { border-radius: 14px; }
+  .pillars .t { padding: 24px; }
+  .pillars h3 { font-size: 24px; line-height: 32px; }
+  .flist { columns: 1; }
   .tile .copy { padding: 24px 20px 20px; }
   .install { padding: 24px 16px; }
   .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
@@ -348,20 +345,65 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap" id="new">
     <header class="reveal">
-      <h2>And a lot more.</h2>
-      <p class="sub">Small things that make it feel finished.</p>
+      <h2>Made to feel native.</h2>
+      <p class="sub">The parts you notice every minute, built properly.</p>
     </header>
-    <div class="bento">
-      <div class="t wide reveal"><div class="txt"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Unlock like iPhone.</h3><p>The lock lifts away, your widgets and icons zoom into place and windows fade in. Locking plays it backwards, and the clock glides into StandBy on the displays you choose.</p></div><div class="vis lockvis" aria-hidden="true"><div class="d">Tuesday 27 October</div><div class="c">9:41</div></div></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg><h3>Six sound styles.</h3><p>Marimba, taps, keys and more for logging in, charging, displays, USB and notifications. Or use your own.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><h3>Displays</h3><p>Drag to arrange, then set resolution, refresh rate, scale and rotation. Risky changes undo themselves.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 6v4"/></svg><h3>Mouse and trackpad</h3><p>Speed, acceleration, tap to click, tap to drag, secondary click and scrolling, each set its own way.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><h3>Search Settings</h3><p>Type a word and land on the exact setting.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="9" height="7" rx="1.5"/><rect x="13" y="14" width="9" height="7" rx="1.5"/><path d="M6.5 10v4a3 3 0 0 0 3 3H13"/><path d="m11 15 2 2-2 2"/></svg><h3>Across displays</h3><p>Super+number to a space on another display: the pointer follows and the rest dim for a moment.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><path d="M7 2v3M11 2v3M15 2v3"/></svg><h3>Caffeine that holds</h3><p>Stays on through restarts, and keeps your other sessions from sleeping too.</p></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg><h3>Window transparency</h3><p>Off, Subtle, More, or exact levels for the focused window and the rest.</p></div>
-      <div class="t wide reveal"><div class="txt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg><h3>Updates, done properly.</h3><p>A full-screen progress view while iRice installs and restarts. Your settings are backed up first, and anything you changed waits for your say.</p></div><div class="vis updvis" aria-hidden="true"><b>iRice</b><i></i><span>Building the glass plugin…</span></div></div>
-      <div class="t reveal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><h3>Your own files</h3><p>Pick wallpapers, folders, videos and sounds with a file chooser.</p></div>
+    <div class="pillars">
+      <div class="t reveal">
+        <div class="vis glassvis" aria-hidden="true"></div>
+        <h3>Real Liquid Glass.</h3>
+        <p>Refraction drawn by the compositor through a Hyprland plugin, not a blur. Panels bend what's behind them, even over your windows, and text stays readable on anything.</p>
+      </div>
+      <div class="t reveal">
+        <div class="vis lockvis" aria-hidden="true"><div class="d">Tuesday 27 October</div><div class="c">9:41</div></div>
+        <h3>macOS, with a bit of iPhone.</h3>
+        <p>A Mac menu bar, Dock, Control Center and Spotlight, joined by an iPhone lock screen, the Dynamic Island, StandBy and widgets.</p>
+      </div>
+      <div class="t reveal">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M1 19h22"/></svg>
+        <h3>Made for laptops.</h3>
+        <p>Glass synced from native code, unchanged frames skipped, and a cool-down mode when the laptop runs hot. Smooth on integrated graphics.</p>
+      </div>
+      <div class="t reveal">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+        <h3>Next to what you have.</h3>
+        <p>It runs on its own console, away from your usual desktop and settings. Updates never change your shortcuts or settings without asking.</p>
+      </div>
+    </div>
+
+    <div class="flist-wrap reveal">
+      <h3>And everything you'd expect.</h3>
+      <ul class="flist">
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Display arrangement, resolution, scale and rotation</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mouse and trackpad controls</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Editable trackpad gestures</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Editable keyboard shortcuts</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window tiling and snapping</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Stage Manager</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mission Control and Overview</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>App Library</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Spotlight with maths, files and actions</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Clipboard history</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Emoji picker with GIFs</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Screenshots with markup</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Screen recording</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Copy text from the screen</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Translate text on the screen</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Notes and reminders</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Calendar with subscriptions</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Focus modes</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Desktop widgets and Smart Stacks</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Dynamic and live wallpapers</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Matching login screen</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>AI sidebar</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Night light</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Caffeine</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Per-app volume</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window rules</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Nearby sharing with LocalSend</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Updates that keep your settings</span></li>
+      </ul>
+    </div>
   </section>
 
   <section class="feature wrap" id="install">
