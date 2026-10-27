@@ -90,6 +90,7 @@ Singleton {
     readonly property var shellActions: [
         { name: "spotlight", label: "Spotlight" },
         { name: "overview", label: "Overview" },
+        { name: "superTap", label: "Tap Super (as set above)" },
         { name: "missionControl", label: "Mission Control" },
         { name: "appExpose", label: "App Exposé" },
         { name: "launchpad", label: "App Library" },

@@ -25,10 +25,10 @@ Variants {
         readonly property int iconSize: cfg.iconSize
         readonly property real maxScale: cfg.magnification ? cfg.magnifiedScale : 1
         // Tahoe's dock: a wide glass slab, not a pill. Generous padding, icons
-        // well apart, softly rounded corners (about a third of an icon)
-        readonly property int pad: Math.round(iconSize * 0.28)
-        readonly property int corner: Math.round(iconSize * 0.34)
-        readonly property int gap: Math.round(iconSize * 0.38)
+        // well apart, softly rounded corners (about a quarter of an icon)
+        readonly property int pad: Math.round(iconSize * 0.26)
+        readonly property int corner: Math.round(iconSize * 0.27) // a rounded rectangle, never a pill
+        readonly property int gap: Math.round(iconSize * 0.26)
         readonly property int barHeight: iconSize + 2 * pad
         readonly property int bottomGap: 6
         readonly property int dividerWidth: 1 + 2 * gap
@@ -193,7 +193,7 @@ Variants {
                 id: glass
                 anchors.fill: parent
                 anchors.margins: -shadowMargin
-                radius: win.corner + shadowMargin
+                radius: win.corner // (the glass shape already leaves out its shadow margin)
                 bevel: 14
             }
 

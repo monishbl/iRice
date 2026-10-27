@@ -147,6 +147,21 @@ Column {
         }
     }
 
+    Group {
+        width: page.width
+        Row {
+            label: "Tap Super"
+            detail: "Pressing Super on its own; it still works in every shortcut"
+            Segmented {
+                width: 260
+                readonly property var values: ["overview", "spotlight", "none"]
+                options: ["Overview", "Spotlight", "Nothing"]
+                current: Math.max(0, values.indexOf(Config.options.keyboard.superTap))
+                onSelected: i => Config.options.keyboard.superTap = values[i]
+            }
+        }
+    }
+
     // ── Problems ─────────────────────────────────────────────────────────
     Repeater {
         model: [Keymap.defaultsError, Keymap.userError, Keymap.saveError].filter(e => e !== "")

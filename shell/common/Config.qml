@@ -294,6 +294,9 @@ Singleton {
                 // for some memory (common/PanelLoader.qml)
                 property bool keepPanelsLoaded: false
             }
+            property JsonObject keyboard: JsonObject {
+                property string superTap: "overview" // tapping Super alone: overview | spotlight | none
+            }
             property JsonObject workspaces: JsonObject {
                 // Super+number to a space on another display
                 property bool dimOthers: true // briefly dim the other displays

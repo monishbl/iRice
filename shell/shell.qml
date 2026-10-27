@@ -172,13 +172,47 @@ ShellRoot {
     }
     GlobalShortcut { appid: "irice"; name: "pip"; description: "Picture in Picture"; onPressed: Tiling.pip() }
     GlobalShortcut { appid: "irice"; name: "snap-restore"; description: "Return window to previous size"; onPressed: Tiling.restore() }
-    // Tap Super: overview. Hyprland sends this on release, and only when no
-    // other key was pressed while Super was held.
     GlobalShortcut {
         appid: "irice"
         name: "overview"
-        description: "Overview (tap Super)"
+        description: "Overview"
         onPressed: Panels.toggle("overview", Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name))
+    }
+    // Tap Super alone: Overview (or Spotlight, Settings → Keyboard
+    // Shortcuts). Pressing Super arms it, letting go within a moment acts,
+    // unless Super went into a shortcut (superTapCancel, from every other
+    // Super bind and Super + mouse) or a window or space changed meanwhile.
+    property real superDown: 0
+    GlobalShortcut {
+        appid: "irice"
+        name: "superTap"
+        description: "Tap Super (Overview, or as set)"
+        onPressed: root.superDown = Date.now()
+        onReleased: {
+            const armed = root.superDown > 0 && Date.now() - root.superDown < 700;
+            root.superDown = 0;
+            if (!armed)
+                return;
+            const screen = Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name);
+            const what = Config.options.keyboard.superTap;
+            if (what === "overview")
+                Panels.toggle("overview", screen);
+            else if (what === "spotlight")
+                Panels.toggle("spotlight", screen);
+        }
+    }
+    GlobalShortcut {
+        appid: "irice"
+        name: "superTapCancel"
+        description: "(Super used in a shortcut: not a tap)"
+        onPressed: root.superDown = 0
+    }
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (root.superDown > 0 && ["workspacev2", "openwindow", "movewindowv2", "changefloatingmode", "fullscreen", "closewindow", "focusedmonv2"].includes(event.name))
+                root.superDown = 0;
+        }
     }
     GlobalShortcut { appid: "irice"; name: "reset"; description: "Close everything (if something is stuck)"; onPressed: root.panicReset() }
     GlobalShortcut { appid: "irice"; name: "lock"; description: "Lock the screen"; onPressed: System.power("lock") }

@@ -3,12 +3,9 @@
   "id": "spotlight-tap",
   "keys": "$MOD + $MODKEY",
   "group": "Shell",
-  "label": "Spotlight (tap Super)",
+  "label": "Tap Super (Overview, or as set in Settings)",
   "action": {
-   "shell": "spotlight"
-  },
-  "opts": {
-   "release": true
+   "shell": "superTap"
   }
  },
  {

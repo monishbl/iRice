@@ -67,6 +67,13 @@ local function bind(e, user)
     local ok, berr = pcall(hl.bind, keys, action, opts)
     if ok then
         taken[norm] = tostring(e.id)
+        -- A tap of Super alone (superTap) acts when Super is let go; any
+        -- other shortcut using it in between calls that off. (Hyprland's
+        -- own release binds never fire for a lone modifier: by the time it's
+        -- up, its modifier is gone.)
+        if e.id ~= "spotlight-tap" and norm:find("^" .. MOD .. "%+") then
+            pcall(hl.bind, keys, hl.dsp.global("irice:superTapCancel"), {})
+        end
     else
         log("couldn't bind " .. tostring(e.id) .. " (" .. keys .. "): " .. tostring(berr))
     end
@@ -98,3 +105,7 @@ for _, e in ipairs(user.shortcuts or {}) do
     if type(e) == "table" and e.keys and not e.disabled then bind(e, true) end
 end
 for _, e in ipairs(later) do bind(e, false) end
+
+-- Moving or resizing a window with Super and the mouse isn't a tap either
+pcall(hl.bind, MOD .. " + mouse:272", hl.dsp.global("irice:superTapCancel"), { non_consuming = true })
+pcall(hl.bind, MOD .. " + mouse:273", hl.dsp.global("irice:superTapCancel"), { non_consuming = true })
