@@ -1,0 +1,57 @@
+# iRice online setup.
+#
+#   bash <(curl -fsSL https://irice.monishbl.in/get) [folder] [--with-settings] [--yes]
+#
+#   folder            where iRice goes (default ~/iRice)
+#   --with-settings   also apply the shared iRice look (irice.monishbl.in/config)
+#   --yes             don't ask before installing packages
+#
+# Gets iRice from GitHub (or updates a copy already there) and sets it up to
+# run on its own console, next to your usual desktop: your ~/.config and your
+# session aren't touched. Arch Linux and Arch-based systems only.
+set -euo pipefail
+
+repo=https://github.com/monish-cosol/iRice.git
+site=https://irice.monishbl.in
+dest="$HOME/iRice"
+settings=0
+pass=()
+for a in "$@"; do
+    case "$a" in
+        --with-settings) settings=1 ;;
+        --yes) pass+=(--yes) ;;
+        -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "Unknown option: $a"; exit 1 ;;
+        *) dest="$a" ;;
+    esac
+done
+
+say() { printf '\033[1;34miRice:\033[0m %s\n' "$*"; }
+
+[[ $EUID -eq 0 ]] && { echo "Run this as yourself, not root (it asks for sudo when it needs it)."; exit 1; }
+command -v pacman >/dev/null || { echo "iRice needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
+if ! command -v git >/dev/null; then
+    say "Installing git first…"
+    sudo pacman -S --needed --noconfirm git
+fi
+
+if [[ -d "$dest/.git" ]]; then
+    say "Updating the copy in $dest…"
+    git -C "$dest" pull --ff-only || { echo "Couldn't update $dest (it has changes of its own). Use Settings → Software Update in iRice instead."; exit 1; }
+elif [[ -e "$dest" ]]; then
+    echo "$dest exists and isn't an iRice copy. Pick another folder: bash <(curl -fsSL $site/get) ~/somewhere-else"
+    exit 1
+else
+    say "Getting iRice into $dest…"
+    git clone --depth 50 "$repo" "$dest"
+fi
+
+"$dest/tools/setup-tty.sh" "${pass[@]}"
+
+if [[ $settings == 1 ]]; then
+    say "Applying the shared iRice look…"
+    tmp=$(mktemp -d)
+    curl -fsSL "$site/config/irice-config.tar.gz" | tar xz -C "$tmp"
+    "$tmp/irice-config/import.sh" --repo "$dest"
+    rm -rf "$tmp"
+fi

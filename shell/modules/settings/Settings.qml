@@ -34,6 +34,7 @@ Scope {
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A" },
                 { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366" },
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366" },
+                { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93" },
                 { id: "about", name: "About", icon: "info", color: "#30D158" }
             ]
 

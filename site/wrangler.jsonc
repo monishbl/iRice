@@ -1,0 +1,14 @@
+// irice.monishbl.in: the install page, the /get setup script and the shared
+// settings package, served as static files by a Cloudflare Worker.
+//   site/build.sh && npx wrangler deploy --config site/wrangler.jsonc
+{
+  "name": "irice-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "irice.monishbl.in", "custom_domain": true }
+  ]
+}

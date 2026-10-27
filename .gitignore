@@ -8,3 +8,8 @@ sandbox/tools/gen/
 
 # Native helpers, built by shell/native/build.sh
 shell/native/build/
+
+# Python caches
+__pycache__/
+# Built by site/build.sh
+site/public/config/

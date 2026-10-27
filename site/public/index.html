@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iRice</title>
+<meta name="description" content="A macOS Tahoe–style desktop for Hyprland: Liquid Glass, a dynamic island, Spotlight and Control Center. Try it on its own console, next to your usual desktop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --canvas: #FAFAFA; --surface: #FFFFFF; --muted: #F4F4F5; --pressed: #E4E4E7;
+  --border: #E4E4E7; --border-strong: #D4D4D8;
+  --text: #18181B; --body: #27272A; --secondary: #52525B; --tertiary: #6B6B74;
+  --accent: #4F46E5; --accent-hover: #4338CA; --on-accent: #FFFFFF; --focus: #6366F1;
+  --success: #15803D;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
+    --border: #26262A; --border-strong: #36363C;
+    --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
+    --accent: #818CF8; --accent-hover: #A5B4FC; --on-accent: #1E1B4B; --focus: #6366F1;
+    --success: #4ADE80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #111113; --surface: #1A1A1D; --muted: #2C2C31; --pressed: #333338;
+  --border: #26262A; --border-strong: #36363C;
+  --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
+  --accent: #818CF8; --accent-hover: #A5B4FC; --on-accent: #1E1B4B; --focus: #6366F1;
+  --success: #4ADE80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--canvas); color: var(--body);
+  font: 400 16px/24px Inter, system-ui, sans-serif; font-feature-settings: "tnum" 0;
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { color: var(--accent-hover); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+.read { max-width: 65ch; }
+
+header.top { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.brand { font-weight: 600; color: var(--text); text-decoration: none; font-size: 18px; letter-spacing: -0.005em; }
+nav a { color: var(--secondary); text-decoration: none; font-size: 14px; margin-left: 20px; }
+nav a:hover { color: var(--text); }
+
+.hero { padding: 64px 0 48px; }
+.hero h1 { margin: 0; color: var(--text); font-size: 64px; line-height: 72px; font-weight: 600; letter-spacing: -0.035em; }
+.hero p { margin: 16px 0 0; font-size: 20px; line-height: 28px; color: var(--secondary); max-width: 40ch; }
+
+.cmd {
+  margin-top: 32px; display: flex; align-items: center; gap: 12px; max-width: 720px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 8px 8px 8px 16px;
+}
+.cmd code { flex: 1; overflow-x: auto; white-space: nowrap; font: 500 14px/20px "JetBrains Mono", ui-monospace, monospace; color: var(--text); padding: 6px 0; }
+button.copy {
+  flex: none; height: 36px; padding: 0 16px; border-radius: 10px; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font: 500 14px/20px Inter, system-ui, sans-serif;
+  transition: background-color 150ms ease-out, transform 100ms ease-out;
+}
+button.copy:hover { background: var(--accent-hover); }
+button.copy:active { transform: scale(0.97); }
+.hint { margin: 12px 0 0; font-size: 14px; line-height: 20px; color: var(--tertiary); }
+
+section { padding: 48px 0; border-top: 1px solid var(--border); }
+section h2 { margin: 0 0 8px; color: var(--text); font-size: 32px; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; }
+section > .wrap > p.lead { margin: 0 0 32px; color: var(--secondary); max-width: 60ch; }
+
+.features { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+.feature h3 { margin: 0 0 8px; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--text); }
+.feature p { margin: 0; font-size: 14px; line-height: 20px; color: var(--secondary); }
+
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; max-width: 65ch; }
+ol.steps li { counter-increment: s; position: relative; padding: 0 0 24px 48px; }
+ol.steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--muted); color: var(--text); font: 600 14px/28px Inter, system-ui, sans-serif; text-align: center;
+}
+ol.steps strong { color: var(--text); font-weight: 600; }
+pre {
+  margin: 8px 0 0; padding: 12px 16px; overflow-x: auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; font: 400 14px/20px "JetBrains Mono", ui-monospace, monospace; color: var(--text);
+}
+kbd { font: 500 13px/18px Inter, system-ui, sans-serif; background: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; color: var(--text); }
+code.inline { font: 400 14px/20px "JetBrains Mono", ui-monospace, monospace; background: var(--muted); padding: 1px 6px; border-radius: 6px; color: var(--text); }
+
+dl.faq { margin: 0; max-width: 65ch; }
+dl.faq dt { font-weight: 600; color: var(--text); margin-top: 24px; }
+dl.faq dt:first-child { margin-top: 0; }
+dl.faq dd { margin: 4px 0 0; color: var(--secondary); }
+
+footer { padding: 32px 0 48px; border-top: 1px solid var(--border); font-size: 14px; line-height: 20px; color: var(--tertiary); }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .hero { padding: 40px 0 32px; }
+  .hero h1 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
+  .hero p { font-size: 18px; line-height: 26px; }
+  .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
+  button.copy { height: 44px; }
+  section h2 { font-size: 28px; line-height: 36px; }
+  nav a { margin-left: 14px; }
+  nav a.hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="/">iRice</a>
+  <nav>
+    <a href="#install">Install</a>
+    <a href="#updates">Updates</a>
+    <a class="hide-sm" href="#look">Share a look</a>
+    <a href="https://github.com/monish-cosol/iRice">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>A Tahoe desktop for Hyprland.</h1>
+    <p>Liquid Glass, a dynamic island, Spotlight and Control Center, on Arch Linux. Try it on its own console, next to the desktop you have.</p>
+    <div class="cmd">
+      <code id="install-cmd">bash &lt;(curl -fsSL https://irice.monishbl.in/get)</code>
+      <button class="copy" type="button" data-copy="install-cmd" aria-live="polite">Copy command</button>
+    </div>
+    <p class="hint">Arch Linux or Arch-based (CachyOS, EndeavourOS). It asks before installing any packages.</p>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>What you get</h2>
+      <p class="lead">A shell built from scratch in Quickshell, styled after macOS Tahoe and tuned for everyday laptops.</p>
+      <div class="features">
+        <div class="feature"><h3>Liquid Glass</h3><p>Real refraction drawn by the compositor. Glass, Frost and Solid materials, or your own mix, with clear text over anything.</p></div>
+        <div class="feature"><h3>Dynamic island</h3><p>Music, timers, calls, devices and notifications as live activities in the menu bar.</p></div>
+        <div class="feature"><h3>Spotlight and Control Center</h3><p>Apps, files, maths, conversions and actions in one search. Wi-Fi, Bluetooth, sound and focus in one panel.</p></div>
+        <div class="feature"><h3>Light on the battery</h3><p>Cool-down mode lightens the glass and slows the refresh rate when the laptop runs hot.</p></div>
+        <div class="feature"><h3>Your shortcuts, kept</h3><p>Every shortcut and gesture is editable, and updates never change yours without asking.</p></div>
+        <div class="feature"><h3>Leaves your desktop alone</h3><p>It runs from its own folder on its own console. Your ~/.config and usual session stay untouched.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="lead">Two minutes plus package downloads.</p>
+      <ol class="steps">
+        <li><strong>Get iRice.</strong> In a terminal on your usual desktop:
+          <pre>bash &lt;(curl -fsSL https://irice.monishbl.in/get)</pre>
+          It goes into <code class="inline">~/iRice</code>; give a folder to put it elsewhere. Add <code class="inline">--with-settings</code> to start from the shared look.</li>
+        <li><strong>Switch to a free console.</strong> Press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F3</kbd> and log in.</li>
+        <li><strong>Start it.</strong>
+          <pre>cd ~/iRice &amp;&amp; ./demo.sh --check &amp;&amp; ./dev.sh tty</pre>
+          The check tells you what's missing, if anything.</li>
+        <li><strong>Leave when you like.</strong> <kbd>Super</kbd> <kbd>Shift</kbd> <kbd>Esc</kbd> ends it; <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F1</kbd> or <kbd>F2</kbd> takes you back.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="updates">
+    <div class="wrap">
+      <h2>Updates</h2>
+      <p class="lead">iRice checks for updates every few hours and tells you when one is ready.</p>
+      <div class="read">
+        <p>Open <strong>Settings → Software Update</strong> to see what's new. If the update touches something you've made your own, it asks first, and installs nothing until you've decided each one:</p>
+        <dl class="faq">
+          <dt>Settings with new defaults</dt><dd>Keep what you have, or take the new default.</dd>
+          <dt>Your glass material</dt><dd>When Glass or Frost looks different in the update: keep your look (saved as Custom) or take the new one.</dd>
+          <dt>Shortcut clashes</dt><dd>When a new shortcut uses keys you've given to something else: keep yours, or take the new one.</dd>
+          <dt>Files you edited</dt><dd>Keep both sets of changes when they fit together, or only yours, or only the update's.</dd>
+        </dl>
+        <p>Your settings and shortcuts are backed up before anything changes. Running the install command again also updates a copy that has no edits of its own.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="look">
+    <div class="wrap">
+      <h2>Share a look</h2>
+      <p class="lead">The shared settings: glass, colours, menu bar, dock and the rest. No personal data.</p>
+      <div class="read">
+        <p><a href="/config/irice-config.tar.gz">Download irice-config.tar.gz</a>, unpack it, then apply it to your iRice folder:</p>
+        <pre>./import.sh --repo ~/iRice</pre>
+        <p>Your current settings are backed up first, and your desktop widgets stay as they are.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="help">
+    <div class="wrap">
+      <h2>If something's off</h2>
+      <dl class="faq">
+        <dt>The glass looks flat or frosted, not refractive</dt>
+        <dd>The glass plugin didn't build for your Hyprland. Run <code class="inline">~/iRice/tools/setup-tty.sh</code> again after a Hyprland update.</dd>
+        <dt>Animations feel choppy on a laptop</dt>
+        <dd>Check your display isn't stuck at a low refresh rate: Cool-down lowers it while the laptop is hot, and gives it back after.</dd>
+        <dt>The screen froze</dt>
+        <dd>From another console (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F4</kbd>): <code class="inline">cd ~/iRice &amp;&amp; ./dev.sh tty-stop</code>.</dd>
+        <dt>Removing it</dt>
+        <dd>Delete the <code class="inline">~/iRice</code> folder. Nothing else was changed.</dd>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>iRice by Monish</span>
+    <span><a href="https://github.com/monish-cosol/iRice">Source on GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll("button.copy").forEach(b => {
+  b.addEventListener("click", async () => {
+    const text = document.getElementById(b.dataset.copy).textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      b.textContent = "Copied";
+    } catch (e) {
+      b.textContent = "Select and copy it";
+    }
+    setTimeout(() => { b.textContent = "Copy command"; }, 2000);
+  });
+});
+</script>
+</body>
+</html>
