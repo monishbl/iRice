@@ -86,7 +86,9 @@ Item {
     // behind, they made a short island, the volume and brightness HUD, a
     // rectangle first and a pill after): a pill when short, iOS corners
     // (like Control Center's tiles) when it opens tall
-    readonly property real r: expanded ? Math.min(Theme.radius.tile, h / 2) : h / 2
+    // (The same rule open or closed: switching to h / 2 the moment it starts
+    // closing made the still-tall island a round blob on its way down)
+    readonly property real r: Math.min(Theme.radius.tile, h / 2)
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
 
@@ -334,8 +336,10 @@ Item {
                 visible: root.h > 30
                 opacity: root.expanded ? 1 : 0
                 // (a NumberAnimation: it becomes visible as it fades in, when an
-                // OpacityAnimator may not start and leave it invisible)
-                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                // OpacityAnimator may not start and leave it invisible). Closing,
+                // it's gone quickly, before the island shrinks over it, rather
+                // than being cut off by its edges on the way down
+                Behavior on opacity { NumberAnimation { duration: root.expanded ? Theme.motion.hover : 70; easing.type: root.expanded ? Easing.OutCubic : Easing.InCubic } }
 
                 // Live alerts, newest at the bottom; a burst staggers in.
                 // Up to four show, as many as fit in the island's window

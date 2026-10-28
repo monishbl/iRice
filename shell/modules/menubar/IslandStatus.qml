@@ -38,7 +38,7 @@ Item {
 
     Row {
         id: stats
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.centerIn: parent // centred across the island (it holds only the stats now)
         spacing: 14
         // By name, so the figures (and an open popover) stay put while the
         // numbers change; each figure reads its own value

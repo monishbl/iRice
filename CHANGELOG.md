@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Island closes cleanly · 2026-10-28
+
+**Fixes**
+- Closing the island no longer turns it into a round blob or cuts off its contents. It shrinks smoothly back into the small pill.
+- The system stats row in the open island is centred.
+
 ## Smoother island · 2026-10-28
 
 **Fixes**
