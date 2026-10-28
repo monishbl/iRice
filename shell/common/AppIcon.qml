@@ -48,11 +48,17 @@ IconImage {
         property real logoScale: 0.7
         property real darkTheme: Theme.dark ? 1 : 0
         property real contrast: Math.max(0, Math.min(1, root.cfg.iconContrast))
-        property real logoLum: root.info?.lum ?? 0.5
-        property real logoSpread: root.info?.spread ?? 0.25
+        property real plate: root.info?.plate ? 1 : 0
+        property real logoLo: root.info?.lo ?? 0
+        property real logoHi: root.info?.hi ?? 1
+        property real logoMed: root.info?.med ?? 0.5
+        property real logoPol: root.info?.pol ?? 1
+        property real bgFloor: root.info?.floor ?? 0.15
+        property real bgEdge: root.info?.edge ?? 0.3
         property color tint: Theme.accent
         property color tileColor: root.tileFor(root.info?.dominant ?? "#808080")
-        property color bgColor: root.info?.bg ?? "#808080"
+        property color bgColor: root.info?.bgTop ?? root.info?.bg ?? "#808080"
+        property color bgColor2: root.info?.bgBottom ?? root.info?.bg ?? "#808080"
         fragmentShader: Qt.resolvedUrl("icon.frag.qsb")
     }
 }

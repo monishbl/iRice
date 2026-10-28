@@ -5,8 +5,9 @@ import Quickshell
 // What an app icon looks like, measured once per icon at 32×32 (by
 // IconAnalyzer, which lives in the wallpaper window): does it already fill a
 // square/rounded tile, what colour is that tile, and its dominant colour.
-// get(source) returns { square, bg, dominant, lum, spread } or null until
-// measured (lum and spread: the logo's mean brightness and its variation).
+// get(source) returns { square, plate, bg, bgTop, bgBottom, floor, edge,
+// dominant, lo, hi, med, pol } or null until measured (see IconAnalyzer:
+// the background a logo sits on, and the logo's own tones).
 Singleton {
     id: root
 

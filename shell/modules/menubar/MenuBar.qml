@@ -122,7 +122,7 @@ Variants {
 
             // ── Left ────────────────────────────────────────────────────
             Row {
-                id: left
+                id: leftItems
                 anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
@@ -162,7 +162,7 @@ Variants {
                     visible: bar.cfg.windowTitle && text !== ""
                     anchors.verticalCenter: parent.verticalCenter
                     leftPadding: 6
-                    width: Math.min(implicitWidth, bar.width / 2 - left.x - 360)
+                    width: Math.min(implicitWidth, bar.width / 2 - leftItems.x - 360)
                     elide: Text.ElideRight
                     text: Apps.active?.title ?? ""
                     color: Qt.alpha(bar.fg, 0.65)
@@ -338,6 +338,13 @@ Variants {
                     active: Panels.isOpen("batteryMenu", bar.screen)
                     menu: "batteryMenu"
                     onClicked: Panels.toggle("batteryMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    // Pointing at it: the level, what it's doing, the power mode
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: BatteryHealth.summary()
+                    }
                 }
 
                 // Bluetooth

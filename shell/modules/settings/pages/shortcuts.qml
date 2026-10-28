@@ -615,7 +615,7 @@ Column {
                 readonly property bool chosen: modelData.id === form.appId
                 width: parent?.width ?? 0
                 height: 40
-                color: chosen ? Theme.accentAlpha(0.14) : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
+                color: chosen ? Theme.accentTint : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
                 activeFocusOnTab: true
                 function choose() {
                     form.appId = modelData.id;
@@ -658,7 +658,7 @@ Column {
                     name: "check"
                     bold: true
                     size: 14
-                    color: Theme.accent
+                    color: Theme.accentInk
                 }
                 MouseArea {
                     id: appMouse

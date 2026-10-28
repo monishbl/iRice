@@ -12,7 +12,7 @@ Row {
         height: 26
         radius: 13
         color: parent.tint
-        Icon { anchors.centerIn: parent; name: parent.parent.icon; fill: true; size: 15; color: "white" }
+        Icon { anchors.centerIn: parent; name: parent.parent.icon; fill: true; size: 15; color: (0.2126 * parent.color.r + 0.7152 * parent.color.g + 0.0722 * parent.color.b) > 0.7 ? "#1C1C1E" : "white" } // dark on light tints (yellow)
     }
     Text {
         anchors.verticalCenter: parent.verticalCenter

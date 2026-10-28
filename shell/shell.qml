@@ -37,6 +37,7 @@ import qs.modules.spotlight
 import qs.modules.stagemanager
 import qs.modules.tabs
 import qs.modules.tiling
+import qs.modules.today
 import qs.modules.wallpaper
 import qs.modules.switcher
 import qs.modules.emoji
@@ -108,6 +109,7 @@ ShellRoot {
     RegionSelector {}
     ScreenToolbar {}
     RecordCountdown {}
+    TodayScreen {}
     TranslationCard {}
     ScreenshotEditor {}
 

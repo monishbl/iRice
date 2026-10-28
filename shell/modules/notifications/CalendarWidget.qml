@@ -16,6 +16,15 @@ Platter {
     id: root
 
     property date shown: new Date()
+    // Reused by the desktop Calendar widget: no padding of its own, shorter
+    // date cells, and a fixed height (the selected day's list scrolls)
+    property int padding: 12
+    property int cellHeight: 32
+    property bool fitHeight: false
+    // A third tab beside Month and Week: your to-do list (the desktop widget;
+    // Notification Center has its own To-do tab)
+    property bool todoTab: false
+    property bool todoMode: false
     property date selected: new Date()
     property bool week: false
     readonly property date today: clock.date
@@ -79,12 +88,12 @@ Platter {
             const c = weekList.childAt(p.x, p.y);
             return c?.modelData ?? null;
         }
-        const header = grid.height - 6 * 32; // the M T W row
-        const row = Math.floor((p.y - header) / 32), col = Math.floor(p.x / grid.cell);
+        const header = grid.height - 6 * cellHeight; // the M T W row
+        const row = Math.floor((p.y - header) / cellHeight), col = Math.floor(p.x / grid.cell);
         return p.y < header ? null : days[row * 7 + col] ?? null;
     }
 
-    implicitHeight: column.implicitHeight + 24
+    implicitHeight: column.implicitHeight + 2 * padding
 
     SystemClock { id: clock; precision: SystemClock.Hours }
 
@@ -132,16 +141,22 @@ Platter {
 
     Column {
         id: column
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding }
         spacing: 8
+        // With fitHeight: what's left for the selected day's list
+        readonly property real rest: {
+            const parts = [headRow, daysView, dayTitle, emptyText, undoRow, quickAdd].filter(x => x.visible);
+            return parts.reduce((a, x) => a + x.height, 0) + spacing * parts.length; // (+ the list's own gap)
+        }
 
         // Month and year, Month / Week, arrows
         Item {
+            id: headRow
             width: parent.width
             height: 26
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.week ? Qt.formatDate(root.days[0], "d MMM") + " – " + Qt.formatDate(root.days[6], "d MMM") : Qt.formatDate(root.shown, "MMMM yyyy")
+                text: root.todoMode ? "To-do" : root.week ? Qt.formatDate(root.days[0], "d MMM") + " – " + Qt.formatDate(root.days[6], "d MMM") : Qt.formatDate(root.shown, root.todoTab ? "MMM yyyy" : "MMMM yyyy") // (shorter beside three tabs)
                 color: Theme.color.label
                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
             }
@@ -149,18 +164,21 @@ Platter {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: 4
                 Segmented {
-                    width: 104
+                    width: root.todoTab ? 150 : 104
                     height: 24
-                    options: ["Month", "Week"]
-                    current: root.week ? 1 : 0
+                    options: root.todoTab ? ["Month", "Week", "To-do"] : ["Month", "Week"]
+                    current: root.todoMode ? 2 : root.week ? 1 : 0
                     onSelected: i => {
+                        root.todoMode = i === 2;
+                        if (i === 2)
+                            return;
                         root.week = i === 1;
                         if (!root.week)
                             root.shown = root.selected;
                     }
                 }
                 Repeater {
-                    model: [{ icon: "caret-left", step: -1 }, { icon: "caret-right", step: 1 }]
+                    model: root.todoMode ? [] : [{ icon: "caret-left", step: -1 }, { icon: "caret-right", step: 1 }]
                     IconButton {
                         required property var modelData
                         width: 24
@@ -175,6 +193,8 @@ Platter {
 
         // The days: a month grid, or the week as rows with what's on
         Item {
+            id: daysView
+            visible: !root.todoMode
             width: parent.width
             height: root.week ? weekList.height : grid.height
             WheelHandler {
@@ -209,7 +229,7 @@ Platter {
                     model: root.week ? [] : root.days
                     DayCell {
                         width: grid.cell
-                        height: 32
+                        height: root.cellHeight
                     }
                 }
             }
@@ -313,6 +333,8 @@ Platter {
 
         // The selected day
         Item {
+            id: dayTitle
+            visible: !root.todoMode
             width: parent.width
             height: 22
             Text {
@@ -332,125 +354,156 @@ Platter {
             }
         }
         Text {
-            visible: root.items.length === 0 && !root.undo
+            id: emptyText
+            visible: !root.todoMode && root.items.length === 0 && !root.undo
             text: "Nothing on this day. Double-click a date to add something."
             width: parent.width
             wrapMode: Text.Wrap
             color: Theme.color.tertiary
             font { family: Theme.font.family; pixelSize: Theme.font.small }
         }
-        Repeater {
-            model: root.items.slice(0, 8)
-            Rectangle {
-                id: row
-                required property var modelData
-                readonly property bool isEvent: modelData.kind === "event"
-                readonly property bool movable: !isEvent || modelData.e.local
-                width: column.width
-                height: 36
-                radius: 8
-                color: rowMouse.containsMouse ? Theme.color.fill : "transparent"
-                z: rowDrag.active ? 10 : 0
-                opacity: rowDrag.active ? 0.5 : 1
+        // (fitHeight: in a scrolling area the size of what's left)
+        Flickable {
+            id: itemsView
+            visible: !root.todoMode && root.items.length > 0
+            width: parent.width
+            height: root.fitHeight ? Math.max(36, Math.min(contentHeight, root.height - 2 * root.padding - column.rest)) : contentHeight
+            contentHeight: itemsCol.implicitHeight
+            interactive: root.fitHeight && contentHeight > height
+            clip: root.fitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            Column {
+                id: itemsCol
+                width: parent.width
+                spacing: 8
+                Repeater {
+                    model: root.items.slice(0, root.fitHeight ? 30 : 8)
+                    Rectangle {
+                        id: row
+                        required property var modelData
+                        readonly property bool isEvent: modelData.kind === "event"
+                        readonly property bool movable: !isEvent || modelData.e.local
+                        width: column.width
+                        height: 36
+                        radius: 8
+                        color: rowMouse.containsMouse ? Theme.color.fill : "transparent"
+                        z: rowDrag.active ? 10 : 0
+                        opacity: rowDrag.active ? 0.5 : 1
 
-                // Event: its calendar's colour bar; to-do: a tick box
-                Rectangle {
-                    id: lead
-                    visible: row.isEvent
-                    x: 6
-                    y: 5
-                    width: 3
-                    height: parent.height - 10
-                    radius: 2
-                    color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
-                }
-                Rectangle {
-                    visible: !row.isEvent
-                    x: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 16
-                    height: 16
-                    radius: 8
-                    color: !row.isEvent && row.modelData.t.done ? Theme.accents.orange : "transparent"
-                    border.width: !row.isEvent && row.modelData.t.done ? 0 : 1.5
-                    border.color: Theme.accents.orange
-                    Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
-                    MouseArea {
-                        anchors { fill: parent; margins: -6 }
-                        onClicked: Todos.update(row.modelData.t.i, { done: !row.modelData.t.done })
-                    }
-                }
-                Column {
-                    anchors { left: parent.left; leftMargin: row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    Text {
-                        width: parent.width
-                        text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
-                        elide: Text.ElideRight
-                        color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; strikeout: !row.isEvent && !!row.modelData.t.done }
-                    }
-                    Text {
-                        width: parent.width
-                        text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), "h:mm AP"))
-                        elide: Text.ElideRight
-                        color: Theme.color.secondary
-                        font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
-                    }
-                }
-                MouseArea {
-                    id: rowMouse
-                    anchors { fill: parent; leftMargin: row.isEvent ? 0 : 24 }
-                    hoverEnabled: true
-                    cursorShape: row.movable ? Qt.OpenHandCursor : Qt.PointingHandCursor
-                    onClicked: editor.edit(row.modelData)
-                }
-                Component.onDestruction: if (rowDrag.active) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
-                DragHandler {
-                    id: rowDrag
-                    enabled: row.movable
-                    target: null // the row stays; a ghost follows the pointer
-                    onCentroidChanged: if (active) root.dropDay = root.dayAt(centroid.scenePosition)
-                    onActiveChanged: {
-                        // The panel holds still while something is dragged in it
-                        Panels.holdPull += active ? 1 : -1;
-                        if (!active) {
-                            const d = root.dropDay;
-                            root.dropDay = null;
-                            if (d)
-                                root.moveTo(row.modelData, d);
+                        // Event: its calendar's colour bar; to-do: a tick box
+                        Rectangle {
+                            id: lead
+                            visible: row.isEvent
+                            x: 6
+                            y: 5
+                            width: 3
+                            height: parent.height - 10
+                            radius: 2
+                            color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
                         }
-                    }
-                }
-                // While dragging: the item follows the pointer, and is what drops
-                Rectangle {
-                    id: ghost
-                    visible: rowDrag.active
-                    parent: root
-                    readonly property point at: root.mapFromItem(null, rowDrag.centroid.scenePosition.x, rowDrag.centroid.scenePosition.y)
-                    x: at.x - 20
-                    y: at.y - 18
-                    width: 180
-                    height: 30
-                    radius: 8
-                    z: 50
-                    color: Theme.dark ? "#2C2C31" : "#FFFFFF"
-                    border.width: 1
-                    border.color: Theme.accent
-                    Text {
-                        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                        verticalAlignment: Text.AlignVCenter
-                        text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
-                        elide: Text.ElideRight
-                        color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                        Rectangle {
+                            visible: !row.isEvent
+                            x: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: !row.isEvent && row.modelData.t.done ? Theme.accents.orange : "transparent"
+                            border.width: !row.isEvent && row.modelData.t.done ? 0 : 1.5
+                            border.color: Theme.accents.orange
+                            Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
+                            MouseArea {
+                                anchors { fill: parent; margins: -6 }
+                                onClicked: Todos.update(row.modelData.t.i, { done: !row.modelData.t.done })
+                            }
+                        }
+                        Column {
+                            anchors { left: parent.left; leftMargin: row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            Text {
+                                width: parent.width
+                                text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
+                                elide: Text.ElideRight
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; strikeout: !row.isEvent && !!row.modelData.t.done }
+                            }
+                            Text {
+                                width: parent.width
+                                text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), "h:mm AP"))
+                                elide: Text.ElideRight
+                                color: Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
+                            }
+                        }
+                        MouseArea {
+                            id: rowMouse
+                            anchors { fill: parent; leftMargin: row.isEvent ? 0 : 24 }
+                            hoverEnabled: true
+                            cursorShape: row.movable ? Qt.OpenHandCursor : Qt.PointingHandCursor
+                            onClicked: editor.edit(row.modelData)
+                        }
+                        Component.onDestruction: if (rowDrag.active) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
+                        DragHandler {
+                            id: rowDrag
+                            enabled: row.movable
+                            target: null // the row stays; a ghost follows the pointer
+                            onCentroidChanged: if (active) root.dropDay = root.dayAt(centroid.scenePosition)
+                            onActiveChanged: {
+                                // The panel holds still while something is dragged in it
+                                Panels.holdPull += active ? 1 : -1;
+                                if (!active) {
+                                    const d = root.dropDay;
+                                    root.dropDay = null;
+                                    if (d)
+                                        root.moveTo(row.modelData, d);
+                                }
+                            }
+                        }
+                        // While dragging: the item follows the pointer, and is what drops
+                        Rectangle {
+                            id: ghost
+                            visible: rowDrag.active
+                            parent: root
+                            readonly property point at: root.mapFromItem(null, rowDrag.centroid.scenePosition.x, rowDrag.centroid.scenePosition.y)
+                            x: at.x - 20
+                            y: at.y - 18
+                            width: 180
+                            height: 30
+                            radius: 8
+                            z: 50
+                            color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                            border.width: 1
+                            border.color: Theme.accent
+                            Text {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                verticalAlignment: Text.AlignVCenter
+                                text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
+                                elide: Text.ElideRight
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                            }
+                        }
                     }
                 }
             }
         }
 
+        // To-do tab: the same list as Notification Center's
+        Loader {
+            active: root.todoTab
+            visible: root.todoMode
+            width: parent.width
+            height: root.fitHeight ? Math.max(60, root.height - 2 * root.padding - headRow.height - column.spacing) : (item?.implicitHeight ?? 0)
+            sourceComponent: TodoWidget {
+                color: "transparent"
+                padding: 0
+                fitHeight: root.fitHeight
+            }
+        }
+
         // Deleted: offer it back
         Row {
-            visible: root.undo !== null
+            id: undoRow
+            visible: !root.todoMode && root.undo !== null
             spacing: 8
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -461,7 +514,7 @@ Platter {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Undo"
-                color: Theme.accent
+                color: Theme.accentInk
                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                 MouseArea {
                     anchors.fill: parent
@@ -485,6 +538,7 @@ Platter {
         // Quick add: plain words, on the selected day
         TextField {
             id: quickAdd
+            visible: !root.todoMode
             width: parent.width
             height: 32
             placeholder: "Add: “Call mum at 5pm”"
@@ -520,17 +574,17 @@ Platter {
         readonly property var mark: root.marks[root.dayKey(modelData)] ?? null
         Rectangle {
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: -3
-            width: 26
-            height: 26
-            radius: 13
+            anchors.verticalCenterOffset: -Math.min(3, (root.cellHeight - 20) / 2)
+            width: Math.min(26, root.cellHeight)
+            height: width
+            radius: width / 2
             readonly property bool target: !!root.dropDay && root.sameDay(root.dropDay, cell.modelData)
             visible: cell.isToday || cell.isSelected || dayMouse.containsMouse || target
             color: cell.isToday ? Theme.accent : target ? Theme.accentAlpha(0.35) : cell.isSelected ? Theme.color.fillPressed : Theme.color.fill
         }
         Text {
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: -3
+            anchors.verticalCenterOffset: -Math.min(3, (root.cellHeight - 20) / 2)
             text: cell.modelData.getDate()
             color: cell.isToday ? Theme.color.onAccent : cell.inMonth ? Theme.color.label : Theme.color.tertiary
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: cell.isToday ? Font.Bold : Font.Normal; features: { "tnum": 1 } }

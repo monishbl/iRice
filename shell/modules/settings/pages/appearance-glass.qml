@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import QtQuick.Controls as QQC
 import Quickshell
 import Quickshell.Io
@@ -62,7 +63,15 @@ Column {
                             Config.options.appearance.glassTint = a[3] ?? 0.45;
                         }
                         background: GlassPopupBackground { radius: Theme.radius.control + 16 }
-                        contentItem: Column {
+                        // Scrolls when it's taller than the window has room for
+                        contentItem: Flickable {
+                            implicitWidth: advCol.implicitWidth
+                            implicitHeight: Math.min(advCol.implicitHeight, Math.max(240, (advanced.parent?.Window?.window?.height ?? 620) - 2 * advanced.margins - 2 * advanced.padding))
+                            contentHeight: advCol.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                        Column {
+                            id: advCol
                             spacing: 14
                             Text {
                                 text: "Custom material"
@@ -112,6 +121,130 @@ Column {
                                     }
                                 }
                             }
+
+                            // ── Optics: on top of any material ─────────
+                            Text {
+                                topPadding: 4
+                                text: "Optics"
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                            }
+                            // Live preview: the glass shader itself, over stripes
+                            Item {
+                                width: 268
+                                height: 96
+                                Item {
+                                    id: stripes
+                                    anchors.fill: parent
+                                    Rectangle { anchors.fill: parent; color: Theme.dark ? "#1C1C1E" : "#F2F2F5" }
+                                    QQ.Row {
+                                        anchors.fill: parent
+                                        Repeater {
+                                            model: 12
+                                            Rectangle {
+                                                required property int index
+                                                width: stripes.width / 12
+                                                height: stripes.height
+                                                color: index % 2 ? "transparent" : Qt.alpha(Theme.accent, 0.85)
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Aa"
+                                        color: Theme.color.label
+                                        font { family: Theme.font.family; pixelSize: 40; weight: Font.Bold }
+                                    }
+                                }
+                                ShaderEffectSource {
+                                    id: stripesTex
+                                    anchors.fill: parent
+                                    sourceItem: stripes
+                                    visible: false // (only the glass's texture: the stripes show themselves)
+                                }
+                                ShaderEffect {
+                                    anchors.fill: parent
+                                    readonly property size itemSize: Qt.size(width, height)
+                                    readonly property rect shapeRect: Qt.rect(48, 18, width - 96, height - 36)
+                                    readonly property rect screenRect: Qt.rect(0, 0, width, height)
+                                    readonly property size screenSize: Qt.size(width, height)
+                                    readonly property real radius: 30
+                                    readonly property real bevel: 24
+                                    readonly property real refraction: Theme.glass.refraction * Math.max(0.15, Theme.glass.lensAmount)
+                                    readonly property real chroma: Theme.glass.chroma
+                                    readonly property real rim: Theme.glass.rim
+                                    readonly property real mode: 0
+                                    readonly property real saturation: Theme.glass.saturation
+                                    readonly property real shadow: 0
+                                    readonly property vector4d tintColor: Qt.vector4d(Theme.glass.tint.r, Theme.glass.tint.g, Theme.glass.tint.b, Theme.glass.tint.a)
+                                    readonly property vector4d solidColor: Qt.vector4d(Theme.glass.solid.r, Theme.glass.solid.g, Theme.glass.solid.b, 1)
+                                    readonly property real gloss: Math.max(0.5, Theme.glass.gloss)
+                                    readonly property real bandScale: Theme.glass.band
+                                    readonly property var backdrop: stripesTex
+                                    fragmentShader: Qt.resolvedUrl("../../../glass/glass.frag.qsb")
+                                    blending: true
+                                }
+                            }
+                            Repeater {
+                                model: [
+                                    { key: "glassIor", label: "Index of refraction", hint: "How strongly the edge bends what's behind; glass is about 1.5", from: 1, to: 2 },
+                                    { key: "glassRefraction", label: "Refraction", hint: "How far in from the edge the bending reaches", from: 0.4, to: 2 },
+                                    { key: "glassDispersion", label: "Dispersion", hint: "Colour fringes at the edge, like a prism", from: 0, to: 1 }
+                                ]
+                                Column {
+                                    required property var modelData
+                                    width: 268
+                                    spacing: 4
+                                    Item {
+                                        width: parent.width
+                                        height: 18
+                                        Text {
+                                            text: parent.parent.modelData.label
+                                            color: Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                        }
+                                        Text {
+                                            anchors.right: parent.right
+                                            readonly property string key: parent.parent.modelData.key
+                                            readonly property real v: Config.options.appearance[key]
+                                            text: key === "glassIor" ? v.toFixed(2) : key === "glassDispersion" && v < 0.005 ? "None" : Math.round(v * 100) + "%"
+                                            color: Theme.color.secondary
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                                        }
+                                    }
+                                    Slider {
+                                        width: parent.width
+                                        from: parent.modelData.from
+                                        to: parent.modelData.to
+                                        value: Config.options.appearance[parent.modelData.key]
+                                        // (optics apply to any material; they don't switch it to Custom)
+                                        onMoved: v => Config.options.appearance[parent.modelData.key] = Math.round(v * 100) / 100
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.Wrap
+                                        text: parent.modelData.hint
+                                        color: Theme.color.tertiary
+                                        font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                                    }
+                                }
+                            }
+                            SettingsButton {
+                                text: "Reset to Glass"
+                                icon: "arrow-counter-clockwise"
+                                onClicked: {
+                                    Config.options.appearance.glass = "liquid";
+                                    Config.options.appearance.glassIor = 1.5;
+                                    Config.options.appearance.glassRefraction = 1;
+                                    Config.options.appearance.glassDispersion = 0.35;
+                                    const p = Theme.glass.presets.liquid;
+                                    Config.options.appearance.glassLens = p[0];
+                                    Config.options.appearance.glassFrost = p[1];
+                                    Config.options.appearance.glassSolid = p[2];
+                                    Config.options.appearance.glassTint = p[3];
+                                }
+                            }
+                        }
                         }
                     }
                 }

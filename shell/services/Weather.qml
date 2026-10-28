@@ -17,7 +17,8 @@ Singleton {
     property int low: 0
     property string condition: ""
     property string icon: "cloud"
-    property var hourly: [] // [{ time, temp, icon }]
+    property var hourly: [] // [{ time, temp, icon, rain (% chance) }]
+    property int rainChance: 0 // today's highest chance of rain, %
     // Minutes after midnight (mirrored in Daylight for the theme and wallpaper)
     property int sunrise: Daylight.sunrise
     property int sunset: Daylight.sunset
@@ -73,8 +74,10 @@ Singleton {
                 hourly = today.hourly.filter(h => +h.time / 100 >= hour - 1).slice(0, 5).map(h => ({
                     time: Qt.formatTime(new Date(2000, 0, 1, +h.time / 100), "h AP"),
                     temp: +(metric ? h.tempC : h.tempF),
-                    icon: iconFor(h.weatherCode, (+h.time / 100) < 6 || (+h.time / 100) >= 19)
+                    icon: iconFor(h.weatherCode, (+h.time / 100) < 6 || (+h.time / 100) >= 19),
+                    rain: +(h.chanceofrain ?? 0)
                 }));
+                rainChance = Math.max(0, ...today.hourly.map(h => +(h.chanceofrain ?? 0)));
                 error = "";
                 ready = true;
             } catch (e) {

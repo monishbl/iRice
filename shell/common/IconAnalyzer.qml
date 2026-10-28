@@ -2,6 +2,13 @@ import QtQuick
 
 // Measures queued app icons for IconInfo, one at a time, on a 32×32 canvas.
 // Must sit in a visible window (behind other content) so it can paint.
+//
+// Besides whether an icon is already a tile and its colours, it finds what
+// the clear and tinted styles need to draw any logo alike: the background
+// the logo sits on (a square tile, or a disc or rounded plate with a margin,
+// as a top-to-bottom gradient), how much that background itself varies, and
+// the logo's own tones. (An offline copy of this maths, for previews, lives
+// with the icon contact sheets; keep them alike.)
 Canvas {
     id: root
 
@@ -27,7 +34,7 @@ Canvas {
         id: timeout
         interval: 2000
         running: root.current !== ""
-        onTriggered: root.finish({ square: false, bg: "#808080", dominant: "#808080", lum: 0.5, spread: 0.25 })
+        onTriggered: root.finish({ square: false, plate: false, bg: "#808080", bgTop: "#808080", bgBottom: "#808080", floor: 0, edge: 0.3, dominant: "#808080", lo: 0, hi: 1, med: 0.5, pol: 1 })
     }
 
     function finish(result) {
@@ -37,6 +44,14 @@ Canvas {
             unloadImage(src); // analysed: don't keep the full-size icon in memory
         IconInfo.done(src, result);
         Qt.callLater(start);
+    }
+
+    // The value at fraction p of a list, sorted
+    function pct(list, p) {
+        if (list.length === 0)
+            return 0;
+        const v = list.slice().sort((a, b) => a - b);
+        return v[Math.min(v.length - 1, Math.max(0, Math.round(p * (v.length - 1))))];
     }
 
     onPaint: {
@@ -50,56 +65,135 @@ Canvas {
             const i = (y * 32 + x) * 4;
             return [d[i], d[i + 1], d[i + 2], d[i + 3]];
         };
+        const solid = (x, y) => d[(y * 32 + x) * 4 + 3] >= 200;
+        const luma = p => (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
+        const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) / 255;
+
         // Already a tile if points near the corners and edge midpoints are opaque
         const probes = [[4, 4], [27, 4], [4, 27], [27, 27], [16, 1], [16, 30], [1, 16], [30, 16]];
-        const opaque = probes.filter(([x, y]) => px(x, y)[3] > 200).length;
-        const square = opaque >= 7;
-        // Tile colour: average of the corner probes
-        let br = 0, bgc = 0, bb = 0;
-        for (const [x, y] of probes.slice(0, 4)) {
-            const p = px(x, y);
-            br += p[0];
-            bgc += p[1];
-            bb += p[2];
+        const square = probes.filter(([x, y]) => px(x, y)[3] > 200).length >= 7;
+
+        // The tile or plate behind the logo, from its rim: the first opaque
+        // pixels in from each side (2px in, past the antialiased edge) on
+        // every row and column
+        let opaque = 0, x0 = 32, x1 = -1, y0 = 32, y1 = -1;
+        for (let y = 0; y < 32; y++)
+            for (let x = 0; x < 32; x++)
+                if (solid(x, y)) {
+                    opaque++;
+                    x0 = Math.min(x0, x);
+                    x1 = Math.max(x1, x);
+                    y0 = Math.min(y0, y);
+                    y1 = Math.max(y1, y);
+                }
+        const rim = []; // [pixel, y]
+        for (let i = 0; i < 32; i++) {
+            let r0 = -1, r1 = -1, c0 = -1, c1 = -1, rn = 0, cn = 0;
+            for (let j = 0; j < 32; j++) {
+                if (solid(j, i)) {
+                    if (r0 < 0)
+                        r0 = j;
+                    r1 = j;
+                    rn++;
+                }
+                if (solid(i, j)) {
+                    if (c0 < 0)
+                        c0 = j;
+                    c1 = j;
+                    cn++;
+                }
+            }
+            if (rn >= 8)
+                rim.push([px(r0 + 2, i), i], [px(r1 - 2, i), i]);
+            if (cn >= 8)
+                rim.push([px(i, c0 + 2), c0 + 2], [px(i, c1 - 2), c1 - 2]);
         }
+        const rimOk = rim.filter(e => e[0][3] >= 200);
+        // A plate is a simple shape: a disc or a rounded square, nearly
+        // square, filling most of its box (a logo's own outline doesn't)
+        const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+        const simple = opaque > 0 && bw / bh >= 0.8 && bw / bh <= 1.25 && opaque / (bw * bh) >= 0.74;
+        let plate = false, floor = 0;
+        let bgT = [128, 128, 128], bgB = [128, 128, 128];
+        if (rimOk.length > 0 && opaque >= 0.35 * 1024 && (square || simple)) {
+            // its colour at the top and the bottom (icons' gradients run top
+            // to bottom): medians of the rim's upper and lower thirds
+            const ys = rimOk.map(e => e[1]);
+            const ya = pct(ys, 0.15), yb = pct(ys, 0.85), t33 = pct(ys, 0.33), t67 = pct(ys, 0.67);
+            const top = rimOk.filter(e => e[1] <= t33).map(e => e[0]);
+            const bot = rimOk.filter(e => e[1] >= t67).map(e => e[0]);
+            const med3 = list => [0, 1, 2].map(c => pct(list.map(p => p[c]), 0.5));
+            const mt = med3(top.length ? top : rimOk.map(e => e[0]));
+            const mb = med3(bot.length ? bot : rimOk.map(e => e[0]));
+            const at = y => {
+                const t = yb === ya ? 0 : Math.max(0, Math.min(1, (y - ya) / (yb - ya)));
+                return [0, 1, 2].map(c => mt[c] + (mb[c] - mt[c]) * t);
+            };
+            const dev = rimOk.map(e => dist(e[0], at(e[1])));
+            // most of the rim close to that: a background, not a logo's edge
+            if (pct(dev, 0.6) < 0.16) {
+                plate = !square;
+                bgT = at(0);
+                bgB = at(31);
+                floor = Math.min(0.3, pct(dev, 0.85));
+            }
+        }
+        // A tile whose rim varies too much (busy artwork to the edges): the
+        // average of its corners, with a wider margin for what counts as logo
+        if (square && bgT[0] === 128 && bgT[1] === 128 && bgT[2] === 128 && floor === 0) {
+            const cs = probes.slice(0, 4).map(([x, y]) => px(x, y));
+            bgT = bgB = [0, 1, 2].map(c => cs.reduce((a, p) => a + p[c], 0) / 4);
+            floor = 0.15;
+        }
+        const bgAt = y => [0, 1, 2].map(c => bgT[c] + (bgB[c] - bgT[c]) * y / 31);
+        const onTile = square || plate;
+
+        // The logo's pixels (opaque, and on a tile, unlike the tile), its
+        // tones and how far it stands from the tile
+        const tones = [], gaps = [];
         // Dominant colour: opaque pixels, weighted toward saturated ones
         let r = 0, g = 0, b = 0, w = 0;
-        for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3] < 128)
-                continue;
-            const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
-            const wt = 0.15 + (mx - mn) / 255;
-            r += d[i] * wt;
-            g += d[i + 1] * wt;
-            b += d[i + 2] * wt;
-            w += wt;
-        }
-        // The logo's brightness and detail (for clear and tinted styles, which
-        // normalise them so every logo reads alike): over the logo's pixels,
-        // the opaque ones that differ from the tile (square icons) or just
-        // the opaque ones (transparent logos)
-        const tr = br / 4, tg = bgc / 4, tb = bb / 4;
-        let n = 0, sum = 0, sum2 = 0;
-        for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3] < 128)
-                continue;
-            if (square && Math.hypot(d[i] - tr, d[i + 1] - tg, d[i + 2] - tb) < 40)
-                continue;
-            const l = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
-            n++;
-            sum += l;
-            sum2 += l * l;
-        }
-        const mean = n >= 12 ? sum / n : 0.5;
-        const spread = n >= 12 ? Math.sqrt(Math.max(0, sum2 / n - mean * mean)) : 0.25;
-        const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+        for (let y = 0; y < 32; y++)
+            for (let x = 0; x < 32; x++) {
+                const p = px(x, y);
+                if (p[3] < 128)
+                    continue;
+                const mx = Math.max(p[0], p[1], p[2]), mn = Math.min(p[0], p[1], p[2]);
+                const wt = 0.15 + (mx - mn) / 255;
+                r += p[0] * wt;
+                g += p[1] * wt;
+                b += p[2] * wt;
+                w += wt;
+                if (onTile) {
+                    const dd = dist(p, bgAt(y));
+                    if (dd > floor + 0.08) {
+                        tones.push(luma(p));
+                        gaps.push(dd);
+                    }
+                } else {
+                    tones.push(luma(p));
+                }
+            }
+        const many = tones.length >= 12;
+        const med = many ? pct(tones, 0.5) : 0.5;
+        const hex = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+        const col = c => "#" + hex(c[0]) + hex(c[1]) + hex(c[2]);
         timeout.stop();
         finish({
             square: square,
-            bg: "#" + hex(br / 4) + hex(bgc / 4) + hex(bb / 4),
-            dominant: w > 0 ? "#" + hex(r / w) + hex(g / w) + hex(b / w) : "#808080",
-            lum: mean,
-            spread: spread
+            plate: plate,
+            bg: col(bgAt(16)),
+            bgTop: col(bgT),
+            bgBottom: col(bgB),
+            floor: floor,
+            edge: gaps.length >= 12 ? Math.max(0.15, pct(gaps, 0.7)) : 0.3,
+            dominant: w > 0 ? col([r / w, g / w, b / w]) : "#808080",
+            lo: many ? pct(tones, 0.1) : 0,
+            hi: many ? pct(tones, 0.9) : 1,
+            med: med,
+            // +1: lighter than the logo's own tone reads brighter (on a tile:
+            // away from the tile's tone); -1 the other way
+            pol: onTile ? (med >= luma(bgAt(16)) ? 1 : -1) : 1
         });
     }
 }

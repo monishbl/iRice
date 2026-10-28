@@ -43,6 +43,7 @@ Singleton {
             recording: own + "record-start.ogg",
             recordingOff: own + "record-stop.ogg",
             error: own + "error.ogg",
+            today: own + "today.ogg",
             screenshot: dir + "camera-shutter.oga",
             trash: dir + "trash-empty.oga"
         })

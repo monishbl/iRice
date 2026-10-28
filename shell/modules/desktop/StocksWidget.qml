@@ -40,7 +40,7 @@ Item {
     }
     onSymbolsChanged: fetch.running = true
 
-    WidgetHeader { id: header; icon: "chart-line-up"; title: "Stocks"; tint: Theme.accents.blue }
+    WidgetHeader { id: header; icon: "chart-line-up"; title: "Stocks"; tint: Theme.accent }
 
     Column {
         anchors { left: parent.left; right: parent.right; top: header.bottom; topMargin: 10 }

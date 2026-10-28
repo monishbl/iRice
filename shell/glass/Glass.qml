@@ -38,6 +38,7 @@ ShaderEffect {
     property real chroma: Theme.glass.chroma
     property real rim: Theme.glass.rim * (1 - Theme.glass.solidAmount)
     readonly property real gloss: Theme.glass.gloss
+    readonly property real bandScale: Theme.glass.band // the rim's width × (Settings → Glass → Advanced → Refraction)
     readonly property real mode: modeIndex
     readonly property real saturation: Theme.glass.saturation
     property real shadow: modeIndex === 0 || modeIndex === 2 ? Theme.glass.shadow : Theme.glass.shadow * 0.6

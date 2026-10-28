@@ -24,7 +24,7 @@ Item {
         spacing: 0
         Text {
             text: Qt.formatDate(clock.date, "dddd").toUpperCase()
-            color: Theme.accents.orange
+            color: Theme.accentInk
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Bold; letterSpacing: 1 }
         }
         Text {

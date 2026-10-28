@@ -521,6 +521,14 @@ Column {
             }
         }
         Row {
+            label: "Let the app maximize itself"
+            detail: "Apps that ask to be maximized when they open (or from their own button) normally aren't, so they don't cover your other windows. Super+F works either way."
+            Switch {
+                checked: page.rule?.selfMaximize ?? false
+                onToggled: page.change({ selfMaximize: !page.rule.selfMaximize })
+            }
+        }
+        Row {
             label: "Show on all spaces"
             detail: "Floats and stays in view when you switch spaces"
             Switch {

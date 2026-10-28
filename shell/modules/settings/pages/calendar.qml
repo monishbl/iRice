@@ -67,7 +67,7 @@ Column {
         label: "Removed “" + (page.removed?.name ?? "") + "”"
         Text {
             text: "Undo"
-            color: Theme.accent
+            color: Theme.accentInk
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
             MouseArea {
                 anchors.fill: parent

@@ -228,6 +228,13 @@ Column {
     Group {
         width: parent.width
         SubpageLink {
+            icon: "sun-horizon"
+            label: "Today"
+            detail: "The morning screen: a greeting, your events and to-dos, the weather"
+            value: ({ ask: "Every morning", widget: "Widget", both: "Both", off: "Off" })[Today.mode] ?? ""
+            page: "desktop/today"
+        }
+        SubpageLink {
             icon: "record"
             label: "Screen recording"
             detail: "Frame rate, format, quality, sound and where recordings go"

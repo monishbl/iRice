@@ -182,6 +182,7 @@ Scope {
                 readonly property real level: d.percentage > 1 ? d.percentage / 100 : d.percentage
                 readonly property bool charging: d.state === UPowerDeviceState.Charging
                 readonly property bool full: d.state === UPowerDeviceState.FullyCharged
+                Component.onCompleted: BatteryHealth.refresh() // (the menu is made each time it opens)
                 function hm(secs) {
                     const m = Math.round(secs / 60);
                     return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min";
@@ -211,11 +212,46 @@ Scope {
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
+                // Power going in or out right now
                 Text {
-                    visible: bat.d.healthSupported
-                    text: "Battery health " + Math.round(bat.d.healthPercentage) + "%"
+                    visible: BatteryHealth.watts > 0.05 && !bat.full
+                    text: (bat.charging ? "Charging at " : "Using ") + BatteryHealth.watts.toFixed(1) + " W"
                     color: Theme.color.tertiary
-                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                }
+
+                // Battery health, like macOS: how much of its design capacity
+                // it still holds, its cycles, and whether it needs service
+                Text {
+                    visible: BatteryHealth.capacity >= 0 || bat.d.healthSupported
+                    text: "Battery health"
+                    color: Theme.color.secondary
+                    topPadding: 4
+                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                }
+                Repeater {
+                    model: [
+                        { label: "Maximum capacity", value: BatteryHealth.capacity >= 0 ? Math.round(BatteryHealth.capacity * 100) + "%" : bat.d.healthSupported ? Math.round(bat.d.healthPercentage) + "%" : "" },
+                        { label: "Cycle count", value: BatteryHealth.cycles > 0 ? String(BatteryHealth.cycles) : "" },
+                        { label: "Condition", value: BatteryHealth.condition !== "" ? BatteryHealth.condition : bat.d.healthSupported ? (bat.d.healthPercentage >= 80 ? "Normal" : "Service recommended") : "" }
+                    ].filter(r => r.value !== "")
+                    Item {
+                        required property var modelData
+                        width: bat.width
+                        height: 20
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: parent.modelData.label
+                            color: Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.font.small }
+                        }
+                        Text {
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            text: parent.modelData.value
+                            color: parent.modelData.value === "Service recommended" ? Theme.color.warning : Theme.color.secondary
+                            font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                        }
+                    }
                 }
                 Text {
                     text: "Energy mode"

@@ -72,6 +72,7 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             function update(x) { root.moved(Math.max(0, Math.min(1, x / width))); }
+            preventStealing: true // a scrolling page around it mustn't take the drag when the pointer drifts up or down
             onPressed: m => update(m.x)
             onPressedChanged: Panels.holdPull += pressed ? 1 : -1 // the panel holds still while dragging
             Component.onDestruction: if (pressed) Panels.holdPull = Math.max(0, Panels.holdPull - 1)

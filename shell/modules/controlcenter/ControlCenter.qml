@@ -285,7 +285,7 @@ Variants {
                     }
                     Text {
                         text: "Reset to default"
-                        color: Theme.accent
+                        color: Theme.accentInk
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
                         MouseArea {
                             anchors.fill: parent

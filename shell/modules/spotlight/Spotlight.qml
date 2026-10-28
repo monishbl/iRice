@@ -248,7 +248,7 @@ Variants {
                                 name: "sparkle"
                                 fill: true
                                 size: 14
-                                color: Theme.accent
+                                color: Theme.accentInk
                                 SequentialAnimation on opacity {
                                     running: Ai.quick.busy && Ai.quick.answer === ""
                                     loops: Animation.Infinite

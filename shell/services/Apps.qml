@@ -70,7 +70,7 @@ Singleton {
     function entryFor(appId) {
         if (!appId)
             return null;
-        return byId(appId) ?? DesktopEntries.heuristicLookup(appId);
+        return byId(appId) ?? byId(AppQuirks.entryFor(appId)) ?? DesktopEntries.heuristicLookup(appId);
     }
 
     function iconFor(entryOrId) {
@@ -163,9 +163,18 @@ Singleton {
         Config.options.dock.pinned = Config.options.dock.pinned.filter(p => p !== id);
     }
 
+    // Quit (dock, menu bar), not just close: apps that hide to the tray when
+    // their windows close (Electron ones, Ente Auth…) would keep running.
+    // Close the windows, then assets/scripts/quit-app.sh ends what's left of
+    // the app's processes (unless a window stays up: "Save changes?").
+    readonly property string quitScript: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/quit-app.sh").toString().replace("file://", ""))
     function quit(appId) {
-        for (const t of windowsOf(entryFor(appId)?.id ?? appId))
+        const windows = windowsOf(entryFor(appId)?.id ?? appId);
+        const pids = [...new Set(windows.map(t => hyprFor(t)?.lastIpcObject?.pid ?? 0).filter(p => p > 1))];
+        for (const t of windows)
             t.close();
+        if (pids.length > 0)
+            Quickshell.execDetached(["setsid", "-f", quitScript].concat(pids.map(String)));
     }
 
     function launch(entry) {

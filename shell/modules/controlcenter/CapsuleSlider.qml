@@ -53,7 +53,7 @@ Item {
         name: root.icon
         fill: true
         size: Math.round(Math.min(22, root.thick * 0.36))
-        color: root.v * (root.vertical ? root.height : root.width) > root.thick * 0.75 ? Qt.rgba(0, 0, 0, 0.6) : Theme.color.label
+        color: Theme.accentOnGlyph // it always sits on the white fill (the fill is never shorter than the round end): accent, like the toggles
     }
 
     MouseArea {
@@ -67,6 +67,7 @@ Item {
         function update(m) {
             root.moved(Math.max(0, Math.min(1, root.vertical ? 1 - m.y / height : m.x / width)));
         }
+        preventStealing: true // a scrolling page around it mustn't take the drag when the pointer drifts up or down
         onPressed: m => {
             if (m.button === Qt.RightButton) {
                 if (root.hasMore)

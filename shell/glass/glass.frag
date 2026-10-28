@@ -29,6 +29,7 @@ layout(std140, binding = 0) uniform buf {
     vec4 tintColor;    // straight alpha
     vec4 solidColor;
     float gloss;       // 3D lighting amount: 1 glass, ~0 frost (even hairline)
+    float bandScale;   // the rim's width × this (Settings → Glass → Advanced → Refraction)
 };
 layout(binding = 1) uniform sampler2D backdrop;
 
@@ -87,7 +88,8 @@ void main() {
 
     float depth = -d;
     vec2 n = roundBoxNormal(p, halfSize, r);
-    float t = clamp(1.0 - depth / max(bevel, 1.0), 0.0, 1.0); // 1 at the edge
+    float rimWidth = min(bevel * bandScale, radius * 2.0);
+    float t = clamp(1.0 - depth / max(rimWidth, 1.0), 0.0, 1.0); // 1 at the edge
     float lens = t * t * (3.0 - 2.0 * t);
 
     vec3 col;
@@ -117,7 +119,7 @@ void main() {
     vec2 L = normalize(vec2(-0.55, -0.83));
     float facing = dot(n, L);
     float line = 1.0 - smoothstep(0.0, 1.4, depth);
-    float band = 1.0 - smoothstep(0.0, max(bevel * 0.22, 2.0), depth);
+    float band = 1.0 - smoothstep(0.0, max(rimWidth * 0.22, 2.0), depth);
     float key = pow(max(facing, 0.0), 10.0);
     float back = pow(max(-facing, 0.0), 8.0) * 0.25;
     float spec = rim * (line * mix(0.45, 0.2 + 0.6 * max(facing, 0.0), gloss) + gloss * (band * (key * 0.55 + back) + 0.08 * lens * max(facing, 0.0)));

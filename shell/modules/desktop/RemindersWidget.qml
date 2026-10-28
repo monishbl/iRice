@@ -30,8 +30,8 @@ Item {
             width: 26
             height: 26
             radius: 13
-            color: Theme.accents.orange
-            Icon { anchors.centerIn: parent; name: "list-checks"; fill: true; size: 15; color: "white" }
+            color: Theme.accent
+            Icon { anchors.centerIn: parent; name: "list-checks"; fill: true; size: 15; color: Theme.color.onAccent }
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter

@@ -41,7 +41,7 @@ Variants {
             name: "check"
             bold: true
             size: 14
-            color: Theme.accent
+            color: Theme.accentInk
             opacity: optionRow.checked ? 1 : 0
         }
         Text {

@@ -30,8 +30,11 @@ Singleton {
     readonly property bool available: Config.options.windowRules !== undefined
 
     // [{ class, name, float, tile, workspace (0 = any), opaque, start ("" |
-    // "maximize" | "fullscreen"), pin, width, height (0 = no size) }]
+    // "maximize" | "fullscreen"), pin, width, height (0 = no size),
+    // selfMaximize }]
     // (tile: tiles even when new windows float by default, defaultLayout)
+    // (selfMaximize: the app may maximize itself; others' requests are
+    // ignored, see layoutLua)
     readonly property var rules: {
         const out = [];
         for (const s of (Config.options.windowRules?.rules ?? [])) {
@@ -62,7 +65,8 @@ Singleton {
             start: r.start === "maximize" || r.start === "fullscreen" ? r.start : "",
             pin: !!r.pin,
             width: toInt(r.width),
-            height: toInt(r.height)
+            height: toInt(r.height),
+            selfMaximize: !!r.selfMaximize
         };
     }
 
@@ -105,7 +109,7 @@ Singleton {
     }
 
     function hasEffects(r) {
-        return r.float || r.tile || r.workspace > 0 || r.opaque || r.start !== "" || r.pin || (r.width > 0 && r.height > 0);
+        return r.float || r.tile || r.workspace > 0 || r.opaque || r.start !== "" || r.pin || (r.width > 0 && r.height > 0) || r.selfMaximize;
     }
 
     // "Floats · Space 3 · Opaque"
@@ -127,6 +131,8 @@ Singleton {
             s.push("Opaque");
         if (r.width > 0 && r.height > 0)
             s.push(r.width + " × " + r.height);
+        if (r.selfMaximize)
+            s.push("Maximizes itself");
         return s.length > 0 ? s.join(" · ") : "Nothing set";
     }
 
@@ -141,7 +147,7 @@ Singleton {
 
     // The hl.window_rule spec for a rule, or "nil" when it does nothing
     function spec(r) {
-        if (!r || !hasEffects(r))
+        if (!r || !hasEffects(r) || (r.selfMaximize && !hasEffects(Object.assign({}, r, { selfMaximize: false }))))
             return "nil";
         const f = ["name = " + luaStr("irice-window-rules:" + r.class), "match = { class = " + luaStr(classPattern(r.class)) + " }"];
         if (r.float || r.pin) // (pinning only works on floating windows)
@@ -188,9 +194,21 @@ Singleton {
         const match = tiles.length > 0 ? "negative:^(" + tiles.join("|") + ")$" : ".*";
         return "{ name = \"irice-default-layout\", match = { class = " + luaStr(match) + " }, float = true }";
     }
+    // Apps asking to be maximized (Electron apps restoring a maximized
+    // window, Flutter and GTK apps) covered every other window as they
+    // opened, whatever the layout. Those requests are ignored, except for
+    // apps whose rule allows it; maximizing yourself (the green button,
+    // Super+F) still works, and so does an app going full screen (video).
+    function maximizeSpec(list) {
+        const allowed = list.filter(r => r.selfMaximize).map(r => r.class.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        const match = allowed.length > 0 ? "negative:^(" + allowed.join("|") + ")$" : ".*";
+        return "{ name = \"irice-no-self-maximize\", match = { class = " + luaStr(match) + " }, suppress_event = \"maximize\" }";
+    }
     function layoutLua(list) {
         return "if IRICE_DEFAULT_LAYOUT then pcall(function() IRICE_DEFAULT_LAYOUT:set_enabled(false) end) end\n"
-            + "IRICE_DEFAULT_LAYOUT = " + (floating ? "hl.window_rule(" + layoutSpec(list) + ")" : "nil") + "\n";
+            + "IRICE_DEFAULT_LAYOUT = " + (floating ? "hl.window_rule(" + layoutSpec(list) + ")" : "nil") + "\n"
+            + "if IRICE_NO_SELF_MAXIMIZE then pcall(function() IRICE_NO_SELF_MAXIMIZE:set_enabled(false) end) end\n"
+            + "IRICE_NO_SELF_MAXIMIZE = hl.window_rule(" + maximizeSpec(list) + ")\n";
     }
     property string layoutApplied: ""
     function applyLayout() {

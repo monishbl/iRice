@@ -69,7 +69,7 @@ Item {
         width: Math.max(6, root.width * 0.07)
         height: width
         radius: width / 2
-        color: Theme.accents.orange
+        color: Theme.accent
         border.width: 1.5
         border.color: root.face
     }

@@ -46,7 +46,7 @@ Column {
             label: "Reset to the default layout"
             Text {
                 text: "Reset"
-                color: Theme.accent
+                color: Theme.accentInk
                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                 MouseArea {
                     anchors.fill: parent

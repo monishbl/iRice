@@ -69,7 +69,7 @@ Column {
     Text {
         visible: root.entries.length > 1
         text: root.all ? "Show only the latest" : "Show all notes (" + root.entries.length + ")"
-        color: Theme.accent
+        color: Theme.accentInk
         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
         MouseArea {
             anchors.fill: parent

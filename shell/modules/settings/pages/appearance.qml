@@ -138,7 +138,7 @@ Column {
                         width: 40
                         height: 32
                         radius: Theme.radius.control
-                        color: on ? Theme.accentAlpha(0.25) : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        color: on ? Theme.accentTint : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                         border.width: on ? 2 : 0
                         border.color: Theme.accent
                         Icon {

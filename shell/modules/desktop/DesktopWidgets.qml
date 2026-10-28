@@ -39,7 +39,7 @@ Item {
     }
     readonly property bool editing: Panels.widgetEditing && Panels.screen === screen
     // A note or the large reminders widget takes typing
-    readonly property bool wantsKeys: widgets.some(w => w.kind === "notes" || (w.kind === "reminders" && w.size === "l"))
+    readonly property bool wantsKeys: widgets.some(w => w.kind === "notes" || ((w.kind === "reminders" || w.kind === "calendar") && w.size === "l")) // (text fields)
 
     function save(list) {
         Config.options.desktop.widgets = list.map(w => defs.format(w)).concat(unknownEntries);

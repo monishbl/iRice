@@ -20,7 +20,7 @@ RATE = 48000
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shell", "assets", "sounds")
 OUT = ROOT  # the pack being written (set per pack)
 EVENTS = ["startup", "charging", "display-connect", "display-disconnect", "lock", "unlock", "notification", "battery",
-          "volume", "usb-connect", "usb-disconnect", "received", "record-start", "record-stop", "error"]
+          "volume", "usb-connect", "usb-disconnect", "received", "record-start", "record-stop", "error", "today"]
 
 
 def hz(midi):
@@ -213,6 +213,7 @@ def glass_pack():
     recording("record-start", [91])
     recording("record-stop", [91, 86])
     error()
+    today_glass()
 
 
 # ── Instrument packs ────────────────────────────────────────────────────
@@ -354,15 +355,47 @@ def build(pack):
     phrase(pack, "received", 0.9, [(0.05 * k, m, 0.45, -0.3 + 0.2 * k, 0.8 + 0.3 * k) for k, m in enumerate((72, 76, 79, 84))], -10)
     phrase(pack, "record-start", 0.35, [(0, 84, 0.6, 0, 0.6)], -11)
     phrase(pack, "record-stop", 0.45, [(0, 84, 0.6, 0, 0.6), (0.09, 79, 0.6, 0, 0.8)], -11)
+    today(pack)
+
+
+# The morning screen (Today) rises with its entrance: the first note as the
+# screen frosts over, climbing an octave (G B D G) to the peak as the panel
+# settles (TODAY_PEAK s in; TodayScreen times the sound so the two meet),
+# then a quiet sparkle while its rows rise in. A soft swell underneath grows
+# into the peak, so the whole phrase lifts rather than steps.
+TODAY_PEAK = 0.66
+TODAY_STEPS = ((0.0, 67, 0.30, -0.30, 1.0), (0.22, 71, 0.36, -0.12, 1.1), (0.44, 74, 0.43, 0.08, 1.3),
+               (TODAY_PEAK, 79, 0.56, 0.0, 2.2), (0.86, 83, 0.17, 0.22, 1.2), (1.02, 86, 0.13, 0.34, 1.4))
+
+
+def today(pack):
+    buf = buffer(min(3.0, 2.0 * pack.room))
+    tone(buf, 0.0, hz(max(36, 55 + pack.shift)), 0.20, attack=TODAY_PEAK, tau=0.9, pan=0.0, partials=((1, 1), (2, 0.12)))
+    for t, m, amp, pan, ring in TODAY_STEPS:
+        pack.note(buf, t, m, amp, pan, ring)
+    finish(buf, "today", -9 + pack.gain)
+
+
+def today_glass():
+    buf = buffer(2.2)
+    tone(buf, 0.0, hz(67), 0.16, attack=TODAY_PEAK, tau=0.9, partials=((1, 1), (2, 0.1)))
+    for k, (t, m, amp, pan, ring) in enumerate(TODAY_STEPS):
+        tone(buf, t, hz(m + 12), amp * 0.85, attack=0.012, tau=0.45 + 0.25 * ring, pan=pan,
+             partials=((1, 1), (2.76, 0.12), (5.4, 0.04)), shimmer=0.04)
+    finish(buf, "today", -9)
 
 
 if __name__ == "__main__":
+    import sys
+    only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
     for pack in (Soft(), Marimba(), Keys(), Taps(), Minimal(), None):
         random.seed(7)  # the same files every run
         OUT = os.path.join(ROOT, pack.name if pack else "glass")
         os.makedirs(OUT, exist_ok=True)
         print("──", os.path.basename(OUT))
-        if pack:
+        if only_today:
+            today(pack) if pack else today_glass()
+        elif pack:
             build(pack)
         else:
             glass_pack()

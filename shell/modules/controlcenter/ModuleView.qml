@@ -51,7 +51,7 @@ Item {
     readonly property real shapeRadius: round || pill || def.kind === "slider" ? Math.min(width, height) / 2 : Math.min(unit / 2, Math.min(width, height) / 2)
     // On: a white circle with the glyph in the accent colour (darkened if
     // the accent is too light to read on white)
-    readonly property color ink: (0.2126 * Theme.accent.r + 0.7152 * Theme.accent.g + 0.0722 * Theme.accent.b) > 0.55 ? Qt.darker(Theme.accent, 1.7) : Theme.accent
+    readonly property color ink: Theme.accentOnGlyph
     readonly property bool on: def.on ?? false
 
     function act() {
@@ -79,7 +79,7 @@ Item {
         anchors.fill: parent
         radius: root.shapeRadius
         readonly property color idle: root.chip ? Qt.alpha("white", Theme.dark ? 0.07 : 0.28) : Theme.color.platter
-        color: root.round ? (root.on ? "white" : bgMouse.containsMouse ? Theme.color.fillHover : idle) : idle
+        color: root.round ? (root.on ? Theme.accentOnFill : bgMouse.containsMouse ? Theme.color.fillHover : idle) : idle
         borderWidth: 1
         borderColor: Qt.alpha("white", Theme.dark ? 0.06 : 0.3)
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }

@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "AccentRamp.js" as AccentRamp
 
 // Design tokens. Everything visual reads from here; nothing hardcodes colours.
 Singleton {
@@ -24,6 +25,28 @@ Singleton {
             "graphite": dark ? "#98989D" : "#8E8E93"
         })
     readonly property color accent: Config.options.appearance.accent === "wallpaper" ? Wallpaper.accent : (accents[Config.options.appearance.accent] ?? accents.blue)
+    // A light accent (yellow, cyan, a pale wallpaper colour) can't carry white
+    // text: text and glyphs on accent fills are dark then (color.onAccent)
+    readonly property bool lightAccent: (0.2126 * accent.r + 0.7152 * accent.g + 0.0722 * accent.b) > 0.7
+    // The accent as a family of shades (one hue, light to dark, in OKLCH so
+    // they stay vivid). Each use draws the accent where it reads on its
+    // background, a lighter shade of it on dark backgrounds when that's what
+    // reads, and otherwise neutral, never a darkened (muddy) accent.
+    readonly property var accentRamp: AccentRamp.ramp(accent)
+    function accentFor(background, ratio) {
+        return AccentRamp.pick(accentRamp, accent, background, ratio);
+    }
+    // An "on" round button (Control Center), as macOS draws it: a white
+    // circle with the glyph in the accent (≥ 3:1 on white), or near-black
+    // for an accent that doesn't read on white (yellow): the white circle
+    // already says it's on
+    readonly property color accentOnFill: "white"
+    readonly property color accentOnGlyph: accentFor("white", 3)
+    // Accent text and small glyphs on the window background (≥ 4.5:1)
+    readonly property color accentInk: accentFor(dark ? "#1E1E21" : "#F5F5F7", 4.5)
+    // Selected rows, chips and soft highlights: a pale shade in light mode,
+    // the accent faintly in dark mode
+    readonly property color accentTint: dark ? Qt.alpha(accent, 0.26) : Qt.alpha(accentRamp[1], 0.9)
 
     readonly property QtObject font: QtObject {
         readonly property string family: "Inter"
@@ -63,7 +86,7 @@ Singleton {
         readonly property color platter: root.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.45)
         // Unchecked toggles, slider and segmented tracks
         readonly property color toggleOff: root.dark ? Qt.rgba(1, 1, 1, root.level(0.14, 0.24, 0.32)) : Qt.rgba(0, 0, 0, root.level(0.08, 0.16, 0.24))
-        readonly property color onAccent: "white"
+        readonly property color onAccent: root.lightAccent ? "#1C1C1E" : "white" // text and glyphs on accent fills: near-black on light accents (yellow), else white
         readonly property color danger: root.dark ? "#FF453A" : "#FF3B30"
         readonly property color success: root.dark ? "#30D158" : "#34C759"
         readonly property color warning: root.dark ? "#FF9F0A" : "#FF9500"
@@ -108,8 +131,17 @@ Singleton {
         readonly property color frost: root.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.62) : Qt.rgba(0.97, 0.97, 0.98, 0.66)
         readonly property real saturation: 1.35
         readonly property real rim: root.dark ? 0.5 : 0.65
-        readonly property real refraction: 36
-        readonly property real chroma: 0.12
+        // Optics (Settings → Glass → Advanced), the same for every material:
+        // how far the rim bends what's behind follows the index of
+        // refraction like real glass, (1 − 1/IOR), relative to glass's 1.5;
+        // `band` widens or narrows the bending rim; dispersion splits the
+        // colours by slightly different amounts at the rim
+        readonly property real ior: Math.max(1, Math.min(2, Config.options.appearance.glassIor ?? 1.5))
+        readonly property real bend: (1 - 1 / ior) / (1 - 1 / 1.5)
+        readonly property real band: Math.max(0.4, Math.min(2, Config.options.appearance.glassRefraction ?? 1))
+        readonly property real dispersion: Math.max(0, Math.min(1, Config.options.appearance.glassDispersion ?? 0.35)) / 0.35
+        readonly property real refraction: 36 * bend
+        readonly property real chroma: 0.12 * dispersion
         readonly property real shadow: root.dark ? 0.32 : 0.14
 
         function smooth(a, b, x) {
@@ -136,11 +168,11 @@ Singleton {
             const t = mixc(body, Qt.alpha(solid, 1), Math.max(0, (s - body.a) / Math.max(0.01, 1 - body.a)));
             return {
                 mode: 0,
-                refraction: (thick ? 30 : 22) * l,
-                depth: (thick ? 0.55 : 0) * l,
-                bevel: (thick ? 26 : 18) * (0.5 + 0.5 * l),
+                refraction: (thick ? 30 : 22) * l * bend,
+                depth: (thick ? 0.55 : 0) * l * Math.min(1.5, bend),
+                bevel: (thick ? 26 : 18) * (0.5 + 0.5 * l) * band,
                 frost: f,
-                chroma: (thick ? 0.28 : 0.18) * l,
+                chroma: (thick ? 0.28 : 0.18) * l * dispersion,
                 rim: (0.12 + 0.16 * l) * (1 - s),
                 gloss: gloss,
                 tint: t,

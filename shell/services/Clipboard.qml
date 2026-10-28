@@ -8,6 +8,10 @@ import qs.common
 // Clipboard history (cliphist) with image previews and pinned items. Pins
 // survive restarts in UiState; pinned images are copied into the state dir so
 // they outlive cliphist's history.
+// When each item was copied: cliphist keeps no times, so the shell watches
+// the clipboard (wl-paste --watch) and stamps every new entry as it appears,
+// in clip-times.json next to UiState. Entries from before that have no time
+// and are grouped as "Earlier".
 Singleton {
     id: root
 
@@ -18,12 +22,104 @@ Singleton {
     readonly property string pinDir: UiState.dir + "/clip-pins"
 
     function refresh() {
-        listProc.running = true;
+        if (listProc.running)
+            again = true; // a copy landed mid-list: look once more after
+        else
+            listProc.running = true;
+    }
+    property bool again: false
+
+    // ── When things were copied ─────────────────────────────────────────
+    property var stamps: ({}) // cliphist id -> ms since epoch (0: from before)
+    // The history the session's watcher (wl-paste --watch cliphist store)
+    // writes: your usual ~/.cache/cliphist/db. Named on every call, because
+    // the iRice session gives the shell a cache folder of its own and a
+    // restart (an update) could start it without the hint pointing back here
+    readonly property string db: Quickshell.env("CLIPHIST_DB_PATH") || (Quickshell.env("HOME") + "/.cache/cliphist/db")
+    property bool stampsLoaded: false
+    property bool stampsExisted: false
+    FileView {
+        id: stampFile
+        path: UiState.dir + "/clip-times.json"
+        blockLoading: false
+        printErrors: false
+        onLoaded: {
+            try {
+                root.stamps = JSON.parse(text()) ?? {};
+                root.stampsExisted = true;
+            } catch (e) {}
+            root.stampsLoaded = true;
+        }
+        onLoadFailed: root.stampsLoaded = true // (first run: no file yet)
+    }
+    Timer {
+        id: saveStamps
+        interval: 1000
+        onTriggered: stampFile.setText(JSON.stringify(root.stamps))
+    }
+    // A new copy: list again shortly (cliphist stores it first)
+    Process {
+        running: Tools.has("wl-copy") && Tools.has("cliphist")
+        command: [Tools.watcher, "wl-paste", "--watch", "echo", "copied"]
+        stdinEnabled: true // the watcher ends when this closes (the shell quit)
+        stdout: SplitParser {
+            onRead: () => copiedTimer.restart()
+        }
+    }
+    Timer {
+        id: copiedTimer
+        interval: 500
+        onTriggered: root.refresh()
+    }
+    Component.onCompleted: Qt.callLater(refresh)
+    // Stamp the ids not seen before (now; on the very first run, all of them
+    // as "from before"), and forget the ones cliphist dropped
+    function stampRows(rows) {
+        if (!stampsLoaded)
+            return;
+        const now = Date.now();
+        const fresh = !stampsExisted && Object.keys(stamps).length === 0;
+        const next = {};
+        let changed = false;
+        for (const r of rows) {
+            if (stamps[r.id] !== undefined)
+                next[r.id] = stamps[r.id];
+            else {
+                next[r.id] = fresh ? 0 : now;
+                changed = true;
+            }
+        }
+        if (changed || Object.keys(next).length !== Object.keys(stamps).length) {
+            stamps = next;
+            stampsExisted = true;
+            saveStamps.restart();
+        }
+    }
+    // Section headings: "Just now", "Earlier this hour", "2 hours ago",
+    // "Yesterday", "Monday", "12 Oct"; "Earlier" for untimed items
+    function sectionFor(ts, now) {
+        if (!ts)
+            return "Earlier";
+        const d = new Date(ts), n = new Date(now);
+        const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const days = Math.round((day(n) - day(d)) / 86400000);
+        if (days <= 0) {
+            const mins = (now - ts) / 60000;
+            if (mins < 5)
+                return "Just now";
+            const hours = Math.floor(mins / 60);
+            return hours === 0 ? "Earlier this hour" : hours === 1 ? "1 hour ago" : hours + " hours ago";
+        }
+        if (days === 1)
+            return "Yesterday";
+        if (days < 7)
+            return d.toLocaleDateString(Qt.locale(), "dddd");
+        return d.toLocaleDateString(Qt.locale(), d.getFullYear() === n.getFullYear() ? "d MMM" : "d MMM yyyy");
     }
 
     Process {
         id: listProc
-        command: ["cliphist", "list"]
+        command: ["cliphist", "-db-path", root.db, "list"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const rows = text.split("\n").filter(l => l.includes("\t")).slice(0, 200).map(l => {
@@ -32,17 +128,27 @@ Singleton {
                     const m = t.match(/^\[\[ binary data .* (png|jpe?g|webp|gif|bmp) /i);
                     return { id: l.slice(0, tab), text: t, image: m ? root.previewDir + "/" + l.slice(0, tab) + "." + m[1].toLowerCase() : "" };
                 });
+                root.stampRows(rows);
                 root.items = rows;
                 // Decode previews for the first images only (cheap, kept in RAM-backed runtime dir)
-                const want = rows.filter(r => r.image).slice(0, 24);
+                const want = rows.filter(r => r.image).slice(0, 48);
                 if (want.length > 0) {
-                    previewProc.command = ["sh", "-c", "mkdir -p \"$1\"; shift; while [ $# -gt 0 ]; do [ -s \"$2\" ] || cliphist decode \"$1\" > \"$2\"; shift 2; done", "sh", root.previewDir].concat(...want.map(r => [r.id, r.image]));
+                    previewProc.command = ["sh", "-c", "db=$1; mkdir -p \"$2\"; shift 2; while [ $# -gt 0 ]; do [ -s \"$2\" ] || cliphist -db-path \"$db\" decode \"$1\" > \"$2\"; shift 2; done", "sh", root.db, root.previewDir].concat(...want.map(r => [r.id, r.image]));
                     previewProc.running = true;
                 }
             }
         }
     }
     property int previewVersion: 0
+    Connections {
+        target: listProc
+        function onRunningChanged() {
+            if (!listProc.running && root.again) {
+                root.again = false;
+                listProc.running = true;
+            }
+        }
+    }
     Process {
         id: previewProc
         onExited: root.previewVersion++
@@ -67,7 +173,7 @@ Singleton {
             UiState.data.clipPins = [{ image: dest, source: item.id }].concat(pins);
         } else {
             // cliphist list truncates long text; pin the full entry
-            pinProc.command = ["cliphist", "decode", item.id];
+            pinProc.command = ["cliphist", "-db-path", root.db, "decode", item.id];
             pinProc.running = true;
         }
     }
@@ -85,21 +191,21 @@ Singleton {
     }
 
     function remove(item) {
-        Quickshell.execDetached(["sh", "-c", "printf '%s\\t%s\\n' \"$1\" \"$2\" | cliphist delete", "sh", item.id, item.text]);
+        Quickshell.execDetached(["sh", "-c", "printf '%s\\t%s\\n' \"$1\" \"$2\" | cliphist -db-path \"$3\" delete", "sh", item.id, item.text, root.db]);
         items = items.filter(i => i.id !== item.id);
     }
 
     function clear() {
-        Quickshell.execDetached(["cliphist", "wipe"]);
+        Quickshell.execDetached(["cliphist", "-db-path", root.db, "wipe"]);
         items = [];
     }
 
     // Copy an item (history row or pin). plain: text only, no rich formats.
     function copy(item, plain) {
         if (item.id !== undefined && !item.image)
-            Quickshell.execDetached(["sh", "-c", "cliphist decode \"$1\" | wl-copy" + (plain ? " --type text/plain" : ""), "sh", item.id]);
+            Quickshell.execDetached(["sh", "-c", "cliphist -db-path \"$2\" decode \"$1\" | wl-copy" + (plain ? " --type text/plain" : ""), "sh", item.id, root.db]);
         else if (item.id !== undefined)
-            Quickshell.execDetached(["sh", "-c", "cliphist decode \"$1\" | wl-copy", "sh", item.id]);
+            Quickshell.execDetached(["sh", "-c", "cliphist -db-path \"$2\" decode \"$1\" | wl-copy", "sh", item.id, root.db]);
         else if (item.image)
             Quickshell.execDetached(["sh", "-c", "wl-copy < \"$1\"", "sh", item.image]);
         else
@@ -126,8 +232,9 @@ Singleton {
     function filtered(query, kind) {
         const q = query.trim().toLowerCase();
         const match = t => q === "" || (t ?? "").toLowerCase().includes(q);
-        const pinRows = pins.filter(p => kind !== "text" || !p.image).filter(p => kind !== "images" || p.image).filter(p => p.image ? q === "" : match(p.text)).map(p => ({ pin: p, text: p.text ?? "", image: p.image ?? "", pinned: true }));
-        const hist = items.filter(i => kind === "all" || (kind === "images") === !!i.image).filter(i => i.image ? q === "" : match(i.text)).filter(i => !isPinned(i)).map(i => ({ item: i, text: i.text, image: i.image, pinned: false }));
+        const now = Date.now();
+        const pinRows = pins.filter(p => kind !== "text" || !p.image).filter(p => kind !== "images" || p.image).filter(p => p.image ? q === "" : match(p.text)).map(p => ({ pin: p, text: p.text ?? "", image: p.image ?? "", pinned: true, section: "Pinned" }));
+        const hist = items.filter(i => kind === "all" || (kind === "images") === !!i.image).filter(i => i.image ? q === "" : match(i.text)).filter(i => !isPinned(i)).map(i => ({ item: i, text: i.text, image: i.image, pinned: false, section: sectionFor(stamps[i.id], now) }));
         return pinRows.concat(hist);
     }
 }

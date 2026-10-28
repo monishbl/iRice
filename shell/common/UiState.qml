@@ -42,6 +42,8 @@ Singleton {
         property var coolDown: null // what cool-down changed, to put back: { blur: { passes, size }, rates: { output: Hz } }
         property var workspaceHomes: ({}) // space id -> the display it belongs on (WorkspaceHomes)
         property var caffeine: null // on: { until (ms; 0 = until turned off), minutes }; survives shell restarts
+        property string todayShown: "" // the day ("YYYY-MM-DD", days start at 4 AM) Today last opened by itself
+        property string todayPinned: "" // the day Today was pinned to the desktop for
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
@@ -58,6 +60,8 @@ Singleton {
         onAppThemeOnChanged: root.scheduleSave()
         onCoolDownChanged: root.scheduleSave()
         onCaffeineChanged: root.scheduleSave()
+        onTodayShownChanged: root.scheduleSave()
+        onTodayPinnedChanged: root.scheduleSave()
         onWorkspaceHomesChanged: root.scheduleSave()
     }
 
@@ -103,6 +107,8 @@ Singleton {
             appThemeOn: store.appThemeOn,
             coolDown: store.coolDown,
             caffeine: store.caffeine,
+            todayShown: store.todayShown,
+            todayPinned: store.todayPinned,
             workspaceHomes: store.workspaceHomes
         }, null, 2))
     }
@@ -144,6 +150,10 @@ Singleton {
                         store[k] = j[k];
                 store.coolDown = j.coolDown && typeof j.coolDown === "object" ? j.coolDown : null;
                 store.caffeine = j.caffeine && typeof j.caffeine === "object" ? j.caffeine : null;
+                if (typeof j.todayShown === "string")
+                    store.todayShown = j.todayShown;
+                if (typeof j.todayPinned === "string")
+                    store.todayPinned = j.todayPinned;
                 store.workspaceHomes = j.workspaceHomes && typeof j.workspaceHomes === "object" ? j.workspaceHomes : {};
             } catch (e) {}
             root.loaded = true;

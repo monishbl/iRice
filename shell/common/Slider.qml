@@ -49,6 +49,7 @@ Item {
                 v = Math.round(v / root.stepSize) * root.stepSize;
             root.moved(v);
         }
+        preventStealing: true // a scrolling page around it mustn't take the drag when the pointer drifts up or down
         onPressed: m => set(m.x)
         onPressedChanged: Panels.holdPull += pressed ? 1 : -1 // the panel holds still while dragging
         Component.onDestruction: if (pressed) Panels.holdPull = Math.max(0, Panels.holdPull - 1)

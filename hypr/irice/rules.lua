@@ -7,6 +7,16 @@ hl.layer_rule({ match = { namespace = "irice:.*" }, ignore_alpha = 0.4 })
 -- (The menu bar takes blur: the island's glass is drawn there.)
 hl.layer_rule({ match = { namespace = "irice:(wallpaper|corners|lockveil|dim)" }, blur = false }) -- (fading veils would blur, then snap sharp)
 
+-- Menus and dropdowns of XWayland apps (Electron ones like Webex, Slack…)
+-- are windows of their own with no class or title. With focus following the
+-- pointer, moving onto one took focus from its app, and the menu closed.
+-- They never take focus (Hyprland's own recommended rule).
+hl.window_rule({
+    name = "irice-xwayland-popups",
+    match = { class = "^$", title = "^$", xwayland = true, float = true, fullscreen = false, pin = false },
+    no_focus = true
+})
+
 -- Settings window floats like an app window
 hl.window_rule({ match = { title = "^iRice Settings$" }, float = true })
 hl.window_rule({ match = { title = "^iRice Settings$" }, center = true })

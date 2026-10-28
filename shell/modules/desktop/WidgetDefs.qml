@@ -12,6 +12,7 @@ QtObject {
         { id: "clock", file: "ClockWidget.qml", label: "Clock", icon: "clock", desc: "An analog face, or the time and date.", sizes: ["s", "m"] },
         { id: "worldClock", file: "WorldClockWidget.qml", label: "World Clock", icon: "globe-hemisphere-west", desc: "The time in other cities. Choose them in Settings → Desktop.", sizes: ["s", "m"] },
         { id: "weather", file: "WeatherWidget.qml", label: "Weather", icon: "cloud-sun", desc: "Conditions where you are, and the next hours.", sizes: ["s", "m"] },
+        { id: "today", file: "TodayWidget.qml", label: "Today", icon: "sun-horizon", desc: "Your day at a glance: a greeting, what's next, to-dos and the weather.", sizes: ["m", "l"] },
         { id: "calendar", file: "CalendarWidget.qml", label: "Calendar", icon: "calendar-blank", desc: "Today, the month, and what's coming up.", sizes: ["s", "m", "l"] },
         { id: "reminders", file: "RemindersWidget.qml", label: "Reminders", icon: "list-checks", desc: "Your to-dos. Tick them off right on the desktop.", sizes: ["s", "m", "l"] },
         { id: "batteries", file: "BatteriesWidget.qml", label: "Batteries", icon: "battery-high", desc: "This computer and connected Bluetooth devices.", sizes: ["s", "m"] },

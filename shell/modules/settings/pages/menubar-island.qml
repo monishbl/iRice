@@ -105,7 +105,7 @@ Column {
                             width: chipText.implicitWidth + 20
                             height: 26
                             radius: 13
-                            color: on ? Theme.accentAlpha(0.28) : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                            color: on ? Theme.accentTint : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                             border.width: on ? 1 : 0
                             border.color: Theme.accent
                             Text {

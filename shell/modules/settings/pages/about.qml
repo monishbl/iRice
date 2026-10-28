@@ -14,6 +14,16 @@ Column {
         Row { label: "iRice"; Text { text: "1.0"; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "System"; Text { text: SystemInfo.osName; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "Computer name"; Text { text: SystemInfo.hostname; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
+        Row {
+            label: "Your name"
+            detail: "Today greets you by it. Empty: your account's name"
+            TextField {
+                width: 220
+                placeholder: Today.accountName.split(/\s+/)[0] || "Your name"
+                text: Config.options.today.name
+                onCommitted: t => Config.options.today.name = t.trim()
+            }
+        }
         Row { label: "Processor"; Text { text: SystemInfo.cpu; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "Graphics"; Text { text: SystemInfo.gpu; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "Memory"; Text { text: SystemInfo.memory; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }

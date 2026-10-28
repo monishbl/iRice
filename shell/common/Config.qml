@@ -51,6 +51,10 @@ Singleton {
                 property real glassFrost: 0.75 // how much it blurs
                 property real glassSolid: 0 // how opaque it is
                 property real glassTint: 0.75 // how much it darkens what's behind (milky in light mode)
+                // Optics, on top of whichever material (Settings → Appearance → Glass → Advanced)
+                property real glassIor: 1.5 // index of refraction, 1 (no bending) .. 2; glass is about 1.5
+                property real glassRefraction: 1 // how far in from the edge the bending reaches (0.4 .. 2)
+                property real glassDispersion: 0.35 // colour fringes at the rim (0 none .. 1)
                 property real glassWindowFrost: 0.75 // extra frost where glass covers a window (0 off .. 1), drawn by the plugin
                 property string glassDepth: "auto" // thin | depth | auto (thick lens on small controls)
                 property bool wallpaperTint: true
@@ -123,6 +127,7 @@ Singleton {
                 property bool usb: true // USB devices plugged in or removed
                 property bool received: true // files arriving over LocalSend
                 property bool recording: true // screen recording starts and stops
+                property bool today: true // the morning screen (Today) opens
                 property bool error: true // a wrong password
                 property string startupFile: "" // your own sound per event; empty = iRice's
                 property string chargingFile: ""
@@ -241,6 +246,13 @@ Singleton {
                 property list<string> stocks: ["AAPL", "MSFT", "^GSPC", "BTC-USD", "NVDA", "GOOGL"] // Yahoo Finance symbols for the Stocks widget
             }
 
+            // Today (services/Today.qml): the morning screen on the first
+            // unlock of the day (after 4 AM), and its desktop widget
+            property JsonObject today: JsonObject {
+                property string mode: "ask" // ask (every morning; Pin for today keeps it as a widget) | widget (the widget only, every day) | both | off
+                property string entrance: "bloom" // bloom | shrink | drop
+                property string name: "" // what the greeting calls you (Settings → About); empty = your account's name
+            }
             property JsonObject weather: JsonObject {
                 property string location: "" // empty = detect from IP
                 property string units: "metric" // metric | imperial

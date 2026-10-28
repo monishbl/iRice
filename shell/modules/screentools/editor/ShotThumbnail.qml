@@ -294,7 +294,7 @@ GlassWindow {
                     id: undoText
                     anchors.centerIn: parent
                     text: "Undo"
-                    color: Theme.accent
+                    color: Theme.accentInk
                     font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                 }
                 MouseArea {

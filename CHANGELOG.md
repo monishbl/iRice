@@ -1,5 +1,43 @@
 # iRice changelog
 
+## Today, a smarter accent, and apps that behave · 2026-10-28
+
+**Today**
+- On your first unlock after 4 AM, a glass panel greets you with today's events, your to-dos and the weather (now, high and low, rain, and the next hours), with a rising chime timed to the animation.
+- Choose how it appears (Bloom, Shrink or Drop) and whether it shows every morning, as a desktop widget, both, or not at all: Settings → Desktop & Widgets → Today.
+- **Pin for today** keeps it on the desktop until midnight. Set the name it greets you by in Settings → About.
+
+**Accent colour**
+- Your accent is used where it reads, a lighter shade of it on dark backgrounds when needed, and neutral otherwise. It's never darkened, so yellow no longer turns brown.
+- Control Center looks like macOS: an "on" button is a white circle with the icon in your accent, or in near-black when the accent can't be read on white.
+- Desktop widgets (clock, calendar, reminders, Screen Time, stocks) use your accent.
+
+**Desktop calendar**
+- The Calendar widget now works like Notification Center's: the month with busy days, Month and Week views, quick add, and a To-do tab where you can add, rename, tick off and delete (with Undo).
+
+**Clipboard (Super+V)**
+- Grouped by when you copied things: Just now, hours ago, Yesterday, weekdays, then dates.
+- Bigger image previews, and a two-column grid on the Images tab.
+- Fixed: the panel could be empty again after an update restarted the shell.
+
+**Battery**
+- The battery menu shows battery health (maximum capacity, condition, and cycle count when reported) and how much power is going in or out.
+- Point at the battery for its charge, time left and energy mode.
+
+**Glass and icons**
+- New glass optics in Settings → Appearance → Glass → Advanced…: index of refraction, refraction width and dispersion, with a live preview.
+- Clear and Tinted app icons are see-through glass tiles with one-tone logos that read evenly across apps; Tinted colours them with your accent.
+
+**Apps and windows**
+- Apps no longer open maximized over everything; allow it per app in Settings → Windows.
+- Menus and dropdowns in apps like Claude and Webex stay open when you move the pointer.
+- Webex shows its own name and icon. Quit now ends apps that keep running in the tray.
+
+**Fixes**
+- Sliders no longer scroll the page when your pointer drifts while dragging.
+- Brightness and volume icons match the rest of Control Center.
+- The island's status row shows system stats only; your events moved to Today.
+
 ## The update screen waits for your desktop · 2026-10-28
 
 **Fixes**

@@ -12,10 +12,10 @@ Item {
     readonly property var apps: ScreenTime.todayApps.slice(0, size === "s" ? 2 : 3)
     readonly property int most: ScreenTime.todayApps[0]?.seconds ?? 1
 
-    WidgetHeader { id: header; icon: "hourglass-medium"; title: "Screen Time"; tint: Theme.accents.purple }
+    WidgetHeader { id: header; icon: "hourglass-medium"; title: "Screen Time"; tint: Theme.accent }
 
     Column {
-        id: left
+        id: ring
         anchors { left: parent.left; top: header.bottom; topMargin: 10 }
         width: root.size === "s" ? parent.width : parent.width * 0.48
         spacing: 8
@@ -44,7 +44,7 @@ Item {
                             width: parent.width
                             height: Math.max(2, parent.height * bar.modelData.seconds / bar.parent.maxSecs)
                             radius: 3
-                            color: bar.index === 6 ? Theme.accents.purple : Theme.color.fill
+                            color: bar.index === 6 ? Theme.accent : Theme.color.fill
                         }
                     }
                     Text {
@@ -60,7 +60,7 @@ Item {
 
     // Most used apps today
     Column {
-        anchors { left: root.size === "s" ? parent.left : left.right; leftMargin: root.size === "s" ? 0 : 12; right: parent.right; bottom: parent.bottom }
+        anchors { left: root.size === "s" ? parent.left : ring.right; leftMargin: root.size === "s" ? 0 : 12; right: parent.right; bottom: parent.bottom }
         spacing: 6
         Text {
             visible: root.apps.length === 0
@@ -107,7 +107,7 @@ Item {
                         width: parent.width * appRow.modelData.seconds / Math.max(1, root.most)
                         height: 3
                         radius: 1.5
-                        color: Theme.accents.purple
+                        color: Theme.accent
                         opacity: 0.8
                     }
                 }

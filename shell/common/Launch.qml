@@ -39,11 +39,14 @@ Singleton {
     function app(entry) {
         if (!entry)
             return;
-        if (!tty || !entry.command || entry.command.length === 0) {
+        const env = AppQuirks.envFor(entry); // (apps that need a nudge)
+        if ((!tty && env.length === 0) || !entry.command || entry.command.length === 0) {
             entry.execute();
             return;
         }
-        const cmd = entry.runInTerminal ? ["sh", "-c", "exec ${TERMINAL:-kitty} -e \"$@\"", "sh"].concat(entry.command) : entry.command;
+        let cmd = entry.runInTerminal ? ["sh", "-c", "exec ${TERMINAL:-kitty} -e \"$@\"", "sh"].concat(entry.command) : entry.command;
+        if (env.length > 0)
+            cmd = ["env"].concat(env, cmd);
         if (entry.workingDirectory)
             Quickshell.execDetached({ command: wrap(cmd), workingDirectory: entry.workingDirectory });
         else
