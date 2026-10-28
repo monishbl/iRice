@@ -82,10 +82,13 @@ Item {
     readonly property real targetH: expanded ? body.y + body.implicitHeight + (showingEvent ? 16 : 14) : 26
     property real w: targetW
     property real h: targetH
-    property real r: expanded ? Math.min(Theme.radius.tile, h / 2) : 13 // open: iOS corners, like Control Center's tiles
+    // Corners follow the height as it springs (no spring of their own: lagging
+    // behind, they made a short island, the volume and brightness HUD, a
+    // rectangle first and a pill after): a pill when short, iOS corners
+    // (like Control Center's tiles) when it opens tall
+    readonly property real r: expanded ? Math.min(Theme.radius.tile, h / 2) : h / 2
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
-    Behavior on r { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.08; epsilon: 0.1 } }
 
     // The visible shape, centred at the top
     readonly property alias shape: shape
@@ -165,10 +168,14 @@ Item {
                 readonly property bool wanted: Config.options.island.playerArt === "island" && Config.options.island.playerLayout !== "side"
                     && root.expanded && !Island.event && (Island.player?.trackArtUrl ?? "") !== ""
                     && (root.oneAtATime ? root.shownAct?.kind === "music" : Island.activities.some(a => a.kind === "music"))
-                source: wanted || opacity > 0 ? (Island.player?.trackArtUrl ?? "") : ""
+                // Loaded once at a fixed size and kept while the music plays:
+                // a size that follows the island reloaded it on every open
+                // (it grows as it opens), and the art flickered
+                source: Island.player?.trackArtUrl ?? ""
                 fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(width * 1.25, height * 1.25)
+                sourceSize: Qt.size(640, 640)
                 asynchronous: true
+                retainWhileLoading: true
                 opacity: wanted && status === Image.Ready ? 0.82 : 0
                 Behavior on opacity { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
                 visible: opacity > 0.01

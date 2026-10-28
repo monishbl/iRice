@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Smoother island · 2026-10-28
+
+**Fixes**
+- The album art no longer reloads and flickers each time you open the music player in the island.
+- The volume and brightness island is a pill from the start, instead of a rectangle that turned into one.
+
 ## Hover tips across the menu bar · 2026-10-28
 
 - Point at a menu bar icon for a moment to see what it's doing:

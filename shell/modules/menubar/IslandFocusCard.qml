@@ -102,10 +102,11 @@ Item {
             visible: root.artStyle === "faded"
             Image {
                 anchors.fill: parent
-                source: parent.visible ? (root.player?.trackArtUrl ?? "") : ""
+                source: root.player?.trackArtUrl ?? "" // (kept loaded, at a fixed size: no reload and flicker on every open)
                 fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(parent.width * 1.5, parent.height * 1.5)
+                sourceSize: Qt.size(640, 640)
                 asynchronous: true
+                retainWhileLoading: true
                 layer.enabled: true
                 layer.effect: ShaderEffect {
                     property vector4d fade: Qt.vector4d(0.28, 0.22, 0.28, 0.6)
@@ -251,7 +252,8 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(144, 144)
                 asynchronous: true
-                layer.enabled: status === Image.Ready
+                retainWhileLoading: true
+                layer.enabled: true // (always: switching the mask on when it loaded showed it square for a frame)
                 layer.effect: MultiEffect {
                     maskEnabled: true
                     maskSource: artMask
