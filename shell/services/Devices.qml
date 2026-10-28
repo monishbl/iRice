@@ -247,7 +247,8 @@ Singleton {
         onExited: pactlRetry.start()
         stdout: SplitParser {
             onRead: line => {
-                if (line.includes("on sink") || line.includes("on server") || line.includes("on card"))
+                // (not "sink-input": every stream starting or stopping would re-read all outputs)
+                if (/ on (sink|server|card) #/.test(line))
                     sinkPoll.restart();
             }
         }

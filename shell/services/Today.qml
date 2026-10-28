@@ -58,10 +58,9 @@ Singleton {
         repeat: true
         onTriggered: root.day = root.dayKey()
     }
-    onDayChanged: {
-        tidyWidgets();
-        maybeShow();
-    }
+    // A new day doesn't open it there and then (at 4 AM you may still be
+    // at your desk): it opens at the next login or unlock
+    onDayChanged: tidyWidgets()
 
     // ── Who it greets ───────────────────────────────────────────────────
     property string accountName: ""
@@ -87,11 +86,10 @@ Singleton {
     // The first time in a day that the desktop is there to see: the session
     // has started (wallpaper up) and the screen isn't locked
     readonly property bool ready: Wallpaper.started && Config.ready && UiState.loaded && !System.locked
-    onReadyChanged: maybeShow()
+    onReadyChanged: if (ready) maybeShow()
     function maybeShow() {
         if (!ready || !screenOn || open || UiState.data.todayShown === day)
             return;
-        UiState.data.todayShown = day;
         delayed.interval = Date.now() - startedAt < 10000 ? 2800 : 900;
         delayed.restart();
     }
@@ -101,7 +99,12 @@ Singleton {
     Timer {
         id: delayed
         interval: 900
-        onTriggered: if (root.ready) root.show("")
+        // (the day only counts as shown once it actually opened: locking
+        // again within the delay leaves it for the next unlock)
+        onTriggered: if (root.ready && UiState.data.todayShown !== root.day) {
+            UiState.data.todayShown = root.day;
+            root.show("");
+        }
     }
 
     // ── The widget ──────────────────────────────────────────────────────
@@ -133,10 +136,17 @@ Singleton {
             if (!widgetAlways)
                 Config.options.desktop.widgets = Config.options.desktop.widgets.filter(e => e.split(":")[0] !== "today");
         }
-        if (widgetAlways)
-            ensureWidget(); // (once a day: removing it keeps it gone until tomorrow)
+        // Once a day: removing it keeps it gone until tomorrow (shell
+        // restarts and updates don't bring it back)
+        if (widgetAlways && UiState.data.todayEnsured !== day) {
+            UiState.data.todayEnsured = day;
+            ensureWidget();
+        }
     }
-    onWidgetAlwaysChanged: if (widgetAlways) ensureWidget()
+    onWidgetAlwaysChanged: if (widgetAlways) {
+        UiState.data.todayEnsured = day;
+        ensureWidget();
+    }
     Connections {
         target: UiState
         function onLoadedChanged() {

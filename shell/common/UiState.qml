@@ -44,6 +44,7 @@ Singleton {
         property var caffeine: null // on: { until (ms; 0 = until turned off), minutes }; survives shell restarts
         property string todayShown: "" // the day ("YYYY-MM-DD", days start at 4 AM) Today last opened by itself
         property string todayPinned: "" // the day Today was pinned to the desktop for
+        property string todayEnsured: "" // the day the daily Today widget was last put back (Widget / Both)
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
@@ -109,6 +110,7 @@ Singleton {
             caffeine: store.caffeine,
             todayShown: store.todayShown,
             todayPinned: store.todayPinned,
+            todayEnsured: store.todayEnsured,
             workspaceHomes: store.workspaceHomes
         }, null, 2))
     }
@@ -154,6 +156,8 @@ Singleton {
                     store.todayShown = j.todayShown;
                 if (typeof j.todayPinned === "string")
                     store.todayPinned = j.todayPinned;
+                if (typeof j.todayEnsured === "string")
+                    store.todayEnsured = j.todayEnsured;
                 store.workspaceHomes = j.workspaceHomes && typeof j.workspaceHomes === "object" ? j.workspaceHomes : {};
             } catch (e) {}
             root.loaded = true;

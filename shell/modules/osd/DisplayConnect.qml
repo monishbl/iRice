@@ -53,7 +53,11 @@ Scope {
                         if (run && !run.pending)
                             anim.start();
                     }
-                    onRunChanged: start()
+                    // Restart only for a different run (or one that's just been
+                    // placed): the runs list is rebuilt whenever any screen's run
+                    // starts or ends, which would otherwise replay this one
+                    readonly property string runKey: run ? run.id + (run.pending ? "p" : "") : ""
+                    onRunKeyChanged: start()
                     Component.onCompleted: start()
 
                     SequentialAnimation {

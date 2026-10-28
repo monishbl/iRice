@@ -25,7 +25,7 @@ Singleton {
 
     // ── Check ───────────────────────────────────────────────────────────
     property bool checked: false // a check finished (this session)
-    readonly property bool checking: IriceUpdate.checking || Updates.checking || IriceUpdate.packagesChecking || compatProc.running || hyprProc.running || snapProc.running
+    readonly property bool checking: IriceUpdate.checking || Updates.checking || IriceUpdate.packagesChecking || compatPending || compatProc.running || hyprProc.running || snapProc.running
     onCheckingChanged: if (!checking && asked) {
         asked = false;
         checked = true;
@@ -36,6 +36,11 @@ Singleton {
             return;
         asked = true;
         hold = -1;
+        // This check's compat.json is read once the iRice check has said which
+        // version would be installed; until then the plan can't be trusted
+        // (an old compat could let an untested Hyprland through unasked)
+        compat = null;
+        compatPending = true;
         IriceUpdate.check(); // (fetches, then reads the new version's packages)
         Updates.refresh();
         hyprProc.running = true;
@@ -43,13 +48,19 @@ Singleton {
     }
     // The tested Hyprland range of the version that would be installed
     property var compat: null
+    property bool compatPending: false // a check is waiting for its compat.json
+    function readCompat() {
+        if (!compatPending || compatProc.running || IriceUpdate.checking)
+            return;
+        const r = IriceUpdate.report;
+        compatProc.ref = r?.available ? (r.upstream ?? "HEAD") : "HEAD";
+        compatProc.running = true;
+    }
     Connections {
         target: IriceUpdate
-        function onReportChanged() {
-            const r = IriceUpdate.report;
-            compatProc.ref = r?.available ? (r.upstream ?? "HEAD") : "HEAD";
-            compatProc.running = true;
-        }
+        function onReportChanged() { root.readCompat(); }
+        // (the report may not change, e.g. the same result or an error)
+        function onCheckingChanged() { root.readCompat(); }
     }
     Process {
         id: compatProc
@@ -64,6 +75,7 @@ Singleton {
                 }
             }
         }
+        onExited: root.compatPending = false
     }
     property string hyprInstalled: ""
     Process {
@@ -106,6 +118,9 @@ Singleton {
     // it's built with (and anything named for it, like its portal)
     readonly property var held: hold === 1 ? Updates.list.concat(Updates.aurList).map(p => p.name).filter(n => /^(hypr|aquamarine)|hyprland/.test(n)) : []
     property bool removeDropped: true
+    // AUR packages are built from scripts anyone can submit, and they're
+    // built here without showing you what changed: only when you ask
+    property bool includeAur: false
 
     // ── The plan ────────────────────────────────────────────────────────
     readonly property var plan: {
@@ -115,7 +130,7 @@ Singleton {
         return {
             irice: IriceUpdate.available,
             system: sysCount > 0 || root.fakeRun, // (the sandbox's simulated run can always be tried)
-            aur: aurCount > 0,
+            aur: includeAur && aurCount > 0,
             install: pk.missing ?? [],
             remove: removeDropped ? (pk.dropped ?? []) : [],
             // Hyprland changes: rebuild the glass plugin against it

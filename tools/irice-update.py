@@ -405,9 +405,26 @@ def rebuild(todo, base=45, span=40):
     return built, failed
 
 
+def repo_lock():
+    """One update at a time on this repository, from any session: the same
+    lock update-run.sh takes (it says so with IRICE_UPDATE_HELD=1, and then
+    holds it for us). Kept open (held) until this process ends."""
+    if os.environ.get("IRICE_UPDATE_HELD") == "1":
+        return None
+    import fcntl
+    f = open(os.path.join(REPO, ".git", "irice-update.lock"), "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        raise SystemExit("Another update is running on this copy of iRice. Wait for it to finish, then try again.")
+    return f
+
+
 def apply(config_dir, choices, extra=()):
     """extra: parts to rebuild whatever the update says (the glass plugin
     after a Hyprland update); with no iRice update, only those are rebuilt."""
+    lock = repo_lock()  # noqa: F841 (held while this runs)
     report = check(config_dir, fetch=False)
     if report.get("error"):
         raise SystemExit(report["error"])
@@ -432,8 +449,11 @@ def apply(config_dir, choices, extra=()):
             shutil.copy2(os.path.join(config_dir, name), backup)
 
     progress(15, "Installing the new version")
-    # Code: set your edits aside, take the update, put back what you keep
-    edited = [l for l in git("diff", "--name-only", "HEAD").splitlines() if l]
+    # Code: set your edits aside, take the update, put back what you keep.
+    # If anything after taking the update fails, everything goes back exactly
+    # as it was (the old version, your edits, your settings) and it says so.
+    old_head = git("rev-parse", "HEAD").strip()
+    edited = [l for l in git("diff", "--name-only", "-z", "HEAD").split("\0") if l]
     merged = {}  # files kept as both: your edits with the update's merged in
     for f in edited:
         if choices.get("code:" + f) == "both":
@@ -451,10 +471,52 @@ def apply(config_dir, choices, extra=()):
         if stash:
             git("stash", "pop")
         raise
+    try:
+        apply_after_merge(config_dir, choices, report, edited, merged, stash)
+    except BaseException as e:
+        # Back to exactly how it was: the old version, then your edits, then
+        # your settings (from the backup made above)
+        why = str(e) or e.__class__.__name__
+        restored = ""
+        try:
+            git("reset", "--hard", "--quiet", old_head)
+            if stash:
+                git("stash", "pop")
+            for name in ("config.json", "keybinds.json"):
+                if os.path.exists(os.path.join(backup, name)):
+                    shutil.copy2(os.path.join(backup, name), os.path.join(config_dir, name))
+            restored = " Nothing was changed: iRice, your edits and your settings are as they were."
+        except Exception as e2:
+            restored = (" It couldn't all be put back (" + str(e2) + ")." +
+                        (" Your edits are kept in git stash " + stash + " (git stash pop to get them back)." if stash else "") +
+                        " Your settings backup is in " + backup + ".")
+        raise SystemExit("The update didn't finish: " + why + "." + restored)
+    todo = list(report.get("rebuild", []))
+    todo += [r for r in extra if r not in todo]
+    built, failed = rebuild(todo)
+    progress(85, "Finishing up")
+    # (the notes, for the new shell's "What's new")
+    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed,
+            "now": git("rev-parse", "--short", "HEAD").strip(),
+            "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
+
+
+def apply_after_merge(config_dir, choices, report, edited, merged, stash):
+    """The update is in: put back the edits you keep, write the merged
+    files, and update settings and shortcuts. Raises on any failure (apply
+    then puts everything back)."""
     if stash:
         keep = [f for f in edited if choices.get("code:" + f, "mine") == "mine"]
+        for f in keep:
+            # Your version of the file, from the stash. A file you deleted (or
+            # renamed away) isn't in it: then yours is "no file"
+            if subprocess.run(["git", "-C", REPO, "cat-file", "-e", f"{stash}:{f}"], capture_output=True).returncode == 0:
+                git("checkout", stash, "--", f)
+            else:
+                path = os.path.join(REPO, f)
+                if os.path.lexists(path):
+                    os.remove(path)
         if keep:
-            git("checkout", stash, "--", *keep)
             git("reset", "--quiet")  # (back to unstaged edits, as before)
     for f, text in merged.items():
         with open(os.path.join(REPO, f), "w") as fh:
@@ -500,16 +562,6 @@ def apply(config_dir, choices, extra=()):
         write_json(config_path, config)
     write_json(user_path, user)
 
-    # Rebuild what changed, and what was asked (Hyprland updated: the plugin)
-    todo = list(report.get("rebuild", []))
-    todo += [r for r in extra if r not in todo]
-    built, failed = rebuild(todo)
-    progress(85, "Finishing up")
-    # (the notes, for the new shell's "What's new")
-    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed,
-            "now": git("rev-parse", "--short", "HEAD").strip(),
-            "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
-
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -526,6 +578,8 @@ def main():
             out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r])
     except (RuntimeError, SystemExit) as e:
         out = {"error": str(e)}
+    except Exception as e:  # anything unexpected still answers in JSON
+        out = {"error": "The updater stopped: " + (str(e) or e.__class__.__name__)}
     print(json.dumps(out, indent=1))
     return 1 if out.get("error") else 0
 

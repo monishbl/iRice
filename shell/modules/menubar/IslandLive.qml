@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Services.UPower
 import qs.common
 import qs.services
 
@@ -18,6 +19,7 @@ Item {
     property string part: "info" // info | controls
     property color ink: "white"
     property real maxWidth: 100000
+    property bool still: false // nobody can see it (full screen, locked): animations hold
     readonly property string kind: activity?.kind ?? ""
     readonly property var player: Island.player
     function on(piece) {
@@ -108,8 +110,9 @@ Item {
             width: on ? implicitWidth : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
             spacing: 2
-            // 30 fps is plenty for bars this small (half the redraws of 60)
-            Ticker { id: barClock; running: bars.on; fps: 30 }
+            // 12 fps is plenty for bars this small (they swing slowly); held
+            // while nobody can see the bar, and on battery below 30%
+            Ticker { id: barClock; running: bars.on && !root.still && !(UPower.onBattery && Island.level < 0.3 && Island.hasBattery); fps: 12 }
             Repeater {
                 model: 3
                 Rectangle {

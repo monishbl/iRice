@@ -18,6 +18,9 @@ Item {
 
     required property var screen
     required property color fg // menu bar text colour (idle and compact)
+    // Nobody can see the bar (a full-screen window over it, or the lock
+    // screen): its animations hold still
+    readonly property bool unseen: System.locked || Desktop.fullscreen(screen)
     property point pointer: Qt.point(-1, -1) // window pointer, from the bar's tracker
 
     readonly property var primary: Island.primary
@@ -197,7 +200,10 @@ Item {
             readonly property real cx: dots.x + dots.activeCenter
             // Only soft ripples (no glow under the chip): three pre-blurred
             // glows that swell and fade in turn, 1.5 s apart, on a slow clock
-            Ticker { id: rippleClock; running: hotPill.visible; fps: 20 }
+            // (10 fps through the mask is plenty for slow swells; none at all
+            // once Cool-down has stepped in, or while nobody can see the bar:
+            // it's hot, don't add work)
+            Ticker { id: rippleClock; running: hotPill.visible && !root.unseen && !CoolDown.active; fps: 10 }
             Repeater {
                 model: 3
                 Image {
@@ -279,6 +285,7 @@ Item {
                 IslandLive {
                     id: lead
                     part: "info"
+                    still: root.unseen
                     activity: root.shownAct
                     ink: root.ink
                     maxWidth: root.layout === "beside" ? root.area - root.trailW - 4 : 100000
@@ -288,6 +295,7 @@ Item {
                 IslandLive {
                     id: trail
                     part: "controls"
+                    still: root.unseen
                     activity: root.shownAct
                     ink: root.ink
                     x: root.trailX

@@ -211,7 +211,7 @@ Column {
             readonly property var sys: Updates.list.map(x => Object.assign({ aur: false }, x)).concat(Updates.aurList.map(x => Object.assign({ aur: true }, x)))
             PkgHeading {
                 visible: parent.sys.length > 0
-                text: "System · " + page.plural(page.plan.sysCount + page.plan.aurCount, "update") + (SoftwareUpdate.held.length > 0 ? " (" + SoftwareUpdate.held.length + " held)" : "")
+                text: "System · " + page.plural(page.plan.sysCount + (SoftwareUpdate.includeAur ? page.plan.aurCount : 0), "update") + (SoftwareUpdate.held.length > 0 ? " (" + SoftwareUpdate.held.length + " held)" : "")
             }
             Repeater {
                 model: sysMore.open ? parent.sys : parent.sys.slice(0, 8)
@@ -221,8 +221,8 @@ Column {
                     name: modelData.name
                     from: modelData.from
                     to: modelData.to
-                    badge: isHeld ? "held for iRice" : modelData.aur ? "AUR" : ""
-                    dim: isHeld
+                    badge: isHeld ? "held for iRice" : modelData.aur ? (SoftwareUpdate.includeAur ? "AUR" : "AUR · not included") : ""
+                    dim: isHeld || (modelData.aur && !SoftwareUpdate.includeAur)
                 }
             }
             More {
@@ -263,6 +263,15 @@ Column {
             More {
                 id: dropMore
                 total: IriceUpdate.packages.dropped.length
+            }
+        }
+        Row {
+            visible: Updates.aurList.length > 0
+            label: "Include AUR updates"
+            detail: "AUR packages are built from scripts anyone can submit, and they're built without showing you what changed. Include them only if you trust these packages."
+            Switch {
+                checked: SoftwareUpdate.includeAur
+                onToggled: SoftwareUpdate.includeAur = !checked
             }
         }
         Row {

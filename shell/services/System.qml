@@ -68,7 +68,9 @@ Singleton {
     readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && Quickshell.env("IRICE_TTY") !== "1")
     Process {
         running: root.holdAwake
-        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "sleep", "infinity"]
+        // (both ends die with the shell, even if it crashes: the inhibitor,
+        // and the sleep it holds the inhibition for)
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
     }
     readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), "h:mm AP") : "Until off"
     Timer {
@@ -82,9 +84,11 @@ Singleton {
     }
 
     // hyprsunset applies the warm filter while it runs and resets on exit.
+    // It dies with the shell, even a crashed one, so the next shell never
+    // starts a second copy over a leftover.
     Process {
         running: root.nightLight
-        command: ["hyprsunset", "-t", String(root.nightLightTemp)]
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "hyprsunset", "-t", String(root.nightLightTemp)]
     }
 
     function run(cmd) {

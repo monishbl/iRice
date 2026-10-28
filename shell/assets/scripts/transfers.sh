@@ -1,14 +1,28 @@
 #!/usr/bin/env bash
-# File copies in progress, for the island's transfer activity. Every 2 s
-# (1 s while something is copying) looks for cp / mv / rsync / dd / install
-# / pv, and for each, the file it is reading and how far it got (from
-# /proc/<pid>/fdinfo). Prints a JSON array when the set changes or progresses:
+# File copies in progress, for the island's transfer activity, run under
+# watch.sh. Every 10 s (2 s while something is copying) looks for cp / mv /
+# rsync / dd / install / pv, and for each, the file it is reading and how far
+# it got (from /proc/<pid>/fdinfo). Prints a JSON array when the set changes
+# or progresses:
 #   [{"pid":123,"cmd":"cp","file":"/path/big.iso","pos":1048576,"size":4194304}]
-# and [] once when copying ends. Exits when stdin closes (the shell quit).
+# and [] once when copying ends. It ends when the shell that started it is
+# gone. (Finding the copiers reads each process's name with shell built-ins,
+# about 10 ms, a third of what pgrep costs.)
+parent=$PPID
+cps=()
+copiers() { # (into cps: no subshell)
+    local f c
+    cps=()
+    for f in /proc/[0-9]*/comm; do
+        read -r c 2>/dev/null <"$f" || continue
+        case $c in cp | mv | rsync | dd | install | pv | gcp) f=${f%/comm}; cps+=("${f#/proc/}") ;; esac
+    done
+}
 prev=""
-while :; do
+while kill -0 "$parent" 2>/dev/null; do
     items=()
-    for p in $(pgrep -x 'cp|mv|rsync|dd|install|pv|gcp' 2>/dev/null); do
+    copiers
+    for p in "${cps[@]}"; do
         cmd=$(cat "/proc/$p/comm" 2>/dev/null) || continue
         best="" bpos=0 bsize=0
         for fd in /proc/"$p"/fd/*; do
@@ -27,9 +41,8 @@ while :; do
     done
     out="[$(IFS=,; echo "${items[*]}")]"
     if [[ "$out" != "$prev" ]]; then
-        echo "$out"
+        echo "$out" || exit 0
         prev=$out
     fi
-    # Stop with the shell
-    read -t "$( ((${#items[@]})) && echo 1 || echo 2 )" _ || [[ $? -gt 128 ]] || exit 0
+    if ((${#items[@]})); then sleep 2; else sleep 10; fi
 done

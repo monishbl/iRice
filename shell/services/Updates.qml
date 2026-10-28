@@ -47,6 +47,8 @@ Singleton {
         if (running)
             return;
         interrupted = false;
+        log = "";
+        logSize = 0;
         // setsid, in this login session (so pkexec finds iRice's password
         // dialog through polkit); not tied to the shell
         Quickshell.execDetached(["setsid", "-f", "python3", "-I", script, "run"].concat(args ?? []).concat(fake ? ["--fake"] : []));
@@ -92,23 +94,40 @@ Singleton {
                 return;
             const was = root.job?.state;
             root.job = j;
-            if (j.state === "running")
-                lockCheck.running = true;
-            else if (was === "running")
+            if (j.state !== "running" && was === "running")
                 root.finished(j);
         }
     }
-    // While it runs: the status every half second (it's replaced, not
-    // appended, so it's read again rather than watched)
+    // While it runs: the status every half second (a small file, replaced
+    // rather than appended, so it's read again rather than watched)
     Timer {
         id: poll
         interval: 500
         repeat: true
         running: root.running
+        onTriggered: statusFile.reload()
+    }
+    // The output, while Show details is open: every 1.5 s, only what was
+    // added since (AUR builds can write megabytes; reading it all twice a
+    // second, again and again, kept a core busy)
+    Timer {
+        interval: 1500
+        repeat: true
+        running: root.running && root.logUsers > 0
+        onTriggered: root.readLog()
+    }
+    // Is the job still alive (does it hold its lock)? Once 5 s in, then
+    // every 10 s
+    Timer {
+        id: lockTimer
+        interval: 5000
+        repeat: true
+        running: root.job?.state === "running"
+        onRunningChanged: interval = 5000
         onTriggered: {
-            statusFile.reload();
-            if (root.logUsers > 0)
-                logFile.reload();
+            interval = 10000;
+            if (!lockCheck.running)
+                lockCheck.running = true;
         }
     }
     // A "running" status nobody holds the lock for: the job died (machine
@@ -124,20 +143,40 @@ Singleton {
             }
         }
     }
-    FileView {
-        id: logFile
-        path: root.dir + "/log"
-        blockLoading: false
-        printErrors: false
-        onLoaded: root.log = text()
+    // Reading the output: from logSize on, up to the size the file has now
+    // (a smaller file is a new run: start over), keeping the last 2000 lines
+    property real logSize: 0
+    function readLog() {
+        if (!logProc.running)
+            logProc.running = true;
     }
-    onLogUsersChanged: if (logUsers > 0) logFile.reload()
+    Process {
+        id: logProc
+        command: ["sh", "-c", "f=$1; o=$2; s=$(stat -c %s \"$f\" 2>/dev/null || echo 0); [ \"$s\" -lt \"$o\" ] && o=0 && echo '@@reset'; [ \"$s\" -gt \"$o\" ] && tail -c +$((o + 1)) \"$f\" | head -c $((s - o)); printf '\\n@@size %s\\n' \"$s\"", "sh", root.dir + "/log", String(Math.round(root.logSize))]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const m = text.match(/\n@@size (\d+)\n?$/);
+                if (!m)
+                    return;
+                let body = text.slice(0, m.index);
+                let base = root.log;
+                if (body.startsWith("@@reset\n")) {
+                    body = body.slice(8);
+                    base = "";
+                }
+                const all = (base + body).split("\n");
+                root.log = (all.length > 2000 ? all.slice(all.length - 2000) : all).join("\n");
+                root.logSize = parseInt(m[1]);
+            }
+        }
+    }
+    onLogUsersChanged: if (logUsers > 0) readLog()
 
     // Done: an alert in the island (a notification without it), and a fresh check
     signal finished(var j)
     onFinished: j => {
         if (logUsers > 0)
-            logFile.reload();
+            readLog();
         check.running = true;
         if (j.state === "cancelled")
             return;

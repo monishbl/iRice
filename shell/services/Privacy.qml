@@ -10,10 +10,10 @@ import qs.common
 // blue location, purple screen) and the island's "Sharing screen" activity.
 //   mic     PipeWire/PulseAudio recording streams (not monitors of outputs),
 //           refreshed when `pactl subscribe` reports a change
-//   camera  processes holding a /dev/video* device (checked every 3 s by one
-//           small loop that only prints when the set of apps changes)
-//   location  GeoClue clients that are active (checked every 4 s, only while
-//           GeoClue runs; nothing is started to ask)
+//   camera  processes holding a /dev/video* device (assets/scripts/camera.sh:
+//           looked for only when a camera is opened or closed, with inotify)
+//   location  GeoClue clients that are active (assets/scripts/location.sh:
+//           when GeoClue signals a change; nothing is started to ask)
 //   screen  PipeWire: the portal's video streams (xdph-streaming-N) that an
 //           app is linked to (assets/scripts/screenshare.sh, event-driven).
 //           Hyprland's screencast event only hints at what is shared: it
@@ -113,7 +113,7 @@ Singleton {
     // ── Camera ──────────────────────────────────────────────────────────
     Process {
         running: Tools.has("fuser")
-        command: [Tools.watcher, "bash", "-c", "prev=x; while :; do cur=$(fuser /dev/video* 2>/dev/null | tr -s ' ' '\\n' | grep -o '[0-9]\\+' | sort -u | while read -r p; do cat /proc/$p/comm 2>/dev/null; done | sort -u | paste -sd,); [ \"$cur\" != \"$prev\" ] && { echo \"[$cur]\"; prev=$cur; }; sleep 3; done"]
+        command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/camera.sh").toString().replace("file://", ""))]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {
             onRead: line => {
@@ -128,7 +128,7 @@ Singleton {
     // asking never starts it. An app that can't be named shows as "An app".
     Process {
         running: Tools.has("busctl")
-        command: [Tools.watcher, "bash", "-c", "g() { busctl --system get-property org.freedesktop.GeoClue2 \"$1\" \"org.freedesktop.GeoClue2.$2\" \"$3\" 2>/dev/null; }; prev=x; while :; do cur=; if busctl --system list 2>/dev/null | awk '$1 == \"org.freedesktop.GeoClue2\" && $2 != \"-\" { f = 1 } END { exit !f }' && g /org/freedesktop/GeoClue2/Manager Manager InUse | grep -q true; then cur=$(for c in $(busctl --system tree --list org.freedesktop.GeoClue2 2>/dev/null | grep /Client/); do g \"$c\" Client Active | grep -q true && g \"$c\" Client DesktopId | cut -d'\"' -f2; done | sort -u | paste -sd,); [ -z \"$cur\" ] && cur=?; fi; [ \"$cur\" != \"$prev\" ] && { echo \"[$cur]\"; prev=$cur; }; sleep 4; done"]
+        command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/location.sh").toString().replace("file://", ""))]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {
             onRead: line => {

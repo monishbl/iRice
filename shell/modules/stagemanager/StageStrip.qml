@@ -21,6 +21,7 @@ Variants {
         readonly property var monitor: Hyprland.monitorFor(screen)
         readonly property int wsId: monitor?.activeWorkspace?.id ?? -1
         readonly property var waiting: StageManager.waiting(wsId).slice(0, 6)
+        readonly property bool covered: Desktop.covered(screen, Qt.rect(0, 0, implicitWidth, screen?.height ?? 0))
 
         WlrLayershell.namespace: "irice:stagestrip"
         WlrLayershell.layer: WlrLayer.Bottom
@@ -71,10 +72,14 @@ Variants {
                                 constraintSize: Qt.size(240, 160)
                             }
                             // Live previews (Settings → Overview): the strip's
-                            // windows keep updating too, up to 30 times a second
+                            // windows keep updating too, but at most 5 times a
+                            // second (it's on screen all the time), and not
+                            // while a window is over the strip (full screen,
+                            // floating) or the screen is locked
                             LiveCapture {
                                 target: stageShot
-                                live: win.visible && Config.options.overview.previews === "live"
+                                interval: 200
+                                live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
                             }
                         }
                     }

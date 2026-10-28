@@ -137,14 +137,21 @@ Variants {
         }
 
         // Live wallpaper: muted, looping; paused while windows cover the
-        // desktop (and on battery, if set), so it costs nothing when unseen
+        // desktop, the screen is locked, nobody has touched anything for two
+        // minutes (the display dims or turns off), and on battery if set, so
+        // it costs nothing when unseen
         Loader {
             anchors.fill: parent
             scale: wallpaper.scale
             active: Wallpaper.liveVideo !== ""
             sourceComponent: Item {
                 id: live
-                readonly property bool paused: Desktop.mostlyCovered(win.screen) || (Config.options.wallpaper.livePauseOnBattery && UPower.onBattery) || CoolDown.pauseLive
+                readonly property bool paused: Desktop.mostlyCovered(win.screen) || System.locked || away.isIdle || (Config.options.wallpaper.livePauseOnBattery && UPower.onBattery) || CoolDown.pauseLive
+                IdleMonitor {
+                    id: away
+                    timeout: 120
+                    respectInhibitors: true // (a video playing elsewhere keeps it going)
+                }
                 onPausedChanged: paused ? player.pause() : player.play()
                 MediaPlayer {
                     id: player

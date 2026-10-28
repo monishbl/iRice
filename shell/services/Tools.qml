@@ -20,6 +20,13 @@ Singleton {
         return available[name] === true;
     }
 
+    // Watchers an earlier shell left behind (it crashed, or was killed
+    // outright): end them before this shell starts its own
+    Process {
+        running: true
+        command: ["bash", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/reap-watchers.sh").toString().replace("file://", ""))]
+    }
+
     Process {
         running: true
         command: ["sh", "-c", "for c in \"$@\"; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done", "sh"].concat(root.names)

@@ -14,6 +14,8 @@
 # update with it, and running half-new code without its rebuilt parts).
 # The shell lock (irice-shell.lock, shared with keep-shell.sh, repair-shell.sh
 # and the tty session's watchdog) is held meanwhile, so nothing restarts it early.
+# A repo-wide lock (.git/irice-update.lock, also taken by irice-update.py
+# apply) makes it one update at a time on a repository, from any session.
 set -uo pipefail
 T="$1" REPO="$2" CONFIG="$3"
 [[ -n "$T" && -d "$T" && -n "$REPO" && -d "$REPO/.git" ]] || { echo "usage: update-run.sh <work dir> <repo> <config dir>" >&2; exit 2; }
@@ -32,6 +34,8 @@ var_of() { env_of "$1" | sed -n "s/^$2=//p" | head -1; }
 is_irice() {
     local c
     c="$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null)"
+    # An update screen (this one's or another's) is never the shell
+    [[ "$c" == *"/irice-update."* || "$c" == *" -p $T/ui"* ]] && return 1
     [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+irice([[:space:]]|$) ]] && return 0
     [[ "$c" == *" -p $SHELL_DIR"* || "$c" == *" --path $SHELL_DIR"* ]] && return 0
     env_of "$1" | grep -qx "IRICE_TTY=1"
@@ -43,6 +47,20 @@ shells() {
         is_irice "$p" && [[ "$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)" == "$SIG" ]] && echo "$p"
     done | sort -n
 }
+
+# One update at a time on this repository (another session may be updating
+# it): nothing is touched unless this is the only one
+exec 8>"$REPO/.git/irice-update.lock"
+if ! flock -n 8; then
+    status run 0 "Preparing"
+    QS0="$(command -v qs || echo qs)"
+    env -u IRICE_TTY setsid -f "$QS0" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null
+    sleep 1.2
+    status error 100 "Another update is running" "iRice is already being updated (in another session or window). Wait for it to finish, then check again."
+    echo "another update holds the repository lock"
+    exit 1
+fi
+export IRICE_UPDATE_HELD=1 # (irice-update.py apply: this process holds the repo lock)
 
 mine=($(shells))
 template="${mine[0]:-}"
@@ -62,14 +80,24 @@ fi
 
 # The update screen, from its copy here
 status run 0 "Preparing"
-setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null
+# (without IRICE_TTY: in the tty session it would pass for the shell)
+env -u IRICE_TTY setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null
 sleep 1.2 # (it fades in over the desktop before the shell goes)
 
 # Hold the shell lock, then stop the shell
 lockdir="$RUN/hypr/$SIG"
 mkdir -p "$lockdir"
 exec 9>"$lockdir/irice-shell.lock"
-flock -w 15 9 || echo "lock busy; going ahead"
+if ! flock -w 15 9; then
+    # Something (a shell restarting, a repair) holds it: stopping the shell
+    # now could leave two running, or one reloading mid-update. Nothing has
+    # been touched yet.
+    status error 100 "iRice couldn't be stopped for the update" "Something was restarting the shell. Try again in a moment; nothing was changed."
+    echo "shell lock busy: stopped before changing anything"
+    exit 1
+fi
+# The shells to stop, found again now that nothing can start one meanwhile
+mine=($(shells))
 if [[ ${#mine[@]} -gt 0 ]]; then
     kill "${mine[@]}" 2>/dev/null
     for _ in $(seq 30); do

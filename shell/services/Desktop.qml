@@ -76,6 +76,16 @@ Singleton {
         return area >= 0.7 * screen.width * screen.height;
     }
 
+    // True if a full-screen window is up on the screen's visible workspace
+    // (it hides the menu bar too)
+    function fullscreen(screen) {
+        revision; // dependency
+        const mon = Hyprland.monitorFor(screen);
+        if (!mon)
+            return false;
+        return Windows.on(mon.activeWorkspace?.id).some(t => (t.lastIpcObject?.fullscreen ?? 0) > 0 && !t.lastIpcObject?.hidden);
+    }
+
     // True if any window on the screen's visible workspace overlaps rect
     // (screen-local coordinates).
     function covered(screen, rect) {

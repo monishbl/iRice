@@ -248,12 +248,15 @@ Singleton {
             id: errs
         }
         onExited: code => {
+            root.restoreMic(); // first: micNode is gone once recording is false
             root.recording = false;
             root.paused = false;
-            root.restoreMic();
             const f = root.file;
             if (root.discarding) {
                 root.discarding = false;
+                // a second Discard within the Undo time: the first one is final now
+                if (root.discarded !== "" && root.discarded !== f)
+                    Quickshell.execDetached(["rm", "-f", "--", root.discarded]);
                 root.discarded = f;
                 dropTimer.restart();
                 root.dropped(f);

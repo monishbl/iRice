@@ -23,9 +23,29 @@ command -v pacman >/dev/null || { echo '{"missing":[],"unavailable":[],"dropped"
 list="$(mktemp)"
 trap 'rm -f "$list"' EXIT
 if [[ -n "$ref" ]] && git -C "$ROOT" show "$ref:tools/packages.sh" >"$list" 2>/dev/null; then :; else cp "$ROOT/tools/packages.sh" "$list"; fi
-PACKAGES=() DROPPED=()
-# shellcheck disable=SC1090
-source "$list"
+# The lists are read as text, never run: the file may come from a version
+# that isn't installed yet (an update's), and running it would execute
+# whatever it says before you've agreed to anything. A NAME=( … ) block, one
+# or more names per line, # comments; only well-formed package names (a
+# letter, digit or @_+ first, so nothing can pass as a pacman option).
+names() { # array-name file
+    awk -v want="$1" '
+        !on && $0 ~ "^[[:space:]]*" want "=\\(" {
+            on = 1
+            sub("^[[:space:]]*" want "=\\(", "")
+        }
+        on {
+            line = $0
+            sub(/#.*/, "", line)
+            done = (line ~ /\)/)
+            sub(/\).*/, "", line)
+            n = split(line, f, /[[:space:]]+/)
+            for (i = 1; i <= n; i++) if (f[i] != "") print f[i]
+            if (done) on = 0
+        }' "$2" | grep -E '^[a-z0-9@_+][a-z0-9@._+-]*$'
+}
+mapfile -t PACKAGES < <(names PACKAGES "$list")
+mapfile -t DROPPED < <(names DROPPED "$list")
 
 json() { # name values...
     local out="" p
@@ -34,15 +54,15 @@ json() { # name values...
 }
 
 # pacman -T: the ones not satisfied by anything installed (names or provides)
-mapfile -t notmet < <(pacman -T "${PACKAGES[@]}" 2>/dev/null)
+mapfile -t notmet < <([[ ${#PACKAGES[@]} -gt 0 ]] && pacman -T -- "${PACKAGES[@]}" 2>/dev/null)
 missing=() unavailable=()
 for p in "${notmet[@]}"; do
     [[ -z "$p" ]] && continue
-    if pacman -Si "$p" >/dev/null 2>&1 || pacman -Sg "$p" >/dev/null 2>&1; then missing+=("$p"); else unavailable+=("$p"); fi
+    if pacman -Si -- "$p" >/dev/null 2>&1 || pacman -Sg -- "$p" >/dev/null 2>&1; then missing+=("$p"); else unavailable+=("$p"); fi
 done
 dropped=()
 for p in "${DROPPED[@]}"; do
-    pacman -Qq "$p" >/dev/null 2>&1 && dropped+=("$p")
+    pacman -Qq -- "$p" >/dev/null 2>&1 && dropped+=("$p")
 done
 # Why each missing one is needed: the "# comment" line above its group
 reasons=""

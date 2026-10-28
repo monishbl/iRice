@@ -107,8 +107,8 @@ Singleton {
     Process {
         id: copyWatch
         running: root.on
-        stdinEnabled: true // the script ends when this closes
-        command: [decodeURIComponent(Qt.resolvedUrl("../assets/scripts/transfers.sh").toString().replace("file://", ""))]
+        stdinEnabled: true // the watcher ends when this closes (the shell quit)
+        command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/transfers.sh").toString().replace("file://", ""))]
         stdout: SplitParser {
             onRead: line => {
                 let list;

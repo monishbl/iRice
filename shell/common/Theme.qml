@@ -27,7 +27,7 @@ Singleton {
     readonly property color accent: Config.options.appearance.accent === "wallpaper" ? Wallpaper.accent : (accents[Config.options.appearance.accent] ?? accents.blue)
     // A light accent (yellow, cyan, a pale wallpaper colour) can't carry white
     // text: text and glyphs on accent fills are dark then (color.onAccent)
-    readonly property bool lightAccent: (0.2126 * accent.r + 0.7152 * accent.g + 0.0722 * accent.b) > 0.7
+    readonly property bool lightAccent: AccentRamp.contrast(accent, "white") < 3 // (measured as real contrast: white on green #30D158 is only ~2:1)
     // The accent as a family of shades (one hue, light to dark, in OKLCH so
     // they stay vivid). Each use draws the accent where it reads on its
     // background, a lighter shade of it on dark backgrounds when that's what

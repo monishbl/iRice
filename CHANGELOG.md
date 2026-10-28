@@ -1,5 +1,31 @@
 # iRice changelog
 
+## Cooler, safer updates, and fixes · 2026-10-28
+
+**Battery and heat**
+- Fixed: the screen-sharing detector kept a CPU core busy, and every shell restart left another copy running, which made the laptop hot. It now costs almost nothing, and nothing iRice starts in the background outlives the shell any more. A new shell also ends anything an earlier one left behind.
+- Lighter background checks for the camera, location and file copies.
+- Stage Manager previews pause when hidden and are capped at 5 frames a second. A live wallpaper pauses when the screen is locked or idle.
+- The island's music bars and heat ripples redraw less often, and pause when hidden or locked. The ripples stop entirely during Cool-down.
+- The whole shell now idles below 1% of one core.
+
+**Software Update**
+- Only one update runs at a time, across every iRice session.
+- A failed iRice update puts everything back exactly as it was, your own changes included.
+- Package lists from an update are checked as plain text and never run. Only valid package names reach pacman.
+- AUR updates are now a choice in the plan (off by default), because AUR packages are built from user-submitted scripts.
+- Once your password is accepted, a system update can't be cut off halfway by the shell restarting or closing.
+
+**Fixes**
+- The microphone stays muted after a recording if you muted it during one: fixed.
+- Discarding two recordings in a row left the first file behind: fixed.
+- The Today screen could open at 4 AM if you were still at your desk, and then not in the morning: it now waits for your next login or unlock.
+- A removed Today widget no longer comes back after a restart.
+- A display-connect animation could replay when another screen's finished: fixed.
+- Clipboard times were missing after a restart until the next copy: fixed.
+- Green and orange accents get dark text on their buttons, for contrast.
+- Quit leaves apps alone when it can't tell whether a "Save changes?" window is open.
+
 ## Today, a smarter accent, and apps that behave · 2026-10-28
 
 **Today**

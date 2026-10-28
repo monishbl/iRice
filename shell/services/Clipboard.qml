@@ -49,8 +49,12 @@ Singleton {
                 root.stampsExisted = true;
             } catch (e) {}
             root.stampsLoaded = true;
+            root.refresh(); // a list read before the times were in gets its times now
         }
-        onLoadFailed: root.stampsLoaded = true // (first run: no file yet)
+        onLoadFailed: { // (first run: no file yet)
+            root.stampsLoaded = true;
+            root.refresh();
+        }
     }
     Timer {
         id: saveStamps

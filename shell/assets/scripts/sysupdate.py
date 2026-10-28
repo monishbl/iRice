@@ -18,16 +18,21 @@ Everything goes to $XDG_RUNTIME_DIR/irice-sysupdate/:
     status.json  what's happening, rewritten whole on each change (the shell
                  reads it: Updates.qml); survives shell restarts
     log          the full output, as a terminal would show it
+    root.log     what the root part writes (a file, not a pipe: pacman never
+                 depends on this job being alive, so it can't be cut off by a
+                 broken pipe mid-transaction); this job follows it into log
     lock         held (flock) for the whole run: one update at a time; a
                  status that says "running" with the lock free was interrupted
-    auth.pid     the pkexec waiting for the password (what Cancel stops)
+    auth.pid     the pkexec waiting for the password
 
 Root comes from pkexec, so the password is asked by iRice's own dialog (its
 polkit agent). The job must run in the login session (setsid from the shell,
 not systemd-run --user): polkit finds the agent through the session.
-Cancel only works while pkexec waits for the password; once pacman runs as
-root it can't be signalled by us, and stopping a transaction midway would
-break the system anyway.
+Cancel only works while pkexec waits for the password. The root part's first
+line is a marker ("@@authenticated"); from then on Cancel is ignored: pacman
+runs as root, can't be signalled by us, and stopping a transaction midway
+would break the system anyway. Cancel signals only the job holding the lock,
+checked by its start time (a stale pid may belong to anything by now).
 
 --fake (or IRICE_FAKE_SYSUPDATE=1, and always in the dev sandbox) replays a
 canned pacman run with delays: the whole UI, nothing installed.
@@ -48,6 +53,7 @@ STATUS = os.path.join(DIR, "status.json")
 LOG = os.path.join(DIR, "log")
 LOCK = os.path.join(DIR, "lock")
 AUTH = os.path.join(DIR, "auth.pid")
+ROOTLOG = os.path.join(DIR, "root.log")
 DBLOCK = "/var/lib/pacman/db.lck"
 # Updated packages that want a restart to take effect
 RESTART = re.compile(r"^(linux(-[a-z0-9]+)?|linux-firmware.*|systemd|systemd-libs|glibc|mesa|lib32-mesa|nvidia.*|amd-ucode|intel-ucode|dbus|dbus-broker.*)$")
@@ -66,9 +72,21 @@ state = {
     "error": "",
     "started": time.time(), "finished": 0,
     "pid": os.getpid(),
+    "pidStart": "",  # the job's start time (/proc/<pid>/stat field 22): cancel checks it
 }
 log = None
 cancel_asked = False
+authed = False   # the root part has started: no more cancelling
+asking = None    # the pkexec waiting for the password
+
+
+def start_time(pid):
+    """A process's start time (clock ticks since boot), "" if it's gone."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return ""
 
 
 def save():
@@ -162,25 +180,59 @@ def parse(line, aur=False):
         return
 
 
+def feed(line, aur):
+    global authed
+    line = line.rstrip("\n").split("\r")[-1]  # (\r progress bars, just in case)
+    if line == "@@authenticated":
+        authed = True
+        if state["phase"] == "auth":
+            set_(phase="sync", text="Checking for updates")
+        return
+    out(line)
+    parse(line, aur)
+
+
 def stream(cmd, aur=False, env=None):
-    """Runs cmd, logging and parsing each line. Returns the exit code."""
+    """Runs cmd as you (the AUR helper), logging and parsing each line.
+    Returns the exit code."""
     out("$ " + " ".join(cmd))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          env=env, text=True, errors="replace", bufsize=1)
-    if cmd[0] == "pkexec" or "pkexec" in cmd:
-        with open(AUTH, "w") as f:
-            f.write(str(p.pid))
-    first = True
     for line in p.stdout:
-        line = line.rstrip("\n")
-        # \r progress bars (a tty-less pacman shouldn't print them; just in case)
-        line = line.split("\r")[-1]
-        if first and state["phase"] == "auth":
-            set_(phase="sync", text="Checking for updates")
-        first = False
-        out(line)
-        parse(line, aur)
-    code = p.wait()
+        feed(line, aur)
+    return p.wait()
+
+
+def stream_root(cmd, env=None):
+    """Runs the pkexec'd root part. Its output goes to a file this job opened
+    (handed over as its stdout, so nothing is opened by path as root), and
+    this job follows the file: if the job dies, root carries on unharmed."""
+    global asking
+    out("$ " + " ".join(cmd[:3]) + " …")
+    with open(ROOTLOG, "w") as w:
+        asking = subprocess.Popen(cmd, stdout=w, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+    with open(AUTH, "w") as f:
+        f.write(f"{asking.pid} {start_time(asking.pid)}")
+    set_(phase="auth", text="Waiting for your password")
+    pos = 0
+    rest = ""
+    with open(ROOTLOG, errors="replace") as r:
+        while True:
+            done = asking.poll() is not None
+            r.seek(pos)
+            chunk = r.read()
+            pos = r.tell()
+            rest += chunk
+            *lines, rest = rest.split("\n")
+            for line in lines:
+                feed(line, False)
+            if done:
+                if rest:
+                    feed(rest, False)
+                break
+            time.sleep(0.2)
+    code = asking.returncode
+    asking = None
     try:
         os.unlink(AUTH)
     except FileNotFoundError:
@@ -244,10 +296,14 @@ FAKE_STEP = {
 
 
 def fake_run(plan):
+    global authed
     set_(phase="auth", text="Waiting for your password")
-    time.sleep(1.5)
-    if cancel_asked:
-        return finish("cancelled", "Update cancelled")
+    for _ in range(15):
+        time.sleep(0.1)
+        if cancel_asked:
+            return finish("cancelled", "Update cancelled")
+    authed = True  # (as if "@@authenticated" arrived: no cancelling from here)
+    set_(phase="sync", text="Checking for updates")
     out("(simulated: nothing is installed)")
     for step in plan["steps"]:
         out(f"@@step {step}")
@@ -265,6 +321,9 @@ def fake_run(plan):
 # Exit codes say which step failed (20 snapshot, 21 system, 22 install,
 # 23 remove); "@@step" lines mark where it is.
 ROOT_SCRIPT = r"""
+# Nothing this job does (exiting, closing its end) may stop a transaction
+trap '' PIPE HUP INT TERM
+echo "@@authenticated"
 step() { echo "@@step $1"; }
 if [ "$1" = snapper ]; then
     step snapshot
@@ -280,15 +339,16 @@ if [ "$5" = 1 ]; then
 fi
 if [ -n "$3" ]; then
     step packages
-    pacman -S --needed --noconfirm $(echo "$3" | tr , ' ') || exit 22
+    pacman -S --needed --noconfirm -- $(echo "$3" | tr , ' ') || exit 22
 fi
 if [ -n "$4" ]; then
     step remove
-    pacman -Rns --noconfirm $(echo "$4" | tr , ' ') || exit 23
+    pacman -Rns --noconfirm -- $(echo "$4" | tr , ' ') || exit 23
 fi
 exit 0
 """
-NAME = re.compile(r"^[a-z0-9@._+-]+$")
+# A package name: never starting with "-" (it would pass as a pacman option)
+NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
 
 def real_run(plan):
@@ -302,10 +362,11 @@ def real_run(plan):
     env = dict(os.environ, LANG="C", LC_ALL="C")
     root_steps = [x for x in plan["steps"] if x != "aur"]
     if root_steps:
-        set_(phase="auth", text="Waiting for your password")
-        code = stream(["pkexec", "/bin/sh", "-c", ROOT_SCRIPT, "sh", plan["snapshot"], ",".join(plan["ignore"]),
+        if cancel_asked:
+            return finish("cancelled", "Update cancelled")
+        code = stream_root(["pkexec", "/bin/sh", "-c", ROOT_SCRIPT, "sh", plan["snapshot"], ",".join(plan["ignore"]),
                        ",".join(plan["install"]), ",".join(plan["remove"]), "1" if plan["system"] else "0"], env=env)
-        if code in (126, 127):
+        if code in (126, 127) and not authed:
             # 126: the dialog was dismissed (or Cancel stopped it); 127: not authorised
             return finish("cancelled", "Update cancelled") if (code == 126 or cancel_asked) else \
                 finish("error", "Not allowed", "Your account isn't allowed to install updates (polkit refused).")
@@ -359,15 +420,28 @@ def run(fake, plan):
     state["steps"] = plan["steps"]
     state["ignore"] = plan["ignore"]
     state["then"] = plan["then"]  # what the shell does after (the iRice part)
+    state["pidStart"] = start_time(os.getpid())
     save()
 
     def on_term(*_):
+        # Cancel: before the password, stop asking for it (pkexec, still ours,
+        # exits 126 and the run reports "cancelled"). Once the root part has
+        # started, it's ignored: the update finishes and says so. This job
+        # never exits from here while pkexec runs.
         global cancel_asked
+        if authed:
+            return
         cancel_asked = True
-        if state["phase"] in ("starting", "auth"):
+        p = asking
+        if p is not None and p.poll() is None:
+            try:
+                os.kill(p.pid, signal.SIGTERM)  # (if pkexec just became root, this is refused: harmless)
+            except OSError:
+                pass
+        elif p is None and state["phase"] in ("starting",):
             finish("cancelled", "Update cancelled")
             sys.exit(0)
-    signal.signal(signal.SIGTERM, on_term)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only Cancel (SIGUSR1) stops it, and only before the password
     signal.signal(signal.SIGUSR1, on_term)  # (cancel)
     signal.signal(signal.SIGHUP, signal.SIG_IGN)  # the shell going away is no reason to stop
     try:
@@ -389,17 +463,28 @@ def cancel():
     if st.get("state") != "running" or st.get("phase") not in ("starting", "auth"):
         print("can't cancel now", file=sys.stderr)
         return 1
-    # pkexec waiting for the password still runs as us: stopping it ends that
-    # step (exit 126/127), and the job reports "cancelled"
+    # Only a job that's really running: it holds the lock, and the pid in the
+    # status is still that job (not a reused pid)
     try:
-        with open(AUTH) as f:
-            os.kill(int(f.read().strip()), signal.SIGTERM)
-    except (OSError, ValueError):
-        pass
+        with open(LOCK, "a") as lf:
+            try:
+                fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lf, fcntl.LOCK_UN)
+                print("no update is running", file=sys.stderr)
+                return 1
+            except BlockingIOError:
+                pass  # held: a job is running
+    except OSError:
+        return 1
+    pid = int(st.get("pid", 0) or 0)
+    if pid <= 1 or not st.get("pidStart") or start_time(pid) != st.get("pidStart"):
+        print("the update job isn't running any more", file=sys.stderr)
+        return 1
+    # The job stops the password prompt itself (and ignores this once root runs)
     try:
-        os.kill(int(st.get("pid", 0)), signal.SIGUSR1)
-    except (OSError, ValueError):
-        pass
+        os.kill(pid, signal.SIGUSR1)
+    except OSError:
+        return 1
     return 0
 
 

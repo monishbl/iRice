@@ -43,7 +43,11 @@ alive() {
 }
 
 sig_of() { { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p'; }
-is_tty_shell() { { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx "IRICE_TTY=1"; }
+is_tty_shell() {
+    # (an update screen, "qs -p <…>/irice-update.XXXX/ui", is never the shell)
+    tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q '/irice-update\.' && return 1
+    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx "IRICE_TTY=1"
+}
 
 # This session's shells, oldest first
 shell_pids() {
@@ -54,14 +58,25 @@ shell_pids() {
     return 0
 }
 
+# Is the compositor with this signature gone for good? Only when its socket
+# is gone or its process is dead: a compositor that's just slow to answer
+# (another live session, busy) must never lose its shell
+gone() {
+    local s=$1 pid
+    [[ -S "$RUN/hypr/$s/.socket.sock" ]] || return 0
+    pid=$(head -1 "$RUN/hypr/$s/hyprland.lock" 2>/dev/null)
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1 # can't tell: keep it
+    ! kill -0 "$pid" 2>/dev/null
+}
+
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
     for p in $(pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
-        [[ "$s" == "$SIG" ]] && continue
-        [[ -S "$RUN/hypr/$s/.socket.sock" ]] && HYPRLAND_INSTANCE_SIGNATURE="$s" timeout 3 hyprctl version >/dev/null 2>&1 && continue
+        [[ -z "$s" || "$s" == "$SIG" ]] && continue
+        gone "$s" || continue
         kill -9 "$p" 2>/dev/null
     done
 }
