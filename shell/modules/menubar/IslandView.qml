@@ -89,6 +89,17 @@ Item {
     // (The same rule open or closed: switching to h / 2 the moment it starts
     // closing made the still-tall island a round blob on its way down)
     readonly property real r: Math.min(Theme.radius.tile, h / 2)
+    // Closing: how open it still is (1 → 0) as the height comes down, so the
+    // glass and the black fade with the shrinking shape and are gone just as
+    // it reaches the dots (a fade of its own stalled and then popped: the
+    // compositor's glass only hears about changes as the shape moves)
+    property real closeFrom: targetH
+    onExpandedChanged: if (!expanded) closeFrom = Math.max(h, 27)
+    readonly property real openness: expanded ? 1 : Math.max(0, Math.min(1, (h - 26) / Math.max(1, closeFrom - 26)))
+    // The content keeps the open width while it fades out (snapping to the
+    // closed width moved it sideways and cut it off)
+    property real openW: targetW
+    onTargetWChanged: if (expanded) openW = targetW
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
 
@@ -112,15 +123,18 @@ Item {
             shadowMargin: 16
             radius: root.r
             bevel: Math.min(16, root.r) + shadowMargin
-            opacity: root.expanded ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+            opacity: root.expanded ? openFade : root.openness
+            property real openFade: root.expanded ? 1 : 0
+            Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
+            onOpacityChanged: updatePosition()
         }
         // Black at the top melting into the glass below, like iOS 26. The
         // gradient is a plain rectangle clipped by a rounded mask (translucent
         // gradients on rounded rectangles render unevenly).
         // 0 collapsed (no pill, only the dots), 1 open
-        property real fade: root.expanded ? 1 : 0
-        Behavior on fade { NumberAnimation { duration: Theme.motion.hover } }
+        property real openFade: root.expanded ? 1 : 0
+        Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
+        readonly property real fade: root.expanded ? openFade : root.openness
         Item {
             id: ink
             anchors.fill: parent
@@ -331,7 +345,7 @@ Item {
                 id: body
                 x: root.showingEvent ? 18 : 12
                 y: root.showingEvent ? 16 : 36
-                width: root.targetW - 2 * x
+                width: (root.expanded ? root.targetW : root.openW) - 2 * x
                 spacing: 10
                 visible: root.h > 30
                 opacity: root.expanded ? 1 : 0
@@ -339,7 +353,7 @@ Item {
                 // OpacityAnimator may not start and leave it invisible). Closing,
                 // it's gone quickly, before the island shrinks over it, rather
                 // than being cut off by its edges on the way down
-                Behavior on opacity { NumberAnimation { duration: root.expanded ? Theme.motion.hover : 70; easing.type: root.expanded ? Easing.OutCubic : Easing.InCubic } }
+                Behavior on opacity { enabled: root.expanded; NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
 
                 // Live alerts, newest at the bottom; a burst staggers in.
                 // Up to four show, as many as fit in the island's window
@@ -488,7 +502,7 @@ Item {
 
         // Pin: keep the island open even with nothing happening
         IconButton {
-            visible: root.expanded && !root.showingEvent
+            visible: opacity > 0.01 && !root.showingEvent
             x: parent.width - width - 6
             y: 3
             width: 26
@@ -497,8 +511,10 @@ Item {
             fill: Island.pinned
             iconSize: 14
             iconColor: Island.pinned ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
-            opacity: root.h > 40 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } } // (shown as it fades in: see the body above)
+            // Gone the moment it starts closing (as fast as a fade-in would
+            // be noticed: an animated fade-out lingered over the shrinking pill)
+            opacity: root.expanded && root.h > 40 ? 1 : 0
+            Behavior on opacity { enabled: root.expanded; NumberAnimation { duration: Theme.motion.hover } } // (shown as it fades in: see the body above)
             onClicked: Island.togglePin()
         }
 

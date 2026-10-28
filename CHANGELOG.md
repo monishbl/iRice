@@ -1,5 +1,10 @@
 # iRice changelog
 
+## Island closes without glitches · 2026-10-28
+
+**Fixes**
+- When the island closes, its contents and pin button go at once instead of being cut off by the shrinking edges, and its background fades along with the shape instead of stalling and then popping.
+
 ## Island closes cleanly · 2026-10-28
 
 **Fixes**
