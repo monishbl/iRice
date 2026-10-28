@@ -182,7 +182,7 @@ Scope {
     readonly property bool standby: held && !leaving && canStandBy && idle && password === "" && !busy
 
     // Burn-in protection (lock.standbyShift): every minute the content moves
-    // to a new spot (`drifts` counts the moves; fx, fy are the spot as a
+    // up or down to a new spot (always centred across) (`drifts` counts the moves; fx, fy are the spot as a
     // fraction of the room each screen has, used when lock.standbySameClock
     // keeps every screen's clock in the same place), and every 15 minutes
     // the screens rest dark for a minute.
@@ -196,15 +196,15 @@ Scope {
             fx = 0;
             fy = 0;
         } else {
-            // Well away from the last spot, so no pixel holds a colour for long
-            let x = 0, y = 0;
-            for (let i = 0; i < 6; i++) {
-                x = Math.random() * 2 - 1;
+            // Up or down only (the clock stays centred across), well away
+            // from the last spot so no pixel holds a colour for long
+            let y = 0;
+            for (let i = 0; i < 8; i++) {
                 y = Math.random() * 2 - 1;
-                if (Math.hypot(x - fx, y - fy) > 0.5)
+                if (Math.abs(y - fy) > 0.5)
                     break;
             }
-            fx = x;
+            fx = 0;
             fy = y;
         }
         drifts++;

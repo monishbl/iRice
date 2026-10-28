@@ -1,5 +1,15 @@
 # iRice changelog
 
+## StandBy stays centred, and update conflicts you decide · 2026-10-28
+
+**StandBy**
+- The clock now always stays centred across the screen. To protect against burn-in it only moves up and down, a good distance each minute.
+
+**Software Update**
+- A file that both you and the update changed is now listed for you to decide: **Merge both** (when the two changes fit together cleanly), **Keep mine** or **Use the update's**. Before, your version was kept without a word and the update's change was lost.
+- Also listed: files deleted on one side and changed on the other, binary files, and a file of yours with the same name as one the update adds.
+- Whenever you choose the update's version, yours is saved in the update's backup folder first.
+
 ## Cooler, safer updates, and fixes · 2026-10-28
 
 **Battery and heat**

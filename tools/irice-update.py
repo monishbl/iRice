@@ -10,7 +10,13 @@ conflict you decide, and nothing is applied until all of them are decided.
 is the one this script lives in.
 
 Conflicts (each with the choices given):
-  code      a file you edited that the update also changes:  mine | new
+  code      a file you changed that the update changes too:
+            both (only when the two sets of changes fit together, never for
+            binary files) | mine (the update's change to it is dropped) |
+            new (yours is set aside in the backup folder)
+            Deleted on one side and edited on the other: mine | new, where
+            "new" follows the update (deletes it, or brings it back)
+            A file of yours that isn't in git and the update adds: mine | new
   setting   a setting whose default changes:                 keep | new
             (your config.json holds every value, so "keep" changes nothing)
   preset    the material you use (Glass, Frost) looks different in the update:
@@ -46,8 +52,42 @@ def git(*args, check=True):
 
 
 def show(rev, path):
-    r = subprocess.run(["git", "-C", REPO, "show", f"{rev}:{path}"], capture_output=True, text=True)
+    """A text file at a revision (None when it isn't there). Non-text bytes
+    are replaced, so a binary file never stops a check."""
+    b = show_bytes(rev, path)
+    return None if b is None else b.decode("utf-8", "replace")
+
+
+def show_bytes(rev, path):
+    r = subprocess.run(["git", "-C", REPO, "show", f"{rev}:{path}"], capture_output=True)
     return r.stdout if r.returncode == 0 else None
+
+
+def read_bytes(path):
+    try:
+        with open(os.path.join(REPO, path), "rb") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def is_binary(*blobs):
+    return any(b is not None and b"\0" in b[:8000] for b in blobs)
+
+
+def numstat(*args):
+    """(added, removed) lines from git diff --numstat; None for binary."""
+    out = git("diff", "--numstat", *args, check=False).split("\n")[0].split("\t")
+    if len(out) < 2 or out[0] == "-":
+        return None
+    try:
+        return int(out[0]), int(out[1])
+    except ValueError:
+        return None
+
+
+def describe_change(st):
+    return "binary" if st is None else f"+{st[0]} −{st[1]}"
 
 
 # ── Defaults out of the QML ────────────────────────────────────────────────
@@ -264,15 +304,24 @@ def check(config_dir, fetch=True):
     # Proper notes when the changelog has them (the commit subjects otherwise)
     report["changelog"] = new_entries(base, new)
 
-    # Code: files edited here that the update changes too
-    local = set(l for l in git("diff", "--name-only", "HEAD").splitlines() if l)
-    incoming = set(l for l in git("diff", "--name-only", base, new).splitlines() if l)
+    # Code: files changed here that the update changes too. Every one is a
+    # question: nothing of yours or the update's is dropped without asking
+    local = set(l for l in git("diff", "--name-only", "-z", "HEAD").split("\0") if l)
+    incoming = set(l for l in git("diff", "--name-only", "-z", base, new).split("\0") if l)
     for f in sorted(local & incoming):
-        both = merges_cleanly(f, new)
-        report["conflicts"].append({"id": "code:" + f, "kind": "code", "title": f,
-                                    "detail": "You edited this file and the update changes it too." + (" Both sets of changes fit together." if both else " Your changes and the update's overlap, so it's one or the other."),
-                                    "choices": (["both"] if both else []) + ["mine", "new"],
-                                    "labels": {"both": "Keep both", "mine": "Only mine", "new": "Only the update's"}})
+        report["conflicts"].append(code_conflict(f, base, new))
+    # Files of yours git doesn't track, that the update adds (taking the
+    # update would otherwise stop on them)
+    untracked = set(l for l in git("ls-files", "--others", "--exclude-standard", "-z").split("\0") if l)
+    for f in sorted(untracked & incoming):
+        theirs, mine = show_bytes(new, f), read_bytes(f)
+        if theirs is None or theirs == mine:
+            continue
+        report["conflicts"].append({"id": "code:" + f, "kind": "code", "title": f, "change": "untracked",
+                                    "detail": "You have a file here that iRice doesn't track, and the update adds one with the same name.",
+                                    "mine": "your file", "theirs": "new in the update",
+                                    "choices": ["mine", "new"],
+                                    "labels": {"mine": "Keep mine", "new": "Use the update's (yours goes to the backup folder)"}})
     report["keeps"] = sorted(local - incoming)  # your edits the update doesn't touch: kept
 
     config = load_json(os.path.join(config_dir, "config.json"), {})
@@ -350,13 +399,12 @@ def check(config_dir, fetch=True):
 def three_way(f, new):
     """Your file with the update's changes merged in, or None when they overlap."""
     import tempfile
-    base, theirs = show("HEAD", f), show(new, f)
-    try:
-        with open(os.path.join(REPO, f)) as fh:
-            mine = fh.read()
-    except OSError:
+    base, theirs, mine = show_bytes("HEAD", f), show_bytes(new, f), read_bytes(f)
+    if base is None or theirs is None or mine is None or is_binary(base, theirs, mine):
         return None
-    if base is None or theirs is None:
+    try:
+        base, theirs, mine = base.decode(), theirs.decode(), mine.decode()
+    except UnicodeDecodeError:
         return None
     with tempfile.TemporaryDirectory() as d:
         paths = []
@@ -371,6 +419,33 @@ def three_way(f, new):
 
 def merges_cleanly(f, new):
     return three_way(f, new) is not None
+
+
+def code_conflict(f, base, new):
+    """A file both you and the update changed: what each did, and the
+    choices that make sense for it."""
+    b, mine, theirs = show_bytes(base, f), read_bytes(f), show_bytes(new, f)
+    c = {"id": "code:" + f, "kind": "code", "title": f}
+    if mine is None and theirs is not None:
+        c.update(change="deleted-mine", mine="you deleted it", theirs="changed in the update (" + describe_change(numstat(base, new, "--", f)) + ")",
+                 detail="You deleted this file; the update changes it.",
+                 choices=["mine", "new"], labels={"mine": "Keep it deleted", "new": "Bring back the update's"})
+    elif theirs is None and mine is not None:
+        c.update(change="deleted-theirs", mine="changed by you (" + describe_change(numstat("HEAD", "--", f)) + ")", theirs="deleted in the update",
+                 detail="You changed this file; the update deletes it.",
+                 choices=["mine", "new"], labels={"mine": "Keep mine", "new": "Delete it (yours goes to the backup folder)"})
+    elif is_binary(b, mine, theirs):
+        c.update(change="binary", mine="changed by you", theirs="changed in the update",
+                 detail="You changed this file and the update changes it too. It isn't text, so it's one or the other.",
+                 choices=["mine", "new"], labels={"mine": "Keep mine", "new": "Use the update's (yours goes to the backup folder)"})
+    else:
+        both = merges_cleanly(f, new)
+        c.update(change="edited", mine="your changes " + describe_change(numstat("HEAD", "--", f)),
+                 theirs="the update's " + describe_change(numstat(base, new, "--", f)),
+                 detail="You changed this file and the update changes it too." + (" Both sets of changes fit together." if both else " Your changes and the update's overlap, so it's one or the other."),
+                 choices=(["both"] if both else []) + ["mine", "new"],
+                 labels={"both": "Merge both", "mine": "Keep mine (the update's change is dropped)", "new": "Use the update's (yours goes to the backup folder)"})
+    return c
 
 
 def describe_preset(old, new):
@@ -454,6 +529,29 @@ def apply(config_dir, choices, extra=()):
     # as it was (the old version, your edits, your settings) and it says so.
     old_head = git("rev-parse", "HEAD").strip()
     edited = [l for l in git("diff", "--name-only", "-z", "HEAD").split("\0") if l]
+    # Your version of each file you chose the update's for, into the backup
+    # folder (as well as the stash), so it's easy to find again
+    untracked = [c["title"] for c in report["conflicts"] if c["kind"] == "code" and c.get("change") == "untracked"]
+    for c in report["conflicts"]:
+        f = c["title"]
+        if c["kind"] == "code" and choices.get(c["id"]) == "new" and os.path.isfile(os.path.join(REPO, f)):
+            dest = os.path.join(backup, "code", f)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(os.path.join(REPO, f), dest)
+    # Untracked files the update adds: set aside so taking the update works,
+    # put back afterwards if you keep yours (and on any failure)
+    aside = os.path.join(backup, "untracked")
+    for f in untracked:
+        dest = os.path.join(aside, f)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.move(os.path.join(REPO, f), dest)
+
+    def put_back_untracked():
+        for f in untracked:
+            src, dst = os.path.join(aside, f), os.path.join(REPO, f)
+            if os.path.lexists(src):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
     merged = {}  # files kept as both: your edits with the update's merged in
     for f in edited:
         if choices.get("code:" + f) == "both":
@@ -470,9 +568,14 @@ def apply(config_dir, choices, extra=()):
     except RuntimeError:
         if stash:
             git("stash", "pop")
+        put_back_untracked()
         raise
     try:
         apply_after_merge(config_dir, choices, report, edited, merged, stash)
+        # Untracked files you keep: yours over the update's
+        for f in untracked:
+            if choices.get("code:" + f) == "mine":
+                shutil.copy2(os.path.join(aside, f), os.path.join(REPO, f))
     except BaseException as e:
         # Back to exactly how it was: the old version, then your edits, then
         # your settings (from the backup made above)
@@ -482,6 +585,7 @@ def apply(config_dir, choices, extra=()):
             git("reset", "--hard", "--quiet", old_head)
             if stash:
                 git("stash", "pop")
+            put_back_untracked()
             for name in ("config.json", "keybinds.json"):
                 if os.path.exists(os.path.join(backup, name)):
                     shutil.copy2(os.path.join(backup, name), os.path.join(config_dir, name))

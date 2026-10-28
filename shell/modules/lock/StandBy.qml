@@ -9,7 +9,8 @@ import qs.modules.desktop
 // iPhone): a clock, two widgets side by side, or your photos. Swipe, scroll
 // or use the arrow keys to change; anything else brings back the password
 // field (the owner handles that). At night everything turns a dim red.
-// Against burn-in (lock.standbyShift) the content glides to a new spot each
+// Against burn-in (lock.standbyShift) the content glides up or down (always
+// centred across) to a new spot each
 // minute and every 15 minutes the screen rests dark for a minute (timing
 // shared by every screen, from Lock.qml); the view dots only show for a
 // moment after a change. Nothing else moves. A screen left out of
@@ -72,18 +73,17 @@ Item {
             dy = 0;
             return;
         }
-        let fx = lockScope.fx, fy = lockScope.fy;
+        // Only up and down: the content always stays centred across
+        let fy = lockScope.fy;
         if (!cfg.standbySameClock) {
-            for (let i = 0; i < 6; i++) {
-                fx = Math.random() * 2 - 1;
+            for (let i = 0; i < 8; i++) {
                 fy = Math.random() * 2 - 1;
-                if (Math.hypot(fx - ownFx, fy - ownFy) > 0.5)
+                if (Math.abs(fy - ownFy) > 0.5)
                     break;
             }
-            ownFx = fx;
             ownFy = fy;
         }
-        dx = fx * room.width;
+        dx = 0;
         dy = fy * room.height;
     }
     Connections {

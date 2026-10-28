@@ -26,7 +26,7 @@ Column {
         { kind: "preset", title: "Your glass material", footer: "Keeping your look saves it as a Custom material." },
         { kind: "shortcut", title: "Shortcut clashes", footer: "The update brings a shortcut on keys you already use." },
         { kind: "removed", title: "Settings that change name or go away", footer: "You changed these, and the update renames or no longer has them." },
-        { kind: "code", title: "Files you edited", footer: "You changed these iRice files, and the update changes them too." }
+        { kind: "code", title: "Files you changed", footer: "You changed these iRice files, and the update changes them too. Keep mine drops the update's change to that file; Use the update's sets yours aside in the backup folder; Merge both is offered when the two fit together." }
     ]
     function plural(n, word) {
         return n + " " + word + (n === 1 ? "" : "s");
@@ -90,11 +90,23 @@ Column {
                 Row {
                     id: conflict
                     required property var modelData
+                    readonly property bool file: modelData.kind === "code"
                     label: modelData.title
-                    detail: modelData.detail
+                    // Files: what each side did ("your changes +3 −1 · the update's +12 −4")
+                    detail: file && modelData.mine ? modelData.detail + "\n" + modelData.mine + " · " + modelData.theirs : modelData.detail
+                    // Short labels on the buttons for files (the long ones explain in the footer)
+                    function short(ch) {
+                        if (!file)
+                            return modelData.labels?.[ch] ?? ch;
+                        if (ch === "both")
+                            return "Merge both";
+                        if (ch === "mine")
+                            return modelData.change === "deleted-mine" ? "Keep it deleted" : "Keep mine";
+                        return modelData.change === "deleted-theirs" ? "Delete it" : modelData.change === "deleted-mine" ? "Bring it back" : "Use the update's";
+                    }
                     Segmented {
                         width: Math.max(implicitWidth, 260)
-                        options: conflict.modelData.choices.map(ch => conflict.modelData.labels?.[ch] ?? ch)
+                        options: conflict.modelData.choices.map(ch => conflict.short(ch))
                         // (-1 until chosen: nothing is picked for you)
                         current: conflict.modelData.choices.indexOf(IriceUpdate.choices[conflict.modelData.id])
                         onSelected: i => IriceUpdate.choose(conflict.modelData.id, conflict.modelData.choices[i])
