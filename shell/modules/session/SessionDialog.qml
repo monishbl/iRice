@@ -22,7 +22,9 @@ Variants {
             contentWidth: 5 * 80 + 4 * 12
 
             property int current: 4
-            onShownChanged: current = 4
+            readonly property bool keyboardConfirmation: Panels.sessionAction !== ""
+            onShownChanged: if (shown) resetSelection()
+            Component.onCompleted: if (shown) resetSelection()
 
             readonly property var options: [
                 { id: "lock", text: "Lock", icon: "lock" },
@@ -32,7 +34,15 @@ Variants {
                 { id: "shutdown", text: "Shut Down", icon: "power" }
             ]
 
+            function resetSelection() {
+                const requested = options.findIndex(opt => opt.id === Panels.sessionAction);
+                current = requested >= 0 ? requested : 4;
+                actions.forceActiveFocus();
+            }
+
             function choose(i) {
+                if (!shown || i < 0 || i >= options.length)
+                    return;
                 const opt = options[i];
                 Panels.close();
                 System.power(opt.id);
@@ -51,12 +61,16 @@ Variants {
                 }
 
                 Row {
+                    id: actions
                     spacing: 12
                     focus: dialog.shown
                     Keys.onLeftPressed: dialog.current = Math.max(0, dialog.current - 1)
                     Keys.onRightPressed: dialog.current = Math.min(dialog.options.length - 1, dialog.current + 1)
-                    Keys.onReturnPressed: dialog.choose(dialog.current)
-                    Keys.onEnterPressed: dialog.choose(dialog.current)
+                    Keys.onUpPressed: dialog.current = Math.max(0, dialog.current - 1)
+                    Keys.onDownPressed: dialog.current = Math.min(dialog.options.length - 1, dialog.current + 1)
+                    // Holding Enter in Spotlight must never confirm the action.
+                    Keys.onReturnPressed: event => { if (!event.isAutoRepeat) dialog.choose(dialog.current); }
+                    Keys.onEnterPressed: event => { if (!event.isAutoRepeat) dialog.choose(dialog.current); }
                     Keys.onEscapePressed: Panels.close()
 
                     Repeater {
@@ -91,8 +105,13 @@ Variants {
                                     id: mouse
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    onEntered: dialog.current = option.index
-                                    onClicked: dialog.choose(option.index)
+                                    onEntered: if (!dialog.keyboardConfirmation) dialog.current = option.index
+                                    onClicked: {
+                                        if (dialog.keyboardConfirmation)
+                                            dialog.current = option.index;
+                                        else
+                                            dialog.choose(option.index);
+                                    }
                                 }
                             }
                             Text {
@@ -104,6 +123,15 @@ Variants {
                             }
                         }
                     }
+                }
+
+                Text {
+                    visible: dialog.keyboardConfirmation
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Arrow keys to choose · Enter to confirm · Esc to cancel"
+                    color: Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
             }
         }

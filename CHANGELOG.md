@@ -1,5 +1,10 @@
 # iRice changelog
 
+## Keyboard power confirmation and window focus · 2026-10-28
+
+- Spotlight's power commands open the session menu with the requested action selected. Use the arrow keys to change it, Enter to confirm, or Esc to cancel. Mouse clicks only select an action, and holding Enter cannot accidentally confirm it.
+- App windows can take keyboard focus when they open or request activation, without waiting for the mouse to move.
+
 ## Island closes without glitches · 2026-10-28
 
 **Fixes**

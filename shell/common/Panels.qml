@@ -11,6 +11,10 @@ Singleton {
     property var screen: null
     property real anchorX: 0 // left edge of the menu bar item that opened a menu
     property string ccPage: "" // Control Center detail page: "" | wifi | bluetooth | sound | focus | caffeine
+    property string sessionAction: "" // Spotlight power action: preselect and require keyboard confirmation
+    function showSession(action, scr) {
+        show("session", scr, undefined, action);
+    }
     // Share sheet: send these files to a nearby device
     property var sharePaths: []
     function share(paths, scr) {
@@ -68,9 +72,10 @@ Singleton {
         show("missionControl", scr);
     }
 
-    function show(name, scr, x) {
+    function show(name, scr, x, action) {
         if (name !== "missionControl")
             exposeApp = "";
+        sessionAction = name === "session" ? (action ?? "") : "";
         open = name;
         // No screen given (Spotlight actions, shortcuts): the focused one
         screen = scr ?? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];

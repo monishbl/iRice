@@ -48,6 +48,8 @@ hl.config({
         force_default_wallpaper = 0,
         -- Black until the wallpaper fades in (the shell's background is black too)
         background_color = 0xff000000,
+        -- Give newly opened or activated app windows keyboard focus immediately.
+        focus_on_activate = true,
         -- If the shell restarts while the screen is locked, its new copy takes
         -- the lock back (instead of Hyprland's "lockscreen app died" screen)
         allow_session_lock_restore = true

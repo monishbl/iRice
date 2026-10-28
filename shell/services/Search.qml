@@ -124,11 +124,11 @@ Singleton {
     }
 
     readonly property var actions: [
-        { title: "Lock Screen", glyph: "lock", keywords: "lock", run: () => System.power("lock") },
-        { title: "Sleep", glyph: "moon", keywords: "suspend sleep", run: () => System.power("sleep") },
-        { title: "Restart…", glyph: "arrow-clockwise", keywords: "reboot restart", run: () => Panels.show("session") },
-        { title: "Shut Down…", glyph: "power", keywords: "shutdown power off", run: () => Panels.show("session") },
-        { title: "Log Out…", glyph: "sign-out", keywords: "logout exit", run: () => Panels.show("session") },
+        { title: "Lock Screen…", glyph: "lock", keywords: "lock", run: () => Panels.showSession("lock") },
+        { title: "Sleep…", glyph: "moon", keywords: "suspend sleep", run: () => Panels.showSession("sleep") },
+        { title: "Restart…", glyph: "arrow-clockwise", keywords: "reboot restart", run: () => Panels.showSession("restart") },
+        { title: "Shut Down…", glyph: "power", keywords: "shutdown poweroff power off", run: () => Panels.showSession("shutdown") },
+        { title: "Log Out…", glyph: "sign-out", keywords: "logout exit", run: () => Panels.showSession("logout") },
         { title: "Toggle Dark Mode", glyph: "circle-half", keywords: "dark light appearance theme", run: () => Config.options.appearance.mode = Theme.dark ? "light" : "dark" },
         { title: "Control Center", glyph: "sliders-horizontal", keywords: "control center settings toggles", run: () => Panels.show("controlCenter") },
         { title: "Notification Center", glyph: "bell", keywords: "notifications calendar", run: () => Panels.show("notificationCenter") },
