@@ -17,6 +17,9 @@ Singleton {
     }
     // Share sheet: send these files to a nearby device
     property var sharePaths: []
+    function pickShare() {
+        FilePicker.pick({ multiple: true, title: "Send files" }, paths => share(paths));
+    }
     function share(paths, scr) {
         sharePaths = paths;
         show("share", scr);

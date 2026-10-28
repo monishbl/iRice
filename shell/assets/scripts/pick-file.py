@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Asks the user for a file or folder and prints its path (exit 1 if cancelled).
 
-  pick-file.py [--folder] [--title T] [--start DIR] [--filter "Images|*.png *.jpg"]
+  pick-file.py [--folder] [--multiple] [--title T] [--start DIR] [--filter "Images|*.png *.jpg"]
+
+With --multiple, prints a JSON array of paths; single selection prints a path.
 
 Uses zenity or kdialog when installed: they open on the display this runs on,
 which matters in the tty session. Otherwise the desktop portal's file chooser.
 """
-import argparse, os, shutil, subprocess, sys
+import argparse, json, os, shutil, subprocess, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--folder", action="store_true")
+ap.add_argument("--multiple", action="store_true")
 ap.add_argument("--title", default="")
 ap.add_argument("--start", default=os.path.expanduser("~"))
 ap.add_argument("--filter", default="")  # "Name|*.a *.b"
@@ -20,6 +23,12 @@ name, pats = (a.filter.split("|", 1) + [""])[:2] if a.filter else ("", "")
 
 
 def done(path):
+    if a.multiple:
+        paths = path if isinstance(path, list) else [path] if path else []
+        if not paths:
+            sys.exit(1)
+        print(json.dumps(paths))
+        sys.exit(0)
     path = path.strip()
     if not path:
         sys.exit(1)
@@ -33,13 +42,19 @@ if shutil.which("zenity"):
         cmd.append("--directory")
     elif pats:
         cmd += ["--file-filter", f"{name} | {pats}"]
+    if a.multiple:
+        cmd += ["--multiple", "--separator", "\x1f"]
     r = subprocess.run(cmd, capture_output=True, text=True)
-    done(r.stdout if r.returncode == 0 else "")
+    selected = r.stdout.rstrip("\n") if r.returncode == 0 else ""
+    done(selected.split("\x1f") if a.multiple and selected else selected)
 if shutil.which("kdialog"):
     cmd = ["kdialog", "--title", title]
     cmd += ["--getexistingdirectory", start] if a.folder else ["--getopenfilename", start] + ([f"{pats}|{name}"] if pats else [])
+    if a.multiple:
+        cmd += ["--multiple", "--separate-output"]
     r = subprocess.run(cmd, capture_output=True, text=True)
-    done(r.stdout if r.returncode == 0 else "")
+    selected = r.stdout if r.returncode == 0 else ""
+    done(selected.splitlines() if a.multiple else selected)
 
 # The desktop portal
 try:
@@ -58,16 +73,18 @@ handle = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
 def on_response(_c, _s, _p, _i, _sig, params):
     code, res = params.unpack()
     if code == 0 and res.get("uris"):
-        result["path"] = GLib.filename_from_uri(res["uris"][0])[0]
+        result["paths"] = [GLib.filename_from_uri(uri)[0] for uri in res["uris"]]
     loop.quit()
 
 
 bus.signal_subscribe("org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request", "Response", handle, None, 0, on_response)
 opts = {"handle_token": GLib.Variant("s", token), "directory": GLib.Variant("b", a.folder),
+        "multiple": GLib.Variant("b", a.multiple),
         "current_folder": GLib.Variant("ay", start.encode() + b"\0")}
 if pats and not a.folder:
     opts["filters"] = GLib.Variant("a(sa(us))", [(name, [(0, p) for p in pats.split()])])
 bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.FileChooser",
               "OpenFile", GLib.Variant("(ssa{sv})", ("", title, opts)), None, 0, -1, None)
 loop.run()
-done(result.get("path", ""))
+paths = result.get("paths", [])
+done(paths if a.multiple else paths[0] if paths else "")

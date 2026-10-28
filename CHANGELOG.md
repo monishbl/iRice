@@ -1,5 +1,17 @@
 # iRice changelog
 
+## Your own AI models · 2026-10-28
+
+- Settings → AI now lets you add, edit, remove and select models with a display name, model ID, provider and credentials. New installations have no preset models; existing selected models, extra models and provider keys are preserved.
+- Supports Google AI Studio, Vertex AI (Gemini, with an Express API key or OAuth access token), OpenRouter, Anthropic, OpenAI, Ollama and custom OpenAI-compatible servers. Connection-specific fields appear as needed.
+- Model selection is shared by sidebar chat and Spotlight. The same model ID can be used across different providers and servers, with credentials stored separately from model definitions.
+
+## Dolphin colors and easier file sharing · 2026-10-28
+
+- Dolphin's text and background now follow iRice's light/dark mode even with Match apps off. KDE and Qt palettes stay consistent, including after turning accent matching off.
+- Settings → Sharing now has a Send files button with multiple-file selection. Spotlight also has a Send Files action. LocalSend sending works independently of receiving.
+- Added optional Android Quick Share / Nearby Share integration through Packet, available from the share sheet, Sharing settings and Spotlight. Packet handles device selection, confirmation and progress; it requires Bluetooth and the same Wi-Fi network.
+
 ## Keyboard power confirmation and window focus · 2026-10-28
 
 - Spotlight's power commands open the session menu with the requested action selected. Use the arrow keys to change it, Enter to confirm, or Esc to cancel. Mouse clicks only select an action, and holding Enter cannot accidentally confirm it.

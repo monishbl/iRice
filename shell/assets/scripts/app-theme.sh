@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 # Colours apps to match iRice (Settings → Appearance → Match apps), with
 # matugen: from the accent colour or the wallpaper, light or dark.
-#   app-theme.sh <dark|light|off> <accent #rrggbb> <source: accent|wallpaper> <wallpaper path> <targets: gtk,qt,terminals,browsers>
+#   app-theme.sh <dark|light|off> <accent #rrggbb> <source: accent|wallpaper> <wallpaper path> <targets: gtk,qt,terminals,browsers> [desktop dark|light]
 # Writes its own colour files and adds one include line (once) to each app's
-# config so they're used; "off" empties those files again, nothing else is
-# touched. Apps that can reload do (kitty, Firefox via Pywalfox, Chromium).
+# config so they're used; "off" empties those files again. Desktop light/dark
+# preferences and Dolphin's palette are synced independently of accent matching.
+# Apps that can reload do (kitty, Firefox via Pywalfox, Chromium).
 set -uo pipefail
 mode="$1" accent="$2" source="$3" wall="$4" targets=",$5,"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 T="$(cd "$(dirname "${BASH_SOURCE[0]}")/../theming" && pwd)"
+DESKTOP="$(dirname "${BASH_SOURCE[0]}")/desktop-theme.py"
 want() { [[ "$targets" == *",$1,"* ]]; }
+desktop_mode="${6:-$mode}"
+[[ "$desktop_mode" == light ]] || desktop_mode=dark
+# Light/dark is a desktop preference, independent of optional accent matching.
+if [[ "$mode" != off ]] && want qt && command -v matugen >/dev/null; then
+    python3 -I "$DESKTOP" "$desktop_mode" --keep-kde
+else
+    python3 -I "$DESKTOP" "$desktop_mode"
+fi
 
 # The generated files (and where their template is)
 declare -A out=(
@@ -57,9 +67,9 @@ for k in "${!out[@]}"; do
 done
 if [[ "$source" == wallpaper && -f "$wall" && "$wall" != *.mp4 && "$wall" != *.webm && "$wall" != *.mkv ]]; then
     matugen image "$wall" -m "$mode" -c "$conf" --import-json-string "$extra" -q --prefer saturation 2>/dev/null ||
-        matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q
+        matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
 else
-    matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q
+    matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
 fi
 
 # Include the colours (once) in each app's own config
@@ -83,11 +93,7 @@ if want gtk; then
     fi
 fi
 if want qt; then
-    if [[ -f "$CFG/qt6ct/qt6ct.conf" ]]; then
-        sed -i -E "s|^color_scheme_path=.*|color_scheme_path=$CFG/qt6ct/colors/iRice.conf|; s|^custom_palette=.*|custom_palette=true|" "$CFG/qt6ct/qt6ct.conf"
-        grep -q '^color_scheme_path=' "$CFG/qt6ct/qt6ct.conf" || sed -i "/^\[Appearance\]/a color_scheme_path=$CFG/qt6ct/colors/iRice.conf\ncustom_palette=true" "$CFG/qt6ct/qt6ct.conf"
-    fi
-    command -v plasma-apply-colorscheme >/dev/null && plasma-apply-colorscheme iRice >/dev/null 2>&1
+    python3 -I "$DESKTOP" "$desktop_mode" --scheme "$DATA/color-schemes/iRice.colors"
 fi
 if want terminals; then
     command -v foot >/dev/null && include "$CFG/foot/foot.ini" "include=$CFG/foot/irice-colors.ini" create

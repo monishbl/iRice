@@ -46,6 +46,10 @@ QtObject {
     }
 
     function handle(ev) {
+        if (provider !== "anthropic" && ev.error) {
+            error = ev.error.message ?? "The response was interrupted. Try again.";
+            return;
+        }
         if (provider === "anthropic") {
             switch (ev.type) {
             case "content_block_start":

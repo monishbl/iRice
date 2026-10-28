@@ -7,11 +7,13 @@ import Quickshell.Io
 // desktop portal). One at a time; the callback gets the path, or nothing
 // when the user cancels.
 //   FilePicker.pick({ folder: false, title: "…", start: "~/Pictures", filter: "Images|*.jpg *.png" }, path => …)
+//   FilePicker.pick({ multiple: true, title: "Send files" }, paths => …)
 Singleton {
     id: root
 
     readonly property bool busy: proc.running
     property var callback: null
+    property bool multiple: false
 
     function pick(opts, cb) {
         if (proc.running)
@@ -21,6 +23,9 @@ Singleton {
         const cmd = ["python3", Quickshell.shellDir + "/assets/scripts/pick-file.py"];
         if (o.folder)
             cmd.push("--folder");
+        multiple = o.multiple === true && !o.folder;
+        if (multiple)
+            cmd.push("--multiple");
         if (o.title)
             cmd.push("--title", o.title);
         if (o.start)
@@ -39,8 +44,17 @@ Singleton {
             const cb = root.callback;
             root.callback = null;
             const path = out.text.trim();
-            if (code === 0 && path !== "" && cb)
-                cb(path);
+            if (code === 0 && path !== "" && cb) {
+                if (root.multiple) {
+                    try {
+                        const paths = JSON.parse(path);
+                        if (Array.isArray(paths) && paths.length > 0)
+                            cb(paths);
+                    } catch (e) {}
+                } else {
+                    cb(path);
+                }
+            }
         }
     }
 }

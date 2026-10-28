@@ -41,7 +41,7 @@ Item {
                 id: pickerMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: modelMenu.visible = !modelMenu.visible
+                onClicked: Ai.configured ? modelMenu.visible = !modelMenu.visible : Panels.openSettings("ai")
             }
         }
 
@@ -73,7 +73,7 @@ Item {
         Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: Ai.needsKey ? "Connect " + Ai.providerName : "Ask " + Ai.model.name
+            text: !Ai.configured ? "Add your AI model" : Ai.needsKey ? "Connect " + Ai.providerName : "Ask " + Ai.model.name
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
         }
@@ -81,7 +81,7 @@ Item {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
-            text: Ai.needsKey ? "Paste your " + Ai.providerName + " API key. It's stored in your system keyring." : "Questions, commands, writing help. Type /model to switch models."
+            text: !Ai.configured ? "Choose your provider and model in Settings → AI. Click Add a model above to get started." : Ai.needsKey ? "Add your " + Ai.providerName + " " + Ai.credentialLabel.toLowerCase() + " in Settings → AI, or paste it here." : "Questions, commands, writing help. Type /model to switch models."
             color: Theme.color.secondary
             font { family: Theme.font.family; pixelSize: Theme.font.small }
         }
@@ -111,7 +111,7 @@ Item {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: keyField.text === ""
-                        text: "API key"
+                        text: Ai.credentialLabel
                         color: Theme.color.tertiary
                         font: keyField.font
                     }
@@ -122,7 +122,7 @@ Item {
                 function save() {
                     if (keyField.text.trim() === "")
                         return;
-                    AiKeys.set(Ai.model.provider, keyField.text);
+                    Ai.saveCredential(Ai.model, keyField.text);
                     keyField.text = "";
                     composer.forceActiveFocus();
                 }
@@ -215,7 +215,7 @@ Item {
                 padding: 0
                 wrapMode: TextEdit.Wrap
                 color: Theme.color.label
-                placeholderText: Ai.needsKey ? "Add a key to start" : Ai.attachment ? "Ask about this screenshot" : "Message " + Ai.model.name
+                placeholderText: !Ai.configured ? "Add a model in Settings → AI" : Ai.needsKey ? "Add a credential to start" : Ai.attachment ? "Ask about this screenshot" : "Message " + Ai.model.name
                 placeholderTextColor: Theme.color.tertiary
                 background: null
                 font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -265,49 +265,75 @@ Item {
         id: modelMenu
         visible: false
         anchors { top: header.bottom; topMargin: 6; left: parent.left }
-        width: 240
-        height: menuColumn.implicitHeight + 10
+        width: 280
+        height: Math.min(340, menuColumn.implicitHeight + 10)
         radius: 14
         color: Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.97) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
         border.width: 1
         border.color: Theme.color.separator
         z: 10
 
-        Column {
-            id: menuColumn
+        Flickable {
             anchors { fill: parent; margins: 5 }
-            Repeater {
-                model: Ai.models
+            clip: true
+            contentHeight: menuColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            Column {
+                id: menuColumn
+                width: parent.width
+                Repeater {
+                    model: Ai.models
+                    Rectangle {
+                        required property var modelData
+                        width: menuColumn.width
+                        height: 30
+                        radius: 8
+                        color: itemMouse.containsMouse ? Theme.accent : "transparent"
+                        Icon {
+                            x: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: parent.modelData.key === Ai.model.key
+                            name: "check"
+                            bold: true
+                            size: 12
+                            color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                        }
+                        Text {
+                            x: 26
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: parent.modelData.name + " · " + Ai.nameForProvider(parent.modelData.provider)
+                            width: parent.width - 32
+                            elide: Text.ElideRight
+                            color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.font.body }
+                        }
+                        MouseArea {
+                            id: itemMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                Ai.setModel(parent.modelData.key);
+                                modelMenu.visible = false;
+                            }
+                        }
+                    }
+                }
                 Rectangle {
-                    required property var modelData
                     width: menuColumn.width
                     height: 30
                     radius: 8
-                    color: itemMouse.containsMouse ? Theme.accent : "transparent"
-                    Icon {
-                        x: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: parent.modelData.id === Ai.model.id
-                        name: "check"
-                        bold: true
-                        size: 12
-                        color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
-                    }
+                    color: manageMouse.containsMouse ? Theme.color.fillHover : "transparent"
                     Text {
-                        x: 26
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: parent.modelData.name
-                        color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                        text: "Manage models…"
+                        color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.body }
                     }
                     MouseArea {
-                        id: itemMouse
+                        id: manageMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: {
-                            Ai.setModel(parent.modelData.id);
-                            modelMenu.visible = false;
-                        }
+                        onClicked: { modelMenu.visible = false; Panels.openSettings("ai"); }
                     }
                 }
             }

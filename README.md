@@ -44,10 +44,10 @@ A Hyprland desktop shell in the style of macOS Tahoe, with Liquid Glass, everyth
 - **Spotlight:** apps, calculator, unit and currency conversion ("10 km to mi", "100 usd in eur"), definitions ("define serendipity"), actions, calendar events, `;` clipboard history, `:` emoji, `/` files by name and by what's inside, `>` commands, web search. Shift+Space or Ctrl+Y on a file opens Quick Look. Ask AI right in Spotlight (`?` or the Ask row) for a short answer, then continue in the sidebar. Type "remind me to call mum at 5pm" to add a reminder.
 - **Clipboard** (Super+V): history with image previews, search, pins that survive restarts, paste as plain text.
 - **Quick Look:** previews of images, video, audio, PDFs, text and folders without opening an app (Spotlight, the Downloads stack, desktop files).
-- **Nearby sharing**, like AirDrop: send files to phones and computers running LocalSend (Share in Quick Look and on desktop files), and receive from them after an Accept in the island (Settings → Sharing: No one, Everyone for 10 minutes, Everyone).
+- **Nearby sharing**, like AirDrop: send files to phones and computers running LocalSend (Settings → Sharing → Send files, Share in Quick Look and on desktop files, or “Send Files” in Spotlight), and receive from them after an Accept in the island (Settings → Sharing: No one, Everyone for 10 minutes, Everyone). Sending works with receiving off. The share sheet also offers Android **Quick Share / Nearby Share** through the optional [Packet](https://github.com/nozwock/packet) app; Packet handles device selection, confirmation and progress.
 - **Mission Control:** live window previews and Spaces.
 - **Sidebar:**
-  - **AI chat:** Claude by default; Gemini and any OpenAI-compatible endpoint, including Ollama and OpenRouter.
+  - **AI chat:** add your own models in Settings → AI: display name, model ID, provider, credentials and connection details. Supports Google AI Studio, Vertex AI (Gemini), Anthropic, OpenAI, OpenRouter, Ollama and custom OpenAI-compatible endpoints. Saved models appear in the sidebar and Spotlight; new installations have no preset model list.
   - **Translator**
   - **Anime image browser:** safe-rated results unless you switch on Explicit.
 
@@ -181,6 +181,16 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | Touchscreen: swipe up from the bottom edge | Show a hidden dock |
 
 ## Files
+
+To send files with **LocalSend**, open LocalSend on the receiving phone or computer and connect both devices to the same network. In iRice, go to **Settings → Sharing → Send files…**, choose one or more files, then click the receiving device. You can also use **Share…** on a desktop file or **Share** in Quick Look. The receiving device must accept the transfer.
+
+For Android's built-in **Quick Share** (formerly Nearby Share), install [Packet](https://flathub.org/apps/io.github.nozwock.Packet), then click **Check again** in Settings → Sharing. Select **Send with Quick Share…** in the share sheet and choose the device in Packet. Bluetooth must be enabled and both devices must be on the same Wi-Fi. Open Packet to receive; its visibility and transfer prompts are separate from iRice's LocalSend controls. Packet implements part of the Quick Share protocol, so compatibility depends on the receiving device.
+
+Dolphin's KDE colors and the desktop light/dark preference follow iRice even when **Match apps** is off. Fonts, icons and widget styles are preserved. Reopen Dolphin if it retains an old palette after changing modes.
+
+For **AI**, open **Settings → AI**, choose a provider, enter the exact model ID from your account, optionally give it a display name, and add a credential. Custom servers also need their API base URL. Save the model, then select it from the sidebar's model menu or Settings. Models can be edited and removed, and the same model ID can be saved for different providers or connections. Credentials stay in the system keyring or a private file, separate from model settings; existing provider keys and the previously selected model are imported.
+
+**Vertex AI** supports [Express mode API keys](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview) or an OAuth access token with your Google Cloud project and region (including `global`). Pasted OAuth access tokens are short-lived and must be replaced when they expire. Adaptive thinking is an optional per-model setting for Anthropic models that support it.
 
 - `~/.config/irice/config.json`: settings. Edits apply live.
 - `~/.config/irice/focus.json` and `calendars.json`: Focus modes and calendar subscriptions (also editable in Settings).

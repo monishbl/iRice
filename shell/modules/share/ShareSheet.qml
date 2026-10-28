@@ -29,12 +29,17 @@ Variants {
             readonly property bool shown: Panels.isOpen("share", screen)
             readonly property var paths: Panels.sharePaths
             readonly property string what: paths.length === 1 ? "“" + paths[0].split("/").pop() + "”" : paths.length + " items"
-            onShownChanged: LocalSend.sharing = shown
+            onShownChanged: {
+                LocalSend.sharing = shown;
+                if (shown)
+                    QuickShare.refresh();
+            }
             Component.onDestruction: LocalSend.sharing = false
 
             property real progress: 0
             Component.onCompleted: {
                 LocalSend.sharing = shown;
+                QuickShare.refresh();
                 progress = Qt.binding(() => shown ? 1 : 0);
             }
             Behavior on progress { NumberAnimation { duration: win.shown ? 220 : 150; easing.type: win.shown ? Easing.OutCubic : Easing.InCubic } }
@@ -91,7 +96,7 @@ Variants {
                                 font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
                             }
                             Text {
-                                text: "With a nearby device"
+                                text: "LocalSend · devices on the same Wi-Fi"
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                             }
@@ -182,6 +187,51 @@ Variants {
                             text: "Open LocalSend on your phone or other computer, on the same Wi-Fi. If nothing shows up, your firewall may be blocking port 53317."
                             color: Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
+                        }
+                    }
+
+                    Text {
+                        visible: LocalSend.error !== ""
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        text: LocalSend.error
+                        color: Theme.color.secondary
+                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 58
+                        radius: Theme.radius.control
+                        color: quickMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        opacity: QuickShare.busy ? 0.5 : 1
+                        Column {
+                            anchors { left: parent.left; right: parent.right; margins: 12; verticalCenter: parent.verticalCenter }
+                            spacing: 3
+                            Text {
+                                text: QuickShare.available ? "Send with Quick Share…" : "Set up Android Quick Share…"
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
+                            }
+                            Text {
+                                text: QuickShare.available ? "Choose a device in Packet" : "Requires the optional Packet app"
+                                color: Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.font.small }
+                            }
+                        }
+                        MouseArea {
+                            id: quickMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: !QuickShare.busy
+                            onClicked: {
+                                if (QuickShare.available) {
+                                    QuickShare.send(win.paths);
+                                    Panels.close();
+                                } else {
+                                    Panels.openSettings("sharing");
+                                }
+                            }
                         }
                     }
 

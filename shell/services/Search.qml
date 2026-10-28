@@ -129,6 +129,8 @@ Singleton {
         { title: "Restart…", glyph: "arrow-clockwise", keywords: "reboot restart", run: () => Panels.showSession("restart") },
         { title: "Shut Down…", glyph: "power", keywords: "shutdown poweroff power off", run: () => Panels.showSession("shutdown") },
         { title: "Log Out…", glyph: "sign-out", keywords: "logout exit", run: () => Panels.showSession("logout") },
+        { title: "Send Files…", glyph: "paper-plane-tilt", keywords: "share send files localsend nearby", run: () => Panels.pickShare() },
+        { title: "Quick Share", glyph: "share-network", keywords: "quickshare nearby share android packet", run: () => QuickShare.available ? QuickShare.open() : Panels.openSettings("sharing") },
         { title: "Toggle Dark Mode", glyph: "circle-half", keywords: "dark light appearance theme", run: () => Config.options.appearance.mode = Theme.dark ? "light" : "dark" },
         { title: "Control Center", glyph: "sliders-horizontal", keywords: "control center settings toggles", run: () => Panels.show("controlCenter") },
         { title: "Notification Center", glyph: "bell", keywords: "notifications calendar", run: () => Panels.show("notificationCenter") },
@@ -310,7 +312,7 @@ Singleton {
     }
 
     function aiRow(question) {
-        return { section: "Ask AI", title: "Ask " + Ai.model.name.replace(/ \(.*\)$/, ""), subtitle: "“" + question + "”", glyph: "sparkle", ai: true, question: question, run: () => Ai.quickAsk(question) };
+        return { section: "Ask AI", title: Ai.configured ? "Ask " + Ai.model.name.replace(/ \(.*\)$/, "") : "Set up AI…", subtitle: "“" + question + "”", glyph: "sparkle", ai: Ai.configured, question: question, run: () => Ai.configured ? Ai.quickAsk(question) : Panels.openSettings("ai") };
     }
 
     function iconForFile(path) {

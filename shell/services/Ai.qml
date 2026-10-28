@@ -3,24 +3,75 @@ import QtQuick
 import Quickshell
 import qs.common
 import Quickshell.Io
+import "AiModels.js" as ModelConfig
 
-// Chat with Claude (default), Gemini, or any OpenAI-compatible endpoint
-// (OpenAI, OpenRouter, Ollama). Streams over XMLHttpRequest, so API keys stay
-// in-process. `chat` drives the UI; `history` is what goes back to the API.
+// Models and connections are owned by the user in Settings → AI. Streams
+// over XMLHttpRequest, so credentials stay in-process. `chat` drives the UI;
+// `history` is what goes back to the API.
 Singleton {
     id: root
 
-    readonly property var builtinModels: [
-        { id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "anthropic" },
-        { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", provider: "anthropic" },
-        { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", provider: "anthropic" },
-        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "gemini" },
-        { id: "llama3.2", name: "Llama 3.2 (Ollama)", provider: "ollama" }
-    ]
-    readonly property var models: builtinModels.concat(Config.options.ai.extraModels)
-    readonly property var model: models.find(m => m.id === Config.options.ai.model) ?? models[0]
-    readonly property bool needsKey: !AiKeys.has(model.provider)
-    readonly property string providerName: ({ anthropic: "Anthropic", gemini: "Google AI Studio", openai: "OpenAI", openrouter: "OpenRouter", ollama: "Ollama" })[model.provider] ?? model.provider
+    readonly property var providers: ModelConfig.providers
+    readonly property var models: ModelConfig.read(Config.options.ai.models)
+    readonly property var model: models.find(m => m.key === Config.options.ai.model) ?? models[0] ?? ({ key: "", id: "", name: "Add a model", provider: "", auth: "none" })
+    readonly property bool configured: model.id !== ""
+    readonly property string credentialProvider: ModelConfig.credentialProvider(model)
+    readonly property string credentialLabel: ModelConfig.credentialLabel(model)
+    readonly property bool needsKey: configured && model.auth !== "none" && !AiKeys.has(credentialProvider, model.key)
+    readonly property string providerName: ModelConfig.providerName(model.provider)
+
+    function nameForProvider(provider) { return ModelConfig.providerName(provider); }
+    function normalizeModel(raw) { return ModelConfig.normalize(raw); }
+    function hasCredential(m) { return m.auth === "none" || AiKeys.has(ModelConfig.credentialProvider(m), m.key); }
+    function saveCredential(m, key) { AiKeys.set(m.key, key); }
+
+    Component.onCompleted: migrateModels()
+    Connections {
+        target: Config
+        function onReadyChanged() { root.migrateModels(); }
+    }
+    function migrateModels() {
+        if (!Config.ready || Config.options.ai.modelsMigrated)
+            return;
+        const cfg = Config.options.ai;
+        const imported = ModelConfig.migrate(cfg.model, cfg.extraModels, cfg.ollamaUrl);
+        const merged = ModelConfig.read((cfg.models ?? []).concat(imported));
+        const selected = merged.find(m => m.key === cfg.model || m.id === cfg.model);
+        cfg.models = merged.map(m => JSON.stringify(m));
+        cfg.model = selected?.key ?? merged[0]?.key ?? "";
+        cfg.modelsMigrated = true;
+    }
+    function saveModel(raw, oldKey) {
+        const m = ModelConfig.normalize(raw);
+        const error = ModelConfig.validate(m);
+        if (error)
+            return error;
+        if (models.some(x => x.key === m.key && x.key !== oldKey))
+            return "That model and connection are already in your list. Edit the existing entry.";
+        const old = models.find(x => x.key === oldKey);
+        // Renaming a model ID on the same connection keeps its saved key.
+        // A different provider, host or Vertex project needs its own credential.
+        const retainedKey = old?.key !== m.key && ModelConfig.sameConnection(old, m) ? AiKeys.keys[old.key] : "";
+        const list = models.filter(x => x.key !== oldKey).concat([m]);
+        stop();
+        stopQuick();
+        Config.options.ai.models = list.map(x => JSON.stringify(x));
+        Config.options.ai.modelsMigrated = true;
+        Config.options.ai.model = m.key;
+        if (retainedKey)
+            saveCredential(m, retainedKey);
+        return "";
+    }
+    function removeModel(key) {
+        if (model.key === key) {
+            stop();
+            stopQuick();
+        }
+        const list = models.filter(m => m.key !== key);
+        Config.options.ai.models = list.map(m => JSON.stringify(m));
+        if (Config.options.ai.model === key)
+            Config.options.ai.model = list[0]?.key ?? "";
+    }
 
     // UI rows: { role: "user"|"assistant"|"note", text, thinking, status, model, image (preview path) }
     property alias chat: chatModel
@@ -35,7 +86,12 @@ Singleton {
     readonly property bool busy: xhr !== null
 
     function setModel(id) {
-        Config.options.ai.model = id;
+        const m = models.find(m => m.key === id || m.id === id);
+        if (!m || model.key === m.key)
+            return;
+        stop();
+        stopQuick();
+        Config.options.ai.model = m.key;
     }
 
     function clear() {
@@ -104,15 +160,17 @@ Singleton {
             return clear();
         if (t.startsWith("/model ")) {
             const id = t.slice(7).trim();
-            const m = models.find(x => x.id === id || x.name.toLowerCase() === id.toLowerCase());
-            return m ? (setModel(m.id), note("Switched to " + m.name + ".")) : note("No model called “" + id + "”. Pick one from the model menu.");
+            const m = models.find(x => x.key === id || x.id === id || x.name.toLowerCase() === id.toLowerCase());
+            return m ? (setModel(m.key), note("Switched to " + m.name + ".")) : note("No model called “" + id + "”. Add it in Settings → AI or pick one from the model menu.");
         }
+        if (!configured)
+            return note("Add a model and provider in Settings → AI first.");
         if (t.startsWith("/key ")) {
-            AiKeys.set(model.provider, t.slice(5));
-            return note(providerName + " key saved.");
+            saveCredential(model, t.slice(5));
+            return note(providerName + " credential saved.");
         }
         if (needsKey)
-            return note("Add your " + providerName + " API key first: type /key followed by the key.");
+            return note("Add your " + providerName + " " + credentialLabel.toLowerCase() + " in Settings → AI, or type /key followed by the credential.");
         send(t);
     }
 
@@ -133,7 +191,7 @@ Singleton {
         const req = buildRequest(model, history, {});
         const x = new XMLHttpRequest();
         xhr = x;
-        parser.reset(model.provider);
+        parser.reset(ModelConfig.protocol(model));
         x.onreadystatechange = () => {
             if (xhr !== x)
                 return;
@@ -155,56 +213,9 @@ Singleton {
         x.send(JSON.stringify(req.body));
     }
 
-    // Message content with an optional image, per wire format
-    function content(h, provider) {
-        if (provider === "anthropic")
-            return h.blocks ?? (h.image ? [{ type: "image", source: { type: "base64", media_type: h.image.mediaType, data: h.image.data } }, { type: "text", text: h.text }] : h.text);
-        if (provider === "gemini")
-            return (h.image ? [{ inline_data: { mime_type: h.image.mediaType, data: h.image.data } }] : []).concat([{ text: h.text }]);
-        return h.image ? [{ type: "image_url", image_url: { url: "data:" + h.image.mediaType + ";base64," + h.image.data } }, { type: "text", text: h.text }] : h.text;
-    }
-
-    // opts: { system, effort, maxTokens, thinking (bool) } override the chat settings
     function buildRequest(m, turns, opts) {
-        const sys = opts.system ?? Config.options.ai.systemPrompt;
-        if (m.provider === "anthropic") {
-            const body = {
-                model: m.id,
-                max_tokens: opts.maxTokens ?? 64000,
-                stream: true,
-                system: sys,
-                thinking: { type: "adaptive", display: (opts.thinking ?? Config.options.ai.showThinking) ? "summarized" : "omitted" },
-                output_config: { effort: opts.effort ?? Config.options.ai.effort },
-                messages: turns.map(h => ({ role: h.role, content: content(h, "anthropic") }))
-            };
-            const headers = { "content-type": "application/json", "x-api-key": AiKeys.get("anthropic"), "anthropic-version": "2026-10-21" };
-            // Server-side refusal fallback (not offered for Haiku)
-            if (!m.id.includes("haiku")) {
-                body.fallbacks = "default";
-                headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
-            }
-            return { url: "https://api.anthropic.com/v1/messages", headers: headers, body: body };
-        }
-        if (m.provider === "gemini") {
-            return {
-                url: "https://generativelanguage.googleapis.com/v1beta/models/" + m.id + ":streamGenerateContent?alt=sse",
-                headers: { "content-type": "application/json", "x-goog-api-key": AiKeys.get("gemini") },
-                body: {
-                    systemInstruction: { parts: [{ text: sys }] },
-                    contents: turns.map(h => ({ role: h.role === "assistant" ? "model" : "user", parts: content(h, "gemini") }))
-                }
-            };
-        }
-        // OpenAI-compatible
-        const base = m.endpoint ?? (m.provider === "ollama" ? Config.options.ai.ollamaUrl + "/v1" : m.provider === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
-        const headers = { "content-type": "application/json" };
-        if (m.provider !== "ollama")
-            headers["authorization"] = "Bearer " + AiKeys.get(m.provider);
-        return {
-            url: base + "/chat/completions",
-            headers: headers,
-            body: { model: m.id, stream: true, messages: [{ role: "system", content: sys }].concat(turns.map(h => ({ role: h.role, content: content(h, m.provider) }))) }
-        };
+        const credential = AiKeys.get(ModelConfig.credentialProvider(m), m.key);
+        return ModelConfig.buildRequest(m, turns, opts, Config.options.ai, credential);
     }
 
     // Incremental SSE parser for all three wire formats.
@@ -279,7 +290,7 @@ Singleton {
             msg = j.error?.message ?? j[0]?.error?.message ?? "";
         } catch (e) {}
         const p = providerName;
-        return status === 0 ? "Couldn't reach " + p + ". Check your internet connection" + (model.provider === "ollama" ? " or that Ollama is running" : "") + "." : status === 401 || status === 403 ? "Your " + p + " API key was rejected. Type /key and paste a valid key." : status === 402 ? "There's a billing problem on your " + p + " account." : status === 404 ? "The model “" + model.id + "” isn't available. Pick another from the model menu." : status === 429 ? "Rate limited by " + p + ". Wait a moment and try again." : status === 529 || status >= 500 ? p + " is having trouble right now. Try again in a moment." : (msg || "Request failed (" + status + ").");
+        return status === 0 ? "Couldn't reach " + p + ". Check your internet connection" + (model.provider === "ollama" ? " or that Ollama is running" : "") + "." : status === 401 || status === 403 ? "Your " + p + " credential was rejected. Check it in Settings → AI" + (model.auth === "token" ? "; OAuth access tokens expire and must be refreshed" : "") + "." : status === 402 ? "There's a billing problem on your " + p + " account." : status === 404 ? "The model “" + model.id + "” isn't available. Check its ID, provider and connection in Settings → AI." : status === 429 ? "Rate limited by " + p + ". Wait a moment and try again." : status === 529 || status >= 500 ? p + " is having trouble right now. Try again in a moment." : (msg || "Request failed (" + status + ").");
     }
 
     // Quick answers for Spotlight: one turn, short, low effort, kept out of
@@ -298,15 +309,15 @@ Singleton {
         quick.question = question;
         quick.answer = "";
         quick.error = "";
-        if (needsKey) {
-            quick.error = "Add your " + providerName + " API key in the sidebar first (Super+A).";
+        if (!configured || needsKey) {
+            quick.error = !configured ? "Add a model and provider in Settings → AI first." : "Add your " + providerName + " " + credentialLabel.toLowerCase() + " in Settings → AI first.";
             return;
         }
         quick.busy = true;
         const req = buildRequest(model, [{ role: "user", text: question }], { system: quickPrompt, effort: "low", maxTokens: 2048, thinking: false });
         const x = new XMLHttpRequest();
         quickXhr = x;
-        quickParser.reset(model.provider);
+        quickParser.reset(ModelConfig.protocol(model));
         x.onreadystatechange = () => {
             if (quickXhr !== x)
                 return;

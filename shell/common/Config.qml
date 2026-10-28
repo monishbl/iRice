@@ -210,12 +210,14 @@ Singleton {
             }
 
             property JsonObject ai: JsonObject {
-                property string model: "claude-opus-5-5"
+                property string model: "" // key of the selected user-defined model
+                property list<string> models: [] // JSON model records; credentials stay in AiKeys
+                property bool modelsMigrated: false
                 property string effort: "medium" // low | medium | high | xhigh | max (Claude)
                 property bool showThinking: true
                 property string ollamaUrl: "http://localhost:11434"
                 property string systemPrompt: "You are a helpful assistant in a Linux desktop sidebar (Hyprland). Be concise and direct. Use Markdown: short paragraphs, lists where they help, and fenced code blocks for commands or code."
-                // Extra models: [{ "id": "...", "name": "...", "provider": "openai" | "openrouter" | "ollama" | "gemini" | "anthropic" }]
+                // Legacy user models, imported once into models above.
                 property list<var> extraModels: []
             }
 
