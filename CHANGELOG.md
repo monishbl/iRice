@@ -1,5 +1,14 @@
 # iRice changelog
 
+## Hover tips across the menu bar · 2026-10-28
+
+- Point at a menu bar icon for a moment to see what it's doing:
+  - **Wi-Fi:** the network and signal.
+  - **Bluetooth:** what's connected and each device's battery.
+  - **Sound:** volume and output.
+  - **Others:** weather, Focus, keep awake, recording time, the song playing, keyboard layout, app tray icons, and the full date with unread notifications.
+- Icon-only buttons (Search, AI, Control Center and the extra buttons) show their name.
+
 ## StandBy stays centred, and update conflicts you decide · 2026-10-28
 
 **StandBy**

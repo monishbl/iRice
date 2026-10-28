@@ -212,6 +212,20 @@ Variants {
                         icon: def?.icon ?? ""
                         color: bar.fg
                         onClicked: def?.act()
+                        HoverTip {
+                            target: parent
+                            hovered: parent.hovered && !parent.active
+                            screen: bar.screen
+                            text: ({
+                                    screenshot: "Screenshot",
+                                    colorPicker: "Pick a colour",
+                                    mic: Audio.micMuted ? "Microphone off" : "Microphone on",
+                                    keyboard: "On-screen keyboard",
+                                    darkMode: Theme.dark ? "Dark appearance" : "Light appearance",
+                                    powerProfile: "Energy mode: " + (PowerProfiles.profile === PowerProfile.PowerSaver ? "Low Power" : PowerProfiles.profile === PowerProfile.Performance ? "Performance" : "Balanced"),
+                                    record: "Record the screen"
+                                })[modelData] ?? ""
+                        }
                     }
                 }
 
@@ -225,6 +239,12 @@ Variants {
                     readonly property int elapsed: Math.max(0, Math.floor((now - ScreenTools.recordingStarted) / 1000))
                     text: Math.floor(elapsed / 60) + ":" + String(elapsed % 60).padStart(2, "0")
                     onClicked: ScreenTools.stopRecording()
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: "Recording · " + parent.text + " · click to stop"
+                    }
                     Timer { running: ScreenTools.recording; interval: 1000; repeat: true; triggeredOnStart: true; onTriggered: parent.now = Date.now() }
                 }
 
@@ -237,6 +257,12 @@ Variants {
                     onClicked: {
                         Panels.show("controlCenter", bar.screen);
                         Panels.ccPage = "caffeine";
+                    }
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: "Keeping awake · " + System.keepAwakeStatus.toLowerCase()
                     }
                 }
 
@@ -255,6 +281,12 @@ Variants {
                                 Panels.toggle("trayMenu", bar.screen, mapToItem(null, 0, 0).x);
                             }
                         }
+                        HoverTip {
+                            target: parent
+                            hovered: parent.hovered && !parent.active
+                            screen: bar.screen
+                            text: modelData.tooltipTitle || modelData.title || modelData.id
+                        }
                     }
                 }
 
@@ -271,6 +303,12 @@ Variants {
                     active: Panels.isOpen("nowPlaying", bar.screen)
                     menu: "nowPlaying"
                     onClicked: Panels.toggle("nowPlaying", bar.screen, mapToItem(null, 0, 0).x)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: (Media.player?.trackTitle ?? "") + ((Media.player?.trackArtist ?? "") !== "" ? " · " + Media.player.trackArtist : "")
+                    }
                 }
 
                 // Resources
@@ -301,6 +339,12 @@ Variants {
                     active: Panels.isOpen("weatherMenu", bar.screen)
                     menu: "weatherMenu"
                     onClicked: Panels.toggle("weatherMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: Weather.condition + " · H " + Weather.high + "° L " + Weather.low + "°" + (Weather.place !== "" ? " · " + Weather.place : "")
+                    }
                 }
 
                 // Keyboard layout (only with two or more layouts)
@@ -309,6 +353,12 @@ Variants {
                     text: KeyboardLayout.short
                     color: bar.fg
                     onClicked: KeyboardLayout.next()
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: (KeyboardLayout.name || KeyboardLayout.short) + " · click to switch"
+                    }
                 }
 
                 // Battery
@@ -358,6 +408,19 @@ Variants {
                     active: Panels.isOpen("bluetoothMenu", bar.screen)
                     menu: "bluetoothMenu"
                     onClicked: Panels.toggle("bluetoothMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: {
+                            if (!parent.adapter?.enabled)
+                                return "Bluetooth off";
+                            const on = Bluetooth.devices.values.filter(d => d.connected);
+                            if (on.length === 0)
+                                return "Bluetooth on · nothing connected";
+                            return on.map(d => (d.name || d.deviceName) + (d.batteryAvailable ? " · " + Math.round(d.battery * 100) + "%" : "")).join(", ");
+                        }
+                    }
                 }
 
                 // Wi-Fi
@@ -379,6 +442,12 @@ Variants {
                     active: Panels.isOpen("wifiMenu", bar.screen)
                     menu: "wifiMenu"
                     onClicked: Panels.toggle("wifiMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: !Networking.wifiEnabled ? "Wi-Fi off" : !parent.network ? "Wi-Fi on · not connected" : parent.network.name + " · " + (parent.strength > 0.75 ? "Excellent" : parent.strength > 0.5 ? "Good" : parent.strength > 0.3 ? "Fair" : "Weak") + " signal"
+                    }
                 }
 
                 // Sound (scroll to change volume)
@@ -390,6 +459,12 @@ Variants {
                     active: Panels.isOpen("soundMenu", bar.screen)
                     menu: "soundMenu"
                     onClicked: Panels.toggle("soundMenu", bar.screen, mapToItem(null, 0, 0).x)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: (Audio.muted ? "Muted" : Math.round(Audio.volume * 100) + "%") + " · " + (Audio.sink?.description || Audio.sink?.nickname || "Sound")
+                    }
                 }
 
                 // Focus: the active mode's icon; click for the Focus page
@@ -402,6 +477,12 @@ Variants {
                         Panels.ccPage = "focus";
                         Panels.show("controlCenter", bar.screen);
                     }
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: (Focus.mode?.name ?? "Focus") + " · " + Focus.statusText
+                    }
                 }
 
                 MenuBarItem {
@@ -411,6 +492,12 @@ Variants {
                     color: bar.fg
                     active: Panels.isOpen("sidebar", bar.screen)
                     onClicked: Panels.toggle("sidebar", bar.screen)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: "AI assistant"
+                    }
                 }
                 MenuBarItem {
                     visible: bar.cfg.search
@@ -419,6 +506,12 @@ Variants {
                     color: bar.fg
                     active: Panels.isOpen("spotlight", bar.screen)
                     onClicked: Panels.toggle("spotlight", bar.screen)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: "Search"
+                    }
                 }
                 PrivacyDots {
                     active: Panels.isOpen("privacyMenu", bar.screen)
@@ -432,6 +525,12 @@ Variants {
                     active: Panels.isOpen("controlCenter", bar.screen)
                     menu: "controlCenter"
                     onClicked: Panels.toggle("controlCenter", bar.screen)
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: "Control Center"
+                    }
                 }
                 MenuBarItem {
                     visible: bar.cfg.clock
@@ -442,6 +541,12 @@ Variants {
                     indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
                     unread: Notifications.unread
                     text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? "h:mm:ss AP" : "h:mm AP"))
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: Qt.formatDate(clock.date, "dddd d MMMM yyyy") + (Notifications.unread > 0 ? " · " + Notifications.unread + (Notifications.unread === 1 ? " notification" : " notifications") : "")
+                    }
 
                     SystemClock {
                         id: clock
