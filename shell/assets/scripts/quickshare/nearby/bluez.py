@@ -50,6 +50,14 @@ WRITE_PATH = SERVICE_PATH + "/char1"
 NOTIFY_PATH = SERVICE_PATH + "/char2"
 ADV_EXTENDED = ROOT + "/adv0"
 ADV_LEGACY = ROOT + "/adv1"
+ADV_WAKE = ROOT + "/adv2"
+# "Someone nearby is sharing": while this computer looks for devices to send
+# to, the broadcast Android's Quick Share sends then. Phones nearby that
+# hear it make themselves visible (their "device nearby is sharing" prompt)
+# instead of only when their Quick Share screen is open. Service 0xFE2C with
+# this fixed data (as RQuickShare sends it: core_lib/src/hdl/blea.rs)
+WAKE_UUID = "0000fe2c-0000-1000-8000-00805f9b34fb"
+WAKE_DATA = bytes([252, 18, 142, 1, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 191, 45, 91, 160, 225, 216, 117, 36, 202, 0])
 CONNECT_TIMEOUT = 20
 SEEN_FOR = 30  # a phone not heard from for this long is gone
 SUBSCRIBE_WAIT = 5  # a phone that wrote but never subscribed to our packets
@@ -77,6 +85,12 @@ def advertisement_properties(service_data, extended):
         # (asks BlueZ for an extended advertisement even when it would fit)
         props["SecondaryChannel"] = ("s", "1M")
     return props
+
+
+def wake_properties():
+    """LEAdvertisement1's properties for the "someone is sharing" broadcast."""
+    return {"Type": ("s", "broadcast"), "ServiceData": ("a{sv}", {WAKE_UUID: ("ay", WAKE_DATA)}),
+            "Includes": ("as", [])}
 
 
 def gatt_objects(slot_value):
@@ -159,6 +173,7 @@ class Bluetooth:
         self.pending = []  # packets for the phone before it subscribed
         self.session = None  # (device path, WeaveSocket) of the phone connected to us
         self.scanning = False
+        self.waking = False  # the "someone is sharing" broadcast is on
         self.seen = {}  # device path → {"endpoint_id", "endpoint_info", "psm", "address", "type", "at"}
         self._found = self._lost = None
         self._subs = []
@@ -457,6 +472,8 @@ class Bluetooth:
             self._log(f"scan refused: {e.name} {e}")
             return False
         self.scanning = True
+        self.waking = await self._register_adv(ADV_WAKE, wake_properties())
+        self._log(f"looking for devices; nearby phones told someone is sharing: {self.waking}")
         self._prune = asyncio.ensure_future(self._prune_loop())
         objects = await self.refresh()
         for path, ifaces in objects.items():
@@ -470,6 +487,15 @@ class Bluetooth:
         self.scanning = False
         if self._prune:
             self._prune.cancel()
+        if self.waking:
+            self.waking = False
+            try:
+                await self.bus.call(BLUEZ, self.adapter, ADV_MANAGER, "UnregisterAdvertisement", "o", (ADV_WAKE,))
+            except DBusError:
+                pass
+            if ADV_WAKE in self.advertising:
+                self.advertising.remove(ADV_WAKE)
+            await self.bus.unexport(ADV_WAKE)
         try:
             await self.bus.call(BLUEZ, self.adapter, ADAPTER, "StopDiscovery")
             await self.bus.call(BLUEZ, self.adapter, ADAPTER, "SetDiscoveryFilter", "a{sv}", ({},))

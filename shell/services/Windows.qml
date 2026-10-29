@@ -43,6 +43,15 @@ Singleton {
             for (let i = 1; i <= Config.options.menubar.workspaceCount; i++)
                 if (!elsewhere.has(i))
                     mine.add(i);
+        // No gaps: an empty space between two in use (5 and 7 with windows,
+        // 6 empty) stays reachable
+        const ids = [...mine];
+        if (ids.length) {
+            const from = primary ? 1 : Math.min(...ids), to = Math.max(...ids);
+            for (let i = from; i < to; i++)
+                if (!elsewhere.has(i))
+                    mine.add(i);
+        }
         return [...mine].sort((a, b) => a - b);
     }
 }

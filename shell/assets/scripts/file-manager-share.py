@@ -31,12 +31,36 @@ SCRIPT = Path(__file__).resolve().parent / "share-files.sh"
 UCA_ID = "irice-share"  # our action's unique id in Thunar's uca.xml
 
 
+# The file managers' own folders. In the iRice login session (IRICE_TTY=1)
+# the shell keeps its config and data apart (sandbox/tty-shell.sh), but the
+# apps it starts get the usual ones (Launch.qml leaves out XDG_*_HOME), so
+# that's where their menus go.
 def data_home():
+    if os.environ.get("IRICE_TTY") == "1":
+        return Path.home() / ".local/share"
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
 
 
 def config_home():
+    if os.environ.get("IRICE_TTY") == "1":
+        return Path.home() / ".config"
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+
+def move_old_menus():
+    """Menus an earlier version put in the shell's own data folder, where
+    the file managers never looked: added again in theirs."""
+    old = os.environ.get("XDG_DATA_HOME")
+    if not old or Path(old) == data_home():
+        return
+    for k, m in MANAGERS.items():
+        olds = [Path(old) / p.relative_to(data_home()) for p in m["paths"]()]
+        if any(p.exists() for p in olds):
+            if not installed(k):
+                m["install"]()
+            for p in olds:
+                if p.exists():
+                    p.unlink()
 
 
 def quoted(path):
@@ -228,6 +252,7 @@ def main(argv):
         print(__doc__.strip(), file=sys.stderr)
         return 2
     cmd, names = argv[0], argv[1:]
+    move_old_menus()
     if cmd == "status":
         print(json.dumps(status()))
         return 0

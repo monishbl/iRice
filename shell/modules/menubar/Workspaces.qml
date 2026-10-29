@@ -60,6 +60,13 @@ Item {
         for (let i = 1; i <= Config.options.menubar.workspaceCount; i++)
             if (showOthers ? true : (primary && !monitorOf[i]) || monitorOf[i] === monitor)
                 all.add(i);
+        // No gaps: an empty space between two in use (5 and 7 with windows,
+        // 6 empty) keeps its chip, or there'd be no way to get to it
+        const list = [...all];
+        const from = showOthers || primary ? 1 : Math.min(...list), to = Math.max(...list);
+        for (let i = from; i < to; i++)
+            if (showOthers || monitorOf[i] === monitor || (!monitorOf[i] && (primary || i > from)))
+                all.add(i);
         return [...all].sort((a, b) => a - b);
     }
     readonly property int count: ids.length

@@ -59,6 +59,20 @@ class FileManagerMenus(unittest.TestCase):
     def tearDown(self):
         self.h.close()
 
+    def test_login_session_puts_menus_where_the_apps_look(self):
+        # (the shell's own data folder there isn't the apps'; menus added
+        # there by an earlier version move over)
+        old = self.h.root / "data/kio/servicemenus/irice-share.desktop"
+        old.parent.mkdir(parents=True)
+        old.write_text("[Desktop Entry]\n")
+        self.h.env["IRICE_TTY"] = "1"
+        r = self.h.fm("status")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        new = self.h.root / ".local/share/kio/servicemenus/irice-share.desktop"
+        self.assertTrue(new.exists())
+        self.assertIn("Send to a nearby device", new.read_text())
+        self.assertFalse(old.exists())
+
     def test_status_lists_the_file_managers_found(self):
         h = Home(managers=("dolphin",))
         try:

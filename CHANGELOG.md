@@ -1,5 +1,13 @@
 # iRice changelog
 
+## Sharing and spaces fixes · 2026-10-30
+
+- Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).
+- "Send to a nearby device…" appears in Dolphin and other file managers again (it was added where they didn't look).
+- **Send files…** in Control Center: on the Sharing page and in the Sharing tile's right-click menu.
+- An empty space between two in use (say 6, between 5 and 7) keeps its chip in the menu bar and its place in Overview, so you can still go to it.
+- Fewer warnings in iRice's log (notification banners, the window snap outline, saved settings).
+
 ## Quick Share: firewall, Wi-Fi Direct and pairing fixes · 2026-10-30
 
 - If your firewall (ufw or firewalld) blocks sharing, Settings → Sharing and System health say so, with an **Allow through firewall** button.

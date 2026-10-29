@@ -72,6 +72,15 @@ DetailPage {
         onCommitted: t => Config.options.sharing.name = t.trim()
     }
 
+    // Choose files, then a device (the same as Settings → Sharing)
+    ListRow {
+        icon: "paper-plane-tilt"
+        title: "Send files…"
+        status: "To a phone or computer nearby"
+        enabled: LocalSend.available && !FilePicker.busy
+        onClicked: Panels.pickShare()
+    }
+
     Caption { text: "Nearby" }
     Repeater {
         model: Sharing.devices

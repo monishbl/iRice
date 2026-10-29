@@ -31,6 +31,8 @@ QtObject {
                 status: Sharing.mixed && Sharing.on ? "Custom" : Sharing.level === "off" ? "No one" : Sharing.level === "10min" ? "Everyone · 10 min" : "Everyone",
                 act: () => Sharing.setLevel(Sharing.on ? "off" : "10min"),
                 menu: () => [
+                    { text: "Send files…", action: () => Panels.pickShare() },
+                    { separator: true },
                     { text: "No one", checked: Sharing.level === "off", action: () => Sharing.setLevel("off") },
                     { text: "Everyone for 10 minutes", checked: Sharing.level === "10min" && !Sharing.mixed, action: () => Sharing.setLevel("10min") },
                     { text: "Everyone", checked: Sharing.level === "everyone" && !Sharing.mixed, action: () => Sharing.setLevel("everyone") },

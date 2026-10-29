@@ -525,9 +525,17 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.01)
         self.assertEqual(found[0][0], dev)
         self.assertEqual((found[0][1]["endpoint_id"], found[0][1]["psm"]), ("PH0N", 128))
+        # nearby phones are told someone is sharing (they then show themselves)
+        wake = next(c for c in bus.calls if c[2] == "RegisterAdvertisement" and c[3][0] == bluez.ADV_WAKE)
+        self.assertTrue(wake)
+        props = bluez.wake_properties()
+        self.assertEqual(props["Type"], ("s", "broadcast"))
+        self.assertEqual(props["ServiceData"][1][bluez.WAKE_UUID][1][:5], bytes([0xFC, 0x12, 0x8E, 0x01, 0x42]))
         await ble.stop_scan()
         self.assertEqual(lost, [dev])
         self.assertIn("StopDiscovery", [c[2] for c in bus.calls])
+        self.assertIn(("UnregisterAdvertisement", bluez.ADV_WAKE),
+                      [(c[2], c[3][0]) for c in bus.calls if c[2] == "UnregisterAdvertisement"])
 
 
 # ── The root Wi-Fi helper's pure parts ───────────────────────────────────
