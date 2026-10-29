@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Fewer password prompts · 2026-10-30
+
+- Software Update asks for your password once, when you press **Update**, and never again in the middle: AUR updates no longer ask at each step.
+- Your next update also installs a small iRice system helper (one password, as part of that update). From then on, these no longer ask for your password: the fixes in System health and Settings → Sharing, and using your wallpaper on the login screen. Quick Share's faster Wi-Fi links ask once as they start, never during a transfer. This only applies to an administrator's account, at the computer.
+- Until that update, everything asks for your password as before.
+
 ## Sharing and spaces fixes · 2026-10-30
 
 - Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).

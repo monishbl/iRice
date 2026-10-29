@@ -11,10 +11,11 @@ import qs.common
 //   system   checkupdates, and yay/paru -Qua for the AUR (Updates)
 //   packages iRice's missing ones, and ones it dropped (a checkbox)
 // and makes one plan. Update runs it:
-//   1. the system part (sysupdate.py; one password for everything as root):
-//      snapshot (snapper / timeshift on btrfs) → pacman -Syu [holding
-//      Hyprland back if you chose to] → iRice's missing packages → the
-//      dropped ones; then the AUR (as you; a second password only if any)
+//   1. the system part (sysupdate.py; one password, at the start, for
+//      everything as root): snapshot (snapper / timeshift on btrfs) → iRice's
+//      root helper when it changed → pacman -Syu [holding Hyprland back if
+//      you chose to] → iRice's missing packages → the dropped ones; then the
+//      AUR (built as you; its pacman steps go through the same root part)
 //   2. iRice (IriceUpdate.launch → update-run.sh's screen): the new version,
 //      rebuilt against what's now installed (the glass plugin too when
 //      Hyprland changed), and the shell restarts
@@ -25,7 +26,7 @@ Singleton {
 
     // ── Check ───────────────────────────────────────────────────────────
     property bool checked: false // a check finished (this session)
-    readonly property bool checking: IriceUpdate.checking || Updates.checking || IriceUpdate.packagesChecking || compatPending || compatProc.running || hyprProc.running || snapProc.running
+    readonly property bool checking: IriceUpdate.checking || Updates.checking || IriceUpdate.packagesChecking || compatPending || compatProc.running || hyprProc.running || snapProc.running || helperProc.running
     onCheckingChanged: if (!checking && asked) {
         asked = false;
         checked = true;
@@ -45,6 +46,7 @@ Singleton {
         Updates.refresh();
         hyprProc.running = true;
         snapProc.running = true;
+        helperProc.running = true;
     }
     // The tested Hyprland range of the version that would be installed
     property var compat: null
@@ -92,6 +94,16 @@ Singleton {
         stdout: StdioCollector { onStreamFinished: root.snapshot = root.fakeRun ? "snapper" : text.trim() }
     }
 
+    // iRice's root helper (/usr/lib/irice) is missing or older than this
+    // folder's: the update's root part installs it (one password then,
+    // none for the small fixes afterwards), even when only iRice changes
+    property bool helperCurrent: true
+    Process {
+        id: helperProc
+        command: ["python3", "-I", Updates.script, "helper-status"]
+        onExited: code => root.helperCurrent = code === 0 || root.fakeRun
+    }
+
     // Versions: "1:0.56.2-4.1" → [0, 56, 2]; "0.56.x" matches any 0.56
     function parts(v) {
         return String(v ?? "").replace(/^\d+:/, "").replace(/-[^-]*$/, "").split(/[.+]/).map(x => x === "x" ? -1 : (parseInt(x) || 0));
@@ -135,6 +147,7 @@ Singleton {
             remove: removeDropped ? (pk.dropped ?? []) : [],
             // Hyprland changes: rebuild the glass plugin against it
             rebuild: !!hyprUpdate && hold !== 1 ? ["plugin"] : [],
+            setup: !root.helperCurrent,
             sysCount: sysCount,
             aurCount: aurCount
         };
@@ -152,7 +165,7 @@ Singleton {
     }
     readonly property string stepNow: IriceUpdate.applying ? "irice" : Updates.running ? (Updates.job?.step || "") : ""
     function stepName(s) {
-        return ({ snapshot: "Snapshot", system: "System", packages: "iRice packages", remove: "Unused packages", aur: "AUR", irice: "iRice", restart: "Restart" })[s] ?? s;
+        return ({ snapshot: "Snapshot", setup: "Helper", system: "System", packages: "iRice packages", remove: "Unused packages", aur: "AUR", irice: "iRice", restart: "Restart" })[s] ?? s;
     }
 
     // ── Update ──────────────────────────────────────────────────────────
@@ -176,7 +189,9 @@ Singleton {
         if (p.aur)
             args.push("--aur");
         const after = { irice: p.irice, rebuild: p.rebuild, at: Date.now() / 1000 };
-        const rootPart = p.system || p.aur || p.install.length > 0 || p.remove.length > 0;
+        // (the root helper's setup rides along with an iRice update too, so
+        // its one password comes when you asked for an update)
+        const rootPart = p.system || p.aur || p.install.length > 0 || p.remove.length > 0 || (p.setup && p.irice);
         // (what follows travels with the job: its status keeps it, so a shell
         // restart in between doesn't lose it)
         if (rootPart)

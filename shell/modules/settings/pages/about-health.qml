@@ -13,8 +13,9 @@ Column {
     readonly property string pageTitle: "System health"
 
     Component.onCompleted: Health.check()
-    // A fix that needs the administrator password is confirmed first: the
-    // row shows exactly what will run, and only the second press runs it
+    // A fix that runs as administrator is confirmed first: the row shows
+    // exactly what will run, and only the second press runs it (asking for
+    // the password until an update installed iRice's root helper)
     property string confirming: ""
 
     // What a status looks like: colour and a word, never colour alone
@@ -71,7 +72,7 @@ Column {
                     id: check
                     required property var modelData
                     label: modelData.name
-                    detail: modelData.detail + (page.confirming === modelData.id ? "\nRuns as administrator, after your password: " + modelData.fixCommand
+                    detail: modelData.detail + (page.confirming === modelData.id ? (modelData.fixPassword ? "\nRuns as administrator, after your password: " : "\nRuns as administrator: ") + modelData.fixCommand
                         : modelData.fix !== "" && (modelData.status === "fail" || modelData.status === "warn") ? "\nTo fix: " + modelData.fix : "")
                     QQ.Row {
                         spacing: 10
@@ -83,7 +84,7 @@ Column {
                         SettingsButton {
                             visible: check.modelData.canFix
                             primary: page.confirming === check.modelData.id
-                            text: Health.fixing === check.modelData.id ? "Fixing…" : page.confirming === check.modelData.id ? "Run with password" : "Fix"
+                            text: Health.fixing === check.modelData.id ? "Fixing…" : page.confirming === check.modelData.id ? (check.modelData.fixPassword ? "Run with password" : "Run fix") : "Fix"
                             busy: Health.fixing === check.modelData.id
                             enabled: Health.fixing === ""
                             onClicked: {

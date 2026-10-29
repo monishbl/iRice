@@ -16,9 +16,11 @@ instead of holding the page.
   health-check.py fix <id>
         the fix for a check, if it has one, from a fixed list (nothing
         free-form ever runs): restarting a user service runs directly;
-        starting a system service runs through pkexec, so it asks for the
-        password in iRice's own dialog, and only after the page showed the
-        exact command and the person pressed the button for it.
+        starting a system service runs as root through pkexec, only after
+        the page showed the exact command and the person pressed the button
+        for it: through iRice's root helper (/usr/lib/irice/irice-root fix
+        <id>, no password) once an update installed it, and until then the
+        command itself, after the password in iRice's own dialog.
 
 Nothing runs until the page asks: there's no background polling.
 """
@@ -43,27 +45,18 @@ PLUGIN_VERSION = 4  # what `hyprctl irice-glass ping` answers when current
 GROUPS = ("Sound", "Network & sharing", "Power", "Desktop", "iRice itself")
 
 # The fixes this script will run, and nothing else: user services directly,
-# system services (root) through pkexec
+# root ones (ROOT_FIXES, below) through pkexec
 FIXES = {
     "pipewire": ["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"],
     "wireplumber": ["systemctl", "--user", "restart", "wireplumber"],
     "portal": ["systemctl", "--user", "restart", "xdg-desktop-portal", "xdg-desktop-portal-hyprland"],
 }
-ROOT_FIXES = {
-    "networkmanager": ["systemctl", "enable", "--now", "NetworkManager"],
-    "bluetooth": ["systemctl", "enable", "--now", "bluetooth"],
-    "avahi": ["systemctl", "enable", "--now", "avahi-daemon"],
-    "upower": ["systemctl", "enable", "--now", "upower"],
-    "profiles": ["systemctl", "enable", "--now", "power-profiles-daemon"],
-}
-
-
-# Sharing's own checks and fixes (firewall, Bluetooth pairing prompts)
+# Sharing's own checks (firewall, Bluetooth pairing prompts), and the root
+# fixes: the fixed list in the root helper (irice-root.py)
 _spec = importlib.util.spec_from_file_location("sharing_check", os.path.join(HERE, "sharing-check.py"))
 sharing = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sharing)
-ROOT_FIXES["firewall"] = ["/bin/sh", "-c", sharing.FIREWALL_SCRIPT]
-ROOT_FIXES["btpairing"] = ["/bin/sh", "-c", sharing.PAIRING_SCRIPT]
+ROOT_FIXES = sharing.irice_root.FIXES
 SHOWN = {"firewall": sharing.FIREWALL_SHOWN, "btpairing": sharing.PAIRING_SHOWN}  # (what the page shows for these)
 
 _local = threading.local() # per check: whether something it asked hung
@@ -88,6 +81,8 @@ def result(id, name, group, status, detail="", fix=""):
     root = broken and id in ROOT_FIXES
     return {"id": id, "name": name, "group": group, "status": status, "detail": detail, "fix": fix,
             "canFix": broken and (id in FIXES or root), "fixRoot": root,
+            # a root fix asks for the password (no root helper installed yet)
+            "fixPassword": root and not sharing.helper_installed(),
             # what the button will run, shown before a root fix is confirmed
             "fixCommand": (SHOWN.get(id) or " ".join(ROOT_FIXES[id])) if root else ""}
 
@@ -471,11 +466,17 @@ def main(argv):
             cmd = FIXES[opts.id]
         elif opts.id in ROOT_FIXES:
             cmd = ["pkexec"] + ROOT_FIXES[opts.id]
+            if sharing.helper_installed():
+                cmd = ["pkexec", sharing.HELPER, "fix", opts.id]
         else:
             print(json.dumps({"ok": False, "error": "There's no automatic fix for that; run the command shown."}))
             return 1
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if cmd[1:2] == [sharing.HELPER] and p.returncode == sharing.irice_root.REFUSED_EXIT:
+                # (an older helper without this fix: the command itself, with the password)
+                cmd = ["pkexec"] + ROOT_FIXES[opts.id]
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             code, out = p.returncode, (p.stderr or p.stdout or "")
         except FileNotFoundError:
             code, out = None, f"{cmd[0]} isn't installed"

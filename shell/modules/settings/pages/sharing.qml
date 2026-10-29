@@ -20,8 +20,10 @@ Column {
     }
     // What on this computer stands in sharing's way (sharing-check.py):
     // a firewall, Bluetooth asking phones to pair
-    property var system: ({}) // { firewall: { kind, allowed, blocks }, pairing: { risk } }
-    property string fixing: "" // "firewall" | "pairing" while its password prompt and fix run
+    property var system: ({}) // { firewall: { kind, allowed, blocks }, pairing: { risk }, passwordless }
+    property string fixing: "" // "firewall" | "pairing" while its fix (and any password prompt) runs
+    // Once an update installed iRice's root helper, the fixes don't ask
+    readonly property string askNote: system.passwordless ? "" : " asks for your password and"
     property string fixError: ""
     readonly property string checkScript: decodeURIComponent(Qt.resolvedUrl("../../../assets/scripts/sharing-check.py").toString().replace("file://", ""))
     function checkSystem() {
@@ -109,7 +111,7 @@ Column {
             labelColor: Theme.color.danger
             detail: (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
                 : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
-                + ": phones can't connect to this computer. Allowing ports 53317–53319 and mDNS asks for your password."
+                + ": phones can't connect to this computer. Allowing ports 53317–53319 and mDNS fixes it" + (page.system.passwordless ? "." : "; it asks for your password.")
                 + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
             SettingsButton {
                 text: "Allow through firewall"
@@ -164,7 +166,7 @@ Column {
         Row {
             visible: page.system.pairing?.risk ?? false
             label: "Phones ask to pair"
-            detail: "Some of Bluetooth's experimental features (Ranging and LE Audio controls) make phones ask to pair when they send with Quick Share; phones never need to. Turning them off asks for your password and restarts Bluetooth (headphones reconnect, and still show their battery)."
+            detail: "Some of Bluetooth's experimental features (Ranging and LE Audio controls) make phones ask to pair when they send with Quick Share; phones never need to. Turning them off" + page.askNote + " restarts Bluetooth (headphones reconnect, and still show their battery)."
             SettingsButton {
                 text: "Stop pairing prompts"
                 icon: "bluetooth"

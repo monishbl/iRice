@@ -57,6 +57,11 @@ if [[ -d /usr/share/irice ]]; then
         run sudo mv /etc/greetd/config.toml.pre-irice /etc/greetd/config.toml
     fi
 fi
+# iRice's root helper and its polkit action and rule
+if [[ -e /usr/lib/irice || -e /etc/polkit-1/rules.d/49-irice.rules || -e /usr/share/polkit-1/actions/org.irice.root.policy ]]; then
+    run sudo rm -rf /usr/lib/irice
+    run sudo rm -f /etc/polkit-1/rules.d/49-irice.rules /usr/share/polkit-1/actions/org.irice.root.policy
+fi
 # The glass plugin and its source (the running session keeps its loaded copy
 # until you log out), and the installer's bookkeeping. Settings in ~/.config/irice stay.
 run rm -f "$DATA/irice/irice-glass.so" "$DATA/irice/irice-glass.so.new" "$DATA/irice/irice-glass.built-for"

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  iRice's root helper (/usr/lib/irice/irice-root, from
+  shell/assets/scripts/irice-root.py), one action per subcommand: pkexec
+  picks the action whose exec.path is the program and whose exec.argv1 is
+  its first argument exactly. Every action asks for an administrator's
+  password by default; 49-irice.rules lets the small fixed ones through
+  without it. A first argument not listed here falls back to pkexec's own
+  action (org.freedesktop.policykit.exec, the password).
+-->
+<policyconfig>
+  <vendor>iRice</vendor>
+
+  <action id="org.irice.root.wallpaper">
+    <description>Change the login screen's wallpaper</description>
+    <message>iRice wants to use your wallpaper on the login screen.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/irice/irice-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">wallpaper</annotate>
+  </action>
+
+  <action id="org.irice.root.fix">
+    <description>Fix a system setting iRice needs</description>
+    <message>iRice wants to fix a system service or setting.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/irice/irice-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">fix</annotate>
+  </action>
+
+  <action id="org.irice.root.wifi-helper">
+    <description>Set up a direct Wi-Fi link for Quick Share</description>
+    <message>iRice wants to set up a faster Wi-Fi link for Quick Share.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/irice/irice-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">wifi-helper</annotate>
+  </action>
+
+  <action id="org.irice.root.update">
+    <description>Install system updates</description>
+    <message>iRice wants to install updates.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/irice/irice-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">update</annotate>
+  </action>
+</policyconfig>

@@ -32,5 +32,5 @@ APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none:
 EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
 AUR=(mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
 # Packages iRice used to need and no longer does. Software Update offers to
-# remove the ones still installed (pkexec pacman -Rns); install.sh ignores them.
+# remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.
 DROPPED=()

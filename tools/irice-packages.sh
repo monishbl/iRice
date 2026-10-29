@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Which of iRice's packages (tools/packages.sh) this machine is missing, and
 # which ones iRice dropped are still installed. Read-only: installing and
-# removing is done by the shell (pkexec pacman, through iRice's password
-# dialog), from Settings → Software Update and before an iRice update.
+# removing is done by the shell (sysupdate.py's root part, after iRice's
+# password dialog), from Settings → Software Update and before an iRice update.
 #
 #   irice-packages.sh status [git ref]
 #     prints one JSON line: {"missing":[…],"unavailable":[…],"dropped":[…],

@@ -10,8 +10,12 @@ the mediums' BWU handlers):
 Receiving, this computer offers the path (it hosts); sending, the phone
 offers (it hosts) and this computer joins. Hosting and joining need root
 (wpa_supplicant's D-Bus API is root-only; NetworkManager can't host a
-Wi-Fi Direct group): qs-wifi-helper.py runs under pkexec, asked for only
+Wi-Fi Direct group): qs-wifi-helper.py runs under pkexec, started only
 when such a link is needed and kept a few minutes for the next transfer.
+Once an update installed iRice's root helper, it's the copy there
+(/usr/lib/irice/irice-root wifi-helper); before, the one here. Either way
+it asks for the password as it starts (it can make and join Wi-Fi
+networks, more than iRice's silent jobs may), never during a transfer.
 It ends — and takes every group, interface and DHCP server it made with it
 — when its stdin closes, so nothing outlives the helper.
 """
@@ -27,6 +31,8 @@ from .transport import StreamTransport
 
 UPGRADE_PORT = 53319  # next to the Quick Share port (53318), for firewall rules
 HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "qs-wifi-helper.py")
+# iRice's root helper, once installed (IRICE_SYSTEM_ROOT: tests)
+ROOT_HELPER = os.path.join(os.environ.get("IRICE_SYSTEM_ROOT", "/"), "usr/lib/irice/irice-root")
 HELPER_IDLE = 600  # the helper (and its password) stays this long after a transfer
 AUTH_TIMEOUT = 120  # for typing the password
 PATH = offline.BandwidthUpgradeNegotiationFrame.UpgradePathInfo
@@ -169,7 +175,7 @@ def medium_metadata(net):
 
 
 def helper_possible(net):
-    return bool(net.get("station")) and bool(shutil.which("pkexec")) and os.path.exists(HELPER)
+    return bool(net.get("station")) and bool(shutil.which("pkexec")) and (os.path.exists(HELPER) or os.access(ROOT_HELPER, os.X_OK))
 
 
 def mediums_we_join(helper_ok):
@@ -184,8 +190,9 @@ def mediums_we_join(helper_ok):
 class WifiHelper:
     """qs-wifi-helper.py under pkexec: one JSON request, one JSON answer."""
 
-    def __init__(self, on_auth=None, helper=HELPER):
+    def __init__(self, on_auth=None, helper=HELPER, root_helper=ROOT_HELPER):
         self.helper = helper
+        self.root_helper = root_helper
         self.on_auth = on_auth or (lambda: None)
         self.proc = None
         self._lock = asyncio.Lock()
@@ -196,10 +203,14 @@ class WifiHelper:
             return
         if not shutil.which("pkexec"):
             raise WifiUnavailable("Wi-Fi Direct needs pkexec (from polkit) to set up the link.")
-        self.on_auth()
-        _log("starting the Wi-Fi helper (pkexec)")
+        self.on_auth()  # (a password prompt is coming: say what for)
+        if self.root_helper and os.access(self.root_helper, os.X_OK):
+            cmd = ["pkexec", self.root_helper, "wifi-helper"]
+        else:
+            cmd = ["pkexec", sys.executable, "-I", self.helper]
+        _log("starting the Wi-Fi helper (" + " ".join(cmd[:3]) + ")")
         self.proc = await asyncio.create_subprocess_exec(
-            "pkexec", sys.executable, "-I", self.helper, stdin=asyncio.subprocess.PIPE,
+            *cmd, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
             line = await asyncio.wait_for(self.proc.stdout.readline(), AUTH_TIMEOUT)

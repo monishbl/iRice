@@ -7,12 +7,22 @@ started by the shell once this is done (services/SoftwareUpdate.qml).
     sysupdate.py run [--fake] [--system] [--snapshot snapper|timeshift]
                      [--ignore a,b] [--install a,b] [--remove a,b] [--aur]
     sysupdate.py cancel         stop it while it's still waiting for the password
+    sysupdate.py helper-status  exit 0 when iRice's root helper is installed
+                                and the same as this folder's
 
-Everything that needs root is one pkexec (one password): an inline script
-(argv, never a file that could be swapped) with the steps in order:
-snapshot → pacman -Syu [--ignore held] → pacman -S --needed <missing> →
-pacman -Rns <dropped>. It stops at the first failure. AUR updates run after
-it as you (yay/paru --sudo pkexec: a second prompt only when there are any).
+Everything that needs root is one pkexec (one password, asked at the
+start, never in the middle): iRice's root helper (irice-root.py update),
+with the steps in order: snapshot → its own files when they changed
+(setup: /usr/lib/irice, the polkit action and rule) → pacman -Syu [--ignore
+held] → pacman -S --needed <missing> → pacman -Rns <dropped>. It stops at the
+first failure. The installed copy (/usr/lib/irice/irice-root) runs when it's
+up to date; otherwise this folder's, which installs itself (setup).
+AUR updates run after it as you, while the root part waits: yay/paru get
+--sudo irice-sudo, which hands each pacman command to this job over a
+socket only it can use (sudo.sock, 0600, with a secret for this run), and
+this job to the root part over its stdin (a socket pair). The root part
+runs pacman alone, its arguments checked, and ends when this job closes
+its end. No second password.
 
 Everything goes to $XDG_RUNTIME_DIR/irice-sysupdate/:
     status.json  what's happening, rewritten whole on each change (the shell
@@ -24,6 +34,7 @@ Everything goes to $XDG_RUNTIME_DIR/irice-sysupdate/:
     lock         held (flock) for the whole run: one update at a time; a
                  status that says "running" with the lock free was interrupted
     auth.pid     the pkexec waiting for the password
+    sudo.sock    irice-sudo's way in, during the AUR step only
 
 Root comes from pkexec, so the password is asked by iRice's own dialog (its
 polkit agent). The job must run in the login session (setsid from the shell,
@@ -38,13 +49,19 @@ checked by its start time (a stale pid may belong to anything by now).
 canned pacman run with delays: the whole UI, nothing installed.
 """
 import fcntl
+import hmac
+import importlib.util
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
+import socket
+import struct
 import subprocess
 import sys
+import threading
 import time
 
 RUN = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
@@ -54,6 +71,13 @@ LOG = os.path.join(DIR, "log")
 LOCK = os.path.join(DIR, "lock")
 AUTH = os.path.join(DIR, "auth.pid")
 ROOTLOG = os.path.join(DIR, "root.log")
+SUDO_SOCKET = os.path.join(DIR, "sudo.sock")
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHELL = os.path.dirname(os.path.dirname(HERE))  # (where the root helper's setup reads from)
+SHIM = os.path.join(HERE, "irice-sudo")
+SOURCE = os.path.join(HERE, "irice-root.py")  # the root helper, as installed by setup
+SYSTEM = os.environ.get("IRICE_SYSTEM_ROOT", "/")  # (tests)
+INSTALLED = os.path.join(SYSTEM, "usr/lib/irice/irice-root")
 DBLOCK = "/var/lib/pacman/db.lck"
 # Updated packages that want a restart to take effect
 RESTART = re.compile(r"^(linux(-[a-z0-9]+)?|linux-firmware.*|systemd|systemd-libs|glibc|mesa|lib32-mesa|nvidia.*|amd-ucode|intel-ucode|dbus|dbus-broker.*)$")
@@ -78,6 +102,8 @@ log = None
 cancel_asked = False
 authed = False   # the root part has started: no more cancelling
 asking = None    # the pkexec waiting for the password
+root_done = False  # the root part's pacman steps finished (it waits for the AUR step)
+root_proc = None   # the root part, kept until the AUR step is over
 
 
 def start_time(pid):
@@ -119,7 +145,7 @@ def at(lo, hi, frac):
     return int(max(state["percent"], min(99, p)))
 
 
-WEIGHT = {"snapshot": 6, "system": 64, "packages": 12, "remove": 4, "aur": 14}
+WEIGHT = {"snapshot": 6, "setup": 1, "system": 64, "packages": 12, "remove": 4, "aur": 14}
 
 
 def begin(step):
@@ -129,7 +155,7 @@ def begin(step):
     total = sum(WEIGHT.get(x, 10) for x in steps)
     before = sum(WEIGHT.get(x, 10) for x in steps[:steps.index(step)]) if step in steps else 0
     span = (100 * before / total, 100 * (before + WEIGHT.get(step, 10)) / total)
-    text = {"snapshot": "Taking a snapshot", "system": "Checking for updates", "packages": "Installing iRice's packages",
+    text = {"snapshot": "Taking a snapshot", "setup": "Setting up iRice's system helper", "system": "Checking for updates", "packages": "Installing iRice's packages",
             "remove": "Removing unused packages", "aur": "Updating from the AUR"}.get(step, step)
     set_(step=step, phase=step if step != "system" else "sync", text=text, done=0, total=0, percent=at(0, 0, 0))
 
@@ -181,12 +207,15 @@ def parse(line, aur=False):
 
 
 def feed(line, aur):
-    global authed
+    global authed, root_done
     line = line.rstrip("\n").split("\r")[-1]  # (\r progress bars, just in case)
     if line == "@@authenticated":
         authed = True
         if state["phase"] == "auth":
             set_(phase="sync", text="Checking for updates")
+        return
+    if line == "@@root-done":
+        root_done = True
         return
     out(line)
     parse(line, aur)
@@ -203,14 +232,17 @@ def stream(cmd, aur=False, env=None):
     return p.wait()
 
 
-def stream_root(cmd, env=None):
+def stream_root(cmd, env=None, stdin=subprocess.DEVNULL):
     """Runs the pkexec'd root part. Its output goes to a file this job opened
     (handed over as its stdout, so nothing is opened by path as root), and
-    this job follows the file: if the job dies, root carries on unharmed."""
-    global asking
+    this job follows the file: if the job dies, root carries on unharmed.
+    Returns its exit code, or 0 once it says "@@root-done" (it then waits
+    for the AUR step's pacman commands, on stdin: root_proc)."""
+    global asking, root_proc
     out("$ " + " ".join(cmd[:3]) + " …")
     with open(ROOTLOG, "w") as w:
-        asking = subprocess.Popen(cmd, stdout=w, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+        asking = subprocess.Popen(cmd, stdout=w, stderr=subprocess.STDOUT, stdin=stdin, env=env)
+    root_proc = asking
     with open(AUTH, "w") as f:
         f.write(f"{asking.pid} {start_time(asking.pid)}")
     set_(phase="auth", text="Waiting for your password")
@@ -218,7 +250,7 @@ def stream_root(cmd, env=None):
     rest = ""
     with open(ROOTLOG, errors="replace") as r:
         while True:
-            done = asking.poll() is not None
+            done = asking.poll() is not None or root_done
             r.seek(pos)
             chunk = r.read()
             pos = r.tell()
@@ -227,11 +259,11 @@ def stream_root(cmd, env=None):
             for line in lines:
                 feed(line, False)
             if done:
-                if rest:
+                if rest and not root_done:
                     feed(rest, False)
                 break
             time.sleep(0.2)
-    code = asking.returncode
+    code = 0 if root_done else asking.returncode
     asking = None
     try:
         os.unlink(AUTH)
@@ -315,40 +347,163 @@ def fake_run(plan):
     finish("done", "Updated")
 
 
+# ── The root helper ─────────────────────────────────────────────────────
+def root_helper():
+    spec = importlib.util.spec_from_file_location("irice_root", SOURCE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def helper_current():
+    """Whether everything the root helper's setup installs is there and the
+    same as in this folder (else the update's root part installs it)."""
+    for rel, dest, mode in root_helper().FILES:
+        try:
+            with open(os.path.join(SHELL, rel), "rb") as a, open(os.path.join(SYSTEM, dest.lstrip("/")), "rb") as b:
+                if a.read() != b.read():
+                    return False
+        except OSError:
+            return False
+    return True
+
+
+def root_command(plan, broker):
+    """pkexec's arguments for the root part: the installed helper, or this
+    folder's (by path, run by Python) when it's missing or out of date."""
+    cmd = [INSTALLED] if not plan["setup"] and os.access(INSTALLED, os.X_OK) else [sys.executable, "-I", SOURCE]
+    cmd.append("update")
+    if plan["snapshot"]:
+        cmd += ["--snapshot", plan["snapshot"]]
+    if plan["system"]:
+        cmd.append("--system")
+    for k in ("ignore", "install", "remove"):
+        if plan[k]:
+            cmd += ["--" + k, ",".join(plan[k])]
+    if plan["setup"]:
+        cmd += ["--setup", SHELL]
+    if broker:
+        cmd.append("--broker")
+    return cmd
+
+
+# ── The AUR step's pacman commands ──────────────────────────────────────
+class Broker:
+    """sudo.sock, for irice-sudo (started by yay/paru): each request, with
+    this run's secret and from this user, goes to the root part over chan;
+    its answer comes back the same way. One at a time."""
+
+    def __init__(self, chan):
+        self.chan = chan
+        self.answers = chan.makefile("rb")
+        self.token = secrets.token_hex(16)
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        try:
+            os.unlink(SUDO_SOCKET)
+        except FileNotFoundError:
+            pass
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            self.srv.bind(SUDO_SOCKET)
+        finally:
+            os.umask(old)
+        os.chmod(SUDO_SOCKET, 0o600)
+        self.srv.listen(4)
+        self.srv.settimeout(0.5)
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+        self.thread.start()
+
+    def env(self, env):
+        return dict(env, IRICE_SUDO_SOCKET=SUDO_SOCKET, IRICE_SUDO_TOKEN=self.token)
+
+    def serve(self):
+        while not self.stop.is_set():
+            try:
+                conn, _ = self.srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            threading.Thread(target=self.one, args=(conn,), daemon=True).start()
+
+    def one(self, conn):
+        def send(obj):
+            try:
+                conn.sendall((json.dumps(obj) + "\n").encode())
+            except OSError:
+                pass
+        with conn:
+            conn.settimeout(None)
+            try:
+                uid = struct.unpack("3i", conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
+                req = json.loads(conn.makefile("rb").readline() or b"{}")
+            except (OSError, ValueError):
+                return
+            if uid != os.getuid() or not hmac.compare_digest(str(req.get("token", "")), self.token):
+                send({"out": "irice-sudo: not this update's\n"})
+                send({"exit": 1})
+                return
+            with self.lock:
+                try:
+                    self.chan.sendall((json.dumps({"argv": req.get("argv"), "cwd": req.get("cwd")}) + "\n").encode())
+                except OSError:
+                    send({"out": "irice-sudo: the update's root part has stopped\n"})
+                    send({"exit": 1})
+                    return
+                # Everything up to its exit code, even if irice-sudo went away
+                # (so the next answer is the next request's)
+                for line in self.answers:
+                    try:
+                        conn.sendall(line)
+                    except OSError:
+                        pass
+                    try:
+                        if "exit" in json.loads(line):
+                            return
+                    except ValueError:
+                        pass
+                send({"out": "irice-sudo: the update's root part has stopped\n"})
+                send({"exit": 1})
+
+    def close(self):
+        self.stop.set()
+        self.srv.close()
+        try:
+            os.unlink(SUDO_SOCKET)
+        except FileNotFoundError:
+            pass
+
+
+def end_root(chan):
+    """Closes the root part's channel (it ends) and waits for it."""
+    global root_proc
+    if chan is not None:
+        try:
+            chan.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        chan.close()
+    if root_proc is not None:
+        root_proc.wait()
+        root_proc = None
+
+
 # ── The real run ────────────────────────────────────────────────────────
-# The root part, as one inline script: $1 snapshot tool, $2 held packages,
-# $3 packages to install, $4 packages to remove, $5 1 = pacman -Syu.
-# Exit codes say which step failed (20 snapshot, 21 system, 22 install,
-# 23 remove); "@@step" lines mark where it is.
-ROOT_SCRIPT = r"""
-# Nothing this job does (exiting, closing its end) may stop a transaction
-trap '' PIPE HUP INT TERM
-echo "@@authenticated"
-step() { echo "@@step $1"; }
-if [ "$1" = snapper ]; then
-    step snapshot
-    snapper -c root create -d "Before iRice update" -c number || exit 20
-elif [ "$1" = timeshift ]; then
-    step snapshot
-    timeshift --create --comments "Before iRice update" --scripted || exit 20
-fi
-if [ "$5" = 1 ]; then
-    step system
-    if [ -n "$2" ]; then pacman -Syu --noconfirm --ignore "$2" || exit 21
-    else pacman -Syu --noconfirm || exit 21; fi
-fi
-if [ -n "$3" ]; then
-    step packages
-    pacman -S --needed --noconfirm -- $(echo "$3" | tr , ' ') || exit 22
-fi
-if [ -n "$4" ]; then
-    step remove
-    pacman -Rns --noconfirm -- $(echo "$4" | tr , ' ') || exit 23
-fi
-exit 0
-"""
+# The root part: irice-root.py update. Exit codes say which step failed
+# (20 snapshot, 21 system, 22 install, 23 remove); "@@step" lines mark
+# where it is, "@@root-done" that it's waiting for the AUR step.
 # A package name: never starting with "-" (it would pass as a pacman option)
 NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
+
+
+def aur_command(helper, plan):
+    cmd = [helper, "-Sua", "--noconfirm", "--sudo", SHIM]
+    cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
+    if plan["ignore"]:
+        cmd += ["--ignore", ",".join(plan["ignore"])]
+    return cmd
 
 
 def real_run(plan):
@@ -360,12 +515,16 @@ def real_run(plan):
     if not shutil.which("pkexec"):
         return finish("error", "Can't ask for your password", "pkexec isn't installed (it comes with the polkit package).")
     env = dict(os.environ, LANG="C", LC_ALL="C")
-    root_steps = [x for x in plan["steps"] if x != "aur"]
-    if root_steps:
-        if cancel_asked:
-            return finish("cancelled", "Update cancelled")
-        code = stream_root(["pkexec", "/bin/sh", "-c", ROOT_SCRIPT, "sh", plan["snapshot"], ",".join(plan["ignore"]),
-                       ",".join(plan["install"]), ",".join(plan["remove"]), "1" if plan["system"] else "0"], env=env)
+    helper = aur_helper() if "aur" in plan["steps"] else ""
+    if not helper and all(x == "aur" for x in plan["steps"]):
+        return finish("done", "Updated")  # (nothing for root to do)
+    if cancel_asked:
+        return finish("cancelled", "Update cancelled")
+    # The root part, even for the AUR alone: its pacman commands go through it
+    chan, theirs = socket.socketpair()
+    try:
+        code = stream_root(["pkexec"] + root_command(plan, bool(helper)), env=env, stdin=theirs)
+        theirs.close()
         if code in (126, 127) and not authed:
             # 126: the dialog was dismissed (or Cancel stopped it); 127: not authorised
             return finish("cancelled", "Update cancelled") if (code == 126 or cancel_asked) else \
@@ -386,19 +545,20 @@ def real_run(plan):
                           "Everything else is done. Something else may still need them: " + tail(3))
         if code != 0:
             return finish("error", "The update stopped", tail())
-    if "aur" in plan["steps"]:
-        helper = aur_helper()
         if helper:
             out("@@step aur")
             parse("@@step aur")
-            cmd = [helper, "-Sua", "--noconfirm", "--sudo", "pkexec"]
-            cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
-            if plan["ignore"]:
-                cmd += ["--ignore", ",".join(plan["ignore"])]
-            code = stream(cmd, aur=True, env=env)
+            broker = Broker(chan)
+            try:
+                code = stream(aur_command(helper, plan), aur=True, env=broker.env(env))
+            finally:
+                broker.close()
             if code != 0:
                 return finish("error", "The AUR updates didn't finish",
                               "Updates from your distribution are installed. " + tail())
+    finally:
+        theirs.close()
+        end_root(chan)
     finish("done", "Updated")
 
 
@@ -488,7 +648,7 @@ def cancel():
     return 0
 
 
-def plan_of(a):
+def plan_of(a, fake=False):
     """The steps from the arguments, package names checked."""
     def names(flag):
         v = a[a.index(flag) + 1] if flag in a and a.index(flag) + 1 < len(a) else ""
@@ -505,17 +665,23 @@ def plan_of(a):
         p["then"] = json.loads(then)
     except ValueError:
         p["then"] = None
-    p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["system"] if p["system"] else []) + \
+    # The root helper's own files, when they changed (never in the sandbox)
+    p["setup"] = not fake and not helper_current()
+    p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
         (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a else [])
     return p
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if not a or a[0] not in ("run", "cancel"):
+    if not a or a[0] not in ("run", "cancel", "helper-status"):
         print(__doc__, file=sys.stderr)
         sys.exit(2)
     if a[0] == "cancel":
         sys.exit(cancel())
+    if a[0] == "helper-status":
+        current = helper_current()
+        print(json.dumps({"current": current}))
+        sys.exit(0 if current else 1)
     fake = "--fake" in a or os.environ.get("IRICE_FAKE_SYSUPDATE") == "1" or os.environ.get("IRICE_SANDBOX") == "1"
-    sys.exit(run(fake, plan_of(a)))
+    sys.exit(run(fake, plan_of(a, fake)))

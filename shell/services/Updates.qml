@@ -10,7 +10,9 @@ import qs.common
 // without a terminal (SoftwareUpdate plans it): assets/scripts/sysupdate.py runs
 // detached (it keeps going with Settings closed, and across shell restarts)
 // and writes its progress to $XDG_RUNTIME_DIR/irice-sysupdate/, read here.
-// The password is asked by iRice's own dialog (pkexec → the polkit agent).
+// The password is asked once, at the start, by iRice's own dialog (pkexec →
+// the polkit agent); the AUR step's pacman commands go through the same root
+// part, so it never asks again in the middle.
 // In the dev sandbox the update is simulated (nothing is installed).
 Singleton {
     id: root

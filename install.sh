@@ -406,6 +406,17 @@ services() {
     svc_on plocate-updatedb.timer
     # Sound runs per user (socket-activated)
     run systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber 2>/dev/null
+    root_helper
+    return 0
+}
+
+# iRice's root helper (/usr/lib/irice/irice-root) and its polkit action and
+# rule: the login screen's wallpaper, the fixes in System health and Sharing,
+# and Quick Share's Wi-Fi links then run without a password; updates ask once,
+# at the start. Software Update keeps it in step with this folder.
+root_helper() {
+    command -v pkexec >/dev/null || { warn "polkit isn't installed: iRice will ask for your password for each fix"; return 0; }
+    run sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/irice-root.py" setup "$ROOT/shell" || warn "iRice's root helper wasn't installed: Software Update installs it next time"
     return 0
 }
 

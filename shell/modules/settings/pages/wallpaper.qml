@@ -195,6 +195,7 @@ Column {
         width: parent.width
         title: "Login screen"
         property bool installed: false
+        property bool passwordless: false // iRice's root helper is installed: no password
         property string status: ""
         footer: installed ? status : "Install the iRice login screen with ./install.sh --greeter."
         Process {
@@ -203,14 +204,24 @@ Column {
             onExited: code => loginGroup.installed = code === 0
         }
         Process {
+            running: true
+            command: ["test", "-x", "/usr/lib/irice/irice-root"]
+            onExited: code => loginGroup.passwordless = code === 0
+        }
+        // Through iRice's root helper (it checks it's an image, reads it as
+        // you), or before an update installed that, cp with the password
+        Process {
             id: copyWallpaper
-            command: ["pkexec", "cp", Wallpaper.path, "/usr/share/irice/wallpaper.jpg"]
-            onExited: code => loginGroup.status = code === 0 ? "The login screen now uses this wallpaper." : "Didn't change the login screen. Approve the password prompt to try again."
+            command: loginGroup.passwordless ? ["pkexec", "/usr/lib/irice/irice-root", "wallpaper", Wallpaper.path]
+                : ["pkexec", "cp", Wallpaper.path, "/usr/share/irice/wallpaper.jpg"]
+            onExited: code => loginGroup.status = code === 0 ? "The login screen now uses this wallpaper."
+                : loginGroup.passwordless ? "Didn't change the login screen. Pick a JPEG, PNG or WebP wallpaper and try again."
+                : "Didn't change the login screen. Approve the password prompt to try again."
         }
         Row {
             visible: loginGroup.installed
             label: "Use this wallpaper on the login screen"
-            detail: "Asks for your password to update the login screen's copy."
+            detail: loginGroup.passwordless ? "Copies it to the login screen." : "Asks for your password to update the login screen's copy."
             Rectangle {
                 width: setLabel.implicitWidth + 24
                 height: 28

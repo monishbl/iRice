@@ -23,10 +23,13 @@ health (health-check.py) and the Quick Share helper (why a link failed).
 
   sharing-check.py status          JSON {"firewall": {...}, "pairing": {...}}
   sharing-check.py fix firewall|pairing
-        runs the fixed script below through pkexec (iRice's password dialog);
-        nothing from the command line reaches it. JSON {"ok", "error"}.
+        runs the fixed script (irice-root.py) through pkexec: the installed
+        root helper, without a password (/usr/lib/irice/irice-root fix …),
+        or before it's installed the script itself, after iRice's password
+        dialog; nothing from the command line reaches it. JSON {"ok", "error"}.
 IRICE_SYSTEM_ROOT (tests) is where /etc and /usr are looked for.
 """
+import importlib.util
 import json
 import os
 import re
@@ -37,38 +40,21 @@ import sys
 ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
 MARKER = os.path.join(STATE, "sharing-firewall")
-DROPIN = "/etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"
-# rap: Ranging; vcp: volume (with volume offset, audio input); micp: microphone;
-# mcp: media control; bass: broadcast audio scan
-PLUGINS = ("rap", "vcp", "micp", "mcp", "bass")
+# The fixed scripts live in the root helper (irice-root.py), which runs them
+# without a password once installed; until then they go through pkexec here
+_spec = importlib.util.spec_from_file_location("irice_root", os.path.join(os.path.dirname(os.path.abspath(__file__)), "irice-root.py"))
+irice_root = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(irice_root)
+DROPIN = irice_root.DROPIN
+PLUGINS = irice_root.PLUGINS
+FIREWALL_SCRIPT, FIREWALL_SHOWN = irice_root.FIREWALL_SCRIPT, irice_root.FIREWALL_SHOWN
+PAIRING_SCRIPT, PAIRING_SHOWN = irice_root.PAIRING_SCRIPT, irice_root.PAIRING_SHOWN
+# The installed helper (/usr/lib/irice/irice-root): its fixes don't ask
+HELPER = os.path.join(ROOT, "usr/lib/irice/irice-root")
 
-FIREWALL_SCRIPT = r'''set -e
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
-    ufw allow 53317:53319/tcp comment "iRice sharing"
-    ufw allow 53317/udp comment "iRice sharing (LocalSend)"
-    ufw allow 5353/udp comment "mDNS"
-elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns
-    firewall-cmd --reload
-else
-    echo "No firewall (ufw or firewalld) is turned on" >&2
-    exit 1
-fi
-'''
-FIREWALL_SHOWN = ("ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 5353/udp "
-                  "(or firewalld: --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns)")
 
-PAIRING_SCRIPT = r'''set -e
-NOPLUGIN=@PLUGINS@
-exe=$(systemctl show -p ExecStart --value bluetooth | sed -n 's/.*path=\([^ ;]*\).*/\1/p')
-[ -x "$exe" ] || exe=/usr/lib/bluetooth/bluetoothd
-mkdir -p /etc/systemd/system/bluetooth.service.d
-printf '# iRice: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=%s --noplugin=%s\n' "$exe" "$NOPLUGIN" > /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf
-systemctl daemon-reload
-systemctl restart bluetooth
-'''
-PAIRING_SCRIPT = PAIRING_SCRIPT.replace("@PLUGINS@", ",".join(PLUGINS))
-PAIRING_SHOWN = f"bluetoothd --noplugin={','.join(PLUGINS)} (a drop-in in {os.path.dirname(DROPIN)}), then restart Bluetooth"
+def helper_installed():
+    return os.access(HELPER, os.X_OK)
 
 
 def _path(p):
@@ -151,7 +137,7 @@ def pairing():
 
 
 def status():
-    return {"firewall": firewall(), "pairing": pairing()}
+    return {"firewall": firewall(), "pairing": pairing(), "passwordless": helper_installed()}
 
 
 def fix(what):
@@ -162,7 +148,14 @@ def fix(what):
         return {"ok": False, "error": "pkexec (from polkit) is needed to ask for your password."}
     kind = firewall()["kind"] if what == "firewall" else None
     try:
-        p = subprocess.run(["pkexec", "/bin/sh", "-c", script], capture_output=True, text=True, timeout=120)
+        p = None
+        if helper_installed():
+            p = subprocess.run(["pkexec", HELPER, "fix", "btpairing" if what == "pairing" else what],
+                               capture_output=True, text=True, timeout=120)
+            if p.returncode == irice_root.REFUSED_EXIT:  # (an older helper without this fix: ask as before)
+                p = None
+        if p is None:
+            p = subprocess.run(["pkexec", "/bin/sh", "-c", script], capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "It took too long; try again."}
     if p.returncode in (126, 127):

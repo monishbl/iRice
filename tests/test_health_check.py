@@ -184,6 +184,28 @@ class HealthCheck(unittest.TestCase):
         dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n")
         self.assertEqual(self.rows()["btpairing"]["status"], "ok")
 
+    def test_root_fixes_go_through_the_installed_helper(self):
+        rows = self.rows(FAKE_MODE="fail")
+        self.assertTrue(rows["avahi"]["fixPassword"])  # not installed yet: the password
+        helper = self.sysroot / "usr/lib/irice/irice-root"
+        helper.parent.mkdir(parents=True)
+        helper.write_text("#!/bin/sh\n")
+        helper.chmod(0o755)
+        rows = self.rows(FAKE_MODE="fail")
+        self.assertTrue(rows["avahi"]["fixRoot"])  # (still confirmed first)
+        self.assertFalse(rows["avahi"]["fixPassword"])
+        out = self.check("fix", "avahi")
+        self.assertTrue(json.loads(out.stdout)["ok"], out.stdout)
+        self.assertIn(f"pkexec {helper} fix avahi", self.log.read_text())
+        self.assertNotIn("pkexec systemctl", self.log.read_text())
+        # Settings → Sharing's fixes too (its "pairing" is the helper's "btpairing")
+        sharing = ROOT / "shell/assets/scripts/sharing-check.py"
+        p = subprocess.run([sys.executable, "-I", str(sharing), "fix", "pairing"], env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertTrue(json.loads(p.stdout)["ok"], p.stdout)
+        self.assertIn(f"pkexec {helper} fix btpairing", self.log.read_text())
+        p = subprocess.run([sys.executable, "-I", str(sharing), "status"], env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertTrue(json.loads(p.stdout)["passwordless"])
+
     def test_a_refused_password_says_so(self):
         out = self.check("fix", "avahi", FAKE_MODE="fail")
         self.assertEqual(json.loads(out.stdout)["ok"], False)
