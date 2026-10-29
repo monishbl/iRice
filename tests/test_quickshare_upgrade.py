@@ -287,6 +287,27 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.p.recv_sharing()  # the accept
         await self.finish(data)
 
+    async def test_networkmanager_wifi_offers_no_wifi_direct(self):
+        # (it removes any group it didn't start; the password and the wait
+        # would be for nothing) Intel on 5 GHz: no hotspot either
+        self.net = dict(net(), nm=True, driver="iwlwifi", frequency=5180)
+        data = b"small"
+        await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT])
+        warning = await self.events.wait("warning")
+        self.assertIn("NetworkManager ends Wi-Fi Direct", warning["message"])
+        self.assertIn("same Wi-Fi", warning["message"])
+        self.assertEqual(self.helper.requests, [])  # no password asked
+        await self.p.recv_sharing()  # the accept
+        await self.finish(data)
+
+    def test_networkmanager_runs_the_wifi(self):
+        from nearby import wifi
+        self.assertTrue(wifi.nm_manages("wlan0:connected\np2p-dev-wlan0:disconnected\nlo:connected (externally)", "wlan0"))
+        self.assertFalse(wifi.nm_manages("wlan0:unmanaged\n", "wlan0"))
+        self.assertFalse(wifi.nm_manages("", "wlan0"))  # (no NetworkManager)
+        self.assertTrue(wifi.hotspot_possible({"driver": "iwlwifi", "frequency": 2437}))
+        self.assertFalse(wifi.hotspot_possible({"driver": "iwlwifi", "frequency": 5180}))
+
     async def test_password_refused_stays_on_bluetooth(self):
         self.helper.fail = True
         data = os.urandom(5000)

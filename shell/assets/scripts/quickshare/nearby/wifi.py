@@ -109,15 +109,51 @@ def wifi_interfaces():
         return []
 
 
+def nm_manages(nmcli_out, station):
+    """`nmcli -t -f DEVICE,STATE device` → whether NetworkManager runs this
+    Wi-Fi. It then ends every Wi-Fi Direct group it didn't start itself:
+    told of the new group interface (P2PDevice.GroupStarted, on the
+    station's own wpa_supplicant object), it wraps it, and unless its own
+    P2P device is connecting nothing keeps that, so it's disposed with a
+    RemoveInterface (NetworkManager's nm-supplicant-interface.c; seen on a
+    real laptop: the group removed 2 ms after it started, on every channel)."""
+    for line in nmcli_out.splitlines():
+        dev, _, state = line.partition(":")
+        if dev == station:
+            return not state.startswith("unmanaged")
+    return False
+
+
+def wifi_driver(station):
+    try:
+        return os.path.basename(os.readlink(f"/sys/class/net/{station}/device/driver"))
+    except OSError:
+        return ""
+
+
 async def network():
     """{"addresses": [(ifname, IPv4Interface)], "station": ifname or None,
-    "frequency": MHz or None, "5ghz", "p2p_go"}."""
+    "frequency": MHz or None, "5ghz", "p2p_go", "nm": NetworkManager runs
+    the Wi-Fi, "driver"}."""
     addresses = parse_ip_addr(await _run("ip", "-j", "-4", "addr", "show"))
     stations = wifi_interfaces()
     station = stations[0] if stations else None
     freq = parse_iw_link(await _run("iw", "dev", station, "link")) if station else None
     caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False}
-    return {"addresses": addresses, "station": station, "frequency": freq, **caps}
+    nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
+    return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm,
+            "driver": wifi_driver(station) if station else "", **caps}
+
+
+def direct_possible(net):
+    """Whether a Wi-Fi Direct group we host can last (see nm_manages)."""
+    return net.get("p2p_go", True) and not net.get("nm", False)
+
+
+def hotspot_possible(net):
+    """Intel Wi-Fi doesn't run an access point on 5 GHz, and one next to a
+    connection has to share its channel (qs-wifi-helper.py ap_freq)."""
+    return not (net.get("driver") == "iwlwifi" and (net.get("frequency") or 0) >= 5000)
 
 
 def medium_metadata(net):
@@ -309,9 +345,9 @@ def host_paths(conn, net, helper_ok, reachable=True):
         if mine:
             out.append(("lan", mine))
     if helper_ok:
-        if CR.WIFI_DIRECT in theirs and net.get("p2p_go", True):
+        if CR.WIFI_DIRECT in theirs and direct_possible(net):
             out.append(("direct", None))
-        if CR.WIFI_HOTSPOT in theirs:
+        if CR.WIFI_HOTSPOT in theirs and hotspot_possible(net):
             out.append(("hotspot", None))
     return out
 

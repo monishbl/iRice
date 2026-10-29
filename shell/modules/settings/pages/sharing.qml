@@ -152,7 +152,7 @@ Column {
         Row {
             label: "Bluetooth"
             detail: !QuickShare.bluetoothAvailable ? "No Bluetooth adapter: phones find this computer only on the same network"
-                : QuickShare.bluetoothOn ? "On: phones without Wi-Fi find this computer too, then transfers move to Wi-Fi Direct"
+                : QuickShare.bluetoothOn ? "On: phones without Wi-Fi find this computer too, then transfers move to Wi-Fi when both are on the same network"
                 : "Turn on Bluetooth so phones can find this computer without Wi-Fi"
             SettingsButton {
                 visible: QuickShare.bluetoothAvailable && !QuickShare.bluetoothOn
