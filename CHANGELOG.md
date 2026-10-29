@@ -13,6 +13,7 @@
 - **Send files…** in Control Center: on the Sharing page and in the Sharing tile's right-click menu.
 - An empty space between two in use (say 6, between 5 and 7) keeps its chip in the menu bar and its place in Overview, so you can still go to it.
 - Fewer warnings in iRice's log (notification banners, the window snap outline, saved settings).
+- One island alert per thing: headphones whose battery shows up a moment later, or a device that reconnects, update the alert already showing instead of adding a second.
 
 ## Quick Share: firewall, Wi-Fi Direct and pairing fixes · 2026-10-30
 

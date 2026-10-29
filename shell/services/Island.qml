@@ -162,6 +162,20 @@ Singleton {
                     return;
                 }
             }
+        // The same thing again while its alert is up (headphones whose battery
+        // arrives a moment after "Connected", a device that reconnects): that
+        // alert changes in place and stays a little longer, no second one
+        if (e.title)
+            for (let i = 0; i < alerts.count; i++) {
+                const u = alerts.get(i).uid;
+                const old = byUid[u];
+                if (old && old.kind === e.kind && old.title === e.title && old.expires > now) {
+                    const ev = Object.assign({ uid: u, delay: 0, expires: Math.max(old.expires, now + (ms ?? 3000)) }, e);
+                    byUid = Object.assign({}, byUid, { [u]: ev });
+                    note(e, u);
+                    return;
+                }
+            }
         burstIndex = now - burstAt < 400 ? burstIndex + 1 : 0;
         if (burstIndex === 0)
             burstAt = now;
