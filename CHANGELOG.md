@@ -1,5 +1,12 @@
 # iRice changelog
 
+## Calendar containment and scrolling agenda · 2026-10-29
+
+- Fix R51: keep the large desktop calendar inside its glass frame in Month, Week and To-do views. Compact week previews retain all seven dates; scrolling reveals every selected-day event/task and the add field, including lists beyond the previous 30-item cap.
+- Keep the header fixed while the agenda rises over a fading calendar with a gradient backdrop. Use the up-arrow to return to the dates. Desktop wheel scrolling no longer changes the displayed month/week; navigation arrows remain available.
+- Validate with an offscreen Quickshell regression covering 45 tasks, footer reachability, return scrolling, all three tabs and the shared Notification Center layout. Top, scrolled and bottom renders inspected with fixture data; physical touchpad acceptance remains pending.
+
+
 ## Super-tap correction verified in the running session · 2026-10-29
 
 - Correct the modifier-key press binding: Super is not yet in the modifier mask when its own key goes down. The previous release-only change was insufficient. Nested Alt uses the same correction; ordinary Super chords keep their cancellation behavior.

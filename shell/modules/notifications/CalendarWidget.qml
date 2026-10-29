@@ -17,7 +17,7 @@ Platter {
 
     property date shown: new Date()
     // Reused by the desktop Calendar widget: no padding of its own, shorter
-    // date cells, and a fixed height (the selected day's list scrolls)
+    // date cells, and a fixed height (the calendar and agenda share one scroll surface)
     property int padding: 12
     property int cellHeight: 32
     property bool fitHeight: false
@@ -80,6 +80,7 @@ Platter {
     // While dragging an item: the date under the pointer
     property var dropDay: null
     function dayAt(scenePos) {
+        if (fitHeight && viewport.contentY > 8) return null;
         const view = week ? weekList : grid;
         const p = view.mapFromItem(null, scenePos.x, scenePos.y);
         if (p.x < 0 || p.y < 0 || p.x >= view.width || p.y >= view.height)
@@ -93,7 +94,13 @@ Platter {
         return p.y < header ? null : days[row * 7 + col] ?? null;
     }
 
-    implicitHeight: column.implicitHeight + 2 * padding
+    implicitHeight: headRow.height + 8 + column.implicitHeight + 2 * padding
+    readonly property real scrollOffset: viewport.contentY
+    function scrollToCalendar() { returnAnimation.restart(); }
+    onWeekChanged: viewport.contentY = 0
+    onTodoModeChanged: viewport.contentY = 0
+    onSelectedChanged: if (fitHeight) viewport.contentY = 0
+    NumberAnimation { id: returnAnimation; target: viewport; property: "contentY"; to: 0; duration: 220; easing.type: Easing.OutCubic }
 
     SystemClock { id: clock; precision: SystemClock.Hours }
 
@@ -141,429 +148,492 @@ Platter {
         editor.close();
     }
 
-    Column {
-        id: column
+    // Month and year, Month / Week, arrows
+    Item {
+        id: headRow
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding }
-        spacing: 8
-        // With fitHeight: what's left for the selected day's list
-        readonly property real rest: {
-            const parts = [headRow, daysView, dayTitle, emptyText, undoRow, quickAdd].filter(x => x.visible);
-            return parts.reduce((a, x) => a + x.height, 0) + spacing * parts.length; // (+ the list's own gap)
-        }
-
-        // Month and year, Month / Week, arrows
-        Item {
-            id: headRow
-            width: parent.width
-            height: 26
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.todoMode ? "To-do" : root.week ? Qt.formatDate(root.days[0], "d MMM") + " – " + Qt.formatDate(root.days[6], "d MMM") : Qt.formatDate(root.shown, root.todoTab ? "MMM yyyy" : "MMMM yyyy") // (shorter beside three tabs)
-                color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-            }
-            Row {
-                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                spacing: 4
-                Segmented {
-                    width: root.todoTab ? 150 : 104
-                    height: 24
-                    options: root.todoTab ? ["Month", "Week", "To-do"] : ["Month", "Week"]
-                    current: root.todoMode ? 2 : root.week ? 1 : 0
-                    onSelected: i => {
-                        root.todoMode = i === 2;
-                        if (i === 2)
-                            return;
-                        root.week = i === 1;
-                        if (!root.week)
-                            root.shown = root.selected;
-                    }
-                }
-                Repeater {
-                    model: root.todoMode ? [] : [{ icon: "caret-left", step: -1 }, { icon: "caret-right", step: 1 }]
-                    IconButton {
-                        required property var modelData
-                        width: 24
-                        height: 24
-                        icon: modelData.icon
-                        iconSize: 12
-                        onClicked: root.step(modelData.step)
-                    }
-                }
-            }
-        }
-
-        // The days: a month grid, or the week as rows with what's on
-        Item {
-            id: daysView
-            visible: !root.todoMode
-            width: parent.width
-            height: root.week ? weekList.height : grid.height
-            WheelHandler {
-                property real acc: 0
-                onWheel: e => {
-                    acc += e.angleDelta.y;
-                    if (Math.abs(acc) >= 120) {
-                        root.step(acc < 0 ? 1 : -1);
-                        acc = 0;
-                    }
-                }
-            }
-
-            Grid {
-                id: grid
-                visible: !root.week
-                columns: 7
-                width: parent.width
-                readonly property real cell: width / 7
-                Repeater {
-                    model: ["M", "T", "W", "T", "F", "S", "S"]
-                    Text {
-                        required property string modelData
-                        width: grid.cell
-                        horizontalAlignment: Text.AlignHCenter
-                        text: modelData
-                        color: Theme.color.tertiary
-                        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
-                    }
-                }
-                Repeater {
-                    model: root.week ? [] : root.days
-                    DayCell {
-                        width: grid.cell
-                        height: root.cellHeight
-                    }
-                }
-            }
-
-            Column {
-                id: weekList
-                visible: root.week
-                width: parent.width
-                spacing: 2
-                Repeater {
-                    model: root.week ? root.days : []
-                    Rectangle {
-                        id: wday
-                        required property var modelData
-                        readonly property bool isSelected: root.sameDay(modelData, root.selected)
-                        readonly property var evs: { Calendar.local; Calendar.remote; return Calendar.eventsOn(modelData); }
-                        readonly property var tds: { Todos.list; return Todos.on(modelData).filter(t => !t.done); }
-                        width: weekList.width
-                        height: Math.max(34, weekCol.implicitHeight + 10)
-                        radius: 8
-                        color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
-                        Column {
-                            x: 8
-                            width: 44
-                            anchors.verticalCenter: parent.verticalCenter
-                            Text {
-                                text: Qt.formatDate(wday.modelData, "ddd")
-                                color: Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
-                            }
-                            // Today's date in the accent circle, like the month grid
-                            Rectangle {
-                                readonly property bool isToday: root.sameDay(wday.modelData, root.today)
-                                width: 26
-                                height: 26
-                                radius: 13
-                                x: -4
-                                color: isToday ? Theme.accent : "transparent"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: wday.modelData.getDate()
-                                    color: parent.isToday ? Theme.color.onAccent : Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold; features: { "tnum": 1 } }
-                                }
-                            }
-                        }
-                        Column {
-                            id: weekCol
-                            x: 56
-                            width: parent.width - 64
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            Text {
-                                visible: wday.evs.length + wday.tds.length === 0
-                                text: "—"
-                                color: Theme.color.tertiary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small }
-                            }
-                            Repeater {
-                                model: wday.evs.slice(0, 4)
-                                Row {
-                                    required property var modelData
-                                    spacing: 6
-                                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: parent.modelData.color || Theme.accent }
-                                    Text {
-                                        width: weekCol.width - 12
-                                        text: (parent.modelData.allDay ? "" : Qt.formatTime(parent.modelData.start, "h:mm AP") + "  ") + parent.modelData.title
-                                        elide: Text.ElideRight
-                                        color: Theme.color.label
-                                        font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
-                                    }
-                                }
-                            }
-                            Repeater {
-                                model: wday.tds.slice(0, 3)
-                                Row {
-                                    required property var modelData
-                                    spacing: 6
-                                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 1.5; color: Theme.accents.orange }
-                                    Text {
-                                        width: weekCol.width - 12
-                                        text: parent.modelData.text
-                                        elide: Text.ElideRight
-                                        color: Theme.color.label
-                                        font { family: Theme.font.family; pixelSize: Theme.font.small }
-                                    }
-                                }
-                            }
-                        }
-                        MouseArea {
-                            id: wdayMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: root.selected = wday.modelData
-                            onDoubleClicked: editor.create(wday.modelData)
-                        }
-                    }
-                }
-            }
-        }
-
-        // The selected day
-        Item {
-            id: dayTitle
-            visible: !root.todoMode
-            width: parent.width
-            height: 22
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.dayTitle(root.selected)
-                color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
-            }
-            IconButton {
-                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                width: 22
-                height: 22
-                icon: "plus"
-                iconSize: 12
-                tooltip: "Add to this day"
-                onClicked: editor.create(root.selected)
-            }
-        }
+        height: 26
+        z: 5
         Text {
-            id: emptyText
-            visible: !root.todoMode && root.items.length === 0 && !root.undo
-            text: "Nothing on this day. Double-click a date to add something."
-            width: parent.width
-            wrapMode: Text.Wrap
-            color: Theme.color.tertiary
-            font { family: Theme.font.family; pixelSize: Theme.font.small }
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.todoMode ? "To-do" : root.week ? Qt.formatDate(root.days[0], "d MMM") + " – " + Qt.formatDate(root.days[6], "d MMM") : Qt.formatDate(root.shown, root.todoTab ? "MMM yyyy" : "MMMM yyyy") // (shorter beside three tabs)
+            color: Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
-        // (fitHeight: in a scrolling area the size of what's left)
-        Flickable {
-            id: itemsView
-            visible: !root.todoMode && root.items.length > 0
-            width: parent.width
-            height: root.fitHeight ? Math.max(36, Math.min(contentHeight, root.height - 2 * root.padding - column.rest)) : contentHeight
-            contentHeight: itemsCol.implicitHeight
-            interactive: root.fitHeight && contentHeight > height
-            clip: root.fitHeight
-            boundsBehavior: Flickable.StopAtBounds
-            Column {
-                id: itemsCol
-                width: parent.width
-                spacing: 8
-                Repeater {
-                    model: root.items.slice(0, root.fitHeight ? 30 : 8)
-                    Rectangle {
-                        id: row
-                        required property var modelData
-                        readonly property bool isEvent: modelData.kind === "event"
-                        readonly property bool movable: !isEvent || modelData.e.local
-                        width: column.width
-                        height: 36
-                        radius: 8
-                        color: rowMouse.containsMouse ? Theme.color.fill : "transparent"
-                        z: rowDrag.active ? 10 : 0
-                        opacity: rowDrag.active ? 0.5 : 1
+        Row {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            spacing: 4
+            Segmented {
+                width: root.todoTab ? 150 : 104
+                height: 24
+                options: root.todoTab ? ["Month", "Week", "To-do"] : ["Month", "Week"]
+                current: root.todoMode ? 2 : root.week ? 1 : 0
+                onSelected: i => {
+                    root.todoMode = i === 2;
+                    if (i === 2)
+                        return;
+                    root.week = i === 1;
+                    if (!root.week)
+                        root.shown = root.selected;
+                }
+            }
+            Repeater {
+                model: root.todoMode ? [] : [{ icon: "caret-left", step: -1 }, { icon: "caret-right", step: 1 }]
+                IconButton {
+                    required property var modelData
+                    width: 24
+                    height: 24
+                    icon: modelData.icon
+                    iconSize: 12
+                    onClicked: root.step(modelData.step)
+                }
+            }
+        }
+    }
 
-                        // Event: its calendar's colour bar; to-do: a tick box
-                        Rectangle {
-                            id: lead
-                            visible: row.isEvent
-                            x: 6
-                            y: 5
-                            width: 3
-                            height: parent.height - 10
-                            radius: 2
-                            color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
+    // One bounded scroll surface owns the fixed-height widget. A minimum
+    // agenda height must never push the footer outside the glass frame.
+    Flickable {
+        id: viewport
+        objectName: "calendarViewport"
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding; topMargin: root.padding + headRow.height + 8 }
+        height: root.fitHeight ? Math.max(0, root.height - 2 * root.padding - headRow.height - 8) : column.implicitHeight
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        interactive: root.fitHeight && contentHeight > height
+        clip: root.fitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        onMovementStarted: returnAnimation.stop()
+
+        Column {
+            id: column
+            width: viewport.width
+            spacing: 8
+
+            // The days: a month grid, or the week as rows with what's on
+            Item {
+                id: daysView
+                visible: !root.todoMode
+                width: parent.width
+                height: root.week ? weekList.height : grid.height
+                opacity: root.fitHeight ? 1 - 0.88 * Math.min(1, Math.max(0, viewport.contentY) / Math.max(1, height * 0.7)) : 1
+                transform: Translate { y: root.fitHeight ? Math.max(0, viewport.contentY) : 0 }
+                enabled: !root.fitHeight || viewport.contentY < 8
+                WheelHandler {
+                    enabled: !root.fitHeight
+                    property real acc: 0
+                    onWheel: e => {
+                        acc += e.angleDelta.y;
+                        if (Math.abs(acc) >= 120) {
+                            root.step(acc < 0 ? 1 : -1);
+                            acc = 0;
                         }
+                    }
+                }
+
+                Grid {
+                    id: grid
+                    visible: !root.week
+                    columns: 7
+                    width: parent.width
+                    readonly property real cell: width / 7
+                    Repeater {
+                        model: ["M", "T", "W", "T", "F", "S", "S"]
+                        Text {
+                            required property string modelData
+                            width: grid.cell
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData
+                            color: Theme.color.tertiary
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                        }
+                    }
+                    Repeater {
+                        model: root.week ? [] : root.days
+                        DayCell {
+                            width: grid.cell
+                            height: root.cellHeight
+                        }
+                    }
+                }
+
+                Column {
+                    id: weekList
+                    visible: root.week
+                    width: parent.width
+                    spacing: 2
+                    Repeater {
+                        model: root.week ? root.days : []
                         Rectangle {
-                            visible: !row.isEvent
-                            x: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 16
-                            height: 16
+                            id: wday
+                            required property var modelData
+                            readonly property bool isSelected: root.sameDay(modelData, root.selected)
+                            readonly property var evs: { Calendar.local; Calendar.remote; return Calendar.eventsOn(modelData); }
+                            readonly property var tds: { Todos.list; return Todos.on(modelData).filter(t => !t.done); }
+                            width: weekList.width
+                            height: root.fitHeight ? 36 : Math.max(34, weekCol.implicitHeight + 10)
                             radius: 8
-                            color: !row.isEvent && row.modelData.t.done ? Theme.accents.orange : "transparent"
-                            border.width: !row.isEvent && row.modelData.t.done ? 0 : 1.5
-                            border.color: Theme.accents.orange
-                            Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
+                            color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
+                            Column {
+                                x: 8
+                                width: 44
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    text: Qt.formatDate(wday.modelData, "ddd")
+                                    color: Theme.color.secondary
+                                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                                }
+                                // Today's date in the accent circle, like the month grid
+                                Rectangle {
+                                    readonly property bool isToday: root.sameDay(wday.modelData, root.today)
+                                    width: 26
+                                    height: root.fitHeight ? 22 : 26
+                                    radius: 13
+                                    x: -4
+                                    color: isToday ? Theme.accent : "transparent"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: wday.modelData.getDate()
+                                        color: parent.isToday ? Theme.color.onAccent : Theme.color.label
+                                        font { family: Theme.font.family; pixelSize: root.fitHeight ? Theme.font.body : Theme.font.title; weight: Font.DemiBold; features: { "tnum": 1 } }
+                                    }
+                                }
+                            }
+                            Column {
+                                id: weekCol
+                                x: 56
+                                width: parent.width - 64
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text {
+                                    visible: wday.evs.length + wday.tds.length === 0
+                                    text: "—"
+                                    color: Theme.color.tertiary
+                                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                                }
+                                Repeater {
+                                    model: wday.evs.slice(0, root.fitHeight ? 1 : 4)
+                                    Row {
+                                        required property var modelData
+                                        spacing: 6
+                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: parent.modelData.color || Theme.accent }
+                                        Text {
+                                            width: weekCol.width - 12
+                                            text: (parent.modelData.allDay ? "" : Qt.formatTime(parent.modelData.start, "h:mm AP") + "  ") + parent.modelData.title
+                                            elide: Text.ElideRight
+                                            color: Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                                        }
+                                    }
+                                }
+                                Repeater {
+                                    model: root.fitHeight && wday.evs.length ? [] : wday.tds.slice(0, root.fitHeight ? 1 : 3)
+                                    Row {
+                                        required property var modelData
+                                        spacing: 6
+                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 1.5; color: Theme.accents.orange }
+                                        Text {
+                                            width: weekCol.width - 12
+                                            text: parent.modelData.text
+                                            elide: Text.ElideRight
+                                            color: Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    visible: root.fitHeight && wday.evs.length + wday.tds.length > 1
+                                    text: "+ " + (wday.evs.length + wday.tds.length - 1) + " more"
+                                    color: Theme.color.tertiary
+                                    font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                                }
+                            }
                             MouseArea {
-                                anchors { fill: parent; margins: -6 }
-                                onClicked: Todos.update(row.modelData.t.i, { done: !row.modelData.t.done })
+                                id: wdayMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.selected = wday.modelData
+                                onDoubleClicked: editor.create(wday.modelData)
                             }
                         }
+                    }
+                }
+            }
+
+            Item {
+                id: agenda
+                objectName: "calendarAgenda"
+                z: 1
+                width: parent.width
+                height: agendaContent.implicitHeight
+                // Tasks rise over the calendar as it fades into the backdrop.
+                Rectangle {
+                    z: -1
+                    x: -4; y: -40
+                    width: agenda.width + 8
+                    height: agenda.height + 40
+                    visible: root.fitHeight && !root.todoMode
+                    opacity: Math.min(1, Math.max(0, viewport.contentY) / 60)
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "transparent" }
+                        GradientStop { position: Math.min(1, 40 / (agenda.height + 40)); color: Qt.alpha(Theme.glass.solid, 0.76) }
+                        GradientStop { position: 1; color: Qt.alpha(Theme.glass.solid, 0.94) }
+                    }
+                }
+                Column {
+                    id: agendaContent
+                    width: parent.width
+                    spacing: 8
+                    // The selected day
+                    Item {
+                        id: dayTitle
+                        visible: !root.todoMode
+                        width: parent.width
+                        height: 22
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.dayTitle(root.selected)
+                            color: Theme.color.secondary
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                        }
+                        IconButton {
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            width: 22
+                            height: 22
+                            icon: "plus"
+                            iconSize: 12
+                            tooltip: "Add to this day"
+                            onClicked: editor.create(root.selected)
+                        }
+                    }
+                    Text {
+                        id: emptyText
+                        visible: !root.todoMode && root.items.length === 0 && !root.undo
+                        text: "Nothing on this day. Double-click a date to add something."
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        color: Theme.color.tertiary
+                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                    }
+                    // The outer viewport owns scrolling, including the footer.
+                    Flickable {
+                        id: itemsView
+                        visible: !root.todoMode && root.items.length > 0
+                        width: parent.width
+                        height: contentHeight
+                        contentHeight: itemsCol.implicitHeight
+                        interactive: false
+                        clip: false
+                        boundsBehavior: Flickable.StopAtBounds
                         Column {
-                            anchors { left: parent.left; leftMargin: row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                            Text {
-                                width: parent.width
-                                text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
-                                elide: Text.ElideRight
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; strikeout: !row.isEvent && !!row.modelData.t.done }
-                            }
-                            Text {
-                                width: parent.width
-                                text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), "h:mm AP"))
-                                elide: Text.ElideRight
-                                color: Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
-                            }
-                        }
-                        MouseArea {
-                            id: rowMouse
-                            anchors { fill: parent; leftMargin: row.isEvent ? 0 : 24 }
-                            hoverEnabled: true
-                            cursorShape: row.movable ? Qt.OpenHandCursor : Qt.PointingHandCursor
-                            onClicked: editor.edit(row.modelData)
-                        }
-                        Component.onDestruction: if (rowDrag.active) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
-                        DragHandler {
-                            id: rowDrag
-                            enabled: row.movable
-                            target: null // the row stays; a ghost follows the pointer
-                            onCentroidChanged: if (active) root.dropDay = root.dayAt(centroid.scenePosition)
-                            onActiveChanged: {
-                                // The panel holds still while something is dragged in it
-                                Panels.holdPull += active ? 1 : -1;
-                                if (!active) {
-                                    const d = root.dropDay;
-                                    root.dropDay = null;
-                                    if (d)
-                                        root.moveTo(row.modelData, d);
+                            id: itemsCol
+                            objectName: "calendarItems"
+                            width: parent.width
+                            spacing: 8
+                            Repeater {
+                                model: root.fitHeight ? root.items : root.items.slice(0, 8)
+                                Rectangle {
+                                    id: row
+                                    required property var modelData
+                                    readonly property bool isEvent: modelData.kind === "event"
+                                    readonly property bool movable: !isEvent || modelData.e.local
+                                    width: column.width
+                                    height: 36
+                                    radius: 8
+                                    color: rowMouse.containsMouse ? Theme.color.fill : "transparent"
+                                    z: rowDrag.active ? 10 : 0
+                                    opacity: rowDrag.active ? 0.5 : 1
+
+                                    // Event: its calendar's colour bar; to-do: a tick box
+                                    Rectangle {
+                                        id: lead
+                                        visible: row.isEvent
+                                        x: 6
+                                        y: 5
+                                        width: 3
+                                        height: parent.height - 10
+                                        radius: 2
+                                        color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
+                                    }
+                                    Rectangle {
+                                        visible: !row.isEvent
+                                        x: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 16
+                                        height: 16
+                                        radius: 8
+                                        color: !row.isEvent && row.modelData.t.done ? Theme.accents.orange : "transparent"
+                                        border.width: !row.isEvent && row.modelData.t.done ? 0 : 1.5
+                                        border.color: Theme.accents.orange
+                                        Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
+                                        MouseArea {
+                                            anchors { fill: parent; margins: -6 }
+                                            onClicked: Todos.update(row.modelData.t.i, { done: !row.modelData.t.done })
+                                        }
+                                    }
+                                    Column {
+                                        anchors { left: parent.left; leftMargin: row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            width: parent.width
+                                            text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
+                                            elide: Text.ElideRight
+                                            color: Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; strikeout: !row.isEvent && !!row.modelData.t.done }
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), "h:mm AP"))
+                                            elide: Text.ElideRight
+                                            color: Theme.color.secondary
+                                            font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: rowMouse
+                                        anchors { fill: parent; leftMargin: row.isEvent ? 0 : 24 }
+                                        hoverEnabled: true
+                                        cursorShape: row.movable ? Qt.OpenHandCursor : Qt.PointingHandCursor
+                                        onClicked: editor.edit(row.modelData)
+                                    }
+                                    Component.onDestruction: if (rowDrag.active) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
+                                    DragHandler {
+                                        id: rowDrag
+                                        enabled: row.movable
+                                        target: null // the row stays; a ghost follows the pointer
+                                        onCentroidChanged: if (active) root.dropDay = root.dayAt(centroid.scenePosition)
+                                        onActiveChanged: {
+                                            // The panel holds still while something is dragged in it
+                                            Panels.holdPull += active ? 1 : -1;
+                                            if (!active) {
+                                                const d = root.dropDay;
+                                                root.dropDay = null;
+                                                if (d)
+                                                    root.moveTo(row.modelData, d);
+                                            }
+                                        }
+                                    }
+                                    // While dragging: the item follows the pointer, and is what drops
+                                    Rectangle {
+                                        id: ghost
+                                        visible: rowDrag.active
+                                        parent: root
+                                        readonly property point at: root.mapFromItem(null, rowDrag.centroid.scenePosition.x, rowDrag.centroid.scenePosition.y)
+                                        x: at.x - 20
+                                        y: at.y - 18
+                                        width: 180
+                                        height: 30
+                                        radius: 8
+                                        z: 50
+                                        color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                                        border.width: 1
+                                        border.color: Theme.accent
+                                        Text {
+                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                            verticalAlignment: Text.AlignVCenter
+                                            text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
+                                            elide: Text.ElideRight
+                                            color: Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                        }
+                                    }
                                 }
                             }
                         }
-                        // While dragging: the item follows the pointer, and is what drops
-                        Rectangle {
-                            id: ghost
-                            visible: rowDrag.active
-                            parent: root
-                            readonly property point at: root.mapFromItem(null, rowDrag.centroid.scenePosition.x, rowDrag.centroid.scenePosition.y)
-                            x: at.x - 20
-                            y: at.y - 18
-                            width: 180
-                            height: 30
-                            radius: 8
-                            z: 50
-                            color: Theme.dark ? "#2C2C31" : "#FFFFFF"
-                            border.width: 1
-                            border.color: Theme.accent
-                            Text {
-                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                verticalAlignment: Text.AlignVCenter
-                                text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
-                                elide: Text.ElideRight
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                    }
+
+                    // To-do tab: the same list as Notification Center's
+                    Loader {
+                        active: root.todoTab
+                        visible: root.todoMode
+                        width: parent.width
+                        height: item?.implicitHeight ?? 0
+                        sourceComponent: TodoWidget {
+                            color: "transparent"
+                            padding: 0
+                            fitHeight: false
+                        }
+                    }
+
+                    // Deleted: offer it back
+                    Row {
+                        id: undoRow
+                        visible: !root.todoMode && root.undo !== null
+                        spacing: 8
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Deleted “" + (root.undo?.item?.title ?? root.undo?.item?.text ?? "") + "”"
+                            color: Theme.color.secondary
+                            font { family: Theme.font.family; pixelSize: Theme.font.small }
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Undo"
+                            color: Theme.accentInk
+                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root.undo.kind === "event")
+                                        Calendar.restoreEvent(root.undo.item);
+                                    else
+                                        Todos.restore(root.undo.item, root.undo.index);
+                                    root.undo = null;
+                                }
                             }
                         }
                     }
-                }
-            }
-        }
+                    Timer {
+                        id: undoTimer
+                        interval: 8000
+                        onTriggered: root.undo = null
+                    }
 
-        // To-do tab: the same list as Notification Center's
-        Loader {
-            active: root.todoTab
-            visible: root.todoMode
-            width: parent.width
-            height: root.fitHeight ? Math.max(60, root.height - 2 * root.padding - headRow.height - column.spacing) : (item?.implicitHeight ?? 0)
-            sourceComponent: TodoWidget {
-                color: "transparent"
-                padding: 0
-                fitHeight: root.fitHeight
-            }
-        }
-
-        // Deleted: offer it back
-        Row {
-            id: undoRow
-            visible: !root.todoMode && root.undo !== null
-            spacing: 8
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Deleted “" + (root.undo?.item?.title ?? root.undo?.item?.text ?? "") + "”"
-                color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.small }
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Undo"
-                color: Theme.accentInk
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.undo.kind === "event")
-                            Calendar.restoreEvent(root.undo.item);
-                        else
-                            Todos.restore(root.undo.item, root.undo.index);
-                        root.undo = null;
+                    // Quick add: plain words, on the selected day
+                    TextField {
+                        id: quickAdd
+                        objectName: "calendarQuickAdd"
+                        visible: !root.todoMode
+                        width: parent.width
+                        height: 32
+                        placeholder: "Add: “Call mum at 5pm”"
+                        commitOnBlur: false
+                        onCommitted: t => {
+                            if (t.trim() === "")
+                                return;
+                            const q = Calendar.parseQuick(t);
+                            const sel = root.selected;
+                            if (q) {
+                                // A time without a day word goes on the selected day
+                                if (!/\b(today|tonight|tomorrow|mon|tue|wed|thu|fri|sat|sun)\w*\b|\bin\s+\d/i.test(t) && !root.sameDay(sel, root.today))
+                                    q.start = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(), q.start.getHours(), q.start.getMinutes());
+                                Calendar.add(q.title, q.start, q.start, false, 0, "");
+                                root.selected = q.start;
+                            } else {
+                                // No time: an all-day event on the selected day
+                                const d = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate());
+                                Calendar.add(t.trim().charAt(0).toUpperCase() + t.trim().slice(1), d, new Date(d.getTime() + 86400000), true, -1, "");
+                            }
+                            text = "";
+                        }
                     }
                 }
-            }
-        }
-        Timer {
-            id: undoTimer
-            interval: 8000
-            onTriggered: root.undo = null
-        }
 
-        // Quick add: plain words, on the selected day
-        TextField {
-            id: quickAdd
-            visible: !root.todoMode
-            width: parent.width
-            height: 32
-            placeholder: "Add: “Call mum at 5pm”"
-            commitOnBlur: false
-            onCommitted: t => {
-                if (t.trim() === "")
-                    return;
-                const q = Calendar.parseQuick(t);
-                const sel = root.selected;
-                if (q) {
-                    // A time without a day word goes on the selected day
-                    if (!/\b(today|tonight|tomorrow|mon|tue|wed|thu|fri|sat|sun)\w*\b|\bin\s+\d/i.test(t) && !root.sameDay(sel, root.today))
-                        q.start = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(), q.start.getHours(), q.start.getMinutes());
-                    Calendar.add(q.title, q.start, q.start, false, 0, "");
-                    root.selected = q.start;
-                } else {
-                    // No time: an all-day event on the selected day
-                    const d = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate());
-                    Calendar.add(t.trim().charAt(0).toUpperCase() + t.trim().slice(1), d, new Date(d.getTime() + 86400000), true, -1, "");
-                }
-                text = "";
-            }
-        }
+            } // agenda
+        } // column
+    } // viewport
+
+    IconButton {
+        objectName: "calendarScrollUp"
+        anchors { right: parent.right; top: parent.top; rightMargin: root.padding; topMargin: root.padding + headRow.height + 10 }
+        z: 20
+        width: 28; height: 28
+        visible: root.fitHeight && viewport.contentY > 24
+        icon: "arrow-up"
+        iconSize: 14
+        tooltip: "Back to calendar"
+        onClicked: root.scrollToCalendar()
     }
 
     // One date in the month grid
