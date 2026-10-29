@@ -18,7 +18,9 @@ Variants {
         screen: modelData
         name: "snappreview"
 
-        readonly property bool active: Tiling.dragZone !== "none" && Tiling.dragMonitor === screen?.name
+        // (modelData, not `screen`: the window re-announces its screen when
+        // it shows or hides, and visible depends on this: a binding loop)
+        readonly property bool active: Tiling.dragZone !== "none" && Tiling.dragMonitor === modelData.name
         // The target, in this screen's coordinates (kept while fading out)
         property rect target: Qt.rect(0, 0, 0, 0)
         onActiveChanged: if (active) place()
@@ -27,10 +29,10 @@ Variants {
             function onDragZoneChanged() { if (win.active) win.place(); }
         }
         function place() {
-            const a = Tiling.areaOf(screen.name);
+            const a = Tiling.areaOf(modelData.name);
             const r = Tiling.rect(Tiling.dragZone, a);
-            const mx = Hyprland.monitors.values.find(m => m.name === screen.name)?.x ?? 0;
-            const my = Hyprland.monitors.values.find(m => m.name === screen.name)?.y ?? 0;
+            const mx = Hyprland.monitors.values.find(m => m.name === modelData.name)?.x ?? 0;
+            const my = Hyprland.monitors.values.find(m => m.name === modelData.name)?.y ?? 0;
             target = Qt.rect(r.x - mx, r.y - my, r.w, r.h);
         }
 

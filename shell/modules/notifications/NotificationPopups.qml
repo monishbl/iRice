@@ -61,10 +61,13 @@ Scope {
             readonly property real contentHeight: expanded ? offsetOf(count) - gap : heightAt(0) + 8 * Math.min(count - 1, 2)
 
             name: "notifications"
-            screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
+            // (visible reads this, not `screen`: the window re-announces its
+            // screen when it shows or hides, a binding loop)
+            readonly property var shownOn: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
+            screen: shownOn
             // (not over Notification Center, which lists them anyway, or over
             // Control Center, which opens in the same corner)
-            visible: count > 0 && !Panels.isOpen("notificationCenter", screen) && !Panels.isOpen("controlCenter", screen)
+            visible: count > 0 && !Panels.isOpen("notificationCenter", shownOn) && !Panels.isOpen("controlCenter", shownOn)
             WlrLayershell.layer: WlrLayer.Overlay
             // Banners never take the keyboard, except while a reply is being
             // written in one

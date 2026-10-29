@@ -114,7 +114,9 @@ Singleton {
             saveTimer.restart();
         }
     }
-    FileView { id: journal; printErrors: true; blockWrites: true; atomicWrites: true }
+    // (only written: preload off, or each new path is first read and, not
+    // existing yet, logged as a failed read)
+    FileView { id: journal; preload: false; printErrors: true; blockWrites: true; atomicWrites: true }
     Timer { id: saveTimer; interval: 100; onTriggered: if (!writer.running) root.flush() }
     Timer { id: lazyTimer; interval: 30000; onTriggered: if (!writer.running) root.flush() }
     function flush() {
