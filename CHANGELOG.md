@@ -7,7 +7,8 @@
 - Wi-Fi Direct starts again (it was refused by the Wi-Fi service).
 - Wi-Fi Direct no longer ends the moment it starts: NetworkManager leaves the link alone while a transfer uses it.
 - No more hotspot attempts on 5 GHz Intel Wi-Fi, where they can't work; transfers move on to the next option straight away.
-- Phones no longer need to ask to pair: **Stop pairing prompts** in Settings → Sharing turns off the Bluetooth feature that caused it.
+- Phones no longer need to ask to pair: **Stop pairing prompts** in Settings → Sharing turns off the experimental Bluetooth features that caused it (Ranging, and LE Audio controls that made phones take the computer for earbuds).
+- A phone shows once in the Bluetooth lists, not once per connection.
 
 ## Battery & Power, System health, replies and more · 2026-10-30
 

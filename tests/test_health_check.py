@@ -162,7 +162,7 @@ class HealthCheck(unittest.TestCase):
         self.assertTrue(rows["firewall"]["fixRoot"])
         self.assertIn("ufw allow 53317:53319/tcp", rows["firewall"]["fixCommand"])
         self.assertEqual(rows["btpairing"]["status"], "warn")
-        self.assertIn("--noplugin=rap", rows["btpairing"]["fixCommand"])
+        self.assertIn("--noplugin=rap,vcp,micp,mcp,bass", rows["btpairing"]["fixCommand"])
         # the fix: one pkexec of the fixed script, then the firewall counts as open
         out = self.check("fix", "firewall")
         self.assertTrue(json.loads(out.stdout)["ok"], out.stdout)
@@ -173,7 +173,11 @@ class HealthCheck(unittest.TestCase):
         (self.sysroot / "etc/ufw/user.rules").write_text("-A ufw-user-input -p tcp --dport 22 -j ACCEPT\n")
         self.assertIn("and blocks", self.rows()["firewall"]["detail"])
         (self.sysroot / "etc/systemd/system/bluetooth.service.d").mkdir(parents=True)
-        (self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf").write_text("")
+        dropin = self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"
+        # the first version left out only rap: phones still asked to pair
+        dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap\n")
+        self.assertEqual(self.rows()["btpairing"]["status"], "warn")
+        dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n")
         self.assertEqual(self.rows()["btpairing"]["status"], "ok")
 
     def test_a_refused_password_says_so(self):

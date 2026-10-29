@@ -10,11 +10,15 @@ health (health-check.py) and the Quick Share helper (why a link failed).
              rules file is readable (or firewalld answers), or after iRice's
              own fix ran (a note in ~/.local/state/irice).
   pairing    BlueZ's experimental features on (iRice's setup turns them on
-             for headphone batteries) bring its Ranging (RAP) profile: when a
-             phone connects for Quick Share, it reads the phone's Ranging
-             Service, which needs encryption, so BlueZ starts pairing and the
-             phone asks to pair. Phone-to-phone Quick Share never pairs. The
-             fix starts bluetoothd without that one plugin (a systemd drop-in);
+             for headphone batteries) bring profiles that need encryption the
+             moment a phone connects for Quick Share, so the phone asks to
+             pair (phone-to-phone Quick Share never does): Ranging (RAP)
+             reads the phone's Ranging Service, and the LE Audio controls
+             (volume, volume offset, audio input, microphone, media control,
+             broadcast scan) are offered to the phone, which takes the
+             computer for earbuds and pairs to use them. Without LE Audio's
+             core (no PACS here) those controls do nothing anyway. The fix
+             starts bluetoothd without those plugins (a systemd drop-in);
              headphone batteries keep working.
 
   sharing-check.py status          JSON {"firewall": {...}, "pairing": {...}}
@@ -34,6 +38,9 @@ ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
 MARKER = os.path.join(STATE, "sharing-firewall")
 DROPIN = "/etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"
+# rap: Ranging; vcp: volume (with volume offset, audio input); micp: microphone;
+# mcp: media control; bass: broadcast audio scan
+PLUGINS = ("rap", "vcp", "micp", "mcp", "bass")
 
 FIREWALL_SCRIPT = r'''set -e
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
@@ -52,14 +59,16 @@ FIREWALL_SHOWN = ("ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 535
                   "(or firewalld: --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns)")
 
 PAIRING_SCRIPT = r'''set -e
+NOPLUGIN=@PLUGINS@
 exe=$(systemctl show -p ExecStart --value bluetooth | sed -n 's/.*path=\([^ ;]*\).*/\1/p')
 [ -x "$exe" ] || exe=/usr/lib/bluetooth/bluetoothd
 mkdir -p /etc/systemd/system/bluetooth.service.d
-printf '# iRice: no Ranging (RAP) profile, which makes phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=%s --noplugin=rap\n' "$exe" > /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf
+printf '# iRice: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=%s --noplugin=%s\n' "$exe" "$NOPLUGIN" > /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf
 systemctl daemon-reload
 systemctl restart bluetooth
 '''
-PAIRING_SHOWN = f"bluetoothd --noplugin=rap (a drop-in in {os.path.dirname(DROPIN)}), then restart Bluetooth"
+PAIRING_SCRIPT = PAIRING_SCRIPT.replace("@PLUGINS@", ",".join(PLUGINS))
+PAIRING_SHOWN = f"bluetoothd --noplugin={','.join(PLUGINS)} (a drop-in in {os.path.dirname(DROPIN)}), then restart Bluetooth"
 
 
 def _path(p):
@@ -112,13 +121,17 @@ def firewall():
 
 
 def pairing():
-    """{"experimental": bool, "rap_off": bool, "risk": bool}."""
+    """{"experimental": bool, "rap_off": bool, "risk": bool}; rap_off: every
+    plugin in PLUGINS is left out (an older drop-in with rap alone isn't enough)."""
     conf = _read("/etc/bluetooth/main.conf") or ""
     experimental = bool(re.search(r"^\s*Experimental\s*=\s*true", conf, re.M))
-    rap_off = os.path.exists(_path(DROPIN))
-    if not rap_off:
-        _, out = _run("systemctl", "show", "-p", "ExecStart", "--value", "bluetooth")
-        rap_off = bool(re.search(r"--noplugin=\S*\brap\b", out))
+    text = _read(DROPIN)
+    if text is None:
+        _, text = _run("systemctl", "show", "-p", "ExecStart", "--value", "bluetooth")
+    off = set()
+    for m in re.finditer(r"--noplugin=(\S+)", text or ""):
+        off.update(m.group(1).split(","))
+    rap_off = off.issuperset(PLUGINS)
     return {"experimental": experimental, "rap_off": rap_off, "risk": experimental and not rap_off}
 
 

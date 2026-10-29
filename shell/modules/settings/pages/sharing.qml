@@ -164,7 +164,7 @@ Column {
         Row {
             visible: page.system.pairing?.risk ?? false
             label: "Phones ask to pair"
-            detail: "Bluetooth's experimental Ranging feature makes phones ask to pair when they send with Quick Share; phones never need to. Turning it off asks for your password and restarts Bluetooth (headphones reconnect)."
+            detail: "Some of Bluetooth's experimental features (Ranging and LE Audio controls) make phones ask to pair when they send with Quick Share; phones never need to. Turning them off asks for your password and restarts Bluetooth (headphones reconnect, and still show their battery)."
             SettingsButton {
                 text: "Stop pairing prompts"
                 icon: "bluetooth"

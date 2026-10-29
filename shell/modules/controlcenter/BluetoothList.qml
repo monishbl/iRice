@@ -27,8 +27,19 @@ Column {
     function wanted(d) {
         return which === "paired" ? d.paired : which === "nearby" ? !d.paired && !!d.name : d.paired || !!d.name;
     }
+    // Phones change their private address now and then (each Quick Share
+    // connection brings a new one), so one phone can be several devices:
+    // unpaired ones show once per name, the connected one first
     function sortedNow() {
-        return (adapter?.devices.values ?? []).filter(d => wanted(d)).slice().sort((a, b) => (b.connected - a.connected) || (b.paired - a.paired) || (a.name ?? "").localeCompare(b.name ?? "")).slice(0, 40);
+        const seen = new Set();
+        return (adapter?.devices.values ?? []).filter(d => wanted(d)).slice().sort((a, b) => (b.connected - a.connected) || (b.paired - a.paired) || (a.name ?? "").localeCompare(b.name ?? "")).filter(d => {
+            if (d.paired || !d.name)
+                return true;
+            if (seen.has(d.name))
+                return false;
+            seen.add(d.name);
+            return true;
+        }).slice(0, 40);
     }
     // The rows shown: a snapshot (see WifiList), refreshed every few seconds
     // unless the pointer is over the list, and with the refresh button

@@ -177,8 +177,8 @@ def check_btpairing(_):
         return result("btpairing", name, "Network & sharing", "ok",
                       "Phones connect for Quick Share without pairing")
     return result("btpairing", name, "Network & sharing", "warn",
-                  "BlueZ's experimental Ranging profile makes phones ask to pair when they send with Quick Share",
-                  "Turn that profile off (headphone batteries keep working): the Fix button, which restarts Bluetooth")
+                  "BlueZ's experimental Ranging and LE Audio control profiles make phones ask to pair when they send with Quick Share",
+                  "Turn those profiles off (headphone batteries keep working): the Fix button, which restarts Bluetooth")
 
 
 def check_portal(_):
