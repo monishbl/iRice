@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import qs.common
 import qs.modules.controlcenter
@@ -11,7 +12,7 @@ import qs.services
 //   a to-do there. Click an item: edit it, or delete it (with Undo).
 //   Drag an item onto another date to move it (your own events and to-dos;
 //   subscribed calendars are read-only).
-//   The field at the bottom adds in plain words: "Call mum at 5pm".
+//   The + button opens the event/task editor for the selected day.
 Platter {
     id: root
 
@@ -80,7 +81,7 @@ Platter {
     // While dragging an item: the date under the pointer
     property var dropDay: null
     function dayAt(scenePos) {
-        if (fitHeight && viewport.contentY > 8) return null;
+        if (daysView.overlap >= 0.1) return null;
         const view = week ? weekList : grid;
         const p = view.mapFromItem(null, scenePos.x, scenePos.y);
         if (p.x < 0 || p.y < 0 || p.x >= view.width || p.y >= view.height)
@@ -217,9 +218,17 @@ Platter {
                 visible: !root.todoMode
                 width: parent.width
                 height: root.week ? weekList.height : grid.height
-                opacity: root.fitHeight ? 1 - 0.88 * Math.min(1, Math.max(0, viewport.contentY) / Math.max(1, height * 0.7)) : 1
-                transform: Translate { y: root.fitHeight ? Math.max(0, viewport.contentY) : 0 }
-                enabled: !root.fitHeight || viewport.contentY < 8
+                objectName: "calendarDates"
+                // Let long weeks scroll fully before leaving a faint, blurred
+                // calendar behind the agenda. The widget's existing glass is
+                // the backdrop; no opaque panel is painted over it.
+                readonly property real pinStart: Math.max(0, height - viewport.height)
+                readonly property real overlap: root.fitHeight ? Math.min(1, Math.max(0, viewport.contentY - pinStart) / Math.max(1, viewport.height * 0.75)) : 0
+                opacity: 1 - 0.94 * overlap
+                transform: Translate { y: root.fitHeight ? Math.max(0, viewport.contentY - daysView.pinStart) : 0 }
+                layer.enabled: overlap > 0
+                layer.effect: MultiEffect { blurEnabled: true; blurMax: 24; blur: daysView.overlap * 0.7 }
+                enabled: overlap < 0.1
                 WheelHandler {
                     enabled: !root.fitHeight
                     property real acc: 0
@@ -272,7 +281,7 @@ Platter {
                             readonly property var evs: { Calendar.local; Calendar.remote; return Calendar.eventsOn(modelData); }
                             readonly property var tds: { Todos.list; return Todos.on(modelData).filter(t => !t.done); }
                             width: weekList.width
-                            height: root.fitHeight ? 36 : Math.max(34, weekCol.implicitHeight + 10)
+                            height: Math.max(40, weekCol.implicitHeight + 10)
                             radius: 8
                             color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
                             Column {
@@ -302,6 +311,7 @@ Platter {
                             }
                             Column {
                                 id: weekCol
+                                objectName: "calendarWeekItems"
                                 x: 56
                                 width: parent.width - 64
                                 anchors.verticalCenter: parent.verticalCenter
@@ -313,7 +323,7 @@ Platter {
                                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                                 }
                                 Repeater {
-                                    model: wday.evs.slice(0, root.fitHeight ? 1 : 4)
+                                    model: wday.evs
                                     Row {
                                         required property var modelData
                                         spacing: 6
@@ -328,7 +338,7 @@ Platter {
                                     }
                                 }
                                 Repeater {
-                                    model: root.fitHeight && wday.evs.length ? [] : wday.tds.slice(0, root.fitHeight ? 1 : 3)
+                                    model: wday.tds
                                     Row {
                                         required property var modelData
                                         spacing: 6
@@ -341,12 +351,6 @@ Platter {
                                             font { family: Theme.font.family; pixelSize: Theme.font.small }
                                         }
                                     }
-                                }
-                                Text {
-                                    visible: root.fitHeight && wday.evs.length + wday.tds.length > 1
-                                    text: "+ " + (wday.evs.length + wday.tds.length - 1) + " more"
-                                    color: Theme.color.tertiary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.caption }
                                 }
                             }
                             MouseArea {
@@ -367,20 +371,6 @@ Platter {
                 z: 1
                 width: parent.width
                 height: agendaContent.implicitHeight
-                // Tasks rise over the calendar as it fades into the backdrop.
-                Rectangle {
-                    z: -1
-                    x: -4; y: -40
-                    width: agenda.width + 8
-                    height: agenda.height + 40
-                    visible: root.fitHeight && !root.todoMode
-                    opacity: Math.min(1, Math.max(0, viewport.contentY) / 60)
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: "transparent" }
-                        GradientStop { position: Math.min(1, 40 / (agenda.height + 40)); color: Qt.alpha(Theme.glass.solid, 0.76) }
-                        GradientStop { position: 1; color: Qt.alpha(Theme.glass.solid, 0.94) }
-                    }
-                }
                 Column {
                     id: agendaContent
                     width: parent.width
@@ -388,6 +378,7 @@ Platter {
                     // The selected day
                     Item {
                         id: dayTitle
+                        objectName: "calendarDayTitle"
                         visible: !root.todoMode
                         width: parent.width
                         height: 22
@@ -590,34 +581,6 @@ Platter {
                         onTriggered: root.undo = null
                     }
 
-                    // Quick add: plain words, on the selected day
-                    TextField {
-                        id: quickAdd
-                        objectName: "calendarQuickAdd"
-                        visible: !root.todoMode
-                        width: parent.width
-                        height: 32
-                        placeholder: "Add: “Call mum at 5pm”"
-                        commitOnBlur: false
-                        onCommitted: t => {
-                            if (t.trim() === "")
-                                return;
-                            const q = Calendar.parseQuick(t);
-                            const sel = root.selected;
-                            if (q) {
-                                // A time without a day word goes on the selected day
-                                if (!/\b(today|tonight|tomorrow|mon|tue|wed|thu|fri|sat|sun)\w*\b|\bin\s+\d/i.test(t) && !root.sameDay(sel, root.today))
-                                    q.start = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(), q.start.getHours(), q.start.getMinutes());
-                                Calendar.add(q.title, q.start, q.start, false, 0, "");
-                                root.selected = q.start;
-                            } else {
-                                // No time: an all-day event on the selected day
-                                const d = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate());
-                                Calendar.add(t.trim().charAt(0).toUpperCase() + t.trim().slice(1), d, new Date(d.getTime() + 86400000), true, -1, "");
-                            }
-                            text = "";
-                        }
-                    }
                 }
 
             } // agenda

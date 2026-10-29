@@ -391,7 +391,7 @@ The important observations and expected/actual results are embedded above so thi
 
 Queued at the user's request while the current bug-fix pass continues:
 
-- [x] **R51:** Contain the calendar widget and implement the requested scrollable task/agenda overlay, gradient calendar fade, faint calendar context and scroll-up button. All items must be reachable.
+- [x] **R51:** Contain the calendar widget and implement the requested scrollable task/agenda overlay, glass backdrop with calendar blur/fade, full weekly entries and scroll-up button. All items must be reachable.
 - [ ] **R52:** Make every window opened from Settings visible and focused, including wallpaper selection and Google account connection.
 - [ ] **R53:** Repair app continuation/deep-link handoff and activate the receiving app, including existing windows on other workspaces.
 - [ ] **R54:** Clear completed/abandoned download activity correctly instead of leaving an “Unconfirmed … / 0 B” island card.

@@ -70,6 +70,9 @@ class CalendarLayoutTests(unittest.TestCase):
   Timer { interval:350;running:true;repeat:true;onTriggered: {
   const v=find(cal,'calendarViewport'); const a=find(cal,'calendarAgenda');
   if(stage===0) {
+   if(find(cal,'calendarQuickAdd')) throw new Error('quick input remains');
+   const dates=find(cal,'calendarDates');
+   if(dates.height<900) throw new Error('week entries truncated');
    const list=find(cal,'calendarItems');
    if(list.children.filter(c=>c.height===36).length!==46) throw new Error('agenda truncated');
    if(!v || !v.clip || v.y+v.height>cal.height || cal.items.length!==46 || v.contentHeight<2000) throw new Error('bounds/items regression');
@@ -78,7 +81,7 @@ class CalendarLayoutTests(unittest.TestCase):
   } else if(stage===1) {v.contentY=230;}
   else if(stage===2) {}
   else if(stage===3) {v.contentY=v.contentHeight-v.height;}
-  else if(stage===4) {const q=find(cal,'calendarQuickAdd');const pos=q.mapToItem(cal,0,q.height);if(pos.y>cal.height || pos.y<cal.height-25) throw new Error('footer unreachable');cal.scrollToCalendar();}
+  else if(stage===4) {const list=find(cal,'calendarItems');const pos=list.mapToItem(cal,0,list.height);if(pos.y>cal.height || pos.y<cal.height-25) throw new Error('last task unreachable');cal.scrollToCalendar();}
   else if(stage===5) {if(v.contentY!==0) throw new Error('return failed');cal.week=false;}
   else if(stage===6) {if(v.y+v.height>cal.height) throw new Error('month bounds');cal.todoMode=true;}
   else if(stage===7) {if(v.contentHeight<1800) throw new Error('todo bounds');cal.todoMode=false;cal.fitHeight=false;}

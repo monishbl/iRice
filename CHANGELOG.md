@@ -1,5 +1,12 @@
 # iRice changelog
 
+## Glass calendar and full weekly lists · 2026-10-29
+
+- Remove the solid agenda gradient. Retain the widget’s glass backdrop and progressively blur/fade calendar content behind the agenda. Long weeks scroll before the backdrop is pinned.
+- Show every weekly event and unfinished task instead of abbreviated previews and “+ more” counts.
+- Remove the bottom quick-add field; use the existing + button to open the event/task editor.
+- Updated offscreen regression verifies full weekly height, all 46 agenda items, last-item reachability, removed quick input, return scrolling and all tabs.
+
 ## Calendar containment and scrolling agenda · 2026-10-29
 
 - Fix R51: keep the large desktop calendar inside its glass frame in Month, Week and To-do views. Compact week previews retain all seven dates; scrolling reveals every selected-day event/task and the add field, including lists beyond the previous 30-item cap.
