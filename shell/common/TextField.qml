@@ -8,6 +8,7 @@ Rectangle {
     property string placeholder
     property bool secret: false
     property bool commitOnBlur: true
+    property string accessibleName: placeholder
     signal committed(string text)
     readonly property bool editing: input.activeFocus // being typed in
     function release() { // stop typing (focus goes back to the window)
@@ -39,6 +40,9 @@ Rectangle {
         clip: true
         font { family: Theme.font.family; pixelSize: Theme.font.body }
         onAccepted: root.committed(text)
+        Accessible.role: Accessible.EditableText
+        Accessible.name: root.accessibleName
+        Accessible.passwordEdit: root.secret
         onActiveFocusChanged: {
             if (activeFocus)
                 return;

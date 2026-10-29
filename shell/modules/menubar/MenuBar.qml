@@ -205,7 +205,7 @@ Variants {
                                 mic: { icon: Audio.micMuted ? "microphone-slash" : "microphone", act: () => Audio.toggleMic() },
                                 keyboard: { icon: "keyboard", act: () => Panels.toggle("keyboard", bar.screen) },
                                 darkMode: { icon: "circle-half", act: () => System.toggleDarkMode() },
-                                powerProfile: { icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : PowerProfiles.profile === PowerProfile.Performance ? "lightning" : "scales", act: () => PowerProfiles.profile = PowerProfiles.profile === PowerProfile.PowerSaver ? PowerProfile.Balanced : PowerProfiles.profile === PowerProfile.Balanced && PowerProfiles.hasPerformanceProfile ? PowerProfile.Performance : PowerProfile.PowerSaver },
+                                powerProfile: { icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : PowerProfiles.profile === PowerProfile.Performance ? "lightning" : "scales", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : PowerProfiles.profile === PowerProfile.Balanced && PowerProfiles.hasPerformanceProfile ? "performance" : "power-saver") },
                                 record: { icon: "record", act: () => ScreenTools.recording ? ScreenTools.stopRecording() : ScreenTools.select("record") }
                             })[modelData]
                         visible: !!def

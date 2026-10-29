@@ -9,7 +9,38 @@ Item {
     property real stepSize: 0
     property real value: 0
     readonly property alias pressed: area.pressed
+    property string accessibleName
     signal moved(real value)
+
+    // Keyboard: arrows step (a stepSize, or 1/20 of the range), Page Up and
+    // Down take bigger steps, Home and End go to the ends
+    activeFocusOnTab: true
+    function nudge(target) {
+        let v = Math.max(Math.min(root.from, root.to), Math.min(Math.max(root.from, root.to), target));
+        if (stepSize > 0)
+            v = Math.round(v / stepSize) * stepSize;
+        if (v !== value)
+            moved(v);
+    }
+    readonly property real keyStep: stepSize > 0 ? stepSize : (to - from) / 20
+    Keys.onPressed: event => {
+        const k = event.key;
+        const v = k === Qt.Key_Left || k === Qt.Key_Down ? value - keyStep : k === Qt.Key_Right || k === Qt.Key_Up ? value + keyStep
+            : k === Qt.Key_PageDown ? value - keyStep * 5 : k === Qt.Key_PageUp ? value + keyStep * 5
+            : k === Qt.Key_Home ? from : k === Qt.Key_End ? to : NaN;
+        if (!isNaN(v)) {
+            nudge(v);
+            event.accepted = true;
+        }
+    }
+    Accessible.role: Accessible.Slider
+    Accessible.name: accessibleName
+    Accessible.description: String(Math.round(value * 100) / 100)
+    Accessible.onIncreaseAction: nudge(value + keyStep)
+    Accessible.onDecreaseAction: nudge(value - keyStep)
+    FocusRing {
+        radius: height / 2 + 4
+    }
 
     implicitWidth: 180
     implicitHeight: 22

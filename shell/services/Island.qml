@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
 import qs.common
+import "IslandCycle.js" as Cycle
 
 // What the dynamic island shows. `activities` are ongoing things (recording,
 // a timer, music, a stopwatch); the first one appears in the compact pill.
@@ -76,6 +77,19 @@ Singleton {
         if (activities.length < 2)
             return;
         focusKind = activities[(focusIndex + step + activities.length) % activities.length].kind;
+    }
+    // A wheel or touchpad scroll over the island (angleDelta): a notch, or
+    // a whole swipe, moves one activity (IslandCycle.js). Returns the step
+    // taken (-1, 0 or 1) for the switch animation's direction.
+    property var scrollState: null
+    function scroll(dx, dy) {
+        if (activities.length < 2)
+            return 0;
+        const r = Cycle.wheel(scrollState, dx, dy, Date.now());
+        scrollState = r.state;
+        if (r.step !== 0)
+            cycle(r.step);
+        return r.step;
     }
 
     // Is this piece of a collapsed live activity switched on? ("music", "bars")
@@ -327,21 +341,17 @@ Singleton {
         hot = false;
         hotTicks = 0;
     }
-    property var savedProfile: null // the profile before throttling
+    // Low Power while hot goes through Power (it decides the energy mode for
+    // everyone; Cool-down wins over the rest while it lasts)
+    readonly property bool throttled: Power.has("cooldown")
     function hotText(t) {
-        return "CPU " + Math.round(t) + " °C · " + (savedProfile !== null ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
+        return "CPU " + Math.round(t) + " °C · " + (throttled ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
     }
     function throttle(on) {
-        if (on && cfg.hotThrottle && savedProfile === null && PowerProfiles.profile !== PowerProfile.PowerSaver) {
-            savedProfile = PowerProfiles.profile;
-            if (!System.sandboxed) // the sandbox shares the real machine's power daemon
-                PowerProfiles.profile = PowerProfile.PowerSaver;
-        } else if (!on && savedProfile !== null) {
-            // Only if it's still the profile we set (you may have changed it)
-            if (!System.sandboxed && PowerProfiles.profile === PowerProfile.PowerSaver)
-                PowerProfiles.profile = savedProfile;
-            savedProfile = null;
-        }
+        if (on && cfg.hotThrottle)
+            Power.ask("cooldown", "power-saver", "cooling down: CPU at " + Math.round(Resources.temperature) + " °C");
+        else
+            Power.release("cooldown");
     }
     onHotChanged: {
         CoolDown.hot = hot;

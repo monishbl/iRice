@@ -50,6 +50,12 @@ Scope {
         property var flow: null
     }
     property var agent: agentLoader.item ?? agentStub
+    // For System health: only the agent knows whether polkit accepted it
+    Binding {
+        target: Health
+        property: "polkit"
+        value: System.sandboxed ? "off" : (root.agent.isRegistered ?? false) ? "yes" : "no"
+    }
     LazyLoader {
         id: agentLoader
         active: !System.sandboxed

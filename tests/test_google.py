@@ -40,6 +40,7 @@ class FakeGoogle:
         self.changed = {}  # (kind, id) -> version
         self.expired = set()
         self.requests = []
+        self.writes = []
 
     @staticmethod
     def day(offset):
@@ -53,11 +54,75 @@ class FakeGoogle:
     def serving(self, account):
         return _Serving(self, account)
 
-    def __call__(self, url, data=None, token=None, method=None, form=False):
+    offline = False
+
+    def etag(self):
+        return '"%d"' % (self.version + 1)
+
+    # Writes: create, patch (merging, with If-Match) and delete
+    def write(self, parts, data, method, headers, q):
+        match = (headers or {}).get('If-Match')
+        if parts[-1] == 'quickAdd':
+            cid = parts[-3]
+            self.change('ev', cid + '/q%d' % self.version)
+            eid = 'q%d' % self.version
+            self.events[cid][eid] = {'id': eid, 'summary': q['text'], 'etag': self.etag(),
+                                     'start': {'date': self.day(1)}, 'end': {'date': self.day(2)}}
+            return dict(self.events[cid][eid])
+        events = 'events' in parts
+        if events:
+            i = parts.index('events')
+            store, kind, owner = self.events[parts[i - 1]], 'ev', parts[i - 1]
+            item = parts[i + 1] if len(parts) > i + 1 else None
+            if self.calendars.get(owner, {}).get('accessRole') == 'reader':
+                raise google.HttpError('Access denied.', 403)
+        else:
+            i = len(parts) - 1 - parts[::-1].index('tasks')
+            if i == len(parts) - 1 and method != 'POST':
+                i = len(parts) - 2 - parts[-2::-1].index('tasks')
+            store, kind, owner = self.tasks[parts[i - 1]], 'task', parts[i - 1]
+            item = parts[i + 1] if len(parts) > i + 1 else None
+        if method == 'POST':
+            self.version += 1
+            item = ('e' if events else 't') + str(self.version)
+            row = dict(data, id=item, etag=self.etag(), _updated=google.time.time())
+            store[item] = row
+            self.change(kind, owner + '/' + item)
+            return dict(row)
+        row = store.get(item)
+        if row is None or row.get('status') == 'cancelled' or row.get('deleted'):
+            raise google.HttpError('This Google item no longer exists.', 404)
+        if match and match != row.get('etag'):
+            raise google.Conflict()
+        self.writes.append((method, kind, owner, item))
+        if method == 'DELETE':
+            if events:
+                store[item] = {'id': item, 'status': 'cancelled'}
+            else:
+                store[item] = {'id': item, 'deleted': True, '_updated': google.time.time()}
+        else:
+            for key, value in data.items():
+                if isinstance(value, dict) and isinstance(row.get(key), dict):
+                    merged = dict(row[key], **value)
+                    row[key] = {k: v for k, v in merged.items() if v is not None}
+                elif value is None:
+                    row.pop(key, None)
+                else:
+                    row[key] = value
+            row['_updated'] = google.time.time()
+            row['etag'] = self.etag()
+        self.change(kind, owner + '/' + item)
+        return {} if method == 'DELETE' else {k: v for k, v in row.items() if k != '_updated'}
+
+    def __call__(self, url, data=None, token=None, method=None, form=False, headers=None):
+        if self.offline:
+            raise google.Offline("Can't reach Google.")
         self.requests.append(url)
         u = urllib.parse.urlparse(url)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         parts = [urllib.parse.unquote(p) for p in u.path.split('/') if p]
+        if method in ('POST', 'PATCH', 'DELETE'):
+            return self.write(parts, data or {}, method, headers, q)
         since = q.get('syncToken')
         if since and since in self.expired:
             raise google.Gone('expired')
@@ -67,9 +132,11 @@ class FakeGoogle:
             if since:
                 rows = [r for r in rows if self.changed.get(('cal', r['id']), 0) > int(since)]
             return {'items': rows, 'nextSyncToken': fresh}
+        if len(parts) > 2 and parts[-2] == 'events':
+            return dict(self.events[parts[-3]][parts[-1]])
         if parts[-1] == 'events':
             cid = parts[-2]
-            rows = list(self.events[cid].values())
+            rows = [{k: v for k, v in r.items() if k != '_updated'} for r in self.events[cid].values()]
             if since:
                 rows = [dict(r) for r in rows if self.changed.get(('ev', cid + '/' + r['id']), 0) > int(since)]
             else:
@@ -373,6 +440,278 @@ class IncrementalSync(unittest.TestCase):
         with patch.object(self.account, 'signin_helper', return_value='/bin/true'), patch('subprocess.run', return_value=reply):
             with self.assertRaisesRegex(RuntimeError, 'cancelled'):
                 self.account.signin()
+
+
+
+
+class Router:
+    """Several fake Google accounts behind one request(): each account's
+    token (its Online Accounts path) picks its own FakeGoogle."""
+    def __init__(self, apis):
+        self.apis = apis
+
+    def __call__(self, url, data=None, token=None, method=None, form=False, headers=None):
+        return self.apis[token](url, data, token, method, form, headers)
+
+
+class Accounts(unittest.TestCase):
+    """Several accounts, event editing and the outbox, through the Hub (what
+    the shell runs), with Google faked per account."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / 'google'
+        self.apis = {}
+        self.goa = []
+        self.notes = []
+        for p in (patch.object(google, 'request', side_effect=Router(self.apis)),
+                  patch.object(google.Account, 'access', autospec=True, side_effect=lambda account: account.goa),
+                  patch.object(google.OnlineAccounts, 'accounts', side_effect=lambda: [dict(a) for a in self.goa]),
+                  patch.object(google.OnlineAccounts, 'access', return_value='ok'),
+                  patch.object(google, 'emit', side_effect=self.notes.append)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def hub(self):
+        return google.Hub(self.root)
+
+    def add(self, goa, name):
+        api = FakeGoogle()
+        api.calendars['primary'] = {'id': 'primary', 'summary': name, 'primary': True, 'accessRole': 'owner'}
+        api.lists['inbox'] = {'id': 'inbox', 'title': 'Inbox'}
+        self.apis[goa] = api
+        self.goa.append({'id': goa, 'name': name, 'calendarDisabled': False})
+        return api
+
+    def connect(self, goa):
+        return self.hub().run({'cmd': 'connectDesktop', 'account': goa})
+
+    def ids(self, status, key='events'):
+        return sorted((x['account'], x['id']) for x in status[key])
+
+    def test_two_accounts_sync_independently(self):
+        work, home = self.add('/goa/work', 'work@example.com'), self.add('/goa/home', 'me@example.com')
+        work.events['primary']['a'] = {'id': 'a', 'summary': 'Standup', 'start': {'date': work.day(1)}, 'end': {'date': work.day(2)}}
+        home.events['primary']['a'] = {'id': 'a', 'summary': 'Dentist', 'start': {'date': home.day(3)}, 'end': {'date': home.day(4)}}
+        self.connect('/goa/work')
+        status = self.connect('/goa/home')
+        self.assertEqual([a['identity'] for a in status['accounts']], ['work@example.com', 'me@example.com'])
+        self.assertEqual(sorted(e['title'] for e in status['events']), ['Dentist', 'Standup'])
+        # Same calendar and event ids in both: told apart by account
+        self.assertEqual(len({(e['account'], e['calendarId'], e['id']) for e in status['events']}), 2)
+        self.assertTrue(all(c['account'] for c in status['calendars']))
+        # Each keeps its own sync position; a change in one is seen only there
+        home.events['primary']['b'] = {'id': 'b', 'summary': 'Gym', 'start': {'date': home.day(5)}, 'end': {'date': home.day(6)}}
+        home.change('ev', 'primary/b')
+        work.requests.clear()
+        status = self.hub().run({'cmd': 'sync'})
+        self.assertIn('Gym', [e['title'] for e in status['events']])
+        self.assertTrue(all('syncToken=' in u for u in work.requests if '/events' in u))
+        # The same account can't be connected twice; disconnecting one keeps the other
+        with self.assertRaisesRegex(ValueError, 'already connected'):
+            self.connect('/goa/work')
+        home_id = next(a['id'] for a in status['accounts'] if a['identity'] == 'me@example.com')
+        status = self.hub().run({'cmd': 'disconnect', 'account': home_id})
+        self.assertEqual([a['identity'] for a in status['accounts']], ['work@example.com'])
+        self.assertEqual([e['title'] for e in status['events']], ['Standup'])
+
+    def test_signin_uses_an_unconnected_account_before_the_browser(self):
+        self.add('/goa/work', 'work@example.com')
+        self.add('/goa/home', 'me@example.com')
+        self.connect('/goa/work')
+        with patch.object(google.Account, 'signin') as browser:
+            status = self.hub().run({'cmd': 'signin'})
+        browser.assert_not_called()
+        self.assertEqual(len(status['accounts']), 2)
+        self.assertTrue(all(a['used'] for a in status['goaAccounts']))
+
+    def test_one_account_from_before_moves_into_accounts(self):
+        self.add('/goa/old', 'old@example.com')
+        legacy = google.Account(self.root)
+        google.atomic(legacy.connection, {'account': '/goa/old', 'identity': 'old@example.com'})
+        google.atomic(legacy.cache, {'events': [], 'tasks': [{'id': 't', 'listId': 'inbox', 'text': 'Kept'}]})
+        status = self.hub().run({'cmd': 'status'})
+        self.assertEqual([a['identity'] for a in status['accounts']], ['old@example.com'])
+        self.assertEqual([t['text'] for t in status['tasks']], ['Kept'])
+        self.assertFalse((self.root / 'connection.json').exists())
+
+    def test_events_are_created_edited_moved_and_deleted(self):
+        api = self.add('/goa/me', 'me@example.com')
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        soon = google.datetime.now().replace(hour=9, minute=0, second=0, microsecond=0) + google.timedelta(days=7)
+        start = soon.timestamp() * 1000
+        status = self.hub().run({'cmd': 'eventInsert', 'account': aid, 'calendarId': 'primary',
+                                 'fields': {'title': 'Review', 'start': start, 'end': start + 3600000, 'allDay': False, 'location': 'Room 2'}})
+        event = next(e for e in status['events'] if e['title'] == 'Review')
+        self.assertEqual(event['location'], 'Room 2')
+        self.assertTrue(event['writable'])
+        self.assertTrue(event['etag'])
+        stored = api.events['primary'][event['id']]
+        self.assertIn('dateTime', stored['start'])
+        # Moved to an all-day event the next day: the old time is cleared
+        next_day = soon.replace(hour=0) + google.timedelta(days=1)
+        day = next_day.timestamp() * 1000
+        status = self.hub().run({'cmd': 'eventPatch', 'account': aid, 'calendarId': 'primary', 'id': event['id'], 'etag': event['etag'],
+                                 'fields': {'start': day, 'end': day + 86400000, 'allDay': True, 'notes': 'Bring slides'}})
+        stored = api.events['primary'][event['id']]
+        self.assertEqual(stored['start'], {'date': next_day.date().isoformat()})
+        self.assertEqual(stored['end'], {'date': (next_day + google.timedelta(days=1)).date().isoformat()})
+        self.assertEqual(stored['description'], 'Bring slides')
+        event = next(e for e in status['events'] if e['id'] == event['id'])
+        status = self.hub().run({'cmd': 'eventDelete', 'account': aid, 'calendarId': 'primary', 'id': event['id'], 'etag': event['etag']})
+        self.assertNotIn(event['id'], [e['id'] for e in status['events']])
+        self.assertEqual(self.hub().ops(), [])
+
+    def test_a_read_only_calendar_refuses_edits(self):
+        api = self.add('/goa/me', 'me@example.com')
+        api.calendars['team'] = {'id': 'team', 'summary': 'Team', 'accessRole': 'reader'}
+        api.events['team']['x'] = {'id': 'x', 'summary': 'Offsite', 'start': {'date': api.day(1)}, 'end': {'date': api.day(2)}}
+        status = self.connect('/goa/me')
+        aid = status['accounts'][0]['id']
+        self.assertFalse(next(e for e in status['events'] if e['id'] == 'x')['writable'])
+        self.assertFalse(next(c for c in status['calendars'] if c['id'] == 'team')['writable'])
+        for cmd, extra in (('eventPatch', {'id': 'x', 'fields': {'title': 'Mine now'}}), ('eventDelete', {'id': 'x'}),
+                           ('eventInsert', {'fields': {'title': 'New', 'start': 0, 'end': 0, 'allDay': True}})):
+            with self.assertRaisesRegex(ValueError, 'read-only'):
+                self.hub().run(dict({'cmd': cmd, 'account': aid, 'calendarId': 'team'}, **extra))
+        self.assertEqual(self.hub().ops(), [])
+        self.assertEqual(api.writes, [])
+
+    def test_editing_a_recurring_event_changes_that_occurrence_only(self):
+        api = self.add('/goa/me', 'me@example.com')
+        for d in (1, 8):
+            iid = 'weekly_' + api.day(d).replace('-', '')
+            api.events['primary'][iid] = {'id': iid, 'summary': 'Sync', 'recurringEventId': 'weekly', 'etag': '"e%d"' % d,
+                                          'start': {'date': api.day(d)}, 'end': {'date': api.day(d + 1)}}
+        status = self.connect('/goa/me')
+        aid = status['accounts'][0]['id']
+        first = next(e for e in status['events'] if e['id'].endswith(api.day(1).replace('-', '')))
+        self.assertTrue(first['recurring'])
+        status = self.hub().run({'cmd': 'eventPatch', 'account': aid, 'calendarId': 'primary', 'id': first['id'],
+                                 'etag': first['etag'], 'fields': {'title': 'Sync (moved room)'}})
+        self.assertEqual(api.writes, [('PATCH', 'ev', 'primary', first['id'])])
+        self.assertEqual(sorted(e['title'] for e in status['events']), ['Sync', 'Sync (moved room)'])
+
+    def test_editing_every_occurrence_changes_the_series(self):
+        api = self.add('/goa/me', 'me@example.com')
+        nine = google.datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+        def at(t):
+            return {'dateTime': t.astimezone().isoformat()}
+        # The series itself (not listed with singleEvents) and two occurrences
+        master = {'id': 'weekly', 'summary': 'Sync', 'recurrence': ['RRULE:FREQ=WEEKLY'], 'etag': '"m"',
+                  'start': at(nine - google.timedelta(days=14)), 'end': at(nine - google.timedelta(days=14, hours=-1))}
+        for d in (1, 8):
+            iid = 'weekly_%d' % d
+            api.events['primary'][iid] = {'id': iid, 'summary': 'Sync', 'recurringEventId': 'weekly',
+                                          'start': at(nine + google.timedelta(days=d)), 'end': at(nine + google.timedelta(days=d, hours=1))}
+        status = self.connect('/goa/me')
+        api.events['primary']['weekly'] = dict(master)  # (only after the sync: it isn't one of the listed occurrences)
+        aid = status['accounts'][0]['id']
+        first = next(e for e in status['events'] if e['id'] == 'weekly_1')
+        self.assertEqual(first['series'], 'weekly')
+        # An hour later, every week: the series moves an hour, from where it starts
+        was = google.ms(first['start'])
+        api.offline = True
+        with self.assertRaises(google.Offline):
+            self.hub().run({'cmd': 'eventPatch', 'account': aid, 'calendarId': 'primary', 'id': first['id'], 'series': 'weekly',
+                            'was': was, 'fields': {'title': 'Weekly sync', 'start': was + 3600000, 'end': was + 7200000, 'allDay': False}})
+        shown = {e['id']: e for e in self.hub().status()['events']}
+        self.assertEqual({shown[i]['title'] for i in ('weekly_1', 'weekly_8')}, {'Weekly sync'})
+        self.assertEqual(google.ms(shown['weekly_8']['start']), google.ms(api.events['primary']['weekly_8']['start']) + 3600000)
+        api.offline = False
+        self.hub().run({'cmd': 'flush'})
+        self.assertEqual(api.writes, [('PATCH', 'ev', 'primary', 'weekly')])
+        self.assertEqual(api.events['primary']['weekly']['summary'], 'Weekly sync')
+        self.assertEqual(google.ms(api.events['primary']['weekly']['start']), google.ms(master['start']) + 3600000)
+        # Deleting every occurrence deletes the series
+        self.hub().run({'cmd': 'eventDelete', 'account': aid, 'calendarId': 'primary', 'id': 'weekly_8', 'series': 'weekly'})
+        self.assertEqual(api.writes[-1], ('DELETE', 'ev', 'primary', 'weekly'))
+
+    def test_changes_made_offline_survive_a_restart_and_go_out_later(self):
+        api = self.add('/goa/me', 'me@example.com')
+        api.tasks['inbox']['t1'] = {'id': 't1', 'title': 'Milk', 'status': 'needsAction', 'etag': '"t1"', '_updated': 1}
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        api.offline = True
+        # Two changes while offline (one to a task added offline): kept in
+        # order, on disk, privately, and already shown
+        with self.assertRaises(google.Offline):
+            self.hub().run({'cmd': 'taskUpdate', 'account': aid, 'listId': 'inbox', 'id': 't1', 'etag': '"t1"', 'patch': {'done': True}})
+        with self.assertRaises(google.Offline):
+            self.hub().run({'cmd': 'taskAdd', 'account': aid, 'listId': 'inbox', 'patch': {'text': 'Bread'}})
+        hub = self.hub()
+        pending = next(t for t in hub.status()['tasks'] if t['text'] == 'Bread')
+        with self.assertRaises(google.Offline):
+            hub.run({'cmd': 'taskUpdate', 'account': aid, 'listId': 'inbox', 'id': pending['id'], 'patch': {'text': 'Rye bread'}})
+        self.assertEqual(hub.outbox.stat().st_mode & 0o777, 0o600)
+        self.assertEqual([o['cmd'] for o in hub.ops()], ['taskUpdate', 'taskAdd'])
+        shown = {t['text']: t for t in self.hub().status()['tasks']}
+        self.assertTrue(shown['Milk']['done'])
+        self.assertIn('Rye bread', shown)
+        self.assertEqual(self.hub().status()['outbox'], 2)
+        # Back online, after a restart: the next sync sends them first
+        api.offline = False
+        status = google.Hub(self.root).run({'cmd': 'sync'})
+        self.assertEqual(status['outbox'], 0)
+        self.assertEqual(api.tasks['inbox']['t1']['status'], 'completed')
+        self.assertIn('Rye bread', [t.get('title') for t in api.tasks['inbox'].values()])
+        self.assertEqual(sorted(t['text'] for t in status['tasks']), ['Milk', 'Rye bread'])
+
+    def test_a_change_that_lost_to_google_keeps_googles_version_and_says_so_once(self):
+        api = self.add('/goa/me', 'me@example.com')
+        api.events['primary']['m'] = {'id': 'm', 'summary': 'Meeting', 'etag': '"old"', 'start': {'date': api.day(1)}, 'end': {'date': api.day(2)}}
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        api.events['primary']['m'].update(summary='Meeting (moved)', etag='"new"')  # changed on the phone
+        api.change('ev', 'primary/m')
+        status = self.hub().run({'cmd': 'eventPatch', 'account': aid, 'calendarId': 'primary', 'id': 'm', 'etag': '"old"',
+                                 'title': 'Meeting', 'fields': {'title': 'Meeting with Sam'}})
+        conflicts = [n['conflict'] for n in self.notes if 'conflict' in n]
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]['title'], 'Meeting')
+        self.assertIn('Meeting with Sam', conflicts[0]['what'])
+        self.assertEqual(conflicts[0]['reason'], 'changed')
+        self.assertEqual(api.events['primary']['m']['summary'], 'Meeting (moved)')
+        self.assertEqual(self.hub().ops(), [])
+        self.hub().run({'cmd': 'sync'})
+        self.assertEqual(len([n for n in self.notes if 'conflict' in n]), 1)  # once
+
+    def test_deleted_on_google_an_edit_is_a_conflict_a_deletion_is_done(self):
+        api = self.add('/goa/me', 'me@example.com')
+        api.tasks['inbox']['t'] = {'id': 't', 'title': 'Call', 'status': 'needsAction', '_updated': 1}
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        api.tasks['inbox']['t'] = {'id': 't', 'deleted': True, '_updated': google.time.time()}
+        self.hub().run({'cmd': 'taskDelete', 'account': aid, 'listId': 'inbox', 'id': 't'})
+        self.assertEqual([n for n in self.notes if 'conflict' in n], [])
+        self.hub().run({'cmd': 'taskUpdate', 'account': aid, 'listId': 'inbox', 'id': 't', 'patch': {'text': 'Call back'}})
+        self.assertEqual([n['conflict']['reason'] for n in self.notes if 'conflict' in n], ['deleted'])
+        self.assertEqual(self.hub().ops(), [])
+
+    def test_two_quick_edits_to_one_item_are_not_a_conflict(self):
+        api = self.add('/goa/me', 'me@example.com')
+        api.tasks['inbox']['t'] = {'id': 't', 'title': 'Call', 'status': 'needsAction', 'etag': '"t"', '_updated': 1}
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        # Both made against the version shown before the first reached Google
+        for text in ('Call Sam', 'Call Sam back'):
+            self.hub().run({'cmd': 'taskUpdate', 'account': aid, 'listId': 'inbox', 'id': 't', 'etag': '"t"', 'patch': {'text': text}})
+        self.assertEqual([n for n in self.notes if 'conflict' in n], [])
+        self.assertEqual(api.tasks['inbox']['t']['title'], 'Call Sam back')
+        # A change on the phone meanwhile is still caught
+        api.tasks['inbox']['t'].update(title='Call Kim', etag='"phone"')
+        self.hub().run({'cmd': 'taskUpdate', 'account': aid, 'listId': 'inbox', 'id': 't', 'etag': '"t"', 'patch': {'text': 'Mine'}})
+        self.assertEqual(len([n for n in self.notes if 'conflict' in n]), 1)
+        self.assertEqual(api.tasks['inbox']['t']['title'], 'Call Kim')
+
+    def test_changes_queue_in_order_and_go_out_in_order(self):
+        api = self.add('/goa/me', 'me@example.com')
+        aid = self.connect('/goa/me')['accounts'][0]['id']
+        api.offline = True
+        for text in ('one', 'two', 'three'):
+            with self.assertRaises(google.Offline):
+                self.hub().run({'cmd': 'taskAdd', 'account': aid, 'listId': 'inbox', 'patch': {'text': text}})
+        api.offline = False
+        self.hub().run({'cmd': 'flush'})
+        made = sorted(api.tasks['inbox'].values(), key=lambda t: int(t['id'][1:]))
+        self.assertEqual([t['title'] for t in made], ['one', 'two', 'three'])
 
 
 if __name__ == '__main__':

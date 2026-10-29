@@ -66,6 +66,9 @@ Scope {
             // Control Center, which opens in the same corner)
             visible: count > 0 && !Panels.isOpen("notificationCenter", screen) && !Panels.isOpen("controlCenter", screen)
             WlrLayershell.layer: WlrLayer.Overlay
+            // Banners never take the keyboard, except while a reply is being
+            // written in one
+            WlrLayershell.keyboardFocus: Notifications.replying > 0 ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             anchors { top: true; right: true }
             margins.top: 30 + 6 - m + (Panels.osdVisible ? 62 : 0)
             margins.right: 8 - m
@@ -160,7 +163,8 @@ Scope {
 
                         Timer {
                             interval: (banner.notification?.expireTimeout ?? 0) > 0 ? banner.notification.expireTimeout : 5000
-                            running: banner.notification !== null && banner.notification.urgency !== NotificationUrgency.Critical && !win.hovered && !win.expanded
+                            // (held while a reply is being written, or just sent)
+                            running: banner.notification !== null && banner.notification.urgency !== NotificationUrgency.Critical && !win.hovered && !win.expanded && !card.replying && !card.sent
                             onTriggered: banner.leave()
                         }
 
@@ -183,6 +187,15 @@ Scope {
                             // Back cards show only their edge; clicking the stack expands it
                             enabled: banner.front || win.expanded
                             onCloseRequested: banner.leave()
+                            // Counted, so the window takes the keyboard while any reply is open
+                            property bool counted: false
+                            onReplyingChanged: {
+                                if (replying !== counted) {
+                                    Notifications.replying += replying ? 1 : -1;
+                                    counted = replying;
+                                }
+                            }
+                            Component.onDestruction: if (counted) Notifications.replying -= 1
                         }
                         MouseArea {
                             anchors.fill: parent

@@ -25,11 +25,22 @@ QtObject {
             nightLight: { label: "Night Light", kind: "toggle", sizes: ["1x1", "2x1"], icon: "moon-stars", on: System.nightLight, status: System.nightLight ? System.nightLightTemp + "K" : "Off", act: () => System.nightLight = !System.nightLight },
             darkMode: { label: Theme.dark ? "Dark Mode" : "Light Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "circle-half", on: Theme.dark, status: Config.options.appearance.mode === "auto" ? "Auto" : "", act: () => System.toggleDarkMode() },
             // Visible to nearby devices, LocalSend and Quick Share together; on = for 10 minutes
-            sharing: { label: "Sharing", kind: "toggle", sizes: ["1x1", "2x1", "2x2", "4x1"], icon: "share-network", on: Sharing.on, status: Sharing.levelText, page: "sharing", act: () => Sharing.setLevel(Sharing.on ? "off" : "10min") },
+            // The circle toggles off ↔ 10 min; the rest (or right-click) offers
+            // the three choices, like AirDrop on iOS
+            sharing: { label: "Sharing", kind: "toggle", sizes: ["1x1", "2x1"], icon: "share-network", on: Sharing.on, page: "sharing",
+                status: Sharing.mixed && Sharing.on ? "Custom" : Sharing.level === "off" ? "No one" : Sharing.level === "10min" ? "Everyone · 10 min" : "Everyone",
+                act: () => Sharing.setLevel(Sharing.on ? "off" : "10min"),
+                menu: () => [
+                    { text: "No one", checked: Sharing.level === "off", action: () => Sharing.setLevel("off") },
+                    { text: "Everyone for 10 minutes", checked: Sharing.level === "10min" && !Sharing.mixed, action: () => Sharing.setLevel("10min") },
+                    { text: "Everyone", checked: Sharing.level === "everyone" && !Sharing.mixed, action: () => Sharing.setLevel("everyone") },
+                    { separator: true },
+                    { text: "Sharing settings…", openPage: "sharing" }
+                ] },
             keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
             stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic() },
-            lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => PowerProfiles.profile = PowerProfiles.profile === PowerProfile.PowerSaver ? PowerProfile.Balanced : PowerProfile.PowerSaver },
+            lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : "power-saver") },
             coolDown: { label: "Cool-down", kind: "toggle", sizes: ["1x1", "2x1"], icon: "snowflake", on: CoolDown.active, status: CoolDown.why, act: () => CoolDown.toggle() },
             gameMode: { label: "Game Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "game-controller", on: System.gameMode, status: "", act: () => System.gameMode = !System.gameMode },
             antiFlashbang: { label: "Anti-Flash", kind: "toggle", sizes: ["1x1", "2x1"], icon: "sun-dim", on: System.antiFlashbang, status: "", act: () => System.antiFlashbang = !System.antiFlashbang },
@@ -63,8 +74,18 @@ QtObject {
     // "id:WxH" -> { id, w, h }
     function parse(entry) {
         const [id, size] = entry.split(":");
-        const [w, h] = (size ?? "1x1").split("x").map(Number);
-        return { id: id, w: w || 1, h: h || 1 };
+        let [w, h] = (size ?? "1x1").split("x").map(Number);
+        w = w || 1;
+        h = h || 1;
+        // A size the module no longer offers (Sharing's 2×2 and 4×1, saved
+        // before it became a pill): the largest one it offers that fits
+        // inside, else its first
+        const sizes = all[id]?.sizes;
+        if (sizes && !sizes.includes(w + "x" + h)) {
+            const fits = sizes.map(z => z.split("x").map(Number)).filter(z => z[0] <= w && z[1] <= h).sort((a, b) => b[0] * b[1] - a[0] * a[1]);
+            [w, h] = fits[0] ?? sizes[0].split("x").map(Number);
+        }
+        return { id: id, w: w, h: h };
     }
 
     // First-fit into `cols` columns, row by row: [{ id, w, h, col, row }]

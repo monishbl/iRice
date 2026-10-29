@@ -46,6 +46,7 @@ Scope {
                 { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A", group: "Apps" },
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },
+                { id: "power", name: "Battery & Power", icon: "battery-high", color: "#30D158", group: "System" },
                 { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93", group: "System" },
                 { id: "bugreport", name: "Report a Bug", icon: "bug", color: "#FF453A", group: "System" },
                 { id: "about", name: "About", icon: "info", color: "#30D158", group: "System" }
@@ -57,6 +58,7 @@ Scope {
 
             // Back and forward, like a browser (the arrows, Alt+← / Alt+→,
             // the mouse's side buttons)
+            property bool sidebarKeys: false // the open section changed from the sidebar's arrow keys: it takes focus
             property var back: []
             property var forward: []
             property string shown // (not a binding: it must still hold the old page when the page changes)
@@ -243,6 +245,13 @@ Scope {
                             text = "";
                             release();
                         }
+                        // Down: into the results (or the sidebar)
+                        Keys.onDownPressed: {
+                            let n = nextItemInFocusChain(true);
+                            for (let i = 0; i < 4 && n && (n === search || n.parent === search); i++)
+                                n = n.nextItemInFocusChain(true); // past the field's own text input
+                            n?.forceActiveFocus(Qt.TabFocusReason);
+                        }
                         onCommitted: if (win.results.length > 0) win.go(win.results[0].page, win.results[0].section ? "" : win.results[0].text)
                         Behavior on width { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
                         Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
@@ -296,6 +305,28 @@ Scope {
                                 height: 32
                                 radius: 8
                                 color: current ? Theme.accent : mouse.containsMouse ? Theme.color.fill : "transparent"
+                                // Keyboard: the sidebar is one Tab stop (the open
+                                // section); Up and Down open the next section
+                                activeFocusOnTab: current
+                                onCurrentChanged: if (current && win.sidebarKeys) forceActiveFocus(Qt.TabFocusReason)
+                                Keys.onPressed: event => {
+                                    const i = win.sections.findIndex(x => x.id === modelData.id);
+                                    const k = event.key;
+                                    const j = k === Qt.Key_Up ? i - 1 : k === Qt.Key_Down ? i + 1 : k === Qt.Key_Home ? 0 : k === Qt.Key_End ? win.sections.length - 1 : -2;
+                                    if (j === -2 || j < 0 || j >= win.sections.length)
+                                        return;
+                                    win.sidebarKeys = true;
+                                    win.go(win.sections[j].id);
+                                    Qt.callLater(() => win.sidebarKeys = false);
+                                    event.accepted = true;
+                                }
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: modelData.name
+                                Accessible.checked: current
+                                Accessible.onPressAction: win.go(modelData.id)
+                                FocusRing {
+                                    radius: 12
+                                }
 
                                 Rectangle {
                                     id: tile
@@ -333,6 +364,25 @@ Scope {
                                 height: Math.max(36, texts.implicitHeight + 12)
                                 radius: 8
                                 color: resultMouse.containsMouse ? Theme.color.fill : "transparent"
+                                activeFocusOnTab: true
+                                Keys.onPressed: event => {
+                                    const k = event.key;
+                                    if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) {
+                                        win.go(modelData.page, modelData.section ? "" : modelData.text);
+                                    } else if (k === Qt.Key_Down || k === Qt.Key_Up) {
+                                        nextItemInFocusChain(k === Qt.Key_Down)?.forceActiveFocus(k === Qt.Key_Down ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+                                    } else {
+                                        return;
+                                    }
+                                    event.accepted = true;
+                                }
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: modelData.text
+                                Accessible.description: section?.name ?? ""
+                                Accessible.onPressAction: win.go(modelData.page, modelData.section ? "" : modelData.text)
+                                FocusRing {
+                                    radius: 12
+                                }
 
                                 Rectangle {
                                     id: resultTile

@@ -50,9 +50,18 @@ Item {
     }
     SequentialAnimation {
         id: swapAnim
-        NumberAnimation { target: root; property: "swap"; to: 0; duration: 110; easing.type: Easing.InCubic }
+        // (shorter, and without the bounce, when animations are turned down)
+        NumberAnimation { target: root; property: "swap"; to: 0; duration: Math.round(110 * CoolDown.motionScale); easing.type: Easing.InCubic }
         ScriptAction { script: root.shownAct = Island.primary }
-        NumberAnimation { target: root; property: "swap"; to: 1; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.6 }
+        NumberAnimation { target: root; property: "swap"; to: 1; duration: Math.round(260 * CoolDown.motionScale); easing.type: CoolDown.motionScale < 1 ? Easing.OutCubic : Easing.OutBack; easing.overshoot: 1.6 }
+    }
+    // A scroll over the live activity: Island decides whether it's a step
+    // (a notch, or one whole swipe) and which way the swap slides
+    function scrolled(e) {
+        const step = Island.scroll(e.angleDelta.x, e.angleDelta.y);
+        if (step !== 0)
+            swapDir = step;
+        e.accepted = true;
     }
     readonly property bool showingEvent: Island.event !== null
     // On the black island when open; collapsed it's just the dots on the bar
@@ -304,7 +313,10 @@ Item {
                 opacity: (root.compact ? 1 : 0) * root.swap
                 visible: opacity > 0.01
                 Behavior on opacity { enabled: !swapAnim.running; NumberAnimation { duration: Theme.motion.hover } }
-                transform: Scale { origin.x: live.width / 2; origin.y: 13; xScale: 0.85 + 0.15 * root.swap; yScale: xScale }
+                transform: [
+                    Scale { origin.x: live.width / 2; origin.y: 13; xScale: 0.85 + 0.15 * root.swap; yScale: xScale },
+                    Translate { x: (1 - root.swap) * 10 * root.swapDir }
+                ]
                 IslandLive {
                     id: lead
                     part: "info"
@@ -333,10 +345,12 @@ Item {
                     height: 14
                     color: Qt.alpha(root.ink, 0.3)
                 }
-                // Scroll over it to switch between live activities
+                // Scroll (wheel or a two-finger swipe, up/down or left/right)
+                // over it to switch between live activities
                 WheelHandler {
                     enabled: root.compact && Island.activities.length > 1
-                    onWheel: e => Island.cycle(e.angleDelta.y < 0 ? 1 : -1)
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: e => root.scrolled(e)
                 }
             }
 
@@ -441,10 +455,8 @@ Item {
                         transform: Translate { x: (1 - root.swap) * 16 * root.swapDir }
                         WheelHandler {
                             enabled: Island.activities.length > 1
-                            onWheel: e => {
-                                root.swapDir = e.angleDelta.y < 0 ? 1 : -1;
-                                Island.cycle(root.swapDir);
-                            }
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: e => root.scrolled(e)
                         }
                     }
                     // Which one this is, when there are several

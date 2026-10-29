@@ -4,12 +4,16 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import qs.common
+import "DownloadTracker.js" as Tracker
 
 // Downloads and file copies in progress, for the island's live activity.
 //   downloads  browsers' partial files in the Downloads folder (.part,
 //              .crdownload): the folder is watched, and their sizes are read
-//              once a second only while there are some. Browsers don't say
-//              how big the file will be, so these show size and speed.
+//              once a second while one is growing, every 10 s while they
+//              only sit there. Browsers don't say how big the file will be,
+//              so these show size and speed. One that stops growing isn't
+//              shown, and when one finishes the island says so
+//              (DownloadTracker.js decides).
 //   copies     cp / mv / rsync / dd and friends, with how far through the
 //              current file they are (assets/scripts/transfers.sh)
 // (Copies made inside a file manager's own process can't be seen.)
@@ -61,7 +65,7 @@ Singleton {
 
     // ── Downloads ───────────────────────────────────────────────────────
     property var downloads: []
-    property var lastSizes: ({}) // path -> { bytes, at }
+    property var tracked: ({}) // DownloadTracker's memory between looks
     FolderListModel {
         id: partials
         folder: root.on ? "file://" + root.downloadsDir : ""
@@ -71,10 +75,12 @@ Singleton {
         onCountChanged: if (count > 0) sizes.running = true
     }
     Timer {
-        interval: 1000
+        interval: root.downloads.length > 0 ? 1000 : 10000
         repeat: true
         running: root.on && partials.count > 0
-        onRunningChanged: if (!running) root.downloads = []
+        // The last partial went: one more look, so a finished download is
+        // seen to finish (and nothing stays on show)
+        onRunningChanged: if (!running) sizes.running = true
         onTriggered: sizes.running = true
     }
     Process {
@@ -84,23 +90,55 @@ Singleton {
         command: ["find", root.downloadsDir, "-maxdepth", "1", "-type", "f", "(", "-name", "*.part", "-o", "-name", "*.crdownload", "-o", "-name", "*.download", ")", "-printf", "%s\t%p\0"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const now = Date.now(), seen = {}, list = [];
+                const entries = [];
                 for (const entry of text.split("\0")) {
                     const tab = entry.indexOf("\t");
-                    if (tab < 0)
-                        continue;
-                    const bytes = Number(entry.slice(0, tab)), path = entry.slice(tab + 1);
-                    const last = root.lastSizes[path];
-                    const speed = last && now > last.at ? Math.max(0, (bytes - last.bytes) * 1000 / (now - last.at)) : 0;
-                    seen[path] = { bytes: bytes, at: now };
-                    // "film.mkv.part" -> "film.mkv" (Chromium's "Unconfirmed 1234.crdownload" stays as is)
-                    const name = path.split("/").pop().replace(/^\./, "").replace(/\.(part|crdownload|download)$/, "");
-                    list.push({ id: path, kind: "download", name: name, done: bytes, total: 0, speed: speed });
+                    if (tab > 0)
+                        entries.push({ bytes: Number(entry.slice(0, tab)), path: entry.slice(tab + 1) });
                 }
-                root.lastSizes = seen;
-                root.downloads = list;
+                const r = Tracker.update(root.tracked, root.on ? entries : [], Date.now());
+                root.tracked = r.tracked;
+                root.downloads = r.items;
+                if (r.gone.length > 0 && root.on) {
+                    root.finishing = root.finishing.concat(r.gone);
+                    recent.running = true;
+                }
             }
         }
+    }
+
+    // Downloads that went away after growing: finished (renamed to their
+    // real name) or cancelled (deleted). The files changed in the last
+    // minute say which; a finished one gets "Downloaded <name>".
+    property var finishing: []
+    Process {
+        id: recent
+        command: ["find", root.downloadsDir, "-maxdepth", "1", "-type", "f", "-mmin", "-2", "-printf", "%s\t%T@\t%p\0"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const files = [];
+                for (const entry of text.split("\0")) {
+                    const f = entry.split("\t");
+                    if (f.length >= 3)
+                        files.push({ bytes: Number(f[0]), mtime: Number(f[1]) * 1000, path: f.slice(2).join("\t") });
+                }
+                const done = root.finishing;
+                root.finishing = [];
+                for (const g of done) {
+                    const path = Tracker.finalFile(g, files);
+                    if (path !== "")
+                        root.announce(path);
+                }
+            }
+        }
+    }
+    function announce(path) {
+        Island.post({
+            kind: "transfer", icon: "download-simple", color: Theme.accents.green,
+            title: "Downloaded " + path.split("/").pop(), subtitle: "In " + downloadsDir.replace(Quickshell.env("HOME"), "~"),
+            action: "Open", onAction: () => Files.open(path),
+            action2: "Show in Folder", onAction2: () => Files.reveal(path)
+        }, 6000);
     }
 
     // ── Copies ──────────────────────────────────────────────────────────

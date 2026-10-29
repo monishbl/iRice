@@ -6,19 +6,26 @@ Rectangle {
 
     property var options: [] // labels
     property int current: 0
+    property string accessibleName
     signal selected(int index)
 
     implicitHeight: 30
     activeFocusOnTab: true
     Keys.onPressed: event => {
-        const d = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1 : 0;
-        if (d !== 0) {
-            const i = Math.max(0, Math.min(options.length - 1, current + d));
-            if (i !== current)
-                root.selected(i);
+        const k = event.key;
+        const i = k === Qt.Key_Left || k === Qt.Key_Up ? current - 1 : k === Qt.Key_Right || k === Qt.Key_Down ? current + 1
+            : k === Qt.Key_Home ? 0 : k === Qt.Key_End ? options.length - 1 : -2;
+        if (i !== -2) {
+            const c = Math.max(0, Math.min(options.length - 1, i));
+            if (c !== current)
+                root.selected(c);
             event.accepted = true;
         }
     }
+    // Read as a group of choices, the chosen one named
+    Accessible.role: Accessible.PageTabList
+    Accessible.name: accessibleName
+    Accessible.description: options[current] ?? ""
     implicitWidth: natural.reduce((a, b) => a + b, 0) + 4
     radius: height / 2
     color: Theme.color.toggleOff
@@ -80,6 +87,10 @@ Rectangle {
                     color: parent.index === root.current ? Theme.color.label : Theme.color.secondary
                     font: metrics.font
                 }
+                Accessible.role: Accessible.PageTab
+                Accessible.name: modelData
+                Accessible.checked: index === root.current
+                Accessible.onPressAction: root.selected(index)
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -88,13 +99,7 @@ Rectangle {
             }
         }
     }
-    // Keyboard focus (Tab)
-    Rectangle {
-        anchors { fill: parent; margins: -3 }
-        visible: root.activeFocus
+    FocusRing {
         radius: height / 2
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
     }
 }

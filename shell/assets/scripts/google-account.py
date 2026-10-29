@@ -2,6 +2,18 @@
 """Google Calendar and Tasks for iRice: one request per run, JSON on stdin,
 JSON lines out (Google.qml).
 
+Several accounts at once: each has its own directory (accounts/<id>/: its
+connection, cache and sync position), and what the shell sees is all of them
+together, each item marked with its account.
+
+Changes (tasks and events: add, edit, move, delete) go through an outbox
+(outbox.json): written to disk before anything is sent, so a change made
+offline, or while Google or the helper fails, survives a restart and is sent
+on the next run. Until it's sent, what the shell sees already includes it.
+Edits carry the ETag the item had, so one that changed on Google meanwhile
+isn't overwritten: Google's version is kept and the shell is told once, with
+what you had, to copy.
+
 Signing in: through GNOME Online Accounts (GOA), the desktop's account
 broker, so iRice never holds a password or refresh token; the account is
 added from iRice's Settings by the native helper goa-signin (browser sign-in,
@@ -42,8 +54,28 @@ WINDOW = timedelta(days=366)  # events kept: a year either side of now
 SKEW = 60  # seconds asked for again on each task sync (clocks differ)
 
 
-class Gone(RuntimeError):
-    """A sync token Google no longer accepts (HTTP 410): sync that part in full."""
+class HttpError(RuntimeError):
+    """Google answered with an error; `code` is the HTTP status."""
+    def __init__(self, message, code=0):
+        super().__init__(message)
+        self.code = code
+
+
+class Gone(HttpError):
+    """A sync token Google no longer accepts, or an item that's been deleted
+    (HTTP 410): sync that part in full, or treat the deletion as done."""
+    def __init__(self, message='Gone.', code=410):
+        super().__init__(message, code)
+
+
+class Conflict(HttpError):
+    """The item changed on Google since it was read (HTTP 412, If-Match)."""
+    def __init__(self, message='The item changed on Google.', code=412):
+        super().__init__(message, code)
+
+
+class Offline(RuntimeError):
+    """Google couldn't be reached: changes wait in the outbox."""
 
 
 def emit(value):
@@ -70,8 +102,8 @@ def read(path):
         return {}
 
 
-def request(url, data=None, token=None, method=None, form=False):
-    headers = {}
+def request(url, data=None, token=None, method=None, form=False, headers=None):
+    headers = dict(headers or {})
     if token:
         headers['Authorization'] = 'Bearer ' + token
     if data is not None:
@@ -85,6 +117,10 @@ def request(url, data=None, token=None, method=None, form=False):
     except urllib.error.HTTPError as exc:
         if exc.code == 410:
             raise Gone('Sync position expired.') from None
+        if exc.code == 412:
+            raise Conflict() from None
+        if exc.code >= 500:
+            raise Offline('Google is having trouble right now. Changes are kept and sent later.') from None
         # Never include request URLs, tokens or the raw server body in UI errors.
         hints = {400: 'Invalid request or expired sign-in. Reconnect if needed.',
                  401: 'Google sign-in expired. Connect again.',
@@ -92,7 +128,66 @@ def request(url, data=None, token=None, method=None, form=False):
                  404: 'This Google item no longer exists.',
                  409: 'The item changed on Google. Sync and try again.',
                  429: 'Google rate limit reached. Try again later.'}
-        raise RuntimeError(hints.get(exc.code, 'Google request failed (HTTP %s).' % exc.code)) from None
+        raise HttpError(hints.get(exc.code, 'Google request failed (HTTP %s).' % exc.code), exc.code) from None
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
+        raise Offline("Can't reach Google. Check your connection; changes are kept and sent when you're back online.") from None
+
+
+def quote(value):
+    return urllib.parse.quote(value, safe='')
+
+
+def when(ms, all_day):
+    """A time from the shell (ms since the epoch) as Google's start or end."""
+    t = datetime.fromtimestamp(ms / 1000).astimezone()
+    return {'date': t.date().isoformat()} if all_day else {'dateTime': t.isoformat()}
+
+
+def ms(value):
+    """Google's start or end as ms since the epoch (an all-day date at local midnight)."""
+    if value.get('dateTime'):
+        return datetime.fromisoformat(value['dateTime'].replace('Z', '+00:00')).timestamp() * 1000
+    return datetime.fromisoformat(value['date']).timestamp() * 1000
+
+
+def event_body(fields, patching=False):
+    """The shell's event fields (title, start, end in ms, allDay, location,
+    notes) as a Calendar API body. Patching from timed to all-day (or back)
+    clears the other kind of time, since a patch merges into what's there."""
+    body = {}
+    if 'title' in fields:
+        if not str(fields['title']).strip():
+            raise ValueError('An event needs a title.')
+        body['summary'] = fields['title']
+    if 'location' in fields:
+        body['location'] = fields['location']
+    if 'notes' in fields:
+        body['description'] = fields['notes']
+    if 'start' in fields:
+        all_day = bool(fields.get('allDay'))
+        for key in ('start', 'end'):
+            value = when(fields.get(key, fields['start']), all_day)
+            if patching:
+                value['dateTime' if all_day else 'date'] = None
+            body[key] = value
+    return body
+
+
+def task_body(patch):
+    body = {}
+    if 'text' in patch:
+        if not patch['text'].strip():
+            raise ValueError('A task needs a title.')
+        body['title'] = patch['text']
+    if 'done' in patch:
+        body['status'] = 'completed' if patch['done'] else 'needsAction'
+        if not patch['done']:
+            body['completed'] = None
+    if 'date' in patch:
+        body['due'] = patch['date'] + 'T00:00:00.000Z' if patch['date'] else None
+    if 'notes' in patch:
+        body['notes'] = patch['notes']
+    return body
 
 
 class OnlineAccounts:
@@ -144,19 +239,30 @@ class OnlineAccounts:
 
 
 class Account:
-    def __init__(self, directory):
+    """One Google account: its connection, cache and sync position."""
+    def __init__(self, directory, credentials=None, broker=None):
         self.directory = Path(directory)
-        self.credentials = self.directory / 'client.json'
+        self.id = self.directory.name
+        self.credentials = Path(credentials) if credentials else self.directory / 'client.json'
+        self.meta = self.directory / 'account.json'  # identity, when it was added
         self.tokens = self.directory / 'tokens.json'
         self.cache = self.directory / 'cache.json'
         self.connection = self.directory / 'connection.json'
         self.position = self.directory / 'sync.json'  # sync tokens and times; never shown
-        self.broker = OnlineAccounts()
+        self.broker = broker or OnlineAccounts()
+
+    @property
+    def goa(self):
+        return read(self.connection).get('account', '')
+
+    def linked(self):
+        return self.tokens.exists() or bool(self.goa)
 
     def status(self):
         connection = read(self.connection)
         accounts = self.broker.accounts()
-        identity = connection.get('identity') or next((a['name'] for a in accounts if a['id'] == connection.get('account')), '')
+        identity = (connection.get('identity') or read(self.meta).get('identity')
+                    or next((a['name'] for a in accounts if a['id'] == connection.get('account')), ''))
         return dict(read(self.cache), connected=self.tokens.exists() or bool(connection.get('account')),
                     configured=self.credentials.exists(), backend='goa' if connection.get('account') else 'direct',
                     accountId=connection.get('account', ''), identity=identity,
@@ -272,13 +378,16 @@ class Account:
         return dict(id=row['id'], calendarId=calendar['id'], title=row.get('summary', '(Untitled)'),
                     start=row['start'], end=row['end'], location=row.get('location', ''),
                     notes=row.get('description', ''), color=calendar.get('color', ''),
-                    calendar=calendar.get('title', 'Google'), url=row.get('htmlLink', ''))
+                    calendar=calendar.get('title', 'Google'), url=row.get('htmlLink', ''),
+                    etag=row.get('etag', ''), recurring=bool(row.get('recurringEventId')),
+                    series=row.get('recurringEventId', ''),
+                    writable=calendar.get('writable', True))
 
     @staticmethod
     def task(row, listing):
         return dict(id=row['id'], listId=listing['id'], listName=listing['title'],
                     text=row.get('title', ''), done=row.get('status') == 'completed',
-                    date=row.get('due', '')[:10], notes=row.get('notes', ''))
+                    date=row.get('due', '')[:10], notes=row.get('notes', ''), etag=row.get('etag', ''))
 
     def sync(self, full=False):
         """Bring the cache up to date: only what changed since the last sync."""
@@ -286,6 +395,9 @@ class Account:
         started = time.time()
         now = datetime.now(timezone.utc)
         cache = {} if full else read(self.cache)
+        # A cache from before events carried their version and series: read again in full once
+        if any('series' not in e for e in cache.get('events', [])) or any('etag' not in t for t in cache.get('tasks', [])):
+            full, cache = True, {}
         position = {} if full else read(self.position)
         cal_pos = dict(position.get('calendars', {}))
         task_pos = dict(position.get('tasks', {}))
@@ -306,7 +418,8 @@ class Account:
                 calendars.pop(row['id'], None)
             else:
                 calendars[row['id']] = dict(id=row['id'], title=row.get('summary', 'Google'),
-                                            color=row.get('backgroundColor', ''), primary=bool(row.get('primary')))
+                                            color=row.get('backgroundColor', ''), primary=bool(row.get('primary')),
+                                            writable=row.get('accessRole', 'owner') in ('owner', 'writer'))
 
         # Events, per calendar
         events = {(e['calendarId'], e['id']): e for e in cache.get('events', [])}
@@ -320,7 +433,7 @@ class Account:
             # (an existing event keeps its colour and calendar name current)
             for key, e in events.items():
                 if key[0] == cid:
-                    e.update(color=calendar['color'], calendar=calendar['title'])
+                    e.update(color=calendar['color'], calendar=calendar['title'], writable=calendar.get('writable', True))
             since = cal_pos.get(cid, '')
             rows = None
             if since:
@@ -377,6 +490,59 @@ class Account:
         atomic(self.cache, dict(events=kept_events, tasks=list(tasks.values()), taskLists=lists,
                                 calendars=list(calendars.values()), syncedAt=started * 1000))
         atomic(self.position, dict(calendarList=list_token, calendars=cal_pos, tasks=task_pos))
+        # An account signed in with your own client has no name from Online
+        # Accounts: its primary calendar's id is its address
+        primary = next((c['id'] for c in calendars.values() if c.get('primary')), '')
+        if primary and not read(self.connection).get('identity') and read(self.meta).get('identity') != primary:
+            atomic(self.meta, dict(read(self.meta), identity=primary))
+
+    def calendar(self, cid):
+        return next((c for c in read(self.cache).get('calendars', []) if c.get('id') == cid), None)
+
+    # One change from the outbox, sent as it is. A deletion of something
+    # already gone counts as done; an edit of something gone is a conflict.
+    def send(self, op):
+        token = self.access()
+        cmd = op['cmd']
+        match = {'If-Match': op['etag']} if op.get('etag') else None
+        if cmd.startswith('task'):
+            url = TASK + '/lists/' + quote(op['listId']) + '/tasks'
+            if cmd != 'taskAdd':
+                url += '/' + quote(op['id'])
+            body = None if cmd == 'taskDelete' else task_body(op.get('patch', {}))
+            method = {'taskAdd': 'POST', 'taskUpdate': 'PATCH', 'taskDelete': 'DELETE'}[cmd]
+        elif cmd == 'eventAdd':
+            url = CAL + '/calendars/' + quote(op.get('calendarId') or 'primary') + '/events/quickAdd?' + urllib.parse.urlencode({'text': op['text']})
+            body, method, match = None, 'POST', None
+        else:
+            url = CAL + '/calendars/' + quote(op['calendarId']) + '/events'
+            fields = op.get('fields', {})
+            if op.get('series'):
+                # Every occurrence: the series itself changes. A new time
+                # moves the series by as much as this occurrence moved.
+                url += '/' + quote(op['series'])
+                if cmd == 'eventPatch' and 'start' in fields:
+                    master = request(url, token=token)
+                    shift = fields['start'] - op.get('was', fields['start'])
+                    start = ms(master['start']) + shift
+                    fields = dict(fields, start=start, end=start + fields.get('end', fields['start']) - fields['start'])
+                match = None  # (the etag read is this occurrence's, not the series')
+            elif cmd != 'eventInsert':
+                url += '/' + quote(op['id'])
+            body = None if cmd == 'eventDelete' else event_body(fields, patching=cmd == 'eventPatch')
+            method = {'eventInsert': 'POST', 'eventPatch': 'PATCH', 'eventDelete': 'DELETE'}[cmd]
+        try:
+            reply = request(url, body, token=token, method=method, headers=match if cmd not in ('taskAdd', 'eventInsert') else None)
+            return reply if isinstance(reply, dict) else {}
+        except Gone:
+            if not cmd.endswith('Delete'):
+                raise Conflict('It was deleted on Google.') from None
+        except HttpError as exc:
+            if exc.code != 404:
+                raise
+            if not cmd.endswith('Delete'):
+                raise Conflict('It was deleted on Google.') from None
+        return {}
 
     def list_tasks(self, token, listing):
         rows = self.pages(TASK + '/lists/' + urllib.parse.quote(listing['id'], safe='') + '/tasks', token,
@@ -449,20 +615,7 @@ class Account:
         elif cmd in ('taskAdd', 'taskUpdate', 'taskDelete'):
             token = self.access()
             url = TASK + '/lists/' + urllib.parse.quote(req['listId'], safe='') + '/tasks'
-            body = {}
-            patch = req.get('patch', {})
-            if 'text' in patch:
-                if not patch['text'].strip():
-                    raise ValueError('A task needs a title.')
-                body['title'] = patch['text']
-            if 'done' in patch:
-                body['status'] = 'completed' if patch['done'] else 'needsAction'
-                if not patch['done']:
-                    body['completed'] = None
-            if 'date' in patch:
-                body['due'] = patch['date'] + 'T00:00:00.000Z' if patch['date'] else None
-            if 'notes' in patch:
-                body['notes'] = patch['notes']
+            body = task_body(req.get('patch', {}))
             if cmd != 'taskAdd':
                 url += '/' + urllib.parse.quote(req['id'], safe='')
             request(url, None if cmd == 'taskDelete' else body, token=token,
@@ -482,14 +635,365 @@ class Account:
         return self.status()
 
 
+class Hub:
+    """Every connected account (accounts/<id>/), the shared custom OAuth
+    client (client.json) and the outbox of changes still to send."""
+    LEGACY = ('tokens.json', 'connection.json', 'cache.json', 'sync.json')
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.client = self.root / 'client.json'
+        self.home = self.root / 'accounts'
+        self.outbox = self.root / 'outbox.json'
+        self.versions = self.root / 'versions.json'
+        self.broker = OnlineAccounts()
+        self.migrate()
+
+    # One account kept straight in the root (before several were possible)
+    # moves into accounts/ as it is
+    def migrate(self):
+        if not any((self.root / n).exists() for n in self.LEGACY[:2]):
+            return
+        target = self.home / secrets.token_hex(3)
+        target.mkdir(parents=True, mode=0o700)
+        os.chmod(self.home, 0o700)
+        for name in self.LEGACY:
+            if (self.root / name).exists():
+                os.replace(self.root / name, target / name)
+
+    def account(self, aid, must=True):
+        found = next((a for a in self.accounts() if a.id == aid), None)
+        if found is None and must:
+            raise ValueError('That Google account isn\'t connected any more. Sync, then try again.')
+        return found
+
+    def accounts(self):
+        if not self.home.is_dir():
+            return []
+        found = [Account(d, self.client, self.broker) for d in self.home.iterdir() if d.is_dir()]
+        found = [a for a in found if a.linked()]
+        return sorted(found, key=lambda a: (read(a.meta).get('added', 0), a.id))
+
+    def fresh(self):
+        directory = self.home / secrets.token_hex(3)
+        directory.mkdir(parents=True, mode=0o700)
+        os.chmod(self.home, 0o700)
+        account = Account(directory, self.client, self.broker)
+        atomic(account.meta, {'added': time.time()})
+        return account
+
+    # ── The outbox ──────────────────────────────────────────────────────
+    def ops(self):
+        return read(self.outbox).get('ops', [])
+
+    def save(self, ops):
+        atomic(self.outbox, {'ops': ops})
+
+    WRITES = ('taskAdd', 'taskUpdate', 'taskDelete', 'eventAdd', 'eventInsert', 'eventPatch', 'eventDelete')
+
+    def enqueue(self, req):
+        accounts = self.accounts()
+        if not accounts:
+            raise ValueError('Connect your Google account first.')
+        aid = req.get('account') or accounts[0].id
+        account = self.account(aid)
+        cmd = req['cmd']
+        op = {k: v for k, v in req.items() if k in ('cmd', 'listId', 'id', 'calendarId', 'patch', 'fields', 'text', 'etag', 'title', 'series', 'was')}
+        op.update(account=aid, op=secrets.token_hex(4), at=time.time())
+        # Checked now, not when it's sent: a mistake shows while you're there
+        if cmd.startswith('event') and cmd != 'eventAdd':
+            calendar = account.calendar(op['calendarId'])
+            if calendar is not None and not calendar.get('writable', True):
+                raise ValueError('This calendar is read-only for your account. Change events in a calendar you own, or ask its owner for edit access.')
+            if cmd != 'eventDelete':
+                event_body(op.get('fields', {}), patching=cmd == 'eventPatch')
+        elif cmd in ('taskAdd', 'taskUpdate'):
+            task_body(op.get('patch', {}))
+        elif cmd == 'eventAdd' and not str(op.get('text', '')).strip():
+            raise ValueError('Enter an event description.')
+        ops = self.ops()
+        # A change to something not sent yet folds into it
+        if str(op.get('id', '')).startswith('pending-'):
+            pid = op['id'][len('pending-'):]
+            first = next((o for o in ops if o['op'] == pid), None)
+            if first is None:
+                raise ValueError('That item is already on Google. Sync, then try again.')
+            if cmd.endswith('Delete'):
+                ops = [o for o in ops if o['op'] != pid]
+            elif cmd == 'taskUpdate':
+                first['patch'] = dict(first.get('patch', {}), **op.get('patch', {}))
+            else:
+                first['fields'] = dict(first.get('fields', {}), **op.get('fields', {}))
+            self.save(ops)
+            return
+        self.save(ops + [op])
+
+    # A second change made against the version the first one replaced (two
+    # quick edits) isn't a conflict: it goes against the version the first
+    # one made. Kept for the last items changed here.
+    def current(self, op):
+        record = read(self.versions).get(op['account'] + '|' + str(op.get('id', '')))
+        if record and op.get('etag') and op['etag'] in record['from']:
+            op = dict(op, etag=record['to'])
+            if not op['etag']:
+                del op['etag']
+        return op
+
+    def replaced(self, op, reply):
+        versions = read(self.versions)
+        key = op['account'] + '|' + str(op['id'])
+        record = versions.pop(key, {'from': []})
+        record['from'] = (record['from'] + [op.get('etag', ''), record.get('to', '')])[-20:]
+        record['to'] = reply.get('etag', '')
+        versions[key] = record
+        atomic(self.versions, dict(list(versions.items())[-200:]))
+
+    @staticmethod
+    def describe(op):
+        """What a change was, in words (for the 'couldn't be saved' note)."""
+        f = dict(op.get('patch', {}), **op.get('fields', {}))
+        parts = []
+        if f.get('title') or f.get('text'):
+            parts.append(f.get('title') or f.get('text'))
+        if 'start' in f:
+            fmt = '%a %d %b' if f.get('allDay') else '%a %d %b %H:%M'
+            parts.append('from ' + datetime.fromtimestamp(f['start'] / 1000).strftime(fmt)
+                         + ('' if 'end' not in f else ' to ' + datetime.fromtimestamp(f['end'] / 1000).strftime(fmt)))
+        if 'date' in f:
+            parts.append('due ' + f['date'] if f['date'] else 'no due date')
+        if 'done' in f:
+            parts.append('done' if f['done'] else 'not done')
+        for key in ('location', 'notes'):
+            if f.get(key):
+                parts.append(f[key])
+        if op['cmd'].endswith('Delete'):
+            parts.append('deleted')
+        return ' · '.join(parts) or op['cmd']
+
+    # Send what's waiting, in order. Can't reach Google (or the sign-in
+    # expired): stop, keep the rest for later. Google refused one (it changed
+    # or was deleted there, or the change is invalid): drop it, keep Google's
+    # version, and say so once. Afterwards, only what was touched is fetched.
+    def flush(self):
+        ops = self.ops()
+        touched = {}
+        sent = False
+        while ops:
+            op = ops[0]
+            account = self.account(op['account'], must=False)
+            if account is not None:
+                try:
+                    op = self.current(op)
+                    reply = account.send(op)
+                    if op.get('id') and not op.get('series') and op['cmd'] in ('taskUpdate', 'eventPatch'):
+                        self.replaced(op, reply)
+                    sent = True
+                    kinds = touched.setdefault(account.id, set())
+                    kinds.add(('tasks', op['listId']) if op['cmd'].startswith('task') else ('events', ''))
+                except (Offline, OSError):
+                    self.save(ops)
+                    raise
+                except Conflict as exc:
+                    emit({'conflict': {'title': op.get('title') or Hub.describe(op), 'what': Hub.describe(op),
+                                       'reason': 'deleted' if 'deleted' in str(exc) else 'changed'}})
+                except HttpError as exc:
+                    if exc.code == 401:
+                        self.save(ops)
+                        raise
+                    emit({'conflict': {'title': op.get('title') or Hub.describe(op), 'what': Hub.describe(op), 'reason': str(exc)}})
+            ops = ops[1:]
+            self.save(ops)
+        if sent:
+            emit({'mutationComplete': True})
+        for aid, kinds in touched.items():
+            account = self.account(aid)
+            if ('events', '') in kinds:
+                account.sync()
+            else:
+                for _kind, list_id in kinds:
+                    account.sync_list(list_id)
+
+    # ── What the shell sees ─────────────────────────────────────────────
+    def status(self):
+        result = dict(accounts=[], events=[], tasks=[], calendars=[], taskLists=[])
+        used = set()
+        oldest = None
+        for account in self.accounts():
+            st = account.status()
+            aid = account.id
+            used.add(account.goa)
+            result['accounts'].append(dict(id=aid, identity=st.get('identity', ''), backend=st.get('backend', ''),
+                                           syncedAt=st.get('syncedAt', 0)))
+            for key in ('events', 'tasks', 'calendars', 'taskLists'):
+                result[key].extend(dict(item, account=aid) for item in st.get(key, []) if isinstance(item, dict))
+            synced = st.get('syncedAt', 0)
+            oldest = synced if oldest is None else min(oldest, synced)
+        ops = self.ops()
+        self.overlay(result, ops)
+        goa = self.broker.accounts()
+        first = result['accounts'][0] if result['accounts'] else {}
+        result.update(connected=bool(result['accounts']), configured=self.client.exists(),
+                      identity=first.get('identity', ''), backend=first.get('backend', ''),
+                      syncedAt=oldest or 0, outbox=len(ops),
+                      goaAccounts=[dict(a, used=a['id'] in used) for a in goa],
+                      signin=bool(Account.signin_helper()),
+                      goaSettings=shutil.which('gnome-online-accounts-gtk') or shutil.which('gnome-control-center') or '')
+        return result
+
+    # Changes not sent yet, shown as if they were (so they survive a restart
+    # before they reach Google)
+    @staticmethod
+    def overlay(result, ops):
+        events, tasks = result['events'], result['tasks']
+        calendars = {(c['account'], c['id']): c for c in result['calendars']}
+        lists = {(l['account'], l['id']): l for l in result['taskLists']}
+
+        def find(rows, op, key):
+            return next((r for r in rows if r.get('account') == op['account'] and r.get(key) == op.get(key) and r.get('id') == op.get('id')), None)
+
+        def task_fields(patch):
+            return {k: v for k, v in patch.items() if k in ('text', 'done', 'date', 'notes')}
+
+        def event_fields(fields):
+            out = {k: v for k, v in (('title', fields.get('title')), ('location', fields.get('location')),
+                                     ('notes', fields.get('notes'))) if v is not None}
+            if 'start' in fields:
+                all_day = bool(fields.get('allDay'))
+                out['start'] = when(fields['start'], all_day)
+                out['end'] = when(fields.get('end', fields['start']), all_day)
+            return out
+
+        for op in ops:
+            cmd = op['cmd']
+            if cmd == 'taskAdd':
+                listing = lists.get((op['account'], op['listId']), {})
+                tasks.append(dict(dict(text='', done=False, date='', notes=''), **task_fields(op.get('patch', {})),
+                                  id='pending-' + op['op'], listId=op['listId'], listName=listing.get('title', ''),
+                                  account=op['account'], pending=True))
+            elif cmd == 'taskUpdate':
+                row = find(tasks, op, 'listId')
+                if row:
+                    row.update(task_fields(op.get('patch', {})), pending=True)
+            elif cmd == 'taskDelete':
+                row = find(tasks, op, 'listId')
+                if row:
+                    tasks.remove(row)
+            elif cmd == 'eventInsert':
+                calendar = calendars.get((op['account'], op['calendarId']), {})
+                events.append(dict(dict(title='', location='', notes=''), **event_fields(op.get('fields', {})),
+                                   id='pending-' + op['op'], calendarId=op['calendarId'], account=op['account'],
+                                   color=calendar.get('color', ''), calendar=calendar.get('title', 'Google'),
+                                   writable=True, recurring=False, etag='', pending=True))
+            elif cmd in ('eventPatch', 'eventDelete') and op.get('series'):
+                rows = [r for r in events if r.get('account') == op['account'] and r.get('calendarId') == op['calendarId']
+                        and r.get('series') == op['series']]
+                fields = op.get('fields', {})
+                for row in rows:
+                    if cmd == 'eventDelete':
+                        events.remove(row)
+                        continue
+                    shown = {k: v for k, v in fields.items() if k not in ('start', 'end', 'allDay')}
+                    if 'start' in fields:
+                        start = ms(row['start']) + fields['start'] - op.get('was', fields['start'])
+                        shown.update(start=start, end=start + fields.get('end', fields['start']) - fields['start'],
+                                     allDay=fields.get('allDay'))
+                    row.update(event_fields(shown), pending=True)
+            elif cmd == 'eventPatch':
+                row = find(events, op, 'calendarId')
+                if row:
+                    row.update(event_fields(op.get('fields', {})), pending=True)
+            elif cmd == 'eventDelete':
+                row = find(events, op, 'calendarId')
+                if row:
+                    events.remove(row)
+
+    # ── Requests ────────────────────────────────────────────────────────
+    def link_goa(self, selected, identity=''):
+        if selected in {a.goa for a in self.accounts()}:
+            raise ValueError('That Google account is already connected.')
+        if next((a for a in self.broker.accounts() if a['id'] == selected and a['calendarDisabled']), None):
+            self.broker.enable_calendar(selected)
+        self.broker.access(selected)  # Validate selection and credentials before saving.
+        account = self.fresh()
+        try:
+            atomic(account.connection, {'account': selected, 'identity': identity})
+            account.sync(full=True)
+        except Exception:
+            shutil.rmtree(account.directory, ignore_errors=True)
+            raise
+        return account
+
+    def run(self, req):
+        cmd = req.get('cmd', 'status')
+        if cmd == 'signin':
+            # An account in Online Accounts not connected yet is used as it
+            # is; otherwise one is added (browser sign-in)
+            used = {a.goa for a in self.accounts()}
+            spare = [a for a in self.broker.accounts() if a['id'] not in used]
+            if spare:
+                self.link_goa(spare[0]['id'], spare[0]['name'])
+            else:
+                reply = Account(self.root, self.client, self.broker).signin()
+                self.link_goa(reply['account'], reply.get('identity', ''))
+        elif cmd == 'connectDesktop':
+            chosen = next((a for a in self.broker.accounts() if a['id'] == req['account']), None)
+            self.link_goa(req['account'], chosen['name'] if chosen else '')
+        elif cmd == 'configure':
+            client = read(Path(os.path.expanduser(req['path']))).get('installed', {})
+            if not client.get('client_id') or not client.get('client_secret'):
+                raise ValueError('Choose a Google OAuth Desktop app client JSON, not a web or service account key.')
+            if any(a.tokens.exists() for a in self.accounts()):
+                raise ValueError('Disconnect the accounts using your client before replacing it.')
+            atomic(self.client, {k: client[k] for k in ('client_id', 'client_secret')})
+        elif cmd == 'connect':
+            account = self.fresh()
+            try:
+                account.connect()
+                account.sync(full=True)
+            except Exception:
+                shutil.rmtree(account.directory, ignore_errors=True)
+                raise
+        elif cmd in ('sync', 'flush'):
+            try:
+                self.flush()
+            except (Offline, OSError):
+                if cmd == 'flush':
+                    raise
+            if cmd == 'sync':
+                targets = [self.account(req['account'])] if req.get('account') else self.accounts()
+                failed = None
+                for account in targets:
+                    try:
+                        account.sync(full=bool(req.get('full')))
+                    except (RuntimeError, OSError, ValueError) as exc:
+                        failed = failed or exc
+                if failed:
+                    raise failed
+        elif cmd in ('disconnect', 'forget'):
+            accounts = self.accounts()
+            account = self.account(req['account']) if req.get('account') else (accounts[0] if len(accounts) == 1 else None)
+            if account is None:
+                raise ValueError('Choose which account to disconnect.')
+            account.run({'cmd': cmd})
+            self.save([o for o in self.ops() if o['account'] != account.id])
+            shutil.rmtree(account.directory, ignore_errors=True)
+        elif cmd in self.WRITES:
+            self.enqueue(req)
+            self.flush()
+        elif cmd != 'status':
+            raise ValueError('Unknown Google account command.')
+        return self.status()
+
+
 def main():
-    account = Account(sys.argv[1])
+    account = Hub(sys.argv[1])
     try:
         emit({'data': account.run(json.loads(sys.stdin.readline()))})
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
         # Do not print paths or raw network errors that could carry account details.
         message = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else 'Google connection or local storage failed. Check your connection and try again.'
-        emit({'error': message})
+        # (offline: the change is kept in the outbox; the shell tries again later)
+        emit({'error': message, 'offline': isinstance(exc, (Offline, OSError))})
         try:
             emit({'data': account.status()})
         except (OSError, ValueError):

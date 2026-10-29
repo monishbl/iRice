@@ -264,7 +264,7 @@ Scope {
                     readonly property var values: [PowerProfile.PowerSaver, PowerProfile.Balanced, PowerProfile.Performance]
                     options: PowerProfiles.hasPerformanceProfile ? ["Low Power", "Balanced", "Performance"] : ["Low Power", "Balanced"]
                     current: Math.max(0, values.indexOf(PowerProfiles.profile))
-                    onSelected: i => PowerProfiles.profile = values[i]
+                    onSelected: i => Power.setMode(Power.modeOf(values[i]))
                 }
             }
         }

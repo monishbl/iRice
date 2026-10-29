@@ -53,8 +53,77 @@ Item {
     // the accent is too light to read on white)
     readonly property color ink: Theme.accentOnGlyph
     readonly property bool on: def.on ?? false
-    // Modules that draw their bigger sizes themselves (1×1 stays the round toggle)
-    readonly property bool custom: moduleId === "sharing" && size !== "1x1"
+    // A module with choices (def.menu: items for ContextMenu) offers them from
+    // the pill's text and on right-click or press and hold; an item with
+    // `openPage` opens the module's page
+    PointerMenu { id: choices }
+    function openMenu() {
+        choices.open(def.menu().map(it => it.openPage ? Object.assign({}, it, { action: () => root.openPage(it.openPage) }) : it));
+    }
+
+    // ── Keyboard ────────────────────────────────────────────────────────
+    // Each module is one stop: Tab or the arrows move between modules (to the
+    // nearest one in that direction), Space switches a toggle or runs an
+    // action, Enter (or the Menu key) opens its page. Sliders are their own
+    // stops and take the arrows themselves.
+    readonly property bool ownKeys: def.kind === "slider"
+    activeFocusOnTab: !ownKeys && !preview && visible
+    Keys.onPressed: event => {
+        const k = event.key;
+        if ((k === Qt.Key_Space) && !event.isAutoRepeat) {
+            if (def.kind === "toggle" || def.kind === "action")
+                act();
+            else if (def.page)
+                openPage(def.page);
+        } else if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !event.isAutoRepeat) {
+            if (editing)
+                resizeRequested();
+            else if (def.page)
+                openPage(def.page);
+            else
+                act();
+        } else if (k === Qt.Key_Menu || (k === Qt.Key_F10 && event.modifiers & Qt.ShiftModifier)) {
+            if (def.page && !editing)
+                openPage(def.page);
+        } else if (k === Qt.Key_Left || k === Qt.Key_Right || k === Qt.Key_Up || k === Qt.Key_Down) {
+            moveFocus(k === Qt.Key_Left ? -1 : k === Qt.Key_Right ? 1 : 0, k === Qt.Key_Up ? -1 : k === Qt.Key_Down ? 1 : 0);
+        } else {
+            return;
+        }
+        event.accepted = true;
+    }
+    // The nearest module whose centre lies that way (rows first for up and
+    // down, columns for left and right)
+    function moveFocus(dx, dy) {
+        const cx = x + width / 2, cy = y + height / 2;
+        let best = null, bestD = Infinity;
+        for (const m of parent?.children ?? []) {
+            if (m === root || m.moduleId === undefined || !m.visible)
+                continue;
+            const mx = m.x + m.width / 2 - cx, my = m.y + m.height / 2 - cy;
+            if ((dx !== 0 && Math.sign(mx) !== dx) || (dy !== 0 && Math.sign(my) !== dy))
+                continue;
+            const d = dx !== 0 ? Math.abs(mx) + 2 * Math.abs(my) : Math.abs(my) + 2 * Math.abs(mx);
+            if (d < bestD) {
+                bestD = d;
+                best = m;
+            }
+        }
+        best?.takeFocus();
+    }
+    function takeFocus() {
+        const t = ownKeys ? (slider.visible ? slider : nextItemInFocusChain(true)) : root;
+        t?.forceActiveFocus(Qt.TabFocusReason);
+    }
+    Accessible.role: def.kind === "toggle" ? Accessible.CheckBox : def.kind === "slider" ? Accessible.Slider : Accessible.Button
+    Accessible.name: def.label ?? moduleId
+    Accessible.description: def.status ?? ""
+    Accessible.checkable: def.kind === "toggle"
+    Accessible.checked: on
+    Accessible.onPressAction: act()
+    FocusRing {
+        radius: root.shapeRadius + 4
+    }
 
     function act() {
         if (editing) {
@@ -99,7 +168,7 @@ Item {
 
     // ── 2×1 / 2×2 toggles and actions: button, title, status ────────────
     Item {
-        visible: !root.round && !root.custom && (root.def.kind === "toggle" || root.def.kind === "action")
+        visible: !root.round && (root.def.kind === "toggle" || root.def.kind === "action")
         anchors.fill: parent
         CircleToggle {
             id: btn
@@ -109,6 +178,7 @@ Item {
             size: Math.min(40, root.height - 20)
             icon: root.def.icon
             checked: root.on
+            focusable: false // the module is the keyboard stop
             onClicked: root.act()
         }
         Column {
@@ -133,23 +203,12 @@ Item {
         }
     }
 
-    // ── Sharing (2×1 stops, 2×2 with devices, 4×1 with device chips) ────
-    Loader {
-        active: root.custom
-        visible: active
-        anchors.fill: parent
-        sourceComponent: SharingModule {
-            cols: root.cols
-            rows: root.rows
-            preview: root.preview
-            editing: root.editing
-        }
-    }
-
     // ── Sliders (4×1 wide, 1×2 tall): the module is the capsule ──────────
     // Icon only; right-click or press and hold opens its page (Sound)
     CapsuleSlider {
+        id: slider
         visible: root.def.kind === "slider"
+        accessibleName: root.def.label ?? root.moduleId
         anchors.fill: parent
         icon: root.def.icon
         value: root.moduleId === "display" ? Brightness.value : (Audio.muted ? 0 : Audio.volume)
@@ -310,9 +369,11 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         enabled: root.def.kind !== "slider" || root.editing
         // Press and hold, like right-click: the module's page
-        onPressAndHold: if (root.def.page && !root.editing && !root.preview) root.openPage(root.def.page)
+        onPressAndHold: if (!root.editing && !root.preview) root.def.menu ? root.openMenu() : root.def.page ? root.openPage(root.def.page) : undefined
         onClicked: m => {
-            if (m.button === Qt.RightButton && root.def.page && !root.editing)
+            if (root.def.menu && !root.editing && !root.preview && (m.button === Qt.RightButton || !root.round))
+                root.openMenu();
+            else if (m.button === Qt.RightButton && root.def.page && !root.editing)
                 root.openPage(root.def.page);
             else if (root.editing)
                 root.resizeRequested();

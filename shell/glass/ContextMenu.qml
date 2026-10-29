@@ -97,6 +97,16 @@ GlassWindow {
         Keys.onDownPressed: step(1)
         Keys.onUpPressed: step(-1)
         Keys.onReturnPressed: root.activate(root.current)
+        Keys.onEnterPressed: root.activate(root.current)
+        Keys.onSpacePressed: root.activate(root.current)
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+                root.current = event.key === Qt.Key_Home ? -1 : root.items.length;
+                step(event.key === Qt.Key_Home ? 1 : -1);
+                event.accepted = true;
+            }
+        }
+        Accessible.role: Accessible.PopupMenu
 
         Glass {
             id: glass
@@ -127,6 +137,11 @@ GlassWindow {
                     readonly property bool hot: (rowMouse.containsMouse || root.current === index) && enabled_
                     width: parent.width
                     height: modelData.separator ? 11 : 28
+                    Accessible.role: modelData.separator ? Accessible.Separator : Accessible.MenuItem
+                    Accessible.name: modelData.text ?? ""
+                    Accessible.checkable: modelData.checked !== undefined
+                    Accessible.checked: !!modelData.checked
+                    Accessible.onPressAction: root.activate(index)
                     Rectangle {
                         visible: !!row.modelData.separator
                         anchors.centerIn: parent
@@ -139,8 +154,19 @@ GlassWindow {
                         anchors.fill: parent
                         radius: Theme.radius.item + 2
                         color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
+                        // A choice among several (checked: true/false): a tick
+                        // beside the current one, every label indented alike
+                        Icon {
+                            visible: row.modelData.checked === true
+                            x: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "check"
+                            bold: true
+                            size: 12
+                            color: row.hot ? "white" : Theme.color.label
+                        }
                         Text {
-                            x: 12
+                            x: row.modelData.checked !== undefined ? 28 : 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.armedRow ? row.modelData.confirm : (row.modelData.text ?? "")
                             color: row.armedRow || row.hot ? "white" : !row.enabled_ ? Theme.color.tertiary : row.modelData.danger ? Theme.color.danger : Theme.color.label

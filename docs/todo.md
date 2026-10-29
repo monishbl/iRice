@@ -9,20 +9,25 @@ chips, badges. That needs one shared continuous-corner shape (a small
 shader or a Shape path) that replaces plain `Rectangle { radius }` across
 the shell.
 
-## Open bugs
+## Done, tested in the sandbox: needs your check on real hardware
 
-- A finished download can leave a stale "Unconfirmed … · Downloading 0 B" card in the island.
-- Scrolling over the island doesn't switch between its activities.
-- Notification cards scroll behind the Notification Center header and spoil its backdrop.
+- Windows opened from Settings (file pickers, Google sign-in) appear on top of Settings.
+- Links and "Open in the app" bring the app forward (focus follows pointer keeps it).
+- Quick Share over Bluetooth works with a real phone (OnePlus 15); the fast Wi-Fi Direct link is fixed but not yet confirmed on the phone.
 
-## Next features
+## Done, tested in the sandbox
 
-- Power & Sleep settings: idle timers on AC and battery, lid actions, lock timing, and which app is keeping the computer awake.
-- One power policy: manual profile, thermal response, Caffeine, Game Mode and battery resolved in one place, each with an owner and an expiry.
-- Critical battery: decide who suspends or hibernates, and handle Caffeine and a crashed shell.
-- Per-app energy: which app is keeping the CPU busy or waking the machine.
-- Notification inline replies (the server no longer advertises them until there's a composer).
-- Keyboard and screen-reader basics for IconButton and Dropdown, as Switch has.
-- A health page: which daemons and protocols are actually reachable, not just installed.
-- Google: several accounts, event editing, offline changes; real-account testing of sign-in and sync.
-- Real-hardware checks: lid sleep and resume lock, multi-monitor pointer focus and boundaries, the greeter with greetd.
+- Stale download card in the island; scrolling over the island switches activities; Notification Center header.
+- Notification inline replies (sent and received with a test app) and the quick reply shortcut.
+- Keyboard and screen-reader basics (focus ring only from the keyboard).
+- Battery & Power settings page; System health page.
+
+## Needs your check on real hardware or accounts
+
+- Battery & Power: the 20% prompt, sleeping at 3%, lid actions, new idle timers taking effect.
+- Google: several accounts, editing events, offline changes (needs a real account).
+- Replies with your real messaging apps.
+
+## Waiting on real hardware
+
+- Lid sleep and resume lock, multi-monitor pointer focus and boundaries, the greeter with greetd.

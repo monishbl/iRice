@@ -126,6 +126,11 @@ Item {
                             height: 32
                             radius: Theme.radius.item + 2
                             color: lit ? (modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
+                            Accessible.role: Accessible.MenuItem
+                            Accessible.name: modelData.text ?? ""
+                            Accessible.checkable: modelData.checked !== undefined
+                            Accessible.checked: modelData.checked === true
+                            Accessible.onPressAction: root.choose(index)
                             Icon {
                                 x: 8
                                 anchors.verticalCenter: parent.verticalCenter

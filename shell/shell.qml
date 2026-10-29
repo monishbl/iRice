@@ -154,6 +154,12 @@ ShellRoot {
     GlobalShortcut { appid: "irice"; name: "lens"; description: "Search an area with Google Lens"; onPressed: Launch.run([decodeURIComponent(Qt.resolvedUrl("assets/scripts/lens-search.sh").toString().replace("file://", ""))]) }
     GlobalShortcut { appid: "irice"; name: "darkMode"; description: "Light or dark appearance"; onPressed: System.toggleDarkMode() }
     GlobalShortcut { appid: "irice"; name: "caffeine"; description: "Caffeine on or off"; onPressed: System.setKeepAwake(!System.keepAwake, 0) }
+    GlobalShortcut {
+        appid: "irice"
+        name: "replyLatest"
+        description: "Reply to the newest message"
+        onPressed: if (!Notifications.replyLatest()) Island.post({ kind: "custom", icon: "chat-circle", title: "Nothing to reply to", subtitle: "Messages you can answer from here show a Reply button", color: Theme.color.secondary }, 3000)
+    }
     GlobalShortcut { appid: "irice"; name: "shareSelection"; description: "Share the selected text with a nearby device"; onPressed: Sharing.shareSelection() }
     GlobalShortcut { appid: "irice"; name: "askScreen"; description: "Ask AI about part of the screen"; onPressed: ScreenTools.select("ask") }
     component Snap: GlobalShortcut {

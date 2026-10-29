@@ -1,0 +1,463 @@
+#!/usr/bin/env python3
+"""System health for iRice (Settings → About → System health).
+
+Each check asks the service itself, not whether its package is installed:
+PipeWire answers pactl, NetworkManager reports itself running, Avahi gives
+its version, the glass plugin answers a ping. They run side by side, each
+given 2 s and all of them 3 s, so a hung daemon shows up as "didn't answer"
+instead of holding the page.
+
+  health-check.py [--shell-pid N] [--polkit yes|no|off] [--google]
+        every check, as JSON: [{id, name, group, status, detail, fix, canFix}]
+        status: ok | warn (works, but something's off) | fail | off (turned
+        off on purpose, or not used)
+  health-check.py text [same options]
+        the same as plain text, scrubbed like a bug report (for Copy report)
+  health-check.py fix <id>
+        the fix for a check, if it has one, from a fixed list (nothing
+        free-form ever runs): restarting a user service runs directly;
+        starting a system service runs through pkexec, so it asks for the
+        password in iRice's own dialog, and only after the page showed the
+        exact command and the person pressed the button for it.
+
+Nothing runs until the page asks: there's no background polling.
+"""
+import argparse
+import concurrent.futures
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHELL = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(SHELL)
+EACH = 2.0   # seconds a check may take
+TOTAL = 3.0  # seconds for all of them together
+PLUGIN_VERSION = 4  # what `hyprctl irice-glass ping` answers when current
+
+GROUPS = ("Sound", "Network & sharing", "Power", "Desktop", "iRice itself")
+
+# The fixes this script will run, and nothing else: user services directly,
+# system services (root) through pkexec
+FIXES = {
+    "pipewire": ["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"],
+    "wireplumber": ["systemctl", "--user", "restart", "wireplumber"],
+    "portal": ["systemctl", "--user", "restart", "xdg-desktop-portal", "xdg-desktop-portal-hyprland"],
+}
+ROOT_FIXES = {
+    "networkmanager": ["systemctl", "enable", "--now", "NetworkManager"],
+    "bluetooth": ["systemctl", "enable", "--now", "bluetooth"],
+    "avahi": ["systemctl", "enable", "--now", "avahi-daemon"],
+    "upower": ["systemctl", "enable", "--now", "upower"],
+    "profiles": ["systemctl", "enable", "--now", "power-profiles-daemon"],
+}
+
+
+_local = threading.local() # per check: whether something it asked hung
+
+
+def run(cmd, timeout=EACH):
+    """(exit code, stdout) of a command; (None, why) if it couldn't run."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or "") + ("" if p.stdout else p.stderr or "")
+    except FileNotFoundError:
+        return None, "not installed"
+    except subprocess.TimeoutExpired:
+        _local.hung = True
+        return None, "didn't answer in time"
+    except OSError as e:
+        return None, str(e)
+
+
+def result(id, name, group, status, detail="", fix=""):
+    broken = status in ("fail", "warn")
+    root = broken and id in ROOT_FIXES
+    return {"id": id, "name": name, "group": group, "status": status, "detail": detail, "fix": fix,
+            "canFix": broken and (id in FIXES or root), "fixRoot": root,
+            # what the button will run, shown before a root fix is confirmed
+            "fixCommand": " ".join(ROOT_FIXES[id]) if root else ""}
+
+
+def bus_value(out):
+    """The value from `busctl get-property` output: `s "x"` → x, `b true` → True."""
+    out = out.strip()
+    m = re.match(r'^[a-z]+\s+(.*)$', out)
+    v = m.group(1) if m else out
+    if v in ("true", "false"):
+        return v == "true"
+    return v.strip('"')
+
+
+# ── Sound ───────────────────────────────────────────────────────────────
+
+def check_pipewire(_):
+    code, out = run(["pactl", "info"])
+    if code == 0 and "Server" in out:
+        name = re.search(r"Server Name: (.*)", out)
+        return result("pipewire", "PipeWire", "Sound", "ok", name.group(1).strip() if name else "Running")
+    return result("pipewire", "PipeWire", "Sound", "fail", f"Sound server not answering ({out.strip()[:80]})",
+                  "systemctl --user restart pipewire pipewire-pulse wireplumber")
+
+
+def check_wireplumber(_):
+    code, out = run(["systemctl", "--user", "is-active", "wireplumber"])
+    if code == 0 and out.strip() == "active":
+        return result("wireplumber", "WirePlumber", "Sound", "ok", "Running")
+    if code is None and out == "not installed":
+        return result("wireplumber", "WirePlumber", "Sound", "warn", "Couldn't ask systemd", "systemctl --user status wireplumber")
+    return result("wireplumber", "WirePlumber", "Sound", "fail", "Not running: devices and volume won't follow",
+                  "systemctl --user restart wireplumber")
+
+
+# ── Network & sharing ───────────────────────────────────────────────────
+
+def check_networkmanager(_):
+    code, out = run(["nmcli", "-t", "-f", "RUNNING,STATE", "general"])
+    if code == 0 and out.startswith("running"):
+        state = out.strip().split(":", 1)[-1]
+        return result("networkmanager", "NetworkManager", "Network & sharing", "ok" if state.startswith("connected") else "warn",
+                      "Connected" if state.startswith("connected") else f"Running, {state}")
+    return result("networkmanager", "NetworkManager", "Network & sharing", "fail", "Not running: Wi-Fi and the network menu won't work",
+                  "sudo systemctl enable --now NetworkManager")
+
+
+def check_bluetooth(_):
+    code, out = run(["busctl", "--system", "get-property", "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1", "Powered"])
+    if code == 0:
+        if bus_value(out) is True:
+            return result("bluetooth", "Bluetooth", "Network & sharing", "ok", "On")
+        return result("bluetooth", "Bluetooth", "Network & sharing", "off", "Off. Quick Share needs it to find phones without Wi-Fi",
+                      "Turn it on in Control Center or Settings → Bluetooth")
+    if "Unknown object" in out or "UnknownObject" in out:
+        return result("bluetooth", "Bluetooth", "Network & sharing", "off", "No Bluetooth adapter found")
+    return result("bluetooth", "Bluetooth", "Network & sharing", "fail", "The Bluetooth service isn't running",
+                  "sudo systemctl enable --now bluetooth")
+
+
+def check_avahi(_):
+    code, out = run(["busctl", "--system", "call", "org.freedesktop.Avahi", "/", "org.freedesktop.Avahi.Server", "GetVersionString"])
+    if code == 0:
+        return result("avahi", "Avahi (finding nearby devices)", "Network & sharing", "ok", bus_value(out))
+    return result("avahi", "Avahi (finding nearby devices)", "Network & sharing", "fail",
+                  "Not running: LocalSend and Quick Share can't find devices on your network",
+                  "sudo systemctl enable --now avahi-daemon")
+
+
+def check_portal(_):
+    code, out = run(["busctl", "--user", "get-property", "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                     "org.freedesktop.portal.FileChooser", "version"])
+    if code != 0:
+        return result("portal", "Desktop portal", "Desktop", "fail",
+                      "Not answering: file pickers, screen sharing and screenshots from apps won't open",
+                      "systemctl --user restart xdg-desktop-portal xdg-desktop-portal-hyprland")
+    code2, names = run(["busctl", "--user", "list", "--activatable"])
+    if code2 == 0 and "org.freedesktop.impl.portal.desktop.hyprland" not in names:
+        return result("portal", "Desktop portal", "Desktop", "warn", "The Hyprland portal isn't installed: screen sharing won't work",
+                      "sudo pacman -S xdg-desktop-portal-hyprland")
+    return result("portal", "Desktop portal", "Desktop", "ok", f"File chooser version {bus_value(out)}")
+
+
+def check_goa(opts):
+    if not opts.google:
+        return result("goa", "GNOME Online Accounts", "Network & sharing", "off", "Google isn't connected")
+    code, out = run(["busctl", "--user", "list", "--activatable"])
+    if code == 0 and "org.gnome.OnlineAccounts" in out:
+        return result("goa", "GNOME Online Accounts", "Network & sharing", "ok", "Available")
+    return result("goa", "GNOME Online Accounts", "Network & sharing", "fail", "Not installed: Google sign-in needs it",
+                  "sudo pacman -S gnome-online-accounts")
+
+
+def check_geoclue(_):
+    code, out = run(["busctl", "--system", "list", "--activatable"])
+    if code == 0 and "org.freedesktop.GeoClue2" in out:
+        return result("geoclue", "Location (GeoClue)", "Network & sharing", "ok", "Available")
+    return result("geoclue", "Location (GeoClue)", "Network & sharing", "warn",
+                  "Not installed: weather uses your network's rough location instead", "sudo pacman -S geoclue")
+
+
+# ── Power ───────────────────────────────────────────────────────────────
+
+def check_upower(_):
+    code, out = run(["busctl", "--system", "get-property", "org.freedesktop.UPower", "/org/freedesktop/UPower",
+                     "org.freedesktop.UPower", "DaemonVersion"])
+    if code == 0:
+        return result("upower", "UPower (battery)", "Power", "ok", f"Version {bus_value(out)}")
+    return result("upower", "UPower (battery)", "Power", "fail", "Not answering: battery level and charging won't show",
+                  "sudo systemctl enable --now upower")
+
+
+def check_profiles(_):
+    for name, path, iface in (("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles", "org.freedesktop.UPower.PowerProfiles"),
+                              ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles")):
+        code, out = run(["busctl", "--system", "get-property", name, path, iface, "ActiveProfile"])
+        if code == 0:
+            return result("profiles", "Energy modes", "Power", "ok", bus_value(out).replace("-", " ").capitalize())
+    return result("profiles", "Energy modes", "Power", "fail", "power-profiles-daemon isn't running: Low Power and Performance won't work",
+                  "sudo systemctl enable --now power-profiles-daemon")
+
+
+def check_hypridle(_):
+    code, out = run(["pgrep", "-u", str(os.getuid()), "-x", "hypridle"])
+    if code == 0 and out.strip():
+        return result("hypridle", "Idle and lock", "Power", "ok", "Running")
+    return result("hypridle", "Idle and lock", "Power", "fail",
+                  "Not running: the screen won't dim, lock or sleep when you're away",
+                  "Log out and in again; if it stays, run hypridle from a terminal to see why")
+
+
+# ── Desktop ─────────────────────────────────────────────────────────────
+
+def check_notifications(opts):
+    code, out = run(["busctl", "--user", "call", "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                     "GetConnectionUnixProcessID", "s", "org.freedesktop.Notifications"])
+    if code != 0:
+        return result("notifications", "Notifications", "Desktop", "fail", "Nothing is receiving notifications",
+                      "Restart iRice: Super+Ctrl+Escape")
+    m = re.search(r"(\d+)\s*$", out.strip())
+    pid = int(m.group(1)) if m else 0
+    owner = ""
+    try:
+        owner = open(f"/proc/{pid}/comm").read().strip()
+    except OSError:
+        pass
+    # (the shell itself, or, asked from somewhere else, a Quickshell)
+    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("qs", "quickshell"):
+        return result("notifications", "Notifications", "Desktop", "ok", "iRice shows them")
+    return result("notifications", "Notifications", "Desktop", "warn",
+                  f"Another program ({owner or 'unknown'}) is showing notifications instead of iRice",
+                  f"Stop it from starting with your session (pid {pid}), then restart iRice")
+
+
+def check_polkit(opts):
+    if opts.polkit == "off":
+        return result("polkit", "Password prompts", "Desktop", "off", "Not used in this session")
+    if opts.polkit == "yes":
+        return result("polkit", "Password prompts", "Desktop", "ok", "iRice asks for your password")
+    return result("polkit", "Password prompts", "Desktop", "fail",
+                  "iRice's password prompt isn't registered: apps asking for admin rights will fail",
+                  "Close any other polkit agent (polkit-gnome, polkit-kde), then restart iRice: Super+Ctrl+Escape")
+
+
+def check_clipboard(_):
+    if not shutil.which("cliphist"):
+        return result("clipboard", "Clipboard history", "Desktop", "fail", "cliphist isn't installed", "sudo pacman -S cliphist")
+    code, out = run(["pgrep", "-u", str(os.getuid()), "-f", "wl-paste --watch cliphist"])
+    if code == 0 and out.strip():
+        return result("clipboard", "Clipboard history", "Desktop", "ok", "Recording")
+    return result("clipboard", "Clipboard history", "Desktop", "fail", "Nothing is recording what you copy",
+                  "Log out and in again (the session starts it)")
+
+
+def check_recorder(_):
+    if shutil.which("gpu-screen-recorder"):
+        return result("recorder", "Screen recording", "Desktop", "ok", "gpu-screen-recorder")
+    if shutil.which("wf-recorder"):
+        return result("recorder", "Screen recording", "Desktop", "warn", "Using wf-recorder: no pause, one sound source",
+                      "sudo pacman -S gpu-screen-recorder")
+    return result("recorder", "Screen recording", "Desktop", "fail", "No screen recorder installed", "sudo pacman -S gpu-screen-recorder")
+
+
+def check_disk(_):
+    path = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"))
+    try:
+        free = shutil.disk_usage(path if os.path.exists(path) else os.path.expanduser("~")).free
+    except OSError as e:
+        return result("disk", "Disk space", "Desktop", "warn", str(e))
+    gb = free / 1024 ** 3
+    if gb < 0.5:
+        return result("disk", "Disk space", "Desktop", "fail", f"{gb:.1f} GB free: settings and history may fail to save",
+                      "Free some space (empty the Trash, or sudo pacman -Sc for old packages)")
+    if gb < 2:
+        return result("disk", "Disk space", "Desktop", "warn", f"{gb:.1f} GB free", "Free some space soon")
+    return result("disk", "Disk space", "Desktop", "ok", f"{gb:.0f} GB free")
+
+
+# ── iRice itself ────────────────────────────────────────────────────────
+
+def compat():
+    try:
+        return json.load(open(os.path.join(REPO, "compat.json")))
+    except (OSError, ValueError):
+        return {}
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+
+def check_hyprland(_):
+    code, out = run(["hyprctl", "version", "-j"])
+    try:
+        tag = json.loads(out).get("tag", "") if code == 0 else ""
+    except ValueError:
+        tag = ""
+    if not tag:
+        return result("hyprland", "Hyprland", "iRice itself", "fail", "Couldn't ask Hyprland", "Is this a Hyprland session?")
+    rng = compat().get("hyprland", {})
+    v = version_tuple(tag)
+    lo = version_tuple(rng.get("min", "0"))
+    hi = rng.get("max", "")
+    # "0.56.x": any 0.56 release; otherwise an exact upper bound
+    if hi.endswith(".x"):
+        top = version_tuple(hi[:-2])
+        ok = v >= lo and v[:len(top)] <= top
+    else:
+        ok = v >= lo and (not hi or v <= version_tuple(hi))
+    if ok:
+        return result("hyprland", "Hyprland", "iRice itself", "ok", tag.lstrip("v"))
+    return result("hyprland", "Hyprland", "iRice itself", "warn",
+                  f"{tag.lstrip('v')} isn't what iRice is tested with ({rng.get('min', '?')} to {hi or '?'})",
+                  "Run Software Update: it holds Hyprland back or brings an iRice that supports it")
+
+
+def check_plugin(_):
+    code, out = run(["hyprctl", "irice-glass", "ping"])
+    m = re.search(r"irice-glass (\d+)", out or "")
+    if code == 0 and m:
+        n = int(m.group(1))
+        if n >= PLUGIN_VERSION:
+            return result("plugin", "Liquid Glass plugin", "iRice itself", "ok", f"Loaded (version {n})")
+        return result("plugin", "Liquid Glass plugin", "iRice itself", "warn",
+                      f"An older build is loaded (version {n}): pointer and focus fixes need the new one",
+                      "Run Software Update, or rebuild it: irice rebuild plugin; then log out and in")
+    return result("plugin", "Liquid Glass plugin", "iRice itself", "fail", "Not loaded: glass falls back to frosted",
+                  "Settings → Appearance → Glass → Build plugin, or: irice rebuild plugin")
+
+
+def check_native(_):
+    build = os.path.join(SHELL, "native", "build")
+    have = os.path.isdir(os.path.join(build, "qml", "IRice", "Native")) and os.path.exists(os.path.join(build, "glass-ipc"))
+    if have:
+        return result("native", "Native helpers", "iRice itself", "ok", "Built")
+    return result("native", "Native helpers", "iRice itself", "warn", "Not built: glass updates use a slower path",
+                  "irice rebuild native")
+
+
+def check_quickshell(opts):
+    exe = ""
+    try:
+        exe = os.readlink(f"/proc/{opts.shell_pid}/exe") if opts.shell_pid else ""
+    except OSError:
+        pass
+    if os.path.basename(exe) not in ("qs", "quickshell"):
+        bundled = os.path.expanduser("~/.local/share/irice/quickshell/bin/qs")
+        exe = bundled if os.access(bundled, os.X_OK) else (shutil.which("qs") or "qs")
+    code, out = run([exe, "--version"])
+    m = re.search(r"Quickshell (\d+\.\d+\.\d+)", out or "")
+    want = compat().get("quickshell", {}).get("bundled", "")
+    if not m:
+        return result("quickshell", "Quickshell", "iRice itself", "warn", "Couldn't read its version")
+    if want and m.group(1) != want:
+        return result("quickshell", "Quickshell", "iRice itself", "warn", f"{m.group(1)}, iRice expects {want}",
+                      "Run Software Update (it rebuilds iRice's own Quickshell)")
+    return result("quickshell", "Quickshell", "iRice itself", "ok", m.group(1))
+
+
+def check_watchers(_):
+    code, out = run([sys.executable, "-I", os.path.join(HERE, "process-identity.py"), "reap", "--dry-run"])
+    lines = [l for l in (out or "").splitlines() if l.strip()]
+    if code is None:
+        return result("watchers", "Background helpers", "iRice itself", "warn", out)
+    if not lines:
+        return result("watchers", "Background helpers", "iRice itself", "ok", "None left behind")
+    return result("watchers", "Background helpers", "iRice itself", "warn",
+                  f"{len(lines)} left behind by an earlier shell (they use battery)",
+                  "Restart iRice (Super+Ctrl+Escape): it ends them as it starts")
+
+
+CHECKS = [check_pipewire, check_wireplumber, check_networkmanager, check_bluetooth, check_avahi, check_goa, check_geoclue,
+          check_upower, check_profiles, check_hypridle, check_portal, check_notifications, check_polkit, check_clipboard,
+          check_recorder, check_disk, check_hyprland, check_plugin, check_native, check_quickshell, check_watchers]
+
+
+def check_all(opts):
+    out = {}
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(CHECKS))
+    def guarded(c):
+        # A service that didn't answer is hung rather than missing: say so
+        # instead of the check's "not running"
+        _local.hung = False
+        r = c(opts)
+        if _local.hung and r["status"] in ("fail", "warn"):
+            r["status"] = "fail"
+            r["detail"] = f"Didn't answer within {EACH:.0f} s: it may be hung"
+        return r
+    futures = {pool.submit(guarded, c): c for c in CHECKS}
+    try:
+        for f in concurrent.futures.as_completed(futures, timeout=TOTAL):
+            try:
+                r = f.result()
+            except Exception as e:  # a check's own bug mustn't hide the others
+                name = futures[f].__name__.removeprefix("check_")
+                r = result(name, name, "iRice itself", "warn", f"Check failed: {e}")
+            out[futures[f]] = r
+    except concurrent.futures.TimeoutError:
+        pass
+    pool.shutdown(wait=False, cancel_futures=True)
+    rows = []
+    for c in CHECKS:
+        if c in out:
+            rows.append(out[c])
+        else:
+            name = c.__name__.removeprefix("check_")
+            rows.append(result(name, name, "iRice itself", "warn", "Didn't answer in time"))
+    return rows
+
+
+def as_text(rows):
+    spec = importlib.util.spec_from_file_location("bug_report", os.path.join(HERE, "bug-report.py"))
+    bug = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bug)
+    bad = [r for r in rows if r["status"] in ("fail", "warn")]
+    lines = ["iRice system health: " + ("all good" if not bad else f"{len(bad)} need attention"), ""]
+    for g in GROUPS:
+        lines.append(g)
+        for r in rows:
+            if r["group"] == g:
+                lines.append(f"  [{r['status']}] {r['name']}: {r['detail']}" + (f" (fix: {r['fix']})" if r["fix"] and r["status"] in ("fail", "warn") else ""))
+        lines.append("")
+    return bug.scrub("\n".join(lines), bug.personal_names())
+
+
+def main(argv):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", nargs="?", default="check", choices=["check", "text", "fix"])
+    ap.add_argument("id", nargs="?")
+    ap.add_argument("--shell-pid", type=int, default=os.getppid())
+    ap.add_argument("--polkit", choices=["yes", "no", "off"], default="no")
+    ap.add_argument("--google", action="store_true")
+    opts = ap.parse_args(argv)
+    if opts.cmd == "fix":
+        if opts.id in FIXES:
+            cmd = FIXES[opts.id]
+        elif opts.id in ROOT_FIXES:
+            cmd = ["pkexec"] + ROOT_FIXES[opts.id]
+        else:
+            print(json.dumps({"ok": False, "error": "There's no automatic fix for that; run the command shown."}))
+            return 1
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            code, out = p.returncode, (p.stderr or p.stdout or "")
+        except FileNotFoundError:
+            code, out = None, f"{cmd[0]} isn't installed"
+        except subprocess.TimeoutExpired:
+            code, out = None, "It took too long; try the command in a terminal"
+        if cmd[0] == "pkexec" and code in (126, 127):
+            err = "Cancelled: no password was given" if code == 126 else "Not allowed: your account can't do this; try the command in a terminal"
+        else:
+            err = "" if code == 0 else (out.strip()[:200] or "It didn't work; try the command in a terminal")
+        print(json.dumps({"ok": code == 0, "error": err}))
+        return 0 if code == 0 else 1
+    rows = check_all(opts)
+    print(as_text(rows) if opts.cmd == "text" else json.dumps(rows))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

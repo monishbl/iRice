@@ -1,5 +1,35 @@
 # iRice changelog
 
+## Battery & Power, System health, replies and more · 2026-10-30
+
+**Battery & Power** (new in Settings)
+- Choose when the screen dims, turns off and locks, and when the computer sleeps, separately on battery and on the charger.
+- Closing the lid: sleep, lock or do nothing, on battery, on the charger, or with another display connected. Choose when the password is needed after sleep.
+- One energy mode, with the reason shown: Cool-down, the battery saver, your choice and Game Mode no longer fight each other.
+- At 20% the island offers Low Power (or turns it on by itself if you choose). Warnings at 10% and 5%, and the computer sleeps at 3%, even with Caffeine on or if iRice isn't running.
+- See which apps used the most energy in the last hour, and quit them.
+
+**System health** (Settings → About)
+- Checks every service iRice relies on (sound, network, Bluetooth, sharing, power, portals, the glass plugin…) and says how to fix what's broken. Fix restarts things for you, and asks for your password when it needs to change system services.
+
+**Notifications**
+- Reply to messages (Discord, Telegram, Signal, KDE Connect…) right from the banner, Notification Center or the island. Super+Ctrl+N replies to the newest message.
+- Notification cards no longer show through the Notification Center header.
+- Calendar, To-do and Focus tabs now sit inside their card.
+
+**Google**
+- Connect several Google accounts; their calendars show together.
+- Create, edit, move and delete Google Calendar events. Repeating events ask "This event" or "All events".
+- Changes made offline are saved and sent later. If something changed on Google meanwhile, you're told and can copy what you had.
+
+**Keyboard**
+- Every button, switch, slider, list and menu works with Tab, the arrows, Space and Enter, with a focus ring only when you use the keyboard. Screen readers hear each control's name.
+
+**Island and sharing**
+- One scroll or swipe over the island moves to the next activity.
+- Downloads: no more stuck "Unconfirmed … 0 B" card; a finished download offers Open and Show in Folder.
+- The Sharing control in Control Center is a pill like Wi-Fi: tap to turn on for 10 minutes, or open its menu for No one / 10 minutes / Everyone.
+
 ## Quick Share: fast transfers, fewer alerts · 2026-10-30
 
 - Quick Share now moves files over a direct Wi-Fi link instead of slowly over Bluetooth: NetworkManager no longer takes the link down as it starts, and the phone is told the link's real channel. If the direct link can't start, a hotspot on your current channel is tried next.

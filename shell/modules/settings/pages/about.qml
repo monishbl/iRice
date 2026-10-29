@@ -30,6 +30,16 @@ Column {
     }
     Group {
         width: parent.width
+        SubpageLink {
+            icon: "heartbeat"
+            label: "System health"
+            detail: "Whether the services iRice uses are working, and how to fix them"
+            value: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "All good" : Health.attention.length + " to check"
+            page: "about/health"
+        }
+    }
+    Group {
+        width: parent.width
         footer: "Settings live in ~/.config/irice/config.json and apply as you change them."
         Row {
             label: "Configuration file"

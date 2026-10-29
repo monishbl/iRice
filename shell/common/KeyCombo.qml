@@ -7,6 +7,8 @@ Row {
 
     property var keys: []
     spacing: 4
+    Accessible.role: Accessible.StaticText
+    Accessible.name: KeyNames.keys(root.keys).join(" ")
 
     Repeater {
         model: KeyNames.keys(root.keys)

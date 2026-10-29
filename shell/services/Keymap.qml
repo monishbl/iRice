@@ -102,6 +102,7 @@ Singleton {
         { name: "sidebar", label: "AI and tools sidebar" },
         { name: "clipboard", label: "Clipboard history" },
         { name: "shareSelection", label: "Share the selection with a nearby device" },
+        { name: "replyLatest", label: "Reply to the newest message" },
         { name: "emoji", label: "Emoji and symbols" },
         { name: "settings", label: "Settings" },
         { name: "cheatsheet", label: "Keyboard shortcuts cheatsheet" },

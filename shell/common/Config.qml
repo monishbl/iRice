@@ -40,8 +40,9 @@ Singleton {
             id: adapter
 
             property JsonObject google: JsonObject {
-                property string taskListId: "" // empty = keep new tasks local
-                property list<string> hiddenCalendars: [] // Google calendar ids not shown (Settings → Google)
+                property string taskListId: "" // "<account>|<list id>"; empty = keep new tasks local
+                property string newEventCalendar: "" // "<account>|<calendar id>"; empty = this computer
+                property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown (Settings → Google)
             }
 
             property JsonObject appearance: JsonObject {
@@ -322,6 +323,31 @@ Singleton {
             }
             property JsonObject network: JsonObject {
                 property string speedTest: "cloudflare" // speed test server: cloudflare (speed.cloudflare.com, needs only curl) | ookla (speedtest.net; needs speedtest or speedtest-cli)
+            }
+            property JsonObject power: JsonObject {
+                // Battery & Power (Settings; services/Power.qml)
+                property string mode: "balanced" // your energy mode: power-saver | balanced | performance
+                property bool batterySaver: true // at batterySaverLevel on battery, once per discharge: offer Low Power in the island
+                property bool batterySaverAuto: false // turn it on straight away instead (the island offers Undo)
+                property int batterySaverLevel: 20
+                property bool gamePerformance: true // Game Mode asks for Performance
+                property bool critical: true // warn at 10% and 5%, sleep at 3% (battery-guard, even if the shell isn't running)
+                // Idle, in seconds (0 = never), on the charger and on battery. Like a Mac:
+                // dim, then the screen goes off and locks, then sleep (never on the charger)
+                property int idleDimAc: 300
+                property int idleLockAc: 600
+                property int idleOffAc: 600
+                property int idleSleepAc: 0
+                property int idleDimBattery: 120
+                property int idleLockBattery: 300
+                property int idleOffBattery: 300
+                property int idleSleepBattery: 900
+                // Closing the lid: sleep | lock | nothing
+                property string lidAc: "sleep"
+                property string lidBattery: "sleep"
+                property string lidExternal: "nothing" // on the charger with another display connected
+                property int passwordAfterSleep: 0 // seconds asleep before the password is needed again: 0 | 60 | 300
+                property bool appEnergy: true // keep an hour of which apps used the CPU (a look every 5 min)
             }
             property JsonObject cooling: JsonObject {
                 // Cool-down (Settings → Appearance): less work while hot, on battery or switched on

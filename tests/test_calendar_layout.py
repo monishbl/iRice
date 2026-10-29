@@ -41,6 +41,18 @@ Singleton {
     function between(a, b) { return []; }
     function eventsOn(d) { return [{ title: 'Karaka Chaturthi', allDay: true, start: d, end: d, color: '#25cf91', calendar: 'Holidays in India', local: false }]; }
     function timeText(e) { return 'All day'; }
+    function editable(e) { return !!e.local; }
+}'''
+
+GOOGLE = '''pragma Singleton
+import QtQuick
+import Quickshell
+Singleton {
+    property var calendars: []
+    property var accounts: []
+    property string lastError: ''
+    function shown(c) { return true; }
+    function identity(a) { return ''; }
 }'''
 
 # 45 open to-dos, all due on the 29th: the busy day
@@ -152,7 +164,7 @@ class CalendarLayoutTests(unittest.TestCase):
 
         shutil.copy(ROOT / 'shell/modules/notifications/CalendarWidget.qml', p / 'CalendarWidget.qml')
         shutil.copy(ROOT / 'shell/modules/notifications/TodoWidget.qml', p / 'TodoWidget.qml')
-        for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml']:
+        for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml', 'FocusRing.qml']:
             shutil.copy(ROOT / 'shell/common' / f, p / 'common' / f)
         put('modules/controlcenter/Platter.qml', 'import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')
         put('common/Theme.qml', THEME)
@@ -162,6 +174,7 @@ class CalendarLayoutTests(unittest.TestCase):
         put('common/Dropdown.qml', 'import QtQuick\nItem { property var options; property var value; signal chosen(var v); implicitHeight: 30 }')
         put('services/Calendar.qml', CALENDAR)
         put('services/Todos.qml', TODOS)
+        put('services/Google.qml', GOOGLE)
         put('shell.qml', SHELL)
 
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',

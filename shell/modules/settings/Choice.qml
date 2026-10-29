@@ -10,6 +10,7 @@ Rectangle {
     property var options: []
     property var value
     property string placeholder: "Choose"
+    property string accessibleName
     signal chosen(var value)
 
     function same(a, b) {
@@ -36,13 +37,12 @@ Rectangle {
         }
     }
 
-    Rectangle {
-        anchors { fill: parent; margins: -3 }
-        visible: root.activeFocus
-        radius: root.radius + 3
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
+    Accessible.role: Accessible.ComboBox
+    Accessible.name: accessibleName
+    Accessible.description: current?.label ?? placeholder
+    Accessible.onPressAction: show()
+    FocusRing {
+        radius: root.radius + 4
     }
     Text {
         id: label

@@ -5,25 +5,26 @@ Item {
     id: root
 
     property bool checked: false
+    property string accessibleName // what it switches (a settings Row names it after its label)
     signal toggled
 
     implicitWidth: 38
     implicitHeight: 22
     activeFocusOnTab: true
     Keys.onPressed: event => {
-        if (event.key === Qt.Key_Space && !event.isAutoRepeat) {
+        if ((event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !event.isAutoRepeat) {
             root.toggled();
             event.accepted = true;
         }
     }
-    // Keyboard focus (Tab)
-    Rectangle {
-        anchors { fill: parent; margins: -3 }
-        visible: root.activeFocus
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: accessibleName
+    Accessible.checkable: true
+    Accessible.checked: checked
+    Accessible.onToggleAction: root.toggled()
+    Accessible.onPressAction: root.toggled()
+    FocusRing {
         radius: height / 2
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
     }
 
     Rectangle {

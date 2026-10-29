@@ -4,7 +4,7 @@ import qs.common
 import qs.services
 
 // Sharing, in detail: who can see this computer, set together (the switch
-// and the stops at the top) or separately for LocalSend and Quick Share, the
+// and the choices at the top) or separately for LocalSend and Quick Share, the
 // name others see, and what's nearby. Settings → Sharing has the rest.
 DetailPage {
     id: root
@@ -26,27 +26,33 @@ DetailPage {
         }
     }
 
-    LevelControl {
+    Segmented {
         width: parent.width
-        value: Sharing.level
-        onPicked: v => Sharing.setLevel(v)
+        readonly property var values: ["off", "10min", "everyone"]
+        options: ["No one", "10 minutes", "Everyone"]
+        current: Math.max(0, values.indexOf(Sharing.level))
+        onSelected: i => Sharing.setLevel(values[i])
     }
 
     Caption { text: "LocalSend" }
-    LevelControl {
+    Segmented {
         width: parent.width
         height: 30
-        value: Config.options.sharing.receiving
-        onPicked: v => Config.options.sharing.receiving = v
+        readonly property var values: ["off", "10min", "everyone"]
+        options: ["No one", "10 minutes", "Everyone"]
+        current: Math.max(0, values.indexOf(Config.options.sharing.receiving))
+        onSelected: i => Config.options.sharing.receiving = values[i]
     }
     Hint { text: "Computers and phones with the LocalSend app" }
 
     Caption { text: "Quick Share" }
-    LevelControl {
+    Segmented {
         width: parent.width
         height: 30
-        value: Config.options.sharing.quickShare
-        onPicked: v => Config.options.sharing.quickShare = v
+        readonly property var values: ["off", "10min", "everyone"]
+        options: ["No one", "10 minutes", "Everyone"]
+        current: Math.max(0, values.indexOf(Config.options.sharing.quickShare))
+        onSelected: i => Config.options.sharing.quickShare = values[i]
     }
     // (Whether Quick Share needs Bluetooth, and if it's on: only once the
     // service says; QuickShare may not have these yet)

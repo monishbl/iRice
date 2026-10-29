@@ -66,6 +66,7 @@ Popover {
         Keys.onUpPressed: root.step(-1)
         Keys.onReturnPressed: root.activate(root.current)
         Keys.onEnterPressed: root.activate(root.current)
+        Keys.onSpacePressed: root.activate(root.current)
         Keys.onEscapePressed: Panels.close()
     }
 
@@ -83,6 +84,11 @@ Popover {
                 readonly property bool hot: root.current === index && enabled_
                 width: parent.width
                 height: modelData.separator ? 11 : modelData.header ? 22 : modelData.tiles ? 36 : 26
+                Accessible.role: modelData.separator ? Accessible.Separator : modelData.header ? Accessible.StaticText : Accessible.MenuItem
+                Accessible.name: modelData.text ?? modelData.header ?? ""
+                Accessible.checkable: modelData.checked !== undefined
+                Accessible.checked: !!modelData.checked
+                Accessible.onPressAction: root.activate(index)
 
                 Rectangle {
                     visible: !!row.modelData.separator

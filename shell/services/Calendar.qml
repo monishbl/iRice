@@ -49,9 +49,10 @@ Singleton {
             const date = x => x.dateTime ? new Date(x.dateTime) : new Date(Number(x.date.slice(0, 4)), Number(x.date.slice(5, 7)) - 1, Number(x.date.slice(8, 10)));
             const start = date(e.start), end = date(e.end);
             if (start < to && end > from)
-                out.push({ key: "google:" + e.calendarId + ":" + e.id, id: e.id, title: e.title,
+                out.push({ key: e.key, id: e.id, title: e.title,
                     start: start, end: end, allDay: !!e.start.date, location: e.location, color: e.color,
-                    calendar: e.calendar, local: false, alert: -1, notes: e.notes });
+                    calendar: e.calendar, local: false, alert: -1, notes: e.notes,
+                    google: true, source: e, writable: !!e.writable, recurring: !!e.series, accountName: e.accountName });
         }
         return out.sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
     }
@@ -114,10 +115,38 @@ Singleton {
         return e; // for Undo
     }
     function restoreEvent(e) {
+        if (e?.google) {
+            Google.restoreEvent(e.source);
+            return;
+        }
         if (e && !local.some(x => x.id === e.id)) {
             local = local.concat([e]);
             saveLocal();
         }
+    }
+
+    // ---------- Any event you can change (yours, or Google's where you may edit) ----------
+
+    // `e` as between() has it. Fields: { title, start, end (ms), allDay,
+    // alert, location, notes }. `every`: a repeating Google event's whole
+    // series instead of this occurrence.
+    function editable(e) {
+        return !!e && (e.local || (e.google && e.writable));
+    }
+    function change(e, fields, every) {
+        if (e.google) {
+            const f = Object.assign({}, fields);
+            delete f.alert; // (Google keeps its own reminders)
+            return Google.updateEvent(e.source, f, every);
+        }
+        update(e.id, fields);
+        return true;
+    }
+    // Returns what Undo puts back (a Google event is only deleted once the Undo has run out)
+    function discard(e, every) {
+        if (e.google)
+            return Google.removeEvent(e.source, every) ? e : null;
+        return remove(e.id);
     }
 
     // "remind me to call mum at 5pm", "dentist tomorrow at 9:30", "stretch in 20 minutes"

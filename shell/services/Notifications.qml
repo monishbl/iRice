@@ -18,6 +18,79 @@ Singleton {
     ListModel { id: popupList }
     property var byId: ({})
 
+    // ── Inline replies ──────────────────────────────────────────────────
+    // Messaging apps (Discord, Telegram, Signal, KDE Connect…) let you answer
+    // from the notification. The banner and Notification Center show the
+    // composer in the card; the island has no keyboard of its own, so its
+    // Reply opens Notification Center with that card's composer open.
+    property var drafts: ({}) // notification id -> text being written (outlives a card moving from banner to the list)
+    property int replyTarget: -1 // a notification whose composer should open (from the island)
+    property int replying: 0 // composers open in banners (their window takes the keyboard meanwhile)
+    function canReply(n) {
+        return !!n && n.hasInlineReply === true;
+    }
+    function draft(n) {
+        return n ? drafts[n.id] ?? "" : "";
+    }
+    function setDraft(n, text) {
+        if (!n)
+            return;
+        const d = Object.assign({}, drafts);
+        if (text === "")
+            delete d[n.id];
+        else
+            d[n.id] = text;
+        drafts = d;
+    }
+    function startReply(n) {
+        if (!canReply(n))
+            return;
+        replyTarget = n.id;
+        Panels.show("notificationCenter");
+    }
+    // The newest notification you can answer (the quick reply shortcut);
+    // false when there's none
+    function replyLatest() {
+        const n = list.slice().reverse().find(x => canReply(x)) ?? null;
+        if (n)
+            startReply(n);
+        return n !== null;
+    }
+    // Sends it; "" when sent, else what went wrong. The app gets the text;
+    // a notification that isn't resident is then done with.
+    function reply(n, text) {
+        const t = text.trim();
+        if (t === "")
+            return "Write a reply first.";
+        try {
+            n.sendInlineReply(t);
+        } catch (e) {
+            return (n?.appName || "The app") + " closed this notification, so the reply couldn't be sent. Open the app to answer.";
+        }
+        setDraft(n, "");
+        if (!n.resident)
+            Qt.callLater(() => sentLater.schedule(n));
+        return "";
+    }
+    // Dismissed a moment after sending, so "Sent" shows first
+    QtObject {
+        id: sentLater
+        property var pending: []
+        function schedule(n) {
+            pending = pending.concat([n]);
+            sentTimer.restart();
+        }
+    }
+    Timer {
+        id: sentTimer
+        interval: 1200
+        onTriggered: {
+            for (const n of sentLater.pending)
+                n?.dismiss?.();
+            sentLater.pending = [];
+        }
+    }
+
     function toIsland(n) {
         const words = (n.summary || n.appName || "").split(/\s+/).filter(w => w.length > 0 && w[0].toUpperCase() !== w[0].toLowerCase() || /^[0-9]/.test(w));
         const def = (n.actions ?? []).find(a => a.identifier === "default");
@@ -34,7 +107,7 @@ Singleton {
                 initials: words.slice(0, 2).map(w => w[0].toUpperCase()).join(""),
                 avatar: n.image ? IconLookup.safe(n.image, []) : "",
                 appIcon: n.appIcon ? IconLookup.safe(n.appIcon, "dialog-information") : Apps.iconFor(n.desktopEntry || n.appName || ""),
-                buttons: (n.actions ?? []).filter(a => a.identifier !== "default" && a.text).slice(0, 2).map(a => ({ text: a.text, invoke: () => a.invoke() }))
+                buttons: (canReply(n) ? [{ text: "Reply", invoke: () => root.startReply(n) }] : []).concat((n.actions ?? []).filter(a => a.identifier !== "default" && a.identifier !== "inline-reply" && a.text).map(a => ({ text: a.text, invoke: () => a.invoke() }))).slice(0, 2)
             },
             onAction: () => def ? def.invoke() : Panels.show("notificationCenter")
         }, 5000);
@@ -54,7 +127,7 @@ Singleton {
         return a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a));
     }
     function actionable(n) {
-        return (n.actions ?? []).some(a => a.identifier !== "default");
+        return canReply(n) || (n.actions ?? []).some(a => a.identifier !== "default");
     }
     // From the app that's playing, while the music activity is live (its
     // controls are in the island)
@@ -92,7 +165,7 @@ Singleton {
     }
     function attach(uid, n) {
         const ev = Island.byUid[uid];
-        const acts = (n.actions ?? []).filter(a => a.identifier !== "default" && a.text);
+        const acts = (canReply(n) ? [{ text: "Reply", invoke: () => root.startReply(n) }] : []).concat((n.actions ?? []).filter(a => a.identifier !== "default" && a.identifier !== "inline-reply" && a.text));
         if (!ev || acts.length === 0)
             return false;
         const patch = {};
@@ -157,6 +230,11 @@ Singleton {
     }
 
     function forget(id) {
+        if (drafts[id] !== undefined) {
+            const d = Object.assign({}, drafts);
+            delete d[id];
+            drafts = d;
+        }
         if (byId[id] === undefined && received[id] === undefined)
             return;
         const b = Object.assign({}, byId), r = Object.assign({}, received);
@@ -220,7 +298,7 @@ Singleton {
         actionsSupported: true
         actionIconsSupported: true
         imageSupported: true
-        inlineReplySupported: false // enable only when a reply composer is implemented
+        inlineReplySupported: true // the composer: NotificationCard (banners, Notification Center), Reply in the island
 
         onNotification: n => {
             n.tracked = true;

@@ -91,6 +91,7 @@ Variants {
                 }
 
                 Flickable {
+                    id: flick
                     visible: Notifications.list.length > 0
                     onContentYChanged: if (nc.bare) nc.glassChanged() // cards' glass follows the scroll
                     // Clipped 8 px further out, so cards' close buttons
@@ -187,6 +188,13 @@ Variants {
                                         required property var modelData
                                         required property int index
                                         width: list.width
+                                        // Without the panel each card is glass the compositor
+                                        // draws wherever the card is, even scrolled out of the
+                                        // list (it ignores the clip): it went behind the header
+                                        // and the tabs. Past either edge it fades out within 8 px,
+                                        // inside the gap above the list and below it.
+                                        readonly property real topInView: group.y + y - flick.contentY
+                                        readonly property real glassFade: !nc.bare ? 1 : Math.max(0, Math.min(1, (topInView + 8) / 8, (flick.height + 8 - (topInView + height)) / 8))
                                         // Collapsed stacks show edges of the next two cards below
                                         height: card.implicitHeight + (group.stacked && !group.open ? 8 * Math.min(group.modelData.items.length - 1, 2) : 0)
 
@@ -202,6 +210,7 @@ Variants {
                                                 width: list.width - 2 * (index + 1) * 8
                                                 height: 12
                                                 radius: 6
+                                                glassOpacity: entry.glassFade
                                                 opacity: 0.75 - 0.2 * index
                                             }
                                         }
@@ -210,6 +219,7 @@ Variants {
                                             width: list.width
                                             height: card.implicitHeight
                                             radius: 18
+                                            glassOpacity: entry.glassFade
                                             NotificationCard {
                                                 id: card
                                                 width: parent.width
@@ -234,36 +244,49 @@ Variants {
                     }
                 }
 
-                // The tabs: on a glass card of their own without the panel
+                // Calendar, To-do and Focus: one card, the tabs as its first
+                // row (a capsule, like the calendar's Month/Week switch). The
+                // widgets lose their own card inside it.
                 Platter {
+                    id: widgetCard
                     width: parent.width
-                    height: tabs.height + (nc.bare ? 8 : 0)
+                    height: tabs.height + 12 + widgetStack.height
                     chip: nc.bare
-                    color: nc.bare ? Qt.alpha("white", Theme.dark ? 0.07 : 0.28) : "transparent"
-                    radius: Theme.radius.control + 4
                     Segmented {
                         id: tabs
-                        anchors.centerIn: parent
-                        width: parent.width - (nc.bare ? 8 : 0)
+                        x: 12
+                        y: 12
+                        width: parent.width - 24
+                        height: 28
+                        accessibleName: "Widgets"
                         options: ["Calendar", "To-do", "Focus"]
                         current: nc.widgetTab
                         onSelected: i => nc.widgetTab = i
                     }
-                }
-                CalendarWidget {
-                    width: parent.width
-                    visible: nc.widgetTab === 0
-                    chip: nc.bare
-                }
-                TodoWidget {
-                    width: parent.width
-                    visible: nc.widgetTab === 1
-                    chip: nc.bare
-                }
-                FocusWidget {
-                    width: parent.width
-                    visible: nc.widgetTab === 2
-                    chip: nc.bare
+                    Item {
+                        id: widgetStack
+                        y: tabs.y + tabs.height
+                        width: parent.width
+                        height: nc.widgetTab === 0 ? calendarTab.height : nc.widgetTab === 1 ? todoTab.height : focusTab.height
+                        CalendarWidget {
+                            id: calendarTab
+                            width: parent.width
+                            visible: nc.widgetTab === 0
+                            color: "transparent"
+                        }
+                        TodoWidget {
+                            id: todoTab
+                            width: parent.width
+                            visible: nc.widgetTab === 1
+                            color: "transparent"
+                        }
+                        FocusWidget {
+                            id: focusTab
+                            width: parent.width
+                            visible: nc.widgetTab === 2
+                            color: "transparent"
+                        }
+                    }
                 }
             }
         }

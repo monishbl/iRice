@@ -79,7 +79,7 @@ Singleton {
     function addItem(item) {
         const destination = Config.options.google.taskListId;
         if (destination) {
-            if (!Google.connected || !Google.taskLists.some(l => l.id === destination)) {
+            if (!Google.connected || !Google.find(Google.taskLists, destination)) {
                 Google.lastError = "Connect Google and select an available task list, or switch new tasks to Local in Settings → Google.";
                 Quickshell.execDetached(["notify-send", "-a", "Reminders", "Task not added", Google.lastError]);
                 return false;

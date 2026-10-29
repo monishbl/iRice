@@ -34,6 +34,15 @@ Item {
         }
     }
 
+    // Controls in the row are named after its label for screen readers
+    // (unless they have a name of their own)
+    function nameControls() {
+        for (const c of slot.children)
+            if (c.accessibleName !== undefined && c.accessibleName === "")
+                c.accessibleName = Qt.binding(() => root.label);
+    }
+    Component.onCompleted: nameControls()
+
     Item {
         id: slot
         anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }

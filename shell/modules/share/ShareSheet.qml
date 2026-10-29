@@ -128,6 +128,26 @@ Variants {
                                 height: 112
                                 radius: 14
                                 color: peerMouse.pressed ? Theme.color.fillPressed : peerMouse.containsMouse ? Theme.color.fill : "transparent"
+                                // Keyboard: Tab or the arrows to a device, Space or Enter sends
+                                activeFocusOnTab: true
+                                Keys.onPressed: event => {
+                                    const k = event.key;
+                                    if ((k === Qt.Key_Space || k === Qt.Key_Return || k === Qt.Key_Enter) && !event.isAutoRepeat) {
+                                        if (!peer.sending)
+                                            Sharing.send(peer.modelData, win.paths);
+                                    } else if (k === Qt.Key_Left || k === Qt.Key_Right) {
+                                        nextItemInFocusChain(k === Qt.Key_Right)?.forceActiveFocus(k === Qt.Key_Right ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+                                    } else {
+                                        return;
+                                    }
+                                    event.accepted = true;
+                                }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: "Send to " + (modelData.name ?? "")
+                                Accessible.onPressAction: if (!peer.sending) Sharing.send(peer.modelData, win.paths)
+                                FocusRing {
+                                    radius: 18
+                                }
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 6
@@ -258,6 +278,19 @@ Variants {
                                 height: 32
                                 radius: Theme.radius.control
                                 color: otherMouse.pressed ? Theme.color.fillPressed : otherMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                                activeFocusOnTab: true
+                                Keys.onPressed: event => {
+                                    if ((event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !event.isAutoRepeat) {
+                                        other.modelData.act();
+                                        Panels.close();
+                                        event.accepted = true;
+                                    }
+                                }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: modelData.label
+                                FocusRing {
+                                    radius: Theme.radius.control + 4
+                                }
                                 Row {
                                     id: otherRow
                                     anchors.centerIn: parent

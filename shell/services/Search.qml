@@ -151,6 +151,7 @@ Singleton {
         { title: "Clipboard History", glyph: "clipboard-text", keywords: "clipboard history paste copied pins", run: () => Panels.show("clipboard") },
         { title: "Overlay Widgets", glyph: "squares-four", keywords: "overlay widgets notes crosshair resources game", run: () => Panels.show("overlay") },
         { title: "Identify Song", glyph: "music-notes", keywords: "song recognize shazam songrec music what playing", run: () => System.identifySong() },
+        { title: "Run Health Check", glyph: "heartbeat", keywords: "health check status services broken diagnose troubleshoot doctor", run: () => Health.open() },
         { title: "Report a Bug…", glyph: "bug", keywords: "bug report issue problem crash broken feedback", run: () => BugReport.start() },
         { title: "Check for Updates", glyph: "arrow-circle-up", keywords: "update upgrade pacman packages", run: () => Updates.count > 0 ? Updates.install() : Quickshell.execDetached(["notify-send", "-a", "Software Update", "Your system is up to date"]) },
         { title: "Change Wallpaper", glyph: "image", keywords: "wallpaper background desktop picture", run: () => Panels.show("wallpaper") },

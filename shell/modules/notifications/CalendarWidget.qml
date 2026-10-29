@@ -125,7 +125,17 @@ Platter {
 
     // Move an item to another day, keeping its time
     function moveTo(item, day) {
-        if (item.kind === "event" && item.e.local) {
+        if (item.kind === "event" && item.e.google) {
+            const e = item.e;
+            const s = e.start;
+            const start = e.allDay ? new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
+                : new Date(day.getFullYear(), day.getMonth(), day.getDate(), s.getHours(), s.getMinutes()).getTime();
+            const fields = { start: start, end: start + (e.end - e.start), allDay: e.allDay };
+            if (e.recurring)
+                editor.ask(item, every => Calendar.change(e, fields, every)); // this one, or every one?
+            else
+                Calendar.change(e, fields, false);
+        } else if (item.kind === "event" && item.e.local) {
             const src = Calendar.local.find(x => x.id === item.e.id);
             if (!src)
                 return;
@@ -138,9 +148,13 @@ Platter {
         }
         selected = day;
     }
-    function remove(item) {
+    function remove(item, every) {
+        if (item.kind === "event" && item.e.recurring && every === undefined) {
+            editor.ask(item, all => root.remove(item, all));
+            return;
+        }
         if (item.kind === "event")
-            undo = { kind: "event", item: Calendar.remove(item.e.id) };
+            undo = { kind: "event", item: Calendar.discard(item.e, !!every) };
         else
             undo = { kind: "todo", item: Todos.remove(item.t) };
         if (!undo?.item)
@@ -448,7 +462,7 @@ Platter {
                                     id: row
                                     required property var modelData
                                     readonly property bool isEvent: modelData.kind === "event"
-                                    readonly property bool movable: !isEvent || modelData.e.local
+                                    readonly property bool movable: !isEvent || Calendar.editable(modelData.e)
                                     width: column.width
                                     height: 36
                                     radius: 8
@@ -669,13 +683,30 @@ Platter {
         property bool isTodo: false
         property bool readOnly: false
         property string error: ""
+        // Where a new event goes: "" this computer, or "<account>|<calendar>"
+        property string target: ""
+        readonly property bool google: editing ? !!editing.e?.google : !isTodo && target !== ""
+        readonly property var targets: [{ value: "", label: "This computer" }].concat(Google.calendars
+            .filter(c => c.writable && Google.shown(c))
+            .map(c => ({ value: c.account + "|" + c.id, label: c.title + (Google.accounts.length > 1 ? " · " + Google.identity(c.account) : "") })))
+        // A repeating event: this occurrence or all of them? (then `asking(every)`)
+        property var asking: null
+        function ask(item, then) {
+            if (!open)
+                edit(item);
+            asking = then;
+        }
 
         function create(d) {
             root.selected = d;
             editing = null;
             readOnly = false;
+            asking = null;
             day = d;
             isTodo = false;
+            target = targets.some(t => t.value === Config.options.google.newEventCalendar) ? Config.options.google.newEventCalendar : "";
+            locationField.text = "";
+            notesField.text = "";
             title.text = "";
             allDay.checked = false;
             startField.text = "9:00 AM";
@@ -688,10 +719,13 @@ Platter {
         function edit(item) {
             editing = item;
             error = "";
+            asking = null;
             if (item.kind === "event") {
                 const e = item.e;
                 isTodo = false;
-                readOnly = !e.local;
+                readOnly = !Calendar.editable(e);
+                locationField.text = e.location ?? "";
+                notesField.text = e.notes ?? "";
                 day = e.start;
                 title.text = e.title;
                 allDay.checked = e.allDay;
@@ -712,6 +746,7 @@ Platter {
         function close() {
             open = false;
             editing = null;
+            asking = null;
         }
         // "9", "9:30", "5pm", "17:00", "5.30 pm" -> minutes since midnight, or -1
         function minutes(s) {
@@ -724,7 +759,7 @@ Platter {
                 h = (h % 12) + (m[3].startsWith("p") ? 12 : 0);
             return h > 23 || min > 59 ? -1 : h * 60 + min;
         }
-        function save() {
+        function save(every) {
             const name = title.text.trim();
             if (!name) {
                 error = "Give it a title.";
@@ -760,10 +795,30 @@ Platter {
                     end = new Date(base.getTime() + Math.max(e, s) * 60000);
                 }
                 const alert = allDay.checked ? -1 : alertDrop.value;
+                const fields = { title: name, start: start.getTime(), end: end.getTime(), allDay: allDay.checked, alert: alert, notes: notesField.text };
+                if (google)
+                    fields.location = locationField.text;
+                if (editing?.e.recurring && every === undefined) {
+                    asking = all => editor.save(all);
+                    return;
+                }
+                let saved = true;
                 if (editing)
-                    Calendar.update(editing.e.id, { title: name, start: start.getTime(), end: end.getTime(), allDay: allDay.checked, alert: alert });
-                else
-                    Calendar.add(name, start, end, allDay.checked, alert, "");
+                    saved = Calendar.change(editing.e, fields, !!every);
+                else if (google) {
+                    delete fields.alert;
+                    saved = Google.addEvent(target, fields);
+                    if (saved)
+                        Config.options.google.newEventCalendar = target;
+                } else {
+                    Calendar.add(name, start, end, allDay.checked, alert, notesField.text);
+                    Config.options.google.newEventCalendar = "";
+                }
+                if (!saved) {
+                    error = Google.lastError || "Could not save the event.";
+                    asking = null;
+                    return;
+                }
             }
             root.selected = base;
             close();
@@ -804,6 +859,13 @@ Platter {
                         editor.isTodo = i === 1;
                         startField.text = editor.isTodo ? "" : "9:00 AM";
                     }
+                }
+                Dropdown {
+                    visible: !editor.editing && !editor.isTodo && editor.targets.length > 1
+                    width: parent.width
+                    options: editor.targets
+                    value: editor.target
+                    onChosen: v => editor.target = v
                 }
                 TextField {
                     id: title
@@ -861,8 +923,26 @@ Platter {
                         onCommitted: editor.save()
                     }
                 }
+                TextField {
+                    id: locationField
+                    visible: editor.google && !editor.readOnly
+                    width: parent.width
+                    height: 32
+                    placeholder: "Location"
+                    commitOnBlur: false
+                    onCommitted: editor.save()
+                }
+                TextField {
+                    id: notesField
+                    visible: !editor.isTodo && !editor.readOnly
+                    width: parent.width
+                    height: 32
+                    placeholder: "Notes"
+                    commitOnBlur: false
+                    onCommitted: editor.save()
+                }
                 Row {
-                    visible: !editor.isTodo && !allDay.checked && !editor.readOnly
+                    visible: !editor.isTodo && !allDay.checked && !editor.readOnly && !editor.google
                     spacing: 8
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -881,8 +961,26 @@ Platter {
                     visible: editor.readOnly
                     width: parent.width
                     wrapMode: Text.Wrap
-                    text: editor.editing?.e ? Calendar.timeText(editor.editing.e) + (editor.editing.e.location ? " · " + editor.editing.e.location : "") + "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only)." : ""
+                    text: editor.editing?.e ? Calendar.timeText(editor.editing.e) + (editor.editing.e.location ? " · " + editor.editing.e.location : "")
+                        + (editor.editing.e.google ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). You can view this calendar but not change it."
+                            : "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only).") : ""
                     color: Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+                Text {
+                    visible: !editor.readOnly && !!editor.editing?.e?.google
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: editor.editing?.e?.google ? editor.editing.e.calendar + " · " + editor.editing.e.accountName : ""
+                    color: Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+                Text {
+                    visible: editor.asking !== null
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: "This is a repeating event. Change only this event, or all events in the series?"
+                    color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
                 Text {
@@ -894,7 +992,39 @@ Platter {
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
                 // Delete (when editing) on the left; Cancel and Save on the right
+                Row {
+                    visible: editor.asking !== null
+                    anchors.right: parent.right
+                    spacing: 8
+                    Repeater {
+                        model: [{ label: "Cancel", every: null }, { label: "This event", every: false }, { label: "All events", every: true }]
+                        Rectangle {
+                            id: choice
+                            required property var modelData
+                            width: choiceText.implicitWidth + 24
+                            height: 32
+                            radius: Theme.radius.control
+                            color: choiceMouse.pressed ? Theme.color.fillPressed : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                            Text { id: choiceText; anchors.centerIn: parent; text: choice.modelData.label; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+                            MouseArea {
+                                id: choiceMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    const then = editor.asking;
+                                    editor.asking = null;
+                                    if (choice.modelData.every === null)
+                                        return;
+                                    then(choice.modelData.every);
+                                    if (editor.open && editor.error === "")
+                                        editor.close();
+                                }
+                            }
+                        }
+                    }
+                }
                 Item {
+                    visible: editor.asking === null
                     width: parent.width
                     height: 32
                     Rectangle {

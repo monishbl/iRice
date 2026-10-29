@@ -6,6 +6,10 @@ import qs.services
 
 // Content of one notification: icon, app and time, summary, body, actions.
 // A close button appears on hover. Background is up to the parent.
+// Messaging apps' notifications get Reply: a one-line composer under the
+// actions (Enter or Send reply sends, Esc cancels). What's typed is kept in
+// Notifications.drafts, so it survives the card moving from a banner into
+// Notification Center.
 Item {
     id: root
 
@@ -13,11 +17,57 @@ Item {
     property bool hovered: hover.hovered
     signal closeRequested
 
+    // The composer: open, sent (briefly), or what went wrong
+    property bool replying: false
+    property bool sent: false
+    property string replyError: ""
+    readonly property bool canReply: Notifications.canReply(notification)
+    function openReply() {
+        if (!canReply)
+            return;
+        replyError = "";
+        sent = false;
+        replying = true;
+        Qt.callLater(() => replyField.focusInput());
+    }
+    function cancelReply() {
+        replying = false;
+        replyError = "";
+    }
+    function sendReply() {
+        const err = Notifications.reply(notification, replyField.text);
+        if (err !== "") {
+            replyError = err;
+            return;
+        }
+        replying = false;
+        sent = true;
+    }
+    onSentChanged: if (sent) sentTimer.restart()
+    Timer {
+        id: sentTimer
+        interval: 2500
+        onTriggered: root.sent = false
+    }
+    // Opened from the island's Reply (Notification Center shows this card)
+    Connections {
+        target: Notifications
+        function onReplyTargetChanged() { root.takeTarget(); }
+    }
+    Component.onCompleted: takeTarget()
+    function takeTarget() {
+        if (notification && Notifications.replyTarget === notification.id) {
+            Notifications.replyTarget = -1;
+            openReply();
+        }
+    }
+
     implicitHeight: column.implicitHeight + 24
 
     HoverHandler { id: hover }
 
     TapHandler {
+        enabled: !root.replying
         onTapped: {
             const def = root.notification?.actions.find(a => a.identifier === "default");
             if (def)
@@ -83,12 +133,40 @@ Item {
         }
 
         Row {
-            visible: actionRepeater.count > 0
+            visible: (actionRepeater.count > 0 || root.canReply) && !root.replying
             topPadding: 6
             spacing: 6
+            // Reply (the composer below), before the app's own buttons
+            Rectangle {
+                visible: root.canReply && !root.sent
+                width: replyLabel.implicitWidth + 24
+                height: 28
+                radius: 14
+                color: replyMouse.pressed ? Theme.color.fillPressed : replyMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                activeFocusOnTab: true
+                Keys.onReturnPressed: root.openReply()
+                Keys.onSpacePressed: root.openReply()
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.accent
+                Text {
+                    id: replyLabel
+                    anchors.centerIn: parent
+                    text: "Reply"
+                    color: Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                }
+                MouseArea {
+                    id: replyMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openReply()
+                }
+            }
             Repeater {
                 id: actionRepeater
-                model: root.notification?.actions.filter(a => a.identifier !== "default")
+                // (the app's own "inline-reply" action is the Reply above)
+                model: root.notification?.actions.filter(a => a.identifier !== "default" && a.identifier !== "inline-reply")
                 Rectangle {
                     required property var modelData
                     width: actionLabel.implicitWidth + 24
@@ -110,6 +188,56 @@ Item {
                     }
                 }
             }
+        }
+
+        // The composer
+        Row {
+            visible: root.replying
+            width: parent.width
+            topPadding: 6
+            spacing: 6
+            TextField {
+                id: replyField
+                width: parent.width - sendButton.width - parent.spacing
+                height: 30
+                placeholder: root.notification?.inlineReplyPlaceholder || "Reply"
+                commitOnBlur: false
+                text: Notifications.draft(root.notification)
+                onTextChanged: if (root.replying) Notifications.setDraft(root.notification, text)
+                onCommitted: root.sendReply()
+                Keys.onEscapePressed: root.cancelReply()
+            }
+            Rectangle {
+                id: sendButton
+                readonly property bool ready: replyField.text.trim() !== ""
+                width: sendLabel.implicitWidth + 24
+                height: 30
+                radius: 15
+                color: !ready ? Theme.color.fill : sendMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent
+                Text {
+                    id: sendLabel
+                    anchors.centerIn: parent
+                    text: "Send reply"
+                    color: sendButton.ready ? Theme.color.onAccent : Theme.color.tertiary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                }
+                MouseArea {
+                    id: sendMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: sendButton.ready ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: root.sendReply()
+                }
+            }
+        }
+        Text {
+            visible: root.replyError !== "" || root.sent
+            width: parent.width
+            topPadding: 4
+            wrapMode: Text.Wrap
+            text: root.replyError !== "" ? root.replyError : "Sent"
+            color: root.replyError !== "" ? Theme.color.danger : Theme.color.secondary
+            font { family: Theme.font.family; pixelSize: Theme.font.small }
         }
     }
 

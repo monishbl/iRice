@@ -13,9 +13,13 @@ Item {
     property real radius: Theme.radius.tile
     property color color: chip ? Qt.alpha("white", Theme.dark ? 0.07 : 0.28) : Theme.color.platter
     readonly property real shapeRadius: Math.min(radius, Math.min(width, height) / 2)
+    // The chip's glass alone (the compositor draws it where the item is,
+    // ignoring a scrolling list's clip: a list fades it out at its edges)
+    property real glassOpacity: 1
 
     Glass {
-        visible: root.chip
+        visible: root.chip && root.glassOpacity > 0.01
+        opacity: root.glassOpacity
         z: -1
         anchors.fill: parent
         anchors.margins: -shadowMargin

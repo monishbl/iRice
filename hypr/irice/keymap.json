@@ -96,6 +96,15 @@
   }
  },
  {
+  "id": "replyLatest",
+  "keys": "$MOD + CTRL + N",
+  "group": "Shell",
+  "label": "Reply to the newest message",
+  "action": {
+   "shell": "replyLatest"
+  }
+ },
+ {
   "id": "emoji",
   "keys": "$MOD + Period",
   "group": "Shell",

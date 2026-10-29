@@ -25,20 +25,17 @@ Rectangle {
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
 
     Keys.onPressed: event => {
-        if (active && (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+        if (active && !event.isAutoRepeat && (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
             root.clicked();
             event.accepted = true;
         }
     }
+    Accessible.role: Accessible.Button
+    Accessible.name: text
+    Accessible.onPressAction: if (active) root.clicked()
 
-    // Focus ring
-    Rectangle {
-        anchors { fill: parent; margins: -3 }
-        visible: root.activeFocus
-        radius: root.radius + 3
-        color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
+    FocusRing {
+        radius: root.radius + 4
     }
 
     // (not a Row: in Settings pages Row is the settings row)

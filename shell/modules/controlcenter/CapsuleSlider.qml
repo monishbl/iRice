@@ -13,8 +13,37 @@ Item {
     property real value: 0
     property bool hasMore: false
     readonly property bool vertical: height > width
+    property string accessibleName: icon
     signal moved(real value)
     signal more
+
+    // Keyboard: arrows by 5%, Page Up/Down by 20%, Home/End to the ends,
+    // Enter (with hasMore) for its page
+    activeFocusOnTab: true
+    function nudge(d) {
+        root.moved(Math.max(0, Math.min(1, d)));
+    }
+    Keys.onPressed: event => {
+        const k = event.key;
+        const v = k === Qt.Key_Left || k === Qt.Key_Down ? value - 0.05 : k === Qt.Key_Right || k === Qt.Key_Up ? value + 0.05
+            : k === Qt.Key_PageDown ? value - 0.2 : k === Qt.Key_PageUp ? value + 0.2
+            : k === Qt.Key_Home ? 0 : k === Qt.Key_End ? 1 : NaN;
+        if (!isNaN(v)) {
+            nudge(v);
+            event.accepted = true;
+        } else if (hasMore && (k === Qt.Key_Return || k === Qt.Key_Enter)) {
+            root.more();
+            event.accepted = true;
+        }
+    }
+    Accessible.role: Accessible.Slider
+    Accessible.name: accessibleName
+    Accessible.description: Math.round(v * 100) + "%"
+    Accessible.onIncreaseAction: nudge(value + 0.05)
+    Accessible.onDecreaseAction: nudge(value - 0.05)
+    FocusRing {
+        radius: root.thick / 2 + 4
+    }
 
     readonly property real v: Math.max(0, Math.min(1, value))
     readonly property real thick: vertical ? width : height // the capsule's round-end diameter

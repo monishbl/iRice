@@ -16,6 +16,34 @@ Rectangle {
     signal clicked
     signal menuRequested // right-click (or press and hold): the row's menu
 
+    // Keyboard: Tab or the arrows to it, Space or Enter acts, the Menu key
+    // (or Shift+F10) opens its menu
+    activeFocusOnTab: visible
+    Keys.onPressed: event => {
+        const k = event.key;
+        if ((k === Qt.Key_Space || k === Qt.Key_Return || k === Qt.Key_Enter) && !event.isAutoRepeat) {
+            root.clicked();
+        } else if (k === Qt.Key_Menu || (k === Qt.Key_F10 && event.modifiers & Qt.ShiftModifier)) {
+            root.menuRequested();
+        } else if (k === Qt.Key_Down || k === Qt.Key_Up) {
+            // to the next or previous row
+            const next = root.nextItemInFocusChain(k === Qt.Key_Down);
+            if (next)
+                next.forceActiveFocus(k === Qt.Key_Down ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+        } else {
+            return;
+        }
+        event.accepted = true;
+    }
+    Accessible.role: Accessible.ListItem
+    Accessible.name: title
+    Accessible.description: status
+    Accessible.selected: highlighted
+    Accessible.onPressAction: root.clicked()
+    FocusRing {
+        radius: root.radius + 4
+    }
+
     width: parent?.width ?? 0
     height: 40
     radius: Theme.radius.control

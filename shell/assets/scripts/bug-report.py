@@ -158,7 +158,21 @@ def sysinfo(shell_dir):
         pass
     info["System"] = distro
     info["Kernel"] = os.uname().release
+    info["Health"] = health_summary()
     return info
+
+
+def health_summary():
+    """What System health finds wrong (health-check.py), in one line; part of
+    System info, so it's shown before sending and can be left out with it.
+    (The password prompt check is left out: only the shell knows that.)"""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "health-check.py")
+    try:
+        rows = json.loads(run([sys.executable, "-I", script, "--polkit", "off", "--shell-pid", str(os.getppid())], timeout=5) or "[]")
+    except ValueError:
+        return "unknown"
+    bad = [f"{r['name']}: {r['status']} ({r['detail']})" for r in rows if r.get("status") in ("fail", "warn")]
+    return "; ".join(bad) or "all good"
 
 
 def gather(shell_dir):
