@@ -78,4 +78,5 @@ fi
 # blur (it's invisible at icon sizes) and logs a warning each time one loads.
 # Only that category is muted; every other warning still shows.
 export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.svg.draw.warning=false"
+"$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/dev/null 2>&1 &
 exec "$QS" "$@"

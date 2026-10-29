@@ -38,9 +38,16 @@ Singleton {
         return "cloud-rain";
     }
 
+    property int generation: 0
+    property var request: null
     function refresh() {
+        const version = ++generation;
+        if (request) request.abort();
         const x = new XMLHttpRequest();
+        request = x;
+        const requestedPlace = Config.options.weather.location;
         x.onreadystatechange = () => {
+            if (version !== generation) return;
             if (x.readyState !== XMLHttpRequest.DONE)
                 return;
             if (x.status !== 200) {
@@ -70,7 +77,7 @@ Singleton {
                 condition = cur.weatherDesc?.[0]?.value?.trim() ?? "";
                 icon = iconFor(cur.weatherCode, night);
                 const area = j.nearest_area?.[0];
-                place = Config.options.weather.location || area?.areaName?.[0]?.value || "";
+                place = requestedPlace || area?.areaName?.[0]?.value || "";
                 hourly = today.hourly.filter(h => +h.time / 100 >= hour - 1).slice(0, 5).map(h => ({
                     time: Qt.formatTime(new Date(2000, 0, 1, +h.time / 100), "h AP"),
                     temp: +(metric ? h.tempC : h.tempF),

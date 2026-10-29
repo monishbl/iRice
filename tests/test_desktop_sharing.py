@@ -176,12 +176,13 @@ class DesktopSharingTests(unittest.TestCase):
                 receiver.answers[data['session']].set()
         receiver.emit = incoming
         sender.emit = lambda event, **data: sent.append((event, data))
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), receiver.Handler)
+        receiver.configure_tls(self.root / 'receiver-tls')
+        server = receiver.Server(('127.0.0.1', 0), receiver.Handler)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-        sender.peers['receiver'] = {'alias': 'Test receiver', 'ip': '127.0.0.1', 'port': server.server_address[1], 'protocol': 'http'}
+        sender.peers['receiver'] = {'alias': 'Test receiver', 'ip': '127.0.0.1', 'port': server.server_address[1], 'protocol': 'https', 'fingerprint': receiver.FINGERPRINT}
         paths = [self.root / 'first file.txt', self.root / 'second ü.bin']
         for i, path in enumerate(paths):
             path.write_bytes(bytes([65 + i]) * (1048576 + i))

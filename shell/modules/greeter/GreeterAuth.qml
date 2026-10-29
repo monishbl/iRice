@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "session-exec.js" as SessionExec
 import Quickshell.Services.Greetd
 
 // Login logic for the greeter: users from /etc/passwd, sessions from
@@ -39,13 +40,16 @@ QtObject {
 
     function launch() {
         const s = sessions[session];
+        let command;
+        try { command = SessionExec.parse(s?.exec ?? "", s?.name ?? ""); }
+        catch (e) { error = String(e); busy = false; if (!mock) Greetd.cancelSession(); return; }
         remember.setText(JSON.stringify({ user: users[user]?.name ?? "", session: s?.name ?? "" }));
         success = true;
         if (mock) {
             console.log("greeter (mock): would launch", s?.exec);
             return;
         }
-        Greetd.launch(s.exec.split(" ").filter(x => x !== ""), [], true);
+        Greetd.launch(command, [], true);
     }
 
     property Connections greetd: Connections {

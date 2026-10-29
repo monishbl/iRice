@@ -67,11 +67,20 @@ local function bind(e, user)
     local ok, berr = pcall(hl.bind, keys, action, opts)
     if ok then
         taken[norm] = tostring(e.id)
-        -- A tap of Super alone (superTap) acts when Super is let go; any
-        -- other shortcut using it in between calls that off. (Hyprland's
-        -- own release binds never fire for a lone modifier: by the time it's
-        -- up, its modifier is gone.)
-        if e.id ~= "spotlight-tap" and norm:find("^" .. MOD .. "%+") then
+        -- Lua-backed global dispatchers do not get the legacy global
+        -- dispatcher's automatic release event. Deliver it explicitly, even
+        -- after the modifier itself has gone up. The shell's arm/cancel state
+        -- still decides whether this was a lone tap or part of a chord.
+        if e.action.shell == "superTap" then
+            local releaseKey = keys:match("([^+]+)$"):match("^%s*(.-)%s*$")
+            local released, releaseError = pcall(hl.bind, releaseKey, action, {
+                release = true, ignore_mods = true, non_consuming = true,
+                description = "Shell: Release tap modifier"
+            })
+            if not released then log("couldn't bind tap release: " .. tostring(releaseError)) end
+        end
+        -- Other Super shortcuts cancel a pending tap.
+        if e.action.shell ~= "superTap" and norm:find("^" .. MOD .. "%+") then
             pcall(hl.bind, keys, hl.dsp.global("irice:superTapCancel"), {})
         end
     else

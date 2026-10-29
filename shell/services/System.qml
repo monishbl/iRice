@@ -126,15 +126,32 @@ Singleton {
             return;
         if (sandboxed)
             Quickshell.execDetached(["notify-send", "-a", "iRice sandbox", "Skipped " + action, cmd.join(" ")]);
-        else
+        else if (action === "sleep") {
+            sleepPending = true;
+            locked = true;
+            if (lockSecure)
+                finishSleep();
+        } else
             Quickshell.execDetached(cmd);
     }
 
+    property bool sleepPending: false
+    property bool lockSecure: false
+    function finishSleep() {
+        if (!sleepPending || !lockSecure || !locked)
+            return;
+        sleepPending = false;
+        Quickshell.execDetached(powerCommands.sleep);
+    }
+    onLockSecureChanged: if (lockSecure) finishSleep()
     property bool locked: false
     // Remembered for this Hyprland session, so a shell that restarts while the
     // screen is locked (a crash, a repair) locks again straight away
     readonly property string lockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
-    onLockedChanged: Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark])
+    onLockedChanged: {
+        if (!locked) sleepPending = false;
+        Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark]);
+    }
     Process {
         running: true
         command: ["test", "-e", root.lockMark]

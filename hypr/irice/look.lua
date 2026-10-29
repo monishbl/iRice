@@ -1,5 +1,11 @@
 -- iRice look: gaps, borders, rounding, blur (for frosted glass) and motion.
 
+-- KDE's platform theme loads the application palette before graphics views
+-- are constructed. Applying a scheme later leaves Dolphin's cached item text
+-- black until the next palette-change event. Respect an explicit user choice.
+local qtTheme = os.getenv("QT_QPA_PLATFORMTHEME")
+if not qtTheme or qtTheme == "" then hl.env("QT_QPA_PLATFORMTHEME", "kde") end
+
 hl.config({
     general = {
         gaps_in = 5,

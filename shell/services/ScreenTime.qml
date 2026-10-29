@@ -66,6 +66,7 @@ Singleton {
         counting = idle.isIdle || !UiState.loaded ? "" : app;
     }
     onAppChanged: restart()
+    Connections { target: UiState; function onLoadedChanged() { if (UiState.loaded && root.counting === "") root.restart(); } }
     Connections {
         target: idle
         function onIsIdleChanged() { root.restart(); }

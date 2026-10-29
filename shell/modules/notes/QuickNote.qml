@@ -37,13 +37,24 @@ Variants {
             } else {
                 draft = editor.text;
             }
+            property string savingPath: ""
             function save() {
-                if (editor.text.trim() === "")
+                if (savingPath !== "" || editor.text.trim() === "")
                     return;
-                Notes.create(editor.text, false);
-                editor.text = "";
-                draft = "";
-                Panels.close();
+                savingPath = Notes.create(editor.text, false);
+            }
+            Connections {
+                target: Notes
+                function onSaved(path) {
+                    if (path !== dialog.savingPath) return;
+                    dialog.savingPath = "";
+                    editor.text = "";
+                    dialog.draft = "";
+                    Panels.close();
+                }
+                function onSaveFailed(path) {
+                    if (path === dialog.savingPath) dialog.savingPath = "";
+                }
             }
 
             Column {
@@ -83,6 +94,7 @@ Variants {
                         boundsBehavior: Flickable.StopAtBounds
                         TextEdit {
                             id: editor
+                            readOnly: dialog.savingPath !== ""
                             width: flick.width
                             height: Math.max(flick.height, contentHeight)
                             wrapMode: TextEdit.Wrap
@@ -131,14 +143,14 @@ Variants {
                         width: saveLabel.implicitWidth + 28
                         height: 32
                         radius: Theme.radius.control
-                        readonly property bool enabledNow: editor.text.trim() !== ""
+                        readonly property bool enabledNow: dialog.savingPath === "" && editor.text.trim() !== ""
                         color: !enabledNow ? Theme.color.fill : saveMouse.pressed ? Qt.darker(Theme.accent, 1.15) : saveMouse.containsMouse ? Qt.lighter(Theme.accent, 1.08) : Theme.accent
                         scale: saveMouse.pressed ? 0.97 : 1
                         Behavior on scale { ScaleAnimator { duration: 100 } }
                         Text {
                             id: saveLabel
                             anchors.centerIn: parent
-                            text: "Save note  ⌃↵"
+                            text: dialog.savingPath !== "" ? "Saving…" : "Save note  ⌃↵"
                             color: saveButton.enabledNow ? "white" : Theme.color.tertiary
                             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                         }

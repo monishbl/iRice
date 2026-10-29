@@ -50,22 +50,14 @@ Scope {
         target: System
         function onLockedChanged() {
             leaveTimer.stop();
-            enterTimer.stop();
             if (System.locked) {
                 root.leaving = false;
                 if (root.held)
                     return;
-                const t = root.cfg.lockTransition;
-                if (t === "none" || !Wallpaper.started) {
-                    LockFx.rest();
-                    root.held = true;
-                    return;
-                }
-                // Desktop → lock: widgets and icons zoom away, the veil
-                // covers the windows, then the lock takes over the same picture
-                root.veiled = true;
-                LockFx.leave(t === "zoom", 380);
-                enterTimer.restart();
+                // Acquire the compositor lock immediately. Animation must never
+                // leave an unlocked, input-transparent password-entry interval.
+                root.held = true;
+                LockFx.rest();
             } else {
                 if (!root.held) { // locked and unlocked again before the lock showed
                     root.veiled = false;
@@ -88,11 +80,6 @@ Scope {
                 leaveTimer.restart();
             }
         }
-    }
-    Timer {
-        id: enterTimer
-        interval: 400
-        onTriggered: root.held = true
     }
     Timer {
         id: leaveTimer
@@ -121,6 +108,7 @@ Scope {
     Connections {
         target: lock
         function onSecureChanged() {
+            System.lockSecure = lock.secure;
             if (lock.secure && System.locked) {
                 root.veiled = false;
                 LockFx.rest(); // (hidden behind the lock)

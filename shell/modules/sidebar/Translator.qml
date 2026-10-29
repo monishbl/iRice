@@ -32,27 +32,37 @@ Item {
         onTriggered: root.translate()
     }
 
+    property int generation: 0
+    property var activeRequest: null
     function translate() {
-        if (input.text.trim() === "") {
-            result = "";
-            return;
-        }
-        proc.running = false;
-        proc.command = ["trans", "-brief", "-no-ansi", "-s", source, "-t", target, input.text];
-        proc.running = true;
+        const version = ++generation;
+        if (activeRequest) activeRequest.running = false;
+        result = "";
+        error = "";
+        if (input.text.trim() === "") return;
+        const request = requestComponent.createObject(root, { version: version, requestedText: input.text,
+            command: ["trans", "-brief", "-no-ansi", "-s", source, "-t", target, input.text] });
+        activeRequest = request;
+        request.running = true;
     }
-
-    Process {
-        id: proc
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.result = text.trim();
-                root.error = "";
+    Component {
+        id: requestComponent
+        Process {
+            id: request
+            property int version
+            property string requestedText
+            stdout: StdioCollector {
+                onStreamFinished: if (request.version === root.generation && input.text === request.requestedText) {
+                    root.result = text.trim();
+                    root.error = "";
+                }
             }
-        }
-        onExited: code => {
-            if (code !== 0)
-                root.error = "Couldn't translate. Check your internet connection and that translate-shell is installed.";
+            onExited: code => {
+                if (version === root.generation && input.text === requestedText && code !== 0)
+                    root.error = "Couldn't translate. Check your connection and translate-shell installation.";
+                if (root.activeRequest === request) root.activeRequest = null;
+                destroy();
+            }
         }
     }
 

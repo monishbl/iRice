@@ -1,5 +1,22 @@
 # iRice changelog
 
+## Audit fixes and reliable startup · 2026-10-29
+
+- Lock immediately before animations and wait for compositor lock confirmation before Sleep. Start an independent idle/sleep locker in installed and TTY sessions, preserving configured idle listeners.
+- Protect UI state with private recovery journals and merge concurrent edits; publish notes atomically and report save failures. Back up installed configuration before replacement and restore files when update preparation fails.
+- Use HTTPS with certificate fingerprint checks for LocalSend. Bound transfer resources, reject truncated/oversized uploads, honour cancellation and avoid concurrent filename overwrites. HTTP-only receiving peers must enable HTTPS; discovery is not independently authenticated.
+- Correct floating/tiled startup rules, calendar recurrence and date boundaries, stale request results, timer drift, process identity checks and native glass IPC retries. Stop advertising notification inline replies until a composer exists.
+- Replace the greeter with the approved minimal keyboard-first login prompt, retaining user/session selection and confirmed power actions.
+- Restore Super-tap Overview with an explicit release binding. Initialize Qt apps with the KDE platform theme so Dolphin starts with readable dark-mode text; explicit platform-theme choices are preserved.
+- Record the newly reported calendar overflow/gradient agenda, Settings window stacking, app-link activation, stale download activity, island scrolling and notification-header issues as **open R51–R56**. These are not claimed fixed in this update.
+
+### Upgrade and validation
+
+- Install/update dependencies, including `openssl` and `plasma-integration`, rebuild the compositor plugin and native helpers, and restart the session. Fully quit and reopen Dolphin so it inherits the startup theme environment.
+- Validation: **50 Python and 27 Node tests pass**; 286 QML files parse; shell syntax checks and both native builds pass. Tests include offscreen Qt/Quickshell, disposable Git repositories and local TLS/IPC fixtures.
+- Real lock/suspend/resume, greetd authentication and physical multi-monitor acceptance checks remain pending. This push does not install or restart the running desktop.
+- See the [audit status and queued issues](docs/bug-audit-2026-10-28.md) for individual fixes and verification limits.
+
 ## Pointer focus and multiple displays · 2026-10-29
 
 - Hover focus now rechecks the stationary pointer after workspace/window changes. New windows take focus and bring the pointer when they open elsewhere.

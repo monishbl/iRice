@@ -27,22 +27,13 @@ set -m # (background jobs get their own process group: the group is the watcher)
 w=$!
 set +m
 lead=$(started "$w")
+umask 077
 mkdir -p "$REC" 2>/dev/null
 printf '%s %s %s %s\n' "$$" "$(started $$)" "$w" "$lead" >"$REC/$w" 2>/dev/null
 
-# The group still exists and is still ours: some process in it that started
-# no earlier than its leader (a group id is only reused once it's empty)
-ours() {
-    [[ -n "$lead" ]] || return 1
-    awk -v g="$w" -v l="$lead" '{ s = $0; sub(/^.*\) /, "", s); split(s, f, " "); if (f[3] == g && f[20] >= l) { found = 1; exit } }
-        END { exit !found }' /proc/[0-9]*/stat 2>/dev/null
-}
+# Capture pidfds before signaling, so PID/PGID reuse cannot target other work.
 end() {
-    if ours; then
-        kill -TERM -- -"$w" 2>/dev/null
-        sleep 0.5
-        ours && kill -KILL -- -"$w" 2>/dev/null
-    fi
+    python3 -I "$(dirname -- "$0")/process-identity.py" group "$w" "$lead"
     rm -f "$REC/$w"
 }
 trap end EXIT

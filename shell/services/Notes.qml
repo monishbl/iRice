@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Qt.labs.folderlistmodel
 import Quickshell
+import Quickshell.Io
 import qs.common
 
 // Notes are Markdown files, one per note, in a folder (~/Documents/Notes
@@ -36,7 +37,7 @@ Singleton {
     // A file name from the note's first line: "2026-10-27 Call the bank.md"
     function fileName(title) {
         const clean = title.replace(/[\/\\:*?"<>|#\n\r\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60).trim();
-        return Qt.formatDateTime(new Date(), "yyyy-MM-dd HHmm") + (clean ? " " + clean : "") + ".md";
+        return Qt.formatDateTime(new Date(), "yyyy-MM-dd HHmmsszzz") + "-" + Math.random().toString(36).slice(2, 10) + (clean ? " " + clean : "") + ".md";
     }
     function titleOf(text) {
         const first = text.trim().split("\n")[0].replace(/^#+\s*/, "");
@@ -55,12 +56,34 @@ Singleton {
         const rest = lines.slice(1).join("\n").trim();
         const content = body.startsWith("#") ? body + "\n" : "# " + lines[0].trim() + "\n" + (rest ? "\n" + rest + "\n" : "");
         const path = folder + "/" + name;
-        // (never overwrites: the name has the time, and -C refuses an existing file)
-        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && set -C && printf '%s' \"$3\" > \"$1/$2\"", "sh", folder, name, content]);
-        Island.post({ kind: "custom", icon: "note-pencil", title: "Note saved", subtitle: title, color: Theme.accents.yellow });
-        if (open)
-            Qt.callLater(() => root.open(path));
+        const job = saveJob.createObject(root, { notePath: path, noteTitle: title, content: content, openAfter: !!open });
+        job.running = true;
         return path;
+    }
+    signal saved(string path)
+    signal saveFailed(string path)
+    Component {
+        id: saveJob
+        Process {
+            required property string notePath
+            required property string noteTitle
+            required property string content
+            property bool openAfter: false
+            stdinEnabled: true
+            command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/save-note.py", notePath]
+            onStarted: { write(content); stdinEnabled = false; }
+            onExited: code => {
+                if (code === 0) {
+                    Island.post({ kind: "custom", icon: "note-pencil", title: "Note saved", subtitle: noteTitle, color: Theme.accents.yellow });
+                    root.saved(notePath);
+                    if (openAfter) root.open(notePath);
+                } else {
+                    Island.post({ kind: "custom", icon: "warning", title: "Couldn't save note", subtitle: "Check the notes folder and available space.", color: Theme.accents.red });
+                    root.saveFailed(notePath);
+                }
+                destroy();
+            }
+        }
     }
     // "save https://…" keeps the link (and any words around it) as a note
     function saveLink(url, words) {

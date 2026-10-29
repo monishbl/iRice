@@ -516,7 +516,7 @@ def apply(config_dir, choices, extra=()):
 
     progress(5, "Backing up your settings")
     # Back up settings and shortcuts
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + str(time.time_ns() % 1000000000)
     backup = os.path.join(config_dir, "backups", "update-" + stamp)
     os.makedirs(backup, exist_ok=True)
     for name in ("config.json", "keybinds.json"):
@@ -541,10 +541,6 @@ def apply(config_dir, choices, extra=()):
     # Untracked files the update adds: set aside so taking the update works,
     # put back afterwards if you keep yours (and on any failure)
     aside = os.path.join(backup, "untracked")
-    for f in untracked:
-        dest = os.path.join(aside, f)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        shutil.move(os.path.join(REPO, f), dest)
 
     def put_back_untracked():
         for f in untracked:
@@ -560,15 +556,21 @@ def apply(config_dir, choices, extra=()):
                 raise SystemExit(f + " no longer merges cleanly: choose mine or new for it")
             merged[f] = text
     stash = None
-    if edited:
-        git("stash", "push", "-m", "irice-update " + stamp)
-        stash = git("rev-parse", "stash@{0}").strip()
     try:
+        for f in untracked:
+            dest = os.path.join(aside, f)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(os.path.join(REPO, f), dest)
+        if edited:
+            git("stash", "push", "-m", "irice-update " + stamp)
+            stash = git("rev-parse", "stash@{0}").strip()
         git("merge", "--ff-only", report["upstream"])
-    except RuntimeError:
-        if stash:
-            git("stash", "pop")
-        put_back_untracked()
+    except BaseException:
+        try:
+            if stash:
+                git("stash", "pop")
+        finally:
+            put_back_untracked()
         raise
     try:
         apply_after_merge(config_dir, choices, report, edited, merged, stash)

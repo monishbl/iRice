@@ -30,8 +30,8 @@ Singleton {
             if (!Config.ready || !Tools.ready || root.key === root.applied)
                 return;
             run.running = false;
-            run.command = Launch.wrap([decodeURIComponent(Qt.resolvedUrl("../assets/scripts/app-theme.sh").toString().replace("file://", "")),
-                root.source === "off" || !root.available ? "off" : Theme.dark ? "dark" : "light", String(Theme.accent).slice(0, 7), root.source, Wallpaper.path, root.cfg.appThemeTargets.join(","), Theme.dark ? "dark" : "light"]);
+            run.command = [decodeURIComponent(Qt.resolvedUrl("../assets/scripts/app-theme.sh").toString().replace("file://", "")),
+                root.source === "off" || !root.available ? "off" : Theme.dark ? "dark" : "light", String(Theme.accent).slice(0, 7), root.source, Wallpaper.path, root.cfg.appThemeTargets.join(","), Theme.dark ? "dark" : "light"];
             run.running = true;
             root.applied = root.key;
         }

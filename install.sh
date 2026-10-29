@@ -279,6 +279,18 @@ add_to_path() {
 }
 
 install_files() {
+    # Preserve locally edited installed copies before replacing managed files.
+    local installed_backup="$DATA/irice/backups/installed-$(date +%Y%m%d-%H%M%S-%N)"
+    if [[ -e "$CONFIG/quickshell/irice" || -d "$CONFIG/hypr" ]]; then
+        run mkdir -p -m 700 "$installed_backup" || return 1
+        if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then
+            run cp -a "$CONFIG/quickshell/irice" "$installed_backup/shell" || return 1
+        fi
+        if [[ -d "$CONFIG/hypr" ]]; then
+            run cp -a "$CONFIG/hypr" "$installed_backup/hypr" || return 1
+        fi
+        note "Installed configuration backup: $installed_backup"
+    fi
     # The shell
     run mkdir -p "$CONFIG/quickshell" "$BIN"
     if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then

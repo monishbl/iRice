@@ -238,6 +238,8 @@ class CIriceControls : public IHyprWindowDecoration {
     }
 
     void onButton(IPointer::SButtonEvent e, Event::SCallbackInfo& info) {
+        if (e.button != 272) // BTN_LEFT; right/middle clicks must not close a window
+            return;
         if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
             if (m_pressedHere)
                 info.cancelled = true;

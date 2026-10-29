@@ -34,7 +34,7 @@ Singleton {
     signal shot(string path)
 
     function stamp() {
-        return Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss");
+        return Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss.zzz") + "-" + Math.random().toString(36).slice(2, 10);
     }
 
     function focusedScreen() {
@@ -188,6 +188,8 @@ Singleton {
     }
 
     function failed(kind) {
+        if (kind === "translate")
+            translation = Object.assign({}, translation, { busy: false, error: "Could not read text from the screen." });
         if (kind === "shot" || kind === "shotMarkup" || kind === "ask")
             Quickshell.execDetached(["notify-send", "-a", "Screenshot", "Couldn't take the screenshot", "Make sure grim is installed."]);
         else if (kind === "ocr" || kind === "translate")

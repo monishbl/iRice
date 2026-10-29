@@ -63,70 +63,94 @@ Singleton {
         onCaffeineChanged: root.scheduleSave()
         onTodayShownChanged: root.scheduleSave()
         onTodayPinnedChanged: root.scheduleSave()
+        onTodayEnsuredChanged: root.scheduleSave()
         onWorkspaceHomesChanged: root.scheduleSave()
     }
 
     property bool loaded: false
-    // `lazy`: changes that may come often and matter little if lost (the
-    // recent apps order on every focus change) are saved within 30 s
+    property bool initialized: false
+    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "workspaceHomes"]
+    readonly property string journalId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
+    readonly property string merger: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/state-merge.py").toString().replace("file://", ""))
+    property int sequence: 0
+    property int mergingSequence: 0
+    property var observed: ({})
+    property var dirty: ({})
+    function snapshot() {
+        const result = {};
+        for (const key of keys)
+            result[key] = JSON.parse(JSON.stringify(store[key]));
+        return result;
+    }
     function scheduleSave(lazy) {
-        if (!loaded)
+        if (!loaded || !initialized)
             return;
-        if (lazy !== true)
-            saveTimer.restart();
-        else if (!saveTimer.running && !lazySave.running)
-            lazySave.start();
+        const current = snapshot(), changes = {}, next = Object.assign({}, dirty);
+        const seq = ++sequence;
+        for (const key of keys) {
+            if (JSON.stringify(current[key]) !== JSON.stringify(observed[key])) {
+                changes[key] = { revision: [Date.now(), journalId, seq], value: current[key] };
+                next[key] = { sequence: seq, value: current[key] };
+            }
+        }
+        if (!Object.keys(changes).length)
+            return;
+        // Write synchronously to a private immutable journal before debouncing
+        // the shared state merge. A quit/crash cannot lose a pending debounce.
+        journal.path = dir + "/pending/" + journalId + "-" + seq + ".json";
+        journal.setText(JSON.stringify(changes));
+        journal.waitForJob();
+        observed = current;
+        dirty = next;
+        saveTimer.restart();
     }
-    Timer {
-        id: lazySave
-        interval: 30000
-        onTriggered: saveTimer.restart()
+    FileView { id: journal; printErrors: true; blockWrites: true; atomicWrites: true }
+    Timer { id: saveTimer; interval: 100; onTriggered: if (!writer.running) root.flush() }
+    function flush() {
+        if (writer.running)
+            return;
+        mergingSequence = sequence;
+        writer.running = true;
     }
-    Component.onDestruction: if (lazySave.running) saveTimer.triggered()
-
+    Component.onDestruction: {
+        if (initialized && Object.keys(dirty).length)
+            Quickshell.execDetached(["python3", "-I", merger, dir]);
+    }
     Process {
+        id: writer
+        command: ["python3", "-I", root.merger, root.dir]
         running: true
-        command: ["mkdir", "-p", root.dir]
-    }
-
-    Timer {
-        id: saveTimer
-        interval: 300
-        onTriggered: file.setText(JSON.stringify({
-            overlay: store.overlay,
-            crosshair: store.crosshair,
-            floatingImage: store.floatingImage,
-            todos: store.todos,
-            alarms: store.alarms,
-            clipPins: store.clipPins,
-            recentApps: store.recentApps,
-            desktopNote: store.desktopNote,
-            desktopNotes: store.desktopNotes,
-            screenTime: store.screenTime,
-            stacks: store.stacks,
-            shortcutButtons: store.shortcutButtons,
-            appThemeOn: store.appThemeOn,
-            coolDown: store.coolDown,
-            caffeine: store.caffeine,
-            todayShown: store.todayShown,
-            todayPinned: store.todayPinned,
-            todayEnsured: store.todayEnsured,
-            workspaceHomes: store.workspaceHomes
-        }, null, 2))
+        onExited: code => {
+            if (code !== 0) {
+                console.warn("UI state merge failed; recovery journals retained");
+                return;
+            }
+            root.initialized = true;
+            const next = {};
+            for (const key of Object.keys(root.dirty))
+                if (root.dirty[key].sequence > root.mergingSequence)
+                    next[key] = root.dirty[key];
+            root.dirty = next;
+            file.reload();
+            if (Object.keys(next).length)
+                saveTimer.restart();
+        }
     }
 
     // Two shells can share this file (the dev sandbox and the tty test
     // session); re-read it when it changes so neither writes back stale state
     FileView {
         id: file
-        path: root.dir + "/state.json"
+        path: root.initialized ? root.dir + "/state.json" : ""
         watchChanges: true
         // (not while our own change is waiting to be saved: it would be lost)
-        onFileChanged: if (!saveTimer.running) reload()
+        onFileChanged: reload()
         onLoaded: {
             root.loaded = false; // applying the file isn't a change to save
             try {
                 const j = JSON.parse(text());
+                for (const key of Object.keys(root.dirty))
+                    j[key] = root.dirty[key].value;
                 if (j.overlay)
                     store.overlay = Object.assign({}, store.overlay, j.overlay);
                 if (j.crosshair)
@@ -160,9 +184,10 @@ Singleton {
                     store.todayEnsured = j.todayEnsured;
                 store.workspaceHomes = j.workspaceHomes && typeof j.workspaceHomes === "object" ? j.workspaceHomes : {};
             } catch (e) {}
+            root.observed = root.snapshot();
             root.loaded = true;
         }
-        onLoadFailed: root.loaded = true
+        onLoadFailed: { root.observed = root.snapshot(); root.loaded = root.initialized; }
     }
 
     // Overlay widget state helpers

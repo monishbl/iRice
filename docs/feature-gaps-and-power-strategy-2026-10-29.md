@@ -4,6 +4,8 @@ Date: **29 October 2026**, Asia/Kolkata. Reviewed source: **`483d6eb`**.
 
 This document complements the [bug audit](bug-audit-2026-10-28.md). It records missing or incomplete capabilities, investigates the reported sleep/lock and window-layout failures, and proposes a product and engineering direction. **Implementation code and live power/window settings were not changed.** Suggestions below are proposed behavior, not features already delivered.
 
+**Implementation follow-up (29 October):** the bug-fix pass now implements the idle/pre-sleep lock path, floating/tiled rule fixes, truthful notification capabilities and the approved minimal TTY-style greeter. See the [audit implementation status](bug-audit-2026-10-28.md#implementation-status--29-october-2026) for each correction and test limits. The original analysis below is historical evidence. Lid/suspend hardware acceptance remains pending; the proposed unified power policy, lid-closed frequency tuning and competitive-feature roadmap are still proposals, not delivered features.
+
 ## 1. Main conclusions
 
 1. **Returning from sleep without a lock is an actual session-integration defect in the current launch path.** There is no lock-on-wake setting overriding a working implementation. The active TTY session omits the idle/lock daemon and has no independent logind sleep-lock listener.
@@ -384,3 +386,18 @@ Temporary evidence from this analysis:
 - `window-rules-probe-result.json` and `window-rules-candidate-result.json` in that directory: current/candidate policy generation and startup-rule results.
 
 The important observations and expected/actual results are embedded above so this document remains useful if `/tmp` is cleaned. The candidate experiment validates policy generation and persistence under the isolated setup; it is not a substitute for the real-window and sleep/resume acceptance tests. No battery-life improvement, GPU performance lead, or distribution ranking was measured in this analysis.
+
+## 12. Follow-up TODO — calendar and app handoff polish
+
+Queued at the user's request while the current bug-fix pass continues:
+
+- [ ] **R51:** Contain the calendar widget and implement the requested scrollable task/agenda overlay, gradient calendar fade, faint calendar context and scroll-up button. All items must be reachable.
+- [ ] **R52:** Make every window opened from Settings visible and focused, including wallpaper selection and Google account connection.
+- [ ] **R53:** Repair app continuation/deep-link handoff and activate the receiving app, including existing windows on other workspaces.
+- [ ] **R54:** Clear completed/abandoned download activity correctly instead of leaving an “Unconfirmed … / 0 B” island card.
+- [ ] **R55:** Restore wheel/touchpad switching between Dynamic Island activities/events.
+- [ ] **R56:** Keep notification cards and glass effects out of the fixed header while scrolling long lists.
+
+Detailed evidence and acceptance criteria are in the [bug audit's new UI queue](bug-audit-2026-10-28.md#newly-reported-ui-issues--queued-after-the-current-fix-pass). These are open items, not part of the completed-fix status table.
+
+**Google sync behavior confirmed in source:** `shell/services/Google.qml` checks account status at service startup, then syncs if connected. A repeating 15-minute timer syncs connected accounts when the helper is idle; a busy interval is skipped. Settings also provides manual sync. This is periodic fetching, not real-time push synchronization. Explain that schedule and last-sync/error state clearly in the account UI; configurable/adaptive refresh can be considered separately.

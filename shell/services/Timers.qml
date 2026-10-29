@@ -14,6 +14,11 @@ Singleton {
     property string phase: "focus" // focus | break | longBreak
     property bool running: false
     property int remaining: focusMinutes * 60
+    property real deadline: 0
+    onRunningChanged: {
+        if (running) deadline = Date.now() + remaining * 1000;
+        else if (deadline > 0) remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    }
     property int completed: 0 // focus sessions finished
 
     readonly property int phaseLength: (phase === "focus" ? focusMinutes : phase === "break" ? breakMinutes : longBreakMinutes) * 60
@@ -55,7 +60,8 @@ Singleton {
             if (!island)
                 Quickshell.execDetached(["notify-send", "-a", "Focus", "Break's over", focusMinutes + " minutes of focus starting now."]);
         }
-        remaining = phaseLength;
+        remaining = (phase === "focus" ? focusMinutes : phase === "break" ? breakMinutes : longBreakMinutes) * 60;
+        deadline = Date.now() + remaining * 1000;
         phaseEnded(phase);
     }
 
@@ -92,7 +98,7 @@ Singleton {
         running: root.running
         repeat: true
         onTriggered: {
-            root.remaining--;
+            root.remaining = Math.max(0, Math.ceil((root.deadline - Date.now()) / 1000));
             if (root.remaining <= 0)
                 root.advance();
         }

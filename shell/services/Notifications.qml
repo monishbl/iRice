@@ -220,7 +220,7 @@ Singleton {
         actionsSupported: true
         actionIconsSupported: true
         imageSupported: true
-        inlineReplySupported: true
+        inlineReplySupported: false // enable only when a reply composer is implemented
 
         onNotification: n => {
             n.tracked = true;

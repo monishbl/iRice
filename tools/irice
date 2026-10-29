@@ -42,8 +42,8 @@ case "${1:-help}" in
         if [[ ! -L "$CONFIG/quickshell/irice" && -d "$CONFIG/quickshell/irice" ]]; then
             (cd "$SRC/shell" && find . -name '*.qsb' -exec cp --parents {} "$CONFIG/quickshell/irice/" \;)
         fi
-        make -C "$DATA/irice/src/hypr/plugin/irice-glass" clean >/dev/null 2>&1
-        "$DATA/irice/src/tools/build-plugin.sh" "${@:2}" || exit 1
+        make -C "$SRC/hypr/plugin/irice-glass" clean >/dev/null 2>&1
+        "$SRC/tools/build-plugin.sh" "${@:2}" || exit 1
         # Native helpers (after a Qt update); the installed copy gets the new build
         if "$SRC/shell/native/build.sh"; then
             if [[ ! -L "$CONFIG/quickshell/irice" && -d "$CONFIG/quickshell/irice" ]]; then

@@ -79,6 +79,19 @@ def score(path):
     return s
 
 
+def walk_theme(base):
+    # Themes commonly symlink subdirectories; visit targets once, avoiding loops.
+    seen = set()
+    for directory, dirs, files in os.walk(base, followlinks=True):
+        identity = os.stat(directory)
+        key = (identity.st_dev, identity.st_ino)
+        if key in seen:
+            dirs[:] = []
+            continue
+        seen.add(key)
+        yield directory, dirs, files
+
+
 def fresh(cache, themes):
     try:
         made = os.path.getmtime(cache)
@@ -88,9 +101,23 @@ def fresh(cache, themes):
         return False
     for t in themes:
         for p in theme_paths(t):
-            for f in (p, os.path.join(p, "index.theme")):
-                if os.path.getmtime(f) > made:
-                    return False
+            # Nested additions change directory mtimes; replacements change file
+            # mtimes. Checking only the theme root misses both cases.
+            try:
+                for directory, dirs, files in walk_theme(p):
+                    if os.path.getmtime(directory) > made:
+                        return False
+                    for name in files:
+                        if os.path.getmtime(os.path.join(directory, name)) > made:
+                            return False
+            except OSError:
+                return False
+    try:
+        for directory, dirs, files in walk_theme('/usr/share/pixmaps'):
+            if os.path.getmtime(directory) > made or any(os.path.getmtime(os.path.join(directory, f)) > made for f in files):
+                return False
+    except OSError:
+        return False
     return True
 
 
@@ -102,7 +129,7 @@ def main():
     best = {}  # name -> (theme rank, -score, path): the first theme in the chain wins, then the best file
     for rank, t in enumerate(chain(theme)):
         for base in theme_paths(t):
-            for dirpath, _dirs, files in os.walk(base, followlinks=True):
+            for dirpath, _dirs, files in walk_theme(base):
                 for f in files:
                     if not f.endswith((".svg", ".png")):
                         continue

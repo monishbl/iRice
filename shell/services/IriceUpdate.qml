@@ -16,7 +16,18 @@ Singleton {
     id: root
 
     // (IRICE_UPDATE_REPO: another checkout to update, for testing the updater)
-    readonly property string repo: Quickshell.env("IRICE_UPDATE_REPO") || Quickshell.shellDir + "/.."
+    property string repo: Quickshell.env("IRICE_UPDATE_REPO") || ""
+    property bool sourceReady: false
+    property bool pendingCheck: false
+    Process {
+        running: true
+        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/update-source.py", Quickshell.shellDir]
+        stdout: StdioCollector { onStreamFinished: {
+            if (!root.repo) root.repo = text.trim();
+            root.sourceReady = true;
+            if (root.pendingCheck) { root.pendingCheck = false; root.check(); }
+        } }
+    }
     readonly property string helper: repo + "/tools/irice-update.py"
     // Never from the dev sandbox on its own copy: it would update the
     // developer's working tree
@@ -41,6 +52,8 @@ Singleton {
     }
 
     function check() {
+        if (!sourceReady) { pendingCheck = true; return; }
+        if (!repo) { error = "The installation source is missing. Reinstall iRice from its checkout."; return; }
         if (checking || applying)
             return;
         checking = true;
@@ -84,7 +97,7 @@ Singleton {
     // with no iRice update, only those are rebuilt (same screen, same restart).
     // Started by SoftwareUpdate, after the system part.
     function launch(rebuild) {
-        if (!allowed)
+        if (!allowed || !sourceReady || !repo)
             return;
         applying = true;
         error = "";
@@ -113,7 +126,7 @@ Singleton {
     property var packages: ({ missing: [], unavailable: [], dropped: [] })
     property bool packagesChecking: pkgStatus.running
     function checkPackages(ref) {
-        if (pkgStatus.running)
+        if (!repo || pkgStatus.running)
             return;
         pkgStatus.ref = ref ?? "";
         pkgStatus.running = true;

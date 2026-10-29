@@ -35,7 +35,7 @@ Singleton {
     function between(from, to) {
         const out = [];
         for (const e of local) {
-            if (e.start < to.getTime() && (e.end || e.start) >= from.getTime())
+            if (e.start < to.getTime() && ((e.end || e.start) > from.getTime() || ((!e.end || e.end === e.start) && e.start >= from.getTime())))
                 out.push({ key: "local:" + e.id, id: e.id, title: e.title, start: new Date(e.start), end: new Date(e.end || e.start), allDay: !!e.allDay, location: "", color: "", calendar: "Reminders", local: true, alert: e.alert ?? defaultAlert, notes: e.notes ?? "" });
         }
         for (const src of sources) {
@@ -288,11 +288,13 @@ Singleton {
 
     // Occurrences of one event overlapping [from, to)
     function expand(ev, from, to) {
+        if (![ev.start, ev.end, from, to].every(d => d && Number.isFinite(d.getTime())) || to <= from || ev.end < ev.start) return [];
         const len = ev.end - ev.start;
         if (!ev.rrule)
             return ev.start < to && ev.end > from || (len === 0 && ev.start >= from && ev.start < to) ? [{ start: ev.start, end: ev.end }] : [];
         const r = ev.rrule;
         const freq = r.FREQ, interval = Number(r.INTERVAL ?? 1);
+        if (!Number.isSafeInteger(interval) || interval < 1) return [];
         const count = r.COUNT ? Number(r.COUNT) : Infinity;
         const until = r.UNTIL ? icsDate(r.UNTIL, "").date.getTime() + (r.UNTIL.length === 8 ? 86399999 : 0) : Infinity;
         const days = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
@@ -305,7 +307,7 @@ Singleton {
             if (d < s0 || d.getTime() > until || n >= count)
                 return false;
             n++;
-            if (!ev.exdates.includes(d.getTime()) && d.getTime() < to.getTime() && d.getTime() + len > from.getTime())
+            if (!(ev.exdates ?? []).includes(d.getTime()) && d.getTime() < to.getTime() && (d.getTime() + len > from.getTime() || (len === 0 && d >= from)))
                 out.push({ start: d, end: new Date(d.getTime() + len) });
             return true;
         };
@@ -323,12 +325,15 @@ Singleton {
         };
         // Without COUNT, jump close to the window instead of walking from the first occurrence
         let i0 = 0;
-        if (count === Infinity && from > s0) {
-            const months = (from.getFullYear() - s0.getFullYear()) * 12 + from.getMonth() - s0.getMonth();
-            const steps = { DAILY: (from - s0) / (86400000 * interval), WEEKLY: (from - s0) / (7 * 86400000 * interval), MONTHLY: months / interval, YEARLY: months / 12 / interval }[freq] ?? 0;
+        if ((count === Infinity || (freq === "DAILY" && !byday && !bymonthday)) && from > s0) {
+            from = new Date(from.getTime());
+            const earliest = new Date(from.getTime() - Math.max(0, len));
+            const months = (earliest.getFullYear() - s0.getFullYear()) * 12 + earliest.getMonth() - s0.getMonth();
+            const steps = { DAILY: (earliest - s0) / (86400000 * interval), WEEKLY: (earliest - s0) / (7 * 86400000 * interval), MONTHLY: months / interval, YEARLY: months / 12 / interval }[freq] ?? 0;
             i0 = Math.max(0, Math.floor(steps) - 2);
         }
-        for (let i = i0, guard = 0; guard < 2000 && n < count; i++, guard++) {
+        if (count !== Infinity && freq === "DAILY" && !byday && !bymonthday) n = i0;
+        for (let i = i0; n < count; i++) {
             let candidates = [];
             if (freq === "DAILY") {
                 candidates = [at(s0.getFullYear(), s0.getMonth(), s0.getDate() + i * interval)];
@@ -338,17 +343,22 @@ Singleton {
             } else if (freq === "MONTHLY") {
                 const y = s0.getFullYear(), m = s0.getMonth() + i * interval;
                 const base = new Date(y, m, 1);
-                if (byday)
-                    candidates = byday.map(b => b.n ? nthWeekday(base.getFullYear(), base.getMonth(), b.d, b.n) : null).filter(d => d !== null).map(d => at(base.getFullYear(), base.getMonth(), d));
-                else
-                    candidates = (bymonthday ?? [s0.getDate()]).filter(d => d <= new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate()).map(d => at(base.getFullYear(), base.getMonth(), d));
+                const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+                const selected = bymonthday ? bymonthday.map(d => d < 0 ? last + d + 1 : d).filter(d => d >= 1 && d <= last) : null;
+                const weekdays = byday ? byday.flatMap(b => b.n ? [nthWeekday(base.getFullYear(), base.getMonth(), b.d, b.n)].filter(d => d !== null) : Array.from({length: last}, (_, k) => k + 1).filter(d => at(base.getFullYear(), base.getMonth(), d).getDay() === b.d)) : null;
+                const dates = weekdays ? weekdays.filter(d => !selected || selected.includes(d)) : (selected ?? [s0.getDate()]);
+                candidates = [...new Set(dates)].filter(d => d >= 1 && d <= last).map(d => at(base.getFullYear(), base.getMonth(), d));
+                if (!Number.isFinite(base.getTime()) || base >= to || base.getTime() > until) break;
                 candidates.sort((a, b) => a - b);
             } else if (freq === "YEARLY") {
-                candidates = [at(s0.getFullYear() + i * interval, s0.getMonth(), s0.getDate())];
+                const year = s0.getFullYear() + i * interval;
+                const candidate = at(year, s0.getMonth(), s0.getDate());
+                if (!Number.isFinite(candidate.getTime()) || candidate >= to || candidate.getTime() > until) break;
+                candidates = candidate.getMonth() === s0.getMonth() && candidate.getDate() === s0.getDate() ? [candidate] : [];
             } else {
                 break;
             }
-            if (candidates.length > 0 && candidates[0].getTime() >= to.getTime())
+            if (candidates.length > 0 && (!Number.isFinite(candidates[0].getTime()) || candidates[0].getTime() >= to.getTime()))
                 break;
             let stop = false;
             for (const c of candidates)

@@ -22,6 +22,7 @@ Item {
     property bool exhausted: false
 
     function url(tags, page) {
+        const provider = Config.options.sidebar.booruProvider;
         const nsfw = Config.options.sidebar.booruNsfw;
         const t = tags.trim().split(/\s+/).filter(x => x).join(" ");
         if (provider === "danbooru")
@@ -31,24 +32,32 @@ Item {
     }
 
     function normalize(p) {
+        const provider = Config.options.sidebar.booruProvider;
         if (provider === "danbooru")
             return { preview: p.preview_file_url, full: p.large_file_url ?? p.file_url, page: "https://danbooru.donmai.us/posts/" + p.id, w: p.image_width, h: p.image_height };
         const host = provider === "konachan" ? "https://konachan.net" : "https://yande.re";
         return { preview: p.preview_url, full: p.sample_url ?? p.file_url, page: host + "/post/show/" + p.id, w: p.width, h: p.height };
     }
 
+    property int generation: 0
+    property var request: null
     function search(reset) {
-        if (loading || (!reset && exhausted))
+        if (!reset && (loading || exhausted))
             return;
         if (reset) {
+            generation++;
+            if (request) request.abort();
             page = 1;
             posts = [];
             exhausted = false;
         }
         loading = true;
         error = "";
+        const version = generation;
         const x = new XMLHttpRequest();
+        request = x;
         x.onreadystatechange = () => {
+            if (version !== generation) return;
             if (x.readyState !== XMLHttpRequest.DONE)
                 return;
             loading = false;

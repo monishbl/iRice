@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
+#include <cctype>
 #include <cmath>
 #include <condition_variable>
 #include <cstdlib>
@@ -70,63 +72,75 @@ private:
             {
                 std::unique_lock lock(m_mutex);
                 m_cv.wait(lock, [this] { return m_stop || !m_pending.empty(); });
-                if (m_pending.empty())
+                if (m_stop)
                     return; // stopping, nothing left
                 batch.swap(m_pending);
             }
             std::string cmd;
             if (batch.size() == 1) {
-                cmd = std::move(batch[0].second);
+                cmd = batch[0].second;
             } else {
                 cmd = "[[BATCH]]";
                 for (size_t i = 0; i < batch.size(); i++)
                     cmd += (i ? ";" : "") + batch[i].second;
             }
-            request(cmd);
+            if (!request(cmd, batch.size())) {
+                std::unique_lock lock(m_mutex);
+                if (m_stop) return;
+                for (auto& item : batch) {
+                    const auto newer = std::find_if(m_pending.begin(), m_pending.end(), [&](auto& p) { return p.first == item.first; });
+                    if (newer == m_pending.end()) m_pending.push_back(std::move(item));
+                }
+                m_cv.wait_for(lock, std::chrono::milliseconds(500), [this] { return m_stop; });
+            }
         }
     }
 
     // Connect, send, read the answer to the end (3 s at most each way)
-    void request(std::string& cmd) {
-        if (m_path.empty())
-            return;
+    bool request(std::string cmd, size_t expected) {
+        if (m_path.empty()) return true; // no compositor in previews
         sockaddr_un addr{};
         addr.sun_family = AF_UNIX;
-        if (m_path.size() >= sizeof(addr.sun_path))
-            return;
+        if (m_path.size() >= sizeof(addr.sun_path)) return false;
         std::memcpy(addr.sun_path, m_path.c_str(), m_path.size() + 1);
         const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        if (fd < 0)
-            return;
+        if (fd < 0) return false;
         timeval tv{3, 0};
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        bool ok = false;
         if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
-            // Hyprland reads requests in 1023-byte chunks and waits for more
-            // when a chunk is exactly full: never end on that edge
-            if (cmd.size() % 1023 == 0)
-                cmd += ' ';
-            const char* p = cmd.data();
-            size_t      n = cmd.size();
-            while (n > 0) {
-                const ssize_t w = write(fd, p, n);
-                if (w < 0 && errno == EINTR)
-                    continue;
-                if (w <= 0)
-                    break;
-                p += w;
-                n -= size_t(w);
+            if (cmd.size() % 1023 == 0) cmd += ' ';
+            size_t sent = 0;
+            while (sent < cmd.size()) {
+                const ssize_t n = send(fd, cmd.data() + sent, cmd.size() - sent, MSG_NOSIGNAL);
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                sent += size_t(n);
             }
+            std::string reply;
             char buf[1024];
-            for (;;) {
-                const ssize_t r = read(fd, buf, sizeof(buf));
-                if (r < 0 && errno == EINTR)
-                    continue;
-                if (r <= 0)
-                    break;
+            if (sent == cmd.size()) {
+                for (;;) {
+                    const ssize_t n = read(fd, buf, sizeof(buf));
+                    if (n < 0 && errno == EINTR) continue;
+                    if (n == 0) { ok = !reply.empty(); break; }
+                    if (n < 0 || reply.size() > 65536) break;
+                    reply.append(buf, size_t(n));
+                }
+                // Each command returns "ok"; whitespace separates batch replies.
+                size_t acknowledgements = 0;
+                for (size_t pos = 0; ok && pos < reply.size();) {
+                    if (std::isspace(static_cast<unsigned char>(reply[pos]))) { ++pos; continue; }
+                    if (reply.compare(pos, 2, "ok") != 0) { ok = false; break; }
+                    pos += 2;
+                    ++acknowledgements;
+                }
+                ok = ok && acknowledgements == expected;
             }
         }
         close(fd);
+        return ok;
     }
 
     std::string                                      m_path;

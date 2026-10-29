@@ -206,7 +206,7 @@ Singleton {
     }
     function layoutLua(list) {
         return "if IRICE_DEFAULT_LAYOUT then pcall(function() IRICE_DEFAULT_LAYOUT:set_enabled(false) end) end\n"
-            + "IRICE_DEFAULT_LAYOUT = " + (floating ? "hl.window_rule(" + layoutSpec(list) + ")" : "nil") + "\n"
+            + "IRICE_DEFAULT_LAYOUT = " + (layout === "floating" ? "hl.window_rule(" + layoutSpec(list) + ")" : "nil") + "\n"
             + "if IRICE_NO_SELF_MAXIMIZE then pcall(function() IRICE_NO_SELF_MAXIMIZE:set_enabled(false) end) end\n"
             + "IRICE_NO_SELF_MAXIMIZE = hl.window_rule(" + maximizeSpec(list) + ")\n";
     }
@@ -227,6 +227,7 @@ Singleton {
         if (layout === "")
             return;
         applyLayout();
+        syncTimer.restart();
         if (lastLayout !== "" && lastLayout !== layout)
             arrange.running = true;
         lastLayout = layout;
@@ -401,7 +402,7 @@ Singleton {
         running: true
         command: ["sh", "-c", "grep -qsF window-rules.lua \"$1/hyprland.lua\" \"$1/custom.lua\"", "sh", root.hyprDir]
         onExited: code => {
-            root.hooked = code === 0;
+            root.hooked = code === 0 || Quickshell.env("IRICE_TTY") === "1";
             root.hookChecked = true;
             if (root.reloadSeen) {
                 root.reloadSeen = false;

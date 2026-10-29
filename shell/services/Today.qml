@@ -101,7 +101,7 @@ Singleton {
         interval: 900
         // (the day only counts as shown once it actually opened: locking
         // again within the delay leaves it for the next unlock)
-        onTriggered: if (root.ready && UiState.data.todayShown !== root.day) {
+        onTriggered: if (root.ready && root.screenOn && UiState.data.todayShown !== root.day) {
             UiState.data.todayShown = root.day;
             root.show("");
         }

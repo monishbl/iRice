@@ -52,8 +52,8 @@ Singleton {
     function cancel(item) {
         if (item?.kind === "send" || item?.kind === "receive")
             return LocalSend.cancel(item.id);
-        if (item?.kind === "copy" && item.pid > 0)
-            Quickshell.execDetached(["kill", "-INT", String(item.pid)]);
+        if (item?.kind === "copy" && item.pid > 0 && item.start)
+            Quickshell.execDetached(["python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/process-identity.py").toString().replace("file://", "")), "interrupt", String(item.pid), String(item.start)]);
     }
     function openDownloads() {
         Files.openFolder(downloadsDir);
@@ -79,15 +79,14 @@ Singleton {
     }
     Process {
         id: sizes
-        command: ["sh", "-c", "for f in \"$1\"/*.part \"$1\"/*.crdownload \"$1\"/*.download \"$1\"/.*.part \"$1\"/.*.crdownload; do [ -f \"$f\" ] && printf '%s\\t%s\\n' \"$(stat -c %s \"$f\")\" \"$f\"; done", "sh", root.downloadsDir]
+        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/transfers.py", "--downloads", root.downloadsDir]
         stdout: StdioCollector {
             onStreamFinished: {
                 const now = Date.now(), seen = {}, list = [];
-                for (const l of text.split("\n")) {
-                    const tab = l.indexOf("\t");
-                    if (tab < 0)
-                        continue;
-                    const bytes = parseInt(l.slice(0, tab)) || 0, path = l.slice(tab + 1);
+                let files;
+                try { files = JSON.parse(text); } catch (e) { return; }
+                for (const file of files) {
+                    const bytes = file.bytes, path = file.path;
                     const last = root.lastSizes[path];
                     const speed = last && now > last.at ? Math.max(0, (bytes - last.bytes) * 1000 / (now - last.at)) : 0;
                     seen[path] = { bytes: bytes, at: now };
@@ -122,7 +121,7 @@ Singleton {
                     const last = root.lastCopy[c.pid];
                     const speed = last && now > last.at && c.pos >= last.pos ? (c.pos - last.pos) * 1000 / (now - last.at) : 0;
                     seen[c.pid] = { pos: c.pos, at: now };
-                    return { id: "copy" + c.pid, kind: "copy", name: c.file.split("/").pop(), done: c.pos, total: c.size, speed: speed, pid: c.pid, cmd: c.cmd };
+                    return { id: "copy" + c.pid, kind: "copy", name: c.file.split("/").pop(), done: c.pos, total: c.size, speed: speed, pid: c.pid, start: c.start, cmd: c.cmd };
                 });
                 root.lastCopy = seen;
             }
