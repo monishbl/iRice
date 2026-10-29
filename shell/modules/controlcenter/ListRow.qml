@@ -14,6 +14,7 @@ Rectangle {
     property string trailingIcon
     property bool busy: false
     signal clicked
+    signal menuRequested // right-click (or press and hold): the row's menu
 
     width: parent?.width ?? 0
     height: 40
@@ -70,6 +71,21 @@ Rectangle {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: root.clicked()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        pressAndHoldInterval: 550
+        property bool held: false // the press became a press and hold: no click
+        onPressed: held = false
+        onClicked: m => {
+            if (m.button === Qt.RightButton)
+                root.menuRequested();
+            else if (!held)
+                root.clicked();
+        }
+        onPressAndHold: m => {
+            if (m.button === Qt.LeftButton) {
+                held = true;
+                root.menuRequested();
+            }
+        }
     }
 }

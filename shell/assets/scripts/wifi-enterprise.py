@@ -12,6 +12,10 @@ Nothing is written to a file, and secrets are never printed.
 
   wifi-enterprise.py show <ssid>   the saved profile's settings (no secrets)
                                     as JSON, for filling the form in again
+  wifi-enterprise.py known         the saved Wi-Fi networks, in range or not:
+                                    {"known": [{"ssid", "name"}, ...]}
+  wifi-enterprise.py forget <ssid> deletes every saved profile for it:
+                                    {"forgotten": n} or {"state": "error", ...}
   wifi-enterprise.py join          request on stdin, as JSON:
       { ssid, hidden, security: "enterprise" | "psk" | "open",
         eap: "peap" | "ttls" | "tls" | "pwd", phase2: "mschapv2" | "pap" |
@@ -50,6 +54,39 @@ def clean(value, what):
     if value != value.strip() and what not in ("password", "private key password", "Wi-Fi password"):
         value = value.strip()
     return value
+
+
+def wifi_profiles():
+    """(uuid, connection name, ssid) of every saved Wi-Fi profile."""
+    r = nmcli("-t", "-f", "NAME,UUID,TYPE", "connection", "show")
+    if r.returncode != 0:
+        return []
+    out = []
+    for line in r.stdout.splitlines():
+        # nmcli -t escapes ":" inside fields as "\:"
+        parts = [p.replace("\0", ":") for p in line.replace("\\:", "\0").split(":")]
+        if len(parts) >= 3 and parts[2] == "802-11-wireless":
+            s = nmcli("-g", "802-11-wireless.ssid", "connection", "show", parts[1])
+            out.append((parts[1], parts[0], s.stdout.strip() if s.returncode == 0 else parts[0]))
+    return out
+
+
+def known():
+    seen = {}
+    for _, name, ssid in wifi_profiles():
+        seen.setdefault(ssid, name)
+    emit(known=[{"ssid": k, "name": v} for k, v in sorted(seen.items(), key=lambda kv: kv[0].lower())])
+
+
+def forget(ssid):
+    uuids = [u for u, _, s in wifi_profiles() if s == ssid]
+    for u in uuids:
+        r = nmcli("connection", "delete", "uuid", u)
+        if r.returncode != 0:
+            emit(state="error", message=f"Couldn't forget {ssid}. NetworkManager said: {r.stderr.strip() or 'no reason'}.")
+            return 1
+    emit(forgotten=len(uuids))
+    return 0
 
 
 def profile_for(ssid):
@@ -231,6 +268,11 @@ def main(argv):
     if len(argv) >= 2 and argv[0] == "show":
         show(argv[1])
         return 0
+    if argv[:1] == ["known"]:
+        known()
+        return 0
+    if len(argv) >= 2 and argv[0] == "forget":
+        return forget(argv[1])
     if argv[:1] == ["join"]:
         try:
             req = json.loads(sys.stdin.read() or "{}")

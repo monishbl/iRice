@@ -1,12 +1,16 @@
 import QtQuick
 import QtQuick as QQ
+import Quickshell.Networking
 import qs.common
+import qs.modules.controlcenter
 import qs.modules.network
 import qs.modules.settings
 import qs.services
 
-// Settings → Network: the speed test (with its history), which server it
-// uses, and the details of the connection you're on.
+// Settings → Network: Wi-Fi (the same network list as the Wi-Fi menu, with
+// its join form and right-click menu, and the networks you've saved), the
+// speed test (with its history), which server it uses, and the details of
+// the connection you're on.
 Column {
     id: page
     width: parent?.width ?? 0
@@ -18,6 +22,7 @@ Column {
     Component.onCompleted: {
         SpeedTest.probe();
         SpeedTest.readLink();
+        WifiJoin.loadKnown();
     }
     // The link changes as you move around: read it again now and then
     Timer {
@@ -31,6 +36,82 @@ Column {
         color: Theme.color.secondary
         horizontalAlignment: Text.AlignRight
         font { family: Theme.font.family; pixelSize: Theme.font.body; features: { "tnum": 1 } }
+    }
+
+    Group {
+        width: parent.width
+        title: "Wi-Fi"
+        footer: "Right-click a network to connect, disconnect, forget it or copy its name."
+        Row {
+            label: "Wi-Fi"
+            detail: !wifiList.device ? "No Wi-Fi adapter found" : Networking.wifiEnabled ? (wifiList.networks.find(n => n.connected)?.name ? "Connected to " + wifiList.networks.find(n => n.connected).name : "On, not connected") : "Off"
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: Networking.wifiEnabled
+                    text: "Scan again"
+                    icon: "arrow-clockwise"
+                    onClicked: wifiList.rescan()
+                }
+                Switch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: Networking.wifiEnabled
+                    onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
+                }
+            }
+        }
+        Item {
+            visible: Networking.wifiEnabled
+            width: parent.width
+            height: wifiList.implicitHeight + 16
+            WifiList {
+                id: wifiList
+                x: 8
+                y: 8
+                width: parent.width - 16
+                maxListHeight: 100000 // (the page scrolls)
+                inSettings: true
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Known networks"
+        footer: WifiJoin.forgetError !== "" ? WifiJoin.forgetError : "Networks this computer joins by itself when they're in range. Forget one to stop that and remove its saved password."
+        Row {
+            visible: WifiJoin.knownNetworks.length === 0
+            label: "No saved networks"
+            labelColor: Theme.color.secondary
+        }
+        Repeater {
+            model: WifiJoin.knownNetworks
+            Row {
+                required property var modelData
+                label: modelData.ssid
+                detail: modelData.name !== modelData.ssid ? "Saved as " + modelData.name : ""
+                SettingsButton {
+                    text: "Forget"
+                    danger: true
+                    onClicked: {
+                        const live = (wifiList.device?.networks.values ?? []).find(n => n.name === modelData.ssid && n.known);
+                        if (live && typeof live.forget === "function") {
+                            live.forget();
+                            forgetLater.restart();
+                        } else {
+                            WifiJoin.forget(modelData.ssid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // (after Quickshell's own forget, read the saved list again)
+    Timer {
+        id: forgetLater
+        interval: 800
+        onTriggered: WifiJoin.loadKnown()
     }
 
     Group {

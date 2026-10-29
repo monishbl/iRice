@@ -44,6 +44,12 @@ FAKE_NMCLI = textwrap.dedent(r'''
                     p["settings"][key] = value
                     if key == "802-11-wireless.ssid":
                         p["ssid"] = value
+    elif args[:3] == ["connection", "delete", "uuid"]:
+        if os.environ.get("FAKE_NM_REFUSE_DELETE"):
+            print("Error: not authorized", file=sys.stderr)
+            code = 1
+        else:
+            db["profiles"].pop(args[3], None)
     elif "up" in args:
         err = os.environ.get("FAKE_NM_UP_ERROR")
         if err:
@@ -161,6 +167,33 @@ class WifiEnterprise(unittest.TestCase):
         self.assertEqual(info["identity"], "me")
         self.assertEqual(info["domain"], "d.edu")
         self.assertNotIn("topsecret", r.stdout)
+
+
+    def seed(self, profiles):
+        self.state.write_text(json.dumps({"profiles": profiles, "calls": []}))
+
+    def test_known_lists_saved_networks_once_each(self):
+        self.seed({"u1": {"name": "Home", "ssid": "Home"}, "u2": {"name": "Home 1", "ssid": "Home"},
+                   "u3": {"name": "Cafe", "ssid": "Cafe: Guest"}})
+        r, out = self.run_script("known")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(out[-1]["known"], [{"ssid": "Cafe: Guest", "name": "Cafe"}, {"ssid": "Home", "name": "Home"}])
+
+    def test_forget_deletes_every_profile_for_that_name_only(self):
+        self.seed({"u1": {"name": "Home", "ssid": "Home"}, "u2": {"name": "Home 1", "ssid": "Home"},
+                   "u3": {"name": "Cafe", "ssid": "Cafe"}})
+        r, out = self.run_script("forget", "Home")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(out[-1], {"forgotten": 2})
+        self.assertEqual(list(json.loads(self.state.read_text())["profiles"]), ["u3"])
+
+    def test_forget_says_what_went_wrong(self):
+        self.seed({"u1": {"name": "Home", "ssid": "Home"}})
+        r, out = self.run_script("forget", "Home", FAKE_NM_REFUSE_DELETE="1")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(out[-1]["state"], "error")
+        self.assertIn("Couldn't forget Home", out[-1]["message"])
+        self.assertIn("not authorized", out[-1]["message"])
 
 
 if __name__ == "__main__":

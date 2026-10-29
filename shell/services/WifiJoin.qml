@@ -99,4 +99,48 @@ Singleton {
             }
         }
     }
+
+    // Saved networks, in range or not (Settings → Network → Known networks),
+    // and forgetting one: every saved profile for that name goes
+    property var knownNetworks: [] // [{ ssid, name }]
+    property string forgetError: ""
+    function loadKnown() {
+        if (!knownProc.running)
+            knownProc.running = true;
+    }
+    function forget(name) {
+        if (forgetProc.running || !name)
+            return;
+        forgetError = "";
+        forgetProc.command = ["python3", "-I", root.script, "forget", name];
+        forgetProc.running = true;
+    }
+    Process {
+        id: knownProc
+        command: ["python3", "-I", root.script, "known"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.knownNetworks = JSON.parse(text.trim().split("\n").pop() || "{}").known ?? [];
+                } catch (e) {}
+            }
+        }
+    }
+    Process {
+        id: forgetProc
+        stdout: SplitParser {
+            onRead: line => {
+                try {
+                    const m = JSON.parse(line);
+                    if (m.state === "error")
+                        root.forgetError = m.message ?? "Couldn't forget the network.";
+                } catch (e) {}
+            }
+        }
+        onExited: code => {
+            if (code !== 0 && root.forgetError === "")
+                root.forgetError = "Couldn't forget the network. Check that NetworkManager is running.";
+            root.loadKnown();
+        }
+    }
 }

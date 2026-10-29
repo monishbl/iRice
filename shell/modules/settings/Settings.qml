@@ -36,6 +36,7 @@ Scope {
                 { id: "controlcenter", name: "Control Center", icon: "sliders-horizontal", color: "#64D2FF", group: "Notifications & Focus" },
                 { id: "windowrules", name: "Windows", icon: "app-window", color: "#FF375F", group: "Windows & Spaces" },
                 { id: "network", name: "Network", icon: "wifi-high", color: "#0A84FF", group: "Devices & Input" },
+                { id: "bluetooth", name: "Bluetooth", icon: "bluetooth", color: "#0A84FF", group: "Devices & Input" },
                 { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF", group: "Devices & Input" },
                 { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366", group: "Devices & Input" },
                 { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366", group: "Devices & Input" },

@@ -1,5 +1,12 @@
 # iRice changelog
 
+## Wi-Fi and Bluetooth everywhere · 2026-10-29
+
+- Right-click a Wi-Fi network or a Bluetooth device, in the menu bar, Control Center or Settings, for Connect, Disconnect, Forget, Copy name and more. Press and hold works too.
+- Long lists of networks and devices scroll instead of running off the screen.
+- Settings → Network lists your Wi-Fi networks and lets you join them (including office and hidden networks), with Known networks to forget.
+- New Settings → Bluetooth: your devices, nearby devices to pair (found while the page is open), and how this computer appears to others.
+
 ## Quick Share over Bluetooth fixed, apps come forward · 2026-10-29
 
 **Quick Share**
