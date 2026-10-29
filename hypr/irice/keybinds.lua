@@ -77,8 +77,11 @@ local function bind(e, user)
         -- dispatcher's automatic release event. Deliver it explicitly, even
         -- after the modifier itself has gone up. The shell's arm/cancel state
         -- still decides whether this was a lone tap or part of a chord.
-        if e.action.shell == "superTap" then
-            local releaseKey = keys:match("([^+]+)$"):match("^%s*(.-)%s*$")
+        -- Only for a tap of the modifier on its own: on a chord (say
+        -- Super+Space) a release bind on the last key would fire on every
+        -- release of that key, whatever else was held.
+        if e.action.shell == "superTap" and keys == modifierKey then
+            local releaseKey = keys
             local released, releaseError = pcall(hl.bind, releaseKey, action, {
                 release = true, ignore_mods = true, non_consuming = true,
                 description = "Shell: Release tap modifier"

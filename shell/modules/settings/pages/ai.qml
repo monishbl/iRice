@@ -7,13 +7,38 @@ import qs.services
 Column {
     id: root
     width: parent?.width ?? 0
-    spacing: 22
+    spacing: 24
 
     property string editingKey: ""
     property string provider: "aistudio"
     property string auth: "apiKey"
     property bool thinking: false
     property string message: ""
+    property bool messageIsError: false
+
+    // A removed model can come back for a few seconds; its credential is
+    // forgotten only after that
+    property var undo: null // { text, removed }
+    Timer {
+        id: undoTimer
+        interval: 8000
+        onTriggered: root.finishUndo()
+    }
+    function finishUndo() {
+        if (undo?.removed)
+            Ai.forgetCredential(undo.removed.model.key);
+        undo = null;
+    }
+    function remove(m) {
+        finishUndo(); // (an earlier removal is final now)
+        const removed = Ai.removeModel(m.key);
+        if (editingKey === m.key)
+            edit(null);
+        if (removed) {
+            undo = { text: m.name + " removed", removed: removed };
+            undoTimer.restart();
+        }
+    }
 
     function edit(m) {
         editingKey = m?.key ?? "";
@@ -28,6 +53,7 @@ Column {
         tokensField.text = String(m?.maxTokens || 4096);
         credentialField.text = "";
         message = "";
+        messageIsError = false;
     }
     function draft() {
         return { id: modelField.text, name: nameField.text, provider: provider,
@@ -38,6 +64,7 @@ Column {
         const raw = draft();
         const error = Ai.saveModel(raw, editingKey);
         message = error;
+        messageIsError = error !== "";
         if (error)
             return;
         const m = Ai.normalizeModel(raw);
@@ -81,13 +108,25 @@ Column {
                         text: "Remove"
                         danger: true
                         anchors.right: parent.right
-                        onClicked: {
-                            const key = modelRow.modelData.key;
-                            Ai.removeModel(key);
-                            if (root.editingKey === key)
-                                root.edit(null);
-                        }
+                        onClicked: root.remove(modelRow.modelData)
                     }
+                }
+            }
+        }
+    }
+
+    Group {
+        visible: root.undo !== null
+        width: parent.width
+        Row {
+            label: root.undo?.text ?? ""
+            SettingsButton {
+                text: "Undo"
+                icon: "arrow-counter-clockwise"
+                onClicked: {
+                    Ai.restoreModel(root.undo.removed);
+                    root.undo = null;
+                    undoTimer.stop();
                 }
             }
         }
@@ -96,7 +135,7 @@ Column {
     Group {
         width: parent.width
         title: root.editingKey ? "Edit model" : "Add model"
-        footer: "Credentials are stored in your system keyring, or a private file when no keyring is available. Provider environment variables take priority. Leave the credential field empty to keep an existing credential."
+        footer: "Each model keeps its own credential, so a second model on the same provider needs its key pasted again. Credentials are stored in your system keyring, or a private file when no keyring is available. Provider environment variables take priority. Leave the credential field empty to keep an existing credential."
         Row {
             label: "Display name"
             detail: "Optional; defaults to the model ID"
@@ -177,8 +216,9 @@ Column {
             Switch { checked: root.thinking; onToggled: root.thinking = !checked }
         }
         Row {
+            // Status of the last save: an error says how to fix it
             label: root.message
-            detail: ""
+            labelColor: root.messageIsError ? Theme.color.danger : Theme.color.secondary
             Item {
                 width: 222
                 height: 28

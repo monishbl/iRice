@@ -108,17 +108,26 @@ WlSessionLockSurface {
         }
     }
 
-    property real reveal: 0
+    // Lock (lock.lockTransition): the lock covers the screen at once (Lock.qml
+    // never leaves an unlocked moment for an animation), and the transition
+    // plays inside it: zoom, the wallpaper settles from a little larger while
+    // the clock and cards rise into place; fade, they only fade in; none,
+    // everything is there at once
+    readonly property string lockFx: cfg.lockTransition
+    property real reveal: lockFx === "none" ? 1 : 0
     property real enter: 0
     Component.onCompleted: {
-        reveal = 1;
-        if (cfg.lockTransition === "zoom" && LockFx.zoom && LockFx.desktop < 0.5) {
+        if (lockFx === "zoom") {
             enter = 1;
             settleIn.start();
         }
+        reveal = 1;
     }
     NumberAnimation { id: settleIn; target: surface; property: "enter"; to: 0; duration: 450; easing.type: Easing.OutCubic }
-    Behavior on reveal { NumberAnimation { duration: Theme.motion.large; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
+    Behavior on reveal {
+        enabled: surface.lockFx !== "none"
+        NumberAnimation { duration: Theme.motion.large; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized }
+    }
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
@@ -169,7 +178,7 @@ WlSessionLockSurface {
         Column {
             id: header
             anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height * (surface.ios ? 0.07 : 0.1) + (1 - surface.reveal) * -20
+            y: parent.height * (surface.ios ? 0.07 : 0.1) + (surface.lockFx === "zoom" ? (1 - surface.reveal) * -20 : 0)
             opacity: surface.reveal
             spacing: 0
             Text {

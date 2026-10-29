@@ -201,9 +201,9 @@ Variants {
 
                     Rectangle {
                         width: parent.width
-                        height: 58
+                        height: 56
                         radius: Theme.radius.control
-                        color: quickMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        color: quickMouse.pressed ? Theme.color.fillPressed : quickMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                         opacity: QuickShare.busy ? 0.5 : 1
                         Column {
                             anchors { left: parent.left; right: parent.right; margins: 12; verticalCenter: parent.verticalCenter }

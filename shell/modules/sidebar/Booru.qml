@@ -22,7 +22,6 @@ Item {
     property bool exhausted: false
 
     function url(tags, page) {
-        const provider = Config.options.sidebar.booruProvider;
         const nsfw = Config.options.sidebar.booruNsfw;
         const t = tags.trim().split(/\s+/).filter(x => x).join(" ");
         if (provider === "danbooru")
@@ -32,7 +31,6 @@ Item {
     }
 
     function normalize(p) {
-        const provider = Config.options.sidebar.booruProvider;
         if (provider === "danbooru")
             return { preview: p.preview_file_url, full: p.large_file_url ?? p.file_url, page: "https://danbooru.donmai.us/posts/" + p.id, w: p.image_width, h: p.image_height };
         const host = provider === "konachan" ? "https://konachan.net" : "https://yande.re";

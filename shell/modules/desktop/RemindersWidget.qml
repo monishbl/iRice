@@ -11,14 +11,13 @@ Item {
     property string size: "m"
     property bool preview: false
     readonly property var todos: Todos.list
-    readonly property var open: Todos.sorted(todos.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
+    readonly property var open: Todos.sorted(todos.filter(t => !t.done))
     readonly property int rows: size === "l" ? 8 : size === "m" ? 3 : 2
 
-    function toggle(i) {
+    function toggle(t) {
         if (preview)
             return;
-        if (Todos.list[i])
-            Todos.update(i, { done: !Todos.list[i].done });
+        Todos.update(t, { done: !t.done });
     }
 
     Row {
@@ -73,7 +72,7 @@ Item {
                     MouseArea {
                         anchors { fill: parent; margins: -6 }
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggle(item.modelData.i)
+                        onClicked: root.toggle(item.modelData)
                     }
                 }
                 Text {

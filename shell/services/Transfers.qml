@@ -79,14 +79,17 @@ Singleton {
     }
     Process {
         id: sizes
-        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/transfers.py", "--downloads", root.downloadsDir]
+        // Every second while something downloads: find, not a python3 start
+        // each time. "size<TAB>path", NUL-separated (any file name is safe)
+        command: ["find", root.downloadsDir, "-maxdepth", "1", "-type", "f", "(", "-name", "*.part", "-o", "-name", "*.crdownload", "-o", "-name", "*.download", ")", "-printf", "%s\t%p\0"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const now = Date.now(), seen = {}, list = [];
-                let files;
-                try { files = JSON.parse(text); } catch (e) { return; }
-                for (const file of files) {
-                    const bytes = file.bytes, path = file.path;
+                for (const entry of text.split("\0")) {
+                    const tab = entry.indexOf("\t");
+                    if (tab < 0)
+                        continue;
+                    const bytes = Number(entry.slice(0, tab)), path = entry.slice(tab + 1);
                     const last = root.lastSizes[path];
                     const speed = last && now > last.at ? Math.max(0, (bytes - last.bytes) * 1000 / (now - last.at)) : 0;
                     seen[path] = { bytes: bytes, at: now };

@@ -125,6 +125,17 @@ class DesktopSharingTests(unittest.TestCase):
         self.assertEqual(ini(target)['General']['font'], 'Inter,11')
         self.assertIn('Dark', ini(target)['General']['ColorScheme'])
 
+    def test_a_palette_the_user_chose_is_left_alone(self):
+        self.cfg.mkdir()
+        (self.cfg / 'kdeglobals').write_text('[General]\nColorScheme=Nordic\n')
+        (self.cfg / 'qt6ct').mkdir()
+        (self.cfg / 'qt6ct/qt6ct.conf').write_text('[Appearance]\ncustom_palette=true\ncolor_scheme_path=/home/me/my.conf\n')
+        before = (self.cfg / 'kdeglobals').read_bytes(), (self.cfg / 'qt6ct/qt6ct.conf').read_bytes()
+        self.theme('dark')
+        self.assertEqual(((self.cfg / 'kdeglobals').read_bytes(), (self.cfg / 'qt6ct/qt6ct.conf').read_bytes()), before)
+        # Dolphin had no scheme of its own: it still follows light/dark
+        self.assertIn('Dark', ini(self.cfg / 'dolphinrc')['UiSettings']['ColorScheme'])
+
     def test_invalid_custom_scheme_does_not_replace_settings(self):
         self.theme('dark')
         before = (self.cfg / 'kdeglobals').read_bytes()
@@ -203,29 +214,31 @@ class DesktopSharingTests(unittest.TestCase):
         files = [self.root / "a 'quoted' file.txt", self.root / 'line\nwith $shell `chars` ü.txt']
         for path in files:
             path.write_text('test')
-        with patch.object(quick.shutil, 'which', return_value='/usr/bin/gdbus'), patch.object(quick.subprocess, 'Popen') as launch, patch.object(quick.subprocess, 'run') as run:
-            run.return_value = subprocess.CompletedProcess([], 0, '', '')
+        with patch.object(quick, 'dbus_available', return_value=True), patch.object(quick.subprocess, 'Popen') as launch, patch.object(quick, 'activate') as activate:
             quick.handoff([str(p) for p in files], ['packet'])
             launch.assert_called_once()
-            argv = run.call_args.args[0]
-            self.assertEqual(argv[argv.index('--method') + 1], 'org.gtk.Actions.Activate')
-            self.assertEqual(argv[-3], 'send-files')
-            self.assertEqual(argv[-2], "[<@as [" + ', '.join(quick.variant_string(str(p)) for p in files) + "]>]")
-            self.assertNotIn('shell', run.call_args.kwargs)
+            # The paths go over D-Bus as a list of strings, exactly as they are
+            self.assertEqual(activate.call_args.args[0], [str(p.resolve()) for p in files])
+
+    @unittest.skipUnless(load('quick-share').dbus_available(), 'python-gobject is optional')
+    def test_packet_action_arguments_are_a_real_gvariant(self):
+        from gi.repository import GLib
+        v = GLib.Variant("(sava{sv})", ("send-files", [GLib.Variant("as", ["/tmp/a 'b'"])], {}))
+        self.assertEqual(v.unpack()[1][0], ["/tmp/a 'b'"])
 
     def test_packet_retries_only_errors_before_delivery(self):
         quick = load('quick-share')
         path = self.root / 'file.txt'
         path.write_text('test')
-        with patch.object(quick.shutil, 'which', return_value='/usr/bin/gdbus'), patch.object(quick.subprocess, 'Popen'), patch.object(quick.time, 'sleep'), patch.object(quick.subprocess, 'run') as run:
-            run.side_effect = [subprocess.CompletedProcess([], 1, '', 'org.freedesktop.DBus.Error.UnknownObject'), subprocess.CompletedProcess([], 0, '', '')]
+        with patch.object(quick, 'dbus_available', return_value=True), patch.object(quick.subprocess, 'Popen'), patch.object(quick.time, 'sleep'), patch.object(quick, 'activate') as activate:
+            activate.side_effect = [Exception('GDBus.Error:org.freedesktop.DBus.Error.UnknownObject'), None]
             quick.handoff([str(path)], ['packet'])
-            self.assertEqual(run.call_count, 2)
-            run.reset_mock()
-            run.side_effect = [subprocess.CompletedProcess([], 1, '', 'org.freedesktop.DBus.Error.NoReply')]
+            self.assertEqual(activate.call_count, 2)
+            activate.reset_mock()
+            activate.side_effect = [Exception('GDBus.Error:org.freedesktop.DBus.Error.NoReply')]
             with self.assertRaises(RuntimeError):
                 quick.handoff([str(path)], ['packet'])
-            self.assertEqual(run.call_count, 1)
+            self.assertEqual(activate.call_count, 1)
 
     def test_packet_rejects_missing_files_and_folders_before_launching(self):
         quick = load('quick-share')

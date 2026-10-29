@@ -22,6 +22,25 @@ PanelWindow {
     function nextSession() {
         if (!auth.busy && auth.sessions.length) auth.session = (auth.session + 1) % auth.sessions.length;
     }
+    // Keyboard first, but everything also works by pointer: Sign in, and the
+    // power actions (choosing one asks to confirm: Enter, or the same again)
+    function submit() {
+        if (powerChoice) {
+            const action = powerChoice;
+            powerChoice = "";
+            if (auth.mock) console.log("greeter (mock):", action);
+            else Quickshell.execDetached(["systemctl", action]);
+        } else if (!auth.busy) {
+            auth.login(input.text);
+        }
+    }
+    function choosePower(action) {
+        if (auth.busy) return;
+        if (powerChoice === action) submit();
+        else powerChoice = action;
+        input.forceActiveFocus();
+    }
+    readonly property var powerActions: [["F2", "sleep", "suspend"], ["F3", "restart", "reboot"], ["F4", "shut down", "poweroff"]]
     onPrimaryChanged: if (primary) input.forceActiveFocus()
     Connections {
         target: win.auth
@@ -57,14 +76,7 @@ PanelWindow {
                 readOnly: win.auth.busy || win.powerChoice !== ""
                 focus: win.primary
                 Component.onCompleted: if (win.primary) forceActiveFocus()
-                onAccepted: {
-                    if (win.powerChoice) {
-                        const action = win.powerChoice;
-                        win.powerChoice = "";
-                        if (win.auth.mock) console.log("greeter (mock):", action);
-                        else Quickshell.execDetached(["systemctl", action]);
-                    } else win.auth.login(text);
-                }
+                onAccepted: win.submit()
                 Keys.onUpPressed: win.nextUser(-1)
                 Keys.onDownPressed: win.nextUser(1)
                 Keys.onTabPressed: win.nextSession()
@@ -80,16 +92,54 @@ PanelWindow {
         }
         Text {
             width: parent.width; wrapMode: Text.Wrap
-            text: win.powerChoice ? win.powerChoice + ": Enter to confirm · Esc to cancel"
+            text: win.powerChoice ? win.powerChoice + ": Enter (or click it again) to confirm · Esc to cancel"
                 : win.auth.error || (win.auth.busy ? "Signing in…" : win.auth.mock ? "Preview password: irice" : "Enter to sign in")
             color: win.auth.error ? "#ff9c9c" : "#8d96a5"
             font { family: win.mono; pixelSize: 13 }
         }
+        // Sign in, for pointer users (Enter does the same)
+        Text {
+            visible: !win.powerChoice
+            height: 44
+            verticalAlignment: Text.AlignVCenter
+            text: win.auth.busy ? "[ signing in… ]" : "[ sign in ]"
+            color: signInMouse.containsMouse && !win.auth.busy ? "#e6e9ef" : "#9bbcff"
+            font { family: win.mono; pixelSize: 15 }
+            MouseArea {
+                id: signInMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: win.auth.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
+                onClicked: win.submit()
+            }
+        }
         Text {
             width: parent.width; wrapMode: Text.Wrap
-            text: "↑↓ user · Tab session\nF2 sleep · F3 restart · F4 shut down"
-            color: "#8d96a5"; lineHeight: 1.5
+            text: (win.auth.users.length > 1 ? "↑↓ user · " : "") + "Tab session"
+            color: "#8d96a5"
             font { family: win.mono; pixelSize: 12 }
+        }
+        // F2 sleep · F3 restart · F4 shut down, each a 44 px target too
+        Row {
+            spacing: 18
+            Repeater {
+                model: win.powerActions
+                Text {
+                    required property var modelData
+                    height: 44
+                    verticalAlignment: Text.AlignVCenter
+                    text: modelData[0] + " " + modelData[1]
+                    color: win.powerChoice === modelData[2] ? "#ff9c9c" : powerMouse.containsMouse ? "#c6cbd5" : "#8d96a5"
+                    font { family: win.mono; pixelSize: 12 }
+                    MouseArea {
+                        id: powerMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.choosePower(parent.modelData[2])
+                    }
+                }
+            }
         }
     }
 }

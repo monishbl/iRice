@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Signal only verified process incarnations, using pidfds (never reused PIDs)."""
+"""Signal processes the shell started, and only those.
+
+A pid alone isn't enough: once a process ends, its pid can be given to a new,
+unrelated one. So every process is named by its pid and its start time (from
+/proc), held by a pidfd once that's been checked, and only then signalled.
+A pidfd keeps pointing at the same process even if the pid is reused.
+
+  reap [--dry-run]       end watcher groups whose wrapper is gone
+                         (reap-watchers.sh, at shell start)
+  group <pgid> <start>   end a watcher group (watch.sh, on its way out)
+  interrupt <pid> <start>  SIGINT one process (cancelling a copy)
+"""
 import os
 from pathlib import Path
 import signal
@@ -24,9 +35,19 @@ def handle(pid, start):
 
 
 def stop_group(group, start, dry=False):
-    # A missing/reused leader cannot establish ownership of the surviving group.
-    if identity(group) != (str(start), int(group)):
-        return
+    # The group's members, each held by a pidfd before anything is signalled.
+    # A member is ours if it's in the group and started no earlier than the
+    # recorded leader. That holds even after the leader has exited (as it
+    # does when its wrapper dies: pdeathsig), which is exactly when helpers
+    # are left behind: the kernel never hands a group id that's still in use
+    # to a new group, and a stranger reusing the leader's pid can't join it.
+    # A different process leading a group with this id: the old group had
+    # emptied (only then is its id handed out again), so nothing here is ours
+    try:
+        if identity(group) != (str(start), int(group)) and identity(group)[1] == int(group):
+            return
+    except OSError:
+        pass # the leader has exited: its group may still have members of ours
     handles = []
     try:
         for entry in Path('/proc').iterdir():
@@ -34,11 +55,11 @@ def stop_group(group, start, dry=False):
                 continue
             try:
                 born, pgid = identity(entry.name)
-                if pgid == int(group):
+                if pgid == int(group) and int(born) >= int(start):
                     handles.append(handle(entry.name, born))
             except (OSError, ValueError):
                 pass
-        if identity(group) != (str(start), int(group)):
+        if not handles:
             return
         if dry:
             print('would end verified watcher group', group, 'processes:', len(handles))

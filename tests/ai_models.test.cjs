@@ -105,6 +105,13 @@ test('screenshots use the selected provider format', () => {
     assert.equal(request(model('anthropic'),{},history).body.messages[0].content[0].source.data, 'fixture-base64');
     assert.equal(request(model('openrouter'),{},history).body.messages[1].content[0].image_url.url, 'data:image/png;base64,fixture-base64');
 });
+test('keys only travel over plain HTTP to this computer', () => {
+    for (const ep of ['http://localhost:8000/v1', 'http://127.0.0.1:8000/v1', 'http://[::1]:8000/v1'])
+        assert.equal(api.validate(model('custom',{endpoint:ep})), '', ep);
+    assert.match(api.validate(model('custom',{endpoint:'http://192.168.1.5:8000/v1'})), /https:\/\//);
+    assert.match(api.validate(model('custom',{endpoint:'http://localhost.evil.example/v1'})), /https:\/\//);
+    assert.equal(api.validate(model('custom',{endpoint:'http://192.168.1.5:8000/v1',auth:'none'})), '');
+});
 test('invalid configuration is rejected before building a request', () => {
     for (const raw of [
         {provider:'aistudio', id:''},
@@ -114,6 +121,7 @@ test('invalid configuration is rejected before building a request', () => {
         {provider:'custom', id:'test', endpoint:'https://user:pass@host/v1'},
         {provider:'custom', id:'test', endpoint:'https://host/v1?key=secret'},
         {provider:'custom', id:'test', endpoint:'file:///tmp/model'},
+        {provider:'custom', id:'test', endpoint:'http://models.example/v1'},
         {provider:'anthropic',id:'test',maxTokens:'NaN'},
         {provider:'vertex',id:'test',auth:'token',project:'p',location:'../bad'},
     ]) {

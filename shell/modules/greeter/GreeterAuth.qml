@@ -42,7 +42,14 @@ QtObject {
         const s = sessions[session];
         let command;
         try { command = SessionExec.parse(s?.exec ?? "", s?.name ?? ""); }
-        catch (e) { error = String(e); busy = false; if (!mock) Greetd.cancelSession(); return; }
+        catch (e) { // (a field the parser can't expand: say what to do, not the parser's words)
+            console.warn("greeter:", e);
+            error = "This session's launch command isn't supported. Choose another with Tab.";
+            busy = false;
+            if (!mock)
+                Greetd.cancelSession();
+            return;
+        }
         remember.setText(JSON.stringify({ user: users[user]?.name ?? "", session: s?.name ?? "" }));
         success = true;
         if (mock) {

@@ -13,23 +13,20 @@ FocusScope {
     readonly property int pad: 32
 
     // Today's events (past ones dimmed) and open to-dos, soonest first
-    readonly property date now: clock.now
+    // (a plain property, not a binding to a clock object below it: opened at
+    // login, before that object existed, the lists were empty for a minute)
+    property date now: new Date()
     readonly property var events: Calendar.eventsOn(now)
-    readonly property var todos: Todos.sorted(Todos.list.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done)).slice(0, 5)
-    QtObject {
-        id: clock
-        property date now: new Date()
-    }
+    readonly property var todos: Todos.sorted(Todos.list.filter(t => !t.done)).slice(0, 5)
     Timer {
         interval: 60 * 1000
         running: true
         repeat: true
-        onTriggered: clock.now = new Date()
+        onTriggered: root.now = new Date()
     }
 
-    function toggle(i) {
-        if (Todos.list[i])
-            Todos.update(i, { done: !Todos.list[i].done });
+    function toggle(t) {
+        Todos.update(t, { done: !t.done });
     }
 
     // Row n of the stagger: 40 ms apart, each rising 8 px as it fades in
@@ -221,7 +218,7 @@ FocusScope {
                         anchors { fill: parent; margins: -8 }
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggle(todo.modelData.i)
+                        onClicked: root.toggle(todo.modelData)
                     }
                 }
                 Text {

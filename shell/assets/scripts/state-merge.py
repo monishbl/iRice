@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Merge durable per-field UI journals under a lock, preserving unrelated edits."""
+"""Merge the shell's UI state journals into state.json (common/UiState.qml).
+
+Each change the shell makes is first written to its own small journal file
+under pending/, so a crash or a quit can't lose it. This folds them into the
+shared state.json, under a lock (two shells can share the file: the dev
+sandbox and a tty session), field by field, keeping the newest revision of
+each, so neither shell overwrites the other's unrelated changes.
+
+A state.json that can't be read as an object is set aside as
+state.json.corrupt-<time> and the merge starts from empty: one bad file must
+not stop the shell from loading and saving its state ever again.
+"""
 import fcntl
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 
 
 def merge(directory):
@@ -22,8 +34,13 @@ def merge(directory):
             state = json.loads(path.read_text())
         except FileNotFoundError:
             state = {}
+        except (ValueError, UnicodeDecodeError):
+            state = None
         if not isinstance(state, dict):
-            raise ValueError('State is not an object')
+            os.replace(path, path.with_name('state.json.corrupt-' + time.strftime('%Y%m%d-%H%M%S')))
+            state = {}
+        if not isinstance(state.get('_irice_revisions'), dict):
+            state['_irice_revisions'] = {}
         revisions = state.setdefault('_irice_revisions', {})
         consumed = []
         for journal in pending.glob('*.json'):

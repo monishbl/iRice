@@ -11,7 +11,31 @@ Singleton {
     id: root
 
     readonly property var localList: UiState.data.todos ?? []
-    readonly property var list: localList.concat(Google.tasks)
+    // Each to-do carries a key ("local/<id>", "google/<list>/<id>"), and
+    // changes find their to-do by it when they run. A position in the list
+    // isn't enough: a Google sync can add or reorder tasks while a row or
+    // the editor is open, and the change would land on another task.
+    readonly property var list: localList.map(t => Object.assign({ key: "local/" + t.id }, t)).concat(Google.tasks)
+    function find(ref) {
+        const key = typeof ref === "string" ? ref : ref?.key;
+        return key ? list.find(t => t.key === key) ?? null : null;
+    }
+    // To-dos saved before keys existed get theirs once
+    function newId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+    function giveIds() {
+        if (localList.some(t => !t.id))
+            UiState.data.todos = localList.map(t => t.id ? t : Object.assign({ id: newId() }, t));
+    }
+    Connections {
+        target: UiState
+        function onLoadedChanged() {
+            if (UiState.loaded)
+                root.giveIds();
+        }
+    }
+    Component.onCompleted: if (UiState.loaded) giveIds()
 
     // "text [when]" -> { text, due (ms) | 0, allDay }
     function parse(text) {
@@ -44,7 +68,7 @@ Singleton {
         const p = parse(text);
         if (!p.text)
             return;
-        const item = { text: p.text, done: false };
+        const item = { id: newId(), text: p.text, done: false };
         if (p.due) {
             item.due = p.due;
             item.allDay = p.allDay;
@@ -65,46 +89,59 @@ Singleton {
                 Quickshell.execDetached(["notify-send", "-a", "Reminders", "Task not added", Google.lastError]);
                 return false;
             }
-            return Google.run({ cmd: "taskAdd", listId: destination, patch: {
-                text: item.text, done: !!item.done, date: item.due ? Qt.formatDate(new Date(item.due), "yyyy-MM-dd") : "" } });
+            return Google.addTask(destination, {
+                text: item.text, done: !!item.done, date: item.due ? Qt.formatDate(new Date(item.due), "yyyy-MM-dd") : "" });
         }
-        UiState.data.todos = localList.concat([item]);
+        UiState.data.todos = localList.concat([item.id ? item : Object.assign({ id: newId() }, item)]);
         return true;
     }
 
-    // Change or remove the to-do at index (remove returns it, for Undo)
-    function update(i, patch) {
-        if (list[i]?.google)
-            return Google.updateTask(list[i], patch);
+    // Change or remove a to-do (one from `list`, or its key). remove()
+    // returns it for Undo; a Google task is only deleted once Undo runs out.
+    function update(ref, patch) {
+        const t = find(ref);
+        if (!t)
+            return false;
+        if (t.google)
+            return Google.updateTask(t, patch);
         const l = localList.slice();
-        if (!l[i])
-            return;
+        const i = l.findIndex(x => x.id === t.id);
         l[i] = Object.assign({}, l[i], patch);
         if (patch.due !== undefined)
             delete l[i].notified; // a new time notifies again
         UiState.data.todos = l;
         return true;
     }
-    function remove(i) {
-        const t = list[i];
-        if (t?.google) {
-            Google.run({ cmd: "taskDelete", listId: t.listId, id: t.id });
-            return null; // Google deletions cannot restore the same task ID
+    function remove(ref) {
+        const t = find(ref);
+        if (!t)
+            return null;
+        if (t.google) {
+            Google.removeTask(t);
+            return t;
         }
-        UiState.data.todos = localList.filter((_, j) => j !== i);
-        return t;
+        const at = localList.findIndex(x => x.id === t.id);
+        UiState.data.todos = localList.filter(x => x.id !== t.id);
+        return Object.assign({ at: at }, t);
     }
-    function restore(t, i) {
+    function restore(t) {
         if (!t)
             return;
+        if (t.google) {
+            Google.restoreTask(t);
+            return;
+        }
+        const item = Object.assign({}, t);
+        for (const k of ["key", "i", "at"])
+            delete item[k];
         const l = localList.slice();
-        l.splice(Math.min(i ?? l.length, l.length), 0, t);
+        l.splice(Math.min(t.at ?? l.length, l.length), 0, item);
         UiState.data.todos = l;
     }
-    // On a given day: [{ i, ...todo }]
+    // On a given day
     function on(day) {
         const a = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime(), b = a + 86400000;
-        return list.map((t, i) => Object.assign({ i: i }, t)).filter(t => t.due >= a && t.due < b);
+        return list.filter(t => t.due >= a && t.due < b);
     }
 
     // "Today 5:00 PM", "Tomorrow", "Fri", "12 Nov"; "" when undated

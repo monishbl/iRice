@@ -106,12 +106,10 @@ Variants {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     onEntered: if (!dialog.keyboardConfirmation) dialog.current = option.index
-                                    onClicked: {
-                                        if (dialog.keyboardConfirmation)
-                                            dialog.current = option.index;
-                                        else
-                                            dialog.choose(option.index);
-                                    }
+                                    // A click is a deliberate choice: it confirms (the
+                                    // keyboard path asks for Enter, against a key
+                                    // still held from Spotlight repeating into it)
+                                    onClicked: dialog.choose(option.index)
                                 }
                             }
                             Text {
@@ -129,7 +127,7 @@ Variants {
                     visible: dialog.keyboardConfirmation
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Arrow keys to choose · Enter to confirm · Esc to cancel"
+                    text: "Click, or choose with the arrow keys and press Enter · Esc to cancel"
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }

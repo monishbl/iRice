@@ -1,64 +1,90 @@
 # iRice changelog
 
+## Fixes after review · 2026-10-29
+
+**Calendar**
+- A monthly repeating event in any calendar stopped every Calendar widget from showing, and emptied Notification Center's calendar. Fixed.
+- In Notification Center, a busy week shows a few items per day and "+N more", so it no longer stretches the panel.
+
+**Google**
+- Edits and deletions always reach the task you meant, even while a sync is running. Changes show at once and are sent when Google is free.
+- Deleting a Google task can be undone for 8 seconds.
+- If the Google helper can't run, Settings says what to install.
+
+**AI**
+- An API key is only sent over plain http:// to this computer. Remote servers need https://.
+- Removing a model also removes its key from the keyring, with 8 seconds to undo.
+
+**Desktop colours**
+- The Dolphin colour fix no longer replaces a Qt or KDE colour scheme you picked yourself.
+
+**Battery and stability**
+- Background helpers left behind by a crashed shell are cleaned up again.
+- Less background work: state saving, the icon index and download progress all cost less.
+- Glass shapes no longer stay on screen after the shell quits.
+- A damaged state file is set aside instead of stopping settings from saving.
+
+**Lock, sleep and login**
+- The Locking animation setting works again.
+- If the screen can't be locked, the computer stays awake and tells you, instead of not sleeping without a word.
+- The login screen has clickable Sign in and power buttons, and plain error messages.
+
+**Other**
+- Spotlight's Lock Screen locks straight away again.
+- A new window no longer pulls focus or the pointer when your window rules say it shouldn't.
+- The Today screen shows your events and to-dos when it opens at login.
+- Sharing settings show Quick Share's status in one row.
+
 ## Glass calendar and full weekly lists · 2026-10-29
 
-- Remove the solid agenda gradient. Retain the widget’s glass backdrop and progressively blur/fade calendar content behind the agenda. Long weeks scroll before the backdrop is pinned.
-- Show every weekly event and unfinished task instead of abbreviated previews and “+ more” counts.
-- Remove the bottom quick-add field; use the existing + button to open the event/task editor.
-- Updated offscreen regression verifies full weekly height, all 46 agenda items, last-item reachability, removed quick input, return scrolling and all tabs.
+- The large Calendar widget keeps its glass background. The list of the day's events now slides up over the calendar, which fades and blurs behind it.
+- The week view lists everything on the desktop widget. Add events and to-dos with the + button.
 
 ## Calendar containment and scrolling agenda · 2026-10-29
 
-- Fix R51: keep the large desktop calendar inside its glass frame in Month, Week and To-do views. Compact week previews retain all seven dates; scrolling reveals every selected-day event/task and the add field, including lists beyond the previous 30-item cap.
-- Keep the header fixed while the agenda rises over a fading calendar with a gradient backdrop. Use the up-arrow to return to the dates. Desktop wheel scrolling no longer changes the displayed month/week; navigation arrows remain available.
-- Validate with an offscreen Quickshell regression covering 45 tasks, footer reachability, return scrolling, all three tabs and the shared Notification Center layout. Top, scrolled and bottom renders inspected with fixture data; physical touchpad acceptance remains pending.
-
+- The large Calendar widget stays inside its frame in every view. Scroll to see all of a day's events and to-dos; the arrow at the top brings the dates back.
+- Scrolling over the widget no longer changes the month. Use the arrows for that.
 
 ## Super-tap correction verified in the running session · 2026-10-29
 
-- Correct the modifier-key press binding: Super is not yet in the modifier mask when its own key goes down. The previous release-only change was insufficient. Nested Alt uses the same correction; ordinary Super chords keep their cancellation behavior.
-- Reproduced the failure on the actual compositor and verified that the corrected key path opens the real Overview panel with injected keyboard events.
-- Shell restarts now supply the KDE platform theme even when an updater/watchdog inherited an older environment; successful updates also refresh the D-Bus activation theme. Existing Dolphin processes still require a full quit/reopen.
-- Validation: 51 Python and 27 Node tests pass; the corrected Super press was also exercised against the running compositor.
-- The reported calendar overflow and gradient task-overlay redesign remain open R51. They were queued in the previous update, not implemented; an unchanged calendar does not indicate updater failure.
+- Tapping Super on its own opens Overview again. Super with another key works as before.
+- Dolphin and other Qt apps keep readable colours after an update restarts the shell. Quit and reopen Dolphin once if it still looks wrong.
 
 ## Audit fixes and reliable startup · 2026-10-29
 
-- Lock immediately before animations and wait for compositor lock confirmation before Sleep. Start an independent idle/sleep locker in installed and TTY sessions, preserving configured idle listeners.
-- Protect UI state with private recovery journals and merge concurrent edits; publish notes atomically and report save failures. Back up installed configuration before replacement and restore files when update preparation fails.
-- Use HTTPS with certificate fingerprint checks for LocalSend. Bound transfer resources, reject truncated/oversized uploads, honour cancellation and avoid concurrent filename overwrites. HTTP-only receiving peers must enable HTTPS; discovery is not independently authenticated.
-- Correct floating/tiled startup rules, calendar recurrence and date boundaries, stale request results, timer drift, process identity checks and native glass IPC retries. Stop advertising notification inline replies until a composer exists.
-- Replace the greeter with the approved minimal keyboard-first login prompt, retaining user/session selection and confirmed power actions.
-- Restore Super-tap Overview with an explicit release binding. Initialize Qt apps with the KDE platform theme so Dolphin starts with readable dark-mode text; explicit platform-theme choices are preserved.
-- Record the newly reported calendar overflow/gradient agenda, Settings window stacking, app-link activation, stale download activity, island scrolling and notification-header issues as **open R51–R56**. These are not claimed fixed in this update.
+**Lock and sleep**
+- The screen locks immediately, before any animation, and Sleep waits until the lock is really in place.
+- Locking and sleeping when idle now works in every iRice session.
 
-### Upgrade and validation
+**Your data**
+- Settings and UI state survive crashes and two shells writing at once. Notes are saved safely and you're told if a save fails.
+- Updates back up your configuration first and put things back if something goes wrong.
 
-- Install/update dependencies, including `openssl` and `plasma-integration`, rebuild the compositor plugin and native helpers, and restart the session. Fully quit and reopen Dolphin so it inherits the startup theme environment.
-- Validation: **50 Python and 27 Node tests pass**; 286 QML files parse; shell syntax checks and both native builds pass. Tests include offscreen Qt/Quickshell, disposable Git repositories and local TLS/IPC fixtures.
-- Real lock/suspend/resume, greetd authentication and physical multi-monitor acceptance checks remain pending. This push does not install or restart the running desktop.
-- See the [audit status and queued issues](docs/bug-audit-2026-10-28.md) for individual fixes and verification limits.
+**Sharing**
+- LocalSend uses HTTPS and checks the other device's certificate. Devices with HTTPS off must turn it on to receive.
+
+**Login screen**
+- A new, simpler login screen: pick the user and session, type your password.
+
+**Fixes**
+- Repeating calendar events on month ends, leap days and intervals.
+- Tiled or floating at startup, timers that drifted, and results from an older search replacing newer ones.
+- Notifications no longer offer a Reply that didn't work.
+
+After updating, run Update once more so it installs `openssl` and `plasma-integration`, then log out and in again.
 
 ## Pointer focus and multiple displays · 2026-10-29
 
-- Hover focus now rechecks the stationary pointer after workspace/window changes. New windows take focus and bring the pointer when they open elsewhere.
-- Every displayed monitor's active workspace stays highlighted and visible through workspace-strip overflow.
-- Settings → Mouse adds shared-corner protection, edge resistance/push again, selection-only confinement, and Off. Corner size is adjustable. Requires the rebuilt compositor plugin; pointer constraints in games take precedence and deliberate pointer warps remain available.
-- Region selection is clipped to its starting monitor, including off-screen windows. Native pointer confinement has a short lease so it releases if the shell exits during selection.
+- With focus following the pointer, the window under it gets focus again after you switch spaces or a window closes.
+- Each display's current space stays visible in the menu bar's spaces, even when there are more spaces than fit.
+- Settings → Mouse: stop the pointer slipping to another display at shared corners or edges, with an adjustable corner size.
+- A screenshot selection stays on the display where you started it.
 
 ## Google integration and clipboard image reuse · 2026-10-29
 
-- Settings → Google adds Desktop OAuth sign-in, Calendar sync and primary-calendar quick-add, and Google Tasks sync/editing in existing reminder widgets. New tasks remain local unless a Google task list is selected. Desktop Online Accounts is the default sign-in route; custom OAuth is optional. Real-account verification is pending.
-- Keep opens in the browser; native personal Keep sync is not supported by this implementation. See [setup and limitations](docs/google-integration.md).
-- Clipboard previews now use stable cached image URLs and atomic decoding, retain unchanged history models, and cover all images in the 200-item history window instead of only the first 48.
-
-### Upgrade and verification notes
-
-- Rebuild the iRice compositor plugin and restart the session to activate pointer barriers and reliable stationary-pointer refocus. Screenshot clipping works without the plugin.
-- Google sign-in uses GNOME Online Accounts. New installs include `gnome-online-accounts`, `gnome-control-center` and `python-gobject`; existing installs need those dependencies before using the account flow. Users do not need a Google Cloud project for this route.
-- Validation: 29 Python/C++/Lua regression tests and 5 screenshot-geometry tests passed; changed QML parses; isolated Quickshell account/focus checks passed; the native plugin builds against installed Hyprland 0.56.2 headers.
-- Live Google authentication, physical multi-monitor pointer behavior, workspace-chip appearance and clipboard-grid rendering still need verification. The live compositor was not hot-reloaded during development.
-- Added the detailed bug audit and missing-feature/power strategy documents. Findings in those reports remain tracked work unless explicitly marked implemented; this update does not fix every audited issue.
+- **Settings → Google:** sign in with your Google account (through GNOME Online Accounts; no Google Cloud project needed). Your Google Calendar events and Google Tasks show in the Calendar, Reminders and Today widgets, and you can edit tasks.
+- Google Keep opens in the browser; it can't be synced.
+- The clipboard panel loads image previews once and keeps them, and previews every image in your history.
 
 ## Your own AI models · 2026-10-28
 

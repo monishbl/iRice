@@ -6,7 +6,8 @@ import Quickshell
 // iPhone's: unlocking, the wallpaper settles from a little larger while the
 // desktop widgets and icons zoom in from the centre of the screen, the outer
 // ones a moment later; windows, the dock and the menu bar fade in (a veil
-// showing the wallpaper lifts off them, Lock.qml). Locking plays it backwards.
+// showing the wallpaper lifts off them, Lock.qml). Locking happens at once;
+// the lock screen plays its own entrance (LockSurface).
 //
 // `desktop` runs 0 (set back: zoomed, hidden) .. 1 (at rest), linearly; each
 // piece eases its own share of it:
@@ -51,14 +52,6 @@ Singleton {
     function reveal(ms) {
         anim.stop();
         anim.to = 1;
-        anim.duration = ms;
-        anim.start();
-    }
-    // Lock: leave the desktop, then the lock takes over
-    function leave(withZoom, ms) {
-        anim.stop();
-        zoom = withZoom;
-        anim.to = 0;
         anim.duration = ms;
         anim.start();
     }

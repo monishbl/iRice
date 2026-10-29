@@ -216,15 +216,28 @@ class Account:
         lists = self.pages(TASK + '/users/@me/lists', token, maxResults=100)
         tasks = []
         for listing in lists:
-            rows = self.pages(TASK + '/lists/' + urllib.parse.quote(listing['id'], safe='') + '/tasks', token,
-                              maxResults=100, showCompleted='true', showHidden='true', showDeleted='false')
-            for row in rows:
-                if not row.get('deleted'):
-                    tasks.append(dict(id=row['id'], listId=listing['id'], listName=listing['title'],
-                                      text=row.get('title', ''), done=row.get('status') == 'completed',
-                                      date=row.get('due', '')[:10], notes=row.get('notes', '')))
+            tasks.extend(self.list_tasks(token, listing))
         # Publish only after every page succeeds; errors retain the last complete snapshot.
         atomic(self.cache, dict(events=events, tasks=tasks, taskLists=lists, syncedAt=time.time() * 1000))
+
+    def list_tasks(self, token, listing):
+        rows = self.pages(TASK + '/lists/' + urllib.parse.quote(listing['id'], safe='') + '/tasks', token,
+                          maxResults=100, showCompleted='true', showHidden='true', showDeleted='false')
+        return [dict(id=row['id'], listId=listing['id'], listName=listing['title'],
+                     text=row.get('title', ''), done=row.get('status') == 'completed',
+                     date=row.get('due', '')[:10], notes=row.get('notes', '')) for row in rows if not row.get('deleted')]
+
+    # After a change to one task list, only that list is fetched again (a full
+    # sync reads every calendar for two years). Without a cache to patch, the
+    # full sync it is.
+    def sync_list(self, list_id):
+        cache = read(self.cache)
+        listing = next((l for l in cache.get('taskLists', []) if l.get('id') == list_id), None)
+        if listing is None:
+            return self.sync()
+        tasks = [t for t in cache.get('tasks', []) if t.get('listId') != list_id]
+        tasks.extend(self.list_tasks(self.access(), listing))
+        atomic(self.cache, dict(cache, tasks=tasks))
 
     def run(self, req):
         cmd = req.get('cmd', 'status')
@@ -283,7 +296,7 @@ class Account:
             request(url, None if cmd == 'taskDelete' else body, token=token,
                     method={'taskAdd': 'POST', 'taskUpdate': 'PATCH', 'taskDelete': 'DELETE'}[cmd])
             emit({'mutationComplete': True})
-            self.sync()
+            self.sync_list(req['listId'])
         elif cmd == 'eventAdd':
             text = req['text'].strip()
             if not text:

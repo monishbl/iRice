@@ -78,7 +78,9 @@ def publish_peers():
     with peer_lock:
         for k in [k for k, p in peers.items() if now - p["seen"] > 90]:
             del peers[k]
-        snapshot = [{"id": k, "alias": p["alias"], "type": p["type"], "model": p["model"]} for k, p in peers.items()]
+        # Peers with HTTPS off can't be sent to (connect() refuses them):
+        # listing them would only offer a send that always fails
+        snapshot = [{"id": k, "alias": p["alias"], "type": p["type"], "model": p["model"]} for k, p in peers.items() if p["protocol"] == "https"]
     emit("peers", peers=snapshot)
 
 
@@ -117,9 +119,13 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
             raise ssl.SSLError("Peer certificate does not match the discovered fingerprint")
 
 
+class UnencryptedPeer(ValueError):
+    """A peer with HTTPS off; the message says how to fix it."""
+
+
 def connect(p, timeout=10):
     if p["protocol"] != "https":
-        raise ValueError("Unencrypted LocalSend peer: enable HTTPS on the receiving device")
+        raise UnencryptedPeer("%s has encryption off. Turn on HTTPS in LocalSend's settings on that device." % p.get("alias", "That device"))
     return PinnedHTTPSConnection(p, timeout)
 
 
@@ -364,16 +370,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     chunk = self.rfile.read(min(1 << 20, left))
                     if not chunk:
                         raise OSError("Transfer ended before all bytes arrived")
+                    # The disk write happens outside the lock: holding it for
+                    # each 1 MB write stalled every other upload, cancel and
+                    # answer behind this one
                     with session_lock:
                         if s["cancelled"]:
                             raise OSError("Cancelled")
-                        out.write(chunk)
-                        left -= len(chunk)
+                    out.write(chunk)
+                    left -= len(chunk)
+                    with session_lock:
                         s["done"] += len(chunk)
                         s["touched"] = time.monotonic()
-                        if time.monotonic() - last > .3:
-                            last = time.monotonic()
-                            emit("progress", session=sid, dir="in", done=s["done"], total=s["total"], name=name)
+                        done, total = s["done"], s["total"]
+                    if time.monotonic() - last > .3:
+                        last = time.monotonic()
+                        emit("progress", session=sid, dir="in", done=done, total=total, name=name)
             with session_lock:
                 if s["cancelled"]:
                     raise OSError("Cancelled")
@@ -440,6 +451,23 @@ def serve():
 
 
 # ── Sending ──────────────────────────────────────────────────────────────
+class Cancelled(Exception):
+    """The user cancelled a send (reported as such, not as a failure)."""
+
+
+def cancel_remote(p, remote):
+    """Tell the receiver to drop the session, so it doesn't wait for files."""
+    try:
+        c = connect(p, 5)
+        try:
+            c.request("POST", API + "/cancel?" + urllib.parse.urlencode({"sessionId": remote}))
+            c.getresponse().read(MAX_BODY)
+        finally:
+            c.close()
+    except Exception:
+        pass
+
+
 def send(to, paths):
     p = peers.get(to)
     sid = "out-" + secrets.token_hex(6)
@@ -467,7 +495,14 @@ def send(to, paths):
         body = r.read(MAX_BODY + 1)
         c.close()
         if len(body) > MAX_BODY: raise ValueError("Oversized peer response")
-        if sid in cancelled: raise OSError("Cancelled")
+        if sid in cancelled:
+            # Cancelled while they were deciding: if they accepted, tell them
+            if r.status == 200:
+                try:
+                    cancel_remote(p, json.loads(body)["sessionId"])
+                except (ValueError, KeyError, TypeError):
+                    pass
+            raise Cancelled()
         if r.status == 204:
             return emit("finished", session=sid, dir="out", paths=[], to=p["alias"])
         if r.status == 403:
@@ -492,16 +527,8 @@ def send(to, paths):
                 while left:
                     if sid in cancelled:
                         c.close()
-                        try:
-                            cancel = connect(p, 5)
-                            try:
-                                cancel.request("POST", API + "/cancel?" + urllib.parse.urlencode({"sessionId": remote}))
-                                cancel.getresponse().read(MAX_BODY)
-                            finally:
-                                cancel.close()
-                        except Exception:
-                            pass
-                        return emit("failed", session=sid, message="Cancelled")
+                        cancel_remote(p, remote)
+                        raise Cancelled()
                     chunk = f.read(min(1 << 20, left))
                     if not chunk:
                         raise OSError("Source file changed during transfer")
@@ -517,6 +544,10 @@ def send(to, paths):
             if r.status != 200:
                 return emit("failed", session=sid, message="%s stopped the transfer" % p["alias"])
         emit("finished", session=sid, dir="out", paths=[ids[fid] for fid in tokens], to=p["alias"])
+    except Cancelled:
+        emit("failed", session=sid, message="Cancelled")
+    except UnencryptedPeer as e:
+        emit("failed", session=sid, message=str(e))
     except Exception as e:
         emit("failed", session=sid, message="Couldn't reach %s (%s)" % (p["alias"], e.__class__.__name__))
     finally:

@@ -135,12 +135,15 @@ class PersistenceAndIdentity(unittest.TestCase):
             self.assertEqual(p.stat().st_mode & 0o777, 0o600)
             self.assertEqual(list(Path(d).iterdir()), [p])
 
-    def test_download_filenames_with_control_characters_remain_valid_json(self):
-        m = load('transfers')
+    def test_download_filenames_with_control_characters_are_listed_intact(self):
+        # services/Transfers.qml lists partial downloads with this find and
+        # splits its NUL-separated "size<TAB>path" entries
         with tempfile.TemporaryDirectory() as d:
             p = Path(d)/'line\nwith\ttab.part'; p.write_bytes(b'123')
-            result = json.loads(json.dumps(m.downloads(d)))
-            self.assertEqual(result, [{'path': str(p), 'bytes': 3}])
+            (Path(d)/'done.txt').write_text('x')
+            out = subprocess.run(['find', d, '-maxdepth', '1', '-type', 'f', '(', '-name', '*.part', '-o', '-name', '*.crdownload', '-o', '-name', '*.download', ')', '-printf', '%s\\t%p\\0'], capture_output=True, text=True, check=True).stdout
+            entries = [(int(e[:e.index('\t')]), e[e.index('\t') + 1:]) for e in out.split('\0') if '\t' in e]
+            self.assertEqual(entries, [(3, str(p))])
 
     def test_icon_cache_detects_nested_change_and_symlink_cycles_end(self):
         m = load('icon-index')
@@ -156,6 +159,28 @@ class PersistenceAndIdentity(unittest.TestCase):
             (theme/'scalable/apps/loop').symlink_to(theme, target_is_directory=True)
             self.assertLess(len(list(m.walk_theme(theme))), 5)
 
+    def test_icon_cache_stays_fresh_with_a_broken_link(self):
+        m = load('icon-index')
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); theme=p/'theme'; (theme/'apps').mkdir(parents=True)
+            (theme/'apps/gone.svg').symlink_to(p/'missing.svg')
+            m.ROOTS=[d]
+            cache=p/'cache'; cache.write_text('')
+            old=time.time()-20
+            for entry in [theme, theme/'apps']: os.utime(entry,(old,old))
+            self.assertTrue(m.fresh(cache,['theme']))
+
+    def test_corrupt_state_is_set_aside_and_journals_still_merge(self):
+        m = load('state-merge')
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); (p/'pending').mkdir()
+            (p/'state.json').write_text('{not json')
+            (p/'pending/j-1.json').write_text(json.dumps({'todos': {'revision': [1, 'j', 1], 'value': ['a']}}))
+            m.merge(d)
+            self.assertEqual(json.loads((p/'state.json').read_text())['todos'], ['a'])
+            self.assertEqual(len(list(p.glob('state.json.corrupt-*'))), 1)
+            self.assertEqual(list((p/'pending').iterdir()), [])
+
     def test_reused_process_identity_never_signalled(self):
         m = load('process-identity')
         child = subprocess.Popen(['sleep', '10'], start_new_session=True)
@@ -168,6 +193,24 @@ class PersistenceAndIdentity(unittest.TestCase):
             self.assertIsNone(child.poll())
         finally:
             child.terminate(); child.wait()
+
+    def test_helpers_left_after_their_leader_exited_are_still_ended(self):
+        # The leak that overheated the laptop: the wrapper dies, the watcher's
+        # leader goes with it (pdeathsig), its helpers (pw-dump | …) stay.
+        m = load('process-identity')
+        leader = subprocess.Popen(['bash', '-c', 'sleep 30 & echo $!; exit 0'], stdout=subprocess.PIPE, start_new_session=True, text=True)
+        helper = int(leader.stdout.readline())
+        start = m.identity(leader.pid)[0] if leader.poll() is None else None
+        leader.wait()
+        try:
+            self.assertEqual(m.identity(helper)[1], leader.pid)  # still in the leader's group
+            m.stop_group(leader.pid, start or m.identity(helper)[0])
+            time.sleep(0.5)
+            with self.assertRaises(OSError):
+                m.identity(helper)
+        finally:
+            try: os.kill(helper, 9)
+            except OSError: pass
 
     def test_idle_launcher_keeps_custom_listeners_and_uses_this_shell_lock(self):
         with tempfile.TemporaryDirectory() as d:

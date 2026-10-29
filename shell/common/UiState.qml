@@ -102,10 +102,21 @@ Singleton {
         journal.waitForJob();
         observed = current;
         dirty = next;
-        saveTimer.restart();
+        // The shared file: soon after a real change, but only every 30 s for
+        // the frequent bookkeeping ones (recent apps on every focus change,
+        // screen time every minute), each merge being a python3 run. They're
+        // safe meanwhile: the journal above is already on disk.
+        if (lazy) {
+            if (!saveTimer.running && !lazyTimer.running)
+                lazyTimer.start();
+        } else {
+            lazyTimer.stop();
+            saveTimer.restart();
+        }
     }
     FileView { id: journal; printErrors: true; blockWrites: true; atomicWrites: true }
     Timer { id: saveTimer; interval: 100; onTriggered: if (!writer.running) root.flush() }
+    Timer { id: lazyTimer; interval: 30000; onTriggered: if (!writer.running) root.flush() }
     function flush() {
         if (writer.running)
             return;
@@ -122,7 +133,14 @@ Singleton {
         running: true
         onExited: code => {
             if (code !== 0) {
+                // The journals stay for the next merge. The first time, carry
+                // on with the file as it is, or nothing would ever load or
+                // save (a missing python3, say)
                 console.warn("UI state merge failed; recovery journals retained");
+                if (!root.initialized) {
+                    root.initialized = true;
+                    file.reload();
+                }
                 return;
             }
             root.initialized = true;

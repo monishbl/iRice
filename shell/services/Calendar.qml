@@ -345,7 +345,8 @@ Singleton {
                 const base = new Date(y, m, 1);
                 const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
                 const selected = bymonthday ? bymonthday.map(d => d < 0 ? last + d + 1 : d).filter(d => d >= 1 && d <= last) : null;
-                const weekdays = byday ? byday.flatMap(b => b.n ? [nthWeekday(base.getFullYear(), base.getMonth(), b.d, b.n)].filter(d => d !== null) : Array.from({length: last}, (_, k) => k + 1).filter(d => at(base.getFullYear(), base.getMonth(), d).getDay() === b.d)) : null;
+                // (concat, not flatMap: Qt's JavaScript engine has no flatMap)
+                const weekdays = byday ? [].concat(...byday.map(b => b.n ? [nthWeekday(base.getFullYear(), base.getMonth(), b.d, b.n)].filter(d => d !== null) : Array.from({length: last}, (_, k) => k + 1).filter(d => at(base.getFullYear(), base.getMonth(), d).getDay() === b.d))) : null;
                 const dates = weekdays ? weekdays.filter(d => !selected || selected.includes(d)) : (selected ?? [s0.getDate()]);
                 candidates = [...new Set(dates)].filter(d => d >= 1 && d <= last).map(d => at(base.getFullYear(), base.getMonth(), d));
                 if (!Number.isFinite(base.getTime()) || base >= to || base.getTime() > until) break;

@@ -15,7 +15,9 @@ Singleton {
     readonly property var cfg: Config.options.appearance
     readonly property string source: cfg.appTheme // off | accent | wallpaper
     readonly property bool available: Tools.has("matugen")
-    readonly property string key: [Config.ready, source, available, Theme.dark, Theme.accent, source === "wallpaper" ? Wallpaper.path : "", cfg.appThemeTargets.join(",")].join("|")
+    // (The accent only matters while matching is on: dragging it with Match
+    // apps off mustn't rewrite and reload every app's palette)
+    readonly property string key: [Config.ready, source, available, Theme.dark, source !== "off" ? Theme.accent : "", source === "wallpaper" ? Wallpaper.path : "", cfg.appThemeTargets.join(",")].join("|")
     property string applied: ""
 
     onKeyChanged: if (Tools.ready) settle.restart()

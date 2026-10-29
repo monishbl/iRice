@@ -23,7 +23,7 @@ Singleton {
     function nameForProvider(provider) { return ModelConfig.providerName(provider); }
     function normalizeModel(raw) { return ModelConfig.normalize(raw); }
     function hasCredential(m) { return m.auth === "none" || AiKeys.has(ModelConfig.credentialProvider(m), m.key); }
-    function saveCredential(m, key) { AiKeys.set(m.key, key); }
+    function saveCredential(m, key) { AiKeys.set(m.key, key, m.name + " · " + ModelConfig.credentialLabel(m)); }
 
     Component.onCompleted: migrateModels()
     Connections {
@@ -58,19 +58,38 @@ Singleton {
         Config.options.ai.models = list.map(x => JSON.stringify(x));
         Config.options.ai.modelsMigrated = true;
         Config.options.ai.model = m.key;
-        if (retainedKey)
+        if (retainedKey) {
             saveCredential(m, retainedKey);
+            AiKeys.clear(old.key); // (moved to the new entry, not left behind)
+        }
         return "";
     }
+    // Removing keeps the credential until the Undo time is over (forget()),
+    // so Undo brings the model back working. Returns what restore() needs.
     function removeModel(key) {
         if (model.key === key) {
             stop();
             stopQuick();
         }
+        const removed = models.find(m => m.key === key);
         const list = models.filter(m => m.key !== key);
+        const wasSelected = Config.options.ai.model === key;
         Config.options.ai.models = list.map(m => JSON.stringify(m));
-        if (Config.options.ai.model === key)
+        if (wasSelected)
             Config.options.ai.model = list[0]?.key ?? "";
+        return removed ? { model: removed, selected: wasSelected } : null;
+    }
+    function restoreModel(undo) {
+        if (!undo || models.some(m => m.key === undo.model.key))
+            return;
+        Config.options.ai.models = models.concat([undo.model]).map(m => JSON.stringify(m));
+        if (undo.selected)
+            Config.options.ai.model = undo.model.key;
+    }
+    // The removed model's credential, once it can't come back
+    function forgetCredential(key) {
+        if (!models.some(m => m.key === key))
+            AiKeys.clear(key);
     }
 
     // UI rows: { role: "user"|"assistant"|"note", text, thinking, status, model, image (preview path) }

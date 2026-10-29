@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls as Controls
 import qs.common
 import qs.modules.settings
 import qs.services
@@ -9,23 +8,25 @@ Column {
     width: parent?.width ?? 0
     spacing: 22
     property bool advanced: false
-    property string selectedAccount: Google.data.accountId || Google.data.goaAccounts?.[0]?.id || ""
-    component Action: Controls.Button {
-        palette.buttonText: Theme.color.label
-        palette.button: Theme.color.fill
-        font.family: Theme.font.family
-    }
+    property string selectedAccount: Google.account.accountId || Google.account.goaAccounts?.[0]?.id || ""
+    // What the helper is doing, in words (for the footer while it works)
+    readonly property string working: ({
+            status: "Checking your account…", sync: "Syncing Calendar and Tasks…", connectDesktop: "Connecting your account…",
+            connect: "Waiting for you to sign in to Google in your browser…", configure: "Importing the client…",
+            disconnect: "Disconnecting…", forget: "Removing local account data…", eventAdd: "Adding the event…",
+            taskAdd: "Adding the task…", taskUpdate: "Saving the task…", taskDelete: "Deleting the task…"
+        })[Google.operation] ?? "Working…"
     Group {
         width: parent.width
         title: "Google account"
-        footer: Google.lastError || (Google.busy ? "Working… " + Google.operation : Google.connected ? "Connected. Calendar and Tasks refresh every 15 minutes. Last sync: " + (Google.data.syncedAt ? new Date(Google.data.syncedAt).toLocaleString() : "not yet") : "Sign in once through desktop Online Accounts, then select your Google account here. No Cloud project or client file is needed with this method.")
+        footer: Google.lastError || (Google.busy ? page.working : Google.connected ? "Connected. Calendar and Tasks refresh every 15 minutes. Last sync: " + (Google.account.syncedAt ? new Date(Google.account.syncedAt).toLocaleString() : "not yet") : "Sign in once through desktop Online Accounts, then select your Google account here. No Cloud project or client file is needed with this method.")
         Row {
             label: "Sign in with Google"
             detail: "Open Online Accounts → Google. Enable Calendars after signing in."
             SettingsButton {
                 text: "Open Online Accounts"
                 onClicked: {
-                    const app = Google.data.goaSettings;
+                    const app = Google.account.goaSettings;
                     if (!app) {
                         Google.lastError = "Install gnome-online-accounts, python-gobject and gnome-control-center (or gnome-online-accounts-gtk), then click Refresh accounts.";
                         return;
@@ -38,7 +39,7 @@ Column {
             label: "Google account"
             Dropdown {
                 width: 260
-                options: (Google.data.goaAccounts ?? []).map(a => ({ value: a.id, label: a.name }))
+                options: (Google.account.goaAccounts ?? []).map(a => ({ value: a.id, label: a.name }))
                 value: page.selectedAccount
                 onChosen: v => page.selectedAccount = v
             }
@@ -47,22 +48,22 @@ Column {
             label: "Connect desktop account"
             Flow {
                 spacing: 8
-                Action { text: "Refresh accounts"; enabled: !Google.busy; onClicked: Google.run({ cmd: "status" }) }
-                Action { text: "Connect"; enabled: !Google.busy && !Google.connected && page.selectedAccount !== ""; onClicked: Google.run({ cmd: "connectDesktop", account: page.selectedAccount }) }
+                SettingsButton { text: "Refresh accounts"; enabled: !Google.busy; onClicked: Google.run({ cmd: "status" }) }
+                SettingsButton { text: "Connect account"; enabled: !Google.busy && !Google.connected && page.selectedAccount !== ""; onClicked: Google.run({ cmd: "connectDesktop", account: page.selectedAccount }) }
             }
         }
         Row {
             label: "Sync & disconnect"
             Flow {
                 spacing: 8
-                Action { text: "Sync now"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "sync" }) }
-                Action { text: "Disconnect"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "disconnect" }) }
+                SettingsButton { text: "Sync now"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "sync" }) }
+                SettingsButton { text: "Disconnect account"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "disconnect" }) }
             }
         }
         Row {
             label: "Remove local account data"
-            detail: Google.data.backend === "goa" ? "Disconnects iRice only; other apps keep their account access." : "For offline removal. Revoke access later in your Google account."
-            Action { text: "Forget locally"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "forget" }) }
+            detail: Google.account.backend === "goa" ? "Disconnects iRice only; other apps keep their account access." : "For offline removal. Revoke access later in your Google account."
+            SettingsButton { text: "Forget locally"; enabled: !Google.busy && Google.connected; onClicked: Google.run({ cmd: "forget" }) }
         }
     }
     Group {
@@ -83,8 +84,8 @@ Column {
             label: "Custom connection"
             Flow {
                 spacing: 8
-                Action { text: "Import client"; enabled: !Google.busy && !Google.connected && client.text.trim() !== ""; onClicked: Google.run({ cmd: "configure", path: client.text.trim() }) }
-                Action { text: "Connect"; enabled: !Google.busy && !Google.connected && Google.configured; onClicked: Google.run({ cmd: "connect" }) }
+                SettingsButton { text: "Import client"; enabled: !Google.busy && !Google.connected && client.text.trim() !== ""; onClicked: Google.run({ cmd: "configure", path: client.text.trim() }) }
+                SettingsButton { text: "Connect account"; enabled: !Google.busy && !Google.connected && Google.configured; onClicked: Google.run({ cmd: "connect" }) }
             }
         }
     }
@@ -102,15 +103,15 @@ Column {
             label: ""
             Flow {
                 spacing: 8
-                Action { text: "Add event"; enabled: Google.connected && !Google.busy && eventText.text.trim() !== ""; onClicked: Google.run({ cmd: "eventAdd", text: eventText.text }) }
-                Action { text: "Open Calendar"; onClicked: Qt.openUrlExternally("https://calendar.google.com/") }
+                SettingsButton { text: "Add event"; enabled: Google.connected && !Google.busy && eventText.text.trim() !== ""; onClicked: Google.run({ cmd: "eventAdd", text: eventText.text }) }
+                SettingsButton { text: "Open Calendar"; onClicked: Qt.openUrlExternally("https://calendar.google.com/") }
             }
         }
     }
     Group {
         width: parent.width
         title: "Tasks"
-        footer: "Google tasks appear alongside local reminders. Tick, rename or delete them in Notification Center. Google supports due dates, but not due times. Cloud deletions have no Undo; sync errors keep your last complete snapshot."
+        footer: "Google tasks appear alongside local reminders. Tick, rename or delete them in Notification Center; changes show at once and reach Google in the background, and deleting can be undone for a few seconds. Google supports due dates, but not due times. If a task is changed here and on another device at the same time, the later change wins."
         Row {
             label: "New tasks go to"
             Dropdown {
@@ -122,7 +123,7 @@ Column {
         }
         Row {
             label: "Manage task lists"
-            Action { text: "Open Tasks"; onClicked: Qt.openUrlExternally("https://tasks.google.com/") }
+            SettingsButton { text: "Open Tasks"; onClicked: Qt.openUrlExternally("https://tasks.google.com/") }
         }
     }
     Group {
@@ -132,7 +133,7 @@ Column {
         Row {
             label: "Google Keep"
             detail: "Notes, lists and reminders in your Google account"
-            Action { text: "Open Keep"; onClicked: Google.openKeep() }
+            SettingsButton { text: "Open Keep"; onClicked: Google.openKeep() }
         }
     }
     Connections {
@@ -140,10 +141,6 @@ Column {
         function onMutationComplete() {
             if (Google.operation === "eventAdd")
                 eventText.text = "";
-        }
-        function onConnectedChanged() {
-            if (!Google.connected)
-                Config.options.google.taskListId = "";
         }
     }
 }

@@ -14,8 +14,9 @@ import qs.services
 //              a little larger, widgets and icons zoom in from the centre in
 //              turn, and windows, dock and menu bar fade in (LockFx and the
 //              veil below); fade: the same without movement (unlockTransition)
-//   locking    the same, played backwards, then the lock takes over showing
-//              the same picture (lockTransition)
+//   locking    the lock covers the screen at once (no unlocked moment while
+//              anything animates), then its own content plays the chosen
+//              entrance: zoom or fade (lockTransition, LockSurface)
 // StandBy state (idle, burn-in rests and shifts) lives here, shared by every
 // screen, so they wake together and can keep their clocks in step.
 Scope {

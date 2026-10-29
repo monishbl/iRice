@@ -13,12 +13,12 @@ Platter {
     property int padding: 12
     property bool fitHeight: false
     readonly property var todos: Todos.list
-    property var undo: null // { item, index }, offered back for a few seconds
+    property var undo: null // { item }, offered back for a few seconds
     implicitHeight: column.implicitHeight + 2 * padding
 
-    function remove(i) {
-        const removed = Todos.remove(i);
-        undo = removed ? { item: removed, index: i } : null;
+    function remove(todo) {
+        const removed = Todos.remove(todo);
+        undo = removed ? { item: removed } : null;
         undoTimer.restart();
     }
     Timer {
@@ -111,7 +111,7 @@ Platter {
                             Icon { anchors.centerIn: parent; visible: item.modelData.done; name: "check"; bold: true; size: 10; color: Theme.color.onAccent }
                             MouseArea {
                                 anchors { fill: parent; margins: -6 }
-                                onClicked: Todos.update(item.index, { done: !item.modelData.done })
+                                onClicked: Todos.update(item.modelData, { done: !item.modelData.done })
                             }
                         }
                         Column {
@@ -152,7 +152,7 @@ Platter {
                                             return;
                                         item.renaming = false;
                                         if (keep && text.trim() !== "" && text.trim() !== item.modelData.text)
-                                            Todos.update(item.index, { text: text.trim() });
+                                            Todos.update(item.modelData, { text: text.trim() });
                                     }
                                     onAccepted: finish(true)
                                     onActiveFocusChanged: if (!activeFocus) finish(true)
@@ -177,7 +177,7 @@ Platter {
                             color: Theme.color.tertiary
                             MouseArea {
                                 anchors { fill: parent; margins: -6 }
-                                onClicked: root.remove(item.index)
+                                onClicked: root.remove(item.modelData)
                             }
                         }
                         HoverHandler { id: rowHover }
@@ -206,7 +206,7 @@ Platter {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        Todos.restore(root.undo.item, root.undo.index);
+                        Todos.restore(root.undo.item);
                         root.undo = null;
                     }
                 }

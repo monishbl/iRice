@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import Quickshell
 import qs.common
 import qs.modules.settings
@@ -11,7 +12,7 @@ Column {
     Group {
         width: parent.width
         title: "Nearby sharing"
-        footer: !LocalSend.available ? "Sharing needs Python 3." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. If devices don't find each other, allow port 53317 in your firewall (e.g. sudo ufw allow 53317)." + (LocalSend.error ? " " + LocalSend.error : "")
+        footer: !LocalSend.available ? "Sharing needs Python 3 and openssl (for encrypted transfers)." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. If devices don't find each other, allow port 53317 in your firewall (e.g. sudo ufw allow 53317)." + (LocalSend.error ? " " + LocalSend.error : "")
         Row {
             label: "Send files"
             detail: "Choose files, then a device running LocalSend. Receiving can stay off."
@@ -49,22 +50,23 @@ Column {
         width: parent.width
         title: "Quick Share / Nearby Share"
         footer: "Uses Packet to send to and receive from Android's built-in Quick Share. Enable Bluetooth and connect both devices to the same Wi-Fi. Device selection, confirmation and progress appear in Packet." + (QuickShare.error ? " " + QuickShare.error : "")
+        // One row: what's there, and what to do about it
         Row {
-            label: QuickShare.available ? "Quick Share is available" : "Packet is not installed"
-            detail: "This is separate from LocalSend and its receiving setting."
-            SettingsButton {
-                text: QuickShare.available ? "Open Quick Share" : "Get Packet…"
-                busy: QuickShare.busy
-                onClicked: QuickShare.available ? QuickShare.open() : QuickShare.setup()
-            }
-        }
-        Row {
-            label: "Check installation"
-            detail: "Refresh after installing Packet"
-            SettingsButton {
-                text: "Check again"
-                busy: QuickShare.checking
-                onClicked: QuickShare.refresh()
+            label: "Quick Share"
+            detail: (QuickShare.available ? "Ready, through Packet" : "Needs the Packet app. Install it, then check again.") + " Separate from LocalSend and its receiving setting."
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    text: QuickShare.available ? "Open Quick Share" : "Get Packet…"
+                    busy: QuickShare.busy
+                    onClicked: QuickShare.available ? QuickShare.open() : QuickShare.setup()
+                }
+                SettingsButton {
+                    visible: !QuickShare.available
+                    text: "Check again"
+                    busy: QuickShare.checking
+                    onClicked: QuickShare.refresh()
+                }
             }
         }
     }

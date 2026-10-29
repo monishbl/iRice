@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Read-only copy progress with start identities and proper JSON encoding."""
+"""Copies in progress, for the island (services/Transfers.qml).
+
+Run under watch.sh (through transfers.sh), for as long as the island shows
+file copies. It looks for this user's cp, mv, rsync, dd, install, pv and
+gcp, and for each one the largest file it's reading and how far in it is.
+Each is reported with its start time, so cancelling one (process-identity.py)
+can never hit another process that later got the same pid. Every 2 s while
+something is copying, every 10 s when nothing is; a line of JSON only when
+the list changed. It ends when the shell that started it is gone.
+"""
 import json
 import os
 from pathlib import Path
@@ -33,21 +42,6 @@ def scan():
     return result
 
 
-def downloads(directory):
-    result = []
-    try:
-        for path in Path(directory).iterdir():
-            if path.suffix not in ('.part', '.crdownload', '.download') or not path.is_file():
-                continue
-            try:
-                result.append({'path': str(path), 'bytes': path.stat().st_size})
-            except OSError:
-                pass
-    except OSError:
-        pass
-    return result
-
-
 def main():
     parent, previous = os.getppid(), None
     while os.getppid() == parent:
@@ -60,7 +54,4 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--downloads':
-        print(json.dumps(downloads(sys.argv[2])))
-    else:
-        main()
+    main()

@@ -290,6 +290,11 @@ install_files() {
             run cp -a "$CONFIG/hypr" "$installed_backup/hypr" || return 1
         fi
         note "Installed configuration backup: $installed_backup"
+        # Only the last five are kept (each holds the whole shell and hypr)
+        local old
+        while IFS= read -r old; do
+            [[ -n "$old" && "$old" == "$DATA/irice/backups/installed-"* ]] && run rm -rf -- "$old"
+        done < <(ls -1d "$DATA/irice/backups/installed-"* 2>/dev/null | sort | head -n -5)
     fi
     # The shell
     run mkdir -p "$CONFIG/quickshell" "$BIN"

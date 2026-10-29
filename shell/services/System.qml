@@ -131,6 +131,8 @@ Singleton {
             locked = true;
             if (lockSecure)
                 finishSleep();
+            else
+                sleepGuard.restart();
         } else
             Quickshell.execDetached(cmd);
     }
@@ -141,15 +143,33 @@ Singleton {
         if (!sleepPending || !lockSecure || !locked)
             return;
         sleepPending = false;
+        sleepGuard.stop();
         Quickshell.execDetached(powerCommands.sleep);
     }
     onLockSecureChanged: if (lockSecure) finishSleep()
+    // Sleep only once the compositor confirms the lock: never sleep with the
+    // desktop open. If the lock doesn't come within a few seconds (the lock
+    // protocol was refused, the lock screen failed), stay awake and say so
+    // rather than waiting silently forever.
+    Timer {
+        id: sleepGuard
+        interval: 3000
+        onTriggered: {
+            if (!root.sleepPending)
+                return;
+            root.sleepPending = false;
+            Quickshell.execDetached(["notify-send", "-a", "iRice", "-i", "system-lock-screen", "Didn't sleep", "The screen couldn't be locked, so the computer stayed awake. Lock it first (Super+L), then choose Sleep."]);
+        }
+    }
     property bool locked: false
     // Remembered for this Hyprland session, so a shell that restarts while the
     // screen is locked (a crash, a repair) locks again straight away
     readonly property string lockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     onLockedChanged: {
-        if (!locked) sleepPending = false;
+        if (!locked) {
+            sleepPending = false;
+            sleepGuard.stop();
+        }
         Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark]);
     }
     Process {

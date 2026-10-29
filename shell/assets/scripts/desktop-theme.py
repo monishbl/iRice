@@ -16,7 +16,11 @@ import tempfile
 
 
 def update_ini(path, groups):
-    """Update selected keys without rewriting unrelated settings or comments."""
+    """Update selected keys without rewriting unrelated settings or comments.
+
+    Returns whether the file changed, so apps are only told to reload (which
+    repaints every KDE window) when something really did.
+    """
     path = Path(path).resolve()  # keep symlinked dotfiles linked to their source
     text = path.read_text() if path.exists() else ""
     for group, entries in groups.items():
@@ -39,7 +43,7 @@ def update_ini(path, groups):
             text = text.rstrip("\n") + "\n\n[" + group + "]\n"
             text += "".join(key + "=" + value + "\n" for key, value in entries.items())
     if path.exists() and path.read_text() == text:
-        return
+        return False
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".irice-theme-", dir=path.parent)
     try:
@@ -51,6 +55,23 @@ def update_ini(path, groups):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+    return True
+
+
+def current(path, group, key):
+    """A setting's value in an ini file, or "" when it isn't there."""
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    try:
+        parser.read(path)
+        return parser.get(group, key, fallback="")
+    except configparser.Error:
+        return ""
+
+
+# Schemes iRice may switch between; anything else was chosen by the user and
+# is left alone (a palette set in KDE's settings or qt6ct isn't ours to undo)
+OURS = re.compile(r"^(BreezeDark|BreezeLight|Breeze|iRice.*)?$")
 
 
 def fallback_scheme(path, dark):
@@ -87,10 +108,13 @@ def apply_kde(mode, scheme=None):
     if "Colors:View" not in groups or "ForegroundNormal" not in groups["Colors:View"]:
         raise ValueError("Incomplete KDE color scheme: " + str(scheme))
     groups["General"] = {"ColorScheme": scheme.stem}
-    update_ini(cfg / "kdeglobals", groups)
+    changed = False
+    if OURS.match(current(cfg / "kdeglobals", "General", "ColorScheme")):
+        changed |= update_ini(cfg / "kdeglobals", groups)
     # KColorSchemeManager also reads Dolphin's per-app scheme, independently
     # of the Qt style and kdeglobals. Keep both on the same complete palette.
-    update_ini(cfg / "dolphinrc", {"UiSettings": {"ColorScheme": scheme.stem}})
+    if OURS.match(current(cfg / "dolphinrc", "UiSettings", "ColorScheme")):
+        changed |= update_ini(cfg / "dolphinrc", {"UiSettings": {"ColorScheme": scheme.stem}})
     # Qt apps using qt6ct must use the same palette as KDE widgets.
     def color(group, key):
         value = groups["Colors:" + group][key]
@@ -114,10 +138,14 @@ def apply_kde(mode, scheme=None):
     for i in [0, 6, 8, 19]:
         disabled[i] = colors[20]
     qt_palette = cfg / "qt6ct/colors/iRiceDesktop.conf"
-    update_ini(qt_palette, {"ColorScheme": {"active_colors": ", ".join(colors), "inactive_colors": ", ".join(colors), "disabled_colors": ", ".join(disabled)}})
-    update_ini(cfg / "qt6ct/qt6ct.conf", {"Appearance": {"custom_palette": "true", "color_scheme_path": str(qt_palette)}})
+    # qt6ct: only when no palette is chosen, or one of ours (iRice.conf from
+    # Match apps, or this one)
+    chosen = current(cfg / "qt6ct/qt6ct.conf", "Appearance", "color_scheme_path")
+    if not chosen or Path(chosen).name.startswith("iRice"):
+        changed |= update_ini(qt_palette, {"ColorScheme": {"active_colors": ", ".join(colors), "inactive_colors": ", ".join(colors), "disabled_colors": ", ".join(disabled)}})
+        changed |= update_ini(cfg / "qt6ct/qt6ct.conf", {"Appearance": {"custom_palette": "true", "color_scheme_path": str(qt_palette)}})
     # Existing KDE apps that watch the desktop palette can reload it.
-    if shutil.which("gdbus"):
+    if changed and shutil.which("gdbus"):
         subprocess.run(["gdbus", "emit", "--session", "--object-path", "/KGlobalSettings", "--signal", "org.kde.KGlobalSettings.notifyChange", "0", "0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
 
 

@@ -56,10 +56,12 @@ test('desktop session Exec preserves quoted executable and arguments without she
 });
 test('sleep dispatch waits for compositor lock confirmation', () => {
     const calls=[];
-    const ctx={sleepPending:true,lockSecure:false,locked:true,powerCommands:{sleep:['systemctl','suspend']},Quickshell:{execDetached:c=>calls.push(c)}};
+    const guard={running:false,stop(){this.running=false;},restart(){this.running=true;}};
+    const ctx={sleepPending:true,lockSecure:false,locked:true,powerCommands:{sleep:['systemctl','suspend']},Quickshell:{execDetached:c=>calls.push(c)},sleepGuard:guard};
     const finish=method('shell/services/System.qml','finishSleep',ctx);
     finish(); assert.equal(calls.length,0);
     ctx.lockSecure=true; finish(); finish(); assert.equal(calls.length,1);
+    assert.equal(guard.running,false); // a sleep that went ahead leaves no "didn't sleep" warning pending
 });
 test('obsolete weather response cannot replace a newer location result', () => {
     const requests=[];

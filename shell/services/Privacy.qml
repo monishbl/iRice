@@ -233,7 +233,7 @@ Singleton {
     property bool stopping: false
     property bool stopFailed: false
     function stopSharing() {
-        const ids = shares.flatMap(x => x.links);
+        const ids = [].concat(...shares.map(x => x.links)); // (no flatMap in Qt's JavaScript engine)
         if (ids.length === 0)
             return;
         stopping = true;

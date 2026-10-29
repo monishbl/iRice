@@ -99,25 +99,18 @@ def fresh(cache, themes):
         return False
     if time.time() - made > 7 * 86400:
         return False
-    for t in themes:
-        for p in theme_paths(t):
-            # Nested additions change directory mtimes; replacements change file
-            # mtimes. Checking only the theme root misses both cases.
-            try:
-                for directory, dirs, files in walk_theme(p):
-                    if os.path.getmtime(directory) > made:
-                        return False
-                    for name in files:
-                        if os.path.getmtime(os.path.join(directory, name)) > made:
-                            return False
-            except OSError:
+    # Directories only: installing, updating or removing icons (a package,
+    # a theme copied in) renames files into place, which changes their
+    # directory's time. Looking at every file took a walk over 100k+ of them
+    # on each start. lstat: a broken link must not count as a change.
+    dirs = [d for t in themes for p in theme_paths(t) for d, _sub, _files in walk_theme(p)]
+    dirs += [d for d, _sub, _files in walk_theme('/usr/share/pixmaps')] if os.path.isdir('/usr/share/pixmaps') else []
+    for d in dirs:
+        try:
+            if os.lstat(d).st_mtime > made:
                 return False
-    try:
-        for directory, dirs, files in walk_theme('/usr/share/pixmaps'):
-            if os.path.getmtime(directory) > made or any(os.path.getmtime(os.path.join(directory, f)) > made for f in files):
-                return False
-    except OSError:
-        return False
+        except OSError:
+            continue  # gone since the walk: the walk itself saw what's there
     return True
 
 

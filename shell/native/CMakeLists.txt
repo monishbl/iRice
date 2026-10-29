@@ -21,7 +21,7 @@ qt_add_qml_module(irice_native
     VERSION 1.0
     PLUGIN_TARGET irice_native
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/IRice/Native
-    SOURCES glasssync.h glasssync.cpp
+    SOURCES glasssync.h glasssync.cpp glasssender.hpp
 )
 target_link_libraries(irice_native PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 

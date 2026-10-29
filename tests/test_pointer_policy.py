@@ -47,11 +47,11 @@ int main() {
             subprocess.run([binary], check=True, capture_output=True)
 
     @unittest.skipUnless(shutil.which('lua'), 'requires Lua')
-    def test_stationary_refocus_and_new_window_warp(self):
+    def test_stationary_refocus_and_new_window_warp_only_when_hyprland_focused_it(self):
         script = r'''
 local focus = dofile(arg[1])
 local calls = {}
-local window = {mapped=true, hidden=false, accepts_input=true, at={x=1920,y=0}, size={x=800,y=600}}
+local window = {mapped=true, hidden=false, accepts_input=true, active=true, visible=true, at={x=1920,y=0}, size={x=800,y=600}}
 local cursor = {x=20,y=30}
 hl = {
  get_cursor_pos = function() return cursor end,
@@ -61,12 +61,16 @@ hl = {
 }
 focus('')
 assert(#calls == 1 and calls[1].move.x == 20 and calls[1].move.y == 30)
+-- Hyprland focused it and shows it: the pointer moves onto it, nothing else
 calls={}; focus('0xab')
-assert(#calls == 2 and calls[1].focus == window)
-assert(calls[2].move.x == 2320 and calls[2].move.y == 300)
+assert(#calls == 1 and calls[1].move.x == 2320 and calls[1].move.y == 300)
 cursor={x=2000,y=100}; calls={}; focus('0xab')
-assert(calls[2].move.x == 2000 and calls[2].move.y == 100)
-window.accepts_input=false; calls={}; focus('0xab'); assert(#calls == 0)
+assert(#calls == 1 and calls[1].move.x == 2000 and calls[1].move.y == 100)
+-- Not focused by Hyprland (a rule, a dialog behind), or on a space out of
+-- sight: left alone
+window.active=false; calls={}; focus('0xab'); assert(#calls == 0)
+window.active=true; window.visible=false; calls={}; focus('0xab'); assert(#calls == 0)
+window.visible=true; window.accepts_input=false; calls={}; focus('0xab'); assert(#calls == 0)
 window.accepts_input=true; window.hidden=true; calls={}; focus('0xab'); assert(#calls == 0)
 '''
         with tempfile.TemporaryDirectory() as tmp:

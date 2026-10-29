@@ -124,7 +124,7 @@ Singleton {
     }
 
     readonly property var actions: [
-        { title: "Lock Screen…", glyph: "lock", keywords: "lock", run: () => Panels.showSession("lock") },
+        { title: "Lock Screen", glyph: "lock", keywords: "lock", run: () => System.power("lock") }, // (harmless and undone by your password: no confirmation)
         { title: "Sleep…", glyph: "moon", keywords: "suspend sleep", run: () => Panels.showSession("sleep") },
         { title: "Restart…", glyph: "arrow-clockwise", keywords: "reboot restart", run: () => Panels.showSession("restart") },
         { title: "Shut Down…", glyph: "power", keywords: "shutdown poweroff power off", run: () => Panels.showSession("shutdown") },

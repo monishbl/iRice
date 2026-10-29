@@ -56,17 +56,21 @@ void pointerInit(HANDLE handle) {
     for (const auto& fn : HyprlandAPI::findFunctionsByName(handle, "move")) {
         if (fn.demangled.find("CPointerManager::move(") == std::string::npos) continue;
         hook = HyprlandAPI::createFunctionHook(handle, fn.address, reinterpret_cast<void*>(&movePointer));
-        if (!hook || !hook->hook()) hook = nullptr;
+        // A hook that couldn't be put in place is handed back, not kept
+        if (hook && !hook->hook()) {
+            HyprlandAPI::removeFunctionHook(handle, hook);
+            hook = nullptr;
+        }
         break;
     }
 }
 bool pointerReady() { return hook != nullptr; }
 void pointerExit() {
-    if (hook) hook->unhook();
+    // The hook itself is removed by Hyprland when the plugin unloads (as in
+    // main.cpp's exit); only our state is reset here
     hook = nullptr; mode = 0; confinement.clear(); resistance.reset(); previousMonitor.clear();
 }
 std::string pointerCommand(const std::string& verb, std::istringstream& in) {
-    if (!hook) return "error: pointer boundary hook unavailable; rebuild for this Hyprland version";
     if (verb == "pointer-refocus") {
         // simulateMouseMovement alone is insufficient after 500ms of idle:
         // Hyprland resets accumulated motion to zero, failing its > threshold
@@ -74,7 +78,11 @@ std::string pointerCommand(const std::string& verb, std::istringstream& in) {
         // exclusive layers, pointer grabs and no-follow rules remain respected.
         g_pInputManager->m_lastCursorMovement.reset();
         g_pInputManager->simulateMouseMovement();
-    } else if (verb == "pointer-policy") {
+        return "ok";
+    }
+    // Boundaries and confinement work through the move hook
+    if (!hook) return "error: pointer boundary hook unavailable; rebuild for this Hyprland version";
+    if (verb == "pointer-policy") {
         int requested; double pixels;
         if (!(in >> requested >> pixels) || requested < 0 || requested > 2 || !std::isfinite(pixels) || pixels < 4 || pixels > 100)
             return "error: pointer-policy expects mode 0..2 and corner size 4..100";

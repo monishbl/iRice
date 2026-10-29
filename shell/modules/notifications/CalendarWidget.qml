@@ -134,7 +134,7 @@ Platter {
             Calendar.update(src.id, { start: src.start + shift, end: (src.end || src.start) + shift });
         } else if (item.kind === "todo") {
             const d = new Date(item.t.due);
-            Todos.update(item.t.i, { due: new Date(day.getFullYear(), day.getMonth(), day.getDate(), d.getHours(), d.getMinutes()).getTime() });
+            Todos.update(item.t, { due: new Date(day.getFullYear(), day.getMonth(), day.getDate(), d.getHours(), d.getMinutes()).getTime() });
         }
         selected = day;
     }
@@ -142,7 +142,7 @@ Platter {
         if (item.kind === "event")
             undo = { kind: "event", item: Calendar.remove(item.e.id) };
         else
-            undo = { kind: "todo", item: Todos.remove(item.t.i), index: item.t.i };
+            undo = { kind: "todo", item: Todos.remove(item.t) };
         if (!undo?.item)
             undo = null;
         undoTimer.restart();
@@ -164,6 +164,18 @@ Platter {
         Row {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             spacing: 4
+            // Scrolled down to the agenda: back up to the dates (here in the
+            // header, so it never covers the agenda's own buttons)
+            IconButton {
+                objectName: "calendarScrollUp"
+                visible: root.fitHeight && viewport.contentY > 24
+                width: 24
+                height: 24
+                icon: "arrow-up"
+                iconSize: 12
+                tooltip: "Back to calendar"
+                onClicked: root.scrollToCalendar()
+            }
             Segmented {
                 width: root.todoTab ? 150 : 104
                 height: 24
@@ -278,8 +290,14 @@ Platter {
                             id: wday
                             required property var modelData
                             readonly property bool isSelected: root.sameDay(modelData, root.selected)
-                            readonly property var evs: { Calendar.local; Calendar.remote; return Calendar.eventsOn(modelData); }
-                            readonly property var tds: { Todos.list; return Todos.on(modelData).filter(t => !t.done); }
+                            readonly property var allEvs: { Calendar.local; Calendar.remote; return Calendar.eventsOn(modelData); }
+                            readonly property var allTds: { Todos.list; return Todos.on(modelData).filter(t => !t.done); }
+                            // The desktop widget scrolls, so it lists everything; in
+                            // Notification Center a busy week mustn't stretch it: a few
+                            // per day, then "+N more"
+                            readonly property var evs: root.fitHeight ? allEvs : allEvs.slice(0, 4)
+                            readonly property var tds: root.fitHeight ? allTds : allTds.slice(0, 3)
+                            readonly property int more: allEvs.length + allTds.length - evs.length - tds.length
                             width: weekList.width
                             height: Math.max(40, weekCol.implicitHeight + 10)
                             radius: 8
@@ -352,6 +370,13 @@ Platter {
                                         }
                                     }
                                 }
+                                Text {
+                                    visible: wday.more > 0
+                                    leftPadding: 12
+                                    text: "+" + wday.more + " more"
+                                    color: Theme.color.secondary
+                                    font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                                }
                             }
                             MouseArea {
                                 id: wdayMouse
@@ -407,16 +432,11 @@ Platter {
                         color: Theme.color.tertiary
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
-                    // The outer viewport owns scrolling, including the footer.
-                    Flickable {
+                    // (The outer viewport does the scrolling, footer included)
+                    Column {
                         id: itemsView
                         visible: !root.todoMode && root.items.length > 0
                         width: parent.width
-                        height: contentHeight
-                        contentHeight: itemsCol.implicitHeight
-                        interactive: false
-                        clip: false
-                        boundsBehavior: Flickable.StopAtBounds
                         Column {
                             id: itemsCol
                             objectName: "calendarItems"
@@ -460,7 +480,7 @@ Platter {
                                         Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
                                         MouseArea {
                                             anchors { fill: parent; margins: -6 }
-                                            onClicked: Todos.update(row.modelData.t.i, { done: !row.modelData.t.done })
+                                            onClicked: Todos.update(row.modelData.t, { done: !row.modelData.t.done })
                                         }
                                     }
                                     Column {
@@ -569,7 +589,7 @@ Platter {
                                     if (root.undo.kind === "event")
                                         Calendar.restoreEvent(root.undo.item);
                                     else
-                                        Todos.restore(root.undo.item, root.undo.index);
+                                        Todos.restore(root.undo.item);
                                     root.undo = null;
                                 }
                             }
@@ -586,18 +606,6 @@ Platter {
             } // agenda
         } // column
     } // viewport
-
-    IconButton {
-        objectName: "calendarScrollUp"
-        anchors { right: parent.right; top: parent.top; rightMargin: root.padding; topMargin: root.padding + headRow.height + 10 }
-        z: 20
-        width: 28; height: 28
-        visible: root.fitHeight && viewport.contentY > 24
-        icon: "arrow-up"
-        iconSize: 14
-        tooltip: "Back to calendar"
-        onClicked: root.scrollToCalendar()
-    }
 
     // One date in the month grid
     component DayCell: Item {
@@ -731,7 +739,7 @@ Platter {
                 }
                 const due = t < 0 ? new Date(base.getTime() + (23 * 60 + 59) * 60000) : new Date(base.getTime() + t * 60000);
                 const saved = editing
-                    ? Todos.update(editing.t.i, { text: name, due: due.getTime(), allDay: t < 0 })
+                    ? Todos.update(editing.t, { text: name, due: due.getTime(), allDay: t < 0 })
                     : Todos.addItem({ text: name, done: false, due: due.getTime(), allDay: t < 0 });
                 if (!saved) {
                     error = Google.lastError || "Could not save the task.";

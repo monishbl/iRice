@@ -23,7 +23,10 @@ Singleton {
 
     property var keys: ({})
     property var edited: ({})
-    property var pending: []
+    // The fallback file's own contents: only these are ever written back to
+    // it (keys that live in the keyring must not be copied into a file)
+    property var fileKeys: ({})
+    property var pending: [] // [{ op: "store" | "clear", slot, key, label }]
 
     function get(provider, slot) {
         const env = envNames[provider] ? Quickshell.env(envNames[provider]) : "";
@@ -35,40 +38,62 @@ Singleton {
         return provider === "ollama" || get(provider, slot) !== "";
     }
 
-    function set(provider, key) {
+    // label: what the keyring shows for it, e.g. "Claude · API key"
+    function set(slot, key, label) {
         const k = Object.assign({}, keys);
-        k[provider] = key.trim();
+        k[slot] = key.trim();
         keys = k;
-        edited = Object.assign({}, edited, { [provider]: true });
-        pending = pending.concat([{ provider: provider, key: key.trim() }]);
-        storeNext();
+        edited = Object.assign({}, edited, { [slot]: true });
+        pending = pending.concat([{ op: "store", slot: slot, key: key.trim(), label: label || slot }]);
+        next();
     }
-    function storeNext() {
-        if (storer.running || pending.length === 0)
+    // Forget a credential everywhere (a removed model's): memory, the keyring
+    // and the fallback file
+    function clear(slot) {
+        if (!slot)
             return;
-        const next = pending[0];
+        const k = Object.assign({}, keys);
+        delete k[slot];
+        keys = k;
+        edited = Object.assign({}, edited, { [slot]: true });
+        if (fileKeys[slot] !== undefined) {
+            const f = Object.assign({}, fileKeys);
+            delete f[slot];
+            fileKeys = f;
+            fileWriter.save();
+        }
+        pending = pending.concat([{ op: "clear", slot: slot }]);
+        next();
+    }
+    function next() {
+        if (keyring.running || pending.length === 0)
+            return;
+        const job = pending[0];
         pending = pending.slice(1);
-        storer.provider = next.provider;
-        storer.key = next.key;
-        storer.running = true;
+        keyring.job = job;
+        keyring.command = job.op === "clear" ? ["secret-tool", "clear", "application", "irice", "provider", job.slot]
+            : ["secret-tool", "store", "--label=iRice · " + job.label, "application", "irice", "provider", job.slot];
+        keyring.stdinEnabled = job.op === "store";
+        keyring.running = true;
     }
 
-    // Keyring store; on failure fall back to the private file.
+    // Keyring store or clear; a store that fails falls back to the private
+    // file. The key goes in on stdin, never on the command line.
     Process {
-        id: storer
-        property string provider
-        property string key
-        command: ["secret-tool", "store", "--label=iRice " + provider + " API key", "application", "irice", "provider", provider]
-        stdinEnabled: true
+        id: keyring
+        property var job: ({})
         onStarted: {
-            write(key);
-            stdinEnabled = false;
+            if (job.op === "store") {
+                write(job.key);
+                stdinEnabled = false;
+            }
         }
         onExited: code => {
-            stdinEnabled = true;
-            if (code !== 0)
+            if (code !== 0 && job.op === "store") {
+                root.fileKeys = Object.assign({}, root.fileKeys, { [job.slot]: job.key });
                 fileWriter.save();
-            Qt.callLater(root.storeNext);
+            }
+            Qt.callLater(root.next);
         }
     }
 
@@ -85,7 +110,7 @@ Singleton {
         }
         stdinEnabled: true
         onStarted: {
-            write(JSON.stringify(root.keys));
+            write(JSON.stringify(root.fileKeys));
             stdinEnabled = false;
         }
         onExited: {
@@ -102,7 +127,8 @@ Singleton {
         path: root.fallbackPath
         onLoaded: {
             try {
-                root.keys = Object.assign({}, JSON.parse(text()), root.keys);
+                root.fileKeys = JSON.parse(text()) ?? {};
+                root.keys = Object.assign({}, root.fileKeys, root.keys);
             } catch (e) {}
         }
     }

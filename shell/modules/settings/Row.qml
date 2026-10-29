@@ -7,6 +7,7 @@ Item {
 
     property string label
     property string detail
+    property color labelColor: Theme.color.label // (a status line: secondary, or danger for an error)
     default property alias control: slot.data
 
     width: parent?.width ?? 0
@@ -20,7 +21,7 @@ Item {
             width: parent.width
             text: root.label
             wrapMode: Text.Wrap
-            color: Theme.color.label
+            color: root.labelColor
             font { family: Theme.font.family; pixelSize: Theme.font.body }
         }
         Text {

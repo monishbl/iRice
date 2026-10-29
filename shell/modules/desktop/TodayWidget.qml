@@ -25,13 +25,12 @@ Item {
     }
     // Events still to come today (all-day ones first)
     readonly property var events: Calendar.eventsOn(clock.now).filter(e => e.allDay || e.end > clock.now)
-    readonly property var todos: Todos.sorted(Todos.list.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
+    readonly property var todos: Todos.sorted(Todos.list.filter(t => !t.done))
 
-    function toggle(i) {
+    function toggle(t) {
         if (preview)
             return;
-        if (Todos.list[i])
-            Todos.update(i, { done: !Todos.list[i].done });
+        Todos.update(t, { done: !t.done });
     }
 
     // ── Greeting and weather ────────────────────────────────────────────
@@ -155,7 +154,7 @@ Item {
                     MouseArea {
                         anchors { fill: parent; margins: -6 }
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggle(todo.modelData.i)
+                        onClicked: root.toggle(todo.modelData)
                     }
                 }
                 Text {

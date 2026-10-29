@@ -1,4 +1,5 @@
-"""Isolated Google transport/storage and clipboard cache regressions; no real accounts."""
+"""The Google account helper (google-account.py): sign-in, storage and sync,
+with the network and accounts stubbed out; no real account is used."""
 import contextlib
 import importlib.util
 import io
@@ -24,7 +25,6 @@ def load(name):
 
 
 google = load('google-account')
-clipboard = load('clipboard-previews')
 
 
 class GoogleTests(unittest.TestCase):
@@ -162,39 +162,17 @@ class GoogleTests(unittest.TestCase):
         self.assertFalse(self.account.tokens.exists())
         self.assertFalse(self.account.cache.exists())
 
-
-class ClipboardTests(unittest.TestCase):
-    def test_cached_images_do_not_decode_again(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            image = Path(tmp) / '1.png'
-            image.write_bytes(b'image')
-            with patch.object(clipboard.subprocess, 'run') as run, contextlib.redirect_stdout(io.StringIO()) as output:
-                clipboard.previews('db', tmp, [('1', str(image))])
-                clipboard.previews('db', tmp, [('1', str(image))])
-                run.assert_not_called()
-            self.assertEqual(output.getvalue().splitlines(), [str(image), str(image)])
-
-    def test_failed_decode_does_not_publish_partial_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            image = Path(tmp) / '2.png'
-            def decode(*args, **kwargs):
-                kwargs['stdout'].write(b'partial')
-                return type('Result', (), {'returncode': 1})()
-            with patch.object(clipboard.subprocess, 'run', side_effect=decode), contextlib.redirect_stdout(io.StringIO()) as output:
-                clipboard.previews('db', tmp, [('2', str(image))])
-            self.assertFalse(image.exists())
-            self.assertEqual(output.getvalue(), '')
-            self.assertEqual(list(Path(tmp).iterdir()), [])
-
-    def test_decodes_beyond_old_48_image_limit(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            def decode(*args, **kwargs):
-                kwargs['stdout'].write(b'image')
-                return type('Result', (), {'returncode': 0})()
-            pairs = [(str(i), str(Path(tmp) / (str(i) + '.png'))) for i in range(60)]
-            with patch.object(clipboard.subprocess, 'run', side_effect=decode), contextlib.redirect_stdout(io.StringIO()) as output:
-                clipboard.previews('db', tmp, pairs)
-            self.assertEqual(len(output.getvalue().splitlines()), 60)
+    def test_a_task_change_refreshes_only_its_list(self):
+        google.atomic(self.account.cache, {'events': ['kept'], 'taskLists': [{'id': 'a', 'title': 'A'}, {'id': 'b', 'title': 'B'}],
+                                           'tasks': [{'id': '1', 'listId': 'a'}, {'id': '2', 'listId': 'b'}]})
+        fresh = [{'id': '3', 'listId': 'a', 'listName': 'A', 'text': 'new', 'done': False, 'date': '', 'notes': ''}]
+        with patch.object(self.account, 'access', return_value='token'), patch.object(self.account, 'sync') as full, \
+                patch.object(self.account, 'list_tasks', return_value=fresh), patch.object(google, 'request'), contextlib.redirect_stdout(io.StringIO()):
+            self.account.run({'cmd': 'taskUpdate', 'listId': 'a', 'id': '1', 'patch': {'done': True}})
+            full.assert_not_called()
+        data = google.read(self.account.cache)
+        self.assertEqual(data['events'], ['kept'])
+        self.assertEqual(sorted(t['id'] for t in data['tasks']), ['2', '3'])
 
 
 if __name__ == '__main__':

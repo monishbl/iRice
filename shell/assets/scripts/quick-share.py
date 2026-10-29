@@ -29,28 +29,48 @@ def installed_command():
     return None
 
 
-def variant_string(text):
-    return "'" + text.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "'"
+def activate(paths):
+    """Packet's send-files action, called over D-Bus with the paths as data
+    (a GVariant built by GLib, not text pasted into a gdbus command)."""
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    bus.call_sync(APP_ID, OBJECT_PATH, "org.gtk.Actions", "Activate",
+                  GLib.Variant("(sava{sv})", ("send-files", [GLib.Variant("as", paths)], {})),
+                  None, Gio.DBusCallFlags.NONE, 10000, None)
+
+
+def dbus_available():
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio  # noqa: F401
+        return True
+    except (ImportError, ValueError):
+        return False
 
 
 def handoff(paths, command):
     paths = [str(Path(p).expanduser().resolve()) for p in paths]
     if not paths or any(not Path(p).is_file() for p in paths):
         raise ValueError("Choose existing files to send. Folders must be zipped first.")
-    if not shutil.which("gdbus"):
-        raise RuntimeError("Quick Share needs gdbus (the glib2 package).")
+    for p in paths:
+        try:
+            p.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("Rename %s: Quick Share only takes file names in UTF-8." % os.path.basename(p.encode("utf-8", "surrogateescape").decode("utf-8", "replace")))
+    if not dbus_available():
+        raise RuntimeError("Quick Share needs python-gobject. Install it and try again.")
     subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    arguments = "[<@as [" + ", ".join(variant_string(p) for p in paths) + "]>]"
     # An already running Packet handles this immediately. A first launch needs
     # a moment to export its action group. Retry only pre-delivery errors.
     for attempt in range(25):
-        reply = subprocess.run(["gdbus", "call", "--session", "--dest", APP_ID,
-                                "--object-path", OBJECT_PATH, "--method", "org.gtk.Actions.Activate",
-                                "send-files", arguments, "{}"], capture_output=True, text=True, timeout=10)
-        if reply.returncode == 0:
+        try:
+            activate(paths)
             return
-        if not any(name in reply.stderr for name in ["ServiceUnknown", "NameHasNoOwner", "UnknownObject", "UnknownMethod"]) or attempt == 24:
-            raise RuntimeError("Packet couldn't open the files. Open Packet and try again. " + reply.stderr.strip()[-350:])
+        except Exception as error:  # GLib.Error (Gio isn't imported up here)
+            text = str(error)
+            if not any(name in text for name in ["ServiceUnknown", "NameHasNoOwner", "UnknownObject", "UnknownMethod"]) or attempt == 24:
+                raise RuntimeError("Packet couldn't open the files. Open Packet and try again. " + text[-350:])
         time.sleep(0.2)
 
 
@@ -63,7 +83,7 @@ def main():
     try:
         command = installed_command()
         if args.status:
-            print(json.dumps({"available": command is not None and shutil.which("gdbus") is not None}))
+            print(json.dumps({"available": command is not None and dbus_available()}))
             return 0
         if command is None:
             raise RuntimeError("Install Packet to use Android Quick Share.")

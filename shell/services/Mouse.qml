@@ -57,8 +57,6 @@ Singleton {
         if (!Config.ready)
             return;
         let lua = "hl.config({ input = { follow_mouse = " + (cfg.focus === "hover" ? 1 : 2) + ", mouse_refocus = true, focus_on_close = " + (cfg.focus === "hover" ? 1 : 0) + " } })\n";
-        if (cfg.focus === "hover")
-            lua += "hl.config({ input = { follow_mouse_threshold = 0 }, cursor = { warp_on_change_workspace = 0, warp_on_monitor_change = 0 } })\n";
         for (const m of mice)
             lua += deviceSpec(m) + "\n";
         lua += touchpadSpec() + "\n";

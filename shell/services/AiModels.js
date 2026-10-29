@@ -51,6 +51,10 @@ function validate(m) {
         return "Enter the API base URL for this endpoint.";
     if (m.endpoint && !/^https?:\/\/[^\s/?#@]+(?:\/[^\s?#]*)?$/.test(m.endpoint))
         return "Use an http:// or https:// API base URL without credentials, query parameters or a fragment.";
+    // A key sent over plain HTTP can be read by anyone on the network: only
+    // this computer may be reached without TLS (or an endpoint that takes no key)
+    if (m.endpoint && /^http:/.test(m.endpoint) && m.auth !== "none" && !isLocal(m.endpoint))
+        return "Use https:// for remote endpoints. Plain http:// is only for this computer (localhost).";
     if (m.provider === "vertex" && m.auth === "token") {
         if (!/^[a-zA-Z0-9._:-]+$/.test(m.project))
             return "Enter your Google Cloud project ID or project number.";
@@ -60,6 +64,12 @@ function validate(m) {
     if (m.provider === "anthropic" && (!Number.isInteger(m.maxTokens) || m.maxTokens < 1))
         return "Max output tokens must be a positive whole number.";
     return "";
+}
+
+// Loopback hosts: localhost, 127.x.x.x, [::1]
+function isLocal(url) {
+    const host = (/^[a-z]+:\/\/(\[[^\]]+\]|[^/:]+)/i.exec(url)?.[1] ?? "").toLowerCase();
+    return host === "localhost" || /^127(\.\d{1,3}){3}$/.test(host) || host === "[::1]";
 }
 
 function read(entries) {
@@ -128,6 +138,9 @@ function buildRequest(m, turns, opts, settings, credential) {
     if (m.provider === "anthropic") {
         const body = { model: m.id, max_tokens: opts.maxTokens ?? m.maxTokens, stream: true, system: sys,
             messages: turns.map(h => ({ role: h.role, content: content(h, "anthropic") })) };
+        // Only what the model was set up for: these are user-defined model
+        // IDs, and a model that doesn't support adaptive thinking, effort or
+        // a beta (the server-side fallback) rejects the whole request
         if (m.thinking && opts.thinking !== false) {
             body.thinking = { type: "adaptive", display: settings.showThinking ? "summarized" : "omitted" };
             body.output_config = { effort: opts.effort ?? settings.effort };

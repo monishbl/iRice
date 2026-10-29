@@ -98,7 +98,7 @@ Singleton {
                 property bool standbyWakeOnMouse: true // moving the mouse leaves StandBy (keys always do)
                 property bool standbySameClock: true // every screen shows the clock in the same place
                 property string unlockTransition: "zoom" // lock → desktop: zoom (iOS parallax) | fade | none
-                property string lockTransition: "zoom" // desktop → lock: zoom (unlocking in reverse) | fade | none
+                property string lockTransition: "zoom" // the lock screen's entrance: zoom (settles into place) | fade | none
                 property string standbyTransition: "morph" // lock → StandBy: morph (the clock moves and thins) | fade | none
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
