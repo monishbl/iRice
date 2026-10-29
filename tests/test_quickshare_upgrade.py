@@ -115,6 +115,12 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
                                      helper=self.helper, net_probe=probe)
         self.svc.preferred_port = self.svc.upgrade_port = 0  # (any free ports)
         self.svc.can_host = lambda n: True
+        self.answers = True
+
+        async def reachable(ip):
+            self.pinged = ip
+            return self.answers
+        self.svc.reachable = reachable
         await self.svc.configure(visible=True)
         # The link: the phone is the central, iRice the peripheral (GATT server)
         self.to_phone, self.to_engine, self.phone = bp.pair(engine_central=False, packet_size=185)
@@ -177,6 +183,31 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_lan"])
         self.assertEqual(self.events.of("warning"), [])
         self.assertEqual(self.helper.requests, [])  # (no root needed on a shared network)
+
+    async def test_a_lookalike_network_isnt_offered(self):
+        # (a phone on another network with the same numbering: no answer there)
+        self.net = net(shared=True)
+        self.answers = False
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_LAN, CR.WIFI_DIRECT], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(self.pinged, "127.0.0.2")
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
+
+    async def test_network_refused_then_wifi_direct(self):
+        self.net = net(shared=True)
+        data = os.urandom(3000)
+        sid = await self.offer_file(data, [CR.WIFI_LAN, CR.WIFI_DIRECT], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
+        _, offer = await read_until_offer(self.p)  # the next path, at once
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
+        self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_direct"])
 
     async def test_upgrades_to_a_wifi_direct_group_it_hosts(self):
         data = os.urandom(50_000)

@@ -295,21 +295,47 @@ def hotspot_path(group, port):
     return info
 
 
-def choose_host_path(conn, net, helper_ok):
-    """Which path to offer a phone that connected over Bluetooth:
-    "lan" (with our address), "direct", "hotspot" or None (stay)."""
+def host_paths(conn, net, helper_ok, reachable=True):
+    """The paths to offer a phone that connected over Bluetooth, best first:
+    ("lan", our address) when it's on our network (its ConnectionRequest
+    says where; `reachable`: it answers there — a phone can name an address
+    on a network that only looks like ours), then ("direct", None) and
+    ("hotspot", None) when the helper can make them. Empty: stay."""
     theirs = list(conn.remote_mediums)
     meta = conn.remote_metadata
-    if meta is not None and meta.ip_address and (not theirs or CR.WIFI_LAN in theirs):
+    out = []
+    if meta is not None and meta.ip_address and (not theirs or CR.WIFI_LAN in theirs) and reachable:
         mine = same_network(net.get("addresses", []), meta.ip_address)
         if mine:
-            return "lan", mine
+            out.append(("lan", mine))
     if helper_ok:
         if CR.WIFI_DIRECT in theirs and net.get("p2p_go", True):
-            return "direct", None
+            out.append(("direct", None))
         if CR.WIFI_HOTSPOT in theirs:
-            return "hotspot", None
-    return None, None
+            out.append(("hotspot", None))
+    return out
+
+
+def phone_address(conn):
+    meta = conn.remote_metadata
+    if meta is None or len(meta.ip_address) != 4:
+        return None
+    return str(ipaddress.IPv4Address(bytes(meta.ip_address)))
+
+
+async def reachable(ip):
+    """Whether something answers at this address (one ping, 1 s); True when
+    ping isn't there to ask."""
+    if not ip:
+        return False
+    if not shutil.which("ping"):
+        return True
+    try:
+        p = await asyncio.create_subprocess_exec("ping", "-c", "1", "-W", "1", "-n", "-q", ip,
+                                                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        return await asyncio.wait_for(p.wait(), 3) == 0
+    except (OSError, asyncio.TimeoutError):
+        return False
 
 
 def group_frequency(net, meta):

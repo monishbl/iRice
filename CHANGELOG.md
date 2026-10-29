@@ -1,5 +1,10 @@
 # iRice changelog
 
+## Quick Share: fast transfers, fewer alerts · 2026-10-30
+
+- Quick Share now moves files over a direct Wi-Fi link instead of slowly over Bluetooth: NetworkManager no longer takes the link down as it starts, and the phone is told the link's real channel. If the direct link can't start, a hotspot on your current channel is tried next.
+- While Quick Share is on, phones connecting and disconnecting over Bluetooth aren't announced in the island; Quick Share's own prompt and progress say what's happening.
+
 ## Wi-Fi and Bluetooth everywhere · 2026-10-29
 
 - Right-click a Wi-Fi network or a Bluetooth device, in the menu bar, Control Center or Settings, for Connect, Disconnect, Forget, Copy name and more. Press and hold works too.

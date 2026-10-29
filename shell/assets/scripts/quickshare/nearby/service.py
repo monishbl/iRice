@@ -20,7 +20,7 @@ import asyncio
 import os
 import socket
 
-from . import ble_format, debuglog, endpoint, offline, wifi
+from . import ble_format, debuglog, endpoint, wifi
 from .connection import Connection, ProtocolError
 from .sharing import Cancelled, Declined, Receive, Send
 from .transport import StreamTransport, TransportClosed
@@ -54,6 +54,7 @@ class QuickShareService:
         self.preferred_port = PORT
         self.upgrade_port = wifi.UPGRADE_PORT
         self.can_host = wifi.helper_possible  # (whether the root helper can make Wi-Fi links here)
+        self.reachable = wifi.reachable  # (whether the phone answers at the address it gave)
         if ble is not None:
             ble.on_session = lambda transport: asyncio.ensure_future(self._incoming_transport(transport))
             ble.on_state = self._bluetooth_changed
@@ -302,17 +303,19 @@ class QuickShareService:
         """Receiving over Bluetooth, accepted: offer the phone a faster link."""
         net = await self.net_probe()
         helper_ok = self.helper is not None and self.can_host(net)
-        path, mine = wifi.choose_host_path(conn, net, helper_ok)
-        self._log(f"{sid}: upgrade path {path}")
-        if path is None:
+        ip = wifi.phone_address(conn)
+        answers = await self.reachable(ip) if ip and wifi.same_network(net.get("addresses", []),
+                                                                         conn.remote_metadata.ip_address) else False
+        tries = wifi.host_paths(conn, net, helper_ok, reachable=answers)
+        self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers})")
+        if not tries:
             self._warn(sid, f"{SLOW}: {sender} and this computer share no network and Wi-Fi Direct isn't available "
                             "here. For full speed, put both on the same Wi-Fi.")
             return
-        tries = [path]
-        if path == "direct" and offline.ConnectionRequestFrame.WIFI_HOTSPOT in conn.remote_mediums:
-            tries.append("hotspot")
         reason = ""
-        for p in tries:
+        for p, mine in tries:
+            if conn._closed:
+                return
             medium = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot"}[p]
             listener = wifi.Listener(medium)
             try:

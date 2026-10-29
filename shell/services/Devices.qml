@@ -42,6 +42,12 @@ Singleton {
             if (d.connected === was || !live || !Island.wants("bluetooth"))
                 continue;
             const icon = btIcon(d);
+            // While Quick Share is on, phones connect and disconnect over
+            // Bluetooth for every transfer (and for finding each other):
+            // its own prompt and progress say what's happening, so those
+            // comings and goings aren't announced
+            if (QuickShare.running && (icon === "device-mobile" || icon === "bluetooth"))
+                continue;
             if (d.connected && (icon === "headphones" || icon === "speaker-hifi"))
                 lastBtAudio = Date.now();
             postBt(d, icon);

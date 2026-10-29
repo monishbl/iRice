@@ -548,13 +548,22 @@ Wiphy phy0
 
 
 class WifiHelper(unittest.TestCase):
-    def test_channel_choice_avoids_dfs(self):
-        usable = helper.parse_iw_phy(IW_PHY)
-        self.assertEqual(usable, {2412: True, 2467: False, 5180: True, 5260: False, 5500: False, 5745: True,
-                                  5865: False})
-        self.assertEqual(helper.pick_freq(5745, usable), 5745)  # the station's, when a group owner may use it
-        self.assertEqual(helper.pick_freq(5500, usable), 5180)  # DFS: the first safe one
-        self.assertEqual(helper.pick_freq(0, usable), 5180)
+    def test_channel_choice(self):
+        chans = helper.parse_iw_phy(IW_PHY)
+        self.assertEqual(chans, {2412: "ok", 2467: "no-ir", 5180: "ok", 5260: "radar", 5500: "radar", 5745: "ok",
+                                 5865: "disabled"})
+        # next to a connected station: its channel, even "no IR" (the connection lifts it)
+        self.assertEqual(helper.go_freq(5745, 5180, chans), 5745)
+        self.assertEqual(helper.go_freq(2467, 0, chans), 2467)
+        self.assertEqual(helper.go_freq(5500, 0, chans), 5180)  # radar: a free channel instead
+        self.assertEqual(helper.go_freq(0, 5745, chans), 5745)  # alone: the hint when it's free
+        self.assertEqual(helper.go_freq(0, 2467, chans), 5180)
+        self.assertEqual(helper.go_freq(0, 0, {}), 0)  # nothing known: wpa_supplicant picks
+        # a hotspot shares the station's channel, refused only for radar (and says which)
+        self.assertEqual(helper.ap_freq(2467, 0, chans), 2467)
+        self.assertEqual(helper.ap_freq(5745, 5180, chans), 5745)
+        with self.assertRaisesRegex(helper.Refused, "5500 MHz"):
+            helper.ap_freq(5500, 0, chans)
 
     def test_requests_are_checked(self):
         for bad in ("", "x" * 33, "a\nb", None, 5):
@@ -592,6 +601,130 @@ class WifiHelper(unittest.TestCase):
         self.assertEqual((offer["yiaddr"], offer["type"]), ("192.168.49.10", 2))
         self.assertEqual(helper.prefix_len("255.255.255.0"), 24)
         self.assertIsNone(helper.parse_dhcp(b"short"))
+
+
+class FakeWpa:
+    """wpa_supplicant as start_group sees it: GroupAdd makes `script` happen
+    (signals delivered while pump() runs, new interfaces appearing)."""
+
+    def __init__(self, script):
+        self.script = script
+        self.subs = {}
+        self.interfaces = ["/w/1"]
+        self.groups = {}
+        self.queue = []
+        self.calls = []
+
+    def subscribe(self, iface, signal, cb):
+        self.subs[signal] = cb
+        return signal
+
+    def unsubscribe(self, sub):
+        self.subs.pop(sub, None)
+
+    def call(self, path, iface, method, sig=None, args=()):
+        self.calls.append((path, method, args))
+        if method == "GroupAdd" and "ht40" in args[0] and "wide-refused" in self.script:
+            raise helper.Refused("wpa_supplicant: Did not receive correct message arguments")
+        if method == "GroupAdd":
+            self.queue = list(self.script)
+        return ()
+
+    def get(self, path, iface, prop):
+        if prop == "Interfaces":
+            return list(self.interfaces)
+        if prop == "Group":
+            return self.groups.get(path, "/")
+        raise helper.Refused("no such property")
+
+    def pump(self, seconds):
+        while self.queue:
+            step = self.queue.pop(0)
+            if step == "wide-refused":
+                continue
+            if step == "appear":
+                self.interfaces.append("/w/2")
+                self.groups["/w/2"] = "/w/2/Groups/YU"
+            else:
+                name, args = step
+                if name in self.subs:
+                    self.subs[name]("/w/1", args)  # (on the P2P device's object, not the group's)
+
+
+class GroupStart(unittest.TestCase):
+    STARTED = ("GroupStarted", ({"interface_object": "/w/2", "group_object": "/w/2/Groups/YU", "role": "GO"},))
+
+    def test_group_started_signal(self):
+        wpa = FakeWpa([self.STARTED])
+        self.assertEqual(helper.start_group(wpa, "/w/1", 5745, timeout=1, settle=0), ("/w/2", "/w/2/Groups/YU"))
+        add = [c for c in wpa.calls if c[1] == "GroupAdd"][0]
+        self.assertEqual(add[2][0]["frequency"], ("i", 5745))
+        self.assertEqual(wpa.subs, {})  # unsubscribed again
+
+    def test_retries_without_wide_channels(self):
+        wpa = FakeWpa(["wide-refused", self.STARTED])
+        helper.start_group(wpa, "/w/1", 0, timeout=1, settle=0)
+        adds = [c[2][0] for c in wpa.calls if c[1] == "GroupAdd"]
+        self.assertEqual(len(adds), 2)
+        self.assertNotIn("ht40", adds[1])
+
+    def test_a_group_that_ends_as_it_starts_is_reported_at_once(self):
+        # (what a real laptop did: P2P-GROUP-STARTED, then AP-DISABLED)
+        import time
+        wpa = FakeWpa([self.STARTED, ("GroupFinished", ({"interface_object": "/w/2", "role": "GO"},))])
+        t = time.monotonic()
+        with self.assertRaisesRegex(helper.Refused, "stopped right after starting"):
+            helper.start_group(wpa, "/w/1", 0, timeout=10, settle=0.05)
+        self.assertLess(time.monotonic() - t, 2)
+
+    def test_formation_failure_and_finished_end_the_wait(self):
+        for event, why in ((("GroupFormationFailure", ("no channel",)), "didn't form"),
+                           (("GroupFinished", ({},)), "ended as it started")):
+            with self.assertRaisesRegex(helper.Refused, why):
+                helper.start_group(FakeWpa([event]), "/w/1", 0, timeout=10, settle=0)
+
+    def test_polling_finds_a_group_without_its_signal(self):
+        self.assertEqual(helper.start_group(FakeWpa(["appear"]), "/w/1", 0, timeout=1, settle=0),
+                         ("/w/2", "/w/2/Groups/YU"))
+
+    def test_networkmanager_kept_off_and_restored(self):
+        import os
+        import tempfile
+        ran = []
+        old = (helper.NM_CONF_DIR, helper.run, helper.have)
+        with tempfile.TemporaryDirectory() as d:
+            helper.NM_CONF_DIR = os.path.join(d, "conf.d")
+            helper.run = lambda *cmd, check=True: ran.append(cmd) or ""
+            helper.have = lambda cmd: True
+            try:
+                links = helper.Links()
+                links._nm_off("wlan0")
+                links._nm_off("wlan0")  # (once per set of links)
+                path = os.path.join(helper.NM_CONF_DIR, helper.NM_CONF)
+                text = open(path).read()
+                self.assertIn("unmanaged-devices+=interface-name:p2p-wlan0-*;interface-name:p2p-grp-*;"
+                              "interface-name:qsc0;interface-name:qsap0", text)
+                self.assertNotIn("p2p-dev", text)  # NetworkManager's own P2P device stays its own
+                self.assertEqual(ran, [("nmcli", "general", "reload", "conf")])
+                links.teardown()
+                self.assertFalse(os.path.exists(path))
+                self.assertEqual(ran[-1], ("nmcli", "general", "reload", "conf"))
+                self.assertEqual(len(ran), 2)
+            finally:
+                helper.NM_CONF_DIR, helper.run, helper.have = old
+
+    def test_leftover_group_interfaces_are_removed(self):
+        ran = []
+        old = helper.run
+        helper.run = lambda *cmd, check=True: ran.append(cmd) or ""
+        try:
+            links = helper.Links()
+            links._netdevs = lambda: {"lo", "wlan0", "p2p-dev-wlan0", "p2p-wlan0-0"}
+            links._remove_new_groups({"lo", "wlan0", "p2p-dev-wlan0"})
+        finally:
+            helper.run = old
+        self.assertEqual(ran, [("iw", "dev", "p2p-wlan0-0", "del")])
+        self.assertEqual(helper.group_interfaces({"p2p-dev-wlan0", "p2p-grp-3", "qsc0"}), {"p2p-grp-3"})
 
 
 class WifiPaths(unittest.TestCase):

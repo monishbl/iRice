@@ -16,9 +16,18 @@ groups, interfaces, addresses, DHCP servers. Nothing is left configured.
 Everything goes through wpa_supplicant's D-Bus API (fi.w1.wpa_supplicant1,
 next to NetworkManager, which keeps the normal connection): P2PDevice.GroupAdd
 for a group; a virtual interface (iw) with its own wpa_supplicant interface
-for an access point or for joining, kept away from NetworkManager. The group's
-channel: the station's when a group owner may use it (not DFS / no-IR, per
-`iw phy`), else the first usable of 5180…5240, 5745…5805, 2412/2437/2462.
+for an access point or for joining. NetworkManager can't host a group itself
+(its Wi-Fi P2P device only joins peers), and it takes over any new Wi-Fi
+interface it sees — briefly downing it to change its MAC, which ends a group
+the moment it starts (seen on a real laptop: P2P-GROUP-STARTED, then
+AP-DISABLED in the same second). So first, a runtime drop-in
+(/run/NetworkManager/conf.d, appending to unmanaged-devices, gone at the next
+boot anyway) keeps it off our interfaces; it's removed again afterwards.
+The group's channel: the station's while it's connected (one radio, one
+channel; "no IR" is lifted there by the connection itself), unless radar
+detection rules it out; else the first freely usable of 5180…5240,
+5745…5805, 2412/2437/2462. The channel reported to the phone is the one the
+group really came up on.
 Requests are checked strictly (SSID, passphrase, channel): nothing from
 stdin reaches a shell or a command line unchecked.
 """
@@ -84,25 +93,62 @@ def check_ifname(name):
 
 
 def parse_iw_phy(text):
-    """`iw phy` → {freq: usable as group owner} (not disabled, no radar
-    detection, no "no IR")."""
+    """`iw phy` → {freq: "ok" | "no-ir" | "radar" | "disabled"}."""
     out = {}
     for line in text.splitlines():
         m = re.match(r"\s*\*\s+(\d+)(?:\.\d+)?\s+MHz\s+\[\d+\](.*)", line)
         if m:
             freq, rest = int(m.group(1)), m.group(2)
-            out[freq] = not any(w in rest for w in ("disabled", "radar detection", "no IR", "passive scanning"))
+            out[freq] = ("disabled" if "disabled" in rest else "radar" if "radar detection" in rest
+                         else "no-ir" if "no IR" in rest or "passive scanning" in rest else "ok")
     return out
 
 
-def pick_freq(wanted, usable):
-    """The group's channel: the wanted one when usable, else a safe one."""
-    if wanted and usable.get(wanted):
-        return wanted
-    for f in PREFERRED:
-        if usable.get(f):
-            return f
-    return 2437 if not usable else next((f for f, ok in sorted(usable.items()) if ok), 2437)
+def go_freq(station, hint, chans):
+    """A group owner's channel. Next to a connected station: the station's
+    (a GO may start on a "no IR" channel the station is on), unless it needs
+    radar detection; else the hint or a preferred channel that's freely
+    usable. 0: let wpa_supplicant choose."""
+    if station and chans.get(station, "ok") in ("ok", "no-ir"):
+        return station
+    if hint and chans.get(hint) == "ok":
+        return hint
+    return next((f for f in PREFERRED if chans.get(f) == "ok"), 0)
+
+
+def ap_freq(station, hint, chans):
+    """An access point next to a station has to share its channel; alone it
+    takes a freely usable one. Refused (with why) on a radar channel."""
+    if station:
+        kind = chans.get(station, "ok")
+        if kind in ("radar", "disabled"):
+            raise Refused(f"a hotspot can't share this Wi-Fi's channel ({station} MHz needs radar detection)"
+                          if kind == "radar" else f"the {station} MHz channel is disabled here")
+        return station
+    f = go_freq(0, hint, chans)
+    if not f:
+        raise Refused("no Wi-Fi channel here allows a hotspot")
+    return f
+
+
+NM_CONF_DIR = "/run/NetworkManager/conf.d"
+NM_CONF = "90-irice-quickshare.conf"
+
+
+def nm_unmanaged_conf(station):
+    """The drop-in that keeps NetworkManager off our interfaces: wpa_supplicant's
+    group interfaces ("p2p-<station>-N", or "p2p-grp-N" for long names) and
+    our own; appended (+=) to whatever the user lists already. Not p2p-dev-*:
+    that one is NetworkManager's own P2P device."""
+    specs = [f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
+             f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
+    return "# iRice Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
+           "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
+
+
+def group_interfaces(names):
+    """wpa_supplicant's P2P group interfaces among these netdev names."""
+    return {n for n in names if n.startswith("p2p-") and not n.startswith("p2p-dev-")}
 
 
 def group_add_args(freq, wide=True):
@@ -281,7 +327,8 @@ def have(cmd):
 
 
 class Wpa:
-    """wpa_supplicant over D-Bus (blocking calls; this helper is single-threaded)."""
+    """wpa_supplicant over D-Bus (blocking calls; this helper is single-threaded;
+    signals are taken while pump() turns GLib's default main context)."""
 
     def __init__(self):
         import gi
@@ -314,6 +361,22 @@ class Wpa:
         (p,) = self.call(WPA_PATH, WPA, "GetInterface", "s", (ifname,))
         return p
 
+    def subscribe(self, iface, signal, callback):
+        """callback(path, args) for wpa_supplicant's signal, from any object."""
+        def on_signal(conn, sender, path, iface_, signal_, params):
+            callback(path, params.unpack())
+        return self.bus.signal_subscribe(WPA, iface, signal, None, None, self.Gio.DBusSignalFlags.NONE, on_signal)
+
+    def unsubscribe(self, sub):
+        self.bus.signal_unsubscribe(sub)
+
+    def pump(self, seconds):
+        ctx = self.GLib.MainContext.default()
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not ctx.iteration(False):
+                time.sleep(0.02)
+
     def create(self, ifname):
         (p,) = self.call(WPA_PATH, WPA, "CreateInterface", "a{sv}",
                          ({"Ifname": ("s", ifname), "Driver": ("s", "nl80211")},))
@@ -326,9 +389,65 @@ class Wpa:
             pass
 
 
+def start_group(wpa, dev, freq, timeout=10, settle=0.5):
+    """GroupAdd on the station's P2P device; (group interface path, group path).
+
+    The answer is P2PDevice.GroupStarted, on the P2P device's object (not the
+    new group interface's); GroupFinished or GroupFormationFailure end the
+    wait at once. Polling the interfaces is the fallback. A group that ends
+    within `settle` seconds of starting is reported as such."""
+    events = []
+    subs = [wpa.subscribe(P2P, name, lambda path, args, name=name: events.append((name, path, args)))
+            for name in ("GroupStarted", "GroupFinished", "GroupFormationFailure")]
+    try:
+        before = set(wpa.get(WPA_PATH, WPA, "Interfaces"))
+        try:
+            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=True),))
+        except Refused:
+            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=False),))
+        found = None
+        end = time.monotonic() + timeout
+        while time.monotonic() < end and found is None:
+            wpa.pump(0.1)
+            for name, path, args in events:
+                if name == "GroupStarted":
+                    d = args[0] if args else {}
+                    found = (d.get("interface_object"), d.get("group_object"))
+                    break
+                if name == "GroupFormationFailure":
+                    raise Refused(f"the Wi-Fi Direct group didn't form ({args[0] if args else 'no reason given'})")
+                if name == "GroupFinished":
+                    raise Refused("the Wi-Fi Direct group ended as it started")
+            if found is None:
+                for path in set(wpa.get(WPA_PATH, WPA, "Interfaces")) - before:
+                    try:
+                        g = wpa.get(path, P2P, "Group")
+                    except Refused:
+                        continue
+                    if g and g != "/":
+                        found = (path, g)
+                        break
+        if found is None or not found[0] or not found[1]:
+            raise Refused("the Wi-Fi Direct group didn't start")
+        wpa.pump(settle)
+        if any(name == "GroupFinished" for name, _, _ in events):
+            raise Refused("the Wi-Fi Direct group stopped right after starting "
+                          "(something else on this computer took its interface)")
+        return found
+    finally:
+        for sub in subs:
+            wpa.unsubscribe(sub)
+
+
+def nm_reload():
+    if have("nmcli"):
+        run("nmcli", "general", "reload", "conf", check=False)
+
+
 class Links:
     def __init__(self):
         self.wpa = None
+        self.nm_conf = None
         self.undo = []  # callables, last first
 
     def _wpa(self):
@@ -355,6 +474,39 @@ class Links:
     @staticmethod
     def usable():
         return parse_iw_phy(run("iw", "phy", check=False)) if have("iw") else {}
+
+    def _nm_off(self, sta):
+        """NetworkManager keeps off our interfaces until teardown (see the top)."""
+        if self.nm_conf or not os.path.isdir(os.path.dirname(NM_CONF_DIR)):
+            return
+        os.makedirs(NM_CONF_DIR, exist_ok=True)
+        path = os.path.join(NM_CONF_DIR, NM_CONF)
+        with open(path, "w") as f:
+            f.write(nm_unmanaged_conf(sta))
+        self.nm_conf = path
+        nm_reload()
+
+        def restore():
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            self.nm_conf = None
+            nm_reload()
+        self.undo.append(restore)
+
+    def _netdevs(self):
+        try:
+            return set(os.listdir("/sys/class/net"))
+        except OSError:
+            return set()
+
+    def _remove_new_groups(self, before):
+        """Group interfaces wpa_supplicant left behind (a group that died
+        early can leave its netdev, down)."""
+        for name in sorted(group_interfaces(self._netdevs() - before)):
+            if re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", name):
+                run("iw", "dev", name, "del", check=False)
 
     def _address(self, iface, ip):
         run("ip", "link", "set", iface, "up")
@@ -387,33 +539,18 @@ class Links:
         run("ip", "link", "set", name, "address", mac, check=False)
         return mac
 
-    def host_p2p(self, freq):
+    def host_p2p(self, hint):
         wpa = self._wpa()
         sta = self.station()
-        usable = self.usable()
-        freq = pick_freq(freq or self.station_freq(sta), usable) if usable else (freq or self.station_freq(sta))
+        freq = go_freq(self.station_freq(sta), hint, self.usable())
+        self._nm_off(sta)
         dev = wpa.interface(sta)
-        before = set(wpa.get(WPA_PATH, WPA, "Interfaces"))
-        try:
-            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=True),))
-        except Refused:
-            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=False),))
-        group_iface = group = None
-        end = time.monotonic() + 10
-        while time.monotonic() < end and group is None:
-            time.sleep(0.1)
-            for path in set(wpa.get(WPA_PATH, WPA, "Interfaces")) - before:
-                try:
-                    g = wpa.get(path, P2P, "Group")
-                except Refused:
-                    continue
-                if g and g != "/":
-                    group_iface, group = path, g
-                    break
-        if group is None:
-            raise Refused("the Wi-Fi Direct group didn't start")
+        netdevs = self._netdevs()
+        self.undo.append(lambda: self._remove_new_groups(netdevs))
+        group_iface, group = start_group(wpa, dev, freq)
         self.undo.append(lambda: wpa.call(group_iface, P2P, "Disconnect"))
         ifname = check_ifname(wpa.get(group_iface, IFACE, "Ifname"))
+        self._unmanaged(ifname)
         ssid = bytes(wpa.get(group, GROUP, "SSID")).decode("utf-8", "replace")
         passphrase = wpa.get(group, GROUP, "Passphrase")
         real = int(wpa.get(group, GROUP, "Frequency") or freq or 0)
@@ -421,15 +558,11 @@ class Links:
         self._dhcp_server(ifname, GO_IP)
         return {"ssid": ssid, "passphrase": passphrase, "freq": real, "ip": GO_IP, "iface": ifname}
 
-    def host_ap(self, freq):
+    def host_ap(self, hint):
         wpa = self._wpa()
         sta = self.station()
-        here = self.station_freq(sta)
-        usable = self.usable()
-        # (an access point next to a station has to share its channel)
-        freq = here or pick_freq(freq, usable)
-        if usable and not usable.get(freq):
-            raise Refused("this Wi-Fi channel doesn't allow a hotspot")
+        freq = ap_freq(self.station_freq(sta), hint, self.usable())
+        self._nm_off(sta)
         self._virtual(sta, AP_IFACE, "__ap")
         path = wpa.create(AP_IFACE)
         self.undo.append(lambda: wpa.remove(path))
@@ -449,6 +582,7 @@ class Links:
     def join(self, ssid, passphrase, freq):
         wpa = self._wpa()
         sta = self.station()
+        self._nm_off(sta)
         mac = self._virtual(sta, JOIN_IFACE, "managed")
         run("ip", "link", "set", JOIN_IFACE, "up")
         path = wpa.create(JOIN_IFACE)
