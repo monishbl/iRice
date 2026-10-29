@@ -11,8 +11,6 @@ the shell.
 
 ## Open bugs
 
-- Windows opened from Settings (wallpaper picker, Connect Google) appear behind Settings.
-- "Open in the app" links from a browser don't bring the target app forward.
 - A finished download can leave a stale "Unconfirmed … · Downloading 0 B" card in the island.
 - Scrolling over the island doesn't switch between its activities.
 - Notification cards scroll behind the Notification Center header and spoil its backdrop.

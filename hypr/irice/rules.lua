@@ -20,6 +20,22 @@ hl.window_rule({
 -- Settings window floats like an app window
 hl.window_rule({ match = { title = "^iRice Settings$" }, float = true })
 hl.window_rule({ match = { title = "^iRice Settings$" }, center = true })
+
+-- File pickers and account dialogs float, centred, on top. Opened from a
+-- floating window (Settings' "Choose…", Connect Google), a tiled one would
+-- sit behind it, as floating windows stay above tiled ones. The portals'
+-- own windows: their file chooser, and the screen-sharing and app pickers.
+for _, m in ipairs({
+    { class = "^(org\\.freedesktop\\.impl\\.portal\\.desktop\\.kde|xdg-desktop-portal-gtk|xdg-desktop-portal-gnome|hyprland-share-picker)$" },
+    { class = "^(org\\.irice\\.GoogleSignIn|org\\.gnome\\.OnlineAccounts|polkit-kde-authentication-agent-1|org\\.kde\\.polkit-kde-authentication-agent-1)$" },
+}) do
+    hl.window_rule({ match = m, float = true })
+    hl.window_rule({ match = m, center = true })
+end
+hl.window_rule({
+    match = { class = "^(org\\.freedesktop\\.impl\\.portal\\.desktop\\.kde|xdg-desktop-portal-gtk|xdg-desktop-portal-gnome)$" },
+    size = "(monitor_w*0.6) (monitor_h*0.7)"
+})
 hl.window_rule({ match = { class = "^(org.pulseaudio.pavucontrol|nm-connection-editor|blueman-manager)$" }, float = true })
 
 -- Fully opaque whatever the window transparency setting (Settings →

@@ -1,8 +1,10 @@
 import QtQuick
 import QtQuick as QQ
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
+import qs.services
 
 // iRice Settings: a regular app window. Translucent sidebar of sections on the
 // left (the compositor blurs what's behind it), the selected pane on the right.
@@ -88,6 +90,24 @@ Scope {
                 forward = forward.slice(1);
                 Panels.settingsPage = to;
                 stepping = false;
+            }
+            // Out of the way while you sign in to Google: the sign-in window
+            // and the browser would open behind Settings (it floats; they
+            // don't). It waits in the dock and comes back by itself when the
+            // sign-in is done, failed or cancelled.
+            property bool aside: false
+            readonly property var toplevel: Hyprland.toplevels.values.find(t => t.title === "iRice Settings") ?? null
+            Connections {
+                target: Google
+                function onSigningInChanged() {
+                    if (Google.signingIn && !win.aside && win.toplevel) {
+                        win.aside = true;
+                        Apps.minimize(win.toplevel);
+                    } else if (!Google.signingIn && win.aside) {
+                        win.aside = false;
+                        Apps.restore(win.toplevel);
+                    }
+                }
             }
             Shortcut { sequence: "Alt+Left"; onActivated: win.goBack() }
             Shortcut { sequence: "Alt+Right"; onActivated: win.goForward() }

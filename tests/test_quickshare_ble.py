@@ -78,6 +78,17 @@ class Advertisement(unittest.TestCase):
         self.assertEqual(parsed["psm"], 161)
         self.assertEqual(endpoint.parse_endpoint_info(parsed["endpoint_info"])["type"], "phone")
 
+    def test_fits_the_controller(self):
+        info = endpoint.endpoint_info("Wanderer’s laptop", endpoint.LAPTOP)  # (a multi-byte character)
+        full = ble_format.advertisement("AB12", info, b"\0\1")
+        self.assertEqual(ble_format.fitting_advertisement("AB12", info, b"\0\1", 251), full)
+        cut = ble_format.fitting_advertisement("AB12", info, b"\0\1", len(full) - 3)
+        self.assertLessEqual(len(cut), len(full) - 3)
+        name = endpoint.parse_endpoint_info(ble_format.parse_service_data(cut)["endpoint_info"])["name"]
+        self.assertTrue("Wanderer’s laptop".startswith(name) and len(name) < len("Wanderer’s laptop"))
+        # a legacy-only controller (31 bytes): no extended advertisement at all
+        self.assertIsNone(ble_format.fitting_advertisement("AB12", info, b"\0\1", 31 - ble_format.AD_OVERHEAD))
+
     def test_rejects_what_isnt_quick_share(self):
         for raw in (b"", b"\x48", bytes(17), b"\x48\x01\x02\x03" + struct.pack(">I", 2) + b"zz",
                     ble_format.header([("NearbySharing", b"x")], True)):
@@ -422,6 +433,78 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
         bus.signal(dev, bluez.PROPS, "PropertiesChanged", (bluez.DEVICE, {"Connected": False}, []))
         with self.assertRaises(TransportClosed):
             await sessions[0].read_frame(1)
+
+    async def gatt(self, bus):
+        ble = bluez.Bluetooth(bus)
+        await ble.start()
+        await ble.advertise(ble_format.advertisement("AB12", endpoint.endpoint_info("D"), b"\0\0"))
+        m = lambda path, name: bus.exported[path][2][(bluez.GATT_CHAR, name)]  # noqa: E731
+        return ble, m(bluez.WRITE_PATH, "WriteValue"), m(bluez.NOTIFY_PATH, "StartNotify")
+
+    async def test_a_write_before_subscribing_never_blocks(self):
+        # (a real phone dropped every attempt 2 s in: its first write waited
+        # for a subscription BlueZ could only deliver after the write returned)
+        bus = FakeBus(dict(ADAPTER))
+        ble, write, start = await self.gatt(bus)
+        flags = bus.exported[bluez.NOTIFY_PATH][1](bluez.GATT_CHAR)["Flags"][1]
+        self.assertIn("indicate", flags)  # as Nearby's own peripherals
+        dev = "/org/bluez/hci0/dev_AA"
+        await asyncio.wait_for(write((list(weave.connection_request(0)), {"device": dev, "mtu": 517}), ":1.9"), 0.2)
+        self.assertEqual([e for e in bus.emitted if e[0] == bluez.NOTIFY_PATH], [])  # held until it subscribes
+        await start((), ":1.9")
+        confirm = [e for e in bus.emitted if e[0] == bluez.NOTIFY_PATH][0][2][1]["Value"][1]
+        self.assertEqual(confirm, weave.with_counter(weave.connection_confirm(512), 0))  # (0: we choose)
+
+    async def test_a_phone_that_never_subscribes_is_let_go(self):
+        bus = FakeBus(dict(ADAPTER))
+        ble, write, start = await self.gatt(bus)
+        old, bluez.SUBSCRIBE_WAIT = bluez.SUBSCRIBE_WAIT, 0.05
+        try:
+            await write((list(weave.connection_request(100)), {"device": "/d", "mtu": 247}), ":1.9")
+            await asyncio.sleep(0.15)
+        finally:
+            bluez.SUBSCRIBE_WAIT = old
+        self.assertIsNone(ble.session)
+        self.assertEqual(ble.pending, [])
+
+    async def test_packet_log_shows_control_bytes_only(self):
+        from nearby import debuglog
+        import os
+        import tempfile
+        bus = FakeBus(dict(ADAPTER))
+        ble, write, start = await self.gatt(bus)
+        with tempfile.TemporaryDirectory() as d:
+            debuglog._path = os.path.join(d, "log")
+            try:
+                await start((), ":1.9")
+                await write((list(weave.connection_request(185)), {"device": "/d", "mtu": 188}), ":1.9")
+                await write((list(weave.with_counter(weave.data_packet(True, False, b"SECRETDATA"), 1)),
+                             {"device": "/d"}), ":1.9")
+                bus.signal("/d", bluez.PROPS, "PropertiesChanged", (bluez.DEVICE, {"Paired": True}, []))
+                text = open(debuglog._path).read()
+            finally:
+                debuglog._path = None
+        self.assertIn("← write (request, MTU 188) 0101: 7 bytes, control 80000100010" + "0b9", text)
+        self.assertIn("→ indicate 0102: 5 bytes, control 81000100b9", text)
+        self.assertIn("data #1 first", text)
+        self.assertNotIn("SECRET", text)
+        self.assertNotIn(b"SECRETDATA".hex(), text)
+        self.assertIn("device d: {'Paired': True}", text)
+
+    async def test_service_fits_the_advertisement_to_the_controller(self):
+        from nearby.service import QuickShareService
+        for longest, expect in ((31, [bluez.ADV_LEGACY]), (251, [bluez.ADV_EXTENDED, bluez.ADV_LEGACY])):
+            bus = FakeBus(dict(ADAPTER))
+            bus.props[("/org/bluez/hci0", "SupportedCapabilities")] = {"MaxAdvLen": longest}
+            ble = bluez.Bluetooth(bus)
+            await ble.start()
+            svc = QuickShareService(lambda ev: None, None, name="Desk", ble=ble)
+            svc.preferred_port = 0
+            await svc.configure(visible=True)
+            self.assertEqual([c[3][0] for c in bus.calls if c[2] == "RegisterAdvertisement"], expect)
+            # slot 0 keeps the full advertisement either way
+            self.assertEqual(ble_format.parse_service_data(ble.slot_value)["endpoint_id"], svc.endpoint_id)
+            await svc.close()
 
     async def test_scan_is_filtered_and_finds_phones(self):
         bus = FakeBus(dict(ADAPTER))

@@ -151,6 +151,9 @@ Item {
         id: bounce
         property real offset: 0
     }
+    // An app asking for attention (urgent) bounces, like macOS
+    readonly property bool wantsAttention: root.isApp && root.item.entry ? Badges.urgentFor(root.item.id) : false
+    onWantsAttentionChanged: if (wantsAttention) bounceAnim.restart()
     SequentialAnimation {
         id: bounceAnim
         loops: 2

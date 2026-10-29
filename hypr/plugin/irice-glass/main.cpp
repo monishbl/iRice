@@ -11,7 +11,10 @@
 //
 // hyprctl irice-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl irice-glass clear [<monitor> <namespace>]
-// hyprctl irice-glass ping            -> "irice-glass 3" (2: gloss; 3: pointer boundaries)
+// hyprctl irice-glass ping            -> "irice-glass 4" (2: gloss; 3: pointer boundaries;
+//                                       4: pointer-follow, input-age)
+// hyprctl irice-glass pointer-follow <0|1> (hover focus: windows brought forward take the pointer)
+// hyprctl irice-glass input-age       -> ms since the last key or button press
 // hyprctl irice-glass pointer-policy <0..2> <corner px>
 // hyprctl irice-glass pointer-confine <monitor|-> (1.5-second lease)
 // hyprctl irice-glass controls on|off [dark|light]   (see controls.cpp)
@@ -592,10 +595,10 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     std::istringstream in(request);
     std::string        name, verb;
     in >> name >> verb;
-    if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus")
+    if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus" || verb == "pointer-follow" || verb == "input-age")
         return pointerCommand(verb, in);
     if (verb == "ping")
-        return pointerReady() ? "irice-glass 3" : "irice-glass 2";
+        return pointerReady() ? "irice-glass 4" : "irice-glass 2";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;

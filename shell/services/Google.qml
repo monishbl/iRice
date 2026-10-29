@@ -199,6 +199,10 @@ Singleton {
     }
 
     property bool replied: false // the helper said anything (else it crashed or couldn't start)
+    // A sign-in window or the browser is up for signing in (Settings steps
+    // aside meanwhile, and comes back when this goes false: done, failed or
+    // cancelled)
+    property bool signingIn: false
     Process {
         id: helper
         command: ["python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/google-account.py").toString().replace("file://", "")), Config.dir + "/google"]
@@ -209,6 +213,7 @@ Singleton {
         }
         onExited: code => {
             stdinEnabled = true;
+            root.signingIn = false;
             if (code !== 0 && !root.replied)
                 root.lastError = "Google helper failed. Check that python3 and python-gobject are installed.";
             // The write is in Google's data now (or failed, and is shown as
@@ -236,8 +241,12 @@ Singleton {
                 root.replied = true;
                 try {
                     const message = JSON.parse(line);
-                    if (message.authUrl && message.authUrl.startsWith("https://accounts.google.com/o/oauth2/v2/auth?"))
+                    if (message.signingIn)
+                        root.signingIn = true;
+                    if (message.authUrl && message.authUrl.startsWith("https://accounts.google.com/o/oauth2/v2/auth?")) {
+                        root.signingIn = true;
                         Qt.openUrlExternally(message.authUrl);
+                    }
                     if (message.data) {
                         root.account = message.data;
                         if (["disconnect", "forget"].includes(root.operation) && !root.connected)

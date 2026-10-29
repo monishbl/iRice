@@ -177,6 +177,9 @@ class Account:
         if not helper:
             raise RuntimeError('Connecting from here needs iRice\'s native helpers. Run Software Update (or irice rebuild), or use Online Accounts.')
         import subprocess
+        # (the shell moves Settings out of the way while the sign-in window
+        # and the browser are up: it would cover them)
+        emit({'signingIn': True})
         try:
             out = subprocess.run([helper], capture_output=True, text=True, timeout=330).stdout
         except subprocess.TimeoutExpired:

@@ -55,6 +55,7 @@ RX_INSTANT_BIT = 0x02
 DUMMY_SERVICE_ID_LENGTH = 128  # ble.cc kDummyServiceIdLength
 BLOOM_BYTES = 10
 BLOOM_HASHES = 5
+AD_OVERHEAD = 4 + 3  # around service data in an advertisement: its length, type and UUID; flags BlueZ may add
 
 
 class AdvertisementError(ValueError):
@@ -98,6 +99,26 @@ def medium_advertisement(data, device_token, psm=0):
 def advertisement(endpoint_id, endpoint_info, device_token, psm=0):
     """The 0xFEF3 service data of a visible iRice."""
     return medium_advertisement(connections_advertisement(endpoint_id, endpoint_info), device_token, psm)
+
+
+def fitting_advertisement(endpoint_id, endpoint_info, device_token, room, psm=0):
+    """The advertisement in at most `room` bytes of service data: the name in
+    the endpoint info cut (whole characters) until it fits; None if even one
+    character doesn't (then only the legacy header goes out)."""
+    full = advertisement(endpoint_id, endpoint_info, device_token, psm)
+    if len(full) <= room:
+        return full
+    name = endpoint_info[18:].decode("utf-8", "ignore")
+    keep = len(name.encode("utf-8")) - (len(full) - room)
+    while keep > 0:
+        cut = name.encode("utf-8")[:keep].decode("utf-8", "ignore").encode("utf-8")
+        if cut:
+            info = endpoint_info[:17] + bytes([len(cut)]) + cut
+            out = advertisement(endpoint_id, info, device_token, psm)
+            if len(out) <= room:
+                return out
+        keep -= 1
+    return None
 
 
 def header(slots, extended, psm=0, dummy_service_id=None):

@@ -1,5 +1,16 @@
 # iRice changelog
 
+## Quick Share over Bluetooth fixed, apps come forward · 2026-10-29
+
+**Quick Share**
+- Phones sending over Bluetooth disconnected after two seconds and reported "failed". iRice now answers the phone's connection in time, and its Bluetooth announcement fits your Bluetooth chip.
+- If a phone paired with this computer during an earlier try, remove that pairing on both devices first; Quick Share doesn't need it.
+
+**Apps come forward**
+- Clicking a link, or "Open in the app" in the browser, brings the app forward even with focus following the pointer. The pointer moves onto it, so focus stays there.
+- An app that asks for attention while you're busy elsewhere doesn't steal focus: its dock icon bounces and the island offers Show.
+- File pickers and sign-in windows open centred, on top of Settings. While you sign in to Google, Settings waits in the dock and comes back by itself.
+
 ## iRice's own Quick Share, enterprise Wi-Fi · 2026-10-29
 
 **Quick Share with Android, built in**

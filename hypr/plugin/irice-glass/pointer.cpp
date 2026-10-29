@@ -6,7 +6,14 @@
 #include <chrono>
 #include <sstream>
 #include <string>
+#include <hyprland/src/event/EventBus.hpp>
+#include <hyprland/src/desktop/state/FocusState.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include "pointer-policy.hpp"
+#include "focus-policy.hpp"
 
 static CFunctionHook* hook = nullptr;
 static int mode = 0;
@@ -52,7 +59,56 @@ static void movePointer(void* self, const Vector2D& delta) {
     original(self, Vector2D{to.x - old.x, to.y - old.y});
 }
 
+// ── Focus that follows the pointer, and windows brought forward ──────────
+// (focus-policy.hpp says when; the shell turns it on for hover focus with
+// `pointer-follow 1`.) Also when the user last clicked or typed, so the shell
+// can tell a window asking for attention right after a click on a link (bring
+// it forward) from one pinging on its own (just show it wants attention).
+static bool               followFocus = false;
+static double             lastInput   = -1e12;
+static CHyprSignalListener focusListener, keyListener, buttonListener;
+
+static bool inBox(const CBox& b, const Vector2D& p) {
+    return p.x >= b.x && p.y >= b.y && p.x < b.x + b.w && p.y < b.y + b.h;
+}
+static bool shows(const PHLWINDOW& w) {
+    return w && w->m_isMapped && !w->isHidden() && w->m_workspace && w->m_workspace->isVisible();
+}
+static void onFocus(PHLWINDOW w, Desktop::eFocusReason reason) {
+    if (!followFocus || !shows(w) || !FocusPolicy::broughtForward((int)reason))
+        return;
+    // After the focus change has settled (not from inside it)
+    PHLWINDOWREF ref = w;
+    g_pEventLoopManager->doLater([ref, reason] {
+        const auto win = ref.lock();
+        if (!followFocus || !shows(win) || g_pInputManager->isConstrained())
+            return;
+        const auto pos   = Pointer::mgr()->position();
+        const auto box   = win->getWindowMainSurfaceBox();
+        bool       other = false;
+        for (auto& o : Desktop::windowState()->windows())
+            if (o != win && shows(o) && inBox(o->getWindowMainSurfaceBox(), pos)) {
+                other = true;
+                break;
+            }
+        if (FocusPolicy::shouldWarp((int)reason, inBox(box, pos), other))
+            Pointer::mgr()->warpTo(box.middle());
+    });
+}
+static void focusInit() {
+    focusListener  = Event::bus()->m_events.window.active.listen([](PHLWINDOW w, Desktop::eFocusReason r) { onFocus(w, r); });
+    keyListener    = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent e, Event::SCallbackInfo&) {
+        if (e.state == WL_KEYBOARD_KEY_STATE_PRESSED)
+            lastInput = milliseconds();
+    });
+    buttonListener = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo&) {
+        if (e.state == WL_POINTER_BUTTON_STATE_PRESSED)
+            lastInput = milliseconds();
+    });
+}
+
 void pointerInit(HANDLE handle) {
+    focusInit();
     for (const auto& fn : HyprlandAPI::findFunctionsByName(handle, "move")) {
         if (fn.demangled.find("CPointerManager::move(") == std::string::npos) continue;
         hook = HyprlandAPI::createFunctionHook(handle, fn.address, reinterpret_cast<void*>(&movePointer));
@@ -69,8 +125,21 @@ void pointerExit() {
     // The hook itself is removed by Hyprland when the plugin unloads (as in
     // main.cpp's exit); only our state is reset here
     hook = nullptr; mode = 0; confinement.clear(); resistance.reset(); previousMonitor.clear();
+    focusListener.reset();
+    keyListener.reset();
+    buttonListener.reset();
+    followFocus = false;
 }
 std::string pointerCommand(const std::string& verb, std::istringstream& in) {
+    if (verb == "pointer-follow") { // 1: focus follows the pointer (hover), 0: click
+        int on;
+        if (!(in >> on) || (on != 0 && on != 1))
+            return "error: pointer-follow expects 0 or 1";
+        followFocus = on == 1;
+        return "ok";
+    }
+    if (verb == "input-age") // ms since the last key or button press
+        return std::to_string((long long)(milliseconds() - lastInput));
     if (verb == "pointer-refocus") {
         // simulateMouseMovement alone is insufficient after 500ms of idle:
         // Hyprland resets accumulated motion to zero, failing its > threshold

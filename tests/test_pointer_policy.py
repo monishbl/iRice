@@ -46,6 +46,50 @@ int main() {
             subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/irice-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
             subprocess.run([binary], check=True, capture_output=True)
 
+    @unittest.skipUnless(shutil.which('g++'), 'requires C++ compiler')
+    def test_windows_brought_forward_take_the_pointer_only_from_another_window(self):
+        source = r'''
+#include "focus-policy.hpp"
+#include <cassert>
+#include <initializer_list>
+using namespace FocusPolicy;
+int main() {
+    // An app brought forward (activation, the dock, the switcher), pointer
+    // over another window: the pointer moves onto it
+    for (int r : {UNKNOWN, OTHER, DISPATCH_FOCUSWINDOW, SWITCH_TO_WINDOW_SOFT, SWITCH_TO_WINDOW_HARD})
+        assert(shouldWarp(r, false, true));
+    // Already under the pointer, or the pointer over the bar, dock or desktop
+    assert(!shouldWarp(OTHER, true, true));
+    assert(!shouldWarp(OTHER, false, false));
+    // The pointer's own focus, clicks, keyboard moves (Hyprland warps for
+    // those), space switches and closing windows (the shell refocuses),
+    // new windows (the shell moves the pointer itself)
+    for (int r : {FFM, CLICK, KEYBIND, WORKSPACE_CHANGE, TOGGLE_SPECIAL_WORKSPACE, UNMAP_WINDOW_TILING,
+                  UNMAP_WINDOW_FLOATING, UNMAP_GROUPED_WINDOW, NEW_WINDOW, GHOSTS, DESKTOP_STATE_CHANGE,
+                  GROUP_CURRENT_WINDOW_CHANGE, DISPATCH_MOVEWINDOWINTOGROUP})
+        assert(!shouldWarp(r, false, true));
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            cpp = Path(tmp) / 'test.cpp'
+            cpp.write_text(source)
+            binary = str(Path(tmp) / 'test')
+            subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/irice-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
+            subprocess.run([binary], check=True, capture_output=True)
+
+    @unittest.skipUnless(shutil.which('g++') and Path('/usr/include/hyprland/src/desktop/state/FocusState.hpp').exists(), 'requires Hyprland headers')
+    def test_focus_reasons_match_hyprland(self):
+        # The policy mirrors Hyprland's eFocusReason by value: catch a
+        # reordering in a new Hyprland before it misreads every focus change
+        header = Path('/usr/include/hyprland/src/desktop/state/FocusState.hpp').read_text()
+        body = header[header.index('enum eFocusReason'):]
+        body = body[body.index('{') + 1:body.index('}')]
+        names = [n.strip().split('=')[0].strip() for n in body.split(',') if n.strip()]
+        ours = (ROOT / 'hypr/plugin/irice-glass/focus-policy.hpp').read_text()
+        for value, name in enumerate(names):
+            short = name.removeprefix('FOCUS_REASON_')
+            self.assertIn(f'{short} = {value},', ours, f'{name} should be {value}')
+
     @unittest.skipUnless(shutil.which('lua'), 'requires Lua')
     def test_stationary_refocus_and_new_window_warp_only_when_hyprland_focused_it(self):
         script = r'''

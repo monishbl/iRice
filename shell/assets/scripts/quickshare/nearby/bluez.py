@@ -52,9 +52,10 @@ ADV_EXTENDED = ROOT + "/adv0"
 ADV_LEGACY = ROOT + "/adv1"
 CONNECT_TIMEOUT = 20
 SEEN_FOR = 30  # a phone not heard from for this long is gone
+SUBSCRIBE_WAIT = 5  # a phone that wrote but never subscribed to our packets
 
 CHAR_IFACE = {"methods": {"ReadValue": ("a{sv}", "ay"), "WriteValue": ("aya{sv}", ""),
-                          "StartNotify": ("", ""), "StopNotify": ("", "")},
+                          "StartNotify": ("", ""), "StopNotify": ("", ""), "Confirm": ("", "")},
               "properties": {"UUID": "s", "Service": "o", "Flags": "as", "Value": "ay", "Notifying": "b"}}
 SERVICE_IFACE = {"properties": {"UUID": "s", "Primary": "b", "Characteristics": "ao"}}
 ADV_IFACE = {"methods": {"Release": ("", "")},
@@ -88,7 +89,10 @@ def gatt_objects(slot_value):
         SLOT_PATH: char(ble_format.SLOT_UUID.format(0), ["read"]),
         # (write with response: one packet at a time, so they arrive in order)
         WRITE_PATH: char(ble_format.WEAVE_WRITE_UUID, ["write"]),
-        NOTIFY_PATH: char(ble_format.WEAVE_NOTIFY_UUID, ["notify"]),
+        # Indicate, as Nearby's own peripherals (phones; the Apple code's
+        # GNSPeripheralServiceManager.m CreateWeaveOutgoingCharacteristic);
+        # notify too, for a central that subscribes that way
+        NOTIFY_PATH: char(ble_format.WEAVE_NOTIFY_UUID, ["indicate", "notify"]),
     }
 
 
@@ -100,22 +104,25 @@ def discovery_filter(uuids=True):
 
 
 class _NotifyLink:
-    """Packets to the phone: notifications of the …0102 characteristic."""
+    """Packets to the phone: indications (or notifications) of …0102.
+
+    Never waits: WriteValue handlers call this, and BlueZ answers the phone's
+    next ATT request (its subscription, say) only after ours returns. Before
+    the phone subscribes, packets wait in a queue; StartNotify sends them.
+    (A first version waited here, inside the phone's write, for a
+    subscription that could only come after it: Nearby's central gives up on
+    the confirm after 2 s — GNSCentralPeerManager.m
+    kMaxConnectionConfirmWaitTimeInSeconds — which is what a phone did.)"""
 
     def __init__(self, ble):
         self.ble = ble
 
     async def send(self, packet):
-        for _ in range(40):  # (a phone may subscribe just after its first write)
-            if self.ble.notifying:
-                break
-            await asyncio.sleep(0.05)
-        else:
-            raise TransportClosed("the phone isn't listening for Bluetooth packets")
-        self.ble.notify_value = packet
-        self.ble.bus.emit(NOTIFY_PATH, PROPS, "PropertiesChanged", "sa{sv}as",
-                          (GATT_CHAR, {"Value": ("ay", packet)}, []))
-        await asyncio.sleep(0)
+        if not self.ble.notifying or self.ble.pending:
+            self.ble.pending.append(packet)
+            self.ble.log_packet("queued (not subscribed yet)", packet)
+            return
+        self.ble.notify(packet)
 
 
 class _WriteLink:
@@ -149,6 +156,7 @@ class Bluetooth:
         self.slot_value = b""
         self.notifying = False
         self.notify_value = b""
+        self.pending = []  # packets for the phone before it subscribed
         self.session = None  # (device path, WeaveSocket) of the phone connected to us
         self.scanning = False
         self.seen = {}  # device path → {"endpoint_id", "endpoint_info", "psm", "address", "type", "at"}
@@ -158,6 +166,28 @@ class Bluetooth:
 
     def _log(self, what):
         debuglog.log("bluetooth", what)
+
+    def log_packet(self, what, packet, char=""):
+        """A weave packet in the log: its size, and the bytes of control
+        packets (handshake and errors: nothing secret); data packets carry
+        encrypted frames and are only counted."""
+        if not debuglog.enabled() or not packet:
+            return
+        h = packet[0]
+        kind = f"control {packet[:8].hex()}" if h & 0x80 else \
+            f"data #{(h >> 4) & 7}{' first' if h & 8 else ''}{' last' if h & 4 else ''}"
+        self._log(f"{what}{' ' + char if char else ''}: {len(packet)} bytes, {kind}")
+
+    def notify(self, packet):
+        self.notify_value = packet
+        self.log_packet("→ indicate", packet, "0102")
+        self.bus.emit(NOTIFY_PATH, PROPS, "PropertiesChanged", "sa{sv}as",
+                      (GATT_CHAR, {"Value": ("ay", packet)}, []))
+
+    def _flush(self):
+        pending, self.pending = self.pending, []
+        for p in pending:
+            self.notify(p)
 
     # ── Adapter ──────────────────────────────────────────────────────────
     async def start(self):
@@ -204,6 +234,10 @@ class Bluetooth:
             if not self.powered:
                 self._end_session("Bluetooth was turned off")
         elif iface == DEVICE:
+            noted = {k: changed[k] for k in ("Connected", "Paired", "Bonded", "Trusted", "ServicesResolved")
+                     if k in changed}
+            if noted:
+                self._log(f"device {path.rsplit('/', 1)[-1]}: {noted}")
             if self.session and path == self.session[0] and changed.get("Connected") is False:
                 self._end_session("the phone disconnected")
             if self.scanning and ("ServiceData" in changed or "RSSI" in changed):
@@ -226,15 +260,33 @@ class Bluetooth:
             self._forget(obj)
 
     # ── Being found (receiving) ──────────────────────────────────────────
-    async def advertise(self, advertisement):
-        """Advertises (or re-advertises) this computer; GATT server included."""
+    async def max_advertisement(self):
+        """The longest advertising data this controller takes (BlueZ's
+        LEAdvertisingManager1.SupportedCapabilities MaxAdvLen; 31 for a
+        controller without extended advertising), or None if BlueZ doesn't say."""
+        if not self.adapter:
+            return None
+        try:
+            caps = await self.bus.get_property(BLUEZ, self.adapter, ADV_MANAGER, "SupportedCapabilities")
+        except DBusError:
+            return None
+        n = (caps or {}).get("MaxAdvLen")
+        return int(n) if n else None
+
+    async def advertise(self, advertisement, extended=None):
+        """Advertises (or re-advertises) this computer; GATT server included.
+        advertisement: the full one (GATT slot 0); extended: what fits in
+        the extended advertisement (the same, or with a shorter name), or
+        False to send the legacy header only."""
         await self.stop_advertising()
         if not (self.adapter and self.powered):
             return False
         self.slot_value = advertisement
         if not self.served:
             await self._serve()
-        ok_ext = await self._register_adv(ADV_EXTENDED, advertisement_properties(advertisement, True))
+        if extended is None:
+            extended = advertisement
+        ok_ext = bool(extended) and await self._register_adv(ADV_EXTENDED, advertisement_properties(extended, True))
         header = ble_format.header([(ble_format.SERVICE_ID, advertisement)], extended=ok_ext)
         ok_legacy = await self._register_adv(ADV_LEGACY, advertisement_properties(header, False))
         self._log(f"advertising: extended {ok_ext}, legacy {ok_legacy}")
@@ -278,23 +330,36 @@ class Bluetooth:
         async def read_slot(args, sender):
             (options,) = args
             offset = int(options.get("offset", 0))
-            return (self.slot_value[offset:],)
+            value = self.slot_value[offset:]
+            self._log(f"← read slot 0 (offset {offset}): {len(value)} bytes"
+                      f" from {str(options.get('device', '?')).rsplit('/', 1)[-1]}")
+            return (value,)
 
         async def write(args, sender):
             value, options = args
-            await self._packet(_bytes(value), options)
+            packet = _bytes(value)
+            self.log_packet(f"← write ({options.get('type', 'request')}, MTU {options.get('mtu', '?')})", packet, "0101")
+            await self._packet(packet, options)
             return ()
 
         async def start_notify(args, sender):
+            self._log(f"← subscribed to 0102 ({len(self.pending)} packets waiting)")
             self.notifying = True
+            self._flush()
             return ()
 
         async def stop_notify(args, sender):
+            self._log("← unsubscribed from 0102")
             self.notifying = False
+            self.pending = []
             self._end_session("the phone stopped listening")
             return ()
 
+        async def confirm(args, sender):
+            return ()  # (an indication arrived)
+
         async def nothing(args, sender):
+            self._log("← an unsupported GATT request")
             raise DBusError("org.bluez.Error.NotSupported", "not supported")
 
         def char_props(path):
@@ -312,6 +377,7 @@ class Bluetooth:
         for path, handlers in ((SLOT_PATH, {"ReadValue": read_slot}), (WRITE_PATH, {"WriteValue": write}),
                                (NOTIFY_PATH, {"StartNotify": start_notify, "StopNotify": stop_notify})):
             methods = {(GATT_CHAR, m): handlers.get(m, nothing) for m in CHAR_IFACE["methods"]}
+            methods[(GATT_CHAR, "Confirm")] = confirm
             await self.bus.export(path, {GATT_CHAR: CHAR_IFACE}, lambda iface, path=path: char_props(path), methods)
         try:
             await self.bus.call(BLUEZ, self.adapter, GATT_MANAGER, "RegisterApplication", "oa{sv}", (ROOT, {}))
@@ -347,7 +413,9 @@ class Bluetooth:
             sock = WeaveSocket(_NotifyLink(self), is_client=False,
                                max_packet=mtu - 3 if mtu > 23 else MIN_PACKET, log=self._log)
             self.session = (device, sock)
-            self._log(f"phone connected over GATT (MTU {mtu or 'unknown'})")
+            self._log(f"phone connected over GATT (MTU {mtu or 'unknown'}, "
+                      f"{'subscribed' if self.notifying else 'not subscribed yet'})")
+            asyncio.ensure_future(self._await_subscription(sock))
             transport = BleSocketTransport(sock, is_client=False, peer=device, log=self._log)
             await sock.feed(packet)
             if sock.connected.is_set() and not sock.closed:
@@ -357,10 +425,17 @@ class Bluetooth:
             raise DBusError("org.bluez.Error.InProgress", "busy with another phone")
         await self.session[1].feed(packet)
 
+    async def _await_subscription(self, sock):
+        await asyncio.sleep(SUBSCRIBE_WAIT)
+        if self.session and self.session[1] is sock and self.pending and not self.notifying:
+            self._end_session("the phone never subscribed to our packets")
+
     def _end_session(self, why):
         if self.session:
             _, sock = self.session
             self.session = None
+            self.pending = []
+            self._log(f"session ended: {why}")
             sock._end(why)
 
     # ── Finding phones (sending) ─────────────────────────────────────────

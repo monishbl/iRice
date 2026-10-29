@@ -114,7 +114,16 @@ class QuickShareService:
             info = info[:17] + bytes([len(name)]) + name
         try:
             adv = ble_format.advertisement(self.endpoint_id, info, self.device_token)
-            if not await self.ble.advertise(adv):
+            # The extended advertisement must fit the controller (BlueZ says
+            # InvalidLength otherwise): a shorter name, or the header only
+            longest = await self.ble.max_advertisement()
+            extended = adv
+            if longest is not None:
+                extended = ble_format.fitting_advertisement(self.endpoint_id, info, self.device_token,
+                                                            longest - ble_format.AD_OVERHEAD) or False
+                self._log(f"controller takes {longest}-byte advertisements: extended "
+                          f"{len(extended) if extended else 'skipped'} (full {len(adv)})")
+            if not await self.ble.advertise(adv, extended):
                 self.emit({"ev": "error", "message": "Bluetooth refused to advertise this computer, so phones "
                                                      "without Wi-Fi can't find it. Restart Bluetooth and try again."})
         except Exception as e:  # noqa: BLE001 (BlueZ errors: Bluetooth is optional)
