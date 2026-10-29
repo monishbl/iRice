@@ -116,14 +116,22 @@ def go_freq(station, hint, chans):
     return next((f for f in PREFERRED if chans.get(f) == "ok"), 0)
 
 
-def ap_freq(station, hint, chans):
-    """An access point next to a station has to share its channel; alone it
-    takes a freely usable one. Refused (with why) on a radar channel."""
+def ap_freq(station, hint, chans, driver=""):
+    """An access point next to a station has to share its channel (Wi-Fi
+    chips allow one channel for AP + station); alone it takes a freely usable
+    one. Refused up front, with why, where it can't start: radar or "no IR"
+    channels (unlike a Wi-Fi Direct group owner, an AP gets no exception for
+    the station's channel), and 5 GHz on Intel chips (iwlwifi doesn't run
+    an AP there: "Failed to start AP functionality")."""
     if station:
         kind = chans.get(station, "ok")
-        if kind in ("radar", "disabled"):
-            raise Refused(f"a hotspot can't share this Wi-Fi's channel ({station} MHz needs radar detection)"
-                          if kind == "radar" else f"the {station} MHz channel is disabled here")
+        if kind in ("radar", "disabled", "no-ir"):
+            raise Refused({"radar": f"a hotspot can't share this Wi-Fi's channel ({station} MHz needs radar detection)",
+                           "disabled": f"the {station} MHz channel is disabled here",
+                           "no-ir": f"a hotspot can't start on this Wi-Fi's channel ({station} MHz: the rules here "
+                                    "don't let a computer start transmitting on it)"}[kind])
+        if driver == "iwlwifi" and station >= 5000:
+            raise Refused(f"Intel Wi-Fi can't run a hotspot on 5 GHz, and this Wi-Fi is on {station} MHz")
         return station
     f = go_freq(0, hint, chans)
     if not f:
@@ -151,16 +159,26 @@ def group_interfaces(names):
     return {n for n in names if n.startswith("p2p-") and not n.startswith("p2p-dev-")}
 
 
-def group_add_args(freq, wide=True):
-    """P2PDevice.GroupAdd's dictionary; wide asks for 40/80 MHz (VHT), which
-    older wpa_supplicant versions don't know (then retried without)."""
+def group_add_args(freq):
+    """P2PDevice.GroupAdd's dictionary. wpa_supplicant's handler
+    (dbus_new_handlers_p2p.c, wpas_dbus_handler_p2p_group_add) takes only
+    "persistent" (b), "frequency" (i) and "persistent_group_object" (o); any
+    other key is InvalidArgs. (So is a group it can't start: the same error
+    for both, hence the retry without a frequency in start_group.)"""
     args = {"persistent": ("b", False)}
     if freq:
-        args["frequency"] = ("i", freq)
-    if wide:
-        args["ht40"] = ("b", True)
-        args["vht"] = ("b", True)
+        args["frequency"] = ("i", int(freq))
     return args
+
+
+def dbus_params(GLib, sig, args):
+    """The GVariant tuple for a call: "a{sv}" from {key: (type, value)}."""
+    def one(t, value):
+        if t == "a{sv}":
+            return GLib.Variant("a{sv}", {k: GLib.Variant(s, v) for k, (s, v) in value.items()})
+        return GLib.Variant(t, value)
+    types = re.findall(r"a\{sv\}|a?.", sig)
+    return GLib.Variant.new_tuple(*[one(t, a) for t, a in zip(types, args)])
 
 
 def ap_network(ssid, passphrase, freq):
@@ -337,16 +355,8 @@ class Wpa:
         self.Gio, self.GLib = Gio, GLib
         self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
 
-    def _v(self, sig, value):
-        if sig == "a{sv}":
-            return self.GLib.Variant("a{sv}", {k: self.GLib.Variant(s, v) for k, (s, v) in value.items()})
-        return self.GLib.Variant(sig, value)
-
     def call(self, path, iface, method, sig=None, args=()):
-        params = None
-        if sig:
-            types = re.findall(r"a\{sv\}|a?.", sig)
-            params = self.GLib.Variant.new_tuple(*[self._v(t, a) for t, a in zip(types, args)])
+        params = dbus_params(self.GLib, sig, args) if sig else None
         try:
             r = self.bus.call_sync(WPA, path, iface, method, params, None, self.Gio.DBusCallFlags.NONE, 15000, None)
         except self.GLib.Error as e:
@@ -401,10 +411,15 @@ def start_group(wpa, dev, freq, timeout=10, settle=0.5):
             for name in ("GroupStarted", "GroupFinished", "GroupFormationFailure")]
     try:
         before = set(wpa.get(WPA_PATH, WPA, "Interfaces"))
-        try:
-            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=True),))
-        except Refused:
-            wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(freq, wide=False),))
+        for attempt in ([freq, 0] if freq else [0]):
+            try:
+                wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(attempt),))
+                break
+            except Refused as e:
+                why = e
+        else:
+            raise Refused(f"wpa_supplicant wouldn't start a Wi-Fi Direct group on {freq} MHz or on a channel "
+                          f"of its own choosing ({why})")
         found = None
         end = time.monotonic() + timeout
         while time.monotonic() < end and found is None:
@@ -472,6 +487,24 @@ class Links:
         return int(m.group(1)) if m else 0
 
     @staticmethod
+    def driver(sta):
+        try:
+            return os.path.basename(os.readlink(f"/sys/class/net/{sta}/device/driver"))
+        except OSError:
+            return ""
+
+    def _open_firewall(self, iface):
+        """Lets the phone reach us on our own link (DHCP, the transfer port)
+        whatever the firewall says, for as long as the link exists: runtime
+        only (firewalld's trusted zone; an iptables rule ahead of ufw's)."""
+        if have("firewall-cmd") and subprocess.run(["firewall-cmd", "--state"], capture_output=True).returncode == 0:
+            run("firewall-cmd", "--zone=trusted", f"--add-interface={iface}", check=False)
+            self.undo.append(lambda: run("firewall-cmd", "--zone=trusted", f"--remove-interface={iface}", check=False))
+        elif have("iptables"):
+            run("iptables", "-I", "INPUT", "1", "-i", iface, "-j", "ACCEPT", check=False)
+            self.undo.append(lambda: run("iptables", "-D", "INPUT", "-i", iface, "-j", "ACCEPT", check=False))
+
+    @staticmethod
     def usable():
         return parse_iw_phy(run("iw", "phy", check=False)) if have("iw") else {}
 
@@ -512,6 +545,7 @@ class Links:
         run("ip", "link", "set", iface, "up")
         run("ip", "addr", "add", f"{ip}/24", "dev", iface)
         self.undo.append(lambda: run("ip", "addr", "flush", "dev", iface, check=False))
+        self._open_firewall(iface)
 
     def _dhcp_server(self, iface, ip):
         if have("dnsmasq"):
@@ -561,7 +595,7 @@ class Links:
     def host_ap(self, hint):
         wpa = self._wpa()
         sta = self.station()
-        freq = ap_freq(self.station_freq(sta), hint, self.usable())
+        freq = ap_freq(self.station_freq(sta), hint, self.usable(), self.driver(sta))
         self._nm_off(sta)
         self._virtual(sta, AP_IFACE, "__ap")
         path = wpa.create(AP_IFACE)
@@ -570,10 +604,11 @@ class Links:
         passphrase = new_passphrase()
         (net,) = wpa.call(path, IFACE, "AddNetwork", "a{sv}", (ap_network(ssid, passphrase, freq),))
         wpa.call(path, IFACE, "SelectNetwork", "o", (net,))
-        end = time.monotonic() + 10
-        while wpa.get(path, IFACE, "State") != "completed":
-            if time.monotonic() > end:
-                raise Refused("the hotspot didn't start")
+        start = time.monotonic()
+        while (state := wpa.get(path, IFACE, "State")) != "completed":
+            waited = time.monotonic() - start
+            if waited > 10 or (waited > 2 and state in ("disconnected", "inactive", "interface_disabled")):
+                raise Refused(f"the Wi-Fi driver wouldn't start a hotspot on {freq} MHz")
             time.sleep(0.1)
         self._address(AP_IFACE, AP_IP)
         self._dhcp_server(AP_IFACE, AP_IP)

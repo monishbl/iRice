@@ -70,11 +70,12 @@ class HealthCheck(unittest.TestCase):
         fake.chmod(0o755)
         for c in COMMANDS:
             (self.bin / c).symlink_to(fake)
+        self.sysroot = d / "root"  # (/etc and /usr as the sharing checks see them)
         self.home = d / "home"
         (self.home / ".local/state").mkdir(parents=True)
         self.log = d / "calls"
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(self.home), XDG_STATE_HOME=str(self.home / ".local/state"),
-                        XDG_RUNTIME_DIR=str(d), FAKE_MODE="ok", FAKE_SHELL_PID="4242", FAKE_LOG=str(self.log))
+                        XDG_RUNTIME_DIR=str(d), IRICE_SYSTEM_ROOT=str(d / "root"), FAKE_MODE="ok", FAKE_SHELL_PID="4242", FAKE_LOG=str(self.log))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -146,6 +147,34 @@ class HealthCheck(unittest.TestCase):
         out = self.check("fix", "rm -rf /")
         self.assertEqual(json.loads(out.stdout)["ok"], False)
         self.assertNotIn("rm", self.log.read_text())
+
+    def test_firewall_and_pairing(self):
+        rows = self.rows()
+        self.assertEqual(rows["firewall"]["status"], "ok")  # no firewall here
+        self.assertEqual(rows["btpairing"]["status"], "ok")
+        (self.sysroot / "etc/ufw").mkdir(parents=True)
+        (self.sysroot / "etc/ufw/ufw.conf").write_text("ENABLED=yes\n")
+        (self.sysroot / "etc/bluetooth").mkdir(parents=True)
+        (self.sysroot / "etc/bluetooth/main.conf").write_text("[General]\nExperimental = true\n")
+        rows = self.rows()
+        self.assertEqual(rows["firewall"]["status"], "warn")
+        self.assertIn("may block", rows["firewall"]["detail"])
+        self.assertTrue(rows["firewall"]["fixRoot"])
+        self.assertIn("ufw allow 53317:53319/tcp", rows["firewall"]["fixCommand"])
+        self.assertEqual(rows["btpairing"]["status"], "warn")
+        self.assertIn("--noplugin=rap", rows["btpairing"]["fixCommand"])
+        # the fix: one pkexec of the fixed script, then the firewall counts as open
+        out = self.check("fix", "firewall")
+        self.assertTrue(json.loads(out.stdout)["ok"], out.stdout)
+        self.assertIn("pkexec /bin/sh -c set -e", self.log.read_text())
+        self.assertEqual(self.rows()["firewall"]["status"], "ok")
+        # rules readable and without the ports: it blocks (no "may")
+        (self.home / ".local/state/irice/sharing-firewall").unlink()
+        (self.sysroot / "etc/ufw/user.rules").write_text("-A ufw-user-input -p tcp --dport 22 -j ACCEPT\n")
+        self.assertIn("and blocks", self.rows()["firewall"]["detail"])
+        (self.sysroot / "etc/systemd/system/bluetooth.service.d").mkdir(parents=True)
+        (self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf").write_text("")
+        self.assertEqual(self.rows()["btpairing"]["status"], "ok")
 
     def test_a_refused_password_says_so(self):
         out = self.check("fix", "avahi", FAKE_MODE="fail")

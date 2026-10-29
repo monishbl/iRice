@@ -559,11 +559,15 @@ class WifiHelper(unittest.TestCase):
         self.assertEqual(helper.go_freq(0, 5745, chans), 5745)  # alone: the hint when it's free
         self.assertEqual(helper.go_freq(0, 2467, chans), 5180)
         self.assertEqual(helper.go_freq(0, 0, {}), 0)  # nothing known: wpa_supplicant picks
-        # a hotspot shares the station's channel, refused only for radar (and says which)
-        self.assertEqual(helper.ap_freq(2467, 0, chans), 2467)
+        # a hotspot shares the station's channel; refused up front (saying
+        # why) where it can't start: radar, "no IR", 5 GHz on Intel
         self.assertEqual(helper.ap_freq(5745, 5180, chans), 5745)
-        with self.assertRaisesRegex(helper.Refused, "5500 MHz"):
-            helper.ap_freq(5500, 0, chans)
+        self.assertEqual(helper.ap_freq(2412, 0, chans, "iwlwifi"), 2412)
+        self.assertEqual(helper.ap_freq(0, 0, chans), 5180)
+        for station, driver, why in ((5500, "", "5500 MHz needs radar"), (2467, "", "2467 MHz: the rules"),
+                                     (5180, "iwlwifi", "Intel Wi-Fi can't run a hotspot on 5 GHz")):
+            with self.assertRaisesRegex(helper.Refused, why):
+                helper.ap_freq(station, 0, chans, driver)
 
     def test_requests_are_checked(self):
         for bad in ("", "x" * 33, "a\nb", None, 5):
@@ -580,9 +584,10 @@ class WifiHelper(unittest.TestCase):
             helper.check_ifname("wlan0; rm -rf /")
 
     def test_dbus_arguments(self):
-        self.assertEqual(helper.group_add_args(5180), {"persistent": ("b", False), "frequency": ("i", 5180),
-                                                       "ht40": ("b", True), "vht": ("b", True)})
-        self.assertEqual(helper.group_add_args(0, wide=False), {"persistent": ("b", False)})
+        # Only the keys wpa_supplicant's GroupAdd handler takes (anything else:
+        # InvalidArgs, as a real laptop answered to ht40/vht)
+        self.assertEqual(helper.group_add_args(5180), {"persistent": ("b", False), "frequency": ("i", 5180)})
+        self.assertEqual(helper.group_add_args(0), {"persistent": ("b", False)})
         ap = helper.ap_network("DIRECT-iR-ABCD", "secretpass", 2412)
         self.assertEqual((ap["mode"], ap["frequency"], ap["key_mgmt"]), (("u", 2), ("i", 2412), ("s", "WPA-PSK")))
         j = helper.join_network("DIRECT-xy", "secretpass", 5220)
@@ -624,7 +629,9 @@ class FakeWpa:
 
     def call(self, path, iface, method, sig=None, args=()):
         self.calls.append((path, method, args))
-        if method == "GroupAdd" and "ht40" in args[0] and "wide-refused" in self.script:
+        if method == "GroupAdd" and "frequency" in args[0] and "freq-refused" in self.script:
+            raise helper.Refused("wpa_supplicant: Did not receive correct message arguments")
+        if method == "GroupAdd" and "all-refused" in self.script:
             raise helper.Refused("wpa_supplicant: Did not receive correct message arguments")
         if method == "GroupAdd":
             self.queue = list(self.script)
@@ -640,7 +647,7 @@ class FakeWpa:
     def pump(self, seconds):
         while self.queue:
             step = self.queue.pop(0)
-            if step == "wide-refused":
+            if step in ("freq-refused", "all-refused"):
                 continue
             if step == "appear":
                 self.interfaces.append("/w/2")
@@ -661,12 +668,27 @@ class GroupStart(unittest.TestCase):
         self.assertEqual(add[2][0]["frequency"], ("i", 5745))
         self.assertEqual(wpa.subs, {})  # unsubscribed again
 
-    def test_retries_without_wide_channels(self):
-        wpa = FakeWpa(["wide-refused", self.STARTED])
-        helper.start_group(wpa, "/w/1", 0, timeout=1, settle=0)
+    def test_retries_on_a_channel_of_its_choosing(self):
+        wpa = FakeWpa(["freq-refused", self.STARTED])
+        helper.start_group(wpa, "/w/1", 5180, timeout=1, settle=0)
         adds = [c[2][0] for c in wpa.calls if c[1] == "GroupAdd"]
-        self.assertEqual(len(adds), 2)
-        self.assertNotIn("ht40", adds[1])
+        self.assertEqual(adds, [{"persistent": ("b", False), "frequency": ("i", 5180)}, {"persistent": ("b", False)}])
+        with self.assertRaisesRegex(helper.Refused, "on 5180 MHz or on a channel of its own choosing"):
+            helper.start_group(FakeWpa(["all-refused"]), "/w/1", 5180, timeout=1, settle=0)
+
+    def test_groupadd_gvariant_types(self):
+        try:
+            import gi
+            gi.require_version("GLib", "2.0")
+            from gi.repository import GLib
+        except (ImportError, ValueError):
+            self.skipTest("no python-gobject")
+        v = helper.dbus_params(GLib, "a{sv}", (helper.group_add_args(5180),))
+        self.assertEqual(v.get_type_string(), "(a{sv})")
+        d = v.get_child_value(0)
+        self.assertEqual(d.lookup_value("persistent", None).get_type_string(), "b")
+        self.assertEqual(d.lookup_value("frequency", None).get_type_string(), "i")
+        self.assertEqual(d.n_children(), 2)
 
     def test_a_group_that_ends_as_it_starts_is_reported_at_once(self):
         # (what a real laptop did: P2P-GROUP-STARTED, then AP-DISABLED)

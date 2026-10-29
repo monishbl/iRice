@@ -196,6 +196,30 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await bp.respond_to_offer(self.p, offer, [])
         await self.finish(data)
 
+    async def test_a_firewall_skips_the_network_and_says_so(self):
+        self.net = net(shared=True)
+        self.svc.firewall = lambda: {"kind": "ufw", "allowed": None, "blocks": True}
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_LAN, CR.WIFI_DIRECT], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)  # straight to Wi-Fi Direct (it opens its own way in)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_DIRECT)))
+        await self.finish(data)
+
+    async def test_the_firewall_is_named_when_the_network_fails(self):
+        self.net = net(shared=True)
+        self.svc.can_host = lambda n: False
+        self.svc.firewall = lambda: {"kind": "ufw", "allowed": None, "blocks": True}
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_LAN], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
+        warning = await self.events.wait("warning")
+        self.assertIn("firewall (ufw)", warning["message"])
+        self.assertIn("Settings → Sharing", warning["message"])
+        await self.finish(data)
+
     async def test_network_refused_then_wifi_direct(self):
         self.net = net(shared=True)
         data = os.urandom(3000)

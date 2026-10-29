@@ -238,6 +238,11 @@ class Bluetooth:
                      if k in changed}
             if noted:
                 self._log(f"device {path.rsplit('/', 1)[-1]}: {noted}")
+                if noted.get("Paired") and self.session and path == self.session[0]:
+                    # (Quick Share never pairs: BlueZ's own profiles did, see
+                    # sharing-check.py pairing())
+                    self._log("BlueZ paired with the phone during Quick Share: its Ranging (RAP) profile "
+                              "most likely asked; Settings → Sharing can turn that off")
             if self.session and path == self.session[0] and changed.get("Connected") is False:
                 self._end_session("the phone disconnected")
             if self.scanning and ("ServiceData" in changed or "RSSI" in changed):

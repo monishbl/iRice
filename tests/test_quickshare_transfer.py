@@ -48,6 +48,42 @@ def intro_file(name, size, pid):
     return m
 
 
+class FixedPort(unittest.IsolatedAsyncioTestCase):
+    async def test_a_taken_port_is_waited_for_then_reported(self):
+        import socket
+        holder = socket.socket()
+        holder.bind(("0.0.0.0", 0))
+        holder.listen()
+        taken = holder.getsockname()[1]
+        events = Events()
+        svc = QuickShareService(events, None, name="Test laptop")
+        svc.preferred_port, svc.port_tries = taken, 2
+        try:
+            await svc.configure(visible=True)
+            self.assertNotEqual(svc.port, taken)
+            err = await events.wait("error")
+            self.assertIn(f"port {taken} is taken", err["message"])
+        finally:
+            await svc.close()
+            holder.close()
+
+    async def test_the_port_frees_up_in_time(self):
+        import socket
+        holder = socket.socket()
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(("0.0.0.0", 0))
+        holder.listen()
+        port = holder.getsockname()[1]
+        asyncio.get_running_loop().call_later(0.2, holder.close)  # (the old helper exits)
+        svc = QuickShareService(Events(), None, name="Test laptop")
+        svc.preferred_port = port
+        try:
+            await svc.configure(visible=True)
+            self.assertEqual(svc.port, port)
+        finally:
+            await svc.close()
+
+
 class Receiving(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.dir = tempfile.TemporaryDirectory()

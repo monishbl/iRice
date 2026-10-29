@@ -58,6 +58,14 @@ ROOT_FIXES = {
 }
 
 
+# Sharing's own checks and fixes (firewall, Bluetooth pairing prompts)
+_spec = importlib.util.spec_from_file_location("sharing_check", os.path.join(HERE, "sharing-check.py"))
+sharing = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(sharing)
+ROOT_FIXES["firewall"] = ["/bin/sh", "-c", sharing.FIREWALL_SCRIPT]
+ROOT_FIXES["btpairing"] = ["/bin/sh", "-c", sharing.PAIRING_SCRIPT]
+SHOWN = {"firewall": sharing.FIREWALL_SHOWN, "btpairing": sharing.PAIRING_SHOWN}  # (what the page shows for these)
+
 _local = threading.local() # per check: whether something it asked hung
 
 
@@ -81,7 +89,7 @@ def result(id, name, group, status, detail="", fix=""):
     return {"id": id, "name": name, "group": group, "status": status, "detail": detail, "fix": fix,
             "canFix": broken and (id in FIXES or root), "fixRoot": root,
             # what the button will run, shown before a root fix is confirmed
-            "fixCommand": " ".join(ROOT_FIXES[id]) if root else ""}
+            "fixCommand": (SHOWN.get(id) or " ".join(ROOT_FIXES[id])) if root else ""}
 
 
 def bus_value(out):
@@ -147,6 +155,30 @@ def check_avahi(_):
     return result("avahi", "Avahi (finding nearby devices)", "Network & sharing", "fail",
                   "Not running: LocalSend and Quick Share can't find devices on your network",
                   "sudo systemctl enable --now avahi-daemon")
+
+
+def check_firewall(_):
+    f = sharing.firewall()
+    name = "Firewall lets sharing through"
+    if f["kind"] is None:
+        return result("firewall", name, "Network & sharing", "ok", "No firewall turned on")
+    if not f["blocks"]:
+        return result("firewall", name, "Network & sharing", "ok", f"{f['kind']}: sharing's ports are open")
+    detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
+              " LocalSend and Quick Share (ports 53317-53319, mDNS)")
+    return result("firewall", name, "Network & sharing", "warn", detail,
+                  "Allow them: Settings → Sharing, or the Fix button here")
+
+
+def check_btpairing(_):
+    p = sharing.pairing()
+    name = "Bluetooth sharing without pairing"
+    if not p["risk"]:
+        return result("btpairing", name, "Network & sharing", "ok",
+                      "Phones connect for Quick Share without pairing")
+    return result("btpairing", name, "Network & sharing", "warn",
+                  "BlueZ's experimental Ranging profile makes phones ask to pair when they send with Quick Share",
+                  "Turn that profile off (headphone batteries keep working): the Fix button, which restarts Bluetooth")
 
 
 def check_portal(_):
@@ -371,7 +403,8 @@ def check_watchers(_):
                   "Restart iRice (Super+Ctrl+Escape): it ends them as it starts")
 
 
-CHECKS = [check_pipewire, check_wireplumber, check_networkmanager, check_bluetooth, check_avahi, check_goa, check_geoclue,
+CHECKS = [check_pipewire, check_wireplumber, check_networkmanager, check_bluetooth, check_avahi, check_firewall,
+          check_btpairing, check_goa, check_geoclue,
           check_upower, check_profiles, check_hypridle, check_portal, check_notifications, check_polkit, check_clipboard,
           check_recorder, check_disk, check_hyprland, check_plugin, check_native, check_quickshell, check_watchers]
 
@@ -452,6 +485,12 @@ def main(argv):
             err = "Cancelled: no password was given" if code == 126 else "Not allowed: your account can't do this; try the command in a terminal"
         else:
             err = "" if code == 0 else (out.strip()[:200] or "It didn't work; try the command in a terminal")
+        if code == 0 and opts.id == "firewall":
+            kind = sharing.firewall()["kind"]
+            if kind:  # (the rules can't be read without root: remember they're in)
+                os.makedirs(sharing.STATE, exist_ok=True)
+                with open(sharing.MARKER, "w") as f:
+                    f.write(kind + "\n")
         print(json.dumps({"ok": code == 0, "error": err}))
         return 0 if code == 0 else 1
     rows = check_all(opts)

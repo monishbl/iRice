@@ -18,7 +18,51 @@ Column {
         fmProc.command = ["python3", "-I", fmScript].concat(args);
         fmProc.running = true;
     }
-    Component.onCompleted: fm(["status"])
+    // What on this computer stands in sharing's way (sharing-check.py):
+    // a firewall, Bluetooth asking phones to pair
+    property var system: ({}) // { firewall: { kind, allowed, blocks }, pairing: { risk } }
+    property string fixing: "" // "firewall" | "pairing" while its password prompt and fix run
+    property string fixError: ""
+    readonly property string checkScript: decodeURIComponent(Qt.resolvedUrl("../../../assets/scripts/sharing-check.py").toString().replace("file://", ""))
+    function checkSystem() {
+        checkProc.command = ["python3", "-I", checkScript, "status"];
+        checkProc.running = true;
+    }
+    function fixSystem(what) {
+        fixing = what;
+        fixError = "";
+        fixProc.command = ["python3", "-I", checkScript, "fix", what];
+        fixProc.running = true;
+    }
+    Process {
+        id: checkProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    page.system = JSON.parse(text);
+                } catch (e) {}
+            }
+        }
+    }
+    Process {
+        id: fixProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const r = JSON.parse(text);
+                    page.fixError = r.ok ? "" : r.error;
+                } catch (e) {
+                    page.fixError = "It didn't work; try again.";
+                }
+                page.fixing = "";
+                page.checkSystem();
+            }
+        }
+    }
+    Component.onCompleted: {
+        fm(["status"]);
+        checkSystem();
+    }
     Process {
         id: fmProc
         stdout: StdioCollector {
@@ -57,6 +101,22 @@ Column {
                 options: ["No one", "Everyone for 10 min", "Everyone"]
                 current: Math.max(0, values.indexOf(Config.options.sharing.receiving))
                 onSelected: i => Config.options.sharing.receiving = values[i]
+            }
+        }
+        Row {
+            visible: page.system.firewall?.blocks ?? false
+            label: "Firewall"
+            labelColor: Theme.color.danger
+            detail: (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
+                : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
+                + ": phones can't connect to this computer. Allowing ports 53317–53319 and mDNS asks for your password."
+                + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
+            SettingsButton {
+                text: "Allow through firewall"
+                icon: "shield-check"
+                busy: page.fixing === "firewall"
+                enabled: page.fixing === ""
+                onClicked: page.fixSystem("firewall")
             }
         }
         Row {
@@ -99,6 +159,18 @@ Column {
                 text: "Turn on Bluetooth"
                 icon: "bluetooth"
                 onClicked: QuickShare.turnOnBluetooth()
+            }
+        }
+        Row {
+            visible: page.system.pairing?.risk ?? false
+            label: "Phones ask to pair"
+            detail: "Bluetooth's experimental Ranging feature makes phones ask to pair when they send with Quick Share; phones never need to. Turning it off asks for your password and restarts Bluetooth (headphones reconnect)."
+            SettingsButton {
+                text: "Stop pairing prompts"
+                icon: "bluetooth"
+                busy: page.fixing === "pairing"
+                enabled: page.fixing === ""
+                onClicked: page.fixSystem("pairing")
             }
         }
         Row {

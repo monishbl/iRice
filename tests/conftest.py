@@ -10,3 +10,6 @@ import tempfile
 _runtime = tempfile.mkdtemp(prefix="irice-tests-run-")
 os.environ["XDG_RUNTIME_DIR"] = _runtime
 os.environ.pop("IRICE_QS_DEBUG", None)
+# Nor the real system's configuration (firewall, BlueZ): the sharing checks
+# read /etc and /usr under this, empty unless a test fills it
+os.environ["IRICE_SYSTEM_ROOT"] = tempfile.mkdtemp(prefix="irice-tests-root-")

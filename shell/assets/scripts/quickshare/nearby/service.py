@@ -53,8 +53,10 @@ class QuickShareService:
         self._serial = 0
         self.preferred_port = PORT
         self.upgrade_port = wifi.UPGRADE_PORT
+        self.port_tries = 6  # (½ s apart: a helper from before a restart lets go of the port)
         self.can_host = wifi.helper_possible  # (whether the root helper can make Wi-Fi links here)
         self.reachable = wifi.reachable  # (whether the phone answers at the address it gave)
+        self.firewall = firewall_status  # (whether a firewall may keep phones from reaching us)
         if ble is not None:
             ble.on_session = lambda transport: asyncio.ensure_future(self._incoming_transport(transport))
             ble.on_state = self._bluetooth_changed
@@ -86,11 +88,23 @@ class QuickShareService:
     async def _show(self):
         # A fixed port when free, so a firewall rule can name it (next to
         # LocalSend's 53317); any port otherwise (phones learn it over mDNS)
-        try:
-            self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=self.preferred_port)
-        except OSError:
+        # (a helper from before a shell restart may still hold it a moment)
+        why = None
+        for attempt in range(self.port_tries) if self.preferred_port else ():
+            try:
+                self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=self.preferred_port)
+                break
+            except OSError as e:
+                why = e
+                await asyncio.sleep(0.5)
+        if self.server is None:
             self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=0)
         self.port = self.server.sockets[0].getsockname()[1]
+        if why is not None and self.port != self.preferred_port:
+            self._log(f"port {self.preferred_port} unavailable ({why}): using {self.port}")
+            self.emit({"ev": "error", "message": f"Quick Share's port {self.preferred_port} is taken ({why.strerror or why}), "
+                                                 f"so it uses {self.port}: a firewall rule for {self.preferred_port} "
+                                                 "won't cover it. Quit whatever holds it and turn visibility off and on."})
         self.visible = True
         await self._announce()
         await self._advertise()
@@ -312,7 +326,12 @@ class QuickShareService:
             self._warn(sid, f"{SLOW}: {sender} and this computer share no network and Wi-Fi Direct isn't available "
                             "here. For full speed, put both on the same Wi-Fi.")
             return
-        reason = ""
+        reasons = []
+        if tries[0][0] == "lan" and len(tries) > 1 and self.firewall().get("blocks"):
+            # (a firewall that may drop the phone's connection costs ~10 s of
+            # its waiting; a Wi-Fi Direct link opens its own way in)
+            self._log(f"{sid}: skipping the shared network: the firewall may block it")
+            tries = tries[1:]
         for p, mine in tries:
             if conn._closed:
                 return
@@ -334,15 +353,19 @@ class QuickShareService:
                     info = (wifi.direct_path if p == "direct" else wifi.hotspot_path)(group, port)
                 if await conn.offer_upgrade(info, listener.accept, timeout=30):
                     return
-                reason = f"{sender} couldn't join the link"
+                reason = f"{sender} couldn't join the {'shared network' if p == 'lan' else 'link'}"
+                if p == "lan" and self.firewall().get("blocks"):
+                    reason = (f"this computer's firewall ({self.firewall()['kind']}) keeps {sender} from connecting. "
+                              "Allow it in Settings → Sharing")
+                reasons.append(reason)
             except wifi.WifiUnavailable as e:
-                reason = str(e).rstrip(".")
+                reasons.append(str(e).rstrip("."))
             except (OSError, ValueError) as e:
-                reason = f"the link couldn't be set up ({e})"
+                reasons.append(f"the link couldn't be set up ({e})")
             finally:
                 await listener.close()
         if not conn._closed:
-            self._warn(sid, f"{SLOW}: {reason}.")
+            self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
 
     def _warn(self, sid, message):
         self._log(f"{sid}: {message}")
@@ -507,3 +530,18 @@ class QuickShareService:
                 pass
         if self.helper is not None:
             await self.helper.close()
+
+
+def firewall_status():
+    """sharing-check.py's firewall() ({"kind", "allowed", "blocks"}), or
+    nothing known."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "sharing-check.py")
+    try:
+        spec = importlib.util.spec_from_file_location("sharing_check", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.firewall()
+    except (OSError, ImportError, AttributeError):
+        return {"kind": None, "allowed": None, "blocks": False}

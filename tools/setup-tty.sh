@@ -63,6 +63,12 @@ if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
     if [[ "${a,,}" != n* ]]; then
         sudo sed -i -E 's/^\s*#?\s*Experimental\s*=.*/Experimental = true/' "$conf"
         grep -qE '^Experimental = true' "$conf" || printf '\n[General]\nExperimental = true\n' | sudo tee -a "$conf" >/dev/null
+        # ...but not its Ranging (RAP) profile: it makes phones ask to pair
+        # when they send with Quick Share (shell/assets/scripts/sharing-check.py)
+        sudo mkdir -p /etc/systemd/system/bluetooth.service.d
+        printf '# iRice: no Ranging (RAP) profile, which makes phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap\n' |
+            sudo tee /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf >/dev/null
+        sudo systemctl daemon-reload
         sudo systemctl restart bluetooth && echo "Done: reconnect your headphones to see their battery."
     fi
 fi
