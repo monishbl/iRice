@@ -25,16 +25,13 @@ Item {
     }
     // Events still to come today (all-day ones first)
     readonly property var events: Calendar.eventsOn(clock.now).filter(e => e.allDay || e.end > clock.now)
-    readonly property var todos: Todos.sorted((UiState.data.todos ?? []).map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
+    readonly property var todos: Todos.sorted(Todos.list.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
 
     function toggle(i) {
         if (preview)
             return;
-        const l = (UiState.data.todos ?? []).slice();
-        if (!l[i])
-            return;
-        l[i] = Object.assign({}, l[i], { done: !l[i].done });
-        UiState.data.todos = l;
+        if (Todos.list[i])
+            Todos.update(i, { done: !Todos.list[i].done });
     }
 
     // ── Greeting and weather ────────────────────────────────────────────

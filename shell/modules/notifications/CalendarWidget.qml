@@ -135,6 +135,8 @@ Platter {
             undo = { kind: "event", item: Calendar.remove(item.e.id) };
         else
             undo = { kind: "todo", item: Todos.remove(item.t.i), index: item.t.i };
+        if (!undo?.item)
+            undo = null;
         undoTimer.restart();
         editor.close();
     }
@@ -695,10 +697,13 @@ Platter {
                     return;
                 }
                 const due = t < 0 ? new Date(base.getTime() + (23 * 60 + 59) * 60000) : new Date(base.getTime() + t * 60000);
-                if (editing)
-                    Todos.update(editing.t.i, { text: name, due: due.getTime(), allDay: t < 0 });
-                else
-                    UiState.data.todos = Todos.list.concat([{ text: name, done: false, due: due.getTime(), allDay: t < 0 }]);
+                const saved = editing
+                    ? Todos.update(editing.t.i, { text: name, due: due.getTime(), allDay: t < 0 })
+                    : Todos.addItem({ text: name, done: false, due: due.getTime(), allDay: t < 0 });
+                if (!saved) {
+                    error = Google.lastError || "Could not save the task.";
+                    return;
+                }
             } else {
                 let start, end;
                 if (allDay.checked) {

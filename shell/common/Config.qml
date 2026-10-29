@@ -39,6 +39,10 @@ Singleton {
         JsonAdapter {
             id: adapter
 
+            property JsonObject google: JsonObject {
+                property string taskListId: "" // empty = keep new tasks local
+            }
+
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
@@ -347,6 +351,8 @@ Singleton {
                 property real scrollSpeed: 1 // 0.2 .. 3
                 property bool leftHanded: false
                 property bool middleEmulation: false // left + right together = middle click
+                property string boundaryMode: "corners" // off | corners | resistance | capture
+                property int cornerSize: 24 // logical pixels at each end of a monitor edge
                 property string focus: "hover" // window focus: hover (follows the pointer; Hyprland's default) | click
             }
             property JsonObject trackpad: JsonObject {

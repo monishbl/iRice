@@ -45,6 +45,14 @@ Singleton {
                 for (const inst of expand(ev, from, to))
                     out.push(Object.assign({ key: src.url + "|" + ev.uid + "|" + inst.start.getTime(), title: ev.title, allDay: ev.allDay, location: ev.location, color: src.color ?? "", calendar: src.name, local: false, alert: ev.alert ?? (ev.allDay ? -1 : defaultAlert), notes: "" }, inst));
         }
+        for (const e of Google.events) {
+            const date = x => x.dateTime ? new Date(x.dateTime) : new Date(Number(x.date.slice(0, 4)), Number(x.date.slice(5, 7)) - 1, Number(x.date.slice(8, 10)));
+            const start = date(e.start), end = date(e.end);
+            if (start < to && end > from)
+                out.push({ key: "google:" + e.calendarId + ":" + e.id, id: e.id, title: e.title,
+                    start: start, end: end, allDay: !!e.start.date, location: e.location, color: e.color,
+                    calendar: e.calendar, local: false, alert: -1, notes: e.notes });
+        }
         return out.sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
     }
 

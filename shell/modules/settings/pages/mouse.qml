@@ -112,8 +112,29 @@ Column {
         footer: "Also counts for trackpads."
         Row {
             label: "Focus"
-            detail: page.cfg.focus === "click" ? "A window takes the keyboard when you click it, as on a Mac" : "The window under the pointer takes the keyboard"
+            detail: page.cfg.focus === "click" ? "A window takes the keyboard when you click it, as on a Mac" : "Workspace changes focus under the pointer. New windows take focus and bring the pointer if needed."
             Choice { key: "focus"; values: ["hover", "click"]; options: ["Follows pointer", "On click"]; width: 260 }
+        }
+    }
+
+    Group {
+        width: parent.width
+        title: "Between displays"
+        footer: Mouse.boundaryAvailable ? "Applies to mice and trackpads. Deliberate focus warps still cross displays. During region selection, the pointer stays on the starting screen." : "Pointer boundaries need the updated iRice compositor plugin. Screenshot bounds are protected even without it."
+        Row {
+            label: "Pointer boundaries"
+            Dropdown {
+                width: 260
+                options: [{value: "corners", label: "Protect shared corners"}, {value: "resistance", label: "Edge resistance / push again"}, {value: "capture", label: "Only during screen selection"}, {value: "off", label: "Off"}]
+                value: page.cfg.boundaryMode
+                onChosen: v => page.cfg.boundaryMode = v
+            }
+        }
+        Row {
+            visible: page.cfg.boundaryMode === "corners"
+            label: "Corner reach"
+            detail: page.cfg.cornerSize + " logical pixels from each corner"
+            Scale { from: 4; to: 100; low: "Small"; high: "Large"; value: page.cfg.cornerSize; onMoved: v => page.cfg.cornerSize = Math.round(v) }
         }
     }
 
@@ -131,6 +152,8 @@ Column {
                     page.cfg.leftHanded = false;
                     page.cfg.middleEmulation = false;
                     page.cfg.focus = "hover";
+                    page.cfg.boundaryMode = "corners";
+                    page.cfg.cornerSize = 24;
                 }
             }
         }

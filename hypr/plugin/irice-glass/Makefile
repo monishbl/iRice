@@ -10,8 +10,8 @@ LIBS = -lGLESv2
 
 # Built beside it, then swapped in: a running Hyprland that has the old one
 # loaded keeps its copy (overwriting a loaded library in place crashes it)
-irice-glass.so: main.cpp controls.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $^ -o $@.new $(LIBS)
+irice-glass.so: main.cpp controls.cpp pointer.cpp pointer-policy.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) main.cpp controls.cpp pointer.cpp -o $@.new $(LIBS)
 	mv -f $@.new $@
 
 clean:

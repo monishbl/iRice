@@ -1,5 +1,26 @@
 # iRice changelog
 
+## Pointer focus and multiple displays · 2026-10-29
+
+- Hover focus now rechecks the stationary pointer after workspace/window changes. New windows take focus and bring the pointer when they open elsewhere.
+- Every displayed monitor's active workspace stays highlighted and visible through workspace-strip overflow.
+- Settings → Mouse adds shared-corner protection, edge resistance/push again, selection-only confinement, and Off. Corner size is adjustable. Requires the rebuilt compositor plugin; pointer constraints in games take precedence and deliberate pointer warps remain available.
+- Region selection is clipped to its starting monitor, including off-screen windows. Native pointer confinement has a short lease so it releases if the shell exits during selection.
+
+## Google integration and clipboard image reuse · 2026-10-29
+
+- Settings → Google adds Desktop OAuth sign-in, Calendar sync and primary-calendar quick-add, and Google Tasks sync/editing in existing reminder widgets. New tasks remain local unless a Google task list is selected. Desktop Online Accounts is the default sign-in route; custom OAuth is optional. Real-account verification is pending.
+- Keep opens in the browser; native personal Keep sync is not supported by this implementation. See [setup and limitations](docs/google-integration.md).
+- Clipboard previews now use stable cached image URLs and atomic decoding, retain unchanged history models, and cover all images in the 200-item history window instead of only the first 48.
+
+### Upgrade and verification notes
+
+- Rebuild the iRice compositor plugin and restart the session to activate pointer barriers and reliable stationary-pointer refocus. Screenshot clipping works without the plugin.
+- Google sign-in uses GNOME Online Accounts. New installs include `gnome-online-accounts`, `gnome-control-center` and `python-gobject`; existing installs need those dependencies before using the account flow. Users do not need a Google Cloud project for this route.
+- Validation: 29 Python/C++/Lua regression tests and 5 screenshot-geometry tests passed; changed QML parses; isolated Quickshell account/focus checks passed; the native plugin builds against installed Hyprland 0.56.2 headers.
+- Live Google authentication, physical multi-monitor pointer behavior, workspace-chip appearance and clipboard-grid rendering still need verification. The live compositor was not hot-reloaded during development.
+- Added the detailed bug audit and missing-feature/power strategy documents. Findings in those reports remain tracked work unless explicitly marked implemented; this update does not fix every audited issue.
+
 ## Your own AI models · 2026-10-28
 
 - Settings → AI now lets you add, edit, remove and select models with a display name, model ID, provider and credentials. New installations have no preset models; existing selected models, extra models and provider keys are preserved.

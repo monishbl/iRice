@@ -4,6 +4,7 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.common
 import qs.services
+import "../../common/ScreenGeometry.js" as ScreenGeometry
 
 // Region picker: dims the screen, drag to select (live size readout), or
 // click a highlighted window to take all of it. Space toggles window mode
@@ -13,14 +14,21 @@ Scope {
 
     readonly property string mode: ScreenTools.selecting
     property bool hiding: false
+    onModeChanged: {
+        if (mode === "") {
+            captureDelay.stop();
+            hiding = false;
+        }
+    }
 
     Timer {
         id: captureDelay
         interval: 160 // let the compositor drop the overlay before grim runs
         property var screen
         property rect rect
+        property string captureMode
         onTriggered: {
-            ScreenTools.captured(root.mode, screen, rect);
+            ScreenTools.captured(captureMode, screen, rect);
             root.hiding = false;
         }
     }
@@ -45,14 +53,19 @@ Scope {
             property point end
             property bool dragging: false
             property var hovered: null // window rect under the pointer
-            readonly property rect selection: dragging ? Qt.rect(Math.min(start.x, end.x), Math.min(start.y, end.y), Math.abs(end.x - start.x), Math.abs(end.y - start.y)) : (hovered ?? Qt.rect(0, 0, 0, 0))
+            readonly property rect selection: {
+                const r = ScreenGeometry.clip(dragging ? {x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y)} : (hovered ?? Qt.rect(0, 0, 0, 0)), width, height);
+                return Qt.rect(r.x, r.y, r.width, r.height);
+            }
             readonly property string verb: ({ screenshot: "capture", ocr: "copy text", translate: "translate", record: "record", "record-window": "record", ask: "ask AI about" })[root.mode] ?? ""
 
             function finish(r) {
+                r = ScreenGeometry.clip(r, width, height);
                 if (r.width < 4 || r.height < 4)
                     return;
                 captureDelay.screen = screen;
-                captureDelay.rect = r;
+                captureDelay.rect = Qt.rect(r.x, r.y, r.width, r.height);
+                captureDelay.captureMode = root.mode;
                 root.hiding = true;
                 captureDelay.start();
             }
@@ -126,7 +139,7 @@ Scope {
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onPositionChanged: m => {
                     if (win.dragging) {
-                        win.end = Qt.point(m.x, m.y);
+                        win.end = Qt.point(Math.max(0, Math.min(win.width, m.x)), Math.max(0, Math.min(win.height, m.y)));
                     } else {
                         win.hovered = win.windows.find(r => m.x >= r.x && m.x <= r.x + r.width && m.y >= r.y && m.y <= r.y + r.height) ?? null;
                     }
@@ -136,7 +149,7 @@ Scope {
                         ScreenTools.cancelSelect();
                         return;
                     }
-                    win.start = Qt.point(m.x, m.y);
+                    win.start = Qt.point(Math.max(0, Math.min(win.width, m.x)), Math.max(0, Math.min(win.height, m.y)));
                     win.end = win.start;
                     win.dragging = true;
                 }

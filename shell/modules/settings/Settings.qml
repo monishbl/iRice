@@ -39,6 +39,7 @@ Scope {
                 { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366", group: "Devices & Input" },
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366", group: "Devices & Input" },
                 { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF", group: "Devices & Input" },
+                { id: "google", name: "Google", icon: "cloud", color: "#4285F4", group: "Apps" },
                 { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A", group: "Apps" },
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },

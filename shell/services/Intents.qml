@@ -47,8 +47,9 @@ Singleton {
         if (!p.text)
             return;
         out.push(row("Add to-do: " + p.text, p.due ? "Due " + Todos.dueLabel({ due: p.due, allDay: p.allDay }) : "Reminders · no due date", "check-circle", () => {
-            Todos.add(m[2]);
-            done("check-circle", "To-do added", p.text + (p.due ? " · " + Todos.dueLabel({ due: p.due, allDay: p.allDay }) : ""), Theme.accents.orange);
+            if (!Todos.add(m[2]))
+                return;
+            done("check-circle", Config.options.google.taskListId ? "Sending to Google Tasks" : "To-do added", p.text + (p.due ? " · " + Todos.dueLabel({ due: p.due, allDay: p.allDay }) : ""), Theme.accents.orange);
         }));
         // A reminder with a time can also go in the calendar
         if (/^remind/i.test(m[1]) && p.due && !p.allDay)

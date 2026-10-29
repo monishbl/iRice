@@ -10,16 +10,15 @@ Item {
 
     property string size: "m"
     property bool preview: false
-    readonly property var todos: UiState.data.todos ?? []
+    readonly property var todos: Todos.list
     readonly property var open: Todos.sorted(todos.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done))
     readonly property int rows: size === "l" ? 8 : size === "m" ? 3 : 2
 
     function toggle(i) {
         if (preview)
             return;
-        const l = todos.slice();
-        l[i] = Object.assign({}, l[i], { done: !l[i].done });
-        UiState.data.todos = l;
+        if (Todos.list[i])
+            Todos.update(i, { done: !Todos.list[i].done });
     }
 
     Row {
@@ -122,8 +121,8 @@ Item {
             onAccepted: {
                 if (text.trim() === "")
                     return;
-                Todos.add(text);
-                text = "";
+                if (Todos.add(text))
+                    text = "";
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter

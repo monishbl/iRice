@@ -10,7 +10,8 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property var list: UiState.data.todos ?? []
+    readonly property var localList: UiState.data.todos ?? []
+    readonly property var list: localList.concat(Google.tasks)
 
     // "text [when]" -> { text, due (ms) | 0, allDay }
     function parse(text) {
@@ -48,28 +49,55 @@ Singleton {
             item.due = p.due;
             item.allDay = p.allDay;
         }
-        UiState.data.todos = list.concat([item]);
+        return addItem(item);
+    }
+
+    function addItem(item) {
+        const destination = Config.options.google.taskListId;
+        if (destination) {
+            if (!Google.connected || !Google.taskLists.some(l => l.id === destination)) {
+                Google.lastError = "Connect Google and select an available task list, or switch new tasks to Local in Settings → Google.";
+                Quickshell.execDetached(["notify-send", "-a", "Reminders", "Task not added", Google.lastError]);
+                return false;
+            }
+            if (item.due && !item.allDay) {
+                Google.lastError = "Google Tasks cannot store reminder times. Choose a date-only task or Local in Settings → Google.";
+                Quickshell.execDetached(["notify-send", "-a", "Reminders", "Task not added", Google.lastError]);
+                return false;
+            }
+            return Google.run({ cmd: "taskAdd", listId: destination, patch: {
+                text: item.text, done: !!item.done, date: item.due ? Qt.formatDate(new Date(item.due), "yyyy-MM-dd") : "" } });
+        }
+        UiState.data.todos = localList.concat([item]);
+        return true;
     }
 
     // Change or remove the to-do at index (remove returns it, for Undo)
     function update(i, patch) {
-        const l = list.slice();
+        if (list[i]?.google)
+            return Google.updateTask(list[i], patch);
+        const l = localList.slice();
         if (!l[i])
             return;
         l[i] = Object.assign({}, l[i], patch);
         if (patch.due !== undefined)
             delete l[i].notified; // a new time notifies again
         UiState.data.todos = l;
+        return true;
     }
     function remove(i) {
         const t = list[i];
-        UiState.data.todos = list.filter((_, j) => j !== i);
+        if (t?.google) {
+            Google.run({ cmd: "taskDelete", listId: t.listId, id: t.id });
+            return null; // Google deletions cannot restore the same task ID
+        }
+        UiState.data.todos = localList.filter((_, j) => j !== i);
         return t;
     }
     function restore(t, i) {
         if (!t)
             return;
-        const l = list.slice();
+        const l = localList.slice();
         l.splice(Math.min(i ?? l.length, l.length), 0, t);
         UiState.data.todos = l;
     }
@@ -106,7 +134,7 @@ Singleton {
         onTriggered: {
             const now = Date.now();
             let changed = false;
-            const l = root.list.map(t => {
+            const l = root.localList.map(t => {
                 if (t.due && !t.done && !t.allDay && !t.notified && t.due <= now) {
                     changed = true;
                     if (now - t.due < 3600000) // not for ones long past

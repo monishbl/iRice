@@ -12,15 +12,13 @@ Platter {
 
     property int padding: 12
     property bool fitHeight: false
-    readonly property var todos: UiState.data.todos ?? []
+    readonly property var todos: Todos.list
     property var undo: null // { item, index }, offered back for a few seconds
     implicitHeight: column.implicitHeight + 2 * padding
 
-    function save(list) {
-        UiState.data.todos = list;
-    }
     function remove(i) {
-        undo = { item: Todos.remove(i), index: i };
+        const removed = Todos.remove(i);
+        undo = removed ? { item: removed, index: i } : null;
         undoTimer.restart();
     }
     Timer {
@@ -51,8 +49,8 @@ Platter {
                 onAccepted: {
                     if (text.trim() === "")
                         return;
-                    Todos.add(text); // "pay rent tomorrow 5pm" gets a due time
-                    text = "";
+                    if (Todos.add(text))
+                        text = "";
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -164,7 +162,7 @@ Platter {
                             // When it's due; red once overdue
                             Text {
                                 visible: text !== ""
-                                text: Todos.dueLabel(item.modelData)
+                                text: [Todos.dueLabel(item.modelData), item.modelData.google ? "Google · " + item.modelData.listName : ""].filter(Boolean).join(" · ")
                                 color: Todos.overdue(item.modelData) ? Theme.color.danger : Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                             }

@@ -210,7 +210,7 @@ WlSessionLockSurface {
                     { icon: "", battery: true, text: Island.hasBattery ? Math.round(Island.level * 100) + "%" : "", on: Island.hasBattery },
                     { icon: Weather.icon, text: Weather.temp + "°", on: Weather.ready },
                     { icon: "calendar-blank", text: complications.next ? (complications.next.allDay ? "Today" : Qt.formatTime(complications.next.start, "h:mm")) : "", on: !!complications.next },
-                    { icon: "list-checks", text: String((UiState.data.todos ?? []).filter(t => !t.done).length), on: (UiState.data.todos ?? []).some(t => !t.done) }
+                    { icon: "list-checks", text: String(Todos.list.filter(t => !t.done).length), on: Todos.list.some(t => !t.done) }
                 ].filter(c => c.on)
                 Plate {
                     required property var modelData

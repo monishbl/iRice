@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
+import "../common/ScreenGeometry.js" as ScreenGeometry
 
 // Screenshots, OCR, screen translation and recording. Region picking happens
 // in RegionSelector; this service does the capturing and the follow-up.
@@ -43,6 +44,7 @@ Singleton {
     // Global geometry string for grim/wf-recorder from screen-local rect
     function geometry(screen, r) {
         const mon = Hyprland.monitorFor(screen);
+        r = ScreenGeometry.integerClip(r, screen?.width ?? 0, screen?.height ?? 0);
         return Math.round((mon?.x ?? 0) + r.x) + "," + Math.round((mon?.y ?? 0) + r.y) + " " + Math.round(r.width) + "x" + Math.round(r.height);
     }
 
@@ -61,6 +63,9 @@ Singleton {
     // Called by RegionSelector once the overlay is hidden.
     function captured(mode, screen, rect) {
         selecting = "";
+        rect = ScreenGeometry.clip(rect, screen?.width ?? 0, screen?.height ?? 0);
+        if (rect.width < 1 || rect.height < 1)
+            return;
         const geo = geometry(screen, rect);
         if (mode === "screenshot")
             shoot(["-g", geo], true);

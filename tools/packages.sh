@@ -11,6 +11,8 @@ PACKAGES=(
     gnome-keyring libsecret polkit brightnessctl playerctl libnotify mesa mesa-utils xdg-user-dirs
     # Commands the shell runs: pactl/paplay, xdg-open, gio/gsettings/gdbus, gtk-launch, sound effects, drives, file dialogs
     libpulse xdg-utils glib2 gtk3 libcanberra udisks2 zenity inotify-tools
+    # Shared Google sign-in through desktop Online Accounts (no user OAuth project)
+    gnome-online-accounts gnome-control-center python-gobject
     # Screen tools, clipboard, input
     grim slurp wl-clipboard cliphist gpu-screen-recorder wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
     # (hyprpm, used for the optional hyprbars title bars, ships with the hyprland package)

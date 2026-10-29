@@ -56,13 +56,16 @@ Singleton {
     function apply() {
         if (!Config.ready)
             return;
-        let lua = "hl.config({ input = { follow_mouse = " + (cfg.focus === "hover" ? 1 : 2) + " } })\n";
+        let lua = "hl.config({ input = { follow_mouse = " + (cfg.focus === "hover" ? 1 : 2) + ", mouse_refocus = true, focus_on_close = " + (cfg.focus === "hover" ? 1 : 0) + " } })\n";
+        if (cfg.focus === "hover")
+            lua += "hl.config({ input = { follow_mouse_threshold = 0 }, cursor = { warp_on_change_workspace = 0, warp_on_monitor_change = 0 } })\n";
         for (const m of mice)
             lua += deviceSpec(m) + "\n";
         lua += touchpadSpec() + "\n";
         for (const t of touchpads)
             lua += touchpadDevice(t) + "\n";
         Quickshell.execDetached(["hyprctl", "eval", lua]);
+        applyBoundaries();
     }
     Timer {
         id: applyLater
@@ -104,11 +107,64 @@ Singleton {
         onTriggered: reader.running = true
     }
 
+    readonly property bool boundaryAvailable: GlassPlugin.available && GlassPlugin.version >= 3
+    function applyBoundaries() {
+        if (!boundaryAvailable || !Config.ready)
+            return;
+        const mode = cfg.boundaryMode === "corners" ? 1 : cfg.boundaryMode === "resistance" ? 2 : 0;
+        GlassPlugin.command("pointer-policy", "irice-glass pointer-policy " + mode + " " + Math.max(4, Math.min(100, cfg.cornerSize)));
+        confineSelection();
+    }
+    function confineSelection() {
+        if (!boundaryAvailable)
+            return;
+        const name = cfg.boundaryMode !== "off" && !System.locked && ScreenTools.selecting !== "" ? ScreenTools.selectingScreen?.name : "";
+        GlassPlugin.command("pointer-confine", "irice-glass pointer-confine " + (name || "-"));
+    }
+    readonly property string boundarySignature: cfg.boundaryMode + "|" + cfg.cornerSize
+    onBoundarySignatureChanged: applyBoundaries()
+    Connections { target: GlassPlugin; function onReady() { root.applyBoundaries(); } }
+    Connections { target: ScreenTools; function onSelectingChanged() { root.confineSelection(); } }
+    Connections { target: System; function onLockedChanged() { root.confineSelection(); } }
+    Timer { // A short lease releases confinement if the shell exits during selection.
+        interval: 500; repeat: true
+        running: root.boundaryAvailable && ScreenTools.selecting !== "" && root.cfg.boundaryMode !== "off"
+        onTriggered: root.confineSelection()
+    }
+
+    property string openedWindow: ""
+    Timer {
+        id: focusLater
+        interval: 180
+        onTriggered: {
+            const address = root.openedWindow;
+            root.openedWindow = "";
+            if (!Config.ready || root.cfg.focus !== "hover" || System.locked || Panels.open !== "" || ScreenTools.selecting !== "")
+                return;
+            if (address === "" && root.boundaryAvailable) {
+                Quickshell.execDetached(["hyprctl", "irice-glass", "pointer-refocus"]);
+                return;
+            }
+            const script = decodeURIComponent(Qt.resolvedUrl("../assets/scripts/pointer-focus.lua").toString().replace("file://", ""));
+            Quickshell.execDetached(["hyprctl", "eval", "local focus = dofile(" + JSON.stringify(script) + "); focus(" + JSON.stringify(address) + ")"]);
+        }
+    }
     Connections {
         target: Hyprland
         function onRawEvent(event) {
             if (event.name === "configreloaded")
                 applyLater.restart();
+            if (root.cfg.focus !== "hover")
+                return;
+            if (event.name === "openwindow") {
+                const address = event.data.split(",")[0];
+                if (/^(0x)?[0-9a-f]+$/i.test(address)) {
+                    root.openedWindow = address.startsWith("0x") ? address : "0x" + address;
+                    focusLater.restart();
+                }
+            } else if (["workspace", "workspacev2", "activespecial", "activespecialv2", "closewindow", "movewindowv2", "changefloatingmode"].includes(event.name)) {
+                focusLater.restart();
+            }
         }
     }
 }

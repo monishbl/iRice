@@ -133,17 +133,29 @@ Singleton {
                     return { id: l.slice(0, tab), text: t, image: m ? root.previewDir + "/" + l.slice(0, tab) + "." + m[1].toLowerCase() : "" };
                 });
                 root.stampRows(rows);
-                root.items = rows;
-                // Decode previews for the first images only (cheap, kept in RAM-backed runtime dir)
-                const want = rows.filter(r => r.image).slice(0, 48);
-                if (want.length > 0) {
-                    previewProc.command = ["sh", "-c", "db=$1; mkdir -p \"$2\"; shift 2; while [ $# -gt 0 ]; do [ -s \"$2\" ] || cliphist -db-path \"$db\" decode \"$1\" > \"$2\"; shift 2; done", "sh", root.db, root.previewDir].concat(...want.map(r => [r.id, r.image]));
-                    previewProc.running = true;
-                }
+                if (JSON.stringify(root.items) !== JSON.stringify(rows))
+                    root.items = rows;
+                root.decodePreviews(rows);
             }
         }
     }
-    property int previewVersion: 0
+    // Stable URLs let Qt reuse decoded images when switching filters or reopening.
+    // Publish each path only after an atomic decode; never load incomplete files.
+    property var previewReady: ({})
+    property var pendingPreviews: []
+    function decodePreviews(rows) {
+        pendingPreviews = rows.filter(r => r.image);
+        if (!previewProc.running)
+            startPreviews();
+    }
+    function startPreviews() {
+        const want = pendingPreviews;
+        pendingPreviews = [];
+        if (!want.length)
+            return;
+        previewProc.command = ["python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/clipboard-previews.py").toString().replace("file://", "")), root.db, root.previewDir].concat(...want.map(r => [r.id, r.image]));
+        previewProc.running = true;
+    }
     Connections {
         target: listProc
         function onRunningChanged() {
@@ -155,7 +167,13 @@ Singleton {
     }
     Process {
         id: previewProc
-        onExited: root.previewVersion++
+        stdout: SplitParser {
+            onRead: path => {
+                if (!root.previewReady[path])
+                    root.previewReady = Object.assign({}, root.previewReady, { [path]: true });
+            }
+        }
+        onExited: Qt.callLater(root.startPreviews)
     }
 
     // cliphist's list shows a whitespace-collapsed preview ending in "…" when cut

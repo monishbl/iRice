@@ -15,7 +15,7 @@ FocusScope {
     // Today's events (past ones dimmed) and open to-dos, soonest first
     readonly property date now: clock.now
     readonly property var events: Calendar.eventsOn(now)
-    readonly property var todos: Todos.sorted((UiState.data.todos ?? []).map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done)).slice(0, 5)
+    readonly property var todos: Todos.sorted(Todos.list.map((t, i) => Object.assign({ i: i }, t)).filter(t => !t.done)).slice(0, 5)
     QtObject {
         id: clock
         property date now: new Date()
@@ -28,11 +28,8 @@ FocusScope {
     }
 
     function toggle(i) {
-        const l = (UiState.data.todos ?? []).slice();
-        if (!l[i])
-            return;
-        l[i] = Object.assign({}, l[i], { done: !l[i].done });
-        UiState.data.todos = l;
+        if (Todos.list[i])
+            Todos.update(i, { done: !Todos.list[i].done });
     }
 
     // Row n of the stagger: 40 ms apart, each rising 8 px as it fades in
@@ -196,7 +193,7 @@ FocusScope {
             height: 36
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: (UiState.data.todos ?? []).length === 0 ? "No to-dos. Add them in Notification Center." : "All done"
+                text: Todos.list.length === 0 ? "No to-dos. Add them in Notification Center." : "All done"
                 color: Theme.color.tertiary
                 font { family: Theme.font.family; pixelSize: 14 }
             }

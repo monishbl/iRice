@@ -20,6 +20,8 @@ Item {
     readonly property string style: Config.options.menubar.workspaces // dots | icons
     readonly property var monitor: Hyprland.monitorFor(screen)
     readonly property int activeId: monitor?.activeWorkspace?.id ?? 1
+    readonly property var visibleIds: Hyprland.monitors.values.map(m => m.activeWorkspace?.id ?? 0).filter(id => id > 0)
+    function isVisibleSpace(id) { return visibleIds.includes(id); }
     // Every space's apps, wherever it lives
     readonly property var occupied: {
         const m = {};
@@ -33,6 +35,10 @@ Item {
         for (const w of Hyprland.workspaces.values)
             if (w.id > 0)
                 m[w.id] = w.monitor;
+        // Monitor state can arrive before the workspace collection catches up.
+        for (const display of Hyprland.monitors.values)
+            if (display.activeWorkspace?.id > 0)
+                m[display.activeWorkspace.id] = display;
         return m;
     }
     // One list for every display: 1..workspaceCount and every space in use,
@@ -42,6 +48,9 @@ Item {
     readonly property bool showOthers: Config.options.menubar.otherSpaces
     readonly property var ids: {
         const all = new Set([activeId]);
+        if (showOthers)
+            for (const id of visibleIds)
+                all.add(id);
         for (const w of Hyprland.workspaces.values)
             if (w.id > 0 && (showOthers || w.monitor === monitor))
                 all.add(w.id);
@@ -82,9 +91,15 @@ Item {
     // Past the ends: arrows, or (dynamic) the next chips shrink and fade
     // out like Instagram's dots and slide along as you move
     readonly property bool dynamic: Config.options.menubar.workspaceOverflow === "dynamic"
-    readonly property var shown: overflow && !dynamic ? ids.slice(start, start + cap) : ids
-    readonly property var hiddenLeft: overflow ? ids.slice(0, start) : []
-    readonly property var hiddenRight: overflow ? ids.slice(start + cap) : []
+    readonly property var shown: {
+        if (!overflow || dynamic)
+            return ids;
+        const page = ids.slice(start, start + cap);
+        // Every monitor's active space remains visible even outside this page.
+        return ids.filter(id => page.includes(id) || isVisibleSpace(id));
+    }
+    readonly property var hiddenLeft: overflow ? ids.slice(0, start).filter(id => !isVisibleSpace(id)) : []
+    readonly property var hiddenRight: overflow ? ids.slice(start + cap).filter(id => !isVisibleSpace(id)) : []
     function busy(list) {
         return list.some(id => !!occupied[id]);
     }
@@ -125,23 +140,23 @@ Item {
                 // Dynamic overflow: how far past the shown window (0 inside);
                 // one past is smaller and fainter, two past smaller still,
                 // beyond that it's gone
-                readonly property int past: !root.overflow || !root.dynamic ? 0 : index < root.start ? root.start - index : Math.max(0, index - (root.start + root.cap - 1))
+                readonly property int past: root.isVisibleSpace(wsId) || !root.overflow || !root.dynamic ? 0 : index < root.start ? root.start - index : Math.max(0, index - (root.start + root.cap - 1))
                 readonly property real fall: past === 0 ? 1 : past === 1 ? 0.7 : past === 2 ? 0.45 : 0
                 visible: fall > 0 || widthAnim.running
                 readonly property bool active: wsId === root.activeId
                 // Lives on another display (and, if shown there, is that one's current space)
                 readonly property bool elsewhere: !!root.monitorOf[wsId] && root.monitorOf[wsId] !== root.monitor
                 readonly property bool shownThere: elsewhere && root.monitorOf[wsId]?.activeWorkspace?.id === wsId
-                opacity: (elsewhere ? 0.55 : 1) * (past === 0 ? 1 : past === 1 ? 0.6 : 0.3)
+                opacity: (elsewhere && !shownThere ? 0.55 : 1) * (past === 0 ? 1 : past === 1 ? 0.6 : 0.3)
                 scale: fall
                 Behavior on scale { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
                 Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
                 readonly property var apps: [...new Set(root.occupied[wsId] ?? [])].slice(0, 3)
                 readonly property bool showIcons: root.style === "icons" && apps.length > 0
                 height: 18
-                width: (showIcons ? apps.length * 14 + 10 : (active ? 26 : 18)) * fall
+                width: (showIcons ? apps.length * 14 + 10 : (active || shownThere ? 26 : 18)) * fall
                 radius: 9
-                color: active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
+                color: active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : shownThere ? Qt.alpha(root.fg, 0.22) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
                 function report() {
                     // (may run late, after the chip list was rebuilt)
                     if (active && ws.parent && root)
@@ -170,11 +185,11 @@ Item {
                     anchors.centerIn: parent
                     visible: !ws.showIcons
                     // empty: a faint dot; with windows: a short pill; current: longer
-                    width: ws.active ? 14 : root.occupied[ws.wsId] ? 10 : 5
+                    width: ws.active || ws.shownThere ? 14 : root.occupied[ws.wsId] ? 10 : 5
                     height: 5
                     radius: 2.5
                     color: root.fg
-                    opacity: ws.active ? 1 : (root.occupied[ws.wsId] ? 0.85 : 0.35)
+                    opacity: ws.active || ws.shownThere ? 1 : (root.occupied[ws.wsId] ? 0.85 : 0.35)
                     Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
                 }
                 // On another display: a small bar under it (brighter while

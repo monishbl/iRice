@@ -422,11 +422,11 @@ Variants {
                 Image {
                     id: img
                     anchors.fill: parent
-                    source: prev.path && (prev.pinned || Clipboard.previewVersion > 0) ? "file://" + prev.path + "?v=" + Clipboard.previewVersion : ""
+                    source: prev.path && (prev.pinned || Clipboard.previewReady[prev.path]) ? "file://" + prev.path : ""
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(640, 640)
                     asynchronous: true
-                    cache: false
+                    cache: true
                     layer.enabled: true
                     layer.effect: MultiEffect {
                         maskEnabled: true

@@ -11,7 +11,9 @@
 //
 // hyprctl irice-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl irice-glass clear [<monitor> <namespace>]
-// hyprctl irice-glass ping            -> "irice-glass 2" (2: shapes may carry gloss)
+// hyprctl irice-glass ping            -> "irice-glass 3" (2: gloss; 3: pointer boundaries)
+// hyprctl irice-glass pointer-policy <0..2> <corner px>
+// hyprctl irice-glass pointer-confine <monitor|-> (1.5-second lease)
 // hyprctl irice-glass controls on|off [dark|light]   (see controls.cpp)
 // hyprctl irice-glass window-frost <0..1>  extra frost where glass covers windows
 //
@@ -50,6 +52,10 @@
 using namespace Render;
 using namespace Render::GL;
 
+void        pointerInit(HANDLE);
+void        pointerExit();
+bool        pointerReady();
+std::string pointerCommand(const std::string&, std::istringstream&);
 void        controlsInit(HANDLE);
 void        controlsExit();
 std::string controlsCommand(const std::string& state, const std::string& theme);
@@ -586,8 +592,10 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     std::istringstream in(request);
     std::string        name, verb;
     in >> name >> verb;
+    if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus")
+        return pointerCommand(verb, in);
     if (verb == "ping")
-        return "irice-glass 2";
+        return pointerReady() ? "irice-glass 3" : "irice-glass 2";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;
@@ -738,6 +746,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     if (!g_hook || !g_hook->hook())
         throw std::runtime_error("[irice-glass] hook failed");
 
+    pointerInit(handle);
     controlsInit(handle);
     dragInit(handle);
     g_frameListener = Event::bus()->m_events.render.pre.listen([](PHLMONITOR m) {
@@ -764,6 +773,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     g_frameListener.reset();
     g_dragMove.reset();
     g_dragButton.reset();
+    pointerExit();
     controlsExit();
     if (g_cmd)
         HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_cmd);
