@@ -91,6 +91,21 @@ def _read(p):
         return None
 
 
+def _opens(rules, port):
+    """Whether ufw's user.rules accept this TCP port: "--dport 53318", or a
+    list or range ("--dports 53317:53319", as `ufw allow 53317:53319/tcp`
+    writes it)."""
+    for line in rules.splitlines():
+        if "-j ACCEPT" not in line or "-p udp" in line:
+            continue
+        m = re.search(r"--dports?\s+(\S+)", line)
+        for part in (m.group(1).split(",") if m else []):
+            lo, _, hi = part.partition(":")
+            if lo.isdigit() and int(lo) <= port <= int(hi if hi.isdigit() else lo):
+                return True
+    return False
+
+
 def firewall():
     """{"kind": "ufw" | "firewalld" | None, "allowed": True | False | None,
     "blocks": bool (on, and not known to let sharing through)}."""
@@ -113,7 +128,7 @@ def firewall():
     if allowed is None and kind == "ufw":
         rules = _read("/etc/ufw/user.rules")
         if rules is not None:
-            allowed = "53318" in rules
+            allowed = _opens(rules, 53318)
     elif allowed is None and kind == "firewalld":
         code, _ = _run("firewall-cmd", "--query-port=53318/tcp")
         allowed = {0: True, 1: False}.get(code)
