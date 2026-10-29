@@ -4,55 +4,94 @@ In **Settings → Google**. One Google account at a time.
 
 ## Connecting
 
-The default is the desktop's account service (GNOME Online Accounts): open
-**Settings → Google → Open Online Accounts**, sign in to Google there with
-Calendars enabled, then pick the account in iRice and **Connect account**.
-GNOME Online Accounts owns the sign-in and token renewal; iRice asks it for
-short-lived tokens over the session bus and never copies its credentials.
-**Disconnect account** only unlinks iRice; the account stays usable by other
-apps. Needs `gnome-online-accounts`, `python-gobject` and
-`gnome-control-center` (or `gnome-online-accounts-gtk`).
+**Connect Google account** is the whole flow:
 
-Optionally (**Advanced connection**), your own OAuth client: a Google Cloud
-project with the Calendar and Tasks APIs, and an OAuth client of type
-*Desktop app* whose JSON you import. Sign-in then happens in your browser
-(a random loopback port, state check and PKCE). Apps left in Google's
-*Testing* state may have their refresh token expire after seven days.
+- A Google account already in GNOME Online Accounts (GOA) is used as it is,
+  with no browser. With several, Settings asks which.
+- Otherwise the native helper `goa-signin` (`shell/native/goa-signin.c`,
+  built with iRice's native helpers) asks GOA's own Google provider to add
+  one. Your browser opens at Google's sign-in; when you approve, Google
+  redirects to GOA's handler, which hands the result back to the helper over
+  D-Bus. The account is then GOA's, like one added in GNOME Settings, and
+  GNOME Settings is never opened. GOA shows a small "Sign in" window; the
+  helper presses its button for you.
+- Calendars switched off for the account in Online Accounts are switched on,
+  since connecting it to iRice asks for them. GOA's Google sign-in already
+  includes Tasks.
 
-## What syncs
+GOA renews the sign-in; iRice asks it for short-lived tokens over the session
+bus and never sees a password or refresh token. **Disconnect account** only
+unlinks iRice; the account stays usable by other apps. Needs
+`gnome-online-accounts` and `python-gobject`. Without the native helpers,
+Settings offers Online Accounts' own window instead.
 
-- **Calendar:** events from your visible Google calendars, one year either
-  side of the last sync, in Calendar, Today and Spotlight. They're read-only
-  in iRice (edit them in Google Calendar); **Add event** uses Google's
-  quick-add on the primary calendar.
-- **Tasks:** every task list, next to local to-dos. Tick, rename, re-date or
-  delete them as usual. Changes show at once, queue while a sync runs, and
-  reach Google in the background; only the changed list is fetched again.
-  Deleting can be undone for 8 seconds: the task is only deleted at Google
-  once that has passed. Google stores due dates but not times, so a timed
-  to-do can't go to a Google list.
-- **New tasks go to:** Local (the default) or a Google list. Local to-dos are
-  never uploaded on their own.
-- Refreshes every 15 minutes, and on **Sync now**.
+**Advanced → Use your own OAuth client**: a Google Cloud project with the
+Calendar and Tasks APIs and an OAuth client of type *Desktop app*, whose JSON
+you import. Sign-in then happens in your browser (a random loopback port,
+state check and PKCE). Apps left in Google's *Testing* state may have their
+refresh token expire after seven days.
 
-Conflicts are last-writer-wins: a task changed here and on another device at
-the same time keeps whichever change reached Google last. Writes need a
-connection; one that fails shows the error, and the task goes back to what
-Google has.
+## Syncing
 
-Google Keep only opens in the browser: Google's Keep API is for enterprise
-administration, not personal notes.
+Incremental, so a sync where nothing changed is small:
 
-## Storage and failures
+- **Calendars:** the calendar list and each calendar's events use Google's
+  sync tokens, so only changes come back. A token Google no longer accepts
+  (HTTP 410) refetches that calendar in full, a year either side of now.
+- **Tasks:** Google Tasks has no sync tokens, so each list asks for tasks
+  updated since the last sync (a minute early, for clock skew), deletions
+  included.
 
-Client credentials, tokens and the cached events and tasks live in
-`$XDG_CONFIG_HOME/irice/google` (mode `0700`, files `0600`, written
-atomically). Tokens never reach QML, command lines or UiState. A sync that
-fails part-way keeps the last complete one. **Disconnect account** revokes
-the token before removing it; **Forget locally** removes it without a
-connection (revoke iRice in your Google account afterwards).
+With 4 calendars and 3 task lists, a sync where nothing changed is 9 small
+requests, about 3 ms of work in the helper plus about 100 ms to start Python.
+The responses are a few hundred bytes each; this is estimated, not measured
+against Google.
+
+**When:**
+
+- at login, and on unlock or wake (sleep locks first);
+- when Notification Center opens and the last sync is over 2 minutes old;
+- every 15 minutes while you use the computer;
+- **Sync now**.
+
+Never while it's locked or idle (5 minutes without input). After a failure,
+automatic syncs wait 1, 4, 16 and 64 minutes, then 2 hours; **Sync now**
+always goes. Each sync is one short-lived helper process, with nothing
+running in between.
+
+**What shows:**
+
+- **Calendar:** events from the calendars switched on in Settings, in
+  Calendar, Today and Spotlight. Read-only in iRice (edit them in Google
+  Calendar); **Add event** uses Google's quick-add on the primary calendar.
+- **Tasks:** every task list, next to local to-dos.
+  - Tick, rename, re-date or delete them as usual. Changes show at once, go
+    to Google in the background, and only that list is fetched again.
+  - Deleting can be undone for 8 seconds.
+  - Google stores due dates but not times.
+- **New tasks go to:** this computer only (the default), or a Google list.
+
+Conflicts are last-writer-wins: a task changed here and elsewhere at the same
+time keeps whichever change reached Google last.
+
+Google Keep only opens in the browser: Google doesn't offer personal Keep
+notes to other apps.
+
+## Storage
+
+Kept in `$XDG_CONFIG_HOME/irice/google` (mode `0700`, files `0600`, written
+atomically):
+
+- `cache.json`: events, tasks, calendars;
+- `sync.json`: sync tokens and times;
+- `connection.json`: which account;
+- for a custom client, its credentials and tokens.
+
+Tokens never reach QML, command lines or UiState. A sync that fails part-way
+keeps the last complete data and position. **Remove local data** deletes
+iRice's copy without contacting Google.
 
 ## Not done yet
 
-Several accounts, choosing which calendars show, editing Google events in
-iRice, keyring storage for the custom client's tokens.
+Several accounts at once, editing Google events in iRice, keyring storage for
+the custom client's tokens.

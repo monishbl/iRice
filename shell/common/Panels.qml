@@ -17,11 +17,13 @@ Singleton {
     }
     // Share sheet: send these files to a nearby device
     property var sharePaths: []
+    property string shareNote: "" // shared text (Sharing.shareText): shown instead of the file name
     function pickShare() {
         FilePicker.pick({ multiple: true, title: "Send files" }, paths => share(paths));
     }
-    function share(paths, scr) {
+    function share(paths, scr, note) {
         sharePaths = paths;
+        shareNote = note ?? "";
         show("share", scr);
     }
     // Quick Look: a preview of this file over whatever is open ("" = none)
@@ -35,6 +37,9 @@ Singleton {
     // A control is being dragged (slider, reordering): panels hold still
     // instead of rubber-banding under the pointer
     property int holdPull: 0
+    // A form is being filled in a menu (Wi-Fi join): menus don't close by
+    // themselves meanwhile (see Popover.autoClose)
+    property int holdMenus: 0
     signal addWidget(string kind, string size) // from the gallery to the desktop of Panels.screen
     property bool settingsOpen: false
     property string settingsPage: "appearance"

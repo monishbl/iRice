@@ -5,10 +5,12 @@ import qs.common
 import qs.glass
 import qs.services
 
-// Share (Panels.share(paths)): send files to a nearby device, like AirDrop.
-// Devices running LocalSend on the same network appear as they're found;
-// click one to send. They're asked to accept on their side; progress shows
-// in the island.
+// Share (Panels.share(paths)): send files, or text (Sharing.shareText), to a
+// nearby device, like AirDrop. Devices appear as they're found, in one list
+// (Sharing.devices): computers and phones running LocalSend, and Android
+// phones with Quick Share open; a device seen both ways is listed once.
+// Click one to send. They're asked to accept on their side; the sheet shows
+// how far each send has got (the island does too, once the sheet is closed).
 Variants {
     model: Quickshell.screens
 
@@ -28,18 +30,25 @@ Variants {
 
             readonly property bool shown: Panels.isOpen("share", screen)
             readonly property var paths: Panels.sharePaths
-            readonly property string what: paths.length === 1 ? "“" + paths[0].split("/").pop() + "”" : paths.length + " items"
-            onShownChanged: {
-                LocalSend.sharing = shown;
-                if (shown)
-                    QuickShare.refresh();
+            readonly property string note: Panels.shareNote // text being shared, if that's what it is
+            readonly property string what: note !== "" ? "“" + note.replace(/\s+/g, " ") + "”" : paths.length === 1 ? "“" + paths[0].split("/").pop() + "”" : paths.length + " items"
+            // Finding devices while the sheet is up (Sharing counts who's looking)
+            property bool lookingHere: false
+            function look(on) {
+                if (on !== lookingHere) {
+                    lookingHere = on;
+                    Sharing.look(on);
+                }
             }
-            Component.onDestruction: LocalSend.sharing = false
+            // (called as win.look: unqualified, a handler on this window type
+            // didn't find the function and the call failed)
+            onShownChanged: win.look(shown)
+            Component.onDestruction: win.look(false)
+            readonly property var devices: Sharing.devices
 
             property real progress: 0
             Component.onCompleted: {
-                LocalSend.sharing = shown;
-                QuickShare.refresh();
+                win.look(shown);
                 progress = Qt.binding(() => shown ? 1 : 0);
             }
             Behavior on progress { NumberAnimation { duration: win.shown ? 220 : 150; easing.type: win.shown ? Easing.OutCubic : Easing.InCubic } }
@@ -84,7 +93,7 @@ Variants {
                         AppIcon {
                             size: 44
                             styled: false
-                            source: IconLookup.path(win.paths.length === 1 ? Search.iconForFile(win.paths[0] ?? "") : "folder-documents", "text-x-generic")
+                            source: IconLookup.path(win.note !== "" ? "text-x-generic" : win.paths.length === 1 ? Search.iconForFile(win.paths[0] ?? "") : "folder-documents", "text-x-generic")
                         }
                         Column {
                             anchors.verticalCenter: parent.verticalCenter
@@ -96,7 +105,7 @@ Variants {
                                 font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
                             }
                             Text {
-                                text: "LocalSend · devices on the same Wi-Fi"
+                                text: win.note !== "" ? "Sent as a text file" : "Nearby devices on the same Wi-Fi"
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                             }
@@ -107,14 +116,16 @@ Variants {
                     Flow {
                         width: parent.width
                         spacing: 8
-                        visible: LocalSend.peers.length > 0
+                        visible: win.devices.length > 0
                         Repeater {
-                            model: LocalSend.peers
+                            model: win.devices
                             Rectangle {
                                 id: peer
                                 required property var modelData
+                                // The send to it in flight: { done, total, waiting }
+                                readonly property var sending: Sharing.progressFor(modelData)
                                 width: 100
-                                height: 100
+                                height: 112
                                 radius: 14
                                 color: peerMouse.pressed ? Theme.color.fillPressed : peerMouse.containsMouse ? Theme.color.fill : "transparent"
                                 Column {
@@ -131,17 +142,48 @@ Variants {
                                             name: peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
                                             fill: true
                                             size: 26
-                                            color: "white"
+                                            color: Theme.color.onAccent
+                                        }
+                                        // Sending: a ring fills around it
+                                        Canvas {
+                                            id: ring
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            visible: peer.sending !== null
+                                            readonly property real frac: peer.sending && peer.sending.total > 0 ? peer.sending.done / peer.sending.total : 0
+                                            onFracChanged: requestPaint()
+                                            onVisibleChanged: requestPaint()
+                                            onPaint: {
+                                                const ctx = getContext("2d");
+                                                ctx.reset();
+                                                ctx.lineWidth = 3;
+                                                ctx.lineCap = "round";
+                                                ctx.strokeStyle = Theme.color.fill;
+                                                ctx.beginPath();
+                                                ctx.arc(width / 2, height / 2, width / 2 - 2, 0, 2 * Math.PI);
+                                                ctx.stroke();
+                                                ctx.strokeStyle = Theme.accent;
+                                                ctx.beginPath();
+                                                ctx.arc(width / 2, height / 2, width / 2 - 2, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * frac);
+                                                ctx.stroke();
+                                            }
                                         }
                                     }
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         width: 92
                                         horizontalAlignment: Text.AlignHCenter
-                                        text: peer.modelData.alias
+                                        text: peer.modelData.name
                                         elide: Text.ElideRight
                                         color: Theme.color.label
                                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: peer.sending ? (peer.sending.waiting ? "Waiting…" : Math.round(100 * (peer.sending.total > 0 ? peer.sending.done / peer.sending.total : 0)) + "%")
+                                            : peer.modelData.prefer === "quickshare" ? "Quick Share" : "LocalSend"
+                                        color: Theme.color.secondary
+                                        font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                                     }
                                 }
                                 MouseArea {
@@ -149,10 +191,9 @@ Variants {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        LocalSend.send(peer.modelData.id, win.paths);
-                                        Panels.close();
-                                    }
+                                    // (The sheet stays: the ring shows the send; the
+                                    // island takes over once it's closed)
+                                    onClicked: if (!peer.sending) Sharing.send(peer.modelData, win.paths)
                                 }
                             }
                         }
@@ -160,7 +201,7 @@ Variants {
 
                     // Looking, or nobody there
                     Column {
-                        visible: LocalSend.peers.length === 0
+                        visible: win.devices.length === 0
                         width: parent.width
                         spacing: 6
                         Row {
@@ -173,10 +214,10 @@ Variants {
                                 color: Theme.accent
                                 visible: LocalSend.available
                                 opacity: 0.4 + 0.6 * (0.5 + 0.5 * Math.cos(look.time * Math.PI))
-                                Ticker { id: look; running: win.shown && LocalSend.peers.length === 0; fps: 15 }
+                                Ticker { id: look; running: win.shown && win.devices.length === 0; fps: 15 }
                             }
                             Text {
-                                text: LocalSend.available ? "Looking for devices…" : "Sharing needs Python 3"
+                                text: LocalSend.available ? "No devices nearby" : "Sharing needs Python 3"
                                 color: Theme.color.label
                                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                             }
@@ -184,62 +225,29 @@ Variants {
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
-                            text: "Open LocalSend on your phone or other computer, on the same Wi-Fi. If nothing shows up, your firewall may be blocking port 53317."
+                            text: "Make sure they're on the same Wi-Fi with LocalSend open, or Quick Share visible to everyone. Still nothing? Your firewall may be blocking them: allow ports 53317 and 53318 and mDNS (port 5353)."
                             color: Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
                         }
                     }
 
                     Text {
-                        visible: LocalSend.error !== ""
+                        readonly property string errors: [LocalSend.error, QuickShare.error].filter(e => !!e).join(" ")
+                        visible: errors !== ""
                         width: parent.width
                         wrapMode: Text.Wrap
-                        text: LocalSend.error
+                        text: errors
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: 56
-                        radius: Theme.radius.control
-                        color: quickMouse.pressed ? Theme.color.fillPressed : quickMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                        opacity: QuickShare.busy ? 0.5 : 1
-                        Column {
-                            anchors { left: parent.left; right: parent.right; margins: 12; verticalCenter: parent.verticalCenter }
-                            spacing: 3
-                            Text {
-                                text: QuickShare.available ? "Send with Quick Share…" : "Set up Android Quick Share…"
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
-                            }
-                            Text {
-                                text: QuickShare.available ? "Choose a device in Packet" : "Requires the optional Packet app"
-                                color: Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small }
-                            }
-                        }
-                        MouseArea {
-                            id: quickMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: !QuickShare.busy
-                            onClicked: {
-                                if (QuickShare.available) {
-                                    QuickShare.send(win.paths);
-                                    Panels.close();
-                                } else {
-                                    Panels.openSettings("sharing");
-                                }
-                            }
-                        }
                     }
 
                     // Other ways
                     Row {
                         spacing: 8
                         Repeater {
-                            model: [
+                            model: win.note !== "" ? [
+                                { label: "Copy", icon: "copy", act: () => Quickshell.execDetached(["wl-copy", "--", win.note]) }
+                            ] : [
                                 { label: "Copy", icon: "copy", act: () => Quickshell.execDetached(["sh", "-c", "printf '%s\\n' \"$@\" | sed 's|^|file://|' | wl-copy -t text/uri-list", "sh"].concat(win.paths)) },
                                 { label: "Show in Files", icon: "folder-open", act: () => Files.reveal(win.paths[0] ?? "") }
                             ]

@@ -154,6 +154,7 @@ ShellRoot {
     GlobalShortcut { appid: "irice"; name: "lens"; description: "Search an area with Google Lens"; onPressed: Launch.run([decodeURIComponent(Qt.resolvedUrl("assets/scripts/lens-search.sh").toString().replace("file://", ""))]) }
     GlobalShortcut { appid: "irice"; name: "darkMode"; description: "Light or dark appearance"; onPressed: System.toggleDarkMode() }
     GlobalShortcut { appid: "irice"; name: "caffeine"; description: "Caffeine on or off"; onPressed: System.setKeepAwake(!System.keepAwake, 0) }
+    GlobalShortcut { appid: "irice"; name: "shareSelection"; description: "Share the selected text with a nearby device"; onPressed: Sharing.shareSelection() }
     GlobalShortcut { appid: "irice"; name: "askScreen"; description: "Ask AI about part of the screen"; onPressed: ScreenTools.select("ask") }
     component Snap: GlobalShortcut {
         required property string layout
@@ -220,6 +221,8 @@ ShellRoot {
     }
     GlobalShortcut { appid: "irice"; name: "reset"; description: "Close everything (if something is stuck)"; onPressed: root.panicReset() }
     GlobalShortcut { appid: "irice"; name: "lock"; description: "Lock the screen"; onPressed: System.power("lock") }
+    // (screenshot first, then the report page: Settings → Report a Bug)
+    GlobalShortcut { appid: "irice"; name: "reportBug"; description: "Report a bug"; onPressed: BugReport.start() }
 
     // qs ipc call panels toggle controlCenter [screenName]
     // The desktop has drawn (the wallpaper is up, the bar and dock follow):
@@ -261,6 +264,19 @@ ShellRoot {
         }
         function nctab(index: int): void {
             Panels.ncTab = index;
+        }
+        // qs ipc call panels shareFiles "$(printf '%s\n' /path/a /path/b)"
+        // (one path per line; file managers' Share… entries use this, through
+        // assets/scripts/share-files.sh)
+        function shareFiles(paths: string): void {
+            // (a file:// URI is decoded; a plain path is taken as is: "100%.png")
+            const list = paths.split("\n").filter(p => p !== "").map(p => p.startsWith("file://") ? decodeURIComponent(p.slice(7)) : p);
+            if (list.length > 0)
+                Panels.share(list);
+        }
+        // qs ipc call panels shareSelection  (the selected text, else what's copied)
+        function shareSelection(): void {
+            Sharing.shareSelection();
         }
         // qs ipc call panels quicklook /path/to/file  ("" closes it)
         function quicklook(path: string): void {

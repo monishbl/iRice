@@ -32,6 +32,7 @@ Singleton {
     // it through `shot` instead of Swappy and the notification.
     property bool hasEditor: false
     signal shot(string path)
+    signal editRequested(string path) // open a picture in the screenshot editor (a bug report's screenshot)
 
     function stamp() {
         return Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss.zzz") + "-" + Math.random().toString(36).slice(2, 10);

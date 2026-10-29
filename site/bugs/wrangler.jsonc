@@ -1,0 +1,22 @@
+// iRice bug reports: a Worker of its own (not part of the site Worker, which
+// GitHub deploys on every push to site/), with a D1 database. Deployed by
+// hand, once its database and secrets exist. See README.md here.
+{
+  "name": "irice-bugs",
+  "account_id": "fc02bfeb77675c77175d0d20804ca5e2",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "routes": [
+    { "pattern": "irice-bugs.monishbl.in", "custom_domain": true }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "irice-bugs",
+      // From `npx wrangler d1 create irice-bugs` (README.md, step 1)
+      "database_id": "REPLACE_WITH_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Secrets (README.md, step 3): GITHUB_TOKEN, RATE_SALT
+}

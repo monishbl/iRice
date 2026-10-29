@@ -158,6 +158,7 @@ Item {
         const p = it.path;
         const items = it.stack ? [
             { text: "Open " + it.name, action: () => root.openStack = it.key },
+            { text: "Share " + it.stack.length + (it.stack.length === 1 ? " file…" : " files…"), action: () => Panels.share(it.stack.map(f => f.path), desk.screen) },
             { separator: true },
             { text: "✓ Use Stacks", action: () => Config.options.desktop.useStacks = false }
         ] : [

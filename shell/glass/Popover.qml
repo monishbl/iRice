@@ -124,7 +124,7 @@ GlassWindow {
     // for `autoClose` ms (0: never)
     property int autoClose: 0
     Timer {
-        running: root.autoClose > 0 && root.shown && !bodyHover.hovered
+        running: root.autoClose > 0 && root.shown && !bodyHover.hovered && Panels.holdMenus === 0
         interval: Math.max(1, root.autoClose)
         onTriggered: Panels.close()
     }

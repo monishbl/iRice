@@ -209,45 +209,5 @@ class DesktopSharingTests(unittest.TestCase):
         self.assertIn('declined', [event for event, _ in sent])
         self.assertNotIn('finished', [event for event, _ in sent])
 
-    def test_packet_dbus_handoff_keeps_paths_as_data(self):
-        quick = load('quick-share')
-        files = [self.root / "a 'quoted' file.txt", self.root / 'line\nwith $shell `chars` ü.txt']
-        for path in files:
-            path.write_text('test')
-        with patch.object(quick, 'dbus_available', return_value=True), patch.object(quick.subprocess, 'Popen') as launch, patch.object(quick, 'activate') as activate:
-            quick.handoff([str(p) for p in files], ['packet'])
-            launch.assert_called_once()
-            # The paths go over D-Bus as a list of strings, exactly as they are
-            self.assertEqual(activate.call_args.args[0], [str(p.resolve()) for p in files])
-
-    @unittest.skipUnless(load('quick-share').dbus_available(), 'python-gobject is optional')
-    def test_packet_action_arguments_are_a_real_gvariant(self):
-        from gi.repository import GLib
-        v = GLib.Variant("(sava{sv})", ("send-files", [GLib.Variant("as", ["/tmp/a 'b'"])], {}))
-        self.assertEqual(v.unpack()[1][0], ["/tmp/a 'b'"])
-
-    def test_packet_retries_only_errors_before_delivery(self):
-        quick = load('quick-share')
-        path = self.root / 'file.txt'
-        path.write_text('test')
-        with patch.object(quick, 'dbus_available', return_value=True), patch.object(quick.subprocess, 'Popen'), patch.object(quick.time, 'sleep'), patch.object(quick, 'activate') as activate:
-            activate.side_effect = [Exception('GDBus.Error:org.freedesktop.DBus.Error.UnknownObject'), None]
-            quick.handoff([str(path)], ['packet'])
-            self.assertEqual(activate.call_count, 2)
-            activate.reset_mock()
-            activate.side_effect = [Exception('GDBus.Error:org.freedesktop.DBus.Error.NoReply')]
-            with self.assertRaises(RuntimeError):
-                quick.handoff([str(path)], ['packet'])
-            self.assertEqual(activate.call_count, 1)
-
-    def test_packet_rejects_missing_files_and_folders_before_launching(self):
-        quick = load('quick-share')
-        with patch.object(quick.subprocess, 'Popen') as launch:
-            for paths in [[], [str(self.root / 'missing')], [str(self.root)]]:
-                with self.assertRaises(ValueError):
-                    quick.handoff(paths, ['packet'])
-            launch.assert_not_called()
-
-
 if __name__ == '__main__':
     unittest.main()

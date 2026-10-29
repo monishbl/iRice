@@ -1,0 +1,12 @@
+These .proto files are copied unchanged from Google's open-source projects
+and are licensed under the Apache License, Version 2.0 (see the header of
+each file, and https://www.apache.org/licenses/LICENSE-2.0):
+
+  nearby/   https://github.com/google/nearby   (Nearby Connections and
+            Nearby Sharing wire formats)
+  ukey2/    https://github.com/google/ukey2    (UKEY2 key exchange,
+            SecureMessage and device-to-device messages)
+
+iRice uses them to speak the Quick Share (Nearby Share) protocol. The Python
+modules generated from them live in shell/assets/scripts/quickshare/nearby/pb
+(regenerate with tools/gen-quickshare-protos.sh).

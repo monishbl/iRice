@@ -103,9 +103,14 @@ GlassWindow {
                         id: fileMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        // Right-click: share it with a nearby device
+                        onClicked: m => {
                             root.dock.stackOpen = false;
-                            Files.open(fileCell.path);
+                            if (m.button === Qt.RightButton)
+                                Panels.share([fileCell.path]);
+                            else
+                                Files.open(fileCell.path);
                         }
                     }
                     // Quick Look without opening the app

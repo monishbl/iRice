@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.common
 
 // Google Calendar and Tasks, through assets/scripts/google-account.py: one
@@ -14,6 +15,14 @@ import qs.common
 // the task first and sends the deletion once its Undo (8 s) has passed, so
 // Undo just shows it again. Two changes to the same task from two places
 // (here and the phone) are last-writer-wins: Google keeps whichever came last.
+//
+// Syncs are incremental (only what changed; a few hundred bytes when nothing
+// did), and happen when they're useful, not on a clock alone: at login, on
+// unlock or resume (the morning Today screen opens then too), when
+// Notification Center opens and the last sync is over 2 minutes old, and
+// every 15 minutes while you're using the computer. Never while it's locked
+// or idle. After a failure the next try waits longer (1 minute, then up to
+// 2 hours); Sync now in Settings always goes.
 Singleton {
     id: root
     property var account: ({}) // the helper's last report: connection, calendars' events, tasks
@@ -40,7 +49,14 @@ Singleton {
         return Object.assign({}, t, { key: key, google: true, allDay: true,
             due: p.length ? new Date(p[0], p[1] - 1, p[2], 23, 59).getTime() : 0 }, o?.patch ?? {});
     }).filter(t => t !== null)
-    readonly property var events: account.events ?? []
+    // Calendars switched off in Settings → Google stay synced (it's cheap)
+    // and are just not shown
+    readonly property var events: {
+        const hidden = Config.options.google.hiddenCalendars ?? [];
+        return (account.events ?? []).filter(e => !hidden.includes(e.calendarId));
+    }
+    readonly property var calendars: account.calendars ?? []
+    readonly property real syncedAt: account.syncedAt ?? 0
 
     // Account actions (Settings): one at a time, turned away while busy
     function run(request) {
@@ -132,12 +148,56 @@ Singleton {
 
     function openKeep() { Qt.openUrlExternally("https://keep.google.com/"); }
     Component.onCompleted: run({ cmd: "status" })
-    Timer {
-        interval: 15 * 60 * 1000
-        repeat: true
-        running: root.connected
-        onTriggered: if (!root.busy && root.queue.length === 0) root.run({ cmd: "sync" })
+
+    // ── When to sync ────────────────────────────────────────────────────
+    // Connect: one click; the browser opens for a new account, an account
+    // already in Online Accounts is used as it is
+    function connect() {
+        return run({ cmd: "signin" });
     }
+    // A sync if the last one is older than `age` ms (and nothing's waiting
+    // out a failure)
+    function freshen(age) {
+        if (!connected || busy || queue.length > 0 || System.locked || Date.now() < retryAt)
+            return;
+        if (Date.now() - syncedAt >= age)
+            run({ cmd: "sync" });
+    }
+    property int failures: 0
+    property real retryAt: 0
+    IdleMonitor {
+        id: idle
+        timeout: 300
+        respectInhibitors: true // (a video playing counts as use)
+    }
+    Timer {
+        interval: 60 * 1000 // looks every minute; syncs when 15 have passed
+        repeat: true
+        running: root.connected && !System.locked && !idle.isIdle
+        onTriggered: root.freshen(15 * 60 * 1000)
+    }
+    Connections {
+        target: System
+        function onLockedChanged() {
+            if (!System.locked) // unlocked, or woke up (sleep locks first)
+                root.freshen(2 * 60 * 1000);
+        }
+    }
+    Connections {
+        target: idle
+        function onIsIdleChanged() {
+            if (!idle.isIdle)
+                root.freshen(15 * 60 * 1000);
+        }
+    }
+    Connections {
+        target: Panels
+        function onOpenChanged() {
+            if (Panels.open === "notificationCenter")
+                root.freshen(2 * 60 * 1000);
+        }
+    }
+
     property bool replied: false // the helper said anything (else it crashed or couldn't start)
     Process {
         id: helper
@@ -156,8 +216,18 @@ Singleton {
             if (root.current?.key)
                 root.setOverride(root.current.key, null);
             root.current = null;
+            // A failed sync waits longer each time before the automatic ones try again
+            if (root.operation === "sync" || root.operation === "status") {
+                if (root.lastError && root.connected) {
+                    root.failures++;
+                    root.retryAt = Date.now() + Math.min(2 * 3600 * 1000, 60 * 1000 * Math.pow(4, root.failures - 1)); // 1, 4, 16, 64 min, then 2 h (no network yet at login: soon)
+                } else if (!root.lastError) {
+                    root.failures = 0;
+                    root.retryAt = 0;
+                }
+            }
             if (root.operation === "status" && root.connected && root.queue.length === 0)
-                Qt.callLater(() => root.run({ cmd: "sync" }));
+                Qt.callLater(() => root.freshen(2 * 60 * 1000));
             else
                 Qt.callLater(root.pump);
         }

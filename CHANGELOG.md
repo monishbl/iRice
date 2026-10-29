@@ -1,5 +1,37 @@
 # iRice changelog
 
+## iRice's own Quick Share, enterprise Wi-Fi · 2026-10-29
+
+**Quick Share with Android, built in**
+- iRice has its own Quick Share; no extra app is needed. Turn it on in Settings → Sharing or in Control Center: No one, Everyone for 10 minutes, or Everyone.
+- Works like it does between phones: nearby phones find this computer over Bluetooth, even without the same Wi-Fi, and files then move over a fast direct Wi-Fi link while your normal Wi-Fi stays connected. On the same Wi-Fi, they simply use that.
+- You're asked in the island before anything is saved, with the same PIN the phone shows. Files, links, text and Wi-Fi networks all work.
+- A direct Wi-Fi link needs your password once; if you skip it, the transfer still finishes over Bluetooth, slowly.
+- Needs Bluetooth on. Settings has a button to turn it on.
+
+**Sharing everywhere**
+- The share sheet lists every nearby device in one place: Android phones over Quick Share, everything else over LocalSend.
+- A new Sharing control in Control Center, in four sizes: a toggle, Off · 10 min · On, and larger ones with nearby devices.
+- Share… in the right-click menu of the desktop, the Downloads stack, and Nautilus, Dolphin, Thunar and Nemo (add or remove them in Settings → Sharing).
+- Share selected text with Super+Ctrl+S.
+
+**Report a bug**
+- Settings → Report a bug, or from Spotlight, a shortcut or a gesture. Add a screenshot (with Mark up… to hide anything), the iRice log and system info, and see exactly what will be sent first. Personal details like your name, paths, network names and addresses are removed from the log.
+
+**Google**
+- Connect Google account opens your browser and comes back connected; no detour through GNOME Settings.
+- Sync only fetches what changed: at login, when you unlock, when you open Notification Center, and every 15 minutes while you're using the computer. Nothing while it's locked or idle. Choose which calendars to show.
+
+**Wi-Fi**
+- Join office, college and eduroam networks: pick the sign-in method (PEAP, TTLS, TLS or PWD), and use the system's certificates or choose a certificate file. For TLS, add your own certificate and key.
+- Join other network… at the end of the list joins a hidden network.
+- Joining a phone's hotspot works: Join no longer misses your click while the hotspot comes and goes in the list. If the password is too short, Join says so.
+
+**Fixes**
+- Tapping Super twice quickly no longer leaves a half-open Overview that ignores clicks.
+
+After updating, run Update again so it installs the new packages (`iw`, `wpa_supplicant`, `dnsmasq`, `avahi`, Python libraries).
+
 ## Fixes after review · 2026-10-29
 
 **Calendar**

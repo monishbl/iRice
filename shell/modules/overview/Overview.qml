@@ -71,7 +71,17 @@ Variants {
 
             property real progress: 0
             Component.onCompleted: if (shown) open()
-            onShownChanged: shown ? open() : closeAnim.start()
+            onShownChanged: {
+                if (shown) {
+                    open();
+                } else {
+                    // Stop the opening spring first: closed while it was still
+                    // running (a quick double tap of Super), the two fought,
+                    // and the spring left it drawn on screen but taking no input
+                    openAnim.stop();
+                    closeAnim.start();
+                }
+            }
             function open() {
                 Hyprland.refreshToplevels();
                 if (capturing)

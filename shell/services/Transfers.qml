@@ -20,8 +20,8 @@ Singleton {
     readonly property string downloadsDir: Quickshell.env("XDG_DOWNLOAD_DIR") || (Quickshell.env("HOME") + "/Downloads")
 
     // [{ id, kind: "download" | "copy" | "send" | "receive", name, done, total (0 = unknown), speed, pid? }]
-    // (send / receive: LocalSend, nearby devices)
-    readonly property var items: downloads.concat(copies).concat(LocalSend.items)
+    // (send / receive: nearby devices, LocalSend or Quick Share: `via`)
+    readonly property var items: downloads.concat(copies).concat(LocalSend.items).concat(QuickShare.items)
     readonly property bool active: items.length > 0
     readonly property var first: items[0] ?? null
     // Overall 0..1 when every item's size is known, else -1
@@ -51,7 +51,7 @@ Singleton {
     // Stop a copy (downloads are the browser's to cancel)
     function cancel(item) {
         if (item?.kind === "send" || item?.kind === "receive")
-            return LocalSend.cancel(item.id);
+            return item.via === "quickshare" ? QuickShare.cancel(item.id) : LocalSend.cancel(item.id);
         if (item?.kind === "copy" && item.pid > 0 && item.start)
             Quickshell.execDetached(["python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/process-identity.py").toString().replace("file://", "")), "interrupt", String(item.pid), String(item.start)]);
     }

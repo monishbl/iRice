@@ -341,6 +341,12 @@ install_files() {
     # Your usual folders (Downloads, Pictures...), which iRice uses
     command -v xdg-user-dirs-update >/dev/null && run xdg-user-dirs-update
     run mkdir -p "$HOME/Pictures/Wallpapers" "$HOME/Pictures/Screenshots"
+    # "Send to a nearby device…" in the right-click menu of the file managers
+    # found (only that entry is added; Settings → Sharing can remove it)
+    if command -v python3 >/dev/null; then
+        run python3 -I "$CONFIG/quickshell/irice/assets/scripts/file-manager-share.py" install >/dev/null ||
+            warn "Couldn't add Send to a nearby device… to your file manager; Settings → Sharing can try again."
+    fi
     return 0
 }
 

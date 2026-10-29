@@ -129,8 +129,12 @@ Singleton {
         { title: "Restart…", glyph: "arrow-clockwise", keywords: "reboot restart", run: () => Panels.showSession("restart") },
         { title: "Shut Down…", glyph: "power", keywords: "shutdown poweroff power off", run: () => Panels.showSession("shutdown") },
         { title: "Log Out…", glyph: "sign-out", keywords: "logout exit", run: () => Panels.showSession("logout") },
-        { title: "Send Files…", glyph: "paper-plane-tilt", keywords: "share send files localsend nearby", run: () => Panels.pickShare() },
-        { title: "Quick Share", glyph: "share-network", keywords: "quickshare nearby share android packet", run: () => QuickShare.available ? QuickShare.open() : Panels.openSettings("sharing") },
+        { title: "Send Files…", glyph: "paper-plane-tilt", keywords: "share send files localsend nearby quickshare quick share android phone", run: () => Panels.pickShare() },
+        // Like Android's Quick Share tile: visible to phones nearby for a while
+        { title: "Receive with Quick Share", glyph: "share-network", keywords: "quickshare quick share nearby share android phone receive visible", run: () => {
+            Config.options.sharing.quickShare = "10min";
+            Island.post({ kind: "custom", icon: "share-network", title: "Visible to phones for 10 minutes", subtitle: "In their Quick Share as " + QuickShare.name, color: Theme.accents.blue }, 4000);
+        } },
         { title: "Toggle Dark Mode", glyph: "circle-half", keywords: "dark light appearance theme", run: () => Config.options.appearance.mode = Theme.dark ? "light" : "dark" },
         { title: "Control Center", glyph: "sliders-horizontal", keywords: "control center settings toggles", run: () => Panels.show("controlCenter") },
         { title: "Notification Center", glyph: "bell", keywords: "notifications calendar", run: () => Panels.show("notificationCenter") },
@@ -147,6 +151,7 @@ Singleton {
         { title: "Clipboard History", glyph: "clipboard-text", keywords: "clipboard history paste copied pins", run: () => Panels.show("clipboard") },
         { title: "Overlay Widgets", glyph: "squares-four", keywords: "overlay widgets notes crosshair resources game", run: () => Panels.show("overlay") },
         { title: "Identify Song", glyph: "music-notes", keywords: "song recognize shazam songrec music what playing", run: () => System.identifySong() },
+        { title: "Report a Bug…", glyph: "bug", keywords: "bug report issue problem crash broken feedback", run: () => BugReport.start() },
         { title: "Check for Updates", glyph: "arrow-circle-up", keywords: "update upgrade pacman packages", run: () => Updates.count > 0 ? Updates.install() : Quickshell.execDetached(["notify-send", "-a", "Software Update", "Your system is up to date"]) },
         { title: "Change Wallpaper", glyph: "image", keywords: "wallpaper background desktop picture", run: () => Panels.show("wallpaper") },
         { title: "Stage Manager", glyph: "squares-four", keywords: "stage manager windows group strip", run: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },

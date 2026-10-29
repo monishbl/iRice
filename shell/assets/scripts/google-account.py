@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
-"""Google desktop OAuth + Calendar/Tasks bridge. JSON request on stdin, JSONL replies.
-No third-party dependencies. Tokens and cached account data stay in a private directory.
+"""Google Calendar and Tasks for iRice: one request per run, JSON on stdin,
+JSON lines out (Google.qml).
+
+Signing in: through GNOME Online Accounts (GOA), the desktop's account
+broker, so iRice never holds a password or refresh token; the account is
+added from iRice's Settings by the native helper goa-signin (browser sign-in,
+no GNOME Settings app). A custom OAuth client (loopback, PKCE) is the
+alternative for people who'd rather use their own.
+
+Syncing is incremental, so a sync where nothing changed costs a handful of
+tiny requests: calendars use Google's sync tokens (a token that's expired,
+410 Gone, means that calendar is fetched in full again), task lists have no
+sync tokens, so only tasks updated since the last sync are asked for
+(updatedMin, a minute early to cover clock skew, with deletions included).
+The data (cache.json) and the sync position (sync.json) are only replaced
+once a whole sync succeeded, and stay private (0600 in a 0700 directory).
+No third-party dependencies.
 """
 import base64
 import hashlib
@@ -23,6 +38,12 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.events',
           'https://www.googleapis.com/auth/tasks']
 CAL = 'https://www.googleapis.com/calendar/v3'
 TASK = 'https://tasks.googleapis.com/tasks/v1'
+WINDOW = timedelta(days=366)  # events kept: a year either side of now
+SKEW = 60  # seconds asked for again on each task sync (clocks differ)
+
+
+class Gone(RuntimeError):
+    """A sync token Google no longer accepts (HTTP 410): sync that part in full."""
 
 
 def emit(value):
@@ -62,6 +83,8 @@ def request(url, data=None, token=None, method=None, form=False):
             body = response.read()
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as exc:
+        if exc.code == 410:
+            raise Gone('Sync position expired.') from None
         # Never include request URLs, tokens or the raw server body in UI errors.
         hints = {400: 'Invalid request or expired sign-in. Reconnect if needed.',
                  401: 'Google sign-in expired. Connect again.',
@@ -95,14 +118,26 @@ class OnlineAccounts:
         for path, interfaces in objects.items():
             account = interfaces.get(self.name + '.Account', {})
             if (path.startswith(self.prefix) and account.get('ProviderType') == 'google'
-                    and self.name + '.OAuth2Based' in interfaces
-                    and not account.get('CalendarDisabled', True)):
-                accounts.append({'id': path, 'name': account.get('PresentationIdentity', account.get('Identity', 'Google'))})
+                    and self.name + '.OAuth2Based' in interfaces):
+                accounts.append({'id': path, 'name': account.get('PresentationIdentity', account.get('Identity', 'Google')),
+                                 'calendarDisabled': bool(account.get('CalendarDisabled', False))})
         return accounts
+
+    # Calendars switched off for an account in Online Accounts: connecting it
+    # to iRice is asking for them, so they're switched on
+    def enable_calendar(self, path):
+        try:
+            from gi.repository import Gio, GLib
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            bus.call_sync(self.name, path, 'org.freedesktop.DBus.Properties', 'Set',
+                          GLib.Variant('(ssv)', (self.name + '.Account', 'CalendarDisabled', GLib.Variant('b', False))),
+                          None, Gio.DBusCallFlags.NONE, 10000, None)
+        except Exception:
+            raise RuntimeError('Couldn\'t turn on Calendars for this account. Open Online Accounts and turn it on.') from None
 
     def access(self, path):
         if path not in [account['id'] for account in self.accounts()]:
-            raise RuntimeError('The selected Google account is missing or Calendars is disabled in Online Accounts.')
+            raise RuntimeError('That Google account is no longer in Online Accounts. Connect your Google account again.')
         self.call(path, self.name + '.Account', 'EnsureCredentials')
         token, _expires = self.call(path, self.name + '.OAuth2Based', 'GetAccessToken')
         return token
@@ -115,15 +150,46 @@ class Account:
         self.tokens = self.directory / 'tokens.json'
         self.cache = self.directory / 'cache.json'
         self.connection = self.directory / 'connection.json'
+        self.position = self.directory / 'sync.json'  # sync tokens and times; never shown
         self.broker = OnlineAccounts()
 
     def status(self):
         connection = read(self.connection)
+        accounts = self.broker.accounts()
+        identity = connection.get('identity') or next((a['name'] for a in accounts if a['id'] == connection.get('account')), '')
         return dict(read(self.cache), connected=self.tokens.exists() or bool(connection.get('account')),
                     configured=self.credentials.exists(), backend='goa' if connection.get('account') else 'direct',
-                    accountId=connection.get('account', ''),
-                    goaAccounts=self.broker.accounts(),
+                    accountId=connection.get('account', ''), identity=identity,
+                    goaAccounts=accounts, signin=bool(self.signin_helper()),
                     goaSettings=shutil.which('gnome-online-accounts-gtk') or shutil.which('gnome-control-center') or '')
+
+    # The native helper that adds the account to Online Accounts (goa-signin,
+    # built with iRice's native helpers); without it, Online Accounts' own
+    # window is the way
+    @staticmethod
+    def signin_helper():
+        here = Path(__file__).resolve().parent
+        built = here.parent.parent / 'native' / 'build' / 'goa-signin'
+        return str(built) if os.access(built, os.X_OK) else shutil.which('irice-goa-signin') or ''
+
+    def signin(self):
+        helper = self.signin_helper()
+        if not helper:
+            raise RuntimeError('Connecting from here needs iRice\'s native helpers. Run Software Update (or irice rebuild), or use Online Accounts.')
+        import subprocess
+        try:
+            out = subprocess.run([helper], capture_output=True, text=True, timeout=330).stdout
+        except subprocess.TimeoutExpired:
+            raise RuntimeError('Sign-in took too long. Try again.') from None
+        reply = {}
+        for line in out.splitlines():
+            try:
+                reply = json.loads(line)
+            except ValueError:
+                pass
+        if not reply.get('account'):
+            raise RuntimeError(reply.get('error') or 'Sign-in ended without an answer. Try again.')
+        return reply
 
     def connect(self):
         client = read(self.credentials)
@@ -186,46 +252,133 @@ class Account:
         return tokens['access_token']
 
     def pages(self, url, token, **params):
+        return self.pages_with_token(url, token, **params)[0]
+
+    # Every page, and the sync token Google gives on the last one
+    def pages_with_token(self, url, token, **params):
         items = []
         while True:
             data = request(url + '?' + urllib.parse.urlencode(params), token=token)
             items.extend(data.get('items', []))
             if not data.get('nextPageToken'):
-                return items
+                return items, data.get('nextSyncToken', '')
             params['pageToken'] = data['nextPageToken']
 
-    def sync(self):
+    @staticmethod
+    def event(row, calendar):
+        return dict(id=row['id'], calendarId=calendar['id'], title=row.get('summary', '(Untitled)'),
+                    start=row['start'], end=row['end'], location=row.get('location', ''),
+                    notes=row.get('description', ''), color=calendar.get('color', ''),
+                    calendar=calendar.get('title', 'Google'), url=row.get('htmlLink', ''))
+
+    @staticmethod
+    def task(row, listing):
+        return dict(id=row['id'], listId=listing['id'], listName=listing['title'],
+                    text=row.get('title', ''), done=row.get('status') == 'completed',
+                    date=row.get('due', '')[:10], notes=row.get('notes', ''))
+
+    def sync(self, full=False):
+        """Bring the cache up to date: only what changed since the last sync."""
         token = self.access()
+        started = time.time()
         now = datetime.now(timezone.utc)
-        calendars = self.pages(CAL + '/users/me/calendarList', token)
-        events = []
-        for calendar in calendars:
-            if calendar.get('deleted') or calendar.get('hidden'):
-                continue
-            path = CAL + '/calendars/' + urllib.parse.quote(calendar['id'], safe='') + '/events'
-            rows = self.pages(path, token, singleEvents='true', maxResults=2500,
-                              timeMin=(now - timedelta(days=366)).isoformat(),
-                              timeMax=(now + timedelta(days=366)).isoformat())
+        cache = {} if full else read(self.cache)
+        position = {} if full else read(self.position)
+        cal_pos = dict(position.get('calendars', {}))
+        task_pos = dict(position.get('tasks', {}))
+
+        # Calendars (the list itself has a sync token too)
+        calendars = {c['id']: c for c in cache.get('calendars', [])}
+        list_token = position.get('calendarList', '')
+        try:
+            rows, list_token = self.pages_with_token(CAL + '/users/me/calendarList', token,
+                                                     **({'syncToken': list_token} if list_token else {}))
+        except Gone:
+            calendars, list_token = {}, ''
+            rows, list_token = self.pages_with_token(CAL + '/users/me/calendarList', token)
+        if not position.get('calendarList'):
+            calendars = {}
+        for row in rows:
+            if row.get('deleted') or row.get('hidden'):
+                calendars.pop(row['id'], None)
+            else:
+                calendars[row['id']] = dict(id=row['id'], title=row.get('summary', 'Google'),
+                                            color=row.get('backgroundColor', ''), primary=bool(row.get('primary')))
+
+        # Events, per calendar
+        events = {(e['calendarId'], e['id']): e for e in cache.get('events', [])}
+        for key in [k for k in events if k[0] not in calendars]:
+            del events[key]
+        for cid in list(cal_pos):
+            if cid not in calendars:
+                del cal_pos[cid]
+        for cid, calendar in calendars.items():
+            path = CAL + '/calendars/' + urllib.parse.quote(cid, safe='') + '/events'
+            # (an existing event keeps its colour and calendar name current)
+            for key, e in events.items():
+                if key[0] == cid:
+                    e.update(color=calendar['color'], calendar=calendar['title'])
+            since = cal_pos.get(cid, '')
+            rows = None
+            if since:
+                try:
+                    rows, since = self.pages_with_token(path, token, singleEvents='true', maxResults=2500, syncToken=since)
+                except Gone:
+                    since = ''
+            if rows is None:
+                for key in [k for k in events if k[0] == cid]:
+                    del events[key]
+                rows, since = self.pages_with_token(path, token, singleEvents='true', maxResults=2500,
+                                                    timeMin=(now - WINDOW).isoformat(), timeMax=(now + WINDOW).isoformat())
+            cal_pos[cid] = since
             for row in rows:
                 if row.get('status') == 'cancelled' or not row.get('start') or not row.get('end'):
-                    continue
-                events.append(dict(id=row['id'], calendarId=calendar['id'], title=row.get('summary', '(Untitled)'),
-                                   start=row['start'], end=row['end'], location=row.get('location', ''),
-                                   notes=row.get('description', ''), color=calendar.get('backgroundColor', ''),
-                                   calendar=calendar.get('summary', 'Google'), url=row.get('htmlLink', '')))
+                    events.pop((cid, row['id']), None)
+                else:
+                    events[(cid, row['id'])] = self.event(row, calendar)
+
+        # Only what's within the window stays (a sync token reports changes anywhere)
+        def inside(e):
+            def when(x):
+                if x.get('dateTime'):
+                    return datetime.fromisoformat(x['dateTime'].replace('Z', '+00:00'))
+                return datetime.fromisoformat(x['date']).replace(tzinfo=timezone.utc)
+            try:
+                return when(e['end']) >= now - WINDOW and when(e['start']) <= now + WINDOW
+            except (KeyError, ValueError):
+                return False
+        kept_events = [e for e in events.values() if inside(e)]
+
+        # Tasks: no sync tokens, so whatever was updated since last time
         lists = self.pages(TASK + '/users/@me/lists', token, maxResults=100)
-        tasks = []
-        for listing in lists:
-            tasks.extend(self.list_tasks(token, listing))
-        # Publish only after every page succeeds; errors retain the last complete snapshot.
-        atomic(self.cache, dict(events=events, tasks=tasks, taskLists=lists, syncedAt=time.time() * 1000))
+        by_list = {l['id']: l for l in lists}
+        tasks = {(t['listId'], t['id']): t for t in cache.get('tasks', []) if t.get('listId') in by_list}
+        for lid in list(task_pos):
+            if lid not in by_list:
+                del task_pos[lid]
+        for lid, listing in by_list.items():
+            since = task_pos.get(lid)
+            params = dict(maxResults=100, showCompleted='true', showHidden='true')
+            if since:
+                params.update(showDeleted='true', updatedMin=datetime.fromtimestamp(since - SKEW, timezone.utc).isoformat())
+            else:
+                for key in [k for k in tasks if k[0] == lid]:
+                    del tasks[key]
+            for row in self.pages(TASK + '/lists/' + urllib.parse.quote(lid, safe='') + '/tasks', token, **params):
+                if row.get('deleted'):
+                    tasks.pop((lid, row['id']), None)
+                else:
+                    tasks[(lid, row['id'])] = self.task(row, listing)
+            task_pos[lid] = started
+        # Publish only once everything succeeded: a failed sync keeps the last complete one
+        atomic(self.cache, dict(events=kept_events, tasks=list(tasks.values()), taskLists=lists,
+                                calendars=list(calendars.values()), syncedAt=started * 1000))
+        atomic(self.position, dict(calendarList=list_token, calendars=cal_pos, tasks=task_pos))
 
     def list_tasks(self, token, listing):
         rows = self.pages(TASK + '/lists/' + urllib.parse.quote(listing['id'], safe='') + '/tasks', token,
                           maxResults=100, showCompleted='true', showHidden='true', showDeleted='false')
-        return [dict(id=row['id'], listId=listing['id'], listName=listing['title'],
-                     text=row.get('title', ''), done=row.get('status') == 'completed',
-                     date=row.get('due', '')[:10], notes=row.get('notes', '')) for row in rows if not row.get('deleted')]
+        return [self.task(row, listing) for row in rows if not row.get('deleted')]
 
     # After a change to one task list, only that list is fetched again (a full
     # sync reads every calendar for two years). Without a cache to patch, the
@@ -241,14 +394,28 @@ class Account:
 
     def run(self, req):
         cmd = req.get('cmd', 'status')
-        if cmd == 'connectDesktop':
+        if cmd in ('connectDesktop', 'signin'):
             if self.tokens.exists():
-                raise ValueError('Disconnect the current account before selecting another one.')
-            selected = req['account']
+                raise ValueError('Disconnect the current account before connecting another one.')
+            identity = ''
+            if cmd == 'signin':
+                # A Google account already in Online Accounts is used as it
+                # is; otherwise one is added (browser sign-in)
+                existing = self.broker.accounts()
+                if existing:
+                    selected, identity = existing[0]['id'], existing[0]['name']
+                else:
+                    reply = self.signin()
+                    selected, identity = reply['account'], reply.get('identity', '')
+            else:
+                selected = req['account']
+            if next((a for a in self.broker.accounts() if a['id'] == selected and a['calendarDisabled']), None):
+                self.broker.enable_calendar(selected)
             self.broker.access(selected) # Validate selection and credentials before saving.
-            atomic(self.connection, {'account': selected})
+            atomic(self.connection, {'account': selected, 'identity': identity})
             self.cache.unlink(missing_ok=True)
-            self.sync()
+            self.position.unlink(missing_ok=True)
+            self.sync(full=True)
         elif cmd == 'configure':
             client = read(Path(os.path.expanduser(req['path']))).get('installed', {})
             if not client.get('client_id') or not client.get('client_secret'):
@@ -260,9 +427,9 @@ class Account:
             if self.connection.exists():
                 raise ValueError('Disconnect the desktop account first.')
             self.connect()
-            self.sync()
+            self.sync(full=True)
         elif cmd == 'sync':
-            self.sync()
+            self.sync(full=bool(req.get('full')))
         elif cmd == 'disconnect':
             tokens = read(self.tokens)
             if tokens.get('refresh_token'):
@@ -270,10 +437,12 @@ class Account:
             self.tokens.unlink(missing_ok=True)
             self.connection.unlink(missing_ok=True)
             self.cache.unlink(missing_ok=True)
+            self.position.unlink(missing_ok=True)
         elif cmd == 'forget':
             self.tokens.unlink(missing_ok=True)
             self.connection.unlink(missing_ok=True)
             self.cache.unlink(missing_ok=True)
+            self.position.unlink(missing_ok=True)
         elif cmd in ('taskAdd', 'taskUpdate', 'taskDelete'):
             token = self.access()
             url = TASK + '/lists/' + urllib.parse.quote(req['listId'], safe='') + '/tasks'

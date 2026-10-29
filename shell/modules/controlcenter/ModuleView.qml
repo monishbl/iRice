@@ -53,6 +53,8 @@ Item {
     // the accent is too light to read on white)
     readonly property color ink: Theme.accentOnGlyph
     readonly property bool on: def.on ?? false
+    // Modules that draw their bigger sizes themselves (1×1 stays the round toggle)
+    readonly property bool custom: moduleId === "sharing" && size !== "1x1"
 
     function act() {
         if (editing) {
@@ -97,7 +99,7 @@ Item {
 
     // ── 2×1 / 2×2 toggles and actions: button, title, status ────────────
     Item {
-        visible: !root.round && (root.def.kind === "toggle" || root.def.kind === "action")
+        visible: !root.round && !root.custom && (root.def.kind === "toggle" || root.def.kind === "action")
         anchors.fill: parent
         CircleToggle {
             id: btn
@@ -128,6 +130,19 @@ Item {
                 color: Theme.color.secondary
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
+        }
+    }
+
+    // ── Sharing (2×1 stops, 2×2 with devices, 4×1 with device chips) ────
+    Loader {
+        active: root.custom
+        visible: active
+        anchors.fill: parent
+        sourceComponent: SharingModule {
+            cols: root.cols
+            rows: root.rows
+            preview: root.preview
+            editing: root.editing
         }
     }
 
@@ -294,6 +309,8 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         enabled: root.def.kind !== "slider" || root.editing
+        // Press and hold, like right-click: the module's page
+        onPressAndHold: if (root.def.page && !root.editing && !root.preview) root.openPage(root.def.page)
         onClicked: m => {
             if (m.button === Qt.RightButton && root.def.page && !root.editing)
                 root.openPage(root.def.page);

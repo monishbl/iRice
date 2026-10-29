@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report a bug</title>
+<meta name="description" content="How to report a bug in iRice, and exactly what a report sends.">
+<meta name="theme-color" content="#111113">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --canvas: #FAFAFA; --surface: #FFFFFF; --border: #E4E4E7;
+  --text: #18181B; --body: #27272A; --secondary: #52525B; --tertiary: #6B6B74;
+  --link: #0066CC; --focus: #2997FF;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #111113; --surface: #1A1A1D; --border: #26262A;
+    --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
+    --link: #5CB0FF;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--body); font: 400 16px/24px Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--link); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+main { max-width: 65ch; margin: 0 auto; padding: 48px 16px 96px; }
+.back { font-size: 14px; }
+h1 { margin: 32px 0 8px; font-size: 32px; line-height: 40px; letter-spacing: -0.02em; font-weight: 600; color: var(--text); }
+h2 { margin: 48px 0 8px; font-size: 20px; line-height: 28px; letter-spacing: -0.005em; font-weight: 600; color: var(--text); }
+p, li { color: var(--body); }
+.lead { color: var(--secondary); font-size: 18px; line-height: 26px; }
+ul { padding-left: 20px; }
+li + li { margin-top: 8px; }
+.card { margin-top: 24px; padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+kbd { font: 500 13px/18px Inter, system-ui, sans-serif; padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--canvas); }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 13px; line-height: 18px; color: var(--tertiary); }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">← iRice</a>
+  <h1>Report a bug</h1>
+  <p class="lead">Something not working? Tell us from iRice itself: it attaches what's needed to fix it, and you see all of it before it's sent.</p>
+
+  <div class="card">
+    <p style="margin:0">Open <strong>Settings → Report a Bug</strong>, search Spotlight for <kbd>Report a Bug</kbd>, or bind the <em>Report a bug</em> action to a shortcut or trackpad gesture. Starting it from Spotlight or a shortcut takes a screenshot of the screen as it was.</p>
+  </div>
+
+  <h2>What a report sends</h2>
+  <p>Only what you leave switched on:</p>
+  <ul>
+    <li><strong>Your description:</strong> the title, what happened, the steps and what you expected.</li>
+    <li><strong>A screenshot,</strong> which you can mark up first to hide anything private.</li>
+    <li><strong>The last 500 lines of iRice's log.</strong></li>
+    <li><strong>System info:</strong> the iRice, Hyprland and Quickshell versions, your graphics, displays and distribution. Not your computer's name or your user name.</li>
+  </ul>
+  <p>Before anything is sent, iRice takes out of the log and system info: your home folder, user and computer names, email addresses, anything that looks like a password, key or token, IP and MAC addresses, and the names of your Wi-Fi networks and Bluetooth devices. The page shows you the result.</p>
+
+  <h2>Where it goes</h2>
+  <p>Reports become public issues on <a href="https://github.com/monishbl/iRice/issues?q=label%3Abug-report">iRice's GitHub</a>, so don't write anything private in them. A copy is kept by iRice's report server so the screenshot can be linked from the issue.</p>
+  <p>Your IP address is used only to allow a few reports an hour from one network. It isn't stored: the server keeps a scrambled, salted value for an hour's count and deletes it after a day.</p>
+
+  <h2>Can't send it from iRice?</h2>
+  <p>If the report server can't be reached, the page offers <strong>Copy report</strong> and <strong>Open on GitHub</strong>. You can also <a href="https://github.com/monishbl/iRice/issues/new?labels=bug-report">open an issue</a> directly.</p>
+
+  <footer>iRice by Monish. Not affiliated with Apple.</footer>
+</main>
+</body>
+</html>

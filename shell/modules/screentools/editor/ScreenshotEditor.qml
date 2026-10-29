@@ -231,6 +231,13 @@ Scope {
     }
 
     // qs ipc call shotEditor edit /path/to/image.png
+    Connections {
+        target: ScreenTools
+        function onEditRequested(file) {
+            root.screen = ScreenTools.focusedScreen();
+            root.openEditor(file);
+        }
+    }
     IpcHandler {
         target: "shotEditor"
         function edit(file: string): void {

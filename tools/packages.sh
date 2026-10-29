@@ -13,6 +13,11 @@ PACKAGES=(
     libpulse xdg-utils glib2 gtk3 libcanberra udisks2 zenity inotify-tools
     # Shared Google sign-in through desktop Online Accounts (no user OAuth project)
     gnome-online-accounts gnome-control-center python-gobject
+    # Android Quick Share, built in (shell/assets/scripts/quickshare): its encryption, its
+    # message format, and Avahi to find phones and be found on the network (mDNS); without
+    # a shared network, Bluetooth LE (bluez above), then Wi-Fi Direct through wpa_supplicant
+    # (iw for its links, dnsmasq to hand the phone an address)
+    python-cryptography python-protobuf avahi iw wpa_supplicant dnsmasq
     # Screen tools, clipboard, input
     grim slurp wl-clipboard cliphist gpu-screen-recorder wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
     # (hyprpm, used for the optional hyprbars title bars, ships with the hyprland package)

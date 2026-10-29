@@ -87,6 +87,15 @@
   }
  },
  {
+  "id": "shareSelection",
+  "keys": "$MOD + CTRL + S",
+  "group": "Shell",
+  "label": "Share the selection",
+  "action": {
+   "shell": "shareSelection"
+  }
+ },
+ {
   "id": "emoji",
   "keys": "$MOD + Period",
   "group": "Shell",

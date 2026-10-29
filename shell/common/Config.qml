@@ -41,6 +41,7 @@ Singleton {
 
             property JsonObject google: JsonObject {
                 property string taskListId: "" // empty = keep new tasks local
+                property list<string> hiddenCalendars: [] // Google calendar ids not shown (Settings → Google)
             }
 
             property JsonObject appearance: JsonObject {
@@ -115,6 +116,10 @@ Singleton {
                 // off | 10min (everyone, for 10 minutes) | everyone
                 property string receiving: "off"
                 property string name: "" // how you appear to others; empty = "<user>'s computer"
+                // Android Quick Share (QuickShare.qml): visible to phones nearby,
+                // off | 10min | everyone, as on Android; files go to quickShareFolder
+                property string quickShare: "off"
+                property string quickShareFolder: "" // empty = ~/Downloads
             }
 
             property JsonObject sounds: JsonObject {
