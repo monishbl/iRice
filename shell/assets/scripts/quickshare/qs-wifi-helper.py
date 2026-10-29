@@ -145,10 +145,13 @@ NM_CONF = "90-irice-quickshare.conf"
 
 def nm_unmanaged_conf(station):
     """The drop-in that keeps NetworkManager off our interfaces: wpa_supplicant's
-    group interfaces ("p2p-<station>-N", or "p2p-grp-N" for long names) and
-    our own; appended (+=) to whatever the user lists already. Not p2p-dev-*:
-    that one is NetworkManager's own P2P device."""
-    specs = [f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
+    group interfaces ("p2p-<station>-N", or "p2p-grp-N" for long names), our
+    own, and, while the link lasts, its own P2P device (p2p-dev-<station>):
+    told of a group it didn't ask for, that device ends it ("notified a group
+    start but we are not trying to connect", then AP-DISABLED in the same
+    second, on a real laptop). The station's connection is on the station
+    itself and isn't touched. Appended (+=) to whatever the user lists already."""
+    specs = [f"interface-name:p2p-dev-{station}", f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
              f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
     return "# iRice Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
            "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
@@ -583,11 +586,15 @@ class Links:
         self.undo.append(lambda: self._remove_new_groups(netdevs))
         group_iface, group = start_group(wpa, dev, freq)
         self.undo.append(lambda: wpa.call(group_iface, P2P, "Disconnect"))
-        ifname = check_ifname(wpa.get(group_iface, IFACE, "Ifname"))
+        try:
+            ifname = check_ifname(wpa.get(group_iface, IFACE, "Ifname"))
+            ssid = bytes(wpa.get(group, GROUP, "SSID")).decode("utf-8", "replace")
+            passphrase = wpa.get(group, GROUP, "Passphrase")
+            real = int(wpa.get(group, GROUP, "Frequency") or freq or 0)
+        except Refused as e:
+            # (its objects go with it: the group ended before we could read them)
+            raise Refused(f"the Wi-Fi Direct group ended right after starting ({e})") from None
         self._unmanaged(ifname)
-        ssid = bytes(wpa.get(group, GROUP, "SSID")).decode("utf-8", "replace")
-        passphrase = wpa.get(group, GROUP, "Passphrase")
-        real = int(wpa.get(group, GROUP, "Frequency") or freq or 0)
         self._address(ifname, GO_IP)
         self._dhcp_server(ifname, GO_IP)
         return {"ssid": ssid, "passphrase": passphrase, "freq": real, "ip": GO_IP, "iface": ifname}

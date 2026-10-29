@@ -724,9 +724,8 @@ class GroupStart(unittest.TestCase):
                 links._nm_off("wlan0")  # (once per set of links)
                 path = os.path.join(helper.NM_CONF_DIR, helper.NM_CONF)
                 text = open(path).read()
-                self.assertIn("unmanaged-devices+=interface-name:p2p-wlan0-*;interface-name:p2p-grp-*;"
-                              "interface-name:qsc0;interface-name:qsap0", text)
-                self.assertNotIn("p2p-dev", text)  # NetworkManager's own P2P device stays its own
+                self.assertIn("unmanaged-devices+=interface-name:p2p-dev-wlan0;interface-name:p2p-wlan0-*;"
+                              "interface-name:p2p-grp-*;interface-name:qsc0;interface-name:qsap0", text)
                 self.assertEqual(ran, [("nmcli", "general", "reload", "conf")])
                 links.teardown()
                 self.assertFalse(os.path.exists(path))

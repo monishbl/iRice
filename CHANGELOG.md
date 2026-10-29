@@ -5,6 +5,7 @@
 - If your firewall (ufw or firewalld) blocks sharing, Settings → Sharing and System health say so, with an **Allow through firewall** button.
 - Quick Share now always listens on port 53318, so one firewall rule covers it.
 - Wi-Fi Direct starts again (it was refused by the Wi-Fi service).
+- Wi-Fi Direct no longer ends the moment it starts: NetworkManager leaves the link alone while a transfer uses it.
 - No more hotspot attempts on 5 GHz Intel Wi-Fi, where they can't work; transfers move on to the next option straight away.
 - Phones no longer need to ask to pair: **Stop pairing prompts** in Settings → Sharing turns off the Bluetooth feature that caused it.
 
