@@ -562,6 +562,19 @@ def real_run(plan):
     finish("done", "Updated")
 
 
+def background():
+    """The desktop comes first: this job and everything it starts (pacman,
+    AUR builds compiling for minutes, even as root: the priority carries
+    through pkexec) get CPU and disk only when the shell and apps don't need
+    them, so animations don't stutter while an update runs."""
+    try:
+        os.nice(15)
+    except OSError:
+        pass
+    if shutil.which("ionice"):
+        subprocess.run(["ionice", "-c", "3", "-p", str(os.getpid())], capture_output=True)
+
+
 def run(fake, plan):
     global log
     os.makedirs(DIR, exist_ok=True)
@@ -572,6 +585,7 @@ def run(fake, plan):
         print("already running", file=sys.stderr)
         return 1
     log = open(LOG, "w")
+    background()
     for f in (AUTH, os.path.join(DIR, "cancel")):
         try:
             os.unlink(f)
