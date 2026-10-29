@@ -29,7 +29,9 @@ for _,r in ipairs(records) do
    assert(r.keys==(mod=='SUPER' and 'Super_L' or 'Alt_L'))
    assert(r.opts.ignore_mods and r.opts.non_consuming)
    release=true
-  elseif name=='irice:superTap' then press=true
+  elseif name=='irice:superTap' then
+   assert(r.keys==(mod=='SUPER' and 'Super_L' or 'Alt_L'), 'tap press must match the pre-modifier keydown mask')
+   press=true
   elseif name=='irice:superTapCancel' then cancel=true
   elseif name=='irice:overview' then overview=true end
  end
@@ -42,6 +44,18 @@ if mod=='SUPER' then assert(overview) end
             for mod in ['SUPER','ALT']:
                 result=subprocess.run(['lua',str(p),str(ROOT),mod],capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_shell_restart_supplies_palette_theme_and_keeps_explicit_choice(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); (p/'bin').mkdir()
+            (p/'bin/qs').write_text('#!/bin/sh\nprintf "%s" "$QT_QPA_PLATFORMTHEME"\n')
+            (p/'bin/qs').chmod(0o755)
+            env=dict(os.environ, HOME=d, XDG_CONFIG_HOME=str(p/'config'), XDG_DATA_HOME=str(p/'data'), PATH=str(p/'bin')+':'+os.environ['PATH'], IRICE_SANDBOX='1', IRICE_TTY='0')
+            for supplied, expected in [('', 'kde'), ('qt6ct', 'qt6ct')]:
+                env['QT_QPA_PLATFORMTHEME']=supplied
+                result=subprocess.run(['bash',str(ROOT/'shell/assets/scripts/launch-shell.sh')],env=env,capture_output=True,text=True,timeout=8)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(result.stdout,expected)
 
     @unittest.skipUnless(shutil.which('g++') and Path('/usr/include/KF6/KColorScheme/KColorSchemeManager').exists() and Path('/usr/lib/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.so').exists(), 'requires Qt/KDE development files')
     def test_kde_platform_palette_is_correct_before_graphics_widgets_exist(self):

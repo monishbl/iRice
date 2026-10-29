@@ -1,5 +1,13 @@
 # iRice changelog
 
+## Super-tap correction verified in the running session · 2026-10-29
+
+- Correct the modifier-key press binding: Super is not yet in the modifier mask when its own key goes down. The previous release-only change was insufficient. Nested Alt uses the same correction; ordinary Super chords keep their cancellation behavior.
+- Reproduced the failure on the actual compositor and verified that the corrected key path opens the real Overview panel with injected keyboard events.
+- Shell restarts now supply the KDE platform theme even when an updater/watchdog inherited an older environment; successful updates also refresh the D-Bus activation theme. Existing Dolphin processes still require a full quit/reopen.
+- Validation: 51 Python and 27 Node tests pass; the corrected Super press was also exercised against the running compositor.
+- The reported calendar overflow and gradient task-overlay redesign remain open R51. They were queued in the previous update, not implemented; an unchanged calendar does not indicate updater failure.
+
 ## Audit fixes and reliable startup · 2026-10-29
 
 - Lock immediately before animations and wait for compositor lock confirmation before Sleep. Start an independent idle/sleep locker in installed and TTY sessions, preserving configured idle listeners.

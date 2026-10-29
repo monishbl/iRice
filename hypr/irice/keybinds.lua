@@ -51,6 +51,12 @@ end
 local taken = {}
 local function bind(e, user)
     local keys = keysOf(e.keys)
+    local modifierKey = MOD == "SUPER" and "Super_L" or "Alt_L"
+    -- The modifier is not in the modifier mask yet on its own key-down.
+    -- Requiring SUPER + Super_L therefore misses the press that arms the tap.
+    if e.action and e.action.shell == "superTap" and keys:upper():gsub("%s", "") == (MOD .. "+" .. modifierKey):upper() then
+        keys = modifierKey
+    end
     local norm = keys:upper():gsub("%s", "")
     if taken[norm] then
         log("skipped " .. tostring(e.id) .. ": " .. keys .. " is already " .. taken[norm])

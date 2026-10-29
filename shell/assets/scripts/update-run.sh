@@ -125,6 +125,10 @@ cp "$T/result.json" "$RUN/irice-update-result.json" 2>/dev/null # for the new sh
 
 # The new Hyprland config (keybinds, gestures, look), then exactly one shell
 [[ -z "$err" ]] && hyprctl reload config-only >/dev/null 2>&1
+# A config-only reload does not rerun the session-start D-Bus export.
+if [[ -z "$err" ]] && command -v dbus-update-activation-environment >/dev/null; then
+    QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}" dbus-update-activation-environment QT_QPA_PLATFORMTHEME >/dev/null 2>&1 || true
+fi
 status restart 92 "Restarting"
 hyprctl irice-glass clear >/dev/null 2>&1
 if [[ -n "$tty_ctl" ]]; then

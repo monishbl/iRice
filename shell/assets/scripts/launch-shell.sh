@@ -7,6 +7,9 @@
 # theme is, in order: Settings → Appearance → Icon theme, KDE's, GNOME/GTK's,
 # else the first good one installed.
 set -uo pipefail
+# Updater/watchdog restarts can inherit an older environment than Hyprland's
+# reloaded config. Apps launched by this shell still need the startup palette.
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
 
 themes_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons" /usr/local/share/icons /usr/share/icons)
 installed() {
