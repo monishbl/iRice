@@ -370,6 +370,9 @@ class Wpa:
         (v,) = self.call(path, "org.freedesktop.DBus.Properties", "Get", "ss", (iface, prop))
         return v
 
+    def set(self, path, iface, prop, sig, value):
+        self.call(path, "org.freedesktop.DBus.Properties", "Set", "ssv", (iface, prop, self.GLib.Variant(sig, value)))
+
     def interface(self, ifname):
         (p,) = self.call(WPA_PATH, WPA, "GetInterface", "s", (ifname,))
         return p
@@ -402,7 +405,7 @@ class Wpa:
             pass
 
 
-def start_group(wpa, dev, freq, timeout=10, settle=0.5):
+def start_group(wpa, dev, freq, timeout=10, settle=0.5, anywhere=True):
     """GroupAdd on the station's P2P device; (group interface path, group path).
 
     The answer is P2PDevice.GroupStarted, on the P2P device's object (not the
@@ -414,15 +417,15 @@ def start_group(wpa, dev, freq, timeout=10, settle=0.5):
             for name in ("GroupStarted", "GroupFinished", "GroupFormationFailure")]
     try:
         before = set(wpa.get(WPA_PATH, WPA, "Interfaces"))
-        for attempt in ([freq, 0] if freq else [0]):
+        for attempt in ([freq, 0] if freq and anywhere else [freq]):
             try:
                 wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(attempt),))
                 break
             except Refused as e:
                 why = e
         else:
-            raise Refused(f"wpa_supplicant wouldn't start a Wi-Fi Direct group on {freq} MHz or on a channel "
-                          f"of its own choosing ({why})")
+            raise Refused(f"wpa_supplicant wouldn't start a Wi-Fi Direct group on {freq} MHz"
+                          + (" or on a channel of its own choosing" if anywhere else "") + f" ({why})")
         found = None
         end = time.monotonic() + timeout
         while time.monotonic() < end and found is None:
@@ -576,6 +579,17 @@ class Links:
         run("ip", "link", "set", name, "address", mac, check=False)
         return mac
 
+    def _wpa_debug(self, wpa):
+        """wpa_supplicant's detailed log on (the system journal) while our
+        links exist: it's the only place that says why a group ended."""
+        try:
+            level = wpa.get(WPA_PATH, WPA, "DebugLevel")
+            if level not in ("debug", "msgdump", "excessive"):
+                wpa.set(WPA_PATH, WPA, "DebugLevel", "s", "debug")
+                self.undo.append(lambda: wpa.set(WPA_PATH, WPA, "DebugLevel", "s", level))
+        except Refused:
+            pass
+
     def host_p2p(self, hint):
         wpa = self._wpa()
         sta = self.station()
@@ -584,16 +598,35 @@ class Links:
         dev = wpa.interface(sta)
         netdevs = self._netdevs()
         self.undo.append(lambda: self._remove_new_groups(netdevs))
-        group_iface, group = start_group(wpa, dev, freq)
-        self.undo.append(lambda: wpa.call(group_iface, P2P, "Disconnect"))
-        try:
-            ifname = check_ifname(wpa.get(group_iface, IFACE, "Ifname"))
-            ssid = bytes(wpa.get(group, GROUP, "SSID")).decode("utf-8", "replace")
-            passphrase = wpa.get(group, GROUP, "Passphrase")
-            real = int(wpa.get(group, GROUP, "Frequency") or freq or 0)
-        except Refused as e:
-            # (its objects go with it: the group ended before we could read them)
-            raise Refused(f"the Wi-Fi Direct group ended right after starting ({e})") from None
+        self._wpa_debug(wpa)
+        # 5 GHz first (the station's channel, else wpa_supplicant's choice);
+        # if the driver ends that group as it starts (Intel, next to a 5 GHz
+        # connection: AP-DISABLED 2 ms after P2P-GROUP-STARTED), 2.4 GHz
+        chans = self.usable()
+        tries = [(freq, True)] + [(f, False) for f in (2437, 2412, 2462) if f != freq and chans.get(f, "ok") == "ok"]
+        failed = []
+        for f, anywhere in tries:
+            try:
+                group_iface, group = start_group(wpa, dev, f, anywhere=anywhere)
+            except Refused as e:
+                failed.append(str(e))
+                self._remove_new_groups(netdevs)
+                continue
+            try:
+                ifname = check_ifname(wpa.get(group_iface, IFACE, "Ifname"))
+                ssid = bytes(wpa.get(group, GROUP, "SSID")).decode("utf-8", "replace")
+                passphrase = wpa.get(group, GROUP, "Passphrase")
+                real = int(wpa.get(group, GROUP, "Frequency") or f or 0)
+            except Refused:
+                # (its objects go with it: the group ended before we could read them)
+                failed.append(f"the group on {f or 'a channel of its choosing'}"
+                              + (" MHz" if f else "") + " ended right after starting")
+                self._remove_new_groups(netdevs)
+                continue
+            self.undo.append(lambda gi=group_iface: wpa.call(gi, P2P, "Disconnect"))
+            break
+        else:
+            raise Refused("Wi-Fi Direct didn't start: " + "; ".join(failed))
         self._unmanaged(ifname)
         self._address(ifname, GO_IP)
         self._dhcp_server(ifname, GO_IP)

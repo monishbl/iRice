@@ -709,6 +709,55 @@ class GroupStart(unittest.TestCase):
         self.assertEqual(helper.start_group(FakeWpa(["appear"]), "/w/1", 0, timeout=1, settle=0),
                          ("/w/2", "/w/2/Groups/YU"))
 
+    def test_group_that_dies_at_once_falls_back_to_2_4_ghz(self):
+        # (Intel next to a 5 GHz connection: the group ends 2 ms after it
+        # starts, so its objects are gone when we read them)
+        tried = []
+
+        def start(wpa, dev, freq, anywhere=True, **_):
+            tried.append((freq, anywhere))
+            return (f"/w/{freq}", f"/w/{freq}/Groups/X")
+
+        class Wpa:
+            calls = []
+
+            def get(self, path, iface, prop):
+                if path.startswith("/w/5180"):
+                    raise helper.Refused("Method \"Get\" doesn't exist")
+                if path == helper.WPA_PATH:
+                    return "info"
+                return {"Ifname": "p2p-wlan0-1", "SSID": b"DIRECT-ab", "Passphrase": "pw", "Frequency": 2437}[prop]
+
+            def set(self, *args):
+                self.calls.append(("set",) + args[2:])
+
+            def interface(self, name):
+                return "/w/1"
+
+            def call(self, *args):
+                self.calls.append(args)
+
+        old = (helper.start_group, helper.run, helper.have)
+        helper.start_group, helper.run, helper.have = start, (lambda *cmd, check=True: ""), (lambda cmd: False)
+        try:
+            links = helper.Links()
+            links.wpa = Wpa()
+            links.station = lambda: "wlan0"
+            links.station_freq = lambda sta: 5180
+            links.usable = lambda: {5180: "no-ir", 2437: "ok", 2412: "ok", 2462: "ok"}
+            links._netdevs = lambda: set()
+            links._nm_off = lambda sta: None
+            links._address = links._dhcp_server = lambda *a: None
+            r = links.host_p2p(0)
+        finally:
+            helper.start_group, helper.run, helper.have = old
+        self.assertEqual(tried, [(5180, True), (2437, False)])
+        self.assertEqual((r["ssid"], r["freq"], r["iface"]), ("DIRECT-ab", 2437, "p2p-wlan0-1"))
+        # wpa_supplicant's detailed log is on while the link lasts, and back after
+        self.assertIn(("set", "DebugLevel", "s", "debug"), links.wpa.calls)
+        links.teardown()
+        self.assertEqual(links.wpa.calls[-1], ("set", "DebugLevel", "s", "info"))
+
     def test_networkmanager_kept_off_and_restored(self):
         import os
         import tempfile

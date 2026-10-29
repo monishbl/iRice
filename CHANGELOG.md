@@ -6,6 +6,7 @@
 - Quick Share now always listens on port 53318, so one firewall rule covers it.
 - Wi-Fi Direct starts again (it was refused by the Wi-Fi service).
 - Wi-Fi Direct no longer ends the moment it starts: NetworkManager leaves the link alone while a transfer uses it.
+- If Wi-Fi Direct can't run on 5 GHz next to your Wi-Fi (some Intel cards), it uses 2.4 GHz: slower than 5 GHz, still much faster than Bluetooth.
 - No more hotspot attempts on 5 GHz Intel Wi-Fi, where they can't work; transfers move on to the next option straight away.
 - Phones no longer need to ask to pair: **Stop pairing prompts** in Settings → Sharing turns off the experimental Bluetooth features that caused it (Ranging, and LE Audio controls that made phones take the computer for earbuds).
 - A phone shows once in the Bluetooth lists, not once per connection.
