@@ -21,14 +21,14 @@ site deploys keep working before this one exists.
 
 Run these from the repository root, logged in with `npx wrangler login`.
 
-1. Create the database, then put the `database_id` it prints into
-   `site/bugs/wrangler.jsonc`:
+1. Create the database, then put the `database_id` it prints (and its name)
+   into `site/bugs/wrangler.jsonc`. It exists: `irice`, set up on 30 Oct.
 
-       npx wrangler d1 create irice-bugs
+       npx wrangler d1 create irice
 
 2. Create the tables:
 
-       npx wrangler d1 migrations apply irice-bugs --remote --config site/bugs/wrangler.jsonc
+       npx wrangler d1 migrations apply irice --remote --config site/bugs/wrangler.jsonc
 
 3. Add the two secrets:
 

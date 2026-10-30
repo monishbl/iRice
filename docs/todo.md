@@ -40,7 +40,7 @@ the phone is on the same Wi-Fi, slow (Bluetooth) otherwise.
 - Battery & Power: the 20% prompt, sleeping at 3%, lid actions, new idle timers taking effect.
 - Google: several accounts, editing events, offline changes (needs a real account).
 - Replies with your real messaging apps.
-- Bug reports: deploy the Worker (site/bugs/README.md, steps 1–6) together.
+- Bug reports: the service is live (irice-bugs.monishbl.in); reports are stored but become GitHub issues only once you add GITHUB_TOKEN (site/bugs/README.md, step 3).
 
 ## Waiting on real hardware
 

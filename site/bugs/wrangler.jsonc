@@ -12,9 +12,9 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "irice-bugs",
+      "database_name": "irice",
       // From `npx wrangler d1 create irice-bugs` (README.md, step 1)
-      "database_id": "REPLACE_WITH_DATABASE_ID",
+      "database_id": "060067a4-73b9-4ba7-a07b-4e41b425007d",
       "migrations_dir": "migrations"
     }
   ]
