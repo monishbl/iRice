@@ -27,17 +27,13 @@ IconImage {
     readonly property var info: tiled || mode >= 2 ? IconInfo.get(source.toString()) : null
 
     // Where a logo goes on its tile: what it really draws (not its canvas),
-    // centred, at the same optical size for every app: by its area (a wide
-    // logo like Webex's isn't shrunk to fit its width, a round one isn't
-    // blown up), its longer side never past `cap`
-    readonly property real logoSize: 0.46 // √(width × height), as a share of the tile
-    readonly property real logoCap: 0.62
-    // (solid shapes, a folder or a bin, weigh more than open ones at the same
-    // size: `fill`, how much of its box a logo covers, shrinks those a little)
-    function place(b, glass, fill) {
+    // centred, every logo the same height so a row of them lines up top and
+    // bottom (the dock); a very wide one is held to `logoWidth` instead
+    readonly property real logoHeight: 0.46 // as a share of the tile
+    readonly property real logoWidth: 0.72
+    function place(b, glass) {
         const w = Math.max(b[2] - b[0], 0.05), h = Math.max(b[3] - b[1], 0.05);
-        const weight = Math.min(1, Math.sqrt(0.85 / (0.5 + 0.5 * Math.max(0.2, Math.min(1, fill ?? 0.7)))));
-        return { scale: Math.min(logoSize * weight / Math.sqrt(w * h), logoCap / Math.max(w, h), 1.6), x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, glass: glass };
+        return { scale: Math.min(logoHeight / h, logoWidth / w, 4), x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, glass: glass };
     }
     readonly property var fit: {
         const i = info;
@@ -54,7 +50,7 @@ IconImage {
             const b = i.box;
             return { scale: 1.06 / Math.max(b[2] - b[0], b[3] - b[1], 0.1), x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2 };
         }
-        return place(i.box, false, i.fill);
+        return place(i.box, false);
     }
 
     function tileFor(dominant) {
