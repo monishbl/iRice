@@ -24,6 +24,7 @@ dofile(dir .. "/irice/look.lua")
 pcall(dofile, dir .. "/irice/cursor.lua") -- macOS cursor when installed
 pcall(dofile, dir .. "/irice/tabs.lua") -- window tabs
 pcall(dofile, dir .. "/irice/vm.lua") -- only in a virtual machine (written by the installer)
+pcall(dofile, dir .. "/irice/gpu.lua") -- only with an NVIDIA GPU (written by the installer)
 dofile(dir .. "/irice/rules.lua")
 pcall(dofile, cfg .. "/irice/window-rules.lua") -- per-app rules from Settings → Window Rules
 dofile(dir .. "/irice/keybinds.lua")
@@ -31,6 +32,10 @@ dofile(dir .. "/irice/gestures.lua")
 dofile(dir .. "/irice/execs.lua")
 pcall(dofile, dir .. "/irice/titlebars.lua") -- only does anything with hyprbars
 pcall(dofile, dir .. "/irice/glass.lua") -- Liquid Glass plugin, if built
+
+-- Your old hyprland.conf's settings, all turned off until you uncomment one
+-- (written once by the installer)
+pcall(dofile, dir .. "/irice/from-your-old-config.lua")
 
 -- Your tweaks. Errors here are reported but don't break the rest of the config.
 local custom = dir .. "/custom.lua"

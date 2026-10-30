@@ -323,8 +323,7 @@ class QuickShareService:
         tries = wifi.host_paths(conn, net, helper_ok, reachable=answers)
         self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers})")
         if not tries:
-            why = ("NetworkManager ends Wi-Fi Direct links it didn't make" if net.get("nm") and net.get("p2p_go", True)
-                   else "Wi-Fi Direct isn't available here")
+            why = wifi.no_direct_reason(net)
             self._warn(sid, f"{SLOW}: {sender} and this computer share no network, and {why}. "
                             "For full speed, put both on the same Wi-Fi.")
             return

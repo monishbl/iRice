@@ -300,6 +300,27 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.p.recv_sharing()  # the accept
         await self.finish(data)
 
+    async def test_iwd_offers_no_wifi_direct_or_hotspot_and_says_why(self):
+        # (the helper makes links through wpa_supplicant, which iwd replaces)
+        self.net = dict(net(), iwd=True)
+        data = b"small"
+        await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT])
+        warning = await self.events.wait("warning")
+        self.assertIn("iwd runs the Wi-Fi here", warning["message"])
+        self.assertIn("same Wi-Fi", warning["message"])
+        self.assertEqual(self.helper.requests, [])  # no password asked
+        await self.p.recv_sharing()  # the accept
+        await self.finish(data)
+
+    def test_iwd_rules_out_the_helper(self):
+        from nearby import wifi
+        self.assertFalse(wifi.helper_possible(dict(net(), iwd=True)))
+        self.assertFalse(wifi.direct_possible(dict(net(), iwd=True)))
+        self.assertFalse(wifi.hotspot_possible(dict(net(), iwd=True)))
+        self.assertTrue(wifi.direct_possible(net()))
+        self.assertIn("iwd", wifi.no_direct_reason({"iwd": True, "nm": True}))
+        self.assertIn("NetworkManager", wifi.no_direct_reason({"nm": True}))
+
     def test_networkmanager_runs_the_wifi(self):
         from nearby import wifi
         self.assertTrue(wifi.nm_manages("wlan0:connected\np2p-dev-wlan0:disconnected\nlo:connected (externally)", "wlan0"))

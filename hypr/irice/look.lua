@@ -3,8 +3,28 @@
 -- KDE's platform theme loads the application palette before graphics views
 -- are constructed. Applying a scheme later leaves Dolphin's cached item text
 -- black until the next palette-change event. Respect an explicit user choice.
+-- qt6ct instead when you've set it up (~/.config/qt6ct/qt6ct.conf, with
+-- qt6ct installed) and either KDE's theme isn't installed (plasma-integration)
+-- or your environment.d asks for qt6ct (Hyprland doesn't read environment.d
+-- itself). launch-shell.sh follows the same rule.
+local function qt6ct_chosen()
+    local function has(path)
+        local f = io.open(path, "r")
+        if f then f:close() end
+        return f ~= nil
+    end
+    local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+    local plugins = "/usr/lib/qt6/plugins/platformthemes/"
+    if not has(cfg .. "/qt6ct/qt6ct.conf") or not has(plugins .. "libqt6ct.so") then return false end
+    if not has(plugins .. "KDEPlasmaPlatformTheme6.so") then return true end
+    local ok, p = pcall(io.popen, "grep -lsE '^[[:space:]]*QT_QPA_PLATFORMTHEME=\"?qt6ct' '" .. cfg .. "'/environment.d/*.conf")
+    if not ok or not p then return false end
+    local out = p:read("a") or ""
+    p:close()
+    return out ~= ""
+end
 local qtTheme = os.getenv("QT_QPA_PLATFORMTHEME")
-if not qtTheme or qtTheme == "" then hl.env("QT_QPA_PLATFORMTHEME", "kde") end
+if not qtTheme or qtTheme == "" then hl.env("QT_QPA_PLATFORMTHEME", qt6ct_chosen() and "qt6ct" or "kde") end
 
 -- Apps run natively on Wayland where they can (as end4 had it). Without the
 -- hint, Electron apps (WhatsApp, Discord, Claude, Slack, VS Code…) start under

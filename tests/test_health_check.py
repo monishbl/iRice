@@ -35,6 +35,7 @@ for down in filter(None, os.environ.get("FAKE_DOWN", "").split(",")):
         sys.exit(1)
 answers = {
     "pactl": "Server String: /run/pulse\nServer Name: PulseAudio (on PipeWire 1.6)\n",
+    "pw-cli": '\tid: 0\n\ttype: PipeWire:Interface:Core/4\n\tversion: "1.6.0"\n\tname: "pipewire-0"\n*\tproperties:\n*\t\tcore.version = "1.5.9"\n',
     "nmcli": "running:connected\n",
     "pgrep": "1234\n",
     "cliphist": "",
@@ -48,7 +49,8 @@ if name == "systemctl" and "FAKE_UNITS" in os.environ and ("is-active" in args o
 elif name == "systemctl":
     print("active")
 elif name == "busctl":
-    if "Powered" in args: print("b true")
+    if "tree" in args: print("/\n/org\n/org/bluez\n" + os.environ.get("FAKE_ADAPTERS", "/org/bluez/hci0\n/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"))
+    elif "Powered" in args: print("b true" if os.environ.get("FAKE_POWERED", "/org/bluez/hci") in args else "b false")
     elif "GetVersionString" in args: print('s "avahi 0.9"')
     elif "FileChooser" in args: print("u 4")
     elif "--activatable" in args: print("org.freedesktop.impl.portal.desktop.hyprland\norg.gnome.OnlineAccounts\norg.freedesktop.GeoClue2")
@@ -64,7 +66,7 @@ elif name == "qs":
 else:
     sys.stdout.write(answers.get(name, ""))
 '''
-COMMANDS = ["pkexec", "pactl", "systemctl", "nmcli", "busctl", "pgrep", "hyprctl", "qs", "cliphist", "gpu-screen-recorder", "wf-recorder"]
+COMMANDS = ["pkexec", "pactl", "pw-cli", "systemctl", "nmcli", "busctl", "pgrep", "hyprctl", "qs", "cliphist", "gpu-screen-recorder", "wf-recorder"]
 SCHEMA = {"id": str, "name": str, "group": str, "status": str, "detail": str, "fix": str, "canFix": bool, "fixRoot": bool, "fixCommand": str}
 GROUPS = {"Sound", "Network & sharing", "Power", "Desktop", "iRice itself"}
 
@@ -126,6 +128,34 @@ class HealthCheck(unittest.TestCase):
         self.assertIn("sudo systemctl enable --now avahi-daemon", rows["avahi"]["fix"])
         self.assertEqual(rows["polkit"]["status"], "fail")  # not registered
         self.assertEqual(rows["goa"]["status"], "off")      # Google not connected
+
+    def test_pipewire_without_its_pulseaudio_part_is_a_warning(self):
+        self.assertEqual(self.rows()["pipewire"]["detail"], "PipeWire 1.6.0")
+        row = self.rows(FAKE_DOWN="pactl")["pipewire"]
+        self.assertEqual(row["status"], "warn")
+        self.assertIn("pipewire-pulse", row["detail"])
+        self.assertTrue(row["canFix"])
+        # no pw-cli: pactl alone, as before
+        row = self.rows(FAKE_DOWN="pw-cli")["pipewire"]
+        self.assertEqual((row["status"], row["detail"]), ("ok", "PulseAudio (on PipeWire 1.6)"))
+        self.assertEqual(self.rows(FAKE_DOWN="pw-cli,pactl")["pipewire"]["status"], "fail")
+
+    def test_bluetooth_adapters_are_found_whatever_their_number(self):
+        row = self.rows(FAKE_ADAPTERS="/org/bluez/hci1", FAKE_POWERED="/org/bluez/hci1")["bluetooth"]
+        self.assertEqual((row["status"], row["detail"]), ("ok", "On"))
+        self.assertEqual(self.rows(FAKE_ADAPTERS="/org/bluez/hci0", FAKE_POWERED="none")["bluetooth"]["status"], "off")
+        row = self.rows(FAKE_ADAPTERS="")["bluetooth"]
+        self.assertEqual((row["status"], row["detail"]), ("off", "No Bluetooth adapter found"))
+        # the service isn't there at all: BlueZ isn't installed, and that's the fix
+        row = self.rows(FAKE_DOWN="busctl:org.bluez")["bluetooth"]
+        self.assertEqual(row["status"], "fail")
+        self.assertIn("pacman -S bluez bluez-utils", row["fix"])
+        self.assertFalse(row["canFix"])
+        (self.sysroot / "usr/lib/bluetooth").mkdir(parents=True)
+        (self.sysroot / "usr/lib/bluetooth/bluetoothd").write_text("")
+        row = self.rows(FAKE_DOWN="busctl:org.bluez")["bluetooth"]
+        self.assertEqual(row["detail"], "The Bluetooth service isn't running")
+        self.assertTrue(row["canFix"])
 
     def test_a_hung_service_is_reported_and_doesnt_hold_the_rest(self):
         start = time.monotonic()

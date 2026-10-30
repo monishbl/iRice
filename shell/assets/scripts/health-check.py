@@ -2,7 +2,7 @@
 """System health for iRice (Settings → About → System health).
 
 Each check asks the service itself, not whether its package is installed:
-PipeWire answers pactl, NetworkManager reports itself running, Avahi gives
+PipeWire answers pw-cli (and its PulseAudio part pactl), NetworkManager reports itself running, Avahi gives
 its version, the glass plugin answers a ping. They run side by side, each
 given 2 s and all of them 3 s, so a hung daemon shows up as "didn't answer"
 instead of holding the page.
@@ -102,6 +102,18 @@ def bus_value(out):
 # ── Sound ───────────────────────────────────────────────────────────────
 
 def check_pipewire(_):
+    # PipeWire itself first: without pipewire-pulse (apps that speak
+    # PulseAudio, pactl) it still plays sound, so that's a warning, not a failure
+    code, out = run(["pw-cli", "info", "0"])
+    if code == 0 and "PipeWire:Interface:Core" in out:
+        version = re.search(r'^\W*version:\s*"([^"]+)"', out, re.M)
+        name = f"PipeWire {version.group(1)}" if version else "PipeWire"
+        pcode, pout = run(["pactl", "info"])
+        if pcode == 0 and "Server" in pout:
+            return result("pipewire", "PipeWire", "Sound", "ok", name)
+        return result("pipewire", "PipeWire", "Sound", "warn",
+                      f"{name} runs, but its PulseAudio part (pipewire-pulse) doesn't answer: most apps and the volume controls use it",
+                      "systemctl --user restart pipewire pipewire-pulse wireplumber (sudo pacman -S pipewire-pulse if it's missing)")
     code, out = run(["pactl", "info"])
     if code == 0 and "Server" in out:
         name = re.search(r"Server Name: (.*)", out)
@@ -146,16 +158,31 @@ def check_networkmanager(_):
                   "sudo systemctl enable --now NetworkManager")
 
 
+def adapters(tree):
+    """`busctl tree --list org.bluez` → the adapters' object paths (/org/bluez/hciN)."""
+    return sorted(p for p in tree.split() if re.fullmatch(r"/org/bluez/hci\d+", p))
+
+
 def check_bluetooth(_):
-    code, out = run(["busctl", "--system", "get-property", "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1", "Powered"])
+    name = "Bluetooth"
+    code, out = run(["busctl", "--system", "tree", "--list", "org.bluez"])
     if code == 0:
-        if bus_value(out) is True:
-            return result("bluetooth", "Bluetooth", "Network & sharing", "ok", "On")
-        return result("bluetooth", "Bluetooth", "Network & sharing", "off", "Off. Quick Share needs it to find phones without Wi-Fi",
+        found = adapters(out)
+        if not found:
+            return result("bluetooth", name, "Network & sharing", "off", "No Bluetooth adapter found")
+        for path in found:
+            c, v = run(["busctl", "--system", "get-property", "org.bluez", path, "org.bluez.Adapter1", "Powered"])
+            if c == 0 and bus_value(v) is True:
+                return result("bluetooth", name, "Network & sharing", "ok", "On")
+        return result("bluetooth", name, "Network & sharing", "off", "Off. Quick Share needs it to find phones without Wi-Fi",
                       "Turn it on in Control Center or Settings → Bluetooth")
-    if "Unknown object" in out or "UnknownObject" in out:
-        return result("bluetooth", "Bluetooth", "Network & sharing", "off", "No Bluetooth adapter found")
-    return result("bluetooth", "Bluetooth", "Network & sharing", "fail", "The Bluetooth service isn't running",
+    if not any(os.path.exists(os.path.join(SYSTEM, d, "bluetooth/bluetoothd")) for d in ("usr/lib", "usr/libexec")) and \
+            not shutil.which("bluetoothd"):
+        r = result("bluetooth", name, "Network & sharing", "fail", "BlueZ (the Bluetooth service) isn't installed",
+                   "sudo pacman -S bluez bluez-utils, then sudo systemctl enable --now bluetooth")
+        r.update(canFix=False, fixRoot=False, fixPassword=False, fixCommand="")  # (installing isn't one of the fixes)
+        return r
+    return result("bluetooth", name, "Network & sharing", "fail", "The Bluetooth service isn't running",
                   "sudo systemctl enable --now bluetooth")
 
 
@@ -174,11 +201,15 @@ def check_firewall(_):
     if f["kind"] is None:
         return result("firewall", name, "Network & sharing", "ok", "No firewall turned on")
     if not f["blocks"]:
-        return result("firewall", name, "Network & sharing", "ok", f"{f['kind']}: sharing's ports are open")
+        return result("firewall", name, "Network & sharing", "ok", f"{f['kind']}: sharing's ports are open" +
+                      (" until the next restart (the Fix button opens them again)" if f.get("runtime") else ""))
     detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
               " LocalSend and Quick Share (ports 53317-53319, mDNS)")
-    return result("firewall", name, "Network & sharing", "warn", detail,
-                  "Allow them: Settings → Sharing, or the Fix button here")
+    r = result("firewall", name, "Network & sharing", "warn", detail,
+               "Allow them: Settings → Sharing, or the Fix button here")
+    if r["fixRoot"] and f["kind"] in sharing.FIREWALL_SHOWN_BY:
+        r["fixCommand"] = sharing.FIREWALL_SHOWN_BY[f["kind"]]
+    return r
 
 
 def check_btpairing(_):
@@ -533,26 +564,25 @@ def main(argv):
             return 1
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if cmd[1:2] == [sharing.HELPER] and p.returncode == sharing.irice_root.REFUSED_EXIT:
+            if cmd[1:2] == [sharing.HELPER] and (p.returncode == sharing.irice_root.REFUSED_EXIT or
+                                                 (opts.id == "firewall" and sharing.older_firewall_fix(p))):
                 # (an older helper without this fix: the command itself, with the password)
                 cmd = ["pkexec"] + ROOT_FIXES[opts.id]
                 p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            code, out = p.returncode, (p.stderr or p.stdout or "")
+            code, out, said = p.returncode, (p.stderr or p.stdout or ""), p.stdout or ""
         except FileNotFoundError:
-            code, out = None, f"{cmd[0]} isn't installed"
+            code, out, said = None, f"{cmd[0]} isn't installed", ""
         except subprocess.TimeoutExpired:
-            code, out = None, "It took too long; try the command in a terminal"
+            code, out, said = None, "It took too long; try the command in a terminal", ""
         if cmd[0] == "pkexec" and code in (126, 127):
             err = "Cancelled: no password was given" if code == 126 else "Not allowed: your account can't do this; try the command in a terminal"
         else:
             err = "" if code == 0 else (out.strip()[:200] or "It didn't work; try the command in a terminal")
+        note = ""
         if code == 0 and opts.id == "firewall":
-            kind = sharing.firewall()["kind"]
-            if kind:  # (the rules can't be read without root: remember they're in)
-                os.makedirs(sharing.STATE, exist_ok=True)
-                with open(sharing.MARKER, "w") as f:
-                    f.write(kind + "\n")
-        print(json.dumps({"ok": code == 0, "error": err}))
+            # (the rules can't be read without root: remember they're in, and for how long)
+            note = sharing.remember(sharing.firewall()["kind"], said)
+        print(json.dumps({"ok": code == 0, "error": err, "note": note}))
         return 0 if code == 0 else 1
     rows = check_all(opts)
     print(as_text(rows) if opts.cmd == "text" else json.dumps(rows))

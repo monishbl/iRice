@@ -58,12 +58,31 @@ def personal_names():
     for line in run(["nmcli", "-t", "-f", "SSID", "device", "wifi", "list", "--rescan", "no"]).splitlines():
         if line.strip():
             names.add(line.strip().replace("\\:", ":"))
+    # iwd (without NetworkManager, or under it): its known and nearby networks
+    names |= iwd_names(run(["busctl", "--system", "--json=short", "call", "net.connman.iwd", "/",
+                            "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"]))
     for line in run(["bluetoothctl", "devices"]).splitlines():
         parts = line.split(" ", 2)  # Device <MAC> <name>
         if len(parts) == 3 and parts[2].strip():
             names.add(parts[2].strip())
     # Too short to tell apart from ordinary words
     return {n for n in names if len(n) >= 3}
+
+
+def iwd_names(text):
+    """The Name of every KnownNetwork and Network in iwd's GetManagedObjects
+    answer (busctl --json=short)."""
+    try:
+        objects = json.loads(text)["data"][0]
+    except (ValueError, KeyError, IndexError, TypeError):
+        return set()
+    names = set()
+    for ifaces in objects.values() if isinstance(objects, dict) else []:
+        for iface in ("net.connman.iwd.KnownNetwork", "net.connman.iwd.Network"):
+            name = ((ifaces or {}).get(iface) or {}).get("Name", {})
+            if isinstance(name, dict) and isinstance(name.get("data"), str) and name["data"]:
+                names.add(name["data"])
+    return names
 
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")

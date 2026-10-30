@@ -65,6 +65,32 @@ class Scrubbing(unittest.TestCase):
         self.assertIn("battery 80%", self.out)
 
 
+class NetworkNames(unittest.TestCase):
+    IWD = json.dumps({"type": "a{oa{sa{sv}}}", "data": [{
+        "/": {"org.freedesktop.DBus.ObjectManager": {}},
+        "/net/connman/iwd/486f6d65_psk": {"net.connman.iwd.KnownNetwork": {"Name": {"type": "s", "data": "Home Base"},
+                                                                         "Type": {"type": "s", "data": "psk"}}},
+        "/net/connman/iwd/0/3/436166c3a9_open": {"net.connman.iwd.Network": {"Name": {"type": "s", "data": "Café Libre"}}},
+        "/net/connman/iwd/0/3": {"net.connman.iwd.Station": {"State": {"type": "s", "data": "connected"}}}}]})
+
+    def test_iwd_known_and_nearby_networks_are_scrubbed_too(self):
+        m = load()
+        self.assertEqual(m.iwd_names(self.IWD), {"Home Base", "Café Libre"})
+        self.assertEqual(m.iwd_names(""), set())  # (no iwd)
+        self.assertEqual(m.iwd_names('{"data": []}'), set())
+
+        def run(cmd, timeout=5):
+            if cmd[0] == "busctl":
+                return self.IWD
+            if cmd[:2] == ["nmcli", "-t"] and "connection" in cmd:
+                return "Office Net:802-11-wireless\nWired:802-3-ethernet\n"
+            return ""
+        with mock.patch.object(m, "run", run):
+            names = m.personal_names()
+        self.assertEqual(names, {"Home Base", "Café Libre", "Office Net"})
+        self.assertNotIn("Home Base", m.scrub("joined Home Base", names, home="/home/x", user="x", host="h"))
+
+
 class Payload(unittest.TestCase):
     def setUp(self):
         self.m = load()

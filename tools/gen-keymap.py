@@ -45,8 +45,9 @@ def space(op, n=None, step=None):
 
 
 # ── Shell ──────────────────────────────────────────────────────────────────
-# A lone Super tap (release bind; skipped when another key was pressed)
-b("spotlight-tap", "$MOD + $MODKEY", "Shell", "Spotlight (tap Super)", shell("spotlight"), release=True)
+# A lone Super tap: Overview, or what Settings chose (the shell decides;
+# skipped when another key was pressed)
+b("spotlight-tap", "$MOD + $MODKEY", "Shell", "Tap Super (Overview, or as set in Settings)", shell("superTap"))
 b("spotlight", "$MOD + Space", "Shell", "Spotlight", shell("spotlight"))
 b("overview", "$MOD + Tab", "Shell", "Overview", shell("overview"))
 b("switcher", "ALT + Tab", "Shell", "Switch windows", shell("switcher"))
@@ -57,6 +58,8 @@ b("switcher-commit", "ALT + Alt_L", "Shell", "Switch windows (finish when Alt is
 b("mission-control", "$MOD + SHIFT + Tab", "Shell", "Mission Control", shell("missionControl"))
 b("launchpad", "$MOD + SHIFT + Space", "Shell", "App Library", shell("launchpad"))
 b("clipboard", "$MOD + V", "Shell", "Clipboard history", shell("clipboard"))
+b("shareSelection", "$MOD + CTRL + S", "Shell", "Share the selection", shell("shareSelection"))
+b("replyLatest", "$MOD + CTRL + N", "Shell", "Reply to the newest message", shell("replyLatest"))
 b("emoji", "$MOD + Period", "Shell", "Emoji and symbols", shell("emoji"))
 b("sidebar", "$MOD + A", "Shell", "AI and tools sidebar", shell("sidebar"))
 b("sidebar-b", "$MOD + B", "Shell", "AI and tools sidebar (alternative)", shell("sidebar"))
@@ -105,6 +108,11 @@ b("vol-mute", "XF86AudioMute", "Media", "Mute (key)", shell("volumeMute"), locke
 b("mic-key", "XF86AudioMicMute", "Media", "Mute microphone (key)", shell("micMute"), locked=True)
 b("bright-up", "XF86MonBrightnessUp", "Media", "Brightness up", shell("brightnessUp"), locked=True, repeating=True)
 b("bright-down", "XF86MonBrightnessDown", "Media", "Brightness down", shell("brightnessDown"), locked=True, repeating=True)
+# The same on F-keys, for keyboards without media keys
+b("vol-up-f12", "$MOD + F12", "Media", "Volume up (without media keys)", shell("volumeUp"), locked=True, repeating=True)
+b("vol-down-f11", "$MOD + F11", "Media", "Volume down (without media keys)", shell("volumeDown"), locked=True, repeating=True)
+b("bright-up-f2", "$MOD + F2", "Media", "Brightness up (without media keys)", shell("brightnessUp"), locked=True, repeating=True)
+b("bright-down-f1", "$MOD + F1", "Media", "Brightness down (without media keys)", shell("brightnessDown"), locked=True, repeating=True)
 b("play-key", "XF86AudioPlay", "Media", "Play or pause (key)", {"exec": "playerctl play-pause"}, locked=True)
 b("pause-key", "XF86AudioPause", "Media", "Pause (key)", {"exec": "playerctl play-pause"}, locked=True)
 b("next-key", "XF86AudioNext", "Media", "Next track (key)", {"exec": "playerctl next"}, locked=True)

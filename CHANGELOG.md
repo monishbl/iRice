@@ -64,6 +64,13 @@
 - Volume and brightness without media keys: Super+F11/F12 lower and raise the volume, Super+F1/F2 the brightness (Settings → Keyboard Shortcuts, Media).
 - The lock screen says "Too many attempts: try again in about 10 minutes" (with the real time left) when too many wrong passwords have locked the account, instead of "Incorrect password" for a password that was right.
 - Text Capture reads your system language as well as English when its tesseract-data package is installed (German with tesseract-data-deu, say), and tells you which package to install when it isn't.
+- Sharing behind an nftables or iptables firewall: System health and Settings → Sharing notice it, and the fix lets LocalSend and Quick Share through (kept across restarts when nftables reads /etc/nftables.d, otherwise until the next restart, which System health says). Quick Share's direct Wi-Fi links get through nftables too.
+- Your keyring unlocks with your login password at the iRice login screen and on the console (gnome-keyring's PAM lines, added once by the installer, taken out by irice uninstall). Not next to KWallet.
+- Apps that start with your session (~/.config/autostart, /etc/xdg/autostart) now do, once per session, after the menu bar's tray is up. iRice leaves out the ones it does itself (keyring, password prompts, notifications, other bars).
+- NVIDIA: the installer writes the environment Hyprland's wiki asks for (~/.config/hypr/irice/gpu.lua; only suggestions on hybrid graphics), and installs the video drivers for recording and playback: intel-media-driver for Intel, libva-nvidia-driver for NVIDIA.
+- Your old hyprland.conf: after installing, iRice says what it had (displays, keyboard, env lines, programs) and puts them, turned off, in ~/.config/hypr/irice/from-your-old-config.lua: remove "-- " to use one.
+- Bug reports also leave out Wi-Fi names iwd knows. Quick Share under iwd says Wi-Fi Direct needs wpa_supplicant instead of asking for a password for nothing.
+- System health finds any Bluetooth adapter (not only the first), says to install bluez when it's missing, and counts PipeWire without pipewire-pulse as a warning. qt6ct is used when you've set it up and KDE's theme isn't installed or your environment.d asks for it. The installer uses paru when you have it, and on Manjaro builds yay only when you say so.
 
 ## Sharing and spaces fixes · 2026-10-30
 

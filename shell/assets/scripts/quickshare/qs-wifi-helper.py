@@ -157,6 +157,24 @@ def nm_unmanaged_conf(station):
            "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
 
 
+def nft_input_chains(text):
+    """`nft list chains` → [(family, table, chain)] hooked to input. nftables
+    runs every one of them, and a drop in any is final, so a link's accept
+    goes in each. iptables' own INPUT chains (ip/ip6 "filter") are left to
+    iptables."""
+    out, fam, table, chain = [], "", "", ""
+    for line in text.splitlines():
+        w = line.split()
+        if len(w) >= 3 and w[0] == "table":
+            fam, table = w[1], w[2]
+        elif len(w) >= 2 and w[0] == "chain":
+            chain = w[1]
+        elif "hook input" in line and fam in ("inet", "ip", "ip6") and \
+                not (fam in ("ip", "ip6") and table == "filter" and chain == "INPUT"):
+            out.append((fam, table, chain))
+    return out
+
+
 def group_interfaces(names):
     """wpa_supplicant's P2P group interfaces among these netdev names."""
     return {n for n in names if n.startswith("p2p-") and not n.startswith("p2p-dev-")}
@@ -502,10 +520,19 @@ class Links:
     def _open_firewall(self, iface):
         """Lets the phone reach us on our own link (DHCP, the transfer port)
         whatever the firewall says, for as long as the link exists: runtime
-        only (firewalld's trusted zone; an iptables rule ahead of ufw's)."""
+        only (firewalld's trusted zone; with nftables.service, a rule first in
+        each input chain; else an iptables rule ahead of ufw's)."""
         if have("firewall-cmd") and subprocess.run(["firewall-cmd", "--state"], capture_output=True).returncode == 0:
             run("firewall-cmd", "--zone=trusted", f"--add-interface={iface}", check=False)
             self.undo.append(lambda: run("firewall-cmd", "--zone=trusted", f"--remove-interface={iface}", check=False))
+        elif have("nft") and subprocess.run(["systemctl", "is-active", "--quiet", "nftables"]).returncode == 0 and \
+                subprocess.run(["systemctl", "is-active", "--quiet", "ufw"]).returncode != 0:
+            for f, t, c in nft_input_chains(run("nft", "list", "chains", check=False)):
+                out = run("nft", "--echo", "--handle", "insert", "rule", f, t, c, "iifname", iface, "accept",
+                          "comment", '"irice quick share"', check=False)
+                m = re.search(r"# handle (\d+)", out)
+                if m:
+                    self.undo.append(lambda f=f, t=t, c=c, h=m.group(1): run("nft", "delete", "rule", f, t, c, "handle", h, check=False))
         elif have("iptables"):
             run("iptables", "-I", "INPUT", "1", "-i", iface, "-j", "ACCEPT", check=False)
             self.undo.append(lambda: run("iptables", "-D", "INPUT", "-i", iface, "-j", "ACCEPT", check=False))

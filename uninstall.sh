@@ -57,6 +57,14 @@ if [[ -d /usr/share/irice ]]; then
         run sudo mv /etc/greetd/config.toml.pre-irice /etc/greetd/config.toml
     fi
 fi
+# Unlocking the keyring at login (install.sh's lines under its marker, in the
+# login screen's or the console's PAM file), and the copies made before
+for f in /etc/pam.d/greetd /etc/pam.d/login; do
+    if grep -q '# irice: unlock the keyring' "$f" 2>/dev/null; then
+        run sudo sed -i '/# irice: unlock the keyring/,+1d' "$f"
+        run sudo rm -f "$f.pre-irice"
+    fi
+done
 # iRice's root helper and its polkit action and rule
 if [[ -e /usr/lib/irice || -e /etc/polkit-1/rules.d/49-irice.rules || -e /usr/share/polkit-1/actions/org.irice.root.policy ]]; then
     run sudo rm -rf /usr/lib/irice

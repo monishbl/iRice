@@ -29,6 +29,7 @@ hl.config({
 do
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
     if not pcall(dofile, cfg .. "/hypr/irice/keyboard.lua") then pcall(dofile, root .. "/.sandbox/keyboard.lua") end
+    pcall(dofile, cfg .. "/hypr/irice/gpu.lua") -- NVIDIA's settings, when the installer wrote them
 end
 
 dofile(root .. "/hypr/irice/look.lua")
@@ -62,6 +63,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(ctl .. " start")
     hl.exec_cmd(ctl .. " watchdog")
     hl.exec_cmd("wl-paste --watch cliphist store")
+    -- Apps that start with your session (XDG autostart), once per session
+    hl.exec_cmd("python3 -I " .. root .. "/shell/assets/scripts/xdg-autostart.py --wait-tray 15")
     -- ./demo.sh: a playing track and a few notifications once the shell is up
     if os.getenv("IRICE_DEMO") == "1" then
         hl.exec_cmd(root .. "/sandbox/demo-extras.sh")

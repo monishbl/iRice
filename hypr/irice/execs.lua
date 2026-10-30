@@ -9,6 +9,9 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("busctl --user status org.freedesktop.secrets >/dev/null 2>&1 || gnome-keyring-daemon --start --components=secrets")
     -- launch-shell starts the session-specific idle/sleep locker.
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM ELECTRON_OZONE_PLATFORM_HINT XDG_MENU_PREFIX CLAUDE_PASSWORD_STORE")
+    -- Apps that start with your session (~/.config/autostart, /etc/xdg/autostart),
+    -- once the shell's tray is there for them; once per session
+    hl.exec_cmd("python3 -I " .. cfg .. "/quickshell/irice/assets/scripts/xdg-autostart.py --wait-tray 15")
 end)
 
 -- If the shell ever stops (a crash), it comes back within a minute

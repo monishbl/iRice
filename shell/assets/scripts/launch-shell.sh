@@ -9,7 +9,17 @@
 set -uo pipefail
 # Updater/watchdog restarts can inherit an older environment than Hyprland's
 # reloaded config. Apps launched by this shell still need the startup palette.
-export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}"
+# KDE's theme, or qt6ct when you've set it up and KDE's isn't installed or
+# your environment.d asks for qt6ct (the same rule as hypr/irice/look.lua).
+qt6ct_chosen() {
+    local cfg="${XDG_CONFIG_HOME:-$HOME/.config}" plugins="${IRICE_SYSTEM_ROOT:-}/usr/lib/qt6/plugins/platformthemes"
+    [[ -f "$cfg/qt6ct/qt6ct.conf" && -f "$plugins/libqt6ct.so" ]] || return 1
+    [[ ! -f "$plugins/KDEPlasmaPlatformTheme6.so" ]] && return 0
+    grep -lsqE '^[[:space:]]*QT_QPA_PLATFORMTHEME="?qt6ct' "$cfg"/environment.d/*.conf
+}
+if [[ -z "${QT_QPA_PLATFORMTHEME:-}" ]]; then
+    if qt6ct_chosen; then export QT_QPA_PLATFORMTHEME=qt6ct; else export QT_QPA_PLATFORMTHEME=kde; fi
+fi
 
 themes_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons" /usr/local/share/icons /usr/share/icons)
 installed() {

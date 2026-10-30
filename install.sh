@@ -191,6 +191,72 @@ login_profile() {
         *) printf '%s\n' "$HOME/.profile" ;;
     esac
 }
+# A login's PAM file with your keyring unlocked by the login password: the
+# gnome-keyring lines after its last auth and session lines, each under a
+# marker (uninstall.sh takes them out), on stdout. Returns 1 when there's
+# nothing to add: no such file, the keyring's lines are there already, or
+# KWallet's are (it unlocks its own wallet)
+KEYRING_MARK='# irice: unlock the keyring with the login password'
+pam_with_keyring() { # pam file
+    [[ -f "$1" ]] || return 1
+    grep -qE 'pam_gnome_keyring\.so|pam_kwallet[0-9]*\.so' "$1" && return 1
+    grep -qE '^-?auth[[:space:]]' "$1" && grep -qE '^-?session[[:space:]]' "$1" || return 1
+    awk -v mark="$KEYRING_MARK" '
+        { line[NR] = $0 }
+        /^-?auth[[:space:]]/ { a = NR }
+        /^-?session[[:space:]]/ { s = NR }
+        END {
+            for (i = 1; i <= NR; i++) {
+                print line[i]
+                if (i == a) { print mark; print "-auth      optional     pam_gnome_keyring.so" }
+                if (i == s) { print mark; print "-session   optional     pam_gnome_keyring.so auto_start" }
+            }
+        }' "$1"
+}
+# The makers of the GPUs here (intel, amd, nvidia; one per line), from the
+# kernel's display devices, NVIDIA's module, else lspci.
+# IRICE_SYSTEM_ROOT (tests) is where /sys is looked for.
+gpu_vendors() {
+    local sys="${IRICE_SYSTEM_ROOT:-}" f
+    {
+        for f in "$sys"/sys/class/drm/card[0-9]*/device/vendor; do
+            [[ -f "$f" ]] && cat "$f"
+        done
+        [[ -d "$sys/sys/module/nvidia_drm" ]] && echo 0x10de
+        if command -v lspci >/dev/null; then
+            lspci -nn 2>/dev/null | grep -E 'VGA|3D|Display' | grep -o '\[[0-9a-f]\{4\}:' | tr -d '[:' | sed 's/^/0x/'
+        fi
+    } | while read -r f; do
+        case "$f" in 0x8086) echo intel ;; 0x1002) echo amd ;; 0x10de) echo nvidia ;; esac
+    done | sort -u
+}
+# hypr/irice/gpu.lua for an NVIDIA GPU (what Hyprland's wiki asks for), on
+# stdout; returns 1 without one. Only when NVIDIA is the only GPU: on hybrid
+# graphics the other one draws the desktop, and forcing NVIDIA's VA-API and
+# GLX there would break them, so the lines are left as suggestions. The
+# software cursor only for drivers before 555 (no explicit sync: hardware
+# cursors flicker or vanish); newer ones work with Hyprland's default.
+gpu_lua() { # vendors (gpu_vendors' output)
+    local sys="${IRICE_SYSTEM_ROOT:-}" ver major on=""
+    grep -qx nvidia <<<"$1" || return 1
+    ver=$(cat "$sys/sys/module/nvidia/version" 2>/dev/null || true)
+    major=${ver%%.*}
+    printf -- '-- Written by the iRice installer: an NVIDIA GPU (driver %s). Rewritten at each install;\n' "${ver:-not loaded}"
+    printf -- '-- your own changes go in ~/.config/hypr/custom.lua.\n'
+    if grep -qvx nvidia <<<"$1"; then
+        printf -- '-- Another GPU draws the desktop too (hybrid graphics), so nothing is forced onto NVIDIA.\n'
+        printf -- '-- If NVIDIA drives your screens, remove the "-- " from these:\n'
+        on="-- "
+    fi
+    printf -- '%shl.env("LIBVA_DRIVER_NAME", "nvidia")\n' "$on"
+    printf -- '%shl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")\n' "$on"
+    printf -- '%shl.env("NVD_BACKEND", "direct") -- (VA-API through libva-nvidia-driver)\n' "$on"
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major < 555 )); then
+        printf -- '-- (a driver before 555: hardware cursors flicker or vanish)\nhl.config({ cursor = { no_hardware_cursors = true } })\n'
+    fi
+}
+# The AUR helper there is (yay or paru), or nothing
+aur_helper() { command -v yay || command -v paru || true; }
 
 # ── Steps ───────────────────────────────────────────────────────────────
 VIRT=none
@@ -260,6 +326,11 @@ install_packages() {
         note "Keeping your power manager ($pm); power-profiles-daemon isn't installed."
         want=("${want[@]/power-profiles-daemon/}")
     fi
+    # The GPUs' video drivers (VA-API: video decoding, recording)
+    local gpus
+    gpus=$(gpu_vendors)
+    grep -qx intel <<<"$gpus" && want+=("${GPU_INTEL[@]}")
+    grep -qx nvidia <<<"$gpus" && want+=("${GPU_NVIDIA[@]}")
     # Some repositories don't carry every package; leave those out with a note
     local avail=() p
     for p in "${want[@]}"; do
@@ -326,12 +397,20 @@ build_quickshell() {
     version_ge "$(qs_version)" "$NEED_QUICKSHELL" || { say "  The build finished, but Quickshell still isn't $NEED_QUICKSHELL or newer."; return 1; }
 }
 
-# yay, the AUR helper: always set up (iRice's extras come from the AUR, and
-# `irice update` uses it to keep them current)
+# yay, the AUR helper: set up unless there's one (iRice's extras come from
+# the AUR, and `irice update` uses yay or paru to keep them current). On
+# Manjaro, whose own software app (pamac) builds from the AUR too, only when
+# you say so
 install_yay() {
     [[ $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    if command -v yay >/dev/null; then
-        note "yay is installed."
+    local have
+    have=$(aur_helper)
+    if [[ -n "$have" ]]; then
+        note "$(basename "$have") is installed: iRice uses it for the AUR."
+        return 0
+    fi
+    if command -v pamac >/dev/null && ! ask "Install yay too (iRice's AUR extras and irice update use it; pamac stays as it is)?" n; then
+        note "Skipped: no yay. The AUR extras are left out (pamac build <name> installs one by hand)."
         return 0
     fi
     say "  Installing yay (an AUR helper)…"
@@ -348,9 +427,13 @@ aur_extras() {
     local missing=() p
     for p in "${AUR[@]}"; do pkg_installed "$p" || missing+=("$p"); done
     [[ ${#missing[@]} == 0 ]] && { note "Tahoe icons, cursors and GTK theme are installed."; return 0; }
-    ask "Install the Tahoe-like icons, macOS and Bibata cursors and GTK theme (from the AUR)?" y || { note "Skipped."; return 0; }
     local helper
-    helper=$(command -v yay || command -v paru || true)
+    helper=$(aur_helper)
+    if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
+        note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"
+        return 0
+    fi
+    ask "Install the Tahoe-like icons, macOS and Bibata cursors and GTK theme (from the AUR)?" y || { note "Skipped."; return 0; }
     [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the step before installs it)."; return 1; }
     # The GTK theme's own script needs sassc, which its package doesn't list
     run sudo pacman -S --needed --noconfirm sassc || return 1
@@ -363,8 +446,12 @@ emoji_extras() {
     local missing=() p helper
     for p in "${EMOJI_AUR[@]}"; do pkg_installed "$p" || missing+=("$p"); done
     [[ ${#missing[@]} == 0 ]] && { note "Apple and Fluent emoji are installed."; return 0; }
+    helper=$(aur_helper)
+    if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
+        note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"
+        return 0
+    fi
     ask "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n || { note "Skipped (Settings can install them later)."; return 0; }
-    helper=$(command -v yay || command -v paru || true)
     [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the step before installs it)."; return 1; }
     run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
 }
@@ -462,11 +549,32 @@ install_files() {
     if [[ -f "$CONFIG/hypr/hyprland.conf" ]]; then
         run mv "$CONFIG/hypr/hyprland.conf" "$CONFIG/hypr/hyprland.conf.pre-irice"
     fi
+    # What it set (displays, keyboard, environment, programs) as suggestions
+    # you can turn on, written once; nothing of it is applied
+    if [[ -f "$CONFIG/hypr/hyprland.conf.pre-irice" && ! -f "$CONFIG/hypr/irice/from-your-old-config.lua" ]]; then
+        if [[ $DRY == 1 ]]; then
+            note "would write your old hyprland.conf's settings as suggestions to $CONFIG/hypr/irice/from-your-old-config.lua"
+        else
+            OLD_CONFIG=$(python3 -I "$ROOT/tools/old-hypr-config.py" "$CONFIG/hypr/hyprland.conf.pre-irice" \
+                "$CONFIG/hypr/irice/from-your-old-config.lua" 2>/dev/null || true)
+        fi
+    fi
     # Virtual machines: software cursor (hardware cursors often don't show)
     if [[ $VIRT != none ]]; then
         [[ $DRY == 1 ]] || printf -- '-- Written by the iRice installer: this is a virtual machine (%s)\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" >"$CONFIG/hypr/irice/vm.lua"
     else
         run rm -f "$CONFIG/hypr/irice/vm.lua"
+    fi
+    # NVIDIA: the environment Hyprland's wiki asks for (gpu.lua)
+    local gpus lua
+    gpus=$(gpu_vendors)
+    if lua=$(gpu_lua "$gpus"); then
+        if [[ $DRY == 1 ]]; then note "would write NVIDIA's settings to $CONFIG/hypr/irice/gpu.lua"; else printf '%s\n' "$lua" >"$CONFIG/hypr/irice/gpu.lua"; fi
+        if [[ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" == N ]]; then
+            warn "NVIDIA's kernel mode setting is off; Hyprland needs it: add nvidia_drm.modeset=1 to your kernel parameters"
+        fi
+    else
+        run rm -f "$CONFIG/hypr/irice/gpu.lua"
     fi
     # The irice command (doctor, update, rebuild, repair, uninstall) and where iRice came from
     run mkdir -p "$DATA/irice"
@@ -575,7 +683,22 @@ root_helper() {
     return 0
 }
 
-GREETER_DONE=0 OTHER_DM=""
+# Your keyring (passwords for apps) unlocked by your login password, with the
+# login screen's PAM file (greetd's, or the console's): once, backed up first
+# (.pre-irice), only with gnome-keyring's PAM module installed
+keyring_at_login() { # pam file
+    [[ -f /usr/lib/security/pam_gnome_keyring.so ]] || return 0
+    local new
+    new=$(pam_with_keyring "$1") || return 0
+    if [[ $DRY == 1 ]]; then
+        note "would add unlocking the keyring at login to $1"
+        return 0
+    fi
+    [[ -e "$1.pre-irice" ]] || sudo cp -a "$1" "$1.pre-irice" || return 0
+    printf '%s\n' "$new" | sudo tee "$1" >/dev/null && note "Your keyring unlocks with your login password ($1)"
+}
+
+GREETER_DONE=0 OTHER_DM="" OLD_CONFIG=""
 login() {
     OTHER_DM=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null || true)
     [[ "$OTHER_DM" == greetd ]] && OTHER_DM=""
@@ -619,6 +742,7 @@ user = "greeter"'
             [[ $DRY == 1 ]] || printf '%s\n' "$OTHER_DM" >"$DATA/irice/previous-login-manager" # for irice uninstall
         fi
         run sudo systemctl enable greetd || return 1 # (started at the next boot)
+        keyring_at_login /etc/pam.d/greetd
         GREETER_DONE=1
     elif [[ -z "$OTHER_DM" ]]; then
         # No login screen: start Hyprland when you log in on the first console,
@@ -639,6 +763,7 @@ user = "greeter"'
             fi
             note "Log in on the first console (tty1) and Hyprland starts."
         fi
+        keyring_at_login /etc/pam.d/login
     fi
     return 0
 }
@@ -695,6 +820,9 @@ verify() {
         fi
     else
         bad "No Hyprland config in $CONFIG/hypr" "run the installer again"
+    fi
+    if [[ -f "$CONFIG/hypr/irice/from-your-old-config.lua" ]]; then
+        note "Settings from your old hyprland.conf are in $CONFIG/hypr/irice/from-your-old-config.lua, turned off (remove \"-- \" to use one)"
     fi
     # Fonts, icons, services
     # (no grep -q in these pipelines: it stops reading early, and pipefail
@@ -776,6 +904,9 @@ if [[ $DRY == 1 ]]; then
 fi
 verify
 result=$?
+if [[ -n "$OLD_CONFIG" ]]; then
+    printf '\n%s\n' "$OLD_CONFIG" | sed 's/^/  /'
+fi
 
 printf '\n%s%s%s\n' "$B" "$([[ $result == 0 ]] && echo "iRice is ready." || echo "iRice is installed, with problems above.")" "$R"
 cat <<EOF

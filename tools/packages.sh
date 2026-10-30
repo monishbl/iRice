@@ -28,6 +28,11 @@ PACKAGES=(
     # Fonts and icons
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji papirus-icon-theme
 )
+# Video decoding and recording on the GPU (VA-API) for the GPUs found: Intel's and
+# NVIDIA's drivers (AMD's is in mesa). install.sh adds them; left out where a
+# repository doesn't carry them
+GPU_INTEL=(intel-media-driver)
+GPU_NVIDIA=(libva-nvidia-driver)
 APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none: terminal, files (the most Finder-like), browser, player, viewer, volume mixer
 # Emoji styles beyond the default Noto Color Emoji (shell/common/EmojiFont.qml). Off by
 # default; Settings can also install them later, with yay.

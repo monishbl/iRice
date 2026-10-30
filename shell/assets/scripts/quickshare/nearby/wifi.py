@@ -140,26 +140,40 @@ def wifi_driver(station):
 async def network():
     """{"addresses": [(ifname, IPv4Interface)], "station": ifname or None,
     "frequency": MHz or None, "5ghz", "p2p_go", "nm": NetworkManager runs
-    the Wi-Fi, "driver"}."""
+    the Wi-Fi, "driver", "iwd": iwd is the Wi-Fi daemon (on its own, or
+    under NetworkManager)}."""
     addresses = parse_ip_addr(await _run("ip", "-j", "-4", "addr", "show"))
     stations = wifi_interfaces()
     station = stations[0] if stations else None
     freq = parse_iw_link(await _run("iw", "dev", station, "link")) if station else None
     caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False}
     nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
-    return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm,
+    iwd = bool(await _run("busctl", "--system", "status", "net.connman.iwd"))
+    return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm, "iwd": iwd,
             "driver": wifi_driver(station) if station else "", **caps}
 
 
 def direct_possible(net):
-    """Whether a Wi-Fi Direct group we host can last (see nm_manages)."""
-    return net.get("p2p_go", True) and not net.get("nm", False)
+    """Whether a Wi-Fi Direct group we host can last (see nm_manages). The
+    helper makes links through wpa_supplicant, which doesn't run next to iwd."""
+    return net.get("p2p_go", True) and not net.get("nm", False) and not net.get("iwd", False)
 
 
 def hotspot_possible(net):
     """Intel Wi-Fi doesn't run an access point on 5 GHz, and one next to a
-    connection has to share its channel (qs-wifi-helper.py ap_freq)."""
-    return not (net.get("driver") == "iwlwifi" and (net.get("frequency") or 0) >= 5000)
+    connection has to share its channel (qs-wifi-helper.py ap_freq). Not
+    under iwd either (wpa_supplicant again)."""
+    return not (net.get("driver") == "iwlwifi" and (net.get("frequency") or 0) >= 5000) and not net.get("iwd", False)
+
+
+def no_direct_reason(net):
+    """Why there's no Wi-Fi Direct or hotspot link here, for the person (a
+    shared network and Bluetooth still work)."""
+    if net.get("iwd"):
+        return "iwd runs the Wi-Fi here, and Wi-Fi Direct needs wpa_supplicant instead"
+    if net.get("nm") and net.get("p2p_go", True):
+        return "NetworkManager ends Wi-Fi Direct links it didn't make"
+    return "Wi-Fi Direct isn't available here"
 
 
 def medium_metadata(net):
@@ -175,7 +189,9 @@ def medium_metadata(net):
 
 
 def helper_possible(net):
-    return bool(net.get("station")) and bool(shutil.which("pkexec")) and (os.path.exists(HELPER) or os.access(ROOT_HELPER, os.X_OK))
+    # (under iwd there's no wpa_supplicant for the helper: no password asked for nothing)
+    return bool(net.get("station")) and not net.get("iwd", False) and bool(shutil.which("pkexec")) and \
+        (os.path.exists(HELPER) or os.access(ROOT_HELPER, os.X_OK))
 
 
 def mediums_we_join(helper_ok):
@@ -411,6 +427,8 @@ async def join(info, helper, net, helper_ok=True, timeout=15):
         c = info.wifi_direct_credentials if info.medium == PATH.WIFI_DIRECT else info.wifi_hotspot_credentials
         if not c.ssid or not c.password:
             raise WifiUnavailable("the phone offered a Wi-Fi Direct link without a password (not supported)")
+        if net.get("iwd"):
+            raise WifiUnavailable(no_direct_reason(net))
         if helper is None or not helper_ok:
             raise WifiUnavailable("joining the phone's Wi-Fi needs a Wi-Fi adapter and pkexec")
         link = await helper.request({"cmd": "join", "ssid": c.ssid, "passphrase": c.password,
