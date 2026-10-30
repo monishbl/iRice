@@ -254,3 +254,43 @@ function edgeZones(here, others) {
     }
     return out;
 }
+
+// The display a drag is pushed against: the pointer (px, py, in this
+// display's own coordinates; a drag holds the pointer, so it can be past the
+// edge) at or beyond an edge that faces another display, and the one along
+// that edge where the pointer is (else the nearest). "" when none.
+//   here { x, y, w, h }, others [{ name, x, y, w, h }]
+function edgeTarget(here, others, px, py, margin) {
+    var m = margin === undefined ? 3 : margin;
+    var past = {
+        left: -px + m,
+        right: px - (here.w - 1) + m,
+        top: -py + m,
+        bottom: py - (here.h - 1) + m
+    };
+    var side = "", most = 0;
+    var sides = ["left", "right", "top", "bottom"];
+    for (var s = 0; s < sides.length; s++)
+        if (past[sides[s]] > most) {
+            most = past[sides[s]];
+            side = sides[s];
+        }
+    if (side === "")
+        return "";
+    var gx = here.x + px, gy = here.y + py;
+    var best = "", dist = 1e12;
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i];
+        if (sideOf(here, o) !== side)
+            continue;
+        var along = side === "left" || side === "right" ? gy : gx;
+        var lo = side === "left" || side === "right" ? o.y : o.x;
+        var len = side === "left" || side === "right" ? o.h : o.w;
+        var d = along < lo ? lo - along : along >= lo + len ? along - (lo + len) + 1 : 0;
+        if (d < dist) {
+            dist = d;
+            best = o.name;
+        }
+    }
+    return best;
+}

@@ -143,3 +143,22 @@ test("drop zones sit on the edge that faces each other display", () => {
         { name: "T", side: "top", index: 0, count: 1 }
     ]);
 });
+
+test("edgeTarget: a drag pushed against an edge that faces another display", () => {
+    const here = { x: 0, y: 0, w: 1920, h: 1080 };
+    const others = [
+        { name: "R1", x: 1920, y: -900, w: 1920, h: 1080 },
+        { name: "R2", x: 1920, y: 540, w: 1920, h: 1080 },
+        { name: "T", x: 0, y: -1080, w: 1000, h: 1080 }
+    ];
+    assert.strictEqual(M.edgeTarget(here, others, 960, 540), ""); // middle
+    assert.strictEqual(M.edgeTarget(here, others, 0, 540), ""); // left: nothing there
+    assert.strictEqual(M.edgeTarget(here, others, 1919, 100), "R1");
+    assert.strictEqual(M.edgeTarget(here, others, 1917, 900), "R2"); // within the margin
+    assert.strictEqual(M.edgeTarget(here, others, 2300, 700), "R2"); // past the edge (pointer held)
+    assert.strictEqual(M.edgeTarget(here, others, 1910, 900), ""); // not at the edge yet
+    assert.strictEqual(M.edgeTarget(here, others, 500, 0), "T");
+    assert.strictEqual(M.edgeTarget(here, others, 1500, -40), "T"); // nearest along the top
+    // the sandbox's far-off pair
+    assert.strictEqual(M.edgeTarget({ x: 20000, y: 20000, w: 1920, h: 1080 }, [{ name: "DP-9", x: 21920, y: 20000, w: 1920, h: 1080 }], 1919, 540), "DP-9");
+});

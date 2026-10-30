@@ -417,8 +417,14 @@ Column {
         }
         Row {
             label: "Show which display you moved to"
-            detail: "A soft glow at its edges, and the one you left dims a moment"
-            Switch { checked: Config.options.workspaces.dimOthers; onToggled: Config.options.workspaces.dimOthers = !checked }
+            detail: ({ glow: "A soft glow at its edges for a moment", dim: "It dims briefly", off: "Nothing shows" })[Config.options.workspaces.switchCue] ?? "A soft glow at its edges for a moment"
+            Segmented {
+                width: 200
+                readonly property var values: ["off", "glow", "dim"]
+                options: ["Off", "Glow", "Dim"]
+                current: Math.max(0, values.indexOf(Config.options.workspaces.switchCue || "glow"))
+                onSelected: i => Config.options.workspaces.switchCue = values[i]
+            }
         }
     }
 

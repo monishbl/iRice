@@ -29,7 +29,12 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
         onAdapterUpdated: writeTimer.restart()
-        onLoaded: root.ready = true
+        onLoaded: {
+            // The display switch cue was on/off before it had styles
+            if (adapter.workspaces.switchCue === "")
+                adapter.workspaces.switchCue = adapter.workspaces.dimOthers ? "glow" : "off";
+            root.ready = true;
+        }
         onLoadFailed: error => {
             if (error === FileViewError.FileNotFound)
                 writeAdapter();
@@ -372,7 +377,10 @@ Singleton {
             }
             property JsonObject workspaces: JsonObject {
                 // Moving to another display (keyboard or pointer)
-                property bool dimOthers: true // switch cue: a soft accent glow on the display you move to, and the one you left dims a moment (name kept from older versions)
+                // How the display you moved to shows it: glow (a soft accent glow at its edges) | dim (it dims briefly) | off.
+                // Empty until set: then it comes from dimOthers, the older on/off setting (true: glow, false: off)
+                property string switchCue: ""
+                property bool dimOthers: true // (older setting, read once to set switchCue)
                 property bool warpPointer: true // move the pointer to that display
             }
             property JsonObject mouse: JsonObject {

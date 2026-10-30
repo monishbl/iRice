@@ -123,8 +123,20 @@ Singleton {
     function exists(id) {
         return workspaces.some(w => w.id === id);
     }
+    // Moves made from the Overview (or a menu) never take you anywhere, but
+    // Hyprland focuses a display on the way when a space it shows moves
+    // there (focus is put back in the same step). Meanwhile the "you moved to
+    // this display" cue (SpaceSwitch) stays quiet.
+    property real quietUntil: 0
+    function hush(ms) {
+        quietUntil = Math.max(quietUntil, Date.now() + (ms ?? 1200));
+    }
+    function quiet() {
+        return Date.now() < quietUntil;
+    }
     // Lua that leaves the pointer and the focused display where they were
     function keeping(lua) {
+        hush();
         return "local c = hl.get_cursor_pos(); local m = hl.get_active_monitor()\n" + lua + "if m then hl.dispatch(hl.dsp.focus({ monitor = m.name })) end\nif c then hl.dispatch(hl.dsp.cursor.move({ x = c.x, y = c.y })) end\n";
     }
     function run(lua) {
@@ -146,6 +158,7 @@ Singleton {
     // A window to a space (on that space's own display, even if the space
     // doesn't exist yet); you stay where you are
     function sendWindow(address, id) {
+        hush();
         const a = address.startsWith("0x") ? address : "0x" + address;
         let lua = "hl.dispatch(hl.dsp.window.move({ workspace = " + id + ", follow = false, window = " + q("address:" + a) + " }))\n";
         const owner = ownerName(id);
@@ -165,6 +178,11 @@ Singleton {
     // zones: here { x, y, w, h }, others [{ name, x, y, w, h }]
     function edgeZones(here, others) {
         return Map.edgeZones(here, others);
+    }
+    // The display a drag is pushed against (pointer at or past an edge that
+    // faces it), "" if none
+    function edgeTarget(here, others, px, py) {
+        return Map.edgeTarget(here, others, px, py, 3);
     }
     // A whole space to another display: it becomes that display's next
     // number there, windows and all, as they were (menu bar: right-click a
@@ -202,6 +220,7 @@ Singleton {
                 moves.push([addr, list[i]]);
         if (moves.length === 0)
             return;
+        hush();
         const step = (addr, ws) => "hl.dispatch(hl.dsp.window.move({ workspace = " + ws + ", follow = false, window = \"address:" + addr + "\" }))";
         let lua = "";
         for (const [addr] of moves) // everything aside first…
