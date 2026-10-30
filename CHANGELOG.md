@@ -16,6 +16,8 @@
 - Apps run natively on Wayland again, as they did before iRice: WhatsApp, Discord, Claude, Slack and other Electron apps take files dragged in from Dolphin and behave like other windows. Log out and back in once for it to apply.
 
 - Dock and app icons in the Clear and Tinted styles are the same size: every logo is placed by what it really draws and drawn at the same height, a little smaller than before, so a row of them lines up top and bottom and wide logos (Webex) and small ones (Zen) match, and none overflow their tile. VS Code no longer shows a box inside its tile, and logos are brighter on dark glass.
+- **Reduce motion** in Settings → Appearance → Accessibility: fades instead of movement for island alerts, connecting a display and the morning screen.
+- App icons always get their tile after you plug in or unplug a display (one could stay unstyled until a restart).
 ## Sharing and spaces fixes · 2026-10-30
 
 - Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).

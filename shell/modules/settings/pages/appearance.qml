@@ -247,6 +247,14 @@ Column {
             }
         }
         Row {
+            label: "Reduce motion"
+            detail: "Fades instead of movement: island alerts, connecting a display (windows move without gliding) and the morning screen"
+            Switch {
+                checked: Config.options.appearance.reduceMotion
+                onToggled: Config.options.appearance.reduceMotion = !checked
+            }
+        }
+        Row {
             label: "Text contrast"
             detail: ["Light secondary text, as on macOS", "Easier-to-read text, icons and controls", "The clearest text, icons and controls"][Theme.contrastLevel]
             Segmented {

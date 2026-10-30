@@ -19,6 +19,9 @@ Canvas {
 
     readonly property string want: IconInfo.queue.length > 0 ? IconInfo.queue[0] : ""
     onWantChanged: start()
+    // (a new analyzer, after the first screen changed, takes over the queue
+    // where the old one stopped: `want` doesn't change for it)
+    Component.onCompleted: start()
     function start() {
         if (current !== "" || want === "")
             return;
