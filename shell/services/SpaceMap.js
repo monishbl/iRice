@@ -212,3 +212,45 @@ function plan(ctx) {
     }
     return ops;
 }
+
+// Which edge of display `a` faces display `b` ({ x, y, w, h } each, in the
+// arrangement): "left" | "right" | "top" | "bottom". Side by side (their
+// heights overlap) is left/right, stacked is top/bottom; a diagonal
+// neighbour goes by the larger gap between their centres (relative to size).
+function sideOf(a, b) {
+    var dx = (b.x + b.w / 2) - (a.x + a.w / 2);
+    var dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+    var hOver = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    var vOver = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    var horiz;
+    if (vOver > 0 && hOver <= 0)
+        horiz = true;
+    else if (hOver > 0 && vOver <= 0)
+        horiz = false;
+    else
+        horiz = Math.abs(dx) / Math.max(1, (a.w + b.w) / 2) >= Math.abs(dy) / Math.max(1, (a.h + b.h) / 2);
+    return horiz ? (dx < 0 ? "left" : "right") : (dy < 0 ? "top" : "bottom");
+}
+
+// The drop zones a display's Overview shows: one per other display, on the
+// edge that faces it, several on one edge in their order along it.
+// here: { x, y, w, h }; others: [{ name, x, y, w, h }]
+// Returns [{ name, side, index, count }]
+function edgeZones(here, others) {
+    var bySide = { left: [], right: [], top: [], bottom: [] };
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i];
+        bySide[sideOf(here, o)].push(o);
+    }
+    var out = [];
+    var sides = ["left", "right", "top", "bottom"];
+    for (var s = 0; s < sides.length; s++) {
+        var side = sides[s];
+        var list = bySide[side].slice().sort(function (p, q) {
+            return side === "left" || side === "right" ? (p.y + p.h / 2) - (q.y + q.h / 2) || p.x - q.x : (p.x + p.w / 2) - (q.x + q.w / 2) || p.y - q.y;
+        });
+        for (var j = 0; j < list.length; j++)
+            out.push({ name: list[j].name, side: side, index: j, count: list.length });
+    }
+    return out;
+}

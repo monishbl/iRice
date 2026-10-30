@@ -120,3 +120,26 @@ test("the sandbox's test output plays the built-in panel", () => {
     assert.strictEqual(M.isBuiltin("eDP-1", false), true);
     assert.strictEqual(M.keyOf({ name: "DP-9", description: "" }), "name:DP-9");
 });
+
+test("drop zones sit on the edge that faces each other display", () => {
+    const lap = { x: 0, y: 0, w: 1920, h: 1080 };
+    assert.strictEqual(M.sideOf(lap, { x: 1920, y: 0, w: 2560, h: 1440 }), "right");
+    assert.strictEqual(M.sideOf(lap, { x: -2560, y: -200, w: 2560, h: 1440 }), "left");
+    assert.strictEqual(M.sideOf(lap, { x: 0, y: -1440, w: 2560, h: 1440 }), "top");
+    assert.strictEqual(M.sideOf(lap, { x: 200, y: 1080, w: 1920, h: 1080 }), "bottom");
+    // diagonal: the larger relative gap wins
+    assert.strictEqual(M.sideOf(lap, { x: 1920, y: 1080, w: 1920, h: 200 }), "right");
+    assert.strictEqual(M.sideOf(lap, { x: 1800, y: -1080, w: 400, h: 1080 }), "top");
+    // the sandbox's far-off headless output
+    assert.strictEqual(M.sideOf({ x: 20000, y: 20000, w: 1920, h: 1080 }, { x: 21920, y: 20000, w: 1920, h: 1080 }), "right");
+    const z = plain(M.edgeZones(lap, [
+        { name: "B", x: 1920, y: 540, w: 1920, h: 1080 },
+        { name: "A", x: 1920, y: -900, w: 1920, h: 1080 },
+        { name: "T", x: 0, y: -1080, w: 1000, h: 1080 }
+    ]));
+    assert.deepStrictEqual(z, [
+        { name: "A", side: "right", index: 0, count: 2 },
+        { name: "B", side: "right", index: 1, count: 2 },
+        { name: "T", side: "top", index: 0, count: 1 }
+    ]);
+});

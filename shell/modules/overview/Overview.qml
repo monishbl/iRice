@@ -90,6 +90,26 @@ Variants {
                 const w = m.width / s, h = m.height / s;
                 return (m.lastIpcObject?.transform ?? 0) % 2 ? { x: m.x, y: m.y, w: h, h: w } : { x: m.x, y: m.y, w: w, h: h };
             }
+            // A window's place within a space on display `geo`: { x, y, w, h }
+            // from that display's corner. A window sent to a space another
+            // display isn't showing keeps its old place until that space is
+            // shown (Hyprland), so it's mapped across from where it is.
+            function placeIn(o, geo) {
+                const at = o.at ?? [0, 0], sz = o.size ?? [0, 0];
+                const cx = at[0] + sz[0] / 2, cy = at[1] + sz[1] / 2;
+                const inside = g => cx >= g.x && cx < g.x + g.w && cy >= g.y && cy < g.y + g.h;
+                let src = geo;
+                if (!inside(geo))
+                    for (const m of Hyprland.monitors.values) {
+                        const g = geoOf(m.name);
+                        if (inside(g)) {
+                            src = g;
+                            break;
+                        }
+                    }
+                const sx = geo.w / Math.max(1, src.w), sy = geo.h / Math.max(1, src.h);
+                return { x: (at[0] - src.x) * sx, y: (at[1] - src.y) * sy, w: sz[0] * sx, h: sz[1] * sy };
+            }
             function aspectOf(name) {
                 const g = geoOf(name);
                 return g.h / Math.max(1, g.w);
@@ -97,8 +117,39 @@ Variants {
             // Grid: spaces per line, and one cell width for every row that
             // fits them all on screen (each row keeps its display's shape)
             readonly property int columns: Math.max(1, Math.min(rowsMode ? 6 : 5, Math.max(...rowNames.map(n => (rowIds[n] ?? []).length), 1)))
+            // Each its own: every other display is a drop zone on the edge
+            // that faces it (drop a window there, or drag a space there)
+            readonly property var zones: {
+                if (!each)
+                    return [];
+                const others = [];
+                for (const n of displays)
+                    if (n !== screenName) {
+                        const g = geoOf(n);
+                        others.push({ name: n, x: g.x, y: g.y, w: g.w, h: g.h });
+                    }
+                return Spaces.edgeZones(geoOf(screenName), others);
+            }
+            // (room for the zones on the left and right edges)
+            readonly property real sideReserve: zones.some(z => z.side === "left" || z.side === "right") ? 160 : 0
+            property var zoneItems: []
+            function zoneAt(gx, gy) { // the display whose zone is under a window point
+                for (const z of zoneItems)
+                    if (z.hit(gx, gy))
+                        return z.target;
+                return "";
+            }
+            property string spaceZone: "" // the zone a dragged space is over
+            property bool macDrag: false // a space is being dragged in the macOS strip
+            readonly property bool anyDrag: dragging || dragSpace > 0 || macDrag
+            property int spaceGone: 0 // a space sent to another display, hidden until it's gone
+            Timer {
+                running: win.spaceGone > 0
+                interval: 1500
+                onTriggered: win.spaceGone = 0
+            }
             readonly property real cellW: {
-                const byWidth = (width - 160 - (columns - 1) * 24) / columns;
+                const byWidth = (width - 160 - sideReserve - (columns - 1) * 24) / columns;
                 if (!rowsMode)
                     return Math.min(300, byWidth);
                 // rows below the search: label 28, title 26 + gap 24 a line, 32 between rows
@@ -162,10 +213,12 @@ Variants {
                     // and the spring left it drawn on screen but taking no input
                     openAnim.stop();
                     closeAnim.start();
+                    menu = null;
                 }
             }
             function open() {
                 Hyprland.refreshToplevels();
+                Hyprland.refreshMonitors(); // (places, for the edge zones and layouts)
                 if (capturing)
                     recapture();
                 capturing = true;
@@ -220,7 +273,87 @@ Variants {
             }
             function moveWindow(t, id) {
                 Spaces.sendWindow(t.address, id);
-                Qt.callLater(Hyprland.refreshToplevels);
+                refreshLater.start();
+            }
+            // To another display's current space
+            function moveWindowToDisplay(t, name) {
+                Spaces.sendWindowToDisplay(t.address, name);
+                refreshLater.start();
+            }
+            // A whole space to another display (its next number there)
+            function moveSpace(id, name) {
+                if (!Spaces.exists(id))
+                    return;
+                spaceGone = id;
+                Spaces.moveSpaceTo(id, name);
+                refreshLater.start();
+            }
+            // Windows' places come with a refresh: a few after a move, so
+            // every screen's Overview (each its own) shows it where it landed
+            Timer {
+                id: refreshLater
+                interval: 150
+                repeat: true
+                property int left: 0
+                onRunningChanged: if (running) left = 3
+                onTriggered: {
+                    Hyprland.refreshToplevels();
+                    Hyprland.refreshWorkspaces();
+                    if (--left <= 0)
+                        stop();
+                }
+            }
+
+            // Right-click menus: a window or a space to another display
+            property var menu: null // { items, x, y }
+            function openMenu(items, item, mx, my) {
+                const p = item.mapToItem(null, mx, my);
+                menu = { items: items, x: p.x, y: p.y };
+            }
+            function windowMenu(t) {
+                const here = hostOf[t.workspace?.id ?? 0] ?? screenName;
+                const items = [];
+                for (const n of displays) {
+                    if (n === here)
+                        continue;
+                    if (items.length > 0)
+                        items.push({ separator: true });
+                    const label = Spaces.labelForName(n);
+                    items.push({ text: "Move to " + label, action: () => win.moveWindowToDisplay(t, n) });
+                    // and its other spaces
+                    for (const id of Spaces.idsFor(n, false).filter(i => Spaces.isOwn(i, n) && i !== Spaces.active[n]).slice(0, 8))
+                        items.push({ text: "Move to " + Spaces.title(id, n) + " on " + label, action: () => win.moveWindow(t, id) });
+                }
+                if (items.length === 0)
+                    items.push({ text: "Only one display is connected", enabled: false });
+                return items;
+            }
+            function spaceMenu(id) {
+                const here = hostOf[id] ?? (Spaces.ownerName(id) || screenName);
+                const items = displays.filter(n => n !== here).map(n => ({
+                    text: "Move space to " + Spaces.labelForName(n),
+                    enabled: Spaces.exists(id),
+                    action: () => win.moveSpace(id, n)
+                }));
+                if (items.length === 0)
+                    items.push({ text: "Only one display is connected", enabled: false });
+                return items;
+            }
+            Loader {
+                active: win.menu !== null && win.shown
+                sourceComponent: ContextMenu {
+                    screen: win.screen
+                    items: win.menu?.items ?? []
+                    readonly property bool up: (win.menu?.y ?? 0) > win.height * 0.6
+                    pointX: (win.menu?.x ?? 0) + menuWidth / 2 // opens at the pointer, like macOS
+                    pointY: win.menu?.y ?? 0
+                    upward: up
+                    onDismissed: {
+                        win.menu = null;
+                        if (win.shown && win.keyScreen)
+                            field.forceActiveFocus();
+                    }
+                }
             }
             // "Space 3", with the display it belongs to when it's another's
             function titleOf(id, row) {
@@ -386,7 +519,9 @@ Variants {
                                     readonly property real tileW: Math.min(macRow.stripH / macRow.aspect, 170, (macRow.width - 220 - (n - 1) * 24) / n)
                                     property int dragSpace: 0
                                     property real dragDx: 0
+                                    property real dragDy: 0 // (only with drop zones: a space can leave the bar)
                                     property int dropOn: 0
+                                    onDragSpaceChanged: win.macDrag = dragSpace > 0
                                     function spaceAt(px) {
                                         let best = 0, dist = 1e9;
                                         for (const c of strip.children) {
@@ -417,8 +552,8 @@ Variants {
                                             readonly property bool target: strip.dragSpace > 0 && strip.dropOn === wsId && !dragged
                                             spacing: 6
                                             z: dragged ? 2 : 0
-                                            opacity: dragged ? 0.85 : 1
-                                            transform: Translate { x: tile.dragged ? strip.dragDx : 0 }
+                                            opacity: dragged ? 0.85 : win.spaceGone === wsId ? 0 : 1
+                                            transform: Translate { x: tile.dragged ? strip.dragDx : 0; y: tile.dragged ? strip.dragDy : 0 }
 
                                             Item {
                                                 width: strip.tileW
@@ -445,10 +580,11 @@ Variants {
                                                         Rectangle {
                                                             required property var modelData
                                                             readonly property var ipc: modelData.lastIpcObject
-                                                            x: (ipc.at[0] - tile.geo.x) * tile.s
-                                                            y: (ipc.at[1] - tile.geo.y) * tile.s
-                                                            width: Math.max(4, ipc.size[0] * tile.s)
-                                                            height: Math.max(4, ipc.size[1] * tile.s)
+                                                            readonly property var r: win.placeIn(ipc, tile.geo)
+                                                            x: r.x * tile.s
+                                                            y: r.y * tile.s
+                                                            width: Math.max(4, r.w * tile.s)
+                                                            height: Math.max(4, r.h * tile.s)
                                                             radius: 3
                                                             color: Theme.dark ? "#2C2C31" : "#FFFFFF"
                                                             border.width: 1
@@ -474,27 +610,45 @@ Variants {
                                                     id: thumbMouse
                                                     anchors.fill: parent
                                                     hoverEnabled: true
+                                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                     cursorShape: strip.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                                                     property real pressX: 0
-                                                    onPressed: m => pressX = m.x
+                                                    property real pressY: 0
+                                                    onPressed: m => {
+                                                        const p = thumbMouse.mapToItem(null, m.x, m.y); // (in the window: the tile moves with the drag)
+                                                        pressX = p.x;
+                                                        pressY = p.y;
+                                                        if (m.button === Qt.RightButton)
+                                                            win.openMenu(win.spaceMenu(tile.wsId), thumbMouse, m.x, m.y);
+                                                    }
                                                     onPositionChanged: m => {
-                                                        if (!pressed)
+                                                        if (!(pressedButtons & Qt.LeftButton))
                                                             return;
-                                                        const dx = m.x - pressX;
-                                                        if (strip.dragSpace === 0 && Math.abs(dx) > 8)
+                                                        const p = thumbMouse.mapToItem(null, m.x, m.y);
+                                                        const dx = p.x - pressX;
+                                                        const dy = win.zones.length > 0 ? p.y - pressY : 0;
+                                                        if (strip.dragSpace === 0 && Math.hypot(dx, dy) > 8)
                                                             strip.dragSpace = tile.wsId;
                                                         if (strip.dragSpace === tile.wsId) {
                                                             strip.dragDx = dx;
-                                                            strip.dropOn = strip.spaceAt(tile.x + tile.width / 2 + dx);
+                                                            strip.dragDy = dy;
+                                                            win.spaceZone = win.zoneAt(p.x, p.y);
+                                                            strip.dropOn = win.spaceZone !== "" ? 0 : strip.spaceAt(tile.x + tile.width / 2 + dx);
                                                         }
                                                     }
-                                                    onReleased: {
+                                                    onReleased: m => {
+                                                        if (m.button !== Qt.LeftButton)
+                                                            return;
                                                         if (strip.dragSpace === tile.wsId) {
-                                                            if (strip.dropOn > 0 && strip.dropOn !== tile.wsId)
+                                                            if (win.spaceZone !== "")
+                                                                win.moveSpace(tile.wsId, win.spaceZone);
+                                                            else if (strip.dropOn > 0 && strip.dropOn !== tile.wsId)
                                                                 Spaces.move(macRow.rowIdList, tile.wsId, strip.dropOn);
                                                             strip.dragSpace = 0;
                                                             strip.dragDx = 0;
+                                                            strip.dragDy = 0;
                                                             strip.dropOn = 0;
+                                                            win.spaceZone = "";
                                                         } else {
                                                             win.go(tile.wsId);
                                                         }
@@ -596,21 +750,29 @@ Variants {
                                         readonly property bool dragged: win.dragSpace === space.wsId
                                         Component.onCompleted: win.cells = win.cells.concat([space])
                                         Component.onDestruction: win.cells = win.cells.filter(c => c !== space)
-                                        // Dragging the space (its empty area, or its title), within its row
-                                        function dragMove(item, mx, my, dx, dy) {
+                                        // Dragging the space (its empty area, or its title), within its row.
+                                        // Measured in the window (the handle moves with the space, so
+                                        // its own coordinates would follow it and lag the pointer)
+                                        function dragMove(item, mx, my, from) {
+                                            const p = item.mapToItem(null, mx, my);
+                                            const dx = p.x - from.x, dy = p.y - from.y;
                                             if (win.dragSpace === 0 && Math.hypot(dx, dy) > 10)
                                                 win.dragSpace = space.wsId;
                                             if (win.dragSpace === space.wsId) {
                                                 win.dragD = Qt.point(dx, dy);
-                                                const p = item.mapToItem(null, mx, my);
-                                                win.dropOn = win.spaceAt(space.row, p.x, p.y);
+                                                // over another display's zone: it goes there instead
+                                                win.spaceZone = win.zoneAt(p.x, p.y);
+                                                win.dropOn = win.spaceZone !== "" ? 0 : win.spaceAt(space.row, p.x, p.y);
                                             }
                                         }
                                         function dragEnd() { // true if it was a drag, not a click
                                             if (win.dragSpace !== space.wsId)
                                                 return false;
-                                            if (win.dropOn > 0 && win.dropOn !== space.wsId)
+                                            if (win.spaceZone !== "")
+                                                win.moveSpace(space.wsId, win.spaceZone);
+                                            else if (win.dropOn > 0 && win.dropOn !== space.wsId)
                                                 Spaces.move(gridRow.rowIdList, space.wsId, win.dropOn);
+                                            win.spaceZone = "";
                                             win.dragSpace = 0;
                                             win.dragD = Qt.point(0, 0);
                                             win.dropOn = 0;
@@ -618,7 +780,7 @@ Variants {
                                         }
                                         z: win.dragFrom === space.wsId || dragged ? 1 : 0 // a dragged window (or space) passes over the others
                                         spacing: 8
-                                        opacity: dragged ? 0.85 : 1
+                                        opacity: dragged ? 0.85 : win.spaceGone === wsId ? 0 : 1
                                         transform: Translate { x: space.dragged ? win.dragD.x : 0; y: space.dragged ? win.dragD.y : 0 }
 
                                         // The space: a plain neutral container
@@ -663,15 +825,23 @@ Variants {
                                                 id: spaceMouse
                                                 anchors.fill: parent
                                                 hoverEnabled: true
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                 cursorShape: win.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.ArrowCursor
                                                 property point pressAt: Qt.point(0, 0)
                                                 onEntered: win.picked = space.wsId
-                                                onPressed: m => pressAt = Qt.point(m.x, m.y)
-                                                onPositionChanged: m => {
-                                                    if (pressed)
-                                                        space.dragMove(spaceMouse, m.x, m.y, m.x - pressAt.x, m.y - pressAt.y);
+                                                onPressed: m => {
+                                                    pressAt = spaceMouse.mapToItem(null, m.x, m.y);
+                                                    if (m.button === Qt.RightButton)
+                                                        win.openMenu(win.spaceMenu(space.wsId), spaceMouse, m.x, m.y);
                                                 }
-                                                onReleased: if (!space.dragEnd()) win.go(space.wsId)
+                                                onPositionChanged: m => {
+                                                    if (pressedButtons & Qt.LeftButton)
+                                                        space.dragMove(spaceMouse, m.x, m.y, pressAt);
+                                                }
+                                                onReleased: m => {
+                                                    if (m.button === Qt.LeftButton && !space.dragEnd())
+                                                        win.go(space.wsId);
+                                                }
                                             }
                                             DropArea {
                                                 id: dropArea
@@ -702,18 +872,21 @@ Variants {
                                                     // top), then fullscreen and maximized
                                                     readonly property int stack: fsMode > 0 ? 3000 : o.floating ? 2000 - Math.max(0, Math.min(999, o.focusHistoryID ?? 999)) : 1
                                                     // Fullscreen fills the miniature, inside its 1px border
-                                                    readonly property real homeX: full ? 1 : ((o.at?.[0] ?? 0) - space.geo.x) * space.k
-                                                    readonly property real homeY: full ? 1 : ((o.at?.[1] ?? 0) - space.geo.y) * space.k
+                                                    readonly property var r: win.placeIn(o, space.geo)
+                                                    readonly property real homeX: full ? 1 : r.x * space.k
+                                                    readonly property real homeY: full ? 1 : r.y * space.k
                                                     property bool gone: false // dropped on another space, until the move lands
                                                     x: homeX
                                                     y: homeY
-                                                    width: full ? screenRect.width - 2 : Math.max(16, (o.size?.[0] ?? 0) * space.k)
-                                                    height: full ? screenRect.height - 2 : Math.max(12, (o.size?.[1] ?? 0) * space.k)
+                                                    width: full ? screenRect.width - 2 : Math.max(16, r.w * space.k)
+                                                    height: full ? screenRect.height - 2 : Math.max(12, r.h * space.k)
                                                     opacity: gone ? 0 : 1
                                                     Drag.active: thumbDrag.active
                                                     Drag.source: thumb
-                                                    Drag.hotSpot.x: width / 2
-                                                    Drag.hotSpot.y: height / 2
+                                                    // the pointer is what's dropped (a big miniature over an
+                                                    // edge zone would otherwise miss it)
+                                                    Drag.hotSpot.x: thumbDrag.active ? thumbDrag.centroid.pressPosition.x : width / 2
+                                                    Drag.hotSpot.y: thumbDrag.active ? thumbDrag.centroid.pressPosition.y : height / 2
                                                     z: thumbDrag.active ? 5000 : stack
                                                     scale: thumbDrag.active ? 1.04 : 1
                                                     Behavior on scale { ScaleAnimator { duration: 150; easing.type: Easing.OutCubic } }
@@ -742,8 +915,14 @@ Variants {
                                                         id: tileMouse
                                                         anchors.fill: parent
                                                         hoverEnabled: true
+                                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                         onEntered: win.picked = space.wsId
-                                                        onClicked: win.focusWindow(thumb.modelData)
+                                                        onClicked: m => {
+                                                            if (m.button === Qt.RightButton)
+                                                                win.openMenu(win.windowMenu(thumb.modelData), tileMouse, m.x, m.y);
+                                                            else
+                                                                win.focusWindow(thumb.modelData);
+                                                        }
                                                     }
                                                     DragHandler {
                                                         id: thumbDrag
@@ -772,15 +951,200 @@ Variants {
                                                 id: titleMouse
                                                 anchors { fill: parent; margins: -6 }
                                                 hoverEnabled: true
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                 cursorShape: win.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                                                 property point pressAt: Qt.point(0, 0)
                                                 onEntered: win.picked = space.wsId
-                                                onPressed: m => pressAt = Qt.point(m.x, m.y)
-                                                onPositionChanged: m => {
-                                                    if (pressed)
-                                                        space.dragMove(titleMouse, m.x, m.y, m.x - pressAt.x, m.y - pressAt.y);
+                                                onPressed: m => {
+                                                    pressAt = titleMouse.mapToItem(null, m.x, m.y);
+                                                    if (m.button === Qt.RightButton)
+                                                        win.openMenu(win.spaceMenu(space.wsId), titleMouse, m.x, m.y);
                                                 }
-                                                onReleased: if (!space.dragEnd()) win.go(space.wsId)
+                                                onPositionChanged: m => {
+                                                    if (pressedButtons & Qt.LeftButton)
+                                                        space.dragMove(titleMouse, m.x, m.y, pressAt);
+                                                }
+                                                onReleased: m => {
+                                                    if (m.button === Qt.LeftButton && !space.dragEnd())
+                                                        win.go(space.wsId);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Each its own: the other displays as drop zones, each on the
+                // edge that faces it. Drop a window on one: it goes to that
+                // display's current space (hold it there a moment and that
+                // display's spaces open, to pick one). Drag a space onto one:
+                // it moves there, windows and all, as that display's next
+                // space. A click goes to that display.
+                Item {
+                    id: zoneLayer
+                    anchors.fill: parent
+                    visible: win.zones.length > 0
+                    readonly property real topY: win.mac ? macBar.height + 16 : 12
+
+                    Repeater {
+                        model: ScriptModel { values: win.zones }
+                        Item {
+                            id: zone
+                            required property var modelData
+                            readonly property string target: modelData.name
+                            readonly property string side: modelData.side
+                            readonly property bool vertical: side === "left" || side === "right"
+                            readonly property real m: zoneGlass.shadowMargin
+                            property int hotChip: 0 // the space chip a window is over
+                            property bool expanded: false
+                            readonly property bool over: zoneDrop.containsDrag || hotChip > 0
+                            readonly property bool hot: over || win.spaceZone === target
+                            readonly property var spaceIds: Spaces.idsFor(target, false).filter(id => Spaces.isOwn(id, target)).slice(0, 9)
+                            readonly property real headH: vertical ? 68 : 44
+                            readonly property real pillW: Math.max(vertical ? 96 : head.implicitWidth + 32, expanded ? chips.implicitWidth + 16 : 0)
+                            readonly property real pillH: headH + (expanded ? chips.implicitHeight + 8 : 0)
+                            // several on one edge: side by side along it
+                            readonly property real along: (modelData.index - (modelData.count - 1) / 2) * (vertical ? 68 + 12 : 200)
+                            width: pillW + 2 * m
+                            height: pillH + 2 * m
+                            x: side === "left" ? 16 - m : side === "right" ? zoneLayer.width - 16 - pillW - m : Math.round(zoneLayer.width / 2 - width / 2 + along)
+                            y: side === "top" ? zoneLayer.topY - m : side === "bottom" ? zoneLayer.height - 16 - pillH - m : Math.round(zoneLayer.height / 2 - height / 2 + along)
+                            function hit(gx, gy) {
+                                const p = mapFromItem(null, gx, gy);
+                                return p.x >= m && p.y >= m && p.x < m + pillW && p.y < m + pillH;
+                            }
+                            Component.onCompleted: win.zoneItems = win.zoneItems.concat([zone])
+                            Component.onDestruction: win.zoneItems = win.zoneItems.filter(z => z !== zone)
+
+                            // Held over it ~600 ms: its spaces open; closed again once the window leaves
+                            Timer {
+                                running: zoneDrop.containsDrag && !zone.expanded && zone.spaceIds.length > 1
+                                interval: 600
+                                onTriggered: zone.expanded = true
+                            }
+                            Timer {
+                                running: zone.expanded && !zone.over
+                                interval: 350
+                                onTriggered: zone.expanded = false
+                            }
+
+                            Glass {
+                                id: zoneGlass
+                                anchors.fill: parent
+                                radius: zone.expanded || zone.vertical ? 18 : 22
+                                shadowMargin: 16
+                            }
+                            // Highlight while something is over it
+                            Squircle {
+                                x: zone.m
+                                y: zone.m
+                                width: zone.pillW
+                                height: zone.pillH
+                                radius: zoneGlass.radius
+                                color: zone.hot ? Theme.accentAlpha(0.22) : zoneMouse.containsMouse ? Theme.color.fill : "transparent"
+                                border.width: zone.hot ? 2 : 0
+                                border.color: Theme.accent
+                            }
+                            MouseArea {
+                                id: zoneMouse
+                                x: zone.m
+                                y: zone.m
+                                width: zone.pillW
+                                height: zone.pillH
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.go(Spaces.active[zone.target] ?? Spaces.idFor(zone.target, 1))
+                            }
+                            DropArea {
+                                id: zoneDrop
+                                x: zone.m
+                                y: zone.m
+                                width: zone.pillW
+                                height: zone.pillH
+                                onDropped: drop => {
+                                    const t = drop.source?.toplevel;
+                                    if (t && zone.hotChip === 0) {
+                                        drop.accept(Qt.MoveAction);
+                                        win.moveWindowToDisplay(t, zone.target);
+                                    } else {
+                                        drop.accepted = false;
+                                    }
+                                    zone.expanded = false;
+                                }
+                            }
+                            Grid {
+                                id: head
+                                columns: zone.vertical ? 1 : 2
+                                spacing: zone.vertical ? 4 : 8
+                                horizontalItemAlignment: Grid.AlignHCenter
+                                verticalItemAlignment: Grid.AlignVCenter
+                                x: zone.m + Math.round((zone.pillW - width) / 2)
+                                y: zone.m + Math.round((zone.headH - height) / 2)
+                                Icon {
+                                    name: "monitor"
+                                    size: 20
+                                    color: zone.hot ? Theme.accentInk : Theme.color.secondary
+                                }
+                                Text {
+                                    width: zone.vertical ? Math.min(implicitWidth, 84) : implicitWidth
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                    text: Spaces.labelForName(zone.target)
+                                    color: zone.hot || win.anyDrag ? Theme.color.label : Theme.color.secondary
+                                    font { family: Theme.font.family; pixelSize: zone.vertical ? Theme.font.small : Theme.font.body; weight: Font.DemiBold }
+                                }
+                            }
+                            // Its spaces, to drop a window on one
+                            Grid {
+                                id: chips
+                                visible: zone.expanded
+                                columns: zone.vertical ? 2 : 9
+                                spacing: 8
+                                x: zone.m + Math.round((zone.pillW - width) / 2)
+                                y: zone.m + zone.headH
+                                Repeater {
+                                    model: ScriptModel { values: zone.expanded ? zone.spaceIds : [] }
+                                    Item {
+                                        id: chip
+                                        required property int modelData
+                                        readonly property bool current: Spaces.active[zone.target] === modelData
+                                        width: 36
+                                        height: 36
+                                        Squircle {
+                                            anchors.fill: parent
+                                            radius: 10
+                                            color: chipDrop.containsDrag ? Theme.accent : Theme.color.fill
+                                            border.width: chip.current && !chipDrop.containsDrag ? 2 : 0
+                                            border.color: Theme.accentAlpha(0.55)
+                                        }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: Spaces.numberOf(chip.modelData)
+                                            color: chipDrop.containsDrag ? "white" : Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: chip.current ? Font.DemiBold : Font.Medium; features: { "tnum": 1 } }
+                                        }
+                                        DropArea {
+                                            id: chipDrop
+                                            anchors.fill: parent
+                                            onContainsDragChanged: {
+                                                if (containsDrag)
+                                                    zone.hotChip = chip.modelData;
+                                                else if (zone.hotChip === chip.modelData)
+                                                    zone.hotChip = 0;
+                                            }
+                                            onDropped: drop => {
+                                                const t = drop.source?.toplevel;
+                                                if (t) {
+                                                    drop.accept(Qt.MoveAction);
+                                                    win.moveWindow(t, chip.modelData);
+                                                } else {
+                                                    drop.accepted = false;
+                                                }
+                                                zone.hotChip = 0;
+                                                zone.expanded = false;
                                             }
                                         }
                                     }

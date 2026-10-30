@@ -153,8 +153,22 @@ Singleton {
             lua = keeping(lua + "hl.dispatch(hl.dsp.workspace.move({ workspace = " + id + ", monitor = " + q(owner) + " }))\n");
         run(lua);
     }
+    // A window to another display: onto the space it shows (Overview: drop
+    // on a display's edge zone, or right-click a window)
+    function sendWindowToDisplay(address, name) {
+        if (bases[name] === undefined)
+            return;
+        const id = active[name] > 0 ? active[name] : nextFreeOn(name);
+        sendWindow(address, id);
+    }
+    // Where each other display is from this one, for the Overview's edge
+    // zones: here { x, y, w, h }, others [{ name, x, y, w, h }]
+    function edgeZones(here, others) {
+        return Map.edgeZones(here, others);
+    }
     // A whole space to another display: it becomes that display's next
-    // number there (menu bar: right-click a space)
+    // number there, windows and all, as they were (menu bar: right-click a
+    // space; Overview: drag a space to a display's edge zone, or right-click)
     function moveSpaceTo(id, name) {
         if (!(id > 0) || bases[name] === undefined)
             return;

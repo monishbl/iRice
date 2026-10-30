@@ -54,6 +54,8 @@
 - Commands that open in a terminal (installing an emoji font, Spotlight's commands, terminal apps) use the terminal chosen in Settings → Default apps, else $TERMINAL, else the first one installed: kitty, foot, Alacritty, WezTerm, Ghostty, Konsole, GNOME Terminal, Console, Ptyxis, Xfce Terminal or xterm, each started the way it expects. They no longer assume kitty.
 - On a desktop without adjustable display brightness, the brightness keys and menu bar scrolling no longer show a brightness slider that does nothing, and Spotlight answers "No adjustable display brightness". With several backlights, the one that drives the panel is used.
 - Night Light only appears in Control Center when hyprsunset is installed. Emoji fonts install with yay or paru, whichever you have. Recording's microphone list works without pactl. Without NetworkManager, Settings → Network leaves out the Wi-Fi security it can't know instead of guessing. Installed tools are looked for again when System health refreshes and after an update.
+- Overview with **Each its own**: every screen shows the other displays as small labelled targets on the edge that faces them (a display to the right sits at the right edge). Drop a window on one to move it to the space that display is showing, or hold it there a moment to pick one of its spaces. Drag a space onto one to move it there with all its windows, as that display's next space. Both screens' Overviews update right away.
+- Right-click a window in the Overview for **Move to** another display (or one of its spaces), and a space for **Move space to** another display. It works with a row per display too.
 
 ## Sharing and spaces fixes · 2026-10-30
 
