@@ -149,8 +149,22 @@ Column {
         Row {
             visible: Config.options.island.enabled
             label: "Volume and brightness in the island"
-            detail: "Off: a separate HUD below the menu bar"
+            detail: "Off: a separate HUD below the menu bar. Over a full-screen app, either way, a thin bar along the top edge."
             Switch { checked: Config.options.island.hud; onToggled: Config.options.island.hud = !checked }
+        }
+        Row {
+            visible: Config.options.island.enabled
+            label: "In full screen"
+            detail: Island.fsMode === "important" ? "Only calls, low battery, running hot, timers and alarms show over a video or game. The rest waits quietly in Notification Center."
+                : Island.fsMode === "compact" ? "Alerts show as a small pill at the top of a video or game. Click it to see the whole alert."
+                : "Alerts show over a video or game, then slide away."
+            Segmented {
+                width: 330
+                readonly property var values: ["show", "important", "compact"]
+                options: ["Show alerts", "Only important", "Compact pill"]
+                current: Math.max(0, values.indexOf(Island.fsMode))
+                onSelected: i => Config.options.island.fullscreen = values[i]
+            }
         }
         Repeater {
             model: Config.options.island.enabled ? [["music", "New song"], ["charging", "Charger connected or removed"], ["battery", "Low battery"], ["timers", "Focus timer"], ["recording", "Screen recording"], ["focus", "Focus mode"], ["bluetooth", "Bluetooth devices connect or disconnect"], ["usb", "USB devices and drives"], ["displays", "Displays connect or disconnect"], ["audio", "Sound moves to another output"], ["network", "Wi-Fi, VPN, hotspot and Ethernet changes"], ["transfers", "Downloads and file copies (live)"], ["calls", "Incoming calls, and calls and meetings in progress (live)"], ["sysupdate", "System updates (live, and when they finish)"], ["resources", "CPU or memory stays high"], ["temperature", "CPU running hot (alert, and the island turns red)"], ["notifications", "Notifications as cards in the island (instead of banners)"]] : []

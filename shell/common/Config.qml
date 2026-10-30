@@ -307,6 +307,9 @@ Singleton {
                 // Open island music player: overlay (controls over the album art) | side (art beside the controls)
                 property string playerLayout: "overlay"
                 property string playerArt: "island" // controls over the art: island (the art is the island, fading like its black) | faded (fades out at its edges)
+                // Over a fullscreen app (a video, a game): show (alerts drawn over it, then gone) | important (only calls,
+                // low battery, running hot, timers and alarms; the rest goes quietly to Notification Center) | compact (a small pill; click for the alert)
+                property string fullscreen: "show"
             }
 
             property JsonObject windowRules: JsonObject {

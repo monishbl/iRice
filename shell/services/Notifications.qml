@@ -353,6 +353,11 @@ Singleton {
             // usual, in the island or as a banner, as set.
             if (root.actionable(n) ? root.attachToAlert(n) : root.duplicate(n))
                 return;
+            // A fullscreen app with "Only important" (Settings → Menu Bar →
+            // Island): only critical ones show; the rest wait in Notification
+            // Center, quietly
+            if (Island.fsQuiet() && n.urgency !== NotificationUrgency.Critical)
+                return;
             Sounds.notify(n);
             // Optionally as an iOS-style card in the dynamic island instead of a banner
             if (Island.enabled && Island.armed && Island.wants("notifications") && n.urgency !== NotificationUrgency.Critical)

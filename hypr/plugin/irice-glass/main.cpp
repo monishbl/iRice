@@ -11,8 +11,9 @@
 //
 // hyprctl irice-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl irice-glass clear [<monitor> <namespace>]
-// hyprctl irice-glass ping            -> "irice-glass 4" (2: gloss; 3: pointer boundaries;
-//                                       4: pointer-follow, input-age)
+// hyprctl irice-glass ping            -> "irice-glass 5" (2: gloss; 3: pointer boundaries;
+//                                       4: pointer-follow, input-age; 5: glass fades
+//                                       with its layer)
 // hyprctl irice-glass pointer-follow <0|1> (hover focus: windows brought forward take the pointer)
 // hyprctl irice-glass input-age       -> ms since the last key or button press
 // hyprctl irice-glass pointer-policy <0..2> <corner px>
@@ -361,7 +362,7 @@ struct SGLState {
 
 static bool          g_lastBlur = false;
 static unsigned long g_blits = 0, g_blitPx = 0;
-static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon) {
+static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
     auto& rd = g_pHyprRenderer->m_renderData;
     if (!rd.currentFB || !ensureProgram())
         return;
@@ -461,7 +462,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         glUniform1f(u_rim, v[11]);
         glUniform4f(u_tint, v[12], v[13], v[14], v[15]);
         glUniform1f(u_saturation, v[16]);
-        glUniform1f(u_opacity, v[17]);
+        glUniform1f(u_opacity, v[17] * fade);
         glUniform4f(u_solid, v[12], v[13], v[14], 1.0f);
         glUniform1f(u_hasBlur, blurTex ? 1.f : 0.f);
         glUniform1f(u_gloss, v[18]);
@@ -507,8 +508,12 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
     auto mon = g_pHyprRenderer->m_renderData.pMonitor.lock();
     if (ls && mon && mon->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
         auto it = g_shapes.find(mon->m_name + "\n" + ls->m_namespace);
-        if (it != g_shapes.end() && !it->second.empty()) {
-            drawGlass(it->second, box, data, mon);
+        // The layer's own fade (Hyprland draws a Top layer under a fullscreen
+        // window at alpha 0): the glass fades with it, so a hidden layer never
+        // leaves an empty glass shape over the fullscreen app
+        const float fade = std::clamp(data.a, 0.f, 1.f);
+        if (it != g_shapes.end() && !it->second.empty() && fade > 0.004f) {
+            drawGlass(it->second, box, data, mon, fade);
             g_drawn++;
             // Hyprland's own blur fill would cover the glass: draw it fully transparent
             auto d2  = data;
@@ -598,7 +603,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus" || verb == "pointer-follow" || verb == "input-age")
         return pointerCommand(verb, in);
     if (verb == "ping")
-        return pointerReady() ? "irice-glass 4" : "irice-glass 2";
+        return pointerReady() ? "irice-glass 5" : "irice-glass 2";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;

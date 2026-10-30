@@ -18,9 +18,23 @@ Item {
 
     required property var screen
     required property color fg // menu bar text colour (idle and compact)
-    // Nobody can see the bar (a full-screen window over it, or the lock
-    // screen): its animations hold still
-    readonly property bool unseen: System.locked || Desktop.fullscreen(screen)
+    // A fullscreen window (a video, a game) covers the bar. The island is
+    // then drawn only while it has something to say: the bar lifts it over
+    // the app (`lifted`, MenuBar) until it has closed again; otherwise it's
+    // hidden, and nothing in it moves (`unseen`)
+    readonly property bool overFs: Desktop.fullscreen(screen)
+    readonly property string fsMode: Island.fsMode // show | important | compact
+    // Compact: alerts as a small pill (icon and one line); a click opens it
+    // to the full alert. A ringing call always shows its card.
+    property bool fsOpen: false
+    readonly property bool pillMode: overFs && fsMode === "compact" && showingEvent && !fsOpen && !Island.ringingUp
+    onShowingEventChanged: if (!showingEvent) fsOpen = false
+    onOverFsChanged: fsOpen = false
+    readonly property bool lifted: overFs && (showingEvent || h > 27.5)
+    // Nobody can see it (covered by a fullscreen app, or the lock screen):
+    // its animations hold still
+    readonly property bool unseen: System.locked || (overFs && !lifted)
+    readonly property bool reduceMotion: Config.options.appearance.reduceMotion === true
     property point pointer: Qt.point(-1, -1) // window pointer, from the bar's tracker
 
     readonly property var primary: Island.primary
@@ -30,8 +44,11 @@ Item {
     Timer { id: openDelay; interval: 140; onTriggered: root.hoverOpen = true }
     Timer { id: closeDelay; interval: 260; onTriggered: root.hoverOpen = false }
 
-    readonly property bool expanded: hoverOpen || Island.event !== null || Island.pinned
-    readonly property bool compact: !expanded && primary !== null
+    // (Over a fullscreen app only alerts open it: not the pointer, not the pin)
+    readonly property bool expanded: (hoverOpen && !overFs) || (Island.event !== null && !pillMode) || (Island.pinned && !overFs)
+    readonly property bool compact: !expanded && !overFs && primary !== null
+    // The black pill is up: open, or the compact alert pill
+    readonly property bool filled: expanded || pillMode
     readonly property string layout: Config.options.island.activityLayout // replace | split | beside
     readonly property bool oneAtATime: Config.options.island.activityMode !== "all"
 
@@ -110,7 +127,7 @@ Item {
         recentOpen = !recentOpen;
     }
     // On the black island when open; collapsed it's just the dots on the bar
-    readonly property color ink: expanded || Island.showHot ? "#F5F5F7" : fg
+    readonly property color ink: filled || Island.showHot ? "#F5F5F7" : fg
 
     // ── Size, on springs ────────────────────────────────────────────────
     readonly property real dotsW: dots.implicitWidth
@@ -132,10 +149,11 @@ Item {
     readonly property real compactW: layout === "split" ? 2 * pad + 2 * side + 24 + dotsW
         : layout === "beside" ? 2 * pad + dotsW + 21 + area
         : pad + leadW + 12 + trailW + pad
-    readonly property real targetW: showingEvent ? (Island.hasCard ? 440 : 392) : expanded ? 392 : compact ? compactW : dotsW + 14
+    readonly property real pillW: Math.min(420, pill.implicitWidth + 28)
+    readonly property real targetW: pillMode ? pillW : showingEvent ? (Island.hasCard ? 440 : 392) : expanded ? 392 : compact ? compactW : dotsW + 14
     // (Recent opened over the activities keeps the island as tall as it was,
     // so it doesn't shrink out from under the pointer and close)
-    readonly property real targetH: expanded ? Math.max(body.y + body.implicitHeight + (showingEvent ? 16 : 14), recentOver ? recentHoldH : 0) : 26
+    readonly property real targetH: expanded ? Math.max(body.y + body.implicitHeight + (showingEvent ? 16 : 14), recentOver ? recentHoldH : 0) : pillMode ? 30 : 26
     property real w: targetW
     property real h: targetH
     // Corners follow the height as it springs (no spring of their own: lagging
@@ -150,15 +168,28 @@ Item {
     // it reaches the dots (a fade of its own stalled and then popped: the
     // compositor's glass only hears about changes as the shape moves)
     property real closeFrom: targetH
-    onExpandedChanged: if (!expanded) {
-        closeFrom = Math.max(h, 27);
-        recentOpen = false;
+    onFilledChanged: if (!filled) closeFrom = Math.max(h, 27)
+    // The open contents fade in as it opens and are gone at once as it
+    // closes. (A Behavior switched off by `expanded` raced the opacity
+    // binding: closing, the body and the pin faded out over the shrinking
+    // island, showing the idle status and Recent rows for a moment.)
+    property real contentIn: 0
+    onExpandedChanged: {
+        if (expanded) {
+            contentIn = 0;
+            contentFade.restart();
+        } else {
+            contentFade.stop();
+            contentIn = 0;
+            recentOpen = false;
+        }
     }
-    readonly property real openness: expanded ? 1 : Math.max(0, Math.min(1, (h - 26) / Math.max(1, closeFrom - 26)))
+    NumberAnimation { id: contentFade; target: root; property: "contentIn"; to: 1; duration: Theme.motion.hover; easing.type: Easing.OutCubic }
+    readonly property real openness: filled ? 1 : Math.max(0, Math.min(1, (h - 26) / Math.max(1, closeFrom - 26)))
     // The content keeps the open width while it fades out (snapping to the
     // closed width moved it sideways and cut it off)
     property real openW: targetW
-    onTargetWChanged: if (expanded) openW = targetW
+    onTargetWChanged: if (filled) openW = targetW
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
 
@@ -167,10 +198,12 @@ Item {
     Item {
         id: shape
         x: Math.round((root.width - root.w) / 2)
-        y: 3
+        // Over a fullscreen app it also slides up a little as it goes
+        y: 3 - (root.overFs && !root.filled && !root.reduceMotion ? Math.round((1 - root.openness) * 10) : 0)
         width: root.w
         height: root.h
         onXChanged: glass.updatePosition()
+        onYChanged: glass.updatePosition()
         onWidthChanged: glass.updatePosition()
         onHeightChanged: glass.updatePosition()
 
@@ -182,8 +215,8 @@ Item {
             shadowMargin: 16
             radius: root.r
             bevel: Math.min(16, root.r) + shadowMargin
-            opacity: root.expanded ? openFade : root.openness
-            property real openFade: root.expanded ? 1 : 0
+            opacity: root.filled ? openFade : root.openness
+            property real openFade: root.filled ? 1 : 0
             Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
             onOpacityChanged: updatePosition()
         }
@@ -191,9 +224,9 @@ Item {
         // gradient is a plain rectangle clipped by a rounded mask (translucent
         // gradients on rounded rectangles render unevenly).
         // 0 collapsed (no pill, only the dots), 1 open
-        property real openFade: root.expanded ? 1 : 0
+        property real openFade: root.filled ? 1 : 0
         Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
-        readonly property real fade: root.expanded ? openFade : root.openness
+        readonly property real fade: root.filled ? openFade : root.openness
         Item {
             id: ink
             anchors.fill: parent
@@ -265,7 +298,7 @@ Item {
         // Running hot (Island.showHot), closed: a soft red glow on the active
         // space's chip (which turns red too) and faint ripples growing out of
         // it, until the CPU cools down
-        property real heat: Island.showHot && !root.expanded ? 1 : 0
+        property real heat: Island.showHot && !root.filled && !root.overFs ? 1 : 0
         Behavior on heat { NumberAnimation { duration: 600; easing.type: Easing.InOutSine } }
         Item {
             id: hotPill
@@ -356,7 +389,10 @@ Item {
                 fg: root.ink
                 x: !root.compact || root.layout !== "beside" ? (root.w - width) / 2 : root.groupLeft
                 y: root.expanded ? 7 : 2
-                opacity: root.showingEvent || (root.compact && root.layout === "replace") ? 0 : 1
+                opacity: root.showingEvent || root.overFs || (root.compact && root.layout === "replace") ? 0 : 1
+                // (hidden under an alert or over a fullscreen app, it takes no clicks:
+                // a click on the alert pill switched spaces)
+                enabled: !root.showingEvent && !root.overFs
                 Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Behavior on y { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.2 } }
             }
@@ -409,6 +445,69 @@ Item {
                 }
             }
 
+            // Compact pill over a fullscreen app: the newest alert's icon and
+            // one line (and how many more); a click opens the full alert
+            Item {
+                id: pillBox
+                anchors.fill: parent
+                opacity: root.pillMode ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+                readonly property var ev: Island.event
+                Row {
+                    id: pill
+                    x: Math.round((root.w - width) / 2)
+                    y: Math.round((30 - height) / 2)
+                    spacing: 8
+                    AppIcon {
+                        visible: (pillBox.ev?.card?.appIcon ?? "") !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        size: 16
+                        source: pillBox.ev?.card?.appIcon ?? ""
+                    }
+                    Icon {
+                        visible: (pillBox.ev?.card?.appIcon ?? "") === ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: pillBox.ev?.icon ?? "bell"
+                        fill: true
+                        size: 16
+                        color: pillBox.ev?.color ?? root.ink
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 300)
+                        elide: Text.ElideRight
+                        text: {
+                            const e = pillBox.ev;
+                            if (!e)
+                                return "";
+                            if (e.card)
+                                return (e.card.name ?? "") + (e.card.text ? ": " + String(e.card.text).replace(/\s+/g, " ") : "");
+                            return (e.title ?? "") + (e.subtitle ? " · " + e.subtitle : "");
+                        }
+                        color: root.ink
+                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium; features: { "tnum": 1 } }
+                    }
+                    Text {
+                        visible: Island.count > 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "+" + (Island.count - 1)
+                        color: Qt.rgba(1, 1, 1, 0.6)
+                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
+                    }
+                }
+                // A click on it opens the full alert
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: root.pillMode
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.fsOpen = true
+                }
+                Accessible.role: Accessible.Button
+                Accessible.name: "Show alert"
+                Accessible.onPressAction: root.fsOpen = true
+            }
+
             // Expanded body
             Column {
                 id: body
@@ -417,12 +516,11 @@ Item {
                 width: (root.expanded ? root.targetW : root.openW) - 2 * x
                 spacing: 10
                 visible: root.h > 30
-                opacity: root.expanded ? 1 : 0
+                opacity: root.expanded ? root.contentIn : 0
                 // (a NumberAnimation: it becomes visible as it fades in, when an
                 // OpacityAnimator may not start and leave it invisible). Closing,
                 // it's gone quickly, before the island shrinks over it, rather
                 // than being cut off by its edges on the way down
-                Behavior on opacity { enabled: root.expanded; NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
 
                 // Live alerts, newest at the bottom; a burst staggers in.
                 // Up to four show, as many as fit in the island's window
@@ -596,8 +694,7 @@ Item {
             iconColor: Island.pinned ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
             // Gone the moment it starts closing (as fast as a fade-in would
             // be noticed: an animated fade-out lingered over the shrinking pill)
-            opacity: root.expanded && root.h > 40 ? 1 : 0
-            Behavior on opacity { enabled: root.expanded; NumberAnimation { duration: Theme.motion.hover } } // (shown as it fades in: see the body above)
+            opacity: root.expanded && root.h > 40 ? root.contentIn : 0
             onClicked: Island.togglePin()
         }
 
@@ -606,6 +703,7 @@ Item {
             enabled: root.compact
             onTapped: root.hoverOpen = true
         }
+
         TapHandler {
             acceptedButtons: Qt.RightButton
             onTapped: Island.togglePin()

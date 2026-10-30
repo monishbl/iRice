@@ -40,6 +40,13 @@ Item {
     property real appear: 0
     property int playedUid: -1
     onEventChanged: {
+        // Given more time while on its way out (the same alert again, the
+        // HUD's level changing): it stays
+        if (leaving && event && (event.expires ?? 0) > Date.now() + 200) {
+            leaveAnim.stop();
+            leaving = false;
+            gone = 0;
+        }
         if (!event || event.uid === playedUid)
             return;
         playedUid = event.uid ?? -1;
@@ -88,6 +95,15 @@ Item {
     }
     opacity: appear * (1 - gone) * Math.max(0.3, 1 + pull / 90)
     transform: Translate { y: root.still ? 0 : (1 - root.appear) * -10 + root.pull - root.gone * 18 }
+
+    // Its time is up (Island's sweep): out the same way as a dismissal
+    Connections {
+        target: Island
+        function onExpiring(uid) {
+            if (uid === root.event?.uid)
+                root.leave();
+        }
+    }
 
     HoverHandler { id: hover }
     // Drag it up to dismiss it (a short pull springs back)

@@ -3,6 +3,9 @@
 ## Leaner by default · 2026-10-30
 
 - The Anime tab in the sidebar is off, and the overlay (Super+G) no longer offers the floating image, crosshair and FPS limit. Both are still there: turn them on in Settings → Sidebar (Show Anime tab, Gaming overlays).
+- Fixed: over a full-screen app (a video, a game) island alerts opened as an empty glass pill, and volume and brightness showed as a blank shape. Alerts now show in full over the app and slide away when they're done. Choose how in Settings → Menu Bar → Island → **In full screen**: **Show alerts** (the default), **Only important** (only calls, low battery, running hot, timers and alarms, plus critical notifications; everything else waits quietly in Notification Center) or **Compact pill** (a small pill with the alert's icon and one line; click it to see the whole alert). Incoming calls show the island's call card over full-screen apps too, instead of a banner.
+- Over a full-screen app, volume and brightness show as a thin bar along the top edge instead of the island or the HUD.
+- The glass plugin now fades its glass with the layer it belongs to, so a hidden menu bar never leaves a glass shape behind. Update it to get this: **Update plugin…** in Settings → Appearance → Glass, or run `tools/build-plugin.sh`. The island fix above works without it.
 
 ## Fewer password prompts · 2026-10-30
 

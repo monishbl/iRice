@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.UPower
 import qs.common
@@ -148,9 +149,34 @@ Singleton {
         recent = recent.filter(x => now - x.at < 20000).concat([r]);
         return r;
     }
+    // ── Over a fullscreen app (Settings → Menu Bar → Island → In full screen)
+    // show: alerts as usual, drawn over it | important: only calls, low
+    // battery, running hot, timers and alarms; the rest goes quietly to
+    // Notification Center and Recent | compact: a small pill (IslandView)
+    readonly property string fsMode: ["show", "important", "compact"].includes(cfg.fullscreen) ? cfg.fullscreen : "show"
+    readonly property var importantKinds: ["ringing", "battery", "temperature", "timer"]
+    function important(e) {
+        return !!e?.important || importantKinds.includes(e?.kind ?? "");
+    }
+    // A fullscreen window on the focused display (where you're looking)
+    function fullscreenNow() {
+        return Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false;
+    }
+    // "Only important" is on and a fullscreen app has the focused display
+    function fsQuiet() {
+        return enabled && fsMode === "important" && fullscreenNow();
+    }
+    // A ringing call is up (it's never shrunk to the compact pill)
+    readonly property bool ringingUp: { byUid; count; for (let i = 0; i < alerts.count; i++) if (byUid[alerts.get(i).uid]?.kind === "ringing") return true; return false; }
+
     function post(e, ms) {
         if (!enabled || !armed)
             return;
+        // Not now (a fullscreen app, "Only important"): only into the history
+        if (fsQuiet() && !important(e)) {
+            record(e);
+            return 0;
+        }
         const now = Date.now();
         // HUD and music update their row in place
         if (e.kind === "hud" || e.kind === "music")
@@ -337,7 +363,10 @@ Singleton {
     readonly property int longMs: 600000
     readonly property int untilOver: 86400000
 
-    // Drop alerts whose time is up
+    // Alerts whose time is up leave: `expiring` lets the island play their
+    // way out (slide up and fade, IslandEvent.leave), which then removes
+    // them; anything still there a moment later (no island on screen) goes
+    signal expiring(int uid)
     Timer {
         id: sweep
         interval: 250
@@ -345,9 +374,14 @@ Singleton {
         running: root.count > 0 && !root.held
         onTriggered: {
             const now = Date.now();
-            for (let i = root.alerts.count - 1; i >= 0; i--)
-                if ((root.byUid[root.alerts.get(i).uid]?.expires ?? 0) <= now)
+            for (let i = root.alerts.count - 1; i >= 0; i--) {
+                const u = root.alerts.get(i).uid;
+                const ex = root.byUid[u]?.expires ?? 0;
+                if (ex + 700 <= now)
                     root.removeAt(i);
+                else if (ex <= now)
+                    root.expiring(u);
+            }
         }
     }
     Timer {

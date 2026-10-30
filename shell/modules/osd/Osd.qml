@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
@@ -8,7 +9,9 @@ import qs.glass
 import qs.services
 
 // Volume / brightness HUD: a small glass capsule under the menu bar, shown for
-// a moment whenever either changes. Also owns the media-key shortcuts.
+// a moment whenever either changes (or the island's HUD row, when it's set
+// to show there). Over a fullscreen app (a video, a game) it's only a thin
+// bar along the top edge instead. Also owns the media-key shortcuts.
 Scope {
     id: root
 
@@ -29,6 +32,13 @@ Scope {
     function show(k) {
         if (!armed)
             return;
+        // A fullscreen window on the focused display: the thin top bar
+        if (Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false) {
+            barKind = k;
+            barShown = true;
+            barHide.restart();
+            return;
+        }
         if (Config.options.island.enabled && Config.options.island.hud) {
             Island.hud(k);
             return;
@@ -127,6 +137,84 @@ Scope {
                     }
                 }
             }
+        }
+    }
+
+    // ── Over a fullscreen app: a thin bar centred along the top edge ──────
+    // (a 5 px level on a faint track, a small icon before it); fades in, and
+    // out after 1.2 s without a change
+    property string barKind: "volume"
+    property bool barShown: false
+    Timer { id: barHide; interval: 1200; onTriggered: root.barShown = false }
+    readonly property real barValue: barKind === "brightness" ? Brightness.value : barKind === "mic" ? (Audio.micMuted ? 0 : 1) : (Audio.muted ? 0 : Audio.volume)
+    readonly property string barIcon: barKind === "brightness" ? "sun" : barKind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon
+    property bool barAlive: false
+    onBarShownChanged: barShown ? (barAlive = true, barUnload.stop()) : barUnload.restart()
+    Timer { id: barUnload; interval: 400; onTriggered: root.barAlive = false }
+
+    LazyLoader {
+        active: root.barAlive
+
+        PanelWindow {
+            id: fsBar
+            property real fade: 0
+            Component.onCompleted: fade = Qt.binding(() => root.barShown ? 1 : 0)
+            Behavior on fade {
+                NumberAnimation { duration: root.barShown ? 150 : 100; easing.type: root.barShown ? Easing.OutCubic : Easing.InCubic }
+            }
+            screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
+            visible: fade > 0
+            WlrLayershell.namespace: "irice:fshud"
+            WlrLayershell.layer: WlrLayer.Overlay
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            anchors { top: true }
+            implicitWidth: Math.round((screen?.width ?? 1920) * 0.3) + 32
+            implicitHeight: 24
+            mask: Region {}
+
+            Row {
+                id: barRow
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 6 - (Config.options.appearance.reduceMotion === true ? 0 : Math.round((1 - fsBar.fade) * 4))
+                spacing: 8
+                opacity: fsBar.fade
+                // A soft dark halo so it reads over bright video too
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: Qt.rgba(0, 0, 0, 0.55)
+                    shadowBlur: 0.35
+                    shadowVerticalOffset: 0
+                    shadowHorizontalOffset: 0
+                }
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: root.barIcon
+                    fill: true
+                    size: 12
+                    color: "#F5F5F7"
+                }
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.round((fsBar.screen?.width ?? 1920) * 0.3) - 20
+                    height: 5
+                    radius: 2.5
+                    color: Qt.rgba(0, 0, 0, 0.35)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.22)
+                    Rectangle {
+                        width: Math.max(parent.height, parent.width * Math.max(0, Math.min(1, root.barValue)))
+                        visible: root.barValue > 0
+                        height: parent.height
+                        radius: 2.5
+                        color: "#F5F5F7"
+                        Behavior on width { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                    }
+                }
+            }
+            Accessible.role: Accessible.ProgressBar
+            Accessible.name: root.barKind === "brightness" ? "Brightness" : root.barKind === "mic" ? "Microphone" : "Volume"
         }
     }
 

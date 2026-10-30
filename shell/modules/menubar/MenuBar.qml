@@ -30,7 +30,13 @@ Variants {
         // Auto-hide also reveals the bar while the island has something to say
         readonly property bool revealed: !autoHide || reveal.hovered || (Panels.open !== "" && Panels.screen === screen) || (islandOn && Island.event !== null)
 
-        WlrLayershell.layer: autoHide ? WlrLayer.Overlay : WlrLayer.Top
+        // A fullscreen window (a video, a game) covers the Top layer. While the
+        // island has an alert for it, the bar moves above it (Overlay) with
+        // only the island drawn, and goes back once the island has closed
+        readonly property bool overFs: Desktop.fullscreen(screen)
+        readonly property bool islandLifted: islandOn && island.lifted
+        readonly property bool chromeShown: !overFs || (autoHide && (reveal.hovered || (Panels.open !== "" && Panels.screen === screen)))
+        WlrLayershell.layer: autoHide || islandLifted ? WlrLayer.Overlay : WlrLayer.Top
         // The keyboard after a click on an island alert (Esc dismisses it);
         // given back as the pointer leaves
         WlrLayershell.keyboardFocus: islandOn && island.wantsKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -43,7 +49,7 @@ Variants {
         exclusiveZone: autoHide ? 0 : 30
         // Auto-hide: only a 2px strip catches the pointer while hidden
         mask: Region {
-            Region { item: bar.revealed ? fullArea : revealStrip }
+            Region { item: !bar.chromeShown && !bar.autoHide ? noArea : bar.revealed && bar.chromeShown ? fullArea : revealStrip }
             Region {
                 x: island.shape.x
                 y: island.shape.y + content.y
@@ -53,6 +59,7 @@ Variants {
         }
         Item { id: fullArea; width: parent.width; height: 30 }
         Item { id: revealStrip; width: parent.width; height: 2 }
+        Item { id: noArea; width: 0; height: 0 }
         HoverHandler { id: reveal }
         // Pointer for the island. On the window root, like `reveal`: a
         // HoverHandler on an item laid over the bar swallows the bar items'
@@ -103,13 +110,13 @@ Variants {
 
             Rectangle {
                 anchors.fill: parent
-                visible: bar.opaque
+                visible: bar.opaque && bar.chromeShown
                 color: Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
             }
 
             // Top rounded screen corners (bottom ones: ScreenCorners)
-            Corner { visible: Config.options.appearance.screenCorners; x: 0; radius: Config.options.appearance.screenCornerRadius }
-            Corner { visible: Config.options.appearance.screenCorners; x: bar.width - width; atRight: true; radius: Config.options.appearance.screenCornerRadius }
+            Corner { visible: Config.options.appearance.screenCorners && bar.chromeShown; x: 0; radius: Config.options.appearance.screenCornerRadius }
+            Corner { visible: Config.options.appearance.screenCorners && bar.chromeShown; x: bar.width - width; atRight: true; radius: Config.options.appearance.screenCornerRadius }
 
             // Scroll gestures: left half brightness (when the display has a
             // backlight), right half volume
@@ -129,6 +136,7 @@ Variants {
             // ── Left ────────────────────────────────────────────────────
             Row {
                 id: leftItems
+                visible: bar.chromeShown
                 anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
@@ -197,6 +205,7 @@ Variants {
 
             // ── Right ───────────────────────────────────────────────────
             Row {
+                visible: bar.chromeShown
                 anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 

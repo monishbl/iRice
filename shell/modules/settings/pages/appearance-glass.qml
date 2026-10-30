@@ -262,16 +262,20 @@ Column {
             }
         }
         Row {
+            id: glassRow
             visible: Theme.glass.tier !== "solid"
             label: "Compositor glass"
-            detail: GlassPlugin.available ? "Active: Hyprland draws the glass" : "Not loaded. Build it once (and again after Hyprland updates)."
+            // (3 and 4: built before glass faded with its layer, so a menu bar
+            // hidden under a full-screen app left an empty glass pill)
+            readonly property bool outdated: GlassPlugin.available && (GlassPlugin.version === 3 || GlassPlugin.version === 4)
+            detail: outdated ? "An older build. Update it so glass never shows over full-screen apps." : GlassPlugin.available ? "Active: Hyprland draws the glass" : "Not loaded. Build it once (and again after Hyprland updates)."
             Rectangle {
-                visible: !GlassPlugin.available
+                visible: !GlassPlugin.available || glassRow.outdated
                 width: buildLabel.implicitWidth + 24
                 height: 28
                 radius: 14
                 color: buildMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
-                Text { id: buildLabel; anchors.centerIn: parent; text: "Build plugin…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                Text { id: buildLabel; anchors.centerIn: parent; text: glassRow.outdated ? "Update plugin…" : "Build plugin…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
                 MouseArea {
                     id: buildMouse
                     anchors.fill: parent
@@ -280,7 +284,7 @@ Column {
                 }
             }
             Icon {
-                visible: GlassPlugin.available
+                visible: GlassPlugin.available && !glassRow.outdated
                 name: "check-circle"
                 fill: true
                 size: 18

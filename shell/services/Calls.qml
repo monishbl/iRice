@@ -171,9 +171,11 @@ Singleton {
     function ring(n) {
         if (!Island.enabled || !Island.armed || !Island.wants("calls") || !n)
             return false;
-        // A fullscreen window (a video, a game) hides the menu bar and its
-        // island: the call shows as the banner, which stays above it
-        if (Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false)
+        // Over a fullscreen window (a video, a game) the menu bar lifts its
+        // island above it for the card (in every "In full screen" mode). A
+        // display without a menu bar has no island: the call is a banner there.
+        const shown = Config.options.menubar.screens;
+        if (Island.fullscreenNow() && shown.length > 0 && !shown.includes(Hyprland.focusedMonitor?.name ?? ""))
             return false;
         const info = describe(n);
         const card = { kind: "ringing", sticky: true, nid: n.id, title: info.name, subtitle: info.app, call: info };

@@ -86,7 +86,7 @@ Singleton {
                 // (even with interface sounds off: it's an alarm)
                 Quickshell.execDetached(["sh", "-c", "f=/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga; pw-play \"$f\" 2>/dev/null || paplay \"$f\""]);
                 Quickshell.execDetached(["notify-send", "-a", "Clock", "-u", "critical", "-i", "alarm-clock", title, body]);
-                Island.post({ kind: "custom", icon: "alarm", title: title, subtitle: body, color: Theme.accents.orange });
+                Island.post({ kind: "custom", important: true, icon: "alarm", title: title, subtitle: body, color: Theme.accents.orange });
             }
         }
     }
