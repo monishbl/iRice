@@ -408,15 +408,16 @@ Column {
 
     Group {
         width: parent.width
-        title: "Switching spaces"
-        footer: "When Super+number or a shortcut takes you to a space on another display."
+        title: "Switching displays"
+        footer: "Each display has its own spaces, numbered from 1: Super+number goes to that space on the display you're on."
         Row {
             label: "Move the pointer there"
+            detail: "When a shortcut takes you to another display"
             Switch { checked: Config.options.workspaces.warpPointer; onToggled: Config.options.workspaces.warpPointer = !checked }
         }
         Row {
-            label: "Dim the other displays"
-            detail: "For a moment, so you can see where you are"
+            label: "Show which display you moved to"
+            detail: "A soft glow at its edges, and the one you left dims a moment"
             Switch { checked: Config.options.workspaces.dimOthers; onToggled: Config.options.workspaces.dimOthers = !checked }
         }
     }

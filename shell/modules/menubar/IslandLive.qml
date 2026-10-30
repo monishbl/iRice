@@ -69,9 +69,17 @@ Item {
                 opacity: 0.675 + 0.325 * Math.cos(dotClock.time * Math.PI / 0.7)
                 Ticker { id: dotClock; running: root.kind === "recording" && root.part === "info" && root.visible; fps: 15 }
             }
+            // A call answered in the island: its app's icon
+            AppIcon {
+                id: callApp
+                visible: root.kind === "call" && (root.activity?.appIcon ?? "") !== ""
+                anchors.centerIn: parent
+                size: 16
+                source: visible ? root.activity.appIcon : ""
+            }
             Icon {
                 anchors.centerIn: parent
-                visible: root.kind !== "recording" && !(root.kind === "music" && (root.player?.trackArtUrl ?? "") !== "")
+                visible: root.kind !== "recording" && !callApp.visible && !(root.kind === "music" && (root.player?.trackArtUrl ?? "") !== "")
                 name: root.activity?.icon ?? ""
                 fill: true
                 size: 14

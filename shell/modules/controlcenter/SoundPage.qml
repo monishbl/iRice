@@ -38,6 +38,19 @@ DetailPage {
             onClicked: Pipewire.preferredDefaultAudioSink = modelData
         }
     }
+    // Outputs that switch the sound card over first (a monitor's speakers
+    // while the laptop's are on, or the other way round)
+    Repeater {
+        model: ScriptModel { values: AudioProfiles.alternatives }
+        ListRow {
+            required property var modelData
+            icon: modelData.kind === "display" ? "monitor" : modelData.kind === "headphones" ? "headphones" : "speaker-hifi"
+            title: modelData.name
+            busy: AudioProfiles.switching === modelData.profile
+            onClicked: AudioProfiles.pick(modelData)
+        }
+    }
+    onVisibleChanged: if (visible) AudioProfiles.refresh()
 
     Text {
         visible: root.streams.length > 0

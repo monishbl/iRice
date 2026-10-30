@@ -15,7 +15,8 @@ LazyLoader {
     readonly property var everyday: ["spotlight", "controlCenter", "notificationCenter"]
     readonly property bool keep: keepLoaded || (Config.ready && Config.options.performance.keepPanelsLoaded && everyday.includes(panel))
 
-    readonly property bool wanted: Panels.isOpen(panel, screen)
+    property bool everyScreen: false // open on every screen at once (Overview: each screen shows its own)
+    readonly property bool wanted: Panels.isOpen(panel, screen) || (everyScreen && Panels.open === panel)
     property bool alive: false
     active: alive
 

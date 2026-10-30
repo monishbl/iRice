@@ -197,6 +197,10 @@ Singleton {
             return "Runs " + String(a.exec).replace("$IRICE_SHELL/assets/scripts/", "");
         if (a.zoom !== undefined)
             return a.zoom > 0 ? "Zooms in" : "Zooms out";
+        if (a.space !== undefined) {
+            const where = a.n !== undefined && a.n !== null ? "space " + a.n : (a.step > 0 ? "the next space" : "the previous space");
+            return (a.space === "focus" ? "Goes to " : a.space === "send" ? "Sends the window to " : "Moves the window to ") + where + " on this display";
+        }
         if (a.dsp !== undefined)
             return "Window manager: " + String(a.dsp).replace(/^hl\.dsp\./, "");
         return "Unknown action";
@@ -223,6 +227,8 @@ Singleton {
             return "exec:" + String(a.exec).trim().replace(/\s+/g, " ");
         if (a.zoom !== undefined)
             return "zoom:" + Number(a.zoom).toFixed(2);
+        if (a.space !== undefined)
+            return "space:" + a.space + ":" + (a.n !== undefined && a.n !== null ? a.n : "step" + a.step);
         if (a.dsp !== undefined)
             return "dsp:" + String(a.dsp).replace(/\s+/g, "");
         return JSON.stringify(a);

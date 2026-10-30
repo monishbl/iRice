@@ -6,7 +6,8 @@
         "why": "The Lua config and the Liquid Glass plugin (hypr/plugin/irice-glass) are built against Hyprland 0.56."
     },
     "quickshell": {
+        "min": "0.3.2",
         "bundled": "0.3.2",
-        "why": "Built by iRice (~/.local/share/irice/quickshell), so Arch's quickshell updates don't affect it."
+        "why": "min: the oldest system Quickshell iRice runs on (the installer builds its own, tools/build-quickshell.sh, when yours is older or missing). bundled: the version of that build (~/.local/share/irice/quickshell), so Arch's quickshell updates don't affect it."
     }
 }

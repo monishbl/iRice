@@ -371,8 +371,8 @@ Singleton {
                 property string superTap: "overview" // tapping Super alone: overview | spotlight | none
             }
             property JsonObject workspaces: JsonObject {
-                // Super+number to a space on another display
-                property bool dimOthers: true // briefly dim the other displays
+                // Moving to another display (keyboard or pointer)
+                property bool dimOthers: true // switch cue: a soft accent glow on the display you move to, and the one you left dims a moment (name kept from older versions)
                 property bool warpPointer: true // move the pointer to that display
             }
             property JsonObject mouse: JsonObject {
@@ -429,6 +429,8 @@ Singleton {
                 // grid (the spaces as large previews, search on top) | macos (a strip of spaces on top, only a search in the middle)
                 property string style: "grid"
                 property bool wallpapers: false // space thumbnails (Overview, Mission Control) show the wallpaper behind their windows
+                // With several displays: rows (the screen it opens on shows every display's spaces, a row each) | each (it opens on every screen, each with its own spaces)
+                property string displays: "rows"
             }
 
             property JsonObject stageManager: JsonObject {

@@ -256,6 +256,9 @@ Singleton {
                 // (not "sink-input": every stream starting or stopping would re-read all outputs)
                 if (/ on (sink|server|card) #/.test(line))
                     sinkPoll.restart();
+                // (a display with speakers plugged in or out changes its card)
+                if (/ on card #/.test(line))
+                    AudioProfiles.refresh();
             }
         }
     }

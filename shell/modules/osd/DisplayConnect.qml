@@ -98,7 +98,7 @@ Scope {
                         }
                         // the arrived screen's picture is the desktop's own
                         // wallpaper: fading the overlay hands it over, and its
-                        // windows start coming in (DisplayFx → WorkspaceHomes)
+                        // spaces come back to it (DisplayFx → Spaces)
                         ScriptAction {
                             script: if (win.run && win.run.role === 0) DisplayFx.handover(win.run.screen)
                         }

@@ -916,324 +916,358 @@
   "id": "ws-1",
   "keys": "$MOD + 1",
   "group": "Workspace",
-  "label": "Go to workspace 1",
+  "label": "Go to space 1",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 1 })"
+   "space": "focus",
+   "n": 1
   }
  },
  {
   "id": "ws-send-1",
   "keys": "$MOD + ALT + 1",
   "group": "Workspace",
-  "label": "Send window to workspace 1",
+  "label": "Send window to space 1",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 1, follow = false })"
+   "space": "send",
+   "n": 1
   }
  },
  {
   "id": "ws-move-1",
   "keys": "$MOD + SHIFT + 1",
   "group": "Workspace",
-  "label": "Move window to workspace 1 (and follow)",
+  "label": "Move window to space 1 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 1 })"
+   "space": "move",
+   "n": 1
   }
  },
  {
   "id": "ws-2",
   "keys": "$MOD + 2",
   "group": "Workspace",
-  "label": "Go to workspace 2",
+  "label": "Go to space 2",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 2 })"
+   "space": "focus",
+   "n": 2
   }
  },
  {
   "id": "ws-send-2",
   "keys": "$MOD + ALT + 2",
   "group": "Workspace",
-  "label": "Send window to workspace 2",
+  "label": "Send window to space 2",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 2, follow = false })"
+   "space": "send",
+   "n": 2
   }
  },
  {
   "id": "ws-move-2",
   "keys": "$MOD + SHIFT + 2",
   "group": "Workspace",
-  "label": "Move window to workspace 2 (and follow)",
+  "label": "Move window to space 2 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 2 })"
+   "space": "move",
+   "n": 2
   }
  },
  {
   "id": "ws-3",
   "keys": "$MOD + 3",
   "group": "Workspace",
-  "label": "Go to workspace 3",
+  "label": "Go to space 3",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 3 })"
+   "space": "focus",
+   "n": 3
   }
  },
  {
   "id": "ws-send-3",
   "keys": "$MOD + ALT + 3",
   "group": "Workspace",
-  "label": "Send window to workspace 3",
+  "label": "Send window to space 3",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 3, follow = false })"
+   "space": "send",
+   "n": 3
   }
  },
  {
   "id": "ws-move-3",
   "keys": "$MOD + SHIFT + 3",
   "group": "Workspace",
-  "label": "Move window to workspace 3 (and follow)",
+  "label": "Move window to space 3 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 3 })"
+   "space": "move",
+   "n": 3
   }
  },
  {
   "id": "ws-4",
   "keys": "$MOD + 4",
   "group": "Workspace",
-  "label": "Go to workspace 4",
+  "label": "Go to space 4",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 4 })"
+   "space": "focus",
+   "n": 4
   }
  },
  {
   "id": "ws-send-4",
   "keys": "$MOD + ALT + 4",
   "group": "Workspace",
-  "label": "Send window to workspace 4",
+  "label": "Send window to space 4",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 4, follow = false })"
+   "space": "send",
+   "n": 4
   }
  },
  {
   "id": "ws-move-4",
   "keys": "$MOD + SHIFT + 4",
   "group": "Workspace",
-  "label": "Move window to workspace 4 (and follow)",
+  "label": "Move window to space 4 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 4 })"
+   "space": "move",
+   "n": 4
   }
  },
  {
   "id": "ws-5",
   "keys": "$MOD + 5",
   "group": "Workspace",
-  "label": "Go to workspace 5",
+  "label": "Go to space 5",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 5 })"
+   "space": "focus",
+   "n": 5
   }
  },
  {
   "id": "ws-send-5",
   "keys": "$MOD + ALT + 5",
   "group": "Workspace",
-  "label": "Send window to workspace 5",
+  "label": "Send window to space 5",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 5, follow = false })"
+   "space": "send",
+   "n": 5
   }
  },
  {
   "id": "ws-move-5",
   "keys": "$MOD + SHIFT + 5",
   "group": "Workspace",
-  "label": "Move window to workspace 5 (and follow)",
+  "label": "Move window to space 5 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 5 })"
+   "space": "move",
+   "n": 5
   }
  },
  {
   "id": "ws-6",
   "keys": "$MOD + 6",
   "group": "Workspace",
-  "label": "Go to workspace 6",
+  "label": "Go to space 6",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 6 })"
+   "space": "focus",
+   "n": 6
   }
  },
  {
   "id": "ws-send-6",
   "keys": "$MOD + ALT + 6",
   "group": "Workspace",
-  "label": "Send window to workspace 6",
+  "label": "Send window to space 6",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 6, follow = false })"
+   "space": "send",
+   "n": 6
   }
  },
  {
   "id": "ws-move-6",
   "keys": "$MOD + SHIFT + 6",
   "group": "Workspace",
-  "label": "Move window to workspace 6 (and follow)",
+  "label": "Move window to space 6 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 6 })"
+   "space": "move",
+   "n": 6
   }
  },
  {
   "id": "ws-7",
   "keys": "$MOD + 7",
   "group": "Workspace",
-  "label": "Go to workspace 7",
+  "label": "Go to space 7",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 7 })"
+   "space": "focus",
+   "n": 7
   }
  },
  {
   "id": "ws-send-7",
   "keys": "$MOD + ALT + 7",
   "group": "Workspace",
-  "label": "Send window to workspace 7",
+  "label": "Send window to space 7",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 7, follow = false })"
+   "space": "send",
+   "n": 7
   }
  },
  {
   "id": "ws-move-7",
   "keys": "$MOD + SHIFT + 7",
   "group": "Workspace",
-  "label": "Move window to workspace 7 (and follow)",
+  "label": "Move window to space 7 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 7 })"
+   "space": "move",
+   "n": 7
   }
  },
  {
   "id": "ws-8",
   "keys": "$MOD + 8",
   "group": "Workspace",
-  "label": "Go to workspace 8",
+  "label": "Go to space 8",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 8 })"
+   "space": "focus",
+   "n": 8
   }
  },
  {
   "id": "ws-send-8",
   "keys": "$MOD + ALT + 8",
   "group": "Workspace",
-  "label": "Send window to workspace 8",
+  "label": "Send window to space 8",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 8, follow = false })"
+   "space": "send",
+   "n": 8
   }
  },
  {
   "id": "ws-move-8",
   "keys": "$MOD + SHIFT + 8",
   "group": "Workspace",
-  "label": "Move window to workspace 8 (and follow)",
+  "label": "Move window to space 8 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 8 })"
+   "space": "move",
+   "n": 8
   }
  },
  {
   "id": "ws-9",
   "keys": "$MOD + 9",
   "group": "Workspace",
-  "label": "Go to workspace 9",
+  "label": "Go to space 9",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 9 })"
+   "space": "focus",
+   "n": 9
   }
  },
  {
   "id": "ws-send-9",
   "keys": "$MOD + ALT + 9",
   "group": "Workspace",
-  "label": "Send window to workspace 9",
+  "label": "Send window to space 9",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 9, follow = false })"
+   "space": "send",
+   "n": 9
   }
  },
  {
   "id": "ws-move-9",
   "keys": "$MOD + SHIFT + 9",
   "group": "Workspace",
-  "label": "Move window to workspace 9 (and follow)",
+  "label": "Move window to space 9 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 9 })"
+   "space": "move",
+   "n": 9
   }
  },
  {
   "id": "ws-10",
   "keys": "$MOD + 0",
   "group": "Workspace",
-  "label": "Go to workspace 10",
+  "label": "Go to space 10",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = 10 })"
+   "space": "focus",
+   "n": 10
   }
  },
  {
   "id": "ws-send-10",
   "keys": "$MOD + ALT + 0",
   "group": "Workspace",
-  "label": "Send window to workspace 10",
+  "label": "Send window to space 10",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 10, follow = false })"
+   "space": "send",
+   "n": 10
   }
  },
  {
   "id": "ws-move-10",
   "keys": "$MOD + SHIFT + 0",
   "group": "Workspace",
-  "label": "Move window to workspace 10 (and follow)",
+  "label": "Move window to space 10 (and follow)",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = 10 })"
+   "space": "move",
+   "n": 10
   }
  },
  {
   "id": "ws-prev",
   "keys": "CTRL + $MOD + Left",
   "group": "Workspace",
-  "label": "Previous workspace",
+  "label": "Previous space",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = \"r-1\" })"
+   "space": "focus",
+   "step": -1
   }
  },
  {
   "id": "ws-next",
   "keys": "CTRL + $MOD + Right",
   "group": "Workspace",
-  "label": "Next workspace",
+  "label": "Next space",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = \"r+1\" })"
+   "space": "focus",
+   "step": 1
   }
  },
  {
   "id": "ws-send-prev",
   "keys": "$MOD + SHIFT + Page_Up",
   "group": "Workspace",
-  "label": "Send window to the previous workspace",
+  "label": "Move window to the previous space",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = \"r-1\" })"
+   "space": "move",
+   "step": -1
   }
  },
  {
   "id": "ws-send-next",
   "keys": "$MOD + SHIFT + Page_Down",
   "group": "Workspace",
-  "label": "Send window to the next workspace",
+  "label": "Move window to the next space",
   "action": {
-   "dsp": "hl.dsp.window.move({ workspace = \"r+1\" })"
+   "space": "move",
+   "step": 1
   }
  },
  {
   "id": "ws-scroll-down",
   "keys": "$MOD + mouse_down",
   "group": "Workspace",
-  "label": "Next workspace (scroll)",
+  "label": "Next space (scroll)",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = \"e+1\" })"
+   "dsp": "hl.dsp.focus({ workspace = \"m+1\" })"
   }
  },
  {
   "id": "ws-scroll-up",
   "keys": "$MOD + mouse_up",
   "group": "Workspace",
-  "label": "Previous workspace (scroll)",
+  "label": "Previous space (scroll)",
   "action": {
-   "dsp": "hl.dsp.focus({ workspace = \"e-1\" })"
+   "dsp": "hl.dsp.focus({ workspace = \"m-1\" })"
   }
  },
  {

@@ -392,8 +392,17 @@ Item {
             height: 44
             radius: 22
             color: Qt.alpha(root.activity?.color ?? root.ink, 0.22)
+            // A call answered in the island: its app's icon
+            AppIcon {
+                id: badgeApp
+                visible: root.kind === "call" && (root.activity?.appIcon ?? "") !== ""
+                anchors.centerIn: parent
+                size: 28
+                source: visible ? root.activity.appIcon : ""
+            }
             Icon {
                 anchors.centerIn: parent
+                visible: !badgeApp.visible
                 name: LiveInfo.icon(root.kind)
                 fill: true
                 size: 22

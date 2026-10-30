@@ -108,7 +108,7 @@ Column {
         Row {
             visible: page.mb.workspaces !== "off"
             label: "Spaces on other displays"
-            detail: "Listed with a small mark; click to go there, right-click to move a space to another display"
+            detail: "Listed after this display's own, under their display's name; right-click a space to move it to another display"
             Switch { checked: page.mb.otherSpaces; onToggled: page.mb.otherSpaces = !checked }
         }
     }

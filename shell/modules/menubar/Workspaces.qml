@@ -18,9 +18,12 @@ Item {
     property bool hot: false // CPU running hot: the active chip turns red
     property real activeCenter: width / 2 // x of the active chip's centre (the island's heat ripples start there)
     readonly property string style: Config.options.menubar.workspaces // dots | icons
-    readonly property var monitor: Hyprland.monitorFor(screen)
-    readonly property int activeId: monitor?.activeWorkspace?.id ?? 1
-    readonly property var visibleIds: Hyprland.monitors.values.map(m => m.activeWorkspace?.id ?? 0).filter(id => id > 0)
+    // This display, by name (Spaces works by names: Hyprland's monitor
+    // objects compared by identity could be stale ones, and then only the
+    // current space was listed)
+    readonly property string name: screen?.name ?? ""
+    readonly property int activeId: Spaces.active[name] ?? 0
+    readonly property var visibleIds: Object.keys(Spaces.active).map(n => Spaces.active[n]).filter(id => id > 0)
     function isVisibleSpace(id) { return visibleIds.includes(id); }
     // Every space's apps, wherever it lives
     readonly property var occupied: {
@@ -29,62 +32,54 @@ Item {
             m[id] = Windows.on(id).map(t => t.lastIpcObject?.class ?? "");
         return m;
     }
-    // Which display each space lives on
+    // Which display each space lives on (by name)
     readonly property var monitorOf: {
         const m = {};
-        for (const w of Hyprland.workspaces.values)
-            if (w.id > 0)
-                m[w.id] = w.monitor;
-        // Monitor state can arrive before the workspace collection catches up.
-        for (const display of Hyprland.monitors.values)
-            if (display.activeWorkspace?.id > 0)
-                m[display.activeWorkspace.id] = display;
+        for (const w of Spaces.workspaces)
+            m[w.id] = w.monitor;
         return m;
     }
-    // One list for every display: 1..workspaceCount and every space in use,
-    // wherever it lives (spaces on another display are marked and dimmed);
-    // with menubar.otherSpaces off, only this display's own
-    readonly property bool primary: screen === Quickshell.screens[0]
+    // This display's own spaces (numbered from 1 here), then those of a
+    // display that's unplugged and staying here for now, then (with
+    // menubar.otherSpaces) the other displays' spaces. Groups after the
+    // first start with the name of the display they belong to.
     readonly property bool showOthers: Config.options.menubar.otherSpaces
+    readonly property var groups: Spaces.groupsFor(name, showOthers)
     readonly property var ids: {
-        const all = new Set([activeId]);
-        if (showOthers)
-            for (const id of visibleIds)
-                all.add(id);
-        for (const w of Hyprland.workspaces.values)
-            if (w.id > 0 && (showOthers || w.monitor === monitor))
-                all.add(w.id);
-        for (const id of Object.keys(occupied))
-            if (showOthers || monitorOf[id] === monitor)
-                all.add(Number(id));
-        for (let i = 1; i <= Config.options.menubar.workspaceCount; i++)
-            if (showOthers ? true : (primary && !monitorOf[i]) || monitorOf[i] === monitor)
-                all.add(i);
-        // No gaps: an empty space between two in use (5 and 7 with windows,
-        // 6 empty) keeps its chip, or there'd be no way to get to it
-        const list = [...all];
-        const from = showOthers || primary ? 1 : Math.min(...list), to = Math.max(...list);
-        for (let i = from; i < to; i++)
-            if (showOthers || monitorOf[i] === monitor || (!monitorOf[i] && (primary || i > from)))
-                all.add(i);
-        return [...all].sort((a, b) => a - b);
+        const out = [];
+        for (const g of groups)
+            for (const id of g.ids)
+                out.push(id);
+        return out;
+    }
+    // id -> the label shown before it (first of a group after the first)
+    readonly property var groupLabel: {
+        const m = {};
+        for (let i = 1; i < groups.length; i++)
+            if (groups[i].ids.length > 0)
+                m[groups[i].ids[0]] = groups[i].label;
+        return m;
     }
     readonly property int count: ids.length
+    // The window of chips (below) slides over this display's own spaces;
+    // the other groups always show after them
+    readonly property var ownIds: groups[0]?.ids ?? []
+    readonly property var restIds: ids.slice(ownIds.length)
 
     // More spaces than "Spaces always shown": that many chips, a window
     // that slides (the arrows, or switching spaces: the current one always
     // stays in view), and an arrow at each end with more past it, dotted
     // when something there has windows
     readonly property int cap: Math.max(1, Config.options.menubar.workspaceCount)
-    readonly property bool overflow: (ids?.length ?? 0) > cap
+    readonly property bool overflow: (ownIds?.length ?? 0) > cap
     property int start: 0
     function clampStart(v) {
-        return Math.max(0, Math.min(Math.max(0, (ids?.length ?? 0) - cap), v));
+        return Math.max(0, Math.min(Math.max(0, (ownIds?.length ?? 0) - cap), v));
     }
     function keepActive() {
-        if (!ids) // (still starting up)
+        if (!ownIds) // (still starting up)
             return;
-        const i = ids.indexOf(activeId);
+        const i = ownIds.indexOf(activeId);
         let st = clampStart(start);
         if (i >= 0 && i < st)
             st = i;
@@ -100,13 +95,13 @@ Item {
     readonly property bool dynamic: Config.options.menubar.workspaceOverflow === "dynamic"
     readonly property var shown: {
         if (!overflow || dynamic)
-            return ids;
-        const page = ids.slice(start, start + cap);
+            return ownIds;
+        const page = ownIds.slice(start, start + cap);
         // Every monitor's active space remains visible even outside this page.
-        return ids.filter(id => page.includes(id) || isVisibleSpace(id));
+        return ownIds.filter(id => page.includes(id) || isVisibleSpace(id));
     }
-    readonly property var hiddenLeft: overflow ? ids.slice(0, start).filter(id => !isVisibleSpace(id)) : []
-    readonly property var hiddenRight: overflow ? ids.slice(start + cap).filter(id => !isVisibleSpace(id)) : []
+    readonly property var hiddenLeft: overflow ? ownIds.slice(0, start).filter(id => !isVisibleSpace(id)) : []
+    readonly property var hiddenRight: overflow ? ownIds.slice(start + cap).filter(id => !isVisibleSpace(id)) : []
     function busy(list) {
         return list.some(id => !!occupied[id]);
     }
@@ -115,7 +110,10 @@ Item {
     implicitHeight: 22
 
     function go(id) {
-        Hyprland.dispatch("hl.dsp.focus({ workspace = " + (typeof id === "string" ? JSON.stringify(id) : id) + " })");
+        if (typeof id === "string")
+            Hyprland.dispatch("hl.dsp.focus({ workspace = " + JSON.stringify(id) + " })");
+        else
+            Spaces.go(id);
     }
 
     Rectangle {
@@ -139,21 +137,61 @@ Item {
 
         Repeater {
             model: root.shown
-            Rectangle {
-                id: ws
+            delegate: chip
+        }
+
+        Arrow {
+            visible: root.overflow && !root.dynamic
+            side: 1
+            more: root.hiddenRight.length > 0
+            hot: root.busy(root.hiddenRight)
+        }
+
+        // Spaces of other displays (each group led by its display's name)
+        Repeater {
+            model: root.restIds
+            delegate: chip
+        }
+    }
+
+    Component {
+        id: chip
+            Item {
+                id: slot
                 required property int modelData
                 required property int index
-                readonly property int wsId: modelData
+                // The first space of a group that isn't this display's own:
+                // the name of the display it belongs to, in front
+                readonly property string mark: root.groupLabel[modelData] ?? ""
+                readonly property real markW: mark !== "" && ws.fall === 1 ? markText.implicitWidth + 10 : 0
+                width: markW + ws.width
+                height: 18
+                visible: ws.fall > 0 || widthAnim.running
+                onXChanged: ws.report()
+                Text {
+                    id: markText
+                    visible: slot.markW > 0
+                    x: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: slot.mark
+                    color: root.fg
+                    opacity: 0.6
+                    font { family: Theme.font.family; pixelSize: 10; weight: Font.Medium }
+                }
+            Rectangle {
+                id: ws
+                x: slot.markW
+                readonly property int wsId: slot.modelData
+                readonly property int index: slot.index
                 // Dynamic overflow: how far past the shown window (0 inside);
                 // one past is smaller and fainter, two past smaller still,
                 // beyond that it's gone
-                readonly property int past: root.isVisibleSpace(wsId) || !root.overflow || !root.dynamic ? 0 : index < root.start ? root.start - index : Math.max(0, index - (root.start + root.cap - 1))
+                readonly property int past: root.isVisibleSpace(wsId) || !root.overflow || !root.dynamic || !root.ownIds.includes(wsId) ? 0 : index < root.start ? root.start - index : Math.max(0, index - (root.start + root.cap - 1))
                 readonly property real fall: past === 0 ? 1 : past === 1 ? 0.7 : past === 2 ? 0.45 : 0
-                visible: fall > 0 || widthAnim.running
                 readonly property bool active: wsId === root.activeId
                 // Lives on another display (and, if shown there, is that one's current space)
-                readonly property bool elsewhere: !!root.monitorOf[wsId] && root.monitorOf[wsId] !== root.monitor
-                readonly property bool shownThere: elsewhere && root.monitorOf[wsId]?.activeWorkspace?.id === wsId
+                readonly property bool elsewhere: !!root.monitorOf[wsId] && root.monitorOf[wsId] !== root.name
+                readonly property bool shownThere: elsewhere && Spaces.active[root.monitorOf[wsId]] === wsId
                 opacity: (elsewhere && !shownThere ? 0.55 : 1) * (past === 0 ? 1 : past === 1 ? 0.6 : 0.3)
                 scale: fall
                 Behavior on scale { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
@@ -223,14 +261,7 @@ Item {
                     }
                 }
             }
-        }
-
-        Arrow {
-            visible: root.overflow && !root.dynamic
-            side: 1
-            more: root.hiddenRight.length > 0
-            hot: root.busy(root.hiddenRight)
-        }
+            }
     }
 
     component Arrow: Item {
@@ -268,13 +299,13 @@ Item {
         }
     }
 
-    // Right-click a space: move it to another display (it stays there, and
-    // comes back to it after that display was unplugged; WorkspaceHomes)
+    // Right-click a space: move it to another display (it becomes that
+    // display's next space, windows and all)
     function openMenu(id, x) {
-        const here = monitorOf[id] ?? monitor;
-        const items = Hyprland.monitors.values.filter(m => m !== here).map(m => ({
-            text: "Move to " + (m.description?.split(" ").slice(0, 3).join(" ") || m.name) + " (" + m.name + ")",
-            action: () => Hyprland.dispatch("hl.dsp.workspace.move({ workspace = " + id + ", monitor = \"" + m.name + "\" })")
+        const here = monitorOf[id] ?? name;
+        const items = Hyprland.monitors.values.filter(m => m.name !== here && Spaces.bases[m.name] !== undefined).map(m => ({
+            text: "Move to " + Spaces.labelForName(m.name) + " (" + m.name + ")",
+            action: () => Spaces.moveSpaceTo(id, m.name)
         }));
         if (items.length === 0)
             items.push({ text: "Only one display is connected", enabled: false, action: () => {} });
@@ -298,6 +329,6 @@ Item {
     }
 
     WheelHandler {
-        onWheel: e => root.go(e.angleDelta.y < 0 ? "e+1" : "e-1")
+        onWheel: e => root.go(e.angleDelta.y < 0 ? "m+1" : "m-1") // (this display's spaces)
     }
 }

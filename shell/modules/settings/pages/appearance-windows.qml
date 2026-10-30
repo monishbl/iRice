@@ -129,6 +129,17 @@ Column {
             }
         }
         Row {
+            label: "With several displays"
+            detail: Config.options.overview.displays === "each" ? "The Overview opens on every screen, each showing its own spaces" : "A row for each display, in the order they're arranged"
+            Segmented {
+                width: 260
+                readonly property var values: ["rows", "each"]
+                options: ["A row per display", "Each its own"]
+                current: Math.max(0, values.indexOf(Config.options.overview.displays))
+                onSelected: i => Config.options.overview.displays = values[i]
+            }
+        }
+        Row {
             label: "Show the wallpaper in spaces"
             detail: "Behind the windows in each space's preview (Overview and Mission Control)"
             Switch { checked: Config.options.overview.wallpapers; onToggled: Config.options.overview.wallpapers = !checked }

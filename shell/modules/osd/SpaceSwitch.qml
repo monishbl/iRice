@@ -6,17 +6,39 @@ import Quickshell.Wayland
 import qs.common
 import qs.services
 
-// Moving to another display from the keyboard (Super+number to a space that
-// lives there, or a focus-display shortcut): the pointer follows to that
-// display, and the others dim for a moment, so it's clear where you are.
-// Settings → Displays → "When switching spaces". Mouse-driven focus changes
-// are left alone: the pointer is already on that display.
+// Moving to another display (from the keyboard, or the pointer crossing
+// over): the display you moved to gets a brief soft glow at its edges, in the
+// accent colour, and the one you left dims a little for a moment, so it's
+// clear where you are. Not while a display is being plugged in or unplugged
+// (focus moving then is the hotplug's). Reduce motion: only the glow, a
+// plain fade. Settings → Displays → "Show which display you moved to".
+// Also applies whether Hyprland may move the pointer to the display a
+// shortcut takes you to (workspaces.warpPointer).
 Scope {
     id: root
 
     readonly property var cfg: Config.options.workspaces
-    property string target: "" // display that just took focus
-    property bool dimming: false
+    readonly property bool still: Config.ready && Config.options.appearance.reduceMotion === true
+    property string target: "" // display you moved to
+    property string origin: "" // display you left
+    // The focused display, from Hyprland itself at start (Quickshell's
+    // focusedMonitor can stay empty until focus first moves)
+    property string focused: ""
+    Process {
+        running: true
+        command: ["hyprctl", "-j", "monitors"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const m = JSON.parse(text).find(x => x.focused);
+                    if (m && root.focused === "")
+                        root.focused = m.name;
+                } catch (e) {}
+            }
+        }
+    }
+    property bool showing: false
+    property real glow: 0 // 0 .. 1
     property real dim: 0 // 0 .. 1
 
     Connections {
@@ -24,17 +46,20 @@ Scope {
         function onRawEvent(event) {
             if (event.name === "configreloaded") // puts the file's no_warps back
                 root.applyWarp();
-            if (event.name !== "focusedmonv2" || Quickshell.screens.length < 2)
+            if (event.name !== "focusedmonv2")
                 return;
-            if (!root.cfg.dimOthers)
+            const now = event.data.split(",")[0];
+            const was = root.focused;
+            root.focused = now;
+            if (now === was || was === "" || Quickshell.screens.length < 2 || !root.cfg.dimOthers)
                 return;
             // A display just came or went: focus moving now is the hotplug's
-            // (the screen you're on must not darken)
             if (DisplayFx.settling())
                 return;
-            root.target = event.data.split(",")[0];
-            cursor.running = false;
-            cursor.running = true;
+            root.target = now;
+            root.origin = was;
+            root.showing = true;
+            cue.restart();
         }
     }
 
@@ -46,51 +71,35 @@ Scope {
         Quickshell.execDetached(["hyprctl", "eval", "hl.config({ cursor = { no_warps = " + !warp + " } })"]);
     }
 
-    // Where the pointer is decides whether the keyboard did it: crossing
-    // into a display leaves it by the edge it came through, a jump from the
-    // keyboard puts it well inside (Hyprland centres it, or it stays put on
-    // the old display when warping is off)
-    Process {
-        id: cursor
-        command: ["hyprctl", "cursorpos"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const p = text.trim().split(",").map(v => parseFloat(v));
-                const mon = Hyprland.monitors.values.find(m => m.name === root.target);
-                if (!mon || p.length < 2 || isNaN(p[0]) || !root.cfg.dimOthers || DisplayFx.settling())
-                    return;
-                const w = mon.width / (mon.scale || 1), h = mon.height / (mon.scale || 1);
-                const t = mon.lastIpcObject?.transform ?? 0;
-                const lw = t % 2 ? h : w, lh = t % 2 ? w : h;
-                const x = p[0] - mon.x, y = p[1] - mon.y;
-                const inside = x >= 0 && x < lw && y >= 0 && y < lh;
-                const edge = 48;
-                if (inside && (x < edge || y < edge || x > lw - edge || y > lh - edge))
-                    return; // the pointer took it there
-                root.dimming = true;
-                fade.restart();
-            }
-        }
-    }
-
+    // In 150 ms (ease-out), held a moment, out in 450 ms (ease-in); the dim
+    // on the display you left follows the same curve, lighter
     SequentialAnimation {
-        id: fade
-        NumberAnimation { target: root; property: "dim"; to: 1; duration: 150; easing.type: Easing.OutCubic }
-        PauseAnimation { duration: 350 }
-        NumberAnimation { target: root; property: "dim"; to: 0; duration: 400; easing.type: Easing.InCubic }
-        ScriptAction { script: root.dimming = false }
+        id: cue
+        ScriptAction { script: { root.glow = 0; root.dim = 0; } }
+        ParallelAnimation {
+            NumberAnimation { target: root; property: "glow"; to: 1; duration: root.still ? 100 : 150; easing.type: Easing.OutCubic }
+            NumberAnimation { target: root; property: "dim"; to: root.still ? 0 : 1; duration: 150; easing.type: Easing.OutCubic }
+        }
+        PauseAnimation { duration: 250 }
+        ParallelAnimation {
+            NumberAnimation { target: root; property: "glow"; to: 0; duration: root.still ? 300 : 450; easing.type: Easing.InCubic }
+            NumberAnimation { target: root; property: "dim"; to: 0; duration: 450; easing.type: Easing.InCubic }
+        }
+        ScriptAction { script: root.showing = false }
     }
 
-    // A dim layer per other display, made only while it shows
+    // A layer on the two displays involved, made only while the cue shows
     Variants {
         model: Quickshell.screens
 
         Scope {
             id: perScreen
             required property var modelData
+            readonly property bool isTarget: perScreen.modelData.name === root.target
+            readonly property bool isLeft: perScreen.modelData.name === root.origin
 
             LazyLoader {
-                active: root.dimming && perScreen.modelData.name !== root.target
+                active: root.showing && (perScreen.isTarget || (perScreen.isLeft && !root.still))
 
                 PanelWindow {
                     screen: perScreen.modelData
@@ -100,10 +109,58 @@ Scope {
                     WlrLayershell.namespace: "irice:dim"
                     mask: Region {} // clicks go through
                     color: "transparent"
+
+                    // The display you left: a little darker
                     Rectangle {
                         anchors.fill: parent
+                        visible: perScreen.isLeft
                         color: "black"
-                        opacity: 0.35 * root.dim
+                        opacity: 0.18 * root.dim
+                    }
+                    // The display you moved to: the accent along its edges,
+                    // fading inward
+                    Item {
+                        id: edges
+                        anchors.fill: parent
+                        visible: perScreen.isTarget
+                        opacity: root.glow
+                        readonly property real depth: 36
+                        readonly property color strong: Theme.accentAlpha(0.42)
+                        readonly property color none: Theme.accentAlpha(0)
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; top: parent.top }
+                            height: edges.depth
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: edges.strong }
+                                GradientStop { position: 1; color: edges.none }
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: edges.depth
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: edges.none }
+                                GradientStop { position: 1; color: edges.strong }
+                            }
+                        }
+                        Rectangle {
+                            anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+                            width: edges.depth
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: edges.strong }
+                                GradientStop { position: 1; color: edges.none }
+                            }
+                        }
+                        Rectangle {
+                            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+                            width: edges.depth
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: edges.none }
+                                GradientStop { position: 1; color: edges.strong }
+                            }
+                        }
                     }
                 }
             }

@@ -40,7 +40,7 @@ Singleton {
         property var shortcutButtons: ({}) // Shortcuts widget id -> [action titles]
         property bool appThemeOn: false // Match apps wrote colour files (so turning it off empties them)
         property var coolDown: null // what cool-down changed, to put back: { blur: { passes, size }, rates: { output: Hz } }
-        property var workspaceHomes: ({}) // space id -> the display it belongs on (WorkspaceHomes)
+        property var spaces: ({}) // spaces per display (Spaces): { displays: { identity: { base, label, name } }, shown: { identity: id }, migrated }
         property var caffeine: null // on: { until (ms; 0 = until turned off), minutes }; survives shell restarts
         property string todayShown: "" // the day ("YYYY-MM-DD", days start at 4 AM) Today last opened by itself
         property string todayPinned: "" // the day Today was pinned to the desktop for
@@ -64,12 +64,12 @@ Singleton {
         onTodayShownChanged: root.scheduleSave()
         onTodayPinnedChanged: root.scheduleSave()
         onTodayEnsuredChanged: root.scheduleSave()
-        onWorkspaceHomesChanged: root.scheduleSave()
+        onSpacesChanged: root.scheduleSave()
     }
 
     property bool loaded: false
     property bool initialized: false
-    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "workspaceHomes"]
+    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "spaces"]
     readonly property string journalId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
     readonly property string merger: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/state-merge.py").toString().replace("file://", ""))
     property int sequence: 0
@@ -202,7 +202,7 @@ Singleton {
                     store.todayPinned = j.todayPinned;
                 if (typeof j.todayEnsured === "string")
                     store.todayEnsured = j.todayEnsured;
-                store.workspaceHomes = j.workspaceHomes && typeof j.workspaceHomes === "object" ? j.workspaceHomes : {};
+                store.spaces = j.spaces && typeof j.spaces === "object" ? j.spaces : {};
             } catch (e) {}
             root.observed = root.snapshot();
             root.loaded = true;

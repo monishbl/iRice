@@ -30,8 +30,49 @@ local function zoom(step)
         hl.config({ cursor = { zoom_factor = math.max(1.0, math.min(3.0, z)) } })
     end
 end
+-- Spaces: every display numbers its own from 1. Hyprland's ids are global, so
+-- each display owns a block of 100 (the built-in panel 1..99, the first
+-- external 101..199 …; shell/services/SpaceMap.js). The shell keeps the
+-- connected displays' blocks in IRICE_SPACES ({ connector = base }); until
+-- it has, every display counts from 0 (plain ids, as before).
+local SPACE_STRIDE = 100
+local function spaceBase(m)
+    local t = rawget(_G, "IRICE_SPACES")
+    return (type(t) == "table" and m and tonumber(t[m.name])) or 0
+end
+-- Go to (focus), or take the active window to (send: you stay; move: you
+-- follow), space n on the display you're on, or the next/previous one (step).
+-- Global so `hyprctl eval 'IRICE_SPACE("focus", 2)'` does what Super+2 does.
+function IRICE_SPACE(op, n, step)
+    local m = hl.get_active_monitor()
+    local base = spaceBase(m)
+    local num = n
+    if not num then
+        -- the next or previous number on this display (from a space of
+        -- another display staying here: from this display's first)
+        local cur = hl.get_active_workspace()
+        local own = (cur and tonumber(cur.id) or 0) - base
+        if own < 1 or own >= SPACE_STRIDE then own = 1 - step end
+        num = own + step
+    end
+    if num < 1 or num >= SPACE_STRIDE then return end
+    local id = base + num
+    if op == "focus" then
+        hl.dispatch(hl.dsp.focus({ workspace = id }))
+    else
+        hl.dispatch(hl.dsp.window.move({ workspace = id, follow = op == "move" }))
+    end
+end
+local function space(a)
+    local op, n, step = a.space, tonumber(a.n), tonumber(a.step)
+    if op ~= "focus" and op ~= "send" and op ~= "move" then return nil, "unknown space action" end
+    if not n and not step then return nil, "space needs n or step" end
+    return function() IRICE_SPACE(op, n, step) end
+end
+
 local function actionOf(a)
     if type(a) ~= "table" then return nil, "no action" end
+    if a.space then return space(a) end
     if a.shell then return hl.dsp.global("irice:" .. a.shell) end
     if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$IRICE_SHELL", shellDir))) end
     if a.app then return hl.dsp.exec_cmd("IRICE_USER_DIR='" .. userDir .. "' '" .. shellDir .. "/assets/scripts/open-app.sh' " .. a.app) end

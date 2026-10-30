@@ -51,7 +51,7 @@ Singleton {
         if (swStarted)
             a.push({ kind: "stopwatch", icon: "timer", color: Theme.accents.green });
         if (Calls.active)
-            a.push({ kind: "call", icon: Privacy.camera ? "video-camera" : "phone", color: Theme.accents.green });
+            a.push({ kind: "call", icon: Privacy.camera ? "video-camera" : "phone", color: Theme.accents.green, appIcon: Calls.call?.appIcon ?? "" });
         if (Privacy.shareInIsland)
             a.push({ kind: "screenShare", icon: "screencast", color: "#BF5AF2" });
         if (Updates.running && wants("sysupdate"))
@@ -131,7 +131,8 @@ Singleton {
     property int count: 0
     property int newestUid: 0
     readonly property var event: count > 0 ? (byUid[newestUid] ?? null) : null
-    readonly property bool hasCard: { byUid; count; for (let i = 0; i < alerts.count; i++) if (byUid[alerts.get(i).uid]?.card) return true; return false; }
+    // (a card, or a ringing call: the island opens wider)
+    readonly property bool hasCard: { byUid; count; for (let i = 0; i < alerts.count; i++) { const e = byUid[alerts.get(i).uid]; if (e?.card || e?.kind === "ringing") return true; } return false; }
     readonly property int maxAlerts: 4
     // Alerts posted within a moment of each other stagger in as one burst
     property real burstAt: 0
@@ -159,7 +160,7 @@ Singleton {
                     const ev = Object.assign({ uid: u, delay: 0, at: now, expires: now + (ms ?? 3000) }, e);
                     byUid = Object.assign({}, byUid, { [u]: ev });
                     note(e, u);
-                    return;
+                    return u;
                 }
             }
         // The same thing again while its alert is up (headphones whose battery
@@ -173,7 +174,7 @@ Singleton {
                     const ev = Object.assign({ uid: u, delay: 0, at: now, expires: Math.max(old.expires, now + (ms ?? 3000)), hid: record(e) }, e);
                     byUid = Object.assign({}, byUid, { [u]: ev });
                     note(e, u);
-                    return;
+                    return u;
                 }
             }
         burstIndex = now - burstAt < 400 ? burstIndex + 1 : 0;
@@ -184,15 +185,21 @@ Singleton {
         const ev = Object.assign({ uid: uid, delay: burstIndex * 110, at: now, expires: now + (ms ?? 3000) + burstIndex * 600, hid: record(e) }, e);
         byUid = Object.assign({}, byUid, { [uid]: ev });
         alerts.append({ uid: uid });
-        while (alerts.count > maxAlerts)
-            removeAt(0);
+        // (the oldest go first; a ringing call (sticky) stays)
+        while (alerts.count > maxAlerts) {
+            let i = 0;
+            while (i < alerts.count - 1 && byUid[alerts.get(i).uid]?.sticky)
+                i++;
+            removeAt(i);
+        }
         newestUid = uid;
         count = alerts.count;
         sweep.restart();
         // (a notification about the same thing may have arrived just before)
         const said = note(e, uid);
-        if (said.kind !== "notification")
+        if (said.kind !== "notification" && said.kind !== "ringing")
             Qt.callLater(() => Notifications.islandSaid(said));
+        return uid;
     }
     // Change a live alert in place (e.g. the temperature as it moves); its
     // line in the history follows
@@ -225,11 +232,12 @@ Singleton {
         if (count > 0)
             newestUid = alerts.get(alerts.count - 1).uid;
     }
-    // Close everything (an alert's action ran, or the island was clicked)
+    // Close everything (an alert's action ran, or the island was clicked),
+    // except a ringing call (sticky: only Answer or Decline end it)
     function dismiss() {
-        alerts.clear();
-        byUid = {};
-        count = 0;
+        for (let i = alerts.count - 1; i >= 0; i--)
+            if (!byUid[alerts.get(i).uid]?.sticky)
+                removeAt(i);
     }
     // ── History ─────────────────────────────────────────────────────────
     // Every alert that isn't a notification (those are in Notification Center
@@ -237,7 +245,7 @@ Singleton {
     // open island's Recent list. The same thing again within a minute (a
     // device that reconnects) updates its line. Kept across shell reloads
     // like the notifications are; buttons only while the shell runs.
-    readonly property var unrecorded: ["notification", "hud", "music"]
+    readonly property var unrecorded: ["notification", "hud", "music", "ringing"] // (an unanswered call is recorded as "missedCall" when it ends: Calls)
     readonly property int historyMax: 50
     property var history: [] // { hid, kind, icon, title, subtitle, color, battery?, at, times }
     property int nextHid: 1
@@ -251,7 +259,8 @@ Singleton {
         if (unrecorded.includes(e.kind) || !e.title)
             return 0;
         const now = Date.now();
-        const old = history.find(h => h.kind === e.kind && h.title === e.title && now - h.at < 60000);
+        // (missed calls from different people stay apart)
+        const old = history.find(h => h.kind === e.kind && h.title === e.title && now - h.at < 60000 && (e.kind !== "missedCall" || h.subtitle === (e.subtitle ?? "")));
         const hid = old ? old.hid : nextHid++;
         const entry = { hid: hid, kind: e.kind, icon: e.icon ?? "bell", title: e.title, subtitle: e.subtitle ?? "", color: String(e.color ?? "#FFFFFF"), at: now, times: old ? old.times + 1 : 1 };
         if (e.battery !== undefined)
@@ -259,7 +268,7 @@ Singleton {
         setHistory([entry].concat(history.filter(h => h.hid !== hid)).slice(0, historyMax));
         // Its button (Open a download or a drive, What's new), while it means something
         const a = Object.assign({}, historyActs);
-        if (e.action && e.onAction && ["transfer", "usb", "sysupdate"].includes(e.kind))
+        if (e.action && e.onAction && ["transfer", "usb", "sysupdate", "missedCall"].includes(e.kind))
             a[hid] = { text: e.action, act: e.onAction };
         else
             delete a[hid];
@@ -587,7 +596,9 @@ Singleton {
         }
         // qs ipc call island dismissNewest  (as a swipe up, the close button or Esc)
         function dismissNewest(): void {
-            if (root.count > 0)
+            if (root.count > 0 && root.byUid[root.newestUid]?.kind === "ringing")
+                Calls.decline(); // (Esc on a ringing call declines it)
+            else if (root.count > 0)
                 root.remove(root.newestUid);
         }
         // qs ipc call island hold true|false  (as the pointer resting on the alerts)

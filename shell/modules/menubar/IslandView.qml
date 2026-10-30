@@ -92,6 +92,9 @@ Item {
         dismissNewest();
     }
     function dismissNewest() {
+        // (Esc on a ringing call declines it)
+        if (Island.event?.kind === "ringing")
+            return Calls.decline();
         const it = alertRepeater.itemAt(alertRepeater.count - 1);
         if (it)
             it.leave();
@@ -455,6 +458,7 @@ Item {
                                 width: alertCol.width
                                 event: Island.byUid[uid] ?? null
                                 delay: event?.delay ?? 0
+                                unseen: root.unseen
                                 wheelDismiss: !alertScroll.overflows
                                 onActed: Island.dismiss()
                                 onDismissRequested: Island.remove(uid)

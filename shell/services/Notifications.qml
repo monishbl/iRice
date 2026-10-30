@@ -93,9 +93,10 @@ Singleton {
 
     // ── Incoming calls ──────────────────────────────────────────────────
     // A ringing call (Discord, WhatsApp, any app): category "call" (or an
-    // x-…call one), or words like "Incoming call" / "is calling". It shows as
-    // a banner, never in the island, and stays until it's answered (one of
-    // its buttons), dismissed, or the app takes it back (closes it).
+    // x-…call one), or words like "Incoming call" / "is calling". With the
+    // island on it becomes the island's call card (Calls.ring: Answer,
+    // Decline, a ringtone); otherwise a banner. Either way it stays until
+    // it's answered, declined, or the app takes it back (closes it).
     function isCall(n) {
         if (!n)
             return false;
@@ -105,7 +106,8 @@ Singleton {
         if (/(^|[.\-])call($|[.\-])/.test(cat))
             return true;
         const text = norm(n.summary) + " " + norm(n.body);
-        return /\bincoming (voice |video |audio |group )?call\b|\bis calling\b|\bcalling you\b|\b(voice|video) call from\b|\bwants to (video )?call\b/.test(text) && !/\bmissed\b/.test(text);
+        // (Discord says "<name> started a call.")
+        return /\bincoming (voice |video |audio |group )?call\b|\bis calling\b|\bcalling you\b|\b(voice|video) call from\b|\bwants to (video )?call\b|\bstarted a (voice |video )?call\b/.test(text) && !/\bmissed\b|\bended\b/.test(text);
     }
 
     function toIsland(n) {
@@ -334,10 +336,16 @@ Singleton {
             if (!Focus.allows(n))
                 return;
             if (root.isCall(n)) {
+                if (Calls.ring(n))
+                    return;
                 Sounds.notify(n);
                 root.addPopup(n);
                 return;
             }
+            // The app turned its ringing call into something else (same id:
+            // "Missed call", "Call ended"): the call card goes, as missed
+            if (Calls.ringing && Calls.ringing.n.id === n.id)
+                Calls.missed();
             // Already on show in the island (a live activity, or an alert a
             // moment ago): only to Notification Center and the bell, quietly.
             // One with buttons of its own (Reply, Accept) puts them on that

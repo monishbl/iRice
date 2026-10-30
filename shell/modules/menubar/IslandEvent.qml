@@ -8,7 +8,8 @@ import qs.services
 //         other, and on the right a battery ring or an action ("Open")
 //  card   like iOS: a line of large text, then a glass card holding an
 //         avatar, a name, a time and a message (notifications)
-// Volume and brightness use a slim HUD row.
+// Volume and brightness use a slim HUD row; a ringing call its own card
+// (IslandCall), which only Answer, Decline or Esc put away.
 Item {
     id: root
 
@@ -17,6 +18,8 @@ Item {
     readonly property string kind: event?.kind ?? ""
     readonly property bool isCard: !!event?.card
     readonly property bool isHud: kind === "hud"
+    readonly property bool isRinging: kind === "ringing"
+    property bool unseen: false // nobody can see the island (its animations hold)
     signal acted
     signal dismissRequested // swiped up, the close button, or Esc (IslandView removes it)
     // A wheel or two-finger swipe up over it dismisses it too (off while the
@@ -29,7 +32,7 @@ Item {
     // More buttons than the two beside the title (a notification's own,
     // added to the alert): further rows under it
     readonly property var more: event?.more ?? []
-    implicitHeight: isHud ? 34 : isCard ? cardLayout.implicitHeight : 52 + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
+    implicitHeight: isHud ? 34 : isRinging ? callCard.implicitHeight : isCard ? cardLayout.implicitHeight : 52 + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
 
     // Appear after `delay`, sliding down into place; then the text staggers.
     // A new event (a different uid) replays it; an update in place doesn't.
@@ -91,7 +94,7 @@ Item {
     DragHandler {
         id: swipe
         target: null
-        enabled: !root.isHud
+        enabled: !root.isHud && !root.isRinging // (a call isn't flicked away by accident)
         xAxis.enabled: false
         grabPermissions: PointerHandler.CanTakeOverFromAnything
         onTranslationChanged: if (active) root.pull = Math.min(0, translation.y)
@@ -107,7 +110,7 @@ Item {
         }
     }
     WheelHandler {
-        enabled: !root.isHud && root.wheelDismiss
+        enabled: !root.isHud && !root.isRinging && root.wheelDismiss
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         property real sum: 0
         property real lastAt: 0
@@ -164,7 +167,7 @@ Item {
     // ── Alert ───────────────────────────────────────────────────────────
     Flow {
         id: moreRow
-        visible: !root.isHud && !root.isCard && root.more.length > 0
+        visible: !root.isHud && !root.isCard && !root.isRinging && root.more.length > 0
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 4; rightMargin: 4 }
         layoutDirection: Qt.RightToLeft // under the buttons beside the title
         spacing: 6
@@ -198,14 +201,14 @@ Item {
         }
     }
     Item {
-        visible: !root.isHud && !root.isCard
+        visible: !root.isHud && !root.isCard && !root.isRinging
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 52
 
         IslandGlyph {
             id: glyph
             anchors.verticalCenter: parent.verticalCenter
-            event: !root.isHud && !root.isCard ? root.event : null
+            event: !root.isHud && !root.isCard && !root.isRinging ? root.event : null
         }
         Column {
             anchors { left: glyph.right; leftMargin: root.kind === "audio" ? 26 : 14; right: trailing.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
@@ -327,6 +330,16 @@ Item {
                 }
             }
         }
+    }
+
+    // ── Ringing call ────────────────────────────────────────────────────
+    IslandCall {
+        id: callCard
+        visible: root.isRinging
+        width: parent.width
+        event: root.isRinging ? root.event : null
+        t: root.t
+        still: root.unseen
     }
 
     // ── Card (iOS style) ────────────────────────────────────────────────
@@ -509,7 +522,7 @@ Item {
         height: 20
         radius: 10
         visible: opacity > 0.01
-        opacity: !root.isHud && !root.leaving && (hover.hovered || closeMouse.activeFocus) ? 1 : 0
+        opacity: !root.isHud && !root.isRinging && !root.leaving && (hover.hovered || closeMouse.activeFocus) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
         color: closeMouse.pressed ? "#5A5A5E" : closeMouse.containsMouse ? "#48484A" : "#3A3A3C"
         border.width: 1

@@ -95,10 +95,46 @@ step() {
 
 # ── What's needed ───────────────────────────────────────────────────────
 source "$ROOT/tools/packages.sh"
-NEED_HYPRLAND=0.56   # the Lua config
-NEED_QUICKSHELL=0.2
+# What this iRice is tested with (compat.json), read as text: python and jq
+# may not be installed yet
+compat() { # section key
+    awk -v s="\"$1\"" -v k="\"$2\":" '
+        index($0, s) && /\{/ { on = 1; next }
+        on && /\}/ { on = 0 }
+        on && index($0, k) { sub(/^[^:]*:[[:space:]]*"/, ""); sub(/".*/, ""); print; exit }' "$ROOT/compat.json" 2>/dev/null
+}
+NEED_HYPRLAND=$(compat hyprland min) HYPR_MAX=$(compat hyprland max)
+NEED_HYPRLAND=${NEED_HYPRLAND:-0.56}   # the Lua config
+QS_BUNDLED=$(compat quickshell bundled) NEED_QUICKSHELL=$(compat quickshell min)
+NEED_QUICKSHELL=${NEED_QUICKSHELL:-${QS_BUNDLED:-0.3.2}}
 
 version_ge() { [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" == "$2" ]]; }
+# Whether a Hyprland version is no newer than the one iRice is tested with
+# ("0.56.x": any 0.56 release)
+hypr_tested() {
+    local v="$1" max="$HYPR_MAX" n
+    [[ -z "$v" || -z "$max" ]] && return 0
+    if [[ $max == *.x ]]; then
+        max=${max%.x}
+        n=$(tr -cd . <<<"$max" | wc -c)
+        v=$(cut -d. -f1-$((n + 1)) <<<"$v")
+    fi
+    version_ge "$max" "$v"
+}
+# A package's version in your repositories, from a fresh private copy of the
+# package lists (as checkupdates does: the system's own lists stay as they
+# are); from the system's lists when fakeroot isn't there to make one
+repo_version() {
+    local db v=""
+    db=$(mktemp -d)
+    ln -s /var/lib/pacman/local "$db/local"
+    if command -v fakeroot >/dev/null && fakeroot -- pacman -Sy --dbpath "$db" --logfile /dev/null >/dev/null 2>&1; then
+        v=$(pacman -Si --dbpath "$db" "$1" 2>/dev/null | awk '/^Version/ { print $3; exit }')
+    fi
+    [[ -n "$v" ]] || v=$(pacman -Si "$1" 2>/dev/null | awk '/^Version/ { print $3; exit }')
+    rm -rf "$db"
+    [[ -n "$v" ]] && printf '%s\n' "$v" | sed 's/^[0-9]*://; s/-[^-]*$//'
+}
 # Hyprland's own commands need a runtime directory (missing over some SSH
 # logins and in containers): give them a private one when there isn't one
 hypr() {
@@ -118,7 +154,43 @@ hypr_version() {
     [[ -n "$v" ]] || v=$(hypr --version 2>/dev/null | sed -n 's/^Hyprland \([0-9.]*\).*/\1/p' | head -1)
     printf '%s\n' "$v"
 }
-qs_version() { qs --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1; }
+# iRice's own Quickshell when there is one (launch-shell.sh starts that one), else the system's
+qs_version() {
+    local qs=qs
+    [[ -x "$DATA/irice/quickshell/bin/qs" && -d "$DATA/irice/quickshell/lib/qt6/qml/Quickshell" ]] && qs="$DATA/irice/quickshell/bin/qs"
+    "$qs" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1
+}
+# Another power manager, which power-profiles-daemon would fight with (TLP's
+# package even conflicts with it); tuned-ppd stands in for it
+power_manager() {
+    local p
+    for p in tlp auto-cpufreq tuned-ppd tuned; do
+        if pkg_installed "$p" || systemctl is-active --quiet "$p" 2>/dev/null; then
+            printf '%s\n' "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+# The file your login shell reads when you log in on a console: where the
+# "start Hyprland on tty1" lines go
+login_profile() {
+    local sh
+    sh=$(basename "$(getent passwd "$(id -un)" | cut -d: -f7)")
+    case "$sh" in
+        zsh) printf '%s\n' "${ZDOTDIR:-$HOME}/.zprofile" ;;
+        fish) printf '%s\n' "$CONFIG/fish/conf.d/irice-start-hyprland.fish" ;;
+        bash)
+            # bash reads the first of these that exists
+            local f
+            for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+                [[ -f "$f" ]] && { printf '%s\n' "$f"; return; }
+            done
+            printf '%s\n' "$HOME/.bash_profile"
+            ;;
+        *) printf '%s\n' "$HOME/.profile" ;;
+    esac
+}
 
 # ── Steps ───────────────────────────────────────────────────────────────
 VIRT=none
@@ -150,6 +222,21 @@ preflight() {
         warn "No GPU render device found. Hyprland needs one; in a VM, turn on 3D acceleration"
         warn "(virt-manager: Video Virtio + 3D acceleration and OpenGL display; VirtualBox: VMSVGA + 3D)."
     fi
+    # A Hyprland newer than this iRice is tested with: the update in the next
+    # step installs it. Holding it back alone (--ignore) would be a partial
+    # upgrade, which Arch doesn't support, so it's go on or stop
+    if [[ $DEPS == 1 ]]; then
+        local repo_hv
+        repo_hv=$(repo_version hyprland)
+        if [[ -n "$repo_hv" ]] && ! hypr_tested "$repo_hv"; then
+            warn "Your repositories have Hyprland $repo_hv; this iRice is tested with $HYPR_MAX."
+            note "Installing updates the whole system, Hyprland included (Arch doesn't support holding one"
+            note "package back). Most of iRice works; the Liquid Glass plugin or some settings may not until"
+            note "an iRice update supports $repo_hv (irice update, or Settings → Software Update)."
+            ask "Continue with Hyprland $repo_hv anyway?" y ||
+                die "Stopped: nothing was changed. Run the installer again once iRice supports Hyprland $repo_hv."
+        fi
+    fi
     return 0
 }
 
@@ -160,10 +247,16 @@ install_packages() {
     # Things that would conflict with what iRice uses
     if pkg_installed pulseaudio; then
         warn "PulseAudio is installed; iRice uses PipeWire, which replaces it."
-        ask "Replace PulseAudio with PipeWire?" y && run sudo pacman -Rdd --noconfirm pulseaudio pulseaudio-bluetooth 2>/dev/null
+        if ask "Replace PulseAudio with PipeWire?" y; then
+            # (only the ones installed: pacman stops at a name it doesn't have)
+            local pa=()
+            mapfile -t pa < <(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null)
+            run sudo pacman -Rdd --noconfirm "${pa[@]}" || warn "PulseAudio wasn't removed (see above); installing PipeWire may ask about it."
+        fi
     fi
-    if pkg_installed tlp || pkg_installed tuned-ppd; then
-        note "Keeping your power manager (tlp/tuned); power-profiles-daemon isn't installed."
+    local pm
+    if pm=$(power_manager); then
+        note "Keeping your power manager ($pm); power-profiles-daemon isn't installed."
         want=("${want[@]/power-profiles-daemon/}")
     fi
     # Some repositories don't carry every package; leave those out with a note
@@ -193,10 +286,43 @@ install_packages() {
     run sudo pacman -Syu --needed --noconfirm "${avail[@]}" || return 1
     [[ $DRY == 1 ]] && return 0
     local hv qv
-    hv=$(hypr_version) qv=$(qs_version)
-    version_ge "${hv:-0}" "$NEED_HYPRLAND" || { say "  Hyprland ${hv:-isn't installed}; iRice needs $NEED_HYPRLAND or newer."; return 1; }
-    version_ge "${qv:-0}" "$NEED_QUICKSHELL" || { say "  Quickshell ${qv:-isn't installed}; iRice needs $NEED_QUICKSHELL or newer."; return 1; }
+    hv=$(hypr_version)
+    if ! version_ge "${hv:-0}" "$NEED_HYPRLAND"; then
+        say "  Hyprland ${hv:-isn't installed}; iRice needs $NEED_HYPRLAND or newer."
+        if [[ "$(. /etc/os-release 2>/dev/null && echo "${ID:-}")" == manjaro ]]; then
+            say "  Manjaro's stable branch gets Arch's updates a few weeks later, so its Hyprland can be too old."
+            say "  Wait for it to arrive there, or move to the unstable branch, which follows Arch closely:"
+            say "    sudo pacman-mirrors --api --set-branch unstable && sudo pacman -Syyu"
+        elif [[ -z "$hv" ]]; then
+            say "  Your repositories don't have it (pacman -Si hyprland); iRice needs Arch's, or a repository that carries it."
+        fi
+        return 1
+    fi
+    hypr_tested "$hv" || warn "Hyprland $hv is newer than this iRice is tested with ($HYPR_MAX)."
+    qv=$(qs_version)
+    if ! version_ge "${qv:-0}" "$NEED_QUICKSHELL"; then
+        if [[ -n "$qv" ]]; then
+            say "  Your Quickshell is $qv; iRice needs $NEED_QUICKSHELL or newer."
+        else
+            say "  Quickshell isn't in your repositories."
+        fi
+        say "  Building iRice its own Quickshell instead (a few minutes; your system's stays as it is)…"
+        build_quickshell || return 1
+        qv=$(qs_version)
+    fi
     note "Hyprland $hv, Quickshell $qv"
+}
+
+# iRice's own Quickshell (tools/build-quickshell.sh: a release, in
+# ~/.local/share/irice/quickshell), with what it needs to build
+build_quickshell() {
+    local need=()
+    mapfile -t need < <(pacman -T -- "${QUICKSHELL_BUILD[@]}" 2>/dev/null)
+    if (( ${#need[@]} > 0 )); then
+        run sudo pacman -S --needed --noconfirm -- "${need[@]}" || return 1
+    fi
+    run "$ROOT/tools/build-quickshell.sh" "v${QS_BUNDLED:-$NEED_QUICKSHELL}" || return 1
+    version_ge "$(qs_version)" "$NEED_QUICKSHELL" || { say "  The build finished, but Quickshell still isn't $NEED_QUICKSHELL or newer."; return 1; }
 }
 
 # yay, the AUR helper: always set up (iRice's extras come from the AUR, and

@@ -20,7 +20,7 @@ RATE = 48000
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shell", "assets", "sounds")
 OUT = ROOT  # the pack being written (set per pack)
 EVENTS = ["startup", "charging", "display-connect", "display-disconnect", "lock", "unlock", "notification", "battery",
-          "volume", "usb-connect", "usb-disconnect", "received", "record-start", "record-stop", "error", "today"]
+          "volume", "usb-connect", "usb-disconnect", "received", "record-start", "record-stop", "error", "today", "ringtone"]
 
 
 def hz(midi):
@@ -214,6 +214,7 @@ def glass_pack():
     recording("record-stop", [91, 86])
     error()
     today_glass()
+    ringtone_glass()
 
 
 # ── Instrument packs ────────────────────────────────────────────────────
@@ -356,6 +357,28 @@ def build(pack):
     phrase(pack, "record-start", 0.35, [(0, 84, 0.6, 0, 0.6)], -11)
     phrase(pack, "record-stop", 0.45, [(0, 84, 0.6, 0, 0.6), (0.09, 79, 0.6, 0, 0.8)], -11)
     today(pack)
+    ringtone(pack)
+
+
+# An incoming call (Calls.qml plays it every 2.6 s while the island rings):
+# two quick rising rolls, like a phone's ring but softer, about 1.3 s long
+RING_STEPS = tuple((0.6 * r + 0.1 * k, m, 0.42 + 0.06 * k, -0.2 + 0.15 * k, 0.7 + 0.2 * k)
+                   for r in range(2) for k, m in enumerate((76, 79, 84, 79)))
+
+
+def ringtone(pack):
+    buf = buffer(1.5 * min(pack.room, 1.3))
+    for t, m, amp, pan, ring in RING_STEPS:
+        pack.note(buf, t, m, amp, pan, ring)
+    finish(buf, "ringtone", -9 + pack.gain)
+
+
+def ringtone_glass():
+    buf = buffer(1.5)
+    glass = ((1, 1), (2.76, 0.12), (5.4, 0.03))
+    for t, m, amp, pan, ring in RING_STEPS:
+        tone(buf, t, hz(m + 12), amp * 0.8, attack=0.004, tau=0.1 + 0.05 * ring, pan=pan, partials=glass)
+    finish(buf, "ringtone", -9)
 
 
 # The morning screen (Today) rises with its entrance: the first note as the
@@ -388,6 +411,7 @@ def today_glass():
 if __name__ == "__main__":
     import sys
     only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
+    only_ring = sys.argv[1:] == ["ringtone"]  # tools/make-sounds.py ringtone: just ringtone.ogg
     for pack in (Soft(), Marimba(), Keys(), Taps(), Minimal(), None):
         random.seed(7)  # the same files every run
         OUT = os.path.join(ROOT, pack.name if pack else "glass")
@@ -395,6 +419,8 @@ if __name__ == "__main__":
         print("──", os.path.basename(OUT))
         if only_today:
             today(pack) if pack else today_glass()
+        elif only_ring:
+            ringtone(pack) if pack else ringtone_glass()
         elif pack:
             build(pack)
         else:

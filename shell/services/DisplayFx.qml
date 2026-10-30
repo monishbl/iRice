@@ -21,10 +21,10 @@ import qs.common
 // is known, a fraction of a second later. The screens already there never
 // darken: they only get light at the shared edge.
 //
-// Windows (WorkspaceHomes): a display that left sends the windows it showed
-// onto its neighbour, entering from its side while the effect plays; one that
-// arrives gets its spaces and windows back as its effect hands over to the
-// desktop, so they glide in over the real wallpaper.
+// Spaces (Spaces.qml): a display that left keeps its spaces (Hyprland moves
+// them onto another display as separate spaces); one that arrives gets them
+// back as its effect hands over to the desktop, so they come in over the real
+// wallpaper.
 Singleton {
     id: root
 
@@ -52,7 +52,7 @@ Singleton {
     // Reduced motion: no travel (the effect fades, windows just come over)
     readonly property bool still: Config.ready && Config.options.appearance.reduceMotion === true
     // When a display last came or went: focus moves then are the hotplug's,
-    // not yours (SpaceSwitch doesn't dim the other displays for them)
+    // not yours (SpaceSwitch shows no switch cue for them)
     property real hotplugAt: 0
     function settling() {
         return hotplugAt > 0 && Date.now() - hotplugAt < 4000;
@@ -118,23 +118,7 @@ Singleton {
         if (!waiting.includes(screen))
             return;
         waiting = waiting.filter(n => n !== screen);
-        refreshClients.screen = screen;
-        refreshClients.running = true;
-    }
-    // (the windows may have changed while the effect played)
-    Process {
-        id: refreshClients
-        property string screen
-        command: ["hyprctl", "-j", "clients"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let list = root.clients;
-                try {
-                    list = JSON.parse(text);
-                } catch (e) {}
-                WorkspaceHomes.arrive(refreshClients.screen, list);
-            }
-        }
+        Spaces.arrive(screen);
     }
     // An effect that never got to play doesn't keep the windows away
     Timer {
@@ -193,29 +177,21 @@ Singleton {
                 read.running = true;
         }
     }
-    // Displays, windows and Hyprland's window-move animation, in one call
+    // Where the displays are
     Process {
         id: read
-        command: ["sh", "-c", "hyprctl -j monitors; echo; echo '\x1e'; hyprctl -j clients; echo; echo '\x1e'; hyprctl -j animations"]
+        command: ["hyprctl", "-j", "monitors"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const parts = text.split("\x1e");
-                const parse = t => {
-                    try {
-                        return JSON.parse(t);
-                    } catch (e) {
-                        return null;
-                    }
-                };
-                const list = parse(parts[0] ?? "") ?? [];
+                let list = [];
+                try {
+                    list = JSON.parse(text);
+                } catch (e) {}
                 const now = {};
                 for (const m of list)
                     if (!root.ignored(m.name) && !m.disabled)
                         now[m.name] = root.rectOf(m);
                 root.monitors = list;
-                root.clients = parse(parts[1] ?? "") ?? [];
-                const anims = parse(parts[2] ?? "");
-                root.moveAnim = root.windowsMove(anims);
                 root.happen(now);
                 if (root.readAgain) {
                     root.readAgain = false;
@@ -225,22 +201,6 @@ Singleton {
         }
     }
     property var monitors: []
-    property var clients: []
-    property var moveAnim: null
-    // windowsMove as it's set (inherited from windows, then global)
-    function windowsMove(anims) {
-        const all = Array.isArray(anims) ? (Array.isArray(anims[0]) ? anims[0] : anims) : [];
-        const get = n => all.find(a => a.name === n);
-        const g = get("global");
-        if (Config.ready && g && !g.enabled)
-            return null;
-        for (const n of ["windowsMove", "windows", "global"]) {
-            const a = get(n);
-            if (a && (a.overridden || n === "global"))
-                return { enabled: a.enabled, speed: a.speed, bezier: a.bezier, style: a.style };
-        }
-        return null;
-    }
 
     function happen(now) {
         const before = geometry;
@@ -283,13 +243,6 @@ Singleton {
                 list.push({ screen: x.name, role: 1, edge: x.rel.edge, focus: x.rel.focus, reverse: 1 });
             if (near[0] && side === "")
                 side = sideOf(near[0].rel.edge);
-            // its windows come onto the display beside it (else the focused one)
-            const target = near[0] ? near[0].name : (monitors.find(m => m.focused && now[m.name])?.name ?? Object.keys(now)[0]);
-            const tm = monitors.find(m => m.name === target);
-            if (tm) {
-                const rel = near[0] ? near[0].rel.edge : 2;
-                WorkspaceHomes.gather(n, Object.assign({}, tm, { rect: now[target], all: monitors }), rel, clients, moveAnim, still);
-            }
         }
         // (reduced motion: the screens beside show nothing)
         if (style !== "off")
@@ -302,7 +255,7 @@ Singleton {
             if (style !== "off" && list.some(r => r.screen === n && r.role === 0) && Quickshell.screens.some(s => s.name === n))
                 waiting = waiting.concat([n]);
             else
-                WorkspaceHomes.arrive(n, clients);
+                Spaces.arrive(n);
         }
         if (waiting.length > 0)
             handoverLimit.restart();

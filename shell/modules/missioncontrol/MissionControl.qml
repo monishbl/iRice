@@ -30,7 +30,12 @@ Variants {
             readonly property bool shown: Panels.isOpen("missionControl", screen)
             readonly property var monitor: Hyprland.monitorFor(screen)
             readonly property int activeWs: monitor?.activeWorkspace?.id ?? 1
-            readonly property var spaces: Hyprland.workspaces.values.filter(w => w.id > 0 && w.monitor === monitor).sort((a, b) => a.id - b.id)
+            // This display's spaces that exist (its own, numbered from 1 here,
+            // then those of an unplugged display staying here; Spaces)
+            readonly property var spaces: {
+                const order = Spaces.idsFor(screen?.name ?? "", false);
+                return Hyprland.workspaces.values.filter(w => order.includes(w.id)).sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+            }
             // App Exposé: the app this opened for (kept while it animates out)
             property string exposeFor: ""
             readonly property var exposeEntry: exposeFor ? Apps.entryFor(exposeFor) : null
@@ -256,7 +261,7 @@ Variants {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Desktop " + space.modelData.id
+                            text: Spaces.title(space.modelData.id, win.screen?.name ?? "", "Desktop")
                             color: space.current ? "white" : Qt.rgba(1, 1, 1, 0.7)
                             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: space.current ? Font.DemiBold : Font.Medium }
                         }

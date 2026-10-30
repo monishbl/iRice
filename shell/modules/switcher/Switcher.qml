@@ -338,7 +338,7 @@ Scope {
                         readonly property bool current: index === root.selected
                         readonly property bool minimized: modelData.workspace?.name === "special:minimized"
                         readonly property int wsId: modelData.workspace?.id ?? 0
-                        readonly property bool elsewhere: wsId > 0 && wsId !== (Hyprland.monitorFor(win.screen)?.activeWorkspace?.id ?? 0)
+                        readonly property bool elsewhere: wsId > 0 && wsId !== (Spaces.active[win.screen?.name ?? ""] ?? 0)
                         width: win.cellW
                         height: win.cellH
                         scale: mouse.pressed ? 0.97 : 1
@@ -413,7 +413,7 @@ Scope {
                                 id: place
                                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                                 visible: tile.minimized || tile.elsewhere
-                                text: tile.minimized ? "Minimized" : "Space " + tile.wsId
+                                text: tile.minimized ? "Minimized" : Spaces.title(tile.wsId, win.screen?.name ?? "")
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                             }

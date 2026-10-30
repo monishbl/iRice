@@ -26,32 +26,4 @@ Singleton {
     function on(wsId) {
         return byWorkspace[wsId] ?? [];
     }
-
-    // A monitor's spaces: those living on it (and its active one), and on the
-    // first screen also 1..workspaceCount unless another monitor has them
-    // (ids are global in Hyprland)
-    function spaceIds(monitor, primary) {
-        const mine = new Set(), elsewhere = new Set();
-        for (const w of Hyprland.workspaces.values) {
-            if (w.id > 0)
-                (w.monitor === monitor ? mine : elsewhere).add(w.id);
-        }
-        const active = monitor?.activeWorkspace?.id ?? 0;
-        if (active > 0)
-            mine.add(active);
-        if (primary)
-            for (let i = 1; i <= Config.options.menubar.workspaceCount; i++)
-                if (!elsewhere.has(i))
-                    mine.add(i);
-        // No gaps: an empty space between two in use (5 and 7 with windows,
-        // 6 empty) stays reachable
-        const ids = [...mine];
-        if (ids.length) {
-            const from = primary ? 1 : Math.min(...ids), to = Math.max(...ids);
-            for (let i = from; i < to; i++)
-                if (!elsewhere.has(i))
-                    mine.add(i);
-        }
-        return [...mine].sort((a, b) => a - b);
-    }
 }

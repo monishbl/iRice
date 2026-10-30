@@ -11,6 +11,11 @@ and options. Actions:
   {"exec": cmd}     a command
   {"dsp": lua}      a Hyprland dispatcher, as Lua (e.g. hl.dsp.window.close())
   {"zoom": step}    screen zoom in or out
+  {"space": op, "n": N} / {"space": op, "step": ±1}
+                    space N (or the next/previous one) on the display you're
+                    on; op is focus, send (the window, staying) or move (the
+                    window, following). Each display numbers its own spaces
+                    (shell/services/SpaceMap.js; keybinds.lua maps them)
 Run again after editing: tools/gen-keymap.py
 """
 import json
@@ -33,6 +38,10 @@ def shell(n):
 
 def dsp(l):
     return {"dsp": l}
+
+
+def space(op, n=None, step=None):
+    return {"space": op, "n": n} if n is not None else {"space": op, "step": step}
 
 
 # ── Shell ──────────────────────────────────────────────────────────────────
@@ -133,15 +142,15 @@ b("snap-restore", "$MOD + CTRL + BackSpace", "Window", "Back to the previous siz
 # ── Workspaces ─────────────────────────────────────────────────────────────
 for i in range(1, 11):
     k = str(i % 10)
-    b("ws-%d" % i, "$MOD + " + k, "Workspace", "Go to workspace %d" % i, dsp("hl.dsp.focus({ workspace = %d })" % i))
-    b("ws-send-%d" % i, "$MOD + ALT + " + k, "Workspace", "Send window to workspace %d" % i, dsp("hl.dsp.window.move({ workspace = %d, follow = false })" % i))
-    b("ws-move-%d" % i, "$MOD + SHIFT + " + k, "Workspace", "Move window to workspace %d (and follow)" % i, dsp("hl.dsp.window.move({ workspace = %d })" % i))
-b("ws-prev", "CTRL + $MOD + Left", "Workspace", "Previous workspace", dsp('hl.dsp.focus({ workspace = "r-1" })'))
-b("ws-next", "CTRL + $MOD + Right", "Workspace", "Next workspace", dsp('hl.dsp.focus({ workspace = "r+1" })'))
-b("ws-send-prev", "$MOD + SHIFT + Page_Up", "Workspace", "Send window to the previous workspace", dsp('hl.dsp.window.move({ workspace = "r-1" })'))
-b("ws-send-next", "$MOD + SHIFT + Page_Down", "Workspace", "Send window to the next workspace", dsp('hl.dsp.window.move({ workspace = "r+1" })'))
-b("ws-scroll-down", "$MOD + mouse_down", "Workspace", "Next workspace (scroll)", dsp('hl.dsp.focus({ workspace = "e+1" })'))
-b("ws-scroll-up", "$MOD + mouse_up", "Workspace", "Previous workspace (scroll)", dsp('hl.dsp.focus({ workspace = "e-1" })'))
+    b("ws-%d" % i, "$MOD + " + k, "Workspace", "Go to space %d" % i, space("focus", n=i))
+    b("ws-send-%d" % i, "$MOD + ALT + " + k, "Workspace", "Send window to space %d" % i, space("send", n=i))
+    b("ws-move-%d" % i, "$MOD + SHIFT + " + k, "Workspace", "Move window to space %d (and follow)" % i, space("move", n=i))
+b("ws-prev", "CTRL + $MOD + Left", "Workspace", "Previous space", space("focus", step=-1))
+b("ws-next", "CTRL + $MOD + Right", "Workspace", "Next space", space("focus", step=1))
+b("ws-send-prev", "$MOD + SHIFT + Page_Up", "Workspace", "Move window to the previous space", space("move", step=-1))
+b("ws-send-next", "$MOD + SHIFT + Page_Down", "Workspace", "Move window to the next space", space("move", step=1))
+b("ws-scroll-down", "$MOD + mouse_down", "Workspace", "Next space (scroll)", dsp('hl.dsp.focus({ workspace = "m+1" })'))
+b("ws-scroll-up", "$MOD + mouse_up", "Workspace", "Previous space (scroll)", dsp('hl.dsp.focus({ workspace = "m-1" })'))
 b("scratchpad", "$MOD + S", "Workspace", "Show or hide the scratchpad", dsp('hl.dsp.workspace.toggle_special("special")'))
 b("scratchpad-ctrl", "CTRL + $MOD + S", "Workspace", "Show or hide the scratchpad (alternative)", dsp('hl.dsp.workspace.toggle_special("special")'))
 b("scratchpad-mouse", "$MOD + mouse:275", "Workspace", "Show or hide the scratchpad (mouse)", dsp('hl.dsp.workspace.toggle_special("special")'))

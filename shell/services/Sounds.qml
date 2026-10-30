@@ -44,12 +44,13 @@ Singleton {
             recordingOff: own + "record-stop.ogg",
             error: own + "error.ogg",
             today: own + "today.ogg",
+            ringtone: own + "ringtone.ogg", // an incoming call, repeated while it rings (Calls)
             screenshot: dir + "camera-shutter.oga",
             trash: dir + "trash-empty.oga"
         })
     // The setting a sound follows (and whose custom file replaces it), when
     // it isn't its own name
-    readonly property var setting: ({ displaysOff: "displays", displaysLeft: "displays", displaysRight: "displays", displaysOffLeft: "displays", displaysOffRight: "displays", unlock: "lock", usbOff: "usb", recordingOff: "recording" })
+    readonly property var setting: ({ displaysOff: "displays", displaysLeft: "displays", displaysRight: "displays", displaysOffLeft: "displays", displaysOffRight: "displays", unlock: "lock", usbOff: "usb", recordingOff: "recording", ringtone: "notifications" })
     // Sounds that may only play this often (ms): the volume keys repeat
     readonly property var spacing: ({ volumeKeys: 70, notifications: 600, usb: 400, usbOff: 400 })
     property var lastPlayed: ({})
@@ -73,15 +74,28 @@ Singleton {
         playFile(file(name));
     }
     function playFile(f) {
+        const cmd = command(f);
+        if (cmd.length > 0)
+            Quickshell.execDetached(cmd);
+    }
+    // The player command for a file ([] when there's no player), for a
+    // sound that has to stop part-way (the ringtone, in a Process)
+    function command(f) {
         if (!f)
-            return;
+            return [];
         const v = Math.max(0, Math.min(1, cfg.volume));
         if (Tools.has("pw-play"))
-            Quickshell.execDetached(["pw-play", "--volume", v.toFixed(2), f]);
-        else if (Tools.has("paplay"))
-            Quickshell.execDetached(["paplay", "--volume", String(Math.round(v * 65536)), f]);
-        else if (Tools.has("canberra-gtk-play"))
-            Quickshell.execDetached(["canberra-gtk-play", "-f", f]);
+            return ["pw-play", "--volume", v.toFixed(2), f];
+        if (Tools.has("paplay"))
+            return ["paplay", "--volume", String(Math.round(v * 65536)), f];
+        if (Tools.has("canberra-gtk-play"))
+            return ["canberra-gtk-play", "-f", f];
+        return [];
+    }
+    // Is this sound switched on (Settings → Notifications → Sound effects)?
+    function allowed(name) {
+        const key = setting[name] ?? name;
+        return cfg.enabled && cfg[key] !== false;
     }
 
     // A banner that's about to show (Notifications calls this once Focus has
