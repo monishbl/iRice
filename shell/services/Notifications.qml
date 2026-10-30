@@ -91,6 +91,23 @@ Singleton {
         }
     }
 
+    // ── Incoming calls ──────────────────────────────────────────────────
+    // A ringing call (Discord, WhatsApp, any app): category "call" (or an
+    // x-…call one), or words like "Incoming call" / "is calling". It shows as
+    // a banner, never in the island, and stays until it's answered (one of
+    // its buttons), dismissed, or the app takes it back (closes it).
+    function isCall(n) {
+        if (!n)
+            return false;
+        const cat = String(n.hints?.category ?? "").toLowerCase();
+        if (/missed|ended|declined/.test(cat))
+            return false;
+        if (/(^|[.\-])call($|[.\-])/.test(cat))
+            return true;
+        const text = norm(n.summary) + " " + norm(n.body);
+        return /\bincoming (voice |video |audio |group )?call\b|\bis calling\b|\bcalling you\b|\b(voice|video) call from\b|\bwants to (video )?call\b/.test(text) && !/\bmissed\b/.test(text);
+    }
+
     function toIsland(n) {
         const words = (n.summary || n.appName || "").split(/\s+/).filter(w => w.length > 0 && w[0].toUpperCase() !== w[0].toLowerCase() || /^[0-9]/.test(w));
         const def = (n.actions ?? []).find(a => a.identifier === "default");
@@ -316,6 +333,11 @@ Singleton {
             root.received = r;
             if (!Focus.allows(n))
                 return;
+            if (root.isCall(n)) {
+                Sounds.notify(n);
+                root.addPopup(n);
+                return;
+            }
             // Already on show in the island (a live activity, or an alert a
             // moment ago): only to Notification Center and the bell, quietly.
             // One with buttons of its own (Reply, Accept) puts them on that

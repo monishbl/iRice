@@ -164,10 +164,12 @@ Scope {
                             function onClosed() { Notifications.dismissPopup(banner.notification); }
                         }
 
+                        // A ringing call stays until answered, dismissed or taken back by its app
+                        readonly property bool ringing: Notifications.isCall(notification)
                         Timer {
                             interval: (banner.notification?.expireTimeout ?? 0) > 0 ? banner.notification.expireTimeout : 5000
                             // (held while a reply is being written, or just sent)
-                            running: banner.notification !== null && banner.notification.urgency !== NotificationUrgency.Critical && !win.hovered && !win.expanded && !card.replying && !card.sent
+                            running: banner.notification !== null && !banner.ringing && banner.notification.urgency !== NotificationUrgency.Critical && !win.hovered && !win.expanded && !card.replying && !card.sent
                             onTriggered: banner.leave()
                         }
 
@@ -190,6 +192,8 @@ Scope {
                             // Back cards show only their edge; clicking the stack expands it
                             enabled: banner.front || win.expanded
                             onCloseRequested: banner.leave()
+                            // Answered or declined: the call's banner goes (the app may keep it)
+                            onActed: if (banner.ringing) banner.leave()
                             // Counted, so the window takes the keyboard while any reply is open
                             property bool counted: false
                             onReplyingChanged: {

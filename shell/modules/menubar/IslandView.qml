@@ -64,6 +64,48 @@ Item {
         e.accepted = true;
     }
     readonly property bool showingEvent: Island.event !== null
+    // The pointer resting on the alerts holds their time (Island.hold)
+    readonly property bool holding: hovering && showingEvent
+    onHoldingChanged: {
+        Island.hold(screen?.name ?? "", holding);
+        if (!holding)
+            clicked = false;
+    }
+    Component.onDestruction: Island.hold(screen?.name ?? "", false)
+    // A click on an alert gives the island the keyboard (Esc dismisses the
+    // newest) until the pointer leaves; only resting the pointer there never
+    // takes it (with focus following the mouse, typing would go missing)
+    property bool clicked: false
+    TapHandler {
+        enabled: root.holding
+        gesturePolicy: TapHandler.DragThreshold
+        grabPermissions: PointerHandler.ApprovesTakeOverByAnything
+        onPressedChanged: if (pressed) root.clicked = true
+    }
+    readonly property bool wantsKeys: holding && clicked
+    focus: true
+    Keys.onEscapePressed: event => {
+        if (!showingEvent) {
+            event.accepted = false;
+            return;
+        }
+        dismissNewest();
+    }
+    function dismissNewest() {
+        const it = alertRepeater.itemAt(alertRepeater.count - 1);
+        if (it)
+            it.leave();
+        else
+            Island.remove(Island.newestUid);
+    }
+    // Recent: opened over the live activities (closes with the island)
+    property bool recentOpen: false
+    readonly property bool recentOver: recentOpen && Island.activities.length > 0 && Island.history.length > 0
+    property real recentHoldH: 0
+    function toggleRecent() {
+        recentHoldH = recentOpen ? 0 : h;
+        recentOpen = !recentOpen;
+    }
     // On the black island when open; collapsed it's just the dots on the bar
     readonly property color ink: expanded || Island.showHot ? "#F5F5F7" : fg
 
@@ -88,7 +130,9 @@ Item {
         : layout === "beside" ? 2 * pad + dotsW + 21 + area
         : pad + leadW + 12 + trailW + pad
     readonly property real targetW: showingEvent ? (Island.hasCard ? 440 : 392) : expanded ? 392 : compact ? compactW : dotsW + 14
-    readonly property real targetH: expanded ? body.y + body.implicitHeight + (showingEvent ? 16 : 14) : 26
+    // (Recent opened over the activities keeps the island as tall as it was,
+    // so it doesn't shrink out from under the pointer and close)
+    readonly property real targetH: expanded ? Math.max(body.y + body.implicitHeight + (showingEvent ? 16 : 14), recentOver ? recentHoldH : 0) : 26
     property real w: targetW
     property real h: targetH
     // Corners follow the height as it springs (no spring of their own: lagging
@@ -103,7 +147,10 @@ Item {
     // it reaches the dots (a fade of its own stalled and then popped: the
     // compositor's glass only hears about changes as the shape moves)
     property real closeFrom: targetH
-    onExpandedChanged: if (!expanded) closeFrom = Math.max(h, 27)
+    onExpandedChanged: if (!expanded) {
+        closeFrom = Math.max(h, 27);
+        recentOpen = false;
+    }
     readonly property real openness: expanded ? 1 : Math.max(0, Math.min(1, (h - 26) / Math.max(1, closeFrom - 26)))
     // The content keeps the open width while it fades out (snapping to the
     // closed width moved it sideways and cut it off)
@@ -191,7 +238,7 @@ Item {
                 id: islandArt
                 anchors.fill: parent
                 readonly property bool wanted: Config.options.island.playerArt === "island" && Config.options.island.playerLayout !== "side"
-                    && root.expanded && !Island.event && (Island.player?.trackArtUrl ?? "") !== ""
+                    && root.expanded && !Island.event && !root.recentOver && (Island.player?.trackArtUrl ?? "") !== ""
                     && (root.oneAtATime ? root.shownAct?.kind === "music" : Island.activities.some(a => a.kind === "music"))
                 // Loaded once at a fixed size and kept while the music plays:
                 // a size that follows the island reloaded it on every open
@@ -258,19 +305,24 @@ Item {
                 }
             }
         }
-        Rectangle {
+        // The island's own shape (continuous corners, exactly the glass's
+        // squircle): the black, the album art and the hot glow are cut to it,
+        // so no second, rounder corner shows inside the glass's
+        Squircle {
             id: inkMask
             anchors.fill: parent
             radius: root.r
+            color: "black"
             visible: false
             layer.enabled: true
         }
-        Rectangle {
+        // A faint rim on the same curve (over the art too: one outline)
+        Squircle {
             anchors.fill: parent
             radius: root.r
             color: "transparent"
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.14)
+            borderWidth: 1
+            borderColor: Qt.rgba(1, 1, 1, 0.14)
             opacity: shape.fade
             visible: opacity > 0.01
         }
@@ -403,7 +455,9 @@ Item {
                                 width: alertCol.width
                                 event: Island.byUid[uid] ?? null
                                 delay: event?.delay ?? 0
+                                wheelDismiss: !alertScroll.overflows
                                 onActed: Island.dismiss()
+                                onDismissRequested: Island.remove(uid)
                                 // A hairline between stacked alerts
                                 Rectangle {
                                     visible: parent.index > 0
@@ -444,7 +498,7 @@ Item {
                 // Otherwise: what's live (one focused card, or all stacked),
                 // then a small status row
                 Item {
-                    visible: !Island.event && root.oneAtATime && Island.activities.length > 0
+                    visible: !Island.event && !root.recentOver && root.oneAtATime && Island.activities.length > 0
                     width: body.width
                     height: visible ? focusCard.implicitHeight + (pageDots.visible ? 14 : 0) : 0
                     IslandFocusCard {
@@ -487,13 +541,13 @@ Item {
                 // controls over it, open the app, volume), the rest are rows
                 IslandFocusCard {
                     readonly property var musicAct: Island.activities.find(a => a.kind === "music") ?? null
-                    visible: !Island.event && !root.oneAtATime && musicAct !== null
+                    visible: !Island.event && !root.recentOver && !root.oneAtATime && musicAct !== null
                     width: body.width
                     height: visible ? implicitHeight : 0
                     activity: musicAct ?? { kind: "music" }
                 }
                 Repeater {
-                    model: Island.event || root.oneAtATime ? [] : Island.activities.filter(a => a.kind !== "music")
+                    model: Island.event || root.recentOver || root.oneAtATime ? [] : Island.activities.filter(a => a.kind !== "music")
                     IslandActivity {
                         required property var modelData
                         required property int index
@@ -508,6 +562,19 @@ Item {
                     visible: !Island.event
                     delay: Island.activities.length * 45
                     shown: root.expanded
+                }
+                // The last few alerts. With live activities it's a header that
+                // opens the list in their place (there isn't room for both)
+                IslandRecent {
+                    id: recent
+                    width: parent.width
+                    visible: !Island.event && Island.history.length > 0
+                    shown: root.expanded
+                    collapsible: Island.activities.length > 0
+                    open: root.recentOpen
+                    onToggleRequested: root.toggleRecent()
+                    // What's left of the island's window below the lines above
+                    maxHeight: Math.min(Math.max(4 * rowH, root.recentOver ? root.recentHoldH - body.y - y - 14 - 28 : 0) + 28, root.height - shape.y - body.y - y - 16)
                 }
             }
         }

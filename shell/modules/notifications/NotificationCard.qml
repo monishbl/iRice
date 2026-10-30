@@ -16,6 +16,7 @@ Item {
     required property var notification
     property bool hovered: hover.hovered
     signal closeRequested
+    signal acted // one of its buttons was used
 
     // The composer: open, sent (briefly), or what went wrong
     property bool replying: false
@@ -184,7 +185,10 @@ Item {
                         id: actionMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: parent.modelData.invoke()
+                        onClicked: {
+                            parent.modelData.invoke();
+                            root.acted();
+                        }
                     }
                 }
             }

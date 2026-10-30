@@ -166,7 +166,7 @@ Singleton {
                 Island.post({
                     kind: "usb", icon: "hard-drive", title: label, subtitle: "Drive connected", color: Theme.accents.orange, action: "Open",
                     onAction: () => Launch.run(["sh", "-c", "m=$(findmnt -nro TARGET \"$1\" | head -1); [ -z \"$m\" ] && m=$(udisksctl mount -b \"$1\" 2>/dev/null | sed -n 's/.* at //p'); ${2:-xdg-open} \"${m:-$HOME}\"", "sh", dev, Files.manager])
-                }, 6000);
+                }, Island.longMs); // up for 10 minutes (or until dismissed)
             else if (p.ACTION === "remove")
                 Island.post({ kind: "usb", icon: "hard-drive", title: label, subtitle: "Drive removed", color: Qt.rgba(1, 1, 1, 0.55) }, 2500);
         }

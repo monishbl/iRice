@@ -7,6 +7,12 @@
 - Until that update, everything asks for your password as before.
 - The "Running hot" warning no longer goes off for a few seconds of high load: it waits until the CPU has averaged above your limit for about 30 seconds, and it ends once it has averaged 5 °C below it for a minute (it used to need 3 minutes 10 °C below, so it could stay forever).
 - Plugging in or unplugging a display is smooth: the screen you're using no longer goes dark, and a new display starts its connect animation sooner. Unplug one and its windows glide onto the screen beside it, from that side; plug it back in and they glide back once its animation finishes, to the space it showed before.
+- Island alerts can be put away: swipe one up (drag it, or scroll up over it), use the small × that appears over it, or press Esc while the pointer is on it. Resting the pointer on alerts keeps them up; when it leaves they carry on, with a second to spare.
+- Low battery and **Running hot** stay up until you plug in or the CPU cools down (or you dismiss them). A finished download and a newly connected drive stay up for 10 minutes. Everything else goes away as before.
+- Island alerts are kept: Notification Center has an **iRice** group with every alert that wasn't already a notification (devices with their battery, drives, displays, sound output, charging, low battery, running hot, downloads, Wi-Fi and VPN…). Remove one with its ×, the group with its own ×, or everything with **Clear all**. The same alert again within a minute updates its line instead of adding another. They're kept when the shell reloads, like notifications.
+- The open island has a **Recent** list of the last few alerts. Swipe a line sideways (or use its ×) to remove it, or **Clear** them all. While something is live (music, a timer), **Recent** opens the list in its place.
+- The album art in the open island now follows the island's own rounded corners exactly, with no second, rounder corner or inner outline showing at the edges.
+- Incoming calls (Discord, WhatsApp, any app) show as a banner that stays until you answer, decline or dismiss it, or the app stops ringing. They never go to the island.
 
 ## Sharing and spaces fixes · 2026-10-30
 

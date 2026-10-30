@@ -156,7 +156,7 @@ Singleton {
             for (let i = 0; i < alerts.count; i++) {
                 const u = alerts.get(i).uid;
                 if (byUid[u]?.kind === e.kind) {
-                    const ev = Object.assign({ uid: u, delay: 0, expires: now + (ms ?? 3000) }, e);
+                    const ev = Object.assign({ uid: u, delay: 0, at: now, expires: now + (ms ?? 3000) }, e);
                     byUid = Object.assign({}, byUid, { [u]: ev });
                     note(e, u);
                     return;
@@ -170,7 +170,7 @@ Singleton {
                 const u = alerts.get(i).uid;
                 const old = byUid[u];
                 if (old && old.kind === e.kind && old.title === e.title && old.expires > now) {
-                    const ev = Object.assign({ uid: u, delay: 0, expires: Math.max(old.expires, now + (ms ?? 3000)) }, e);
+                    const ev = Object.assign({ uid: u, delay: 0, at: now, expires: Math.max(old.expires, now + (ms ?? 3000)), hid: record(e) }, e);
                     byUid = Object.assign({}, byUid, { [u]: ev });
                     note(e, u);
                     return;
@@ -181,7 +181,7 @@ Singleton {
             burstAt = now;
         const uid = nextUid++;
         // Later alerts in a burst stay up a little longer, so they're read
-        const ev = Object.assign({ uid: uid, delay: burstIndex * 110, expires: now + (ms ?? 3000) + burstIndex * 600 }, e);
+        const ev = Object.assign({ uid: uid, delay: burstIndex * 110, at: now, expires: now + (ms ?? 3000) + burstIndex * 600, hid: record(e) }, e);
         byUid = Object.assign({}, byUid, { [uid]: ev });
         alerts.append({ uid: uid });
         while (alerts.count > maxAlerts)
@@ -194,11 +194,21 @@ Singleton {
         if (said.kind !== "notification")
             Qt.callLater(() => Notifications.islandSaid(said));
     }
-    // Change a live alert in place (e.g. the temperature as it moves)
+    // Change a live alert in place (e.g. the temperature as it moves); its
+    // line in the history follows
     function update(uid, patch) {
         if (!byUid[uid])
             return;
         byUid = Object.assign({}, byUid, { [uid]: Object.assign({}, byUid[uid], patch) });
+        const hid = byUid[uid].hid;
+        if (hid) {
+            const shown = {};
+            for (const k of ["title", "subtitle", "icon", "battery", "value"])
+                if (patch[k] !== undefined)
+                    shown[k] = patch[k];
+            if (Object.keys(shown).length > 0)
+                setHistory(history.map(h => h.hid === hid ? Object.assign({}, h, shown) : h));
+        }
     }
     function remove(uid) {
         for (let i = 0; i < alerts.count; i++)
@@ -221,12 +231,109 @@ Singleton {
         byUid = {};
         count = 0;
     }
+    // ── History ─────────────────────────────────────────────────────────
+    // Every alert that isn't a notification (those are in Notification Center
+    // already), newest first, for Notification Center's iRice group and the
+    // open island's Recent list. The same thing again within a minute (a
+    // device that reconnects) updates its line. Kept across shell reloads
+    // like the notifications are; buttons only while the shell runs.
+    readonly property var unrecorded: ["notification", "hud", "music"]
+    readonly property int historyMax: 50
+    property var history: [] // { hid, kind, icon, title, subtitle, color, battery?, at, times }
+    property int nextHid: 1
+    property var historyActs: ({}) // hid -> { text, act }
+    function setHistory(list) {
+        history = list;
+        kept.items = JSON.stringify(list);
+        kept.nextHid = nextHid;
+    }
+    function record(e) {
+        if (unrecorded.includes(e.kind) || !e.title)
+            return 0;
+        const now = Date.now();
+        const old = history.find(h => h.kind === e.kind && h.title === e.title && now - h.at < 60000);
+        const hid = old ? old.hid : nextHid++;
+        const entry = { hid: hid, kind: e.kind, icon: e.icon ?? "bell", title: e.title, subtitle: e.subtitle ?? "", color: String(e.color ?? "#FFFFFF"), at: now, times: old ? old.times + 1 : 1 };
+        if (e.battery !== undefined)
+            entry.battery = e.battery;
+        setHistory([entry].concat(history.filter(h => h.hid !== hid)).slice(0, historyMax));
+        // Its button (Open a download or a drive, What's new), while it means something
+        const a = Object.assign({}, historyActs);
+        if (e.action && e.onAction && ["transfer", "usb", "sysupdate"].includes(e.kind))
+            a[hid] = { text: e.action, act: e.onAction };
+        else
+            delete a[hid];
+        for (const k in a)
+            if (!history.some(h => String(h.hid) === k))
+                delete a[k];
+        historyActs = a;
+        return hid;
+    }
+    function forget(hid) {
+        setHistory(history.filter(h => h.hid !== hid));
+    }
+    function clearHistory() {
+        setHistory([]);
+        historyActs = {};
+    }
+    // "now", "5m", "2h", then the time of day
+    function ago(at, now) {
+        const mins = Math.floor((now - at) / 60000);
+        return mins < 1 ? "now" : mins < 60 ? mins + "m" : mins < 360 ? Math.floor(mins / 60) + "h" : Qt.formatTime(new Date(at), "h:mm AP");
+    }
+    PersistentProperties {
+        id: kept
+        reloadableId: "islandHistory"
+        property string items: "[]"
+        property int nextHid: 1
+        onReloaded: {
+            try {
+                const list = JSON.parse(items);
+                if (Array.isArray(list))
+                    root.history = list;
+            } catch (err) {}
+            root.nextHid = Math.max(nextHid, 1 + root.history.reduce((m, h) => Math.max(m, h.hid ?? 0), 0));
+        }
+    }
+
+    // ── Hover hold ──────────────────────────────────────────────────────
+    // While the pointer rests on the alerts (any screen's island), nothing
+    // times out; when it leaves, each alert gets back the time it had left,
+    // plus a second
+    property var holders: ({}) // screen name -> true
+    readonly property bool held: Object.keys(holders).length > 0
+    property real heldAt: 0
+    function hold(key, on) {
+        if (!!holders[key] === on)
+            return;
+        const was = held;
+        const h = Object.assign({}, holders);
+        if (on)
+            h[key] = true;
+        else
+            delete h[key];
+        holders = h;
+        const now = Date.now();
+        if (!was && held) {
+            heldAt = now;
+        } else if (was && !held) {
+            const b = Object.assign({}, byUid);
+            for (const u in b)
+                b[u] = Object.assign({}, b[u], { expires: b[u].expires + (now - Math.max(heldAt, b[u].at ?? heldAt)) + 1000 });
+            byUid = b;
+        }
+    }
+    // Long alerts: a finished download or a drive stays up for 10 minutes
+    // (low battery and running hot until their condition ends, below)
+    readonly property int longMs: 600000
+    readonly property int untilOver: 86400000
+
     // Drop alerts whose time is up
     Timer {
         id: sweep
         interval: 250
         repeat: true
-        running: root.count > 0
+        running: root.count > 0 && !root.held
         onTriggered: {
             const now = Date.now();
             for (let i = root.alerts.count - 1; i >= 0; i--)
@@ -266,10 +373,15 @@ Singleton {
     readonly property real level: !battery ? 0 : battery.percentage > 1 ? battery.percentage / 100 : battery.percentage
     readonly property bool charging: hasBattery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged)
     onChargingChanged: {
+        if (charging && lowUid) {
+            remove(lowUid);
+            lowUid = 0;
+        }
         if (hasBattery && wants("charging"))
             post({ kind: "charging", icon: charging ? "lightning" : "plug", title: charging ? "Charging" : "Charger removed", subtitle: Math.round(level * 100) + "%" + (charging && level < 1 ? " · on power" : ""), value: level, color: charging ? Theme.accents.green : Qt.rgba(1, 1, 1, 0.6) });
     }
     property int lowStep: 100
+    property int lowUid: 0 // the low battery alert, up until the charger goes in
     onLevelChanged: {
         if (!hasBattery || charging || !wants("battery"))
             return;
@@ -277,7 +389,12 @@ Singleton {
         for (const step of [20, 10, 5])
             if (pct <= step && lowStep > step) {
                 lowStep = step;
-                post({ kind: "battery", icon: "battery-warning", title: "Low battery", subtitle: pct + "% left · plug in soon", value: level, color: Theme.accents.red }, 4500);
+                // (a lower step updates the one showing)
+                post({ kind: "battery", icon: "battery-warning", title: "Low battery", subtitle: pct + "% left · plug in soon", value: level, color: Theme.accents.red }, untilOver);
+                lowUid = 0;
+                for (let i = 0; i < alerts.count; i++)
+                    if (byUid[alerts.get(i).uid]?.kind === "battery")
+                        lowUid = alerts.get(i).uid;
                 return;
             }
         if (pct > 25)
@@ -381,8 +498,8 @@ Singleton {
         CoolDown.hot = hot;
         throttle(hot && (!asking || CoolDown.accepted));
         if (!hot) {
-            if (hotUid && asking)
-                remove(hotUid); // an unanswered question about a spell that's over
+            if (hotUid)
+                remove(hotUid); // the alert (or an unanswered question) about a spell that's over
             hotUid = 0;
         }
     }
@@ -418,7 +535,7 @@ Singleton {
                         action2: "Not now", onAction2: () => { CoolDown.declined = true; root.remove(root.hotUid); }
                     }, 86400000); // stays until answered, or the spell ends
                 else
-                    root.post({ kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: root.hotText(t), value: Math.min(1, t / 105), color: Theme.accents.red }, 6000);
+                    root.post({ kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: root.hotText(t), value: Math.min(1, t / 105), color: Theme.accents.red }, root.untilOver); // until it cools, or dismissed
                 root.hotUid = root.newestUid;
             } else if (root.hot && cool >= 0 && cool <= root.hotTemp - 5) {
                 root.hot = false;
@@ -461,7 +578,32 @@ Singleton {
         function previous(): void { root.cycle(-1); }
         function pin(): void { root.togglePin(); }
         // qs ipc call island hot true|false  (preview the hot look)
-        function hot(on: bool): void { root.hotPreview = on; }
+        function hot(on: bool): void {
+            root.hotPreview = on;
+            if (!on && !root.hot && root.hotUid) { // a demo spell ends
+                root.remove(root.hotUid);
+                root.hotUid = 0;
+            }
+        }
+        // qs ipc call island dismissNewest  (as a swipe up, the close button or Esc)
+        function dismissNewest(): void {
+            if (root.count > 0)
+                root.remove(root.newestUid);
+        }
+        // qs ipc call island hold true|false  (as the pointer resting on the alerts)
+        function holdAlerts(on: bool): void { root.hold("ipc", on); }
+        // qs ipc call island history  (what Recent and Notification Center list, as JSON)
+        function history(): string { return JSON.stringify(root.history); }
+        function clearHistory(): void { root.clearHistory(); }
+        // Seconds left on each live alert, newest last
+        function timeLeft(): string {
+            const now = Date.now(), out = [];
+            for (let i = 0; i < root.alerts.count; i++) {
+                const ev = root.byUid[root.alerts.get(i).uid];
+                out.push((ev?.title ?? "") + ": " + Math.round(((ev?.expires ?? now) - now) / 1000) + " s");
+            }
+            return out.join("\n");
+        }
         // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music>
         function demo(kind: string): void {
             const was = started.elapsed;
@@ -477,14 +619,21 @@ Singleton {
                 vpn: { kind: "network", icon: "shield-check", title: "Work VPN", subtitle: "VPN connected", color: Theme.accents.green, ripple: true },
                 temperature: { kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU 94 °C · close heavy apps or let it cool", value: 0.9, color: Theme.accents.red },
                 notification: { kind: "notification", headline: "Here, I found the door code in your messages from Mac.", card: { name: "Mac Tyler", time: "Thursday", text: "There's a spare key on the hook by the coat rack! The front door code is #1997", initials: "MT", appIcon: "org.gnome.Polari" } },
-                music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" }
+                music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" },
+                download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
+            // As long as the real ones stay up
+            const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" ? root.longMs : 5000;
             if (kind === "burst") { // several at once, as when headphones connect while charging
                 for (const k of ["device", "charging", "audio"])
                     demo(k);
                 return;
             }
-            root.post(d, 5000);
+            root.post(d, ms);
+            if (kind === "temperature")
+                root.hotUid = root.newestUid; // (ends with `island hot false`)
+            if (kind === "battery")
+                root.lowUid = root.newestUid;
             started.elapsed = was;
         }
     }

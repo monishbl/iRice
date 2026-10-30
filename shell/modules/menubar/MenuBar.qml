@@ -31,6 +31,9 @@ Variants {
         readonly property bool revealed: !autoHide || reveal.hovered || (Panels.open !== "" && Panels.screen === screen) || (islandOn && Island.event !== null)
 
         WlrLayershell.layer: autoHide ? WlrLayer.Overlay : WlrLayer.Top
+        // The keyboard after a click on an island alert (Esc dismisses it);
+        // given back as the pointer leaves
+        WlrLayershell.keyboardFocus: islandOn && island.wantsKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         anchors { top: true; left: true; right: true }
         // Taller than the bar so the dynamic island can open below it; only the
         // 30px bar is reserved, and input is masked to the bar and the island

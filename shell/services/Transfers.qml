@@ -138,7 +138,7 @@ Singleton {
             title: "Downloaded " + path.split("/").pop(), subtitle: "In " + downloadsDir.replace(Quickshell.env("HOME"), "~"),
             action: "Open", onAction: () => Files.open(path),
             action2: "Show in Folder", onAction2: () => Files.reveal(path)
-        }, 6000);
+        }, Island.longMs); // up for 10 minutes (or until dismissed)
     }
 
     // ── Copies ──────────────────────────────────────────────────────────

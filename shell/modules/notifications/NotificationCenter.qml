@@ -27,6 +27,8 @@ Variants {
             // own glass; solid glass always has the panel
             bare: Theme.glass.tier !== "solid" && !Config.options.notificationCenter.background
             property alias widgetTab: ncTabState.value
+            // Notifications, or island alerts in the iRice group
+            readonly property bool anything: Notifications.list.length > 0 || Island.history.length > 0
             QtObject {
                 id: ncTabState
                 property int value: Panels.ncTab
@@ -51,7 +53,7 @@ Variants {
                     }
                     Rectangle {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                        visible: Notifications.list.length > 0
+                        visible: nc.anything
                         width: clearLabel.implicitWidth + 20
                         height: 26
                         radius: 13
@@ -67,7 +69,10 @@ Variants {
                             id: clearMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: Notifications.clearAll()
+                            onClicked: {
+                                Notifications.clearAll();
+                                Island.clearHistory();
+                            }
                         }
                     }
                 }
@@ -75,7 +80,7 @@ Variants {
                 // Empty state
                 Platter {
                     chip: nc.bare
-                    visible: Notifications.list.length === 0
+                    visible: !nc.anything
                     width: parent.width
                     height: 84
                     Column {
@@ -92,7 +97,7 @@ Variants {
 
                 Flickable {
                     id: flick
-                    visible: Notifications.list.length > 0
+                    visible: nc.anything
                     onContentYChanged: if (nc.bare) nc.glassChanged() // cards' glass follows the scroll
                     // Clipped 8 px further out, so cards' close buttons
                     // (over the top-left corner) aren't cut off
@@ -112,14 +117,21 @@ Variants {
                         width: parent.width
                         spacing: 8
                         property var expandedApps: ({})
+                        // The island's alerts (not notifications: those are here
+                        // already) are one more group, iRice, placed by its newest
                         readonly property var groups: {
                             const out = [];
                             for (const n of Notifications.list.slice().reverse()) {
                                 const app = n.appName || "Notification";
-                                let g = out.find(x => x.app === app);
+                                let g = out.find(x => x.app === app && !x.island);
                                 if (!g)
-                                    out.push(g = { app: app, items: [] });
+                                    out.push(g = { app: app, items: [], at: Notifications.received[n.id]?.getTime() ?? 0 });
                                 g.items.push(n);
+                            }
+                            const h = Island.history;
+                            if (h.length > 0) {
+                                const i = out.findIndex(g => g.at < h[0].at);
+                                out.splice(i < 0 ? out.length : i, 0, { app: "iRice", island: true, items: h, at: h[0].at });
                             }
                             return out;
                         }
@@ -129,7 +141,8 @@ Variants {
                                 id: group
                                 required property var modelData
                                 readonly property bool stacked: modelData.items.length > 1
-                                readonly property bool open: stacked && !!list.expandedApps[modelData.app]
+                                readonly property string key: (modelData.island ? "island:" : "") + modelData.app
+                                readonly property bool open: stacked && !!list.expandedApps[key]
                                 width: list.width
                                 spacing: 6
 
@@ -166,7 +179,7 @@ Variants {
                                                 hoverEnabled: true
                                                 onClicked: {
                                                     const e = Object.assign({}, list.expandedApps);
-                                                    delete e[group.modelData.app];
+                                                    delete e[group.key];
                                                     list.expandedApps = e;
                                                 }
                                             }
@@ -176,7 +189,14 @@ Variants {
                                             height: 22
                                             icon: "x"
                                             iconSize: 11
-                                            onClicked: { for (const n of group.modelData.items.slice()) n.dismiss(); }
+                                            accessibleName: group.modelData.island ? "Clear iRice alerts" : "Clear " + group.modelData.app
+                                            onClicked: {
+                                                if (group.modelData.island)
+                                                    Island.clearHistory();
+                                                else
+                                                    for (const n of group.modelData.items.slice())
+                                                        n.dismiss();
+                                            }
                                         }
                                     }
                                 }
@@ -220,11 +240,27 @@ Variants {
                                             height: card.implicitHeight
                                             radius: 18
                                             glassOpacity: entry.glassFade
-                                            NotificationCard {
+                                            // A notification, or an island alert
+                                            Loader {
                                                 id: card
                                                 width: parent.width
-                                                notification: entry.modelData
-                                                onCloseRequested: entry.modelData.dismiss()
+                                                sourceComponent: group.modelData.island ? alertCard : noteCard
+                                                Component {
+                                                    id: noteCard
+                                                    NotificationCard {
+                                                        width: card.width
+                                                        notification: entry.modelData
+                                                        onCloseRequested: entry.modelData.dismiss()
+                                                    }
+                                                }
+                                                Component {
+                                                    id: alertCard
+                                                    IslandHistoryCard {
+                                                        width: card.width
+                                                        alert: entry.modelData
+                                                        onCloseRequested: Island.forget(entry.modelData.hid)
+                                                    }
+                                                }
                                             }
                                             // A collapsed stack expands instead of opening the notification
                                             MouseArea {
@@ -232,7 +268,7 @@ Variants {
                                                 visible: group.stacked && !group.open
                                                 onClicked: {
                                                     const e = Object.assign({}, list.expandedApps);
-                                                    e[group.modelData.app] = true;
+                                                    e[group.key] = true;
                                                     list.expandedApps = e;
                                                 }
                                             }

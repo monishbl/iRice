@@ -18,6 +18,10 @@ Item {
     readonly property bool isCard: !!event?.card
     readonly property bool isHud: kind === "hud"
     signal acted
+    signal dismissRequested // swiped up, the close button, or Esc (IslandView removes it)
+    // A wheel or two-finger swipe up over it dismisses it too (off while the
+    // alert list scrolls instead)
+    property bool wheelDismiss: true
 
     readonly property color ink: "#F5F5F7"
     readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
@@ -49,8 +53,78 @@ Item {
             NumberAnimation { target: root; property: "t"; from: 0; to: 1; duration: 700 }
         }
     }
-    opacity: appear
-    transform: Translate { y: (1 - root.appear) * -10 }
+    // Dismissing: pulled up by a drag (pull, ≤ 0), then leaving (gone 0 → 1),
+    // sliding up and fading; only fading with Reduce motion
+    readonly property bool still: Config.options.appearance.reduceMotion === true
+    property real pull: 0
+    property real gone: 0
+    property bool leaving: false
+    function leave() {
+        if (leaving)
+            return;
+        leaving = true;
+        settle.stop();
+        leaveAnim.start();
+    }
+    NumberAnimation {
+        id: leaveAnim
+        target: root
+        property: "gone"
+        to: 1
+        duration: Math.round(140 * CoolDown.motionScale)
+        easing.type: Easing.InCubic
+        onFinished: root.dismissRequested()
+    }
+    NumberAnimation {
+        id: settle
+        target: root
+        property: "pull"
+        to: 0
+        duration: Theme.motion.popover
+        easing.type: Easing.OutCubic
+    }
+    opacity: appear * (1 - gone) * Math.max(0.3, 1 + pull / 90)
+    transform: Translate { y: root.still ? 0 : (1 - root.appear) * -10 + root.pull - root.gone * 18 }
+
+    HoverHandler { id: hover }
+    // Drag it up to dismiss it (a short pull springs back)
+    DragHandler {
+        id: swipe
+        target: null
+        enabled: !root.isHud
+        xAxis.enabled: false
+        grabPermissions: PointerHandler.CanTakeOverFromAnything
+        onTranslationChanged: if (active) root.pull = Math.min(0, translation.y)
+        onActiveChanged: {
+            if (active) {
+                settle.stop();
+                return;
+            }
+            if (root.pull < -24 || centroid.velocity.y < -400)
+                root.leave();
+            else
+                settle.start();
+        }
+    }
+    WheelHandler {
+        enabled: !root.isHud && root.wheelDismiss
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        property real sum: 0
+        property real lastAt: 0
+        onWheel: e => {
+            const now = Date.now();
+            if (now - lastAt > 400)
+                sum = 0;
+            lastAt = now;
+            // Up: the wheel away from you, or two fingers up (natural
+            // scrolling reports it inverted)
+            const up = e.inverted ? -e.angleDelta.y : e.angleDelta.y;
+            sum = up > 0 ? sum + up : 0;
+            if (sum >= 120)
+                root.leave();
+            e.accepted = true;
+        }
+    }
     // 0..1 progress of an element that starts at `from` (fraction of the stagger)
     function step(from) {
         return Math.max(0, Math.min(1, (t - from) / 0.45));
@@ -422,5 +496,39 @@ Item {
                 }
             }
         }
+    }
+
+    // Close, over the glyph's (or the card's) top-left corner while hovered
+    Rectangle {
+        id: closeButton
+        readonly property real targetY: root.isCard ? cardLayout.y + card.y - 6 : (52 - glyph.height) / 2 - 6
+        x: -6
+        y: targetY
+        z: 10
+        width: 20
+        height: 20
+        radius: 10
+        visible: opacity > 0.01
+        opacity: !root.isHud && !root.leaving && (hover.hovered || closeMouse.activeFocus) ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+        color: closeMouse.pressed ? "#5A5A5E" : closeMouse.containsMouse ? "#48484A" : "#3A3A3C"
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.2)
+        Icon {
+            anchors.centerIn: parent
+            name: "x"
+            bold: true
+            size: 10
+            color: root.ink
+        }
+        MouseArea {
+            id: closeMouse
+            anchors { fill: parent; margins: -4 } // a 28 px target
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.leave()
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: "Dismiss alert"
     }
 }
