@@ -1,5 +1,9 @@
 # iRice changelog
 
+## Leaner by default · 2026-10-30
+
+- The Anime tab in the sidebar is off, and the overlay (Super+G) no longer offers the floating image, crosshair and FPS limit. Both are still there: turn them on in Settings → Sidebar (Show Anime tab, Gaming overlays).
+
 ## Fewer password prompts · 2026-10-30
 
 - Software Update asks for your password once, when you press **Update**, and never again in the middle: AUR updates no longer ask at each step.

@@ -33,6 +33,12 @@ Singleton {
             // The display switch cue was on/off before it had styles
             if (adapter.workspaces.switchCue === "")
                 adapter.workspaces.switchCue = adapter.workspaces.dimOthers ? "glow" : "off";
+            // 30 Oct: the anime tab and the gaming overlays are off unless
+            // you turn them on again (once, for settings saved before then)
+            if (adapter.defaultsVersion < 1) {
+                adapter.sidebar.booru = false;
+                adapter.defaultsVersion = 1;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -237,8 +243,14 @@ Singleton {
                 property list<var> extraModels: []
             }
 
+            property int defaultsVersion: 0 // one-time changes to saved settings (onLoaded)
+            // Overlay (Super+G): the floating image, crosshair and FPS limit
+            // widgets are only offered when this is on
+            property JsonObject overlays: JsonObject {
+                property bool gaming: false
+            }
             property JsonObject sidebar: JsonObject {
-                property bool booru: true
+                property bool booru: false
                 property string booruProvider: "yandere" // yandere | konachan | danbooru
                 property bool booruNsfw: false
                 property string translateTarget: "en"

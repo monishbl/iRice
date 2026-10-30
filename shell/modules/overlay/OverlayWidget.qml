@@ -17,7 +17,8 @@ Item {
 
     readonly property var st: UiState.widget(widgetId)
     readonly property int m: 18
-    readonly property bool shownNow: st.open && (overlayOpen || st.pinned)
+    property bool allowed: true // (gaming widgets: only with Settings' gaming overlays on)
+    readonly property bool shownNow: allowed && st.open && (overlayOpen || st.pinned)
 
     visible: shownNow
     x: st.x - m

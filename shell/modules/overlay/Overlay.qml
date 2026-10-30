@@ -17,7 +17,9 @@ Scope {
     id: root
 
     readonly property bool open: Panels.open === "overlay"
-    readonly property var ids: ["notes", "resources", "recorder", "mixer", "image", "crosshair", "fps"]
+    // The floating image, crosshair and FPS limit only with gaming overlays on (Settings)
+    readonly property bool gaming: Config.options.overlays.gaming
+    readonly property var ids: ["notes", "resources", "recorder", "mixer"].concat(gaming ? ["image", "crosshair", "fps"] : [])
     readonly property var meta: ({
             notes: ["Notes", "note"],
             resources: ["Resources", "cpu"],
@@ -28,7 +30,7 @@ Scope {
             fps: ["FPS Limit", "gauge"]
         })
     readonly property bool anyPinned: ids.some(id => UiState.widget(id).open && UiState.widget(id).pinned)
-    readonly property bool crosshairOn: UiState.data.crosshair.enabled
+    readonly property bool crosshairOn: gaming && UiState.data.crosshair.enabled
 
     Binding {
         target: Resources
@@ -329,6 +331,7 @@ Scope {
 
                 OverlayWidget {
                     widgetId: "image"
+                    allowed: root.gaming
                     title: root.meta.image[0]
                     icon: root.meta.image[1]
                     overlayOpen: root.open
@@ -375,6 +378,7 @@ Scope {
                 OverlayWidget {
                     id: crossW
                     widgetId: "crosshair"
+                    allowed: root.gaming
                     title: root.meta.crosshair[0]
                     icon: root.meta.crosshair[1]
                     overlayOpen: root.open
@@ -431,6 +435,7 @@ Scope {
                 OverlayWidget {
                     id: fpsW
                     widgetId: "fps"
+                    allowed: root.gaming
                     title: root.meta.fps[0]
                     icon: root.meta.fps[1]
                     overlayOpen: root.open

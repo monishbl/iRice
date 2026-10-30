@@ -22,6 +22,17 @@ Column {
 
     Group {
         width: parent.width
+        title: "Overlay"
+        footer: "The overlay (Super+G) always has Notes, Resources, Recorder and the volume mixer."
+        Row {
+            label: "Gaming overlays"
+            detail: "Adds a floating image, a crosshair and an FPS limit (through MangoHud) to the overlay"
+            Switch { checked: Config.options.overlays.gaming; onToggled: Config.options.overlays.gaming = !checked }
+        }
+    }
+
+    Group {
+        width: parent.width
         title: "GIFs"
         footer: "The emoji picker's GIF tab (Super+.) uses KLIPY. Get a free app key at partner.klipy.com/api-keys and paste it here."
         Row {
