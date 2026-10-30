@@ -124,14 +124,20 @@ Scope {
                         anchors.fill: parent
                         visible: perScreen.isTarget
                         opacity: root.glow
-                        readonly property real depth: 36
-                        readonly property color strong: Theme.accentAlpha(0.42)
+                        // A wide, faint band that eases out (no inner edge
+                        // to see): strong at the edge, then soft, then nothing
+                        readonly property real depth: 72
+                        readonly property color strong: Theme.accentAlpha(0.24)
+                        readonly property color soft: Theme.accentAlpha(0.11)
+                        readonly property color faint: Theme.accentAlpha(0.035)
                         readonly property color none: Theme.accentAlpha(0)
                         Rectangle {
                             anchors { left: parent.left; right: parent.right; top: parent.top }
                             height: edges.depth
                             gradient: Gradient {
                                 GradientStop { position: 0; color: edges.strong }
+                                GradientStop { position: 0.22; color: edges.soft }
+                                GradientStop { position: 0.55; color: edges.faint }
                                 GradientStop { position: 1; color: edges.none }
                             }
                         }
@@ -140,6 +146,8 @@ Scope {
                             height: edges.depth
                             gradient: Gradient {
                                 GradientStop { position: 0; color: edges.none }
+                                GradientStop { position: 0.45; color: edges.faint }
+                                GradientStop { position: 0.78; color: edges.soft }
                                 GradientStop { position: 1; color: edges.strong }
                             }
                         }
@@ -149,6 +157,8 @@ Scope {
                             gradient: Gradient {
                                 orientation: Gradient.Horizontal
                                 GradientStop { position: 0; color: edges.strong }
+                                GradientStop { position: 0.22; color: edges.soft }
+                                GradientStop { position: 0.55; color: edges.faint }
                                 GradientStop { position: 1; color: edges.none }
                             }
                         }
@@ -158,6 +168,8 @@ Scope {
                             gradient: Gradient {
                                 orientation: Gradient.Horizontal
                                 GradientStop { position: 0; color: edges.none }
+                                GradientStop { position: 0.45; color: edges.faint }
+                                GradientStop { position: 0.78; color: edges.soft }
                                 GradientStop { position: 1; color: edges.strong }
                             }
                         }
