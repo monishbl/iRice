@@ -47,6 +47,7 @@ Scope {
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },
                 { id: "power", name: "Battery & Power", icon: "battery-high", color: "#30D158", group: "System" },
+                { id: "loginitems", name: "Login Items", icon: "rocket-launch", color: "#8E8E93", group: "System" },
                 { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93", group: "System" },
                 { id: "bugreport", name: "Report a Bug", icon: "bug", color: "#FF453A", group: "System" },
                 { id: "about", name: "About", icon: "info", color: "#30D158", group: "System" }

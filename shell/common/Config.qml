@@ -441,6 +441,11 @@ Singleton {
                 property string displays: "rows"
             }
 
+            // Settings → Login Items (assets/scripts/xdg-autostart.py reads it at login)
+            property JsonObject loginItems: JsonObject {
+                property bool startAtLogin: true // off: no XDG autostart app starts with the session
+            }
+
             property JsonObject stageManager: JsonObject {
                 property bool enabled: false
                 property bool strip: true // show waiting stages on the left
