@@ -150,7 +150,13 @@ Singleton {
                 case "declined":
                     root.sendPending = false;
                     root.finish(ev.session);
-                    Island.post({ kind: "custom", icon: "x-circle", title: (ev.to ?? "They") + " declined", subtitle: "Nothing was sent", color: Qt.rgba(1, 1, 1, 0.6) }, 3000);
+                    // Incoming: declined here needs no word; unanswered, it expired
+                    if (ev.dir === "in") {
+                        if (ev.expired)
+                            Island.post({ kind: "custom", icon: "clock", title: "Request from " + ev.from + " expired", subtitle: "Nothing was received", color: Qt.rgba(1, 1, 1, 0.6) }, 3000);
+                    } else {
+                        Island.post({ kind: "custom", icon: "x-circle", title: (ev.to ?? "They") + " declined", subtitle: "Nothing was sent", color: Qt.rgba(1, 1, 1, 0.6) }, 3000);
+                    }
                     break;
                 case "failed":
                     if (String(ev.session).startsWith("out-"))

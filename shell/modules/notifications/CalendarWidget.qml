@@ -963,7 +963,8 @@ Platter {
                     wrapMode: Text.Wrap
                     text: editor.editing?.e ? Calendar.timeText(editor.editing.e) + (editor.editing.e.location ? " · " + editor.editing.e.location : "")
                         + (editor.editing.e.google ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). You can view this calendar but not change it."
-                            : "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only).") : ""
+                            : "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only).")
+                        + (editor.editing.e.repeatUnsupported ? "\nThis event repeats in a way iRice can't show yet, so only its first date is here. Your calendar app has the rest." : "") : ""
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }

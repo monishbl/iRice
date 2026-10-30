@@ -102,12 +102,14 @@ def fresh(cache, themes):
     # Directories only: installing, updating or removing icons (a package,
     # a theme copied in) renames files into place, which changes their
     # directory's time. Looking at every file took a walk over 100k+ of them
-    # on each start. lstat: a broken link must not count as a change.
+    # on each start. stat, not lstat: a folder reached through a link
+    # (MacTahoe-dark/apps/scalable -> ../../MacTahoe/apps/scalable) changes
+    # in its target, not in the link. Broken links are never walked into.
     dirs = [d for t in themes for p in theme_paths(t) for d, _sub, _files in walk_theme(p)]
     dirs += [d for d, _sub, _files in walk_theme('/usr/share/pixmaps')] if os.path.isdir('/usr/share/pixmaps') else []
     for d in dirs:
         try:
-            if os.lstat(d).st_mtime > made:
+            if os.stat(d).st_mtime > made:
                 return False
         except OSError:
             continue  # gone since the walk: the walk itself saw what's there

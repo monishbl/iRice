@@ -77,3 +77,38 @@ test('phase advance uses the new phase duration even before derived bindings upd
     method('shell/services/Timers.qml','advance',ctx)();
     assert.equal(ctx.phase,'break'); assert.equal(ctx.remaining,300); assert.equal(ctx.deadline,310000);
 });
+test('calendar repeats: nth weekday of a month each year, first and last weekday, week start', () => {
+    const dates = out => Array.from(out, o => o.start.toDateString());
+    const at = (s, rrule) => ({start: new Date(s), end: new Date(new Date(s).getTime() + 3600e3), exdates: [], rrule});
+    // Thanksgiving: the 4th Thursday of November
+    assert.deepEqual(dates(expand(at('2025-11-27T10:00', {FREQ:'YEARLY',BYMONTH:'11',BYDAY:'4TH'}), day('2026-01-01'), day('2027-01-01'))), ['Thu Nov 26 2026']);
+    // Last and first weekday of each month: one a month
+    const weekdays = {FREQ:'MONTHLY',BYDAY:'MO,TU,WE,TH,FR'};
+    const last = expand(at('2026-01-30T10:00', Object.assign({BYSETPOS:'-1'}, weekdays)), day('2026-01-01'), day('2027-01-01'));
+    assert.equal(last.length, 12);
+    for (const o of last) {
+        const d = o.start, end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        while (end.getDay() === 0 || end.getDay() === 6) end.setDate(end.getDate() - 1);
+        assert.equal(d.getDate(), end.getDate());
+    }
+    assert.deepEqual(dates(expand(at('2026-01-30T10:00', Object.assign({BYSETPOS:'-1'}, weekdays)), day('2026-11-01'), day('2026-12-01'))), ['Mon Nov 30 2026']);
+    assert.deepEqual(dates(expand(at('2026-01-01T10:00', Object.assign({BYSETPOS:'1'}, weekdays)), day('2026-08-01'), day('2026-09-01'))), ['Mon Aug 03 2026']);
+    // Every other week on Monday and Sunday: the week starts Monday unless WKST says otherwise
+    const fortnight = {FREQ:'WEEKLY',INTERVAL:'2',BYDAY:'MO,SU'};
+    assert.deepEqual(dates(expand(at('2026-01-05T10:00', fortnight), day('2026-01-01'), day('2026-01-31'))), ['Mon Jan 05 2026', 'Sun Jan 11 2026', 'Mon Jan 19 2026', 'Sun Jan 25 2026']);
+    assert.deepEqual(dates(expand(at('2026-01-05T10:00', Object.assign({WKST:'SU'}, fortnight)), day('2026-01-01'), day('2026-01-31'))), ['Mon Jan 05 2026', 'Sun Jan 18 2026', 'Mon Jan 19 2026']);
+    // Daily on weekdays skips the weekend
+    assert.deepEqual(dates(expand(at('2026-10-30T10:00', {FREQ:'DAILY',BYDAY:'MO,TU,WE,TH,FR'}), day('2026-10-30'), day('2026-11-03'))), ['Fri Oct 30 2026', 'Mon Nov 02 2026']);
+});
+test('calendar repeats it cannot follow show only the first date, marked', () => {
+    const at = rrule => ({start: new Date(2026,0,5,10), end: new Date(2026,0,5,11), exdates: [], rrule});
+    for (const rule of [{FREQ:'DAILY',BYHOUR:'9,17'}, {FREQ:'YEARLY',BYWEEKNO:'20'}, {FREQ:'YEARLY',BYYEARDAY:'100'}, {FREQ:'YEARLY',BYDAY:'20MO'},
+                        {FREQ:'HOURLY'}, {FREQ:'WEEKLY',BYDAY:'2MO'}, {FREQ:'MONTHLY',BYMONTHDAY:'40'}, {FREQ:'WEEKLY',WKST:'XX'}]) {
+        const first = expand(at(rule), day('2026-01-01'), day('2026-02-01'));
+        assert.equal(first.length, 1, JSON.stringify(rule));
+        assert.equal(first[0].start.getDate(), 5);
+        assert.equal(first[0].repeatUnsupported, true);
+        assert.equal(expand(at(rule), day('2026-03-01'), day('2027-01-01')).length, 0);
+    }
+    assert.equal(expand(at({FREQ:'WEEKLY'}), day('2026-01-01'), day('2026-02-01'))[0].repeatUnsupported, undefined);
+});

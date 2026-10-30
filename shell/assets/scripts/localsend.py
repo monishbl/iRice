@@ -13,7 +13,9 @@ Talks to the shell over stdin/stdout, one JSON object per line.
        {"ev":"peers","peers":[{"id","alias","type","model"}]}
        {"ev":"incoming","session","from","type","files":[{"name","size"}],"total"}
        {"ev":"progress","session","dir":"in|out","done","total","name"}
-       {"ev":"finished","session","dir","paths":[...]} | {"ev":"declined","session"}
+       {"ev":"finished","session","dir","paths":[...]}
+       {"ev":"declined","session","to"}                 they turned down what we sent
+       {"ev":"declined","session","dir":"in","from","expired"}  we didn't take theirs
        {"ev":"failed","session","message"} | {"ev":"error","message"}
 Exits when stdin closes (the shell quit). Standard library only.
 """
@@ -183,14 +185,13 @@ def announce():
         emit("error", message="Couldn't look for devices: %s" % e.strerror)
 
 
-def reply_to(d, ip):
+def reply_to(peer):
     """Answer discovery with bounded concurrent work and response size."""
     c = None
     try:
         if state["mode"] == "off":
             return
-        p = {"ip": ip, "port": d.get("port", DISCOVERY), "protocol": d.get("protocol") or "https", "fingerprint": d.get("fingerprint", "")}
-        c = connect(p, timeout=4)
+        c = connect(peer, timeout=4)
         c.request("POST", API + "/register", json.dumps(info()), {"Content-Type": "application/json"})
         c.getresponse().read(MAX_BODY + 1)
     except Exception:
@@ -204,24 +205,43 @@ def reply_to(d, ip):
         DISCOVERY_SLOTS.release()
 
 
+def discovered(data, ip):
+    """One discovery packet. Anyone on the network can send one, so nothing in
+    it is trusted: only a peer remember() accepted (from this address) is
+    answered, using what was stored, not the packet."""
+    d = json.loads(data.decode())
+    if not isinstance(d, dict):
+        return
+    fp = d.get("fingerprint")
+    if not isinstance(fp, str) or not fp or fp == FINGERPRINT:
+        return
+    if remember(d, ip):
+        publish_peers()
+    with peer_lock:
+        peer = dict(peers[fp]) if fp in peers and peers[fp]["ip"] == ip else None
+    if d.get("announce") is True and peer and DISCOVERY_SLOTS.acquire(blocking=False):
+        threading.Thread(target=reply_to, args=(peer,), daemon=True).start()
+
+
 def listen():
     try:
         s = multicast_socket()
     except OSError as e:
         emit("error", message="Couldn't listen for nearby devices: %s" % e.strerror)
         return
+    logged = set()
     while True:
         try:
             data, (ip, _) = s.recvfrom(65536)
-            d = json.loads(data.decode())
-        except Exception:
+        except OSError:
             continue
-        if not isinstance(d, dict) or d.get("fingerprint") == FINGERPRINT:
-            continue
-        if remember(d, ip):
-            publish_peers()
-        if d.get("announce") and d.get("fingerprint") in peers and DISCOVERY_SLOTS.acquire(blocking=False):
-            threading.Thread(target=reply_to, args=(d, ip), daemon=True).start()
+        # A bad packet is dropped, never the listener (noted once per kind)
+        try:
+            discovered(data, ip)
+        except Exception as e:
+            if type(e).__name__ not in logged:
+                logged.add(type(e).__name__)
+                print("localsend: dropped a discovery packet (%s)" % type(e).__name__, file=sys.stderr)
 
 
 # ── Receiving ────────────────────────────────────────────────────────────
@@ -325,7 +345,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.reply(403)
             if not s["accepted"]:
                 sessions.pop(sid, None)
-                emit("declined", session=sid)
+                # expired: nobody answered in time (else it was declined here)
+                emit("declined", session=sid, dir="in", **{"from": s["from"]}, expired=s["accepted"] is None)
                 return self.reply(403, {"message": "Declined or timed out"})
             s["tokens"] = {fid: secrets.token_hex(16) for fid in files}
             s["touched"] = time.monotonic()

@@ -92,12 +92,33 @@ class LocalSendSafety(unittest.TestCase):
         with patch.object(self.m.threading.Event, 'wait', return_value=False): h.prepare()
         self.assertEqual([e[0] for e in self.events], ['incoming', 'declined'])
         self.assertEqual(self.m.sessions, {})
+        # Nobody answered: it expired (not "they declined"); declined here: not expired
+        self.assertEqual({k: self.events[-1][1].get(k) for k in ('dir', 'expired')}, {'dir': 'in', 'expired': True})
+        def decline(timeout):
+            for s in self.m.sessions.values(): s['accepted'] = False
+            return True
+        h = self.handler(raw, len(raw))
+        with patch.object(self.m.threading.Event, 'wait', side_effect=decline): h.prepare()
+        self.assertEqual(self.events[-1][0], 'declined')
+        self.assertEqual({k: self.events[-1][1].get(k) for k in ('dir', 'expired')}, {'dir': 'in', 'expired': False})
 
     def test_bad_discovery_and_metadata_are_bounded(self):
         for packet in [[], None, {'fingerprint': 'abc', 'port': 'invalid'}, {'fingerprint': 'abc', 'port': -1}]:
             self.assertFalse(self.m.remember(packet, '127.0.0.1'))
         h = self.handler(b'', self.m.MAX_BODY + 1)
         with self.assertRaises(ValueError): h.body()
+
+    def test_crafted_discovery_packet_never_stops_the_listener(self):
+        packets = [json.dumps({'announce': True, 'fingerprint': ['x']}).encode(), b'\xff', b'[]',
+                   json.dumps({'fingerprint': 'good', 'port': 53317}).encode()]
+        class Sock:
+            def recvfrom(_, n):
+                if not packets: raise SystemExit
+                return packets.pop(0), ('10.0.0.2', 1)
+        self.m.multicast_socket = Sock
+        with patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit): self.m.listen()
+        self.assertEqual(list(self.m.peers), ['good'])
+        self.assertIn('peers', [e[0] for e in self.events])
 
     def test_tls_rejects_wrong_certificate_and_unencrypted_peer(self):
         self.m.configure_tls(Path(self.tmp.name) / 'tls')
@@ -159,6 +180,22 @@ class PersistenceAndIdentity(unittest.TestCase):
             (theme/'scalable/apps/loop').symlink_to(theme, target_is_directory=True)
             self.assertLess(len(list(m.walk_theme(theme))), 5)
 
+    def test_icon_cache_sees_icons_added_inside_a_linked_folder(self):
+        # MacTahoe-dark: apps/scalable -> ../../MacTahoe/apps/scalable
+        m = load('icon-index')
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); (p/'base/apps/scalable').mkdir(parents=True); (p/'dark/apps').mkdir(parents=True)
+            (p/'dark/index.theme').write_text('[Icon Theme]')
+            (p/'dark/apps/scalable').symlink_to('../../base/apps/scalable', target_is_directory=True)
+            m.ROOTS=[d]
+            cache=p/'cache'; cache.write_text('old'); old=time.time()-20
+            for entry in [p/'base', p/'base/apps', p/'base/apps/scalable', p/'dark', p/'dark/index.theme', p/'dark/apps']: os.utime(entry,(old,old))
+            os.utime(p/'dark/apps/scalable',(old,old),follow_symlinks=False)
+            os.utime(cache,(old+10,old+10))
+            self.assertTrue(m.fresh(cache,['dark']))
+            (p/'base/apps/scalable/new.svg').write_text('<svg/>')
+            self.assertFalse(m.fresh(cache,['dark']))
+
     def test_icon_cache_stays_fresh_with_a_broken_link(self):
         m = load('icon-index')
         with tempfile.TemporaryDirectory() as d:
@@ -198,19 +235,64 @@ class PersistenceAndIdentity(unittest.TestCase):
         # The leak that overheated the laptop: the wrapper dies, the watcher's
         # leader goes with it (pdeathsig), its helpers (pw-dump | …) stay.
         m = load('process-identity')
-        leader = subprocess.Popen(['bash', '-c', 'sleep 30 & echo $!; exit 0'], stdout=subprocess.PIPE, start_new_session=True, text=True)
+        token = os.urandom(16).hex()
+        leader = subprocess.Popen(['bash', '-c', 'sleep 30 & echo $!; exit 0'], stdout=subprocess.PIPE, start_new_session=True, text=True,
+                                  env=dict(os.environ, IRICE_WATCH_TOKEN=token))
         helper = int(leader.stdout.readline())
         start = m.identity(leader.pid)[0] if leader.poll() is None else None
         leader.wait()
         try:
             self.assertEqual(m.identity(helper)[1], leader.pid)  # still in the leader's group
-            m.stop_group(leader.pid, start or m.identity(helper)[0])
+            m.stop_group(leader.pid, start or m.identity(helper)[0], token)
             time.sleep(0.5)
             with self.assertRaises(OSError):
                 m.identity(helper)
         finally:
             try: os.kill(helper, 9)
             except OSError: pass
+
+    def test_group_without_its_token_is_never_signalled_after_the_leader_exits(self):
+        # A group whose leader is gone could be anyone's: without the record's
+        # token in a member's environment (or with no token: an old record),
+        # nothing in it is touched
+        m = load('process-identity')
+        leader = subprocess.Popen(['bash', '-c', 'sleep 30 & echo $!; exit 0'], stdout=subprocess.PIPE, start_new_session=True, text=True,
+                                  env=dict(os.environ, IRICE_WATCH_TOKEN='0' * 32))
+        stranger = int(leader.stdout.readline()); leader.wait()
+        try:
+            with patch.object(m.signal, 'pidfd_send_signal') as send:
+                for token in ('1' * 32, None, '', 'short'):
+                    out = io.StringIO()
+                    with patch('sys.stdout', out): m.stop_group(leader.pid, '1', token, dry=True)
+                    self.assertEqual(out.getvalue(), '')
+                    m.stop_group(leader.pid, '1', token)
+                send.assert_not_called()
+            with tempfile.TemporaryDirectory() as d:
+                (Path(d)/'irice-watchers').mkdir()
+                (Path(d)/'irice-watchers'/str(leader.pid)).write_text('1 1 %d 1\n' % leader.pid)  # no token: written before tokens
+                with patch.dict(os.environ, {'XDG_RUNTIME_DIR': d}), patch.object(m.signal, 'pidfd_send_signal') as send:
+                    m.reap(False)
+                    send.assert_not_called()
+            self.assertEqual(m.identity(stranger)[1], leader.pid)
+        finally:
+            os.kill(stranger, 9)
+
+    def test_watch_wrapper_records_a_token_its_watcher_carries(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, XDG_RUNTIME_DIR=d)
+            p = subprocess.Popen(['bash', str(SCRIPTS/'watch.sh'), 'sh', '-c', 'echo "$IRICE_WATCH_TOKEN" > "$0"/seen; sleep 30', d],
+                                 stdin=subprocess.PIPE, env=env)
+            try:
+                for _ in range(50):
+                    if (Path(d)/'seen').exists() and (Path(d)/'seen').read_text(): break
+                    time.sleep(0.05)
+                record = next((Path(d)/'irice-watchers').iterdir()).read_text().split()
+                self.assertEqual(len(record), 5)
+                self.assertEqual(record[4], (Path(d)/'seen').read_text().strip())
+                self.assertEqual(len(record[4]), 32)
+            finally:
+                p.stdin.close(); p.wait(timeout=10)
+            self.assertEqual(list((Path(d)/'irice-watchers').iterdir()), [])
 
     def test_idle_launcher_keeps_custom_listeners_and_uses_this_shell_lock(self):
         with tempfile.TemporaryDirectory() as d:
@@ -228,6 +310,37 @@ class PersistenceAndIdentity(unittest.TestCase):
             (p/'captured').unlink(); env['IRICE_TTY']='0'
             subprocess.run(['bash',str(SCRIPTS/'start-idle.sh')],env=env,check=True,timeout=3)
             self.assertFalse((p/'captured').exists())
+
+    def test_idle_launcher_default_and_settings_configs_lock_before_sleep(self):
+        # No hypridle.conf of your own: the built-in default, then the timers
+        # from Settings (with and without a password grace after sleep)
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); (p/'bin').mkdir(); (p/'config/irice').mkdir(parents=True)
+            stub=p/'bin/hypridle'
+            stub.write_text('#!/bin/sh\ncat "$2" > "$IDLE_CAPTURE"\n'); stub.chmod(0o755)
+            env=dict(os.environ, PATH=str(p/'bin')+':'+os.environ['PATH'], IRICE_SANDBOX='1', IRICE_TTY='1', XDG_RUNTIME_DIR=d, XDG_CONFIG_HOME=str(p/'config'), HYPRLAND_INSTANCE_SIGNATURE='fixture', IDLE_CAPTURE=str(p/'captured'))
+            def run():
+                subprocess.run(['bash',str(SCRIPTS/'start-idle.sh'),'qs'],env=env,check=True,timeout=3)
+                return (p/'captured').read_text()
+            lock='qs -p %s ipc call lock lock' % (ROOT/'shell')
+            data=run()
+            self.assertIn('timeout = 300\n    on-timeout = '+lock,data)
+            self.assertIn('lock_cmd = '+lock,data)
+            self.assertIn('before_sleep_cmd = '+lock,data)
+            self.assertIn('inhibit_sleep = 3',data)
+            (p/'config/irice/idle-listeners').write_text('ac lock 120\nbattery sleep 900\nbogus line here\n')
+            data=run()
+            self.assertIn('timeout = 120\n    on-timeout = %s ac lock' % (SCRIPTS/'idle-action.sh'),data)
+            self.assertIn('timeout = 900',data); self.assertNotIn('bogus',data); self.assertNotIn('timeout = 300',data)
+            self.assertIn('lock_cmd = '+lock,data)
+            self.assertIn('before_sleep_cmd = '+lock,data)
+            self.assertIn('inhibit_sleep = 3',data)
+            (p/'config/irice/idle-listeners').write_text('ac lock 120\ngrace 30\n')
+            data=run()
+            self.assertIn('lock_cmd = '+lock,data)
+            self.assertIn('before_sleep_cmd = %s before-sleep' % (SCRIPTS/'idle-action.sh'),data)
+            self.assertIn('inhibit_sleep = 3',data)
+            self.assertEqual((p/('irice-idle-fixture/grace')).read_text().strip(),'30')
 
     def test_copied_install_resolves_recorded_source(self):
         m = load('update-source')

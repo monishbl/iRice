@@ -319,16 +319,36 @@ Singleton {
     function expand(ev, from, to) {
         if (![ev.start, ev.end, from, to].every(d => d && Number.isFinite(d.getTime())) || to <= from || ev.end < ev.start) return [];
         const len = ev.end - ev.start;
+        const once = ev.start < to && ev.end > from || (len === 0 && ev.start >= from && ev.start < to) ? [{ start: ev.start, end: ev.end }] : [];
         if (!ev.rrule)
-            return ev.start < to && ev.end > from || (len === 0 && ev.start >= from && ev.start < to) ? [{ start: ev.start, end: ev.end }] : [];
+            return once;
         const r = ev.rrule;
         const freq = r.FREQ, interval = Number(r.INTERVAL ?? 1);
         if (!Number.isSafeInteger(interval) || interval < 1) return [];
         const count = r.COUNT ? Number(r.COUNT) : Infinity;
         const until = r.UNTIL ? icsDate(r.UNTIL, "").date.getTime() + (r.UNTIL.length === 8 ? 86399999 : 0) : Infinity;
         const days = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-        const byday = r.BYDAY ? r.BYDAY.split(",").map(s => ({ n: s.length > 2 ? Number(s.slice(0, -2)) : 0, d: days.indexOf(s.slice(-2)) })) : null;
-        const bymonthday = r.BYMONTHDAY ? r.BYMONTHDAY.split(",").map(Number) : null;
+        const byday = r.BYDAY !== undefined ? r.BYDAY.split(",").map(s => {
+            const m = /^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/.exec(s);
+            return m ? { n: m[1] ? Number(m[1]) : 0, d: days.indexOf(m[2]) } : { n: NaN, d: -1 };
+        }) : null;
+        const ints = (v, max) => v !== undefined ? v.split(",").map(s => /^[+-]?\d+$/.test(s) && Number(s) !== 0 && Math.abs(Number(s)) <= max ? Number(s) : NaN) : null;
+        const bymonthday = ints(r.BYMONTHDAY, 31), bymonth = ints(r.BYMONTH, 12), bysetpos = ints(r.BYSETPOS, 366);
+        const wkst = days.indexOf(r.WKST ?? "MO"); // (Monday unless the rule says otherwise)
+        const nth = byday && byday.some(b => b.n !== 0);
+        // A rule with parts this doesn't follow (BYHOUR, BYWEEKNO, the 20th
+        // Monday of the year...) would give wrong dates: only the first one
+        // shows, marked so the calendar can say its repeats aren't shown
+        const supported = Object.keys(r).every(k => !k || ["FREQ", "INTERVAL", "COUNT", "UNTIL", "BYDAY", "BYMONTHDAY", "BYMONTH", "BYSETPOS", "WKST"].includes(k))
+            && ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(freq) && wkst >= 0
+            && ![bymonthday, bymonth, bysetpos].some(l => l && l.some(x => !Number.isFinite(x)))
+            && !(byday && byday.some(b => b.d < 0 || Math.abs(b.n) > 5))
+            && !(nth && (freq === "DAILY" || freq === "WEEKLY"))
+            && !(bymonthday && freq === "WEEKLY")
+            && !(bysetpos && (freq === "DAILY" || freq === "WEEKLY"))
+            && !(freq === "YEARLY" && !bymonth && (byday || bymonthday));
+        if (!supported)
+            return once.map(o => Object.assign(o, { repeatUnsupported: true }));
         const out = [];
         let n = 0;
         const s0 = ev.start;
@@ -341,53 +361,65 @@ Singleton {
             return true;
         };
         const at = (y, m, d) => new Date(y, m, d, s0.getHours(), s0.getMinutes(), s0.getSeconds());
+        const lastOf = (y, m) => new Date(y, m + 1, 0).getDate();
         // Nth weekday of a month (n < 0 counts from the end)
         const nthWeekday = (y, m, wd, k) => {
             if (k > 0) {
                 const first = new Date(y, m, 1).getDay();
                 const d = 1 + (wd - first + 7) % 7 + (k - 1) * 7;
-                return d <= new Date(y, m + 1, 0).getDate() ? d : null;
+                return d <= lastOf(y, m) ? d : null;
             }
             const lastDay = new Date(y, m + 1, 0);
             const d = lastDay.getDate() - (lastDay.getDay() - wd + 7) % 7 + (k + 1) * 7;
             return d >= 1 ? d : null;
         };
+        // The days of a month (m may run past December) the rule picks, in order
+        const monthDays = (y, m) => {
+            const base = new Date(y, m, 1), Y = base.getFullYear(), M = base.getMonth(), last = lastOf(Y, M);
+            if (bymonth && !bymonth.includes(M + 1))
+                return [];
+            const selected = bymonthday ? bymonthday.map(d => d < 0 ? last + d + 1 : d).filter(d => d >= 1 && d <= last) : null;
+            // (concat, not flatMap: Qt's JavaScript engine has no flatMap)
+            const weekdays = byday ? [].concat(...byday.map(b => b.n ? [nthWeekday(Y, M, b.d, b.n)].filter(d => d !== null) : Array.from({length: last}, (_, k) => k + 1).filter(d => new Date(Y, M, d).getDay() === b.d))) : null;
+            const dates = weekdays ? weekdays.filter(d => !selected || selected.includes(d)) : (selected ?? [s0.getDate()]);
+            return [...new Set(dates)].filter(d => d >= 1 && d <= last).sort((a, b) => a - b).map(d => at(Y, M, d));
+        };
+        // BYSETPOS: the 1st, 2nd... or (negative) last of each period's dates
+        const setpos = c => bysetpos ? [...new Set(bysetpos.map(p => c[p > 0 ? p - 1 : c.length + p]).filter(d => d))].sort((a, b) => a - b) : c;
+        const filtered = !byday && !bymonthday && !bymonth;
         // Without COUNT, jump close to the window instead of walking from the first occurrence
         let i0 = 0;
-        if ((count === Infinity || (freq === "DAILY" && !byday && !bymonthday)) && from > s0) {
+        if ((count === Infinity || (freq === "DAILY" && filtered)) && from > s0) {
             from = new Date(from.getTime());
             const earliest = new Date(from.getTime() - Math.max(0, len));
             const months = (earliest.getFullYear() - s0.getFullYear()) * 12 + earliest.getMonth() - s0.getMonth();
             const steps = { DAILY: (earliest - s0) / (86400000 * interval), WEEKLY: (earliest - s0) / (7 * 86400000 * interval), MONTHLY: months / interval, YEARLY: months / 12 / interval }[freq] ?? 0;
             i0 = Math.max(0, Math.floor(steps) - 2);
         }
-        if (count !== Infinity && freq === "DAILY" && !byday && !bymonthday) n = i0;
+        if (count !== Infinity && freq === "DAILY" && filtered) n = i0;
         for (let i = i0; n < count; i++) {
-            let candidates = [];
+            let candidates = [], period;
             if (freq === "DAILY") {
-                candidates = [at(s0.getFullYear(), s0.getMonth(), s0.getDate() + i * interval)];
+                const d = period = at(s0.getFullYear(), s0.getMonth(), s0.getDate() + i * interval);
+                const last = lastOf(d.getFullYear(), d.getMonth());
+                if ((!byday || byday.some(b => b.d === d.getDay())) && (!bymonth || bymonth.includes(d.getMonth() + 1))
+                        && (!bymonthday || bymonthday.some(x => (x < 0 ? last + x + 1 : x) === d.getDate())))
+                    candidates = [d];
             } else if (freq === "WEEKLY") {
-                const weekStart = at(s0.getFullYear(), s0.getMonth(), s0.getDate() - s0.getDay() + i * 7 * interval);
-                candidates = (byday ?? [{ d: s0.getDay() }]).map(b => at(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + b.d)).sort((a, b) => a - b);
+                // Weeks start on WKST: with INTERVAL=2, it decides which Sunday belongs with which Monday
+                period = at(s0.getFullYear(), s0.getMonth(), s0.getDate() - (s0.getDay() - wkst + 7) % 7 + i * 7 * interval);
+                candidates = (byday ?? [{ d: s0.getDay() }]).map(b => at(period.getFullYear(), period.getMonth(), period.getDate() + (b.d - wkst + 7) % 7))
+                    .filter(d => !bymonth || bymonth.includes(d.getMonth() + 1)).sort((a, b) => a - b);
             } else if (freq === "MONTHLY") {
-                const y = s0.getFullYear(), m = s0.getMonth() + i * interval;
-                const base = new Date(y, m, 1);
-                const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-                const selected = bymonthday ? bymonthday.map(d => d < 0 ? last + d + 1 : d).filter(d => d >= 1 && d <= last) : null;
-                // (concat, not flatMap: Qt's JavaScript engine has no flatMap)
-                const weekdays = byday ? [].concat(...byday.map(b => b.n ? [nthWeekday(base.getFullYear(), base.getMonth(), b.d, b.n)].filter(d => d !== null) : Array.from({length: last}, (_, k) => k + 1).filter(d => at(base.getFullYear(), base.getMonth(), d).getDay() === b.d))) : null;
-                const dates = weekdays ? weekdays.filter(d => !selected || selected.includes(d)) : (selected ?? [s0.getDate()]);
-                candidates = [...new Set(dates)].filter(d => d >= 1 && d <= last).map(d => at(base.getFullYear(), base.getMonth(), d));
-                if (!Number.isFinite(base.getTime()) || base >= to || base.getTime() > until) break;
-                candidates.sort((a, b) => a - b);
-            } else if (freq === "YEARLY") {
-                const year = s0.getFullYear() + i * interval;
-                const candidate = at(year, s0.getMonth(), s0.getDate());
-                if (!Number.isFinite(candidate.getTime()) || candidate >= to || candidate.getTime() > until) break;
-                candidates = candidate.getMonth() === s0.getMonth() && candidate.getDate() === s0.getDate() ? [candidate] : [];
+                period = new Date(s0.getFullYear(), s0.getMonth() + i * interval, 1);
+                candidates = setpos(monthDays(s0.getFullYear(), s0.getMonth() + i * interval));
             } else {
-                break;
+                const year = s0.getFullYear() + i * interval;
+                period = new Date(year, 0, 1);
+                candidates = setpos([].concat(...(bymonth ?? [s0.getMonth() + 1]).map(m => monthDays(year, m - 1))).sort((a, b) => a - b));
             }
+            if (!Number.isFinite(period.getTime()) || period >= to || period.getTime() > until)
+                break;
             if (candidates.length > 0 && (!Number.isFinite(candidates[0].getTime()) || candidates[0].getTime() >= to.getTime()))
                 break;
             let stop = false;

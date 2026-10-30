@@ -72,6 +72,11 @@
 - Your old hyprland.conf: after installing, iRice says what it had (displays, keyboard, env lines, programs) and puts them, turned off, in ~/.config/hypr/irice/from-your-old-config.lua: remove "-- " to use one.
 - Bug reports also leave out Wi-Fi names iwd knows. Quick Share under iwd says Wi-Fi Direct needs wpa_supplicant instead of asking for a password for nothing.
 - System health finds any Bluetooth adapter (not only the first), says to install bluez when it's missing, and counts PipeWire without pipewire-pulse as a warning. qt6ct is used when you've set it up and KDE's theme isn't installed or your environment.d asks for it. The installer uses paru when you have it, and on Manjaro builds yay only when you say so.
+- LocalSend keeps finding nearby devices after a malformed message from the network; before, one bad message stopped discovery until the shell restarted.
+- LocalSend: a request nobody answered now says "Request from <name> expired · Nothing was received", and declining one yourself shows nothing extra. "They declined" is only for files you sent.
+- Leftover watchers from a crashed shell are only ended when they're provably iRice's: each watcher group now carries its own random mark, and after its leader has gone only processes with that mark are stopped. Nothing else in a reused group is ever touched.
+- Calendar subscriptions show more repeating events on the right days: "the 4th Thursday of November" (Thanksgiving), "the last (or first) weekday of the month", every-other-week events with a week start other than Monday, and daily events on weekdays only. An event that repeats in a way iRice can't follow yet shows only its first date, and its details say so, instead of landing on wrong days.
+- The app icon list notices icons added inside icon theme folders that are links to another theme (MacTahoe-dark and others), instead of staying out of date for a week.
 
 ## Sharing and spaces fixes · 2026-10-30
 
