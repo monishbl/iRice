@@ -13,6 +13,7 @@
 - The open island has a **Recent** list of the last few alerts. Swipe a line sideways (or use its ×) to remove it, or **Clear** them all. While something is live (music, a timer), **Recent** opens the list in its place.
 - The album art in the open island now follows the island's own rounded corners exactly, with no second, rounder corner or inner outline showing at the edges.
 - Incoming calls (Discord, WhatsApp, any app) show as a banner that stays until you answer, decline or dismiss it, or the app stops ringing. They never go to the island.
+- Apps run natively on Wayland again, as they did before iRice: WhatsApp, Discord, Claude, Slack and other Electron apps take files dragged in from Dolphin and behave like other windows. Log out and back in once for it to apply.
 
 ## Sharing and spaces fixes · 2026-10-30
 

@@ -6,6 +6,20 @@
 local qtTheme = os.getenv("QT_QPA_PLATFORMTHEME")
 if not qtTheme or qtTheme == "" then hl.env("QT_QPA_PLATFORMTHEME", "kde") end
 
+-- Apps run natively on Wayland where they can (as end4 had it). Without the
+-- hint, Electron apps (WhatsApp, Discord, Claude, Slack, VS Code…) start under
+-- XWayland: files dragged in from Wayland apps like Dolphin don't drop, and
+-- their windows behave a little differently. Qt apps likewise prefer Wayland,
+-- with X11 as the fallback. Plasma's menu prefix gives Dolphin its full
+-- "Open with" list. An explicit choice in the environment wins.
+local function default_env(name, value)
+    local v = os.getenv(name)
+    if not v or v == "" then hl.env(name, value) end
+end
+default_env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+default_env("QT_QPA_PLATFORM", "wayland;xcb")
+default_env("XDG_MENU_PREFIX", "plasma-")
+
 hl.config({
     general = {
         gaps_in = 5,
