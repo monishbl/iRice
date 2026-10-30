@@ -70,8 +70,14 @@ Canvas {
         const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) / 255;
 
         // Already a tile if points near the corners and edge midpoints are opaque
+        // (and nearly all of it opaque: a big logo can reach the probes too,
+        // Webex's, say, and must not be blown up to the tile's edges)
         const probes = [[4, 4], [27, 4], [4, 27], [27, 27], [16, 1], [16, 30], [1, 16], [30, 16]];
-        const square = probes.filter(([x, y]) => px(x, y)[3] > 200).length >= 7;
+        let filled = 0;
+        for (let i = 3; i < 32 * 32 * 4; i += 4)
+            if (d[i] >= 200)
+                filled++;
+        const square = probes.filter(([x, y]) => px(x, y)[3] > 200).length >= 7 && filled >= 0.86 * 1024;
 
         // The tile or plate behind the logo, from its rim: the first opaque
         // pixels in from each side (2px in, past the antialiased edge) on
@@ -151,6 +157,13 @@ Canvas {
         // The logo's pixels (opaque, and on a tile, unlike the tile), its
         // tones and how far it stands from the tile
         const tones = [], gaps = [];
+        let gx0 = 32, gx1 = -1, gy0 = 32, gy1 = -1; // the logo's own box (on a tile: what differs from it)
+        const logoAt = (x, y) => {
+            gx0 = Math.min(gx0, x);
+            gx1 = Math.max(gx1, x);
+            gy0 = Math.min(gy0, y);
+            gy1 = Math.max(gy1, y);
+        };
         // Dominant colour: opaque pixels, weighted toward saturated ones
         let r = 0, g = 0, b = 0, w = 0;
         for (let y = 0; y < 32; y++)
@@ -166,12 +179,14 @@ Canvas {
                 w += wt;
                 if (onTile) {
                     const dd = dist(p, bgAt(y));
-                    if (dd > floor + 0.08) {
+                    if (dd > floor + 0.08 && p[3] >= 230) {
                         tones.push(luma(p));
                         gaps.push(dd);
+                        logoAt(x, y);
                     }
                 } else {
                     tones.push(luma(p));
+                    logoAt(x, y);
                 }
             }
         const many = tones.length >= 12;
@@ -193,7 +208,15 @@ Canvas {
             med: med,
             // +1: lighter than the logo's own tone reads brighter (on a tile:
             // away from the tile's tone); -1 the other way
-            pol: onTile ? (med >= luma(bgAt(16)) ? 1 : -1) : 1
+            pol: onTile ? (med >= luma(bgAt(16)) ? 1 : -1) : 1,
+            // Where the opaque part sits (0..1: left, top, right, bottom) and
+            // how much of that box it fills: logos are sized and centred on
+            // their tile by what they really draw, not their canvas
+            box: opaque > 0 ? [x0 / 32, y0 / 32, (x1 + 1) / 32, (y1 + 1) / 32] : [0, 0, 1, 1],
+            fill: opaque > 0 ? opaque / (bw * bh) : 1,
+            // the logo alone, inside its tile or plate (clear and tinted
+            // replace that background with glass and size the logo itself)
+            gbox: gx1 >= gx0 && tones.length >= 12 ? [gx0 / 32, gy0 / 32, (gx1 + 1) / 32, (gy1 + 1) / 32] : null
         });
     }
 }

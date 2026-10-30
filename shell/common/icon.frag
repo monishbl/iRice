@@ -40,6 +40,9 @@ layout(std140, binding = 0) uniform buf {
     vec4 tileColor;   // tile behind transparent logos
     vec4 bgColor;     // the background behind the logo, at the top…
     vec4 bgColor2;    // …and at the bottom
+    float logoX;      // transparent logos: the centre of what they draw (0..1)
+    float logoY;
+    float glassFit;   // 1: clear/tinted, the logo placed by its own box even on a tile
 };
 layout(binding = 1) uniform sampler2D source;
 
@@ -61,7 +64,9 @@ float shade(float lum) {
 // its shades reach further with more contrast
 vec3 clearGlyph(float n) {
     float r = mix(0.2, 0.65, contrast);
-    return darkTheme > 0.5 ? vec3(1.0 - r + r * n) : vec3(0.1 + 0.9 * r * (1.0 - n));
+    // (on dark glass the logo's typical tone is near white; its shades only
+    // dim it a little, so logos read clearly against the tile)
+    return darkTheme > 0.5 ? vec3(1.0 - 0.6 * r * (1.0 - n)) : vec3(0.1 + 0.9 * r * (1.0 - n));
 }
 // …and in tinted mode, in the accent
 vec3 tintGlyph(float n) {
@@ -114,13 +119,13 @@ void main() {
     vec3 base;
     vec4 art;
     float vy;
-    if (square > 0.5) {
+    if (square > 0.5 && glassFit < 0.5) {
         vec2 suv = (uv - 0.5) * 0.9 + 0.5; // zoom past its own corners
         art = unpremul(texture(source, suv));
         base = mix(bgColor.rgb, bgColor2.rgb, 0.5);
         vy = suv.y;
     } else {
-        vec2 suv = (uv - 0.5) / logoScale + 0.5;
+        vec2 suv = (uv - 0.5) / logoScale + vec2(logoX, logoY);
         bool inside = all(greaterThanEqual(suv, vec2(0.0))) && all(lessThanEqual(suv, vec2(1.0)));
         art = inside ? unpremul(texture(source, suv)) : vec4(0.0);
         base = tileColor.rgb;
@@ -134,6 +139,9 @@ void main() {
     if (square > 0.5 || plate > 0.5) {
         vec3 behind = mix(bgColor.rgb, bgColor2.rgb, clamp(vy, 0.0, 1.0));
         glyph *= smoothstep(bgFloor + 0.04, bgFloor + max(0.1, bgEdge * 0.45), distance(art.rgb, behind));
+        // (not the tile's or plate's own soft edge: it would draw an outline)
+        if (glassFit > 0.5)
+            glyph *= smoothstep(0.85, 0.98, art.a);
     }
     float lumN = shade(luma(art.rgb));
     float rimShade = 0.5 + 0.5 * clamp((-p.x - p.y) * 0.7, -1.0, 1.0); // lit from the top left
