@@ -28,6 +28,12 @@ the phone is on the same Wi-Fi, slow (Bluetooth) otherwise.
 
 ## Needs your check on real hardware or accounts
 
+- Calls: a real Discord and WhatsApp call (Answer/Decline, Missed call, the Call pill after answering).
+- Displays with the BenQ: per-display spaces (its own 1, 2, 3; kept on unplug), the connect animation timing (1.8 s), Overview moves across displays with a real mouse, the switch cue (Off / Glow / Dim).
+- BenQ speakers in Control Center → Sound.
+- Claude Desktop: Quick Entry stays open and looks right; no wallet prompt (sign in once).
+- Webex: Super+Q closes the window and keeps it in the tray (open it, press Super+Q, report).
+- Island: flick/×/Esc to dismiss, Recent list, the iRice group in Notification Center.
 - Battery & Power: the 20% prompt, sleeping at 3%, lid actions, new idle timers taking effect.
 - Google: several accounts, editing events, offline changes (needs a real account).
 - Replies with your real messaging apps.
