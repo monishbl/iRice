@@ -187,7 +187,14 @@ Singleton {
         onTriggered: root.refresh()
     }
 
-    // Saved settings where Hyprland differs (cool-down's own rate is left alone)
+    // Saved settings where Hyprland differs (cool-down's own rate is left alone).
+    // A display whose mode is already right is sent its mode as it is now
+    // (rate included), so moving it, say, never asks for a new mode: a mode
+    // set blanks the screen for a moment. Displays that already match get
+    // nothing at all.
+    function modeSame(a, b) {
+        return same({ enabled: true, mode: a, x: 0, y: 0, scale: 1, transform: 0, mirror: "" }, { enabled: true, mode: b, x: 0, y: 0, scale: 1, transform: 0, mirror: "" });
+    }
     function restore() {
         const saved = savedMap();
         const todo = [];
@@ -198,8 +205,12 @@ Singleton {
             const now = stateOf(m);
             if (CoolDown.savedRates?.[m.name] !== undefined)
                 now.mode = s.mode; // the rate is cool-down's business while it lasts
-            if (!same(now, s))
-                todo.push({ name: m.name, state: s });
+            if (same(now, s))
+                continue;
+            const want = Object.assign({}, s);
+            if (m.enabled && s.enabled && modeSame(now.mode, s.mode))
+                want.mode = m.mode; // what it runs at now, exactly
+            todo.push({ name: m.name, state: want });
         }
         evalAll(todo);
     }
@@ -321,11 +332,12 @@ Singleton {
         target: Hyprland
         function onRawEvent(event) {
             const n = event.name;
+            // (one read for a burst of hotplug events)
             if (n === "configreloaded" || n === "monitoraddedv2") {
                 root.restorePending = true;
                 restoreDelay.restart();
             } else if (n === "monitorremovedv2")
-                root.refresh();
+                restoreDelay.restart();
         }
     }
     Timer {

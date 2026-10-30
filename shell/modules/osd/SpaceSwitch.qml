@@ -4,6 +4,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.common
+import qs.services
 
 // Moving to another display from the keyboard (Super+number to a space that
 // lives there, or a focus-display shortcut): the pointer follows to that
@@ -26,6 +27,10 @@ Scope {
             if (event.name !== "focusedmonv2" || Quickshell.screens.length < 2)
                 return;
             if (!root.cfg.dimOthers)
+                return;
+            // A display just came or went: focus moving now is the hotplug's
+            // (the screen you're on must not darken)
+            if (DisplayFx.settling())
                 return;
             root.target = event.data.split(",")[0];
             cursor.running = false;
@@ -52,7 +57,7 @@ Scope {
             onStreamFinished: {
                 const p = text.trim().split(",").map(v => parseFloat(v));
                 const mon = Hyprland.monitors.values.find(m => m.name === root.target);
-                if (!mon || p.length < 2 || isNaN(p[0]) || !root.cfg.dimOthers)
+                if (!mon || p.length < 2 || isNaN(p[0]) || !root.cfg.dimOthers || DisplayFx.settling())
                     return;
                 const w = mon.width / (mon.scale || 1), h = mon.height / (mon.scale || 1);
                 const t = mon.lastIpcObject?.transform ?? 0;

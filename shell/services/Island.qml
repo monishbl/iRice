@@ -332,17 +332,27 @@ Singleton {
         property: "islandActive"
         value: root.enabled && (root.wants("resources") || root.wants("temperature"))
     }
-    // Temperature: hot after two readings at or above the threshold; cool
-    // again only after 3 minutes at least 10 °C below it, so a CPU swinging
-    // around the line doesn't flip everything on and off. One alert per hot
-    // spell (its reading kept live while it shows); after that the closed
+    // Temperature: hot once the CPU has averaged at or above the threshold
+    // for 30 s (a turbo burst of a few seconds isn't "running hot"); cool
+    // again once it has averaged 5 °C below it for a minute. One alert per
+    // hot spell (its reading kept live while it shows); after that the closed
     // island stays red until the CPU cools. Unless switched off, the Low
     // Power profile is used meanwhile; the previous profile comes back after.
     // With cooling.hotAction "ask", the alert asks before cooling down and
     // stays until answered (or the spell ends).
     readonly property int hotTemp: cfg.hotTemp ?? 90
-    property int hotTicks: 0
-    property real coolSince: 0 // when the CPU dropped well below the threshold
+    readonly property int hotAfter: 30000 // ms averaging at/above hotTemp
+    readonly property int coolAfter: 60000 // ms averaging 5 °C below it
+    property var tempSamples: [] // [{ t: °C, at: ms }], the last coolAfter
+    // The average over the last `ms`, or -1 when the readings don't cover
+    // that long yet (just started, or a gap)
+    function averageOver(ms, now) {
+        const from = now - ms;
+        const inside = tempSamples.filter(x => x.at >= from);
+        if (!inside.length || tempSamples[0].at > from + 5000)
+            return -1;
+        return inside.reduce((a, x) => a + x.t, 0) / inside.length;
+    }
     readonly property bool asking: Config.options.cooling.whenHot && Config.options.cooling.hotAction === "ask"
     property bool hot: false
     property bool hotPreview: false // `qs ipc call island hot true`
@@ -353,7 +363,7 @@ Singleton {
     readonly property bool tempWatch: enabled && wants("temperature")
     onTempWatchChanged: if (!tempWatch) {
         hot = false;
-        hotTicks = 0;
+        tempSamples = [];
     }
     // Low Power while hot goes through Power (it decides the energy mode for
     // everyone; Cool-down wins over the rest while it lasts)
@@ -390,17 +400,17 @@ Singleton {
             const t = Resources.temperature;
             if (!root.wants("temperature")) {
                 root.hot = false;
-                root.hotTicks = 0;
+                root.tempSamples = [];
                 return;
             }
             if (t <= 0)
                 return; // a failed reading: ignore it rather than "cooling down"
-            root.hotTicks = t >= root.hotTemp ? root.hotTicks + 1 : 0;
-            if (root.hot)
-                root.coolSince = t > root.hotTemp - 10 ? 0 : (root.coolSince || Date.now());
-            if (!root.hot && root.hotTicks >= 2) {
+            const now = Date.now();
+            root.tempSamples = root.tempSamples.filter(x => x.at >= now - root.coolAfter - 5000).concat([{ t: t, at: now }]);
+            const warm = root.averageOver(root.hotAfter, now);
+            const cool = root.averageOver(root.coolAfter, now);
+            if (!root.hot && warm >= root.hotTemp) {
                 root.hot = true;
-                root.coolSince = 0;
                 if (root.asking)
                     root.post({
                         kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU " + Math.round(t) + " °C", value: Math.min(1, t / 105), color: Theme.accents.red,
@@ -410,7 +420,7 @@ Singleton {
                 else
                     root.post({ kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: root.hotText(t), value: Math.min(1, t / 105), color: Theme.accents.red }, 6000);
                 root.hotUid = root.newestUid;
-            } else if (root.hot && root.coolSince && Date.now() - root.coolSince >= 180000) {
+            } else if (root.hot && cool >= 0 && cool <= root.hotTemp - 5) {
                 root.hot = false;
             } else if (root.hot && root.hotUid) {
                 root.update(root.hotUid, { subtitle: root.asking ? "CPU " + Math.round(t) + " °C" : root.hotText(t), value: Math.min(1, t / 105) });

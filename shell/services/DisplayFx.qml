@@ -16,8 +16,15 @@ import qs.common
 //   { id, screen, role (0 arrived | 1 beside), edge (0 left, 1 top, 2 right,
 //     3 bottom: the side facing the other display), focus (where along that
 //     edge, 0 .. 1), reverse (1: a display left), style, pending }
-// A screen that just arrived goes dark at once (pending) and is filled once
-// its place is known, so it never shows the desktop before the effect.
+// A screen that just arrived is covered at once (pending: it would only show
+// a black, still empty desktop), and its effect starts as soon as its place
+// is known, a fraction of a second later. The screens already there never
+// darken: they only get light at the shared edge.
+//
+// Windows (WorkspaceHomes): a display that left sends the windows it showed
+// onto its neighbour, entering from its side while the effect plays; one that
+// arrives gets its spaces and windows back as its effect hands over to the
+// desktop, so they glide in over the real wallpaper.
 Singleton {
     id: root
 
@@ -37,8 +44,18 @@ Singleton {
         const w = Math.round(m.width / s), h = Math.round(m.height / s);
         return (m.transform ?? 0) % 2 ? { x: m.x, y: m.y, w: h, h: w } : { x: m.x, y: m.y, w: w, h: h };
     }
+    // (the sandbox's own test output counts there, so hotplug can be tried)
+    readonly property bool sandbox: Quickshell.env("IRICE_SANDBOX") === "1"
     function ignored(name) {
-        return !name || /^(HEADLESS|IRICE-)/.test(name);
+        return !name || /^HEADLESS/.test(name) || (/^IRICE-/.test(name) && !sandbox);
+    }
+    // Reduced motion: no travel (the effect fades, windows just come over)
+    readonly property bool still: Config.ready && Config.options.appearance.reduceMotion === true
+    // When a display last came or went: focus moves then are the hotplug's,
+    // not yours (SpaceSwitch doesn't dim the other displays for them)
+    property real hotplugAt: 0
+    function settling() {
+        return hotplugAt > 0 && Date.now() - hotplugAt < 4000;
     }
 
     // Where `b` is, seen from `a`: { edge (of a), focus (along a's edge),
@@ -82,12 +99,48 @@ Singleton {
     function leadFor(fx) {
         return fx === "liquid" ? 620 : fx === "extend" ? 120 : 0;
     }
+    // (pending runs not in the list end; the others are replaced in place,
+    // so their screens keep the overlay window they already have)
     function show(list) {
-        const keep = runs.filter(r => !list.some(x => x.screen === r.screen));
+        const keep = runs.filter(r => !r.pending && !list.some(x => x.screen === r.screen));
         runs = keep.concat(list.map(x => Object.assign({ id: ++serial, style: style, reverse: 0, focus: 0.5, pending: false }, x)));
     }
     function finish(id) {
-        runs = runs.filter(r => r.id !== id);
+        const r = runs.find(x => x.id === id);
+        runs = runs.filter(x => x.id !== id);
+        if (r && r.role === 0)
+            handover(r.screen);
+    }
+    // The arrived screen's effect is handing over to its desktop (called by
+    // DisplayConnect as the overlay starts to fade)
+    property var waiting: []
+    function handover(screen) {
+        if (!waiting.includes(screen))
+            return;
+        waiting = waiting.filter(n => n !== screen);
+        refreshClients.screen = screen;
+        refreshClients.running = true;
+    }
+    // (the windows may have changed while the effect played)
+    Process {
+        id: refreshClients
+        property string screen
+        command: ["hyprctl", "-j", "clients"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let list = root.clients;
+                try {
+                    list = JSON.parse(text);
+                } catch (e) {}
+                WorkspaceHomes.arrive(refreshClients.screen, list);
+            }
+        }
+    }
+    // An effect that never got to play doesn't keep the windows away
+    Timer {
+        id: handoverLimit
+        interval: 3500
+        onTriggered: root.waiting.slice().forEach(n => root.handover(n))
     }
 
     // ── Events ──────────────────────────────────────────────────────────
@@ -100,56 +153,110 @@ Singleton {
             const name = event.data.split(",")[1];
             if (root.ignored(name))
                 return;
-            if (n === "monitoraddedv2") {
+            root.hotplugAt = Date.now();
+            if (n === "monitoraddedv2")
                 root.added = root.added.concat([name]);
-                // dark right away; filled once we know where it is
-                if (root.style !== "off" && Sounds.armed)
-                    root.show([{ screen: name, role: 0, edge: 0, pending: true }]);
-            } else {
+            else
                 root.removed = root.removed.concat([name]);
+            // The new screen is covered right away (filled once we know where
+            // it is), and the others get their (still invisible) overlay now
+            // too: making a window costs the GUI thread a moment, better
+            // while the new screen is being set up than once its effect plays
+            if (root.style !== "off" && Sounds.armed) {
+                // (by name: the new screen may not be listed yet; its overlay
+                // is made as soon as it is)
+                const names = Quickshell.screens.map(s => s.name).filter(s => s !== name).concat(n === "monitoraddedv2" ? [name] : []);
+                const want = names.filter(s => !root.ignored(s) && (s === name || !root.still) && !root.runs.some(r => r.screen === s));
+                if (want.length > 0)
+                    root.runs = root.runs.concat(want.map(s => ({ id: ++root.serial, screen: s, role: s === name ? 0 : 1, edge: 0, focus: 0.5, reverse: 0, style: root.style, pending: true })));
             }
+            // The first event is read at once (the new screen is waiting);
+            // the rest of a burst (outputs can come and go several times in
+            // a second) once it's quiet for a moment, at most 600 ms on
+            const quiet = !settle.running && !read.running && Date.now() - root.burstAt > 600;
+            if (quiet)
+                root.burstAt = Date.now();
+            settle.interval = quiet ? 0 : Math.max(0, Math.min(150, 600 - (Date.now() - root.burstAt)));
             settle.restart();
         }
     }
-    // After a hotplug settles (outputs can come and go several times in a
-    // second) and Displays has put the saved arrangement back (500 ms)
+    property real burstAt: 0
+    property bool readAgain: false
     Timer {
         id: settle
-        interval: 900
-        onTriggered: read.running = true
+        interval: 150
+        onTriggered: {
+            if (read.running)
+                root.readAgain = true;
+            else
+                read.running = true;
+        }
     }
+    // Displays, windows and Hyprland's window-move animation, in one call
     Process {
         id: read
-        command: ["hyprctl", "-j", "monitors"]
+        command: ["sh", "-c", "hyprctl -j monitors; echo; echo '\x1e'; hyprctl -j clients; echo; echo '\x1e'; hyprctl -j animations"]
         stdout: StdioCollector {
             onStreamFinished: {
-                let list = [];
-                try {
-                    list = JSON.parse(text);
-                } catch (e) {
-                    list = [];
-                }
+                const parts = text.split("\x1e");
+                const parse = t => {
+                    try {
+                        return JSON.parse(t);
+                    } catch (e) {
+                        return null;
+                    }
+                };
+                const list = parse(parts[0] ?? "") ?? [];
                 const now = {};
                 for (const m of list)
                     if (!root.ignored(m.name) && !m.disabled)
                         now[m.name] = root.rectOf(m);
+                root.monitors = list;
+                root.clients = parse(parts[1] ?? "") ?? [];
+                const anims = parse(parts[2] ?? "");
+                root.moveAnim = root.windowsMove(anims);
                 root.happen(now);
+                if (root.readAgain) {
+                    root.readAgain = false;
+                    read.running = true;
+                }
             }
         }
     }
+    property var monitors: []
+    property var clients: []
+    property var moveAnim: null
+    // windowsMove as it's set (inherited from windows, then global)
+    function windowsMove(anims) {
+        const all = Array.isArray(anims) ? (Array.isArray(anims[0]) ? anims[0] : anims) : [];
+        const get = n => all.find(a => a.name === n);
+        const g = get("global");
+        if (Config.ready && g && !g.enabled)
+            return null;
+        for (const n of ["windowsMove", "windows", "global"]) {
+            const a = get(n);
+            if (a && (a.overridden || n === "global"))
+                return { enabled: a.enabled, speed: a.speed, bezier: a.bezier, style: a.style };
+        }
+        return null;
+    }
+
     function happen(now) {
         const before = geometry;
         const arrived = [...new Set(added)].filter(n => now[n] && !before[n]);
         const left = [...new Set(removed)].filter(n => !now[n] && before[n]);
-        added = [];
-        removed = [];
+        // (an event that came while this was being read waits for the next read)
+        const more = settle.running || readAgain;
+        added = more ? added.filter(n => !arrived.includes(n) && !now[n]) : [];
+        removed = more ? removed.filter(n => !left.includes(n) && now[n]) : [];
         geometry = now;
-        // A pending screen that turned out not to be new: let it go
-        runs = runs.filter(r => !r.pending || arrived.includes(r.screen));
-        if (arrived.length === 0 && left.length === 0)
+        if (arrived.length === 0 && left.length === 0 || !Sounds.armed) {
+            // nothing came or went (or the shell is still starting: displays
+            // it found, not plugged in): pending overlays go
+            if (!more)
+                runs = runs.filter(r => !r.pending);
             return;
-        if (!Sounds.armed) // the shell is still starting (displays it found, not plugged in)
-            return;
+        }
 
         const list = [];
         let side = ""; // for the sound: "left" | "right" | ""
@@ -175,13 +282,64 @@ Singleton {
                 list.push({ screen: x.name, role: 1, edge: x.rel.edge, focus: x.rel.focus, reverse: 1 });
             if (near[0] && side === "")
                 side = sideOf(near[0].rel.edge);
+            // its windows come onto the display beside it (else the focused one)
+            const target = near[0] ? near[0].name : (monitors.find(m => m.focused && now[m.name])?.name ?? Object.keys(now)[0]);
+            const tm = monitors.find(m => m.name === target);
+            if (tm) {
+                const rel = near[0] ? near[0].rel.edge : 2;
+                WorkspaceHomes.gather(n, Object.assign({}, tm, { rect: now[target], all: monitors }), rel, clients, moveAnim, still);
+            }
         }
+        // (reduced motion: the screens beside show nothing)
         if (style !== "off")
-            root.show(list);
+            whenQuiet(still ? list.filter(r => r.role === 0) : list);
         else
             runs = runs.filter(r => !r.pending);
+        // An arrived display's spaces and windows: as its effect hands over
+        // (handover), or now when there's no effect to wait for
+        for (const n of arrived) {
+            if (style !== "off" && list.some(r => r.screen === n && r.role === 0) && Quickshell.screens.some(s => s.name === n))
+                waiting = waiting.concat([n]);
+            else
+                WorkspaceHomes.arrive(n, clients);
+        }
+        if (waiting.length > 0)
+            handoverLimit.restart();
         if (directional)
             sound(arrived.length > 0, side);
+    }
+
+    // A screen that was just added makes the GUI thread wait on the first
+    // frame of each of its windows (a GL context each: about a second on an
+    // iGPU). The effect starts once that has passed (three frames in a row on
+    // time, or 600 ms at most), so it plays smoothly; the new screen stays
+    // covered meanwhile.
+    property var queued: null
+    property real quietSince: 0
+    property real lastTick: 0
+    property int calm: 0
+    function whenQuiet(list) {
+        queued = queued ? queued.filter(r => !list.some(x => x.screen === r.screen)).concat(list) : list;
+        quietSince = Date.now();
+        lastTick = Date.now();
+        calm = 0;
+        quiet.restart();
+    }
+    Timer {
+        id: quiet
+        interval: 16
+        repeat: true
+        onTriggered: {
+            const t = Date.now();
+            root.calm = t - root.lastTick < 30 ? root.calm + 1 : 0;
+            root.lastTick = t;
+            if (root.calm >= 3 || t - root.quietSince > 600) {
+                stop();
+                const list = root.queued ?? [];
+                root.queued = null;
+                root.show(list);
+            }
+        }
     }
 
     // The connect / disconnect sound, panned toward the display (your own

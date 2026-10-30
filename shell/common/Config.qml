@@ -78,6 +78,7 @@ Singleton {
                 property real windowOpacityActive: 0.97 // custom: the focused window
                 property real windowOpacityInactive: 0.93 // custom: the other windows
                 property string motion: "subtle" // subtle (macOS) | expressive (iOS 26: more pull and bounce)
+                property bool reduceMotion: false // fades instead of travel (display connect effect and window moves, Today screen)
                 // Accessibility (like macOS): solid surfaces instead of glass;
                 // stronger text, separators and outlines
                 property bool reduceTransparency: false

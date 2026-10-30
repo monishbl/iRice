@@ -5,6 +5,8 @@
 - Software Update asks for your password once, when you press **Update**, and never again in the middle: AUR updates no longer ask at each step.
 - Your next update also installs a small iRice system helper (one password, as part of that update). From then on, these no longer ask for your password: the fixes in System health and Settings → Sharing, and using your wallpaper on the login screen. Quick Share's faster Wi-Fi links ask once as they start, never during a transfer. This only applies to an administrator's account, at the computer.
 - Until that update, everything asks for your password as before.
+- The "Running hot" warning no longer goes off for a few seconds of high load: it waits until the CPU has averaged above your limit for about 30 seconds, and it ends once it has averaged 5 °C below it for a minute (it used to need 3 minutes 10 °C below, so it could stay forever).
+- Plugging in or unplugging a display is smooth: the screen you're using no longer goes dark, and a new display starts its connect animation sooner. Unplug one and its windows glide onto the screen beside it, from that side; plug it back in and they glide back once its animation finishes, to the space it showed before.
 
 ## Sharing and spaces fixes · 2026-10-30
 

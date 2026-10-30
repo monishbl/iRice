@@ -111,12 +111,15 @@ Variants {
                 opacity: 0
                 onStatusChanged: if (status === Image.Ready) wallpaper.buffers[wallpaper.front] === bufB ? bakeTimer.restart() : wallpaper.swap(bufB)
             }
+            // (a screen plugged in later fades in quickly: its connect effect
+            // already covers it, and with the effect off a long fade from
+            // black would just look like a black screen)
             NumberAnimation {
                 id: firstFade
                 target: bufA
                 property: "opacity"
                 to: 1
-                duration: 450
+                duration: Wallpaper.started ? 120 : 450
                 easing.type: Easing.OutCubic
                 onStarted: bakeTimer.restart()
                 onFinished: Wallpaper.started = true
@@ -226,6 +229,12 @@ Variants {
             onTriggered: {
                 if (small.status === Image.Error)
                     return; // unloadable picture: don't retry forever
+                // Not while this screen's connect effect plays: grabbing and
+                // saving holds up the GUI thread, which would stall it
+                if (DisplayFx.runs.some(r => r.screen === win.screen?.name)) {
+                    restart();
+                    return;
+                }
                 if (small.status !== Image.Ready) {
                     restart();
                     return;

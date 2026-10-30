@@ -37,7 +37,7 @@ Scope {
 
                     readonly property var run: perScreen.run
                     // Reduced motion: no travel, a fade
-                    readonly property bool still: Config.options.appearance.reduceMotion === true
+                    readonly property bool still: DisplayFx.still
                     readonly property bool liquid: run?.style === "liquid"
                     readonly property int duration: Math.round((liquid ? (run?.role === 0 ? 1100 : 1000) : run?.style === "extend" && run?.role === 0 ? 1050 : run?.role === 0 ? 950 : 800) * CoolDown.motionScale)
                     // The new screen waits for its neighbour's part (the drop
@@ -46,12 +46,37 @@ Scope {
                     property real progress: 0
                     property real shown: 1
 
+                    // The arrived screen starts once its picture is decoded (off
+                    // the GUI thread, during the pending moment while its place
+                    // is read), or after 250 ms without it
+                    readonly property bool pictureReady: run?.role !== 0 || wallpaperImage.status === Image.Ready || wallpaperImage.status === Image.Error || pictureWait.waited
+                    readonly property bool canStart: run !== null && !run.pending && pictureReady
+                    property string startedKey: ""
+                    onCanStartChanged: if (canStart && startedKey !== runKey) {
+                        startedKey = runKey;
+                        anim.start();
+                    }
                     function start() {
+                        if (startedKey === runKey && runKey !== "")
+                            return;
                         anim.stop();
                         progress = 0;
                         shown = 1;
-                        if (run && !run.pending)
+                        pictureWait.waited = false;
+                        if (!run || run.pending)
+                            return;
+                        if (canStart) {
+                            startedKey = runKey;
                             anim.start();
+                        } else {
+                            pictureWait.restart();
+                        }
+                    }
+                    Timer {
+                        id: pictureWait
+                        property bool waited: false
+                        interval: 250
+                        onTriggered: waited = true
                     }
                     // Restart only for a different run (or one that's just been
                     // placed): the runs list is rebuilt whenever any screen's run
@@ -72,7 +97,11 @@ Scope {
                             easing.type: win.liquid || (win.run?.style === "extend" && win.run?.role === 0) ? Easing.Linear : win.run?.role === 0 ? Easing.InOutCubic : Easing.InOutSine // (liquid and extend ease in the shader)
                         }
                         // the arrived screen's picture is the desktop's own
-                        // wallpaper: fading the overlay hands it over
+                        // wallpaper: fading the overlay hands it over, and its
+                        // windows start coming in (DisplayFx → WorkspaceHomes)
+                        ScriptAction {
+                            script: if (win.run && win.run.role === 0) DisplayFx.handover(win.run.screen)
+                        }
                         NumberAnimation {
                             target: win
                             property: "shown"
@@ -100,18 +129,23 @@ Scope {
                         width: win.width
                         height: win.height
                         Image {
+                            id: wallpaperImage
                             anchors.fill: parent
                             source: Wallpaper.source
                             // neighbours only draw light: a token picture for them
-                            sourceSize: win.run?.role === 0 ? Qt.size(win.width, win.height) : Qt.size(16, 16)
+                            // (the screen's size, known before the window is: the picture
+                            // decodes once, while the screen is still pending)
+                            sourceSize: win.run?.role === 0 ? Qt.size(perScreen.modelData.width, perScreen.modelData.height) : Qt.size(16, 16)
                             fillMode: Image.PreserveAspectCrop
-                            asynchronous: false
+                            // (decoding a screen-sized picture on the GUI thread
+                            // stalled every screen's animations for a moment)
+                            asynchronous: true
                         }
                     }
                     ShaderEffectSource {
                         id: picture
                         sourceItem: framed
-                        hideSource: true // (live: the picture loads after the run starts; this window lives ~1 s)
+                        hideSource: true // (live: the picture may load after the window is made; this window lives ~1 s)
                         visible: false
                     }
 
