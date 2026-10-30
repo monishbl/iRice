@@ -125,7 +125,7 @@ Column {
             detail: "Super+Return"
             Dropdown {
                 width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["kitty", "foot", "alacritty", "wezterm", "konsole"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
+                options: [{ value: "", label: "Automatic" }].concat(["kitty", "foot", "alacritty", "wezterm", "ghostty", "konsole", "gnome-terminal", "kgx", "ptyxis", "xfce4-terminal", "xterm"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
                 value: Config.options.defaultApps.terminal
                 onChosen: v => Config.options.defaultApps.terminal = v
             }

@@ -19,10 +19,11 @@ QtObject {
     readonly property var btConnected: Bluetooth.devices.values.filter(d => d.connected)
 
     readonly property var all: ({
-            wifi: { label: "Wi-Fi", kind: "toggle", sizes: ["2x1", "1x1"], icon: !Networking.wifiEnabled ? "wifi-slash" : "wifi-high", on: Networking.wifiEnabled, status: !Networking.wifiEnabled ? "Off" : wifiNetwork?.name ?? "Not connected", page: "wifi", act: () => Networking.wifiEnabled = !Networking.wifiEnabled },
-            bluetooth: { label: "Bluetooth", kind: "toggle", sizes: ["1x1", "2x1"], icon: "bluetooth", on: bt?.enabled ?? false, status: !(bt?.enabled) ? "Off" : btConnected.length > 0 ? btConnected[0].name : "On", page: "bluetooth", act: () => { if (bt) bt.enabled = !bt.enabled; } },
+            // (without NetworkManager there's nothing for it to switch: Backends)
+            wifi: { label: "Wi-Fi", kind: "toggle", sizes: ["2x1", "1x1"], available: !Backends.wifiUnmanaged, reason: Backends.wifiShort, icon: !Networking.wifiEnabled ? "wifi-slash" : "wifi-high", on: Networking.wifiEnabled, status: !Networking.wifiEnabled ? "Off" : wifiNetwork?.name ?? "Not connected", page: "wifi", act: () => Networking.wifiEnabled = !Networking.wifiEnabled },
+            bluetooth: { label: "Bluetooth", kind: "toggle", sizes: ["1x1", "2x1"], icon: "bluetooth", on: bt?.enabled ?? false, status: Backends.btShort !== "" ? Backends.btShort : !(bt?.enabled) ? "Off" : btConnected.length > 0 ? btConnected[0].name : "On", page: "bluetooth", act: () => { if (Backends.btFix === "unblock") Backends.fixBluetooth(); else if (bt) bt.enabled = !bt.enabled; } },
             focus: { label: Focus.on ? Focus.mode.name : "Focus", kind: "toggle", sizes: ["2x1", "1x1"], icon: Focus.mode?.icon ?? "moon", on: Focus.on, status: Focus.on && Focus.until > 0 ? Focus.statusText : "", page: "focus", act: () => Focus.on ? Focus.deactivate() : Focus.activate("dnd", 0, false) },
-            nightLight: { label: "Night Light", kind: "toggle", sizes: ["1x1", "2x1"], icon: "moon-stars", on: System.nightLight, status: System.nightLight ? System.nightLightTemp + "K" : "Off", act: () => System.nightLight = !System.nightLight },
+            nightLight: { label: "Night Light", kind: "toggle", sizes: ["1x1", "2x1"], icon: "moon-stars", on: System.nightLight, status: System.nightLight ? System.nightLightTemp + "K" : "Off", needs: "hyprsunset", act: () => System.nightLight = !System.nightLight },
             darkMode: { label: Theme.dark ? "Dark Mode" : "Light Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "circle-half", on: Theme.dark, status: Config.options.appearance.mode === "auto" ? "Auto" : "", act: () => System.toggleDarkMode() },
             // Visible to nearby devices, LocalSend and Quick Share together; on = for 10 minutes
             // The circle toggles off ↔ 10 min; the rest (or right-click) offers
@@ -42,7 +43,7 @@ QtObject {
             keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
             stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic() },
-            lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : "power-saver") },
+            lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], available: Backends.ppd, reason: Backends.powerShort, icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : "power-saver") },
             coolDown: { label: "Cool-down", kind: "toggle", sizes: ["1x1", "2x1"], icon: "snowflake", on: CoolDown.active, status: CoolDown.why, act: () => CoolDown.toggle() },
             gameMode: { label: "Game Mode", kind: "toggle", sizes: ["1x1", "2x1"], icon: "game-controller", on: System.gameMode, status: "", act: () => System.gameMode = !System.gameMode },
             antiFlashbang: { label: "Anti-Flash", kind: "toggle", sizes: ["1x1", "2x1"], icon: "sun-dim", on: System.antiFlashbang, status: "", act: () => System.antiFlashbang = !System.antiFlashbang },
@@ -58,10 +59,10 @@ QtObject {
             timer: { label: "Timer", kind: "action", sizes: ["1x1", "2x1"], icon: "timer", act: () => { Panels.ncTab = 2; Panels.show("notificationCenter"); } },
             tileWindows: { label: "Tile Left & Right", kind: "action", sizes: ["2x1", "1x1"], icon: "square-split-horizontal", act: () => { Panels.close(); Tiling.arrange("leftRight"); } },
             appLibrary: { label: "App Library", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
-            display: { label: "Display", kind: "slider", sizes: ["4x1", "1x2"], icon: "sun", available: Brightness.available },
+            display: { label: "Display", kind: "slider", sizes: ["4x1", "1x2"], icon: "sun", available: Brightness.available, reason: "No adjustable display brightness" },
             sound: { label: "Sound", kind: "slider", sizes: ["4x1", "1x2"], icon: Audio.icon, page: "sound" },
             nowPlaying: { label: "Now Playing", kind: "media", sizes: ["2x2", "4x1"], icon: "music-notes" },
-            battery: { label: "Battery", kind: "info", sizes: ["2x1", "1x1"], icon: "battery-high", available: Island.hasBattery },
+            battery: { label: "Battery", kind: "info", sizes: ["2x1", "1x1"], icon: "battery-high", available: Island.hasBattery, reason: "No battery" },
             resources: { label: "CPU & Memory", kind: "info", sizes: ["2x1", "2x2"], icon: "cpu", page: "resources" },
             weather: { label: "Weather", kind: "info", sizes: ["2x1", "2x2"], icon: Weather.icon }
         })
@@ -71,6 +72,15 @@ QtObject {
     function usable(id) {
         const d = all[id];
         return !!d && d.available !== false && (!d.needs || Tools.has(d.needs));
+    }
+    // Why a module can't be added here (the gallery shows it greyed out)
+    function whyNot(id) {
+        const d = all[id];
+        if (!d || usable(id))
+            return "";
+        if (d.available === false)
+            return d.reason || "Not available on this computer";
+        return "Needs " + d.needs;
     }
 
     // "id:WxH" -> { id, w, h }

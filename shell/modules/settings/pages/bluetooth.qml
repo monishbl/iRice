@@ -18,23 +18,41 @@ Column {
     readonly property string pageTitle: "Bluetooth"
     readonly property var adapter: Bluetooth.defaultAdapter
 
+    // Not working (Backends.btState): why, and the fix when there's one
+    readonly property bool broken: Backends.btState !== "ok" && Backends.btState !== ""
+    Timer { // (rfkill and the service change without BlueZ telling)
+        running: page.visible && page.broken
+        interval: 3000
+        repeat: true
+        onTriggered: Backends.recheck()
+    }
+
     Group {
         width: parent.width
-        footer: !page.adapter ? "No Bluetooth adapter found. If this computer has one, check that it isn't switched off with a key or in its firmware settings, and that the bluetooth service is running (systemctl enable --now bluetooth)." : ""
+        footer: Backends.btFixError
         Row {
-            label: "Bluetooth"
-            detail: !page.adapter ? "Not available" : page.adapter.enabled ? "On · this computer appears as “" + (page.adapter.name || "this computer") + "”" : "Off"
+            label: page.broken ? Backends.btTitle : "Bluetooth"
+            detail: page.broken ? Backends.btReason : !page.adapter ? "Not available" : page.adapter.enabled ? "On · this computer appears as “" + (page.adapter.name || "this computer") + "”" : "Off"
             QQ.Row {
                 spacing: 8
                 SettingsButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: page.adapter?.enabled ?? false
+                    visible: page.broken && Backends.btFix !== ""
+                    primary: true
+                    text: Backends.btFixing ? "Working…" : Backends.btFixLabel
+                    busy: Backends.btFixing
+                    onClicked: Backends.fixBluetooth()
+                }
+                SettingsButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !page.broken && (page.adapter?.enabled ?? false)
                     text: "Look again"
                     icon: "arrow-clockwise"
                     onClicked: nearby.rescan()
                 }
                 Switch {
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: !page.broken
                     enabled: page.adapter !== null
                     checked: page.adapter?.enabled ?? false
                     onToggled: if (page.adapter) page.adapter.enabled = !page.adapter.enabled
@@ -44,7 +62,7 @@ Column {
     }
 
     Group {
-        visible: page.adapter?.enabled ?? false
+        visible: !page.broken && (page.adapter?.enabled ?? false)
         width: parent.width
         title: "My devices"
         footer: "Click a device to connect or disconnect it. Right-click for more: connect automatically, forget, copy its address."
@@ -65,7 +83,7 @@ Column {
     }
 
     Group {
-        visible: page.adapter?.enabled ?? false
+        visible: !page.broken && (page.adapter?.enabled ?? false)
         width: parent.width
         title: "Nearby devices"
         footer: "Looking for devices while this page is open. Put the device in pairing mode to see it here, then click it to pair."

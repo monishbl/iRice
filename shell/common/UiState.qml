@@ -45,6 +45,7 @@ Singleton {
         property string todayShown: "" // the day ("YYYY-MM-DD", days start at 4 AM) Today last opened by itself
         property string todayPinned: "" // the day Today was pinned to the desktop for
         property string todayEnsured: "" // the day the daily Today widget was last put back (Widget / Both)
+        property var conflictsMuted: [] // Conflicts: ids of things also running that you said not to mention again
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
@@ -65,11 +66,12 @@ Singleton {
         onTodayPinnedChanged: root.scheduleSave()
         onTodayEnsuredChanged: root.scheduleSave()
         onSpacesChanged: root.scheduleSave()
+        onConflictsMutedChanged: root.scheduleSave()
     }
 
     property bool loaded: false
     property bool initialized: false
-    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "spaces"]
+    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "spaces", "conflictsMuted"]
     readonly property string journalId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
     readonly property string merger: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/state-merge.py").toString().replace("file://", ""))
     property int sequence: 0

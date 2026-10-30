@@ -41,7 +41,8 @@ Singleton {
         const pkg = packageFor(id);
         if (pkg === "")
             return;
-        Launch.terminal(["sh", "-c", "yay -S --needed \"$1\" && fc-cache -f; echo; read -p 'Done. Press Enter to close' _", "sh", pkg], false);
+        // (yay, else paru: whichever AUR helper is installed)
+        Launch.terminal(["sh", "-c", "h=$(command -v yay || command -v paru) || { echo 'Install yay or paru first (an AUR helper), then try again.'; read -p 'Press Enter to close' _; exit 1; }; \"$h\" -S --needed \"$1\" && fc-cache -f; echo; read -p 'Done. Press Enter to close' _", "sh", pkg], false);
         recheck.left = 24;
         recheck.restart();
     }

@@ -211,7 +211,10 @@ Singleton {
         }
         if ((m = low.match(/^(?:set )?brightness (?:to )?(\d{1,3})%?$/))) {
             const v = Math.min(100, parseInt(m[1]));
-            out.push(row("Set the brightness to " + v + "%", "", "sun", () => Brightness.set(v / 100)));
+            if (Brightness.available)
+                out.push(row("Set the brightness to " + v + "%", "", "sun", () => Brightness.set(v / 100)));
+            else
+                out.push(row("No adjustable display brightness", "External displays set it with their own buttons", "sun", () => {}));
             return;
         }
         const power = ({ "lock": ["lock", "Lock the screen", "lock"], "lock screen": ["lock", "Lock the screen", "lock"], "sleep": ["sleep", "Sleep", "moon-stars"], "log out": ["logout", "Log out", "sign-out"], "restart": ["restart", "Restart", "arrow-clockwise"], "shut down": ["shutdown", "Shut down", "power"], "shutdown": ["shutdown", "Shut down", "power"] })[low];

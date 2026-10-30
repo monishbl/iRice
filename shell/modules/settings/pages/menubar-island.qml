@@ -157,9 +157,14 @@ Column {
             Row {
                 id: ev
                 required property var modelData
+                // (network changes need something to watch them with)
+                readonly property bool unavailable: modelData[0] === "network" && !NetworkAlerts.canWatch
                 label: modelData[1]
+                labelColor: unavailable ? Theme.color.secondary : Theme.color.label
+                detail: unavailable ? NetworkAlerts.reason : ""
                 Switch {
-                    checked: Island.wants(ev.modelData[0])
+                    enabled: !ev.unavailable
+                    checked: Island.wants(ev.modelData[0]) && !ev.unavailable
                     onToggled: {
                         const k = ev.modelData[0];
                         const l = Config.options.island.events.filter(x => x !== k);

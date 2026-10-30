@@ -41,28 +41,30 @@ Column {
     Group {
         width: parent.width
         title: "Wi-Fi"
-        footer: "Right-click a network to connect, disconnect, forget it or copy its name."
+        footer: Backends.wifiUnmanaged ? "" : "Right-click a network to connect, disconnect, forget it or copy its name."
         Row {
+            visible: !Backends.wifiUnmanaged // (the list below says who manages it instead)
             label: "Wi-Fi"
             detail: !wifiList.device ? "No Wi-Fi adapter found" : Networking.wifiEnabled ? (wifiList.networks.find(n => n.connected)?.name ? "Connected to " + wifiList.networks.find(n => n.connected).name : "On, not connected") : "Off"
             QQ.Row {
                 spacing: 8
                 SettingsButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: Networking.wifiEnabled
+                    visible: Networking.wifiEnabled && !Backends.wifiUnmanaged
                     text: "Scan again"
                     icon: "arrow-clockwise"
                     onClicked: wifiList.rescan()
                 }
                 Switch {
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: !Backends.wifiUnmanaged
                     checked: Networking.wifiEnabled
                     onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
                 }
             }
         }
         Item {
-            visible: Networking.wifiEnabled
+            visible: Networking.wifiEnabled || Backends.wifiUnmanaged
             width: parent.width
             height: wifiList.implicitHeight + 16
             WifiList {
@@ -77,6 +79,7 @@ Column {
     }
 
     Group {
+        visible: !Backends.wifiUnmanaged // (NetworkManager's saved networks)
         width: parent.width
         title: "Known networks"
         footer: WifiJoin.forgetError !== "" ? WifiJoin.forgetError : "Networks this computer joins by itself when they're in range. Forget one to stop that and remove its saved password."

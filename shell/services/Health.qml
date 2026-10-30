@@ -28,9 +28,11 @@ Singleton {
     function args() {
         return ["--polkit", polkit].concat(Google.connected ? ["--google"] : []);
     }
+    signal fixDone(string id) // (a fix ran; Backends looks again)
     function check() {
         if (checking)
             return;
+        Tools.recheck(); // (something may have been installed since)
         checking = true;
         error = "";
         proc.command = ["python3", "-I", script].concat(args());
@@ -71,8 +73,10 @@ Singleton {
             }
         }
         onExited: {
+            const id = root.fixing;
             root.fixing = "";
             root.checking = false;
+            root.fixDone(id);
             root.check(); // see whether it worked
         }
     }

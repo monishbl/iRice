@@ -39,8 +39,16 @@ Column {
     Group {
         width: parent.width
         title: "Energy mode"
-        footer: "Cool-down comes first while the computer is hot, then the battery saver, then your choice or Game Mode, whichever came last."
+        footer: Backends.ppd ? "Cool-down comes first while the computer is hot, then the battery saver, then your choice or Game Mode, whichever came last." : ""
+        // Without power-profiles-daemon there are no modes to switch: who
+        // manages power instead, or what to install
         Row {
+            visible: !Backends.ppd
+            label: Backends.powerShort
+            detail: Backends.powerReason
+        }
+        Row {
+            visible: Backends.ppd
             label: "Energy mode"
             detail: Power.why !== "" ? "Now " + Power.modeName + " · " + Power.why : PowerProfiles.hasPerformanceProfile ? "" : "This computer has no Performance mode"
             Segmented {
@@ -52,18 +60,19 @@ Column {
             }
         }
         Row {
-            visible: page.battery
+            visible: page.battery && Backends.ppd
             label: "Offer Low Power when the battery is low"
             detail: "At " + page.cfg.batterySaverLevel + "% on battery, once each time it runs down, the island asks"
             Switch { checked: page.cfg.batterySaver; onToggled: Config.options.power.batterySaver = !checked }
         }
         Row {
-            visible: page.battery && page.cfg.batterySaver
+            visible: page.battery && page.cfg.batterySaver && Backends.ppd
             label: "Turn it on automatically"
             detail: "Low Power comes on by itself, and the island offers Undo"
             Switch { checked: page.cfg.batterySaverAuto; onToggled: Config.options.power.batterySaverAuto = !checked }
         }
         Row {
+            visible: Backends.ppd
             label: "Game Mode uses Performance"
             detail: PowerProfiles.hasPerformanceProfile ? "While Game Mode is on (Control Center)" : "This computer has no Performance mode"
             enabled: PowerProfiles.hasPerformanceProfile

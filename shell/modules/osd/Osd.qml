@@ -144,6 +144,6 @@ Scope {
     GlobalShortcut { appid: "irice"; name: "volumeDown"; onPressed: { Audio.setVolume(Audio.volume - 0.05); Sounds.play("volumeKeys"); } }
     GlobalShortcut { appid: "irice"; name: "volumeMute"; onPressed: Audio.toggleMute() }
     GlobalShortcut { appid: "irice"; name: "micMute"; onPressed: Audio.toggleMic() }
-    GlobalShortcut { appid: "irice"; name: "brightnessUp"; onPressed: Brightness.set(Brightness.value + 0.05) }
-    GlobalShortcut { appid: "irice"; name: "brightnessDown"; onPressed: Brightness.set(Brightness.value - 0.05) }
+    GlobalShortcut { appid: "irice"; name: "brightnessUp"; onPressed: if (Brightness.available) Brightness.set(Brightness.value + 0.05) } // (no backlight: no OSD either)
+    GlobalShortcut { appid: "irice"; name: "brightnessDown"; onPressed: if (Brightness.available) Brightness.set(Brightness.value - 0.05) }
 }

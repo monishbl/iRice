@@ -239,15 +239,24 @@ Variants {
                             id: gallery
                             width: parent.width
                             spacing: 2
+                            // (then the ones this computer can't use, greyed, with why)
                             Repeater {
-                                model: Object.keys(moduleDefs.all).filter(id => moduleDefs.usable(id) && !cc.layout.some(e => e.id === id))
+                                model: ScriptModel {
+                                    values: {
+                                        const ids = Object.keys(moduleDefs.all).filter(id => !cc.layout.some(e => e.id === id));
+                                        return ids.filter(id => moduleDefs.usable(id)).concat(ids.filter(id => !moduleDefs.usable(id)));
+                                    }
+                                }
                                 Squircle {
                                     required property string modelData
                                     readonly property var def: moduleDefs.all[modelData]
+                                    readonly property string whyNot: moduleDefs.whyNot(modelData)
                                     width: gallery.width
                                     height: 40
                                     radius: Theme.radius.control
-                                    color: addMouse.containsMouse ? Theme.color.fill : "transparent"
+                                    color: addMouse.containsMouse && whyNot === "" ? Theme.color.fill : "transparent"
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: def.label + (whyNot !== "" ? ", " + whyNot : "")
                                     Rectangle {
                                         id: gIcon
                                         x: 6
@@ -256,16 +265,31 @@ Variants {
                                         height: 28
                                         radius: 14
                                         color: Theme.color.platter
-                                        Icon { anchors.centerIn: parent; name: parent.parent.def.icon; size: 14; color: Theme.color.label }
+                                        Icon { anchors.centerIn: parent; name: parent.parent.def.icon; size: 14; color: parent.parent.whyNot !== "" ? Theme.color.tertiary : Theme.color.label }
+                                    }
+                                    Column {
+                                        anchors { left: gIcon.right; leftMargin: 10; right: gSizes.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            width: parent.width
+                                            elide: Text.ElideRight
+                                            text: parent.parent.def.label
+                                            color: parent.parent.whyNot !== "" ? Theme.color.secondary : Theme.color.label
+                                            font { family: Theme.font.family; pixelSize: Theme.font.body }
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            visible: text !== ""
+                                            elide: Text.ElideRight
+                                            text: parent.parent.whyNot
+                                            color: Theme.color.tertiary
+                                            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                                        }
                                     }
                                     Text {
-                                        anchors { left: gIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                                        text: parent.def.label
-                                        color: Theme.color.label
-                                        font { family: Theme.font.family; pixelSize: Theme.font.body }
-                                    }
-                                    Text {
+                                        id: gSizes
                                         anchors { right: plus.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                        visible: parent.whyNot === ""
+                                        width: visible ? implicitWidth : 0
                                         text: parent.def.sizes.join(" · ").replace(/x/g, "×")
                                         color: Theme.color.tertiary
                                         font { family: Theme.font.family; pixelSize: Theme.font.caption }
@@ -273,6 +297,7 @@ Variants {
                                     Icon {
                                         id: plus
                                         anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                        visible: parent.whyNot === ""
                                         name: "plus-circle"
                                         fill: true
                                         size: 18
@@ -281,6 +306,7 @@ Variants {
                                     MouseArea {
                                         id: addMouse
                                         anchors.fill: parent
+                                        enabled: parent.whyNot === ""
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: cc.addModule(parent.modelData)

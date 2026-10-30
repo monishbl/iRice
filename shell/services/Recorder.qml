@@ -62,7 +62,14 @@ Singleton {
     // ── Microphones (for the options menu and Settings) ─────────────────
     property var mics: [] // [{ name, description }]
     function refreshMics() {
-        micList.running = true;
+        if (Tools.has("pactl"))
+            micList.running = true;
+        else
+            mics = pipewireMics();
+    }
+    // Without pactl (no pipewire-pulse): PipeWire's own audio sources
+    function pipewireMics() {
+        return Pipewire.nodes.values.filter(n => n.audio && !n.isSink && !n.isStream && !(n.name ?? "").endsWith(".monitor")).map(n => ({ name: n.name, description: n.description || n.nickname || n.name }));
     }
     Process {
         id: micList
@@ -72,7 +79,7 @@ Singleton {
                 try {
                     root.mics = JSON.parse(text).filter(s => !s.monitor_source && !(s.name ?? "").endsWith(".monitor")).map(s => ({ name: s.name, description: s.description || s.name }));
                 } catch (e) {
-                    root.mics = [];
+                    root.mics = root.pipewireMics();
                 }
             }
         }

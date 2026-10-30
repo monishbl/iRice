@@ -15,7 +15,9 @@ import "PowerPolicy.js" as Policy
 // Mode, whichever came last. Each request has an owner, a reason and
 // optionally an end. A change made outside iRice (powerprofilesctl) counts
 // as your choice. The dev sandbox never sets the mode: it shares the
-// machine's power daemon.
+// machine's power daemon. Without power-profiles-daemon (TLP or
+// auto-cpufreq manage power, or nothing does: Backends.ppd) there are no
+// modes to set, and nothing here claims to switch them.
 Singleton {
     id: root
 
@@ -85,7 +87,7 @@ Singleton {
     property string applied: ""
     onModeChanged: apply()
     function apply() {
-        if (!Config.ready || sandboxed)
+        if (!Config.ready || sandboxed || !Backends.ppd)
             return;
         applied = mode;
         if (PowerProfiles.profile !== profileOf(mode))
@@ -128,7 +130,7 @@ Singleton {
         ask("battery", "power-saver", "battery at " + Math.round(percent) + "%");
     }
     function offerSaver() {
-        if (!cfg.batterySaver || saverDismissed || has("battery") || mode === "power-saver")
+        if (!cfg.batterySaver || saverDismissed || has("battery") || mode === "power-saver" || !Backends.ppd)
             return;
         saverDismissed = true;
         const p = Math.round(percent) + "%";
@@ -142,7 +144,7 @@ Singleton {
     onPercentChanged: if (has("battery")) saverOn() // (the reason shows the level)
 
     // Game Mode asks for Performance
-    readonly property bool gameWanted: System.gameMode && cfg.gamePerformance && PowerProfiles.hasPerformanceProfile
+    readonly property bool gameWanted: System.gameMode && cfg.gamePerformance && PowerProfiles.hasPerformanceProfile && Backends.ppd
     onGameWantedChanged: gameWanted ? ask("game", "performance", "Game Mode until you turn it off") : release("game")
 
     // ── Critical battery ────────────────────────────────────────────────

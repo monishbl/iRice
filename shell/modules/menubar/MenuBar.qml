@@ -111,15 +111,18 @@ Variants {
             Corner { visible: Config.options.appearance.screenCorners; x: 0; radius: Config.options.appearance.screenCornerRadius }
             Corner { visible: Config.options.appearance.screenCorners; x: bar.width - width; atRight: true; radius: Config.options.appearance.screenCornerRadius }
 
-            // Scroll gestures: left half brightness, right half volume
+            // Scroll gestures: left half brightness (when the display has a
+            // backlight), right half volume
             WheelHandler {
                 enabled: bar.cfg.scrollGestures
                 onWheel: e => {
                     const step = e.angleDelta.y > 0 ? 0.05 : -0.05;
-                    if (point.position.x < bar.width / 2)
-                        Brightness.set(Brightness.value + step);
-                    else
+                    if (point.position.x < bar.width / 2) {
+                        if (Brightness.available)
+                            Brightness.set(Brightness.value + step);
+                    } else {
                         Audio.setVolume(Audio.volume + step);
+                    }
                 }
             }
 
@@ -199,7 +202,7 @@ Variants {
 
                 // Extra buttons (Settings → Menu Bar)
                 Repeater {
-                    model: bar.cfg.utilButtons.filter(b => b !== "colorPicker" || Tools.has("hyprpicker"))
+                    model: bar.cfg.utilButtons.filter(b => (b !== "colorPicker" || Tools.has("hyprpicker")) && (b !== "powerProfile" || Backends.ppd))
                     MenuBarItem {
                         required property string modelData
                         readonly property var def: ({
@@ -383,7 +386,7 @@ Variants {
                             level: batteryItem.level
                             charging: batteryItem.battery.state === UPowerDeviceState.Charging
                             plugged: batteryItem.plugged
-                            lowPower: PowerProfiles.profile === PowerProfile.PowerSaver
+                            lowPower: Backends.ppd && PowerProfiles.profile === PowerProfile.PowerSaver
                             showPercent: batteryItem.percent === "inside"
                             color: bar.fg
                         }
@@ -431,13 +434,16 @@ Variants {
                     id: wifiItem
                     readonly property var wifi: Networking.devices.values.find(d => d.type === DeviceType.Wifi) ?? null
                     readonly property var network: wifi?.networks.values.find(n => n.connected) ?? null
-                    readonly property real strength: network?.signalStrength ?? 0
-                    visible: bar.cfg.wifi && wifi !== null
+                    // Without NetworkManager (iwd, ConnMan…): the link from the
+                    // kernel, and the menu says who manages Wi-Fi (Backends)
+                    readonly property bool elsewhere: Backends.wifiUnmanaged && Backends.hasWifiHardware
+                    readonly property real strength: elsewhere ? 1 : network?.signalStrength ?? 0
+                    visible: bar.cfg.wifi && (wifi !== null || elsewhere)
                     color: bar.fg
                     glyph: Component {
                         WifiGlyph {
-                            on: Networking.wifiEnabled
-                            connected: wifiItem.network !== null
+                            on: Networking.wifiEnabled || wifiItem.elsewhere
+                            connected: wifiItem.network !== null || (wifiItem.elsewhere && Backends.wifiLinkUp)
                             strength: wifiItem.strength
                             color: bar.fg
                         }
@@ -449,7 +455,7 @@ Variants {
                         target: parent
                         hovered: parent.hovered && !parent.active
                         screen: bar.screen
-                        text: !Networking.wifiEnabled ? "Wi-Fi off" : !parent.network ? "Wi-Fi on · not connected" : parent.network.name + " · " + (parent.strength > 0.75 ? "Excellent" : parent.strength > 0.5 ? "Good" : parent.strength > 0.3 ? "Fair" : "Weak") + " signal"
+                        text: parent.elsewhere ? "Wi-Fi · " + Backends.wifiShort : !Networking.wifiEnabled ? "Wi-Fi off" : !parent.network ? "Wi-Fi on · not connected" : parent.network.name + " · " + (parent.strength > 0.75 ? "Excellent" : parent.strength > 0.5 ? "Good" : parent.strength > 0.3 ? "Fair" : "Weak") + " signal"
                     }
                 }
 

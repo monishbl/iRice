@@ -96,8 +96,10 @@ Singleton {
                 return;
             const was = root.job?.state;
             root.job = j;
-            if (j.state !== "running" && was === "running")
+            if (j.state !== "running" && was === "running") {
+                Tools.recheck(); // (packages may have come or gone)
                 root.finished(j);
+            }
         }
     }
     // While it runs: the status every half second (a small file, replaced

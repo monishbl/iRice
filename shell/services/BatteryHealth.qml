@@ -59,6 +59,6 @@ Singleton {
         const d = UPower.displayDevice;
         const level = d.percentage > 1 ? d.percentage / 100 : d.percentage;
         const state = d.state === UPowerDeviceState.FullyCharged ? "Fully charged" : d.state === UPowerDeviceState.Charging ? (d.timeToFull > 0 ? "Full in " + hm(d.timeToFull) : "Charging") : d.state === UPowerDeviceState.PendingCharge ? "Not charging" : (d.timeToEmpty > 0 ? hm(d.timeToEmpty) + " left" : "On battery");
-        return Math.round(level * 100) + "% · " + state + " · " + modeName(PowerProfiles.profile);
+        return Math.round(level * 100) + "% · " + state + (Backends.ppd ? " · " + modeName(PowerProfiles.profile) : "");
     }
 }

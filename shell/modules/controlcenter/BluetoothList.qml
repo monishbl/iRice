@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Bluetooth
 import qs.common
+import qs.services
 
 // The Bluetooth devices, for the Bluetooth menu and Control Center
 // (BluetoothPage) and Settings → Bluetooth: connected first, then paired,
@@ -142,7 +143,29 @@ Column {
         return "";
     }
 
+    // Not working: why (no adapter, BlueZ missing or stopped, blocked), and
+    // the fix when there's one. (My devices only; Nearby says nothing more)
+    ServiceNotice {
+        visible: Backends.btState !== "ok" && Backends.btState !== "" && root.which !== "nearby"
+        width: parent.width
+        icon: "bluetooth-slash"
+        title: Backends.btTitle
+        text: Backends.btReason
+        action: Backends.btFixLabel
+        busy: Backends.btFixing
+        error: Backends.btFixError
+        onTriggered: Backends.fixBluetooth()
+        // rfkill and the service change without BlueZ telling anyone: look
+        // again while this shows
+        Timer {
+            running: parent.visible
+            interval: 3000
+            repeat: true
+            onTriggered: Backends.recheck()
+        }
+    }
     Item {
+        visible: Backends.btState === "ok" || Backends.btState === ""
         width: parent.width
         height: Math.min(listCol.implicitHeight, root.maxListHeight)
         Flickable {

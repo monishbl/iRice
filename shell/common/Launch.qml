@@ -30,10 +30,17 @@ Singleton {
         }
         run(["xdg-open", u]);
     }
-    // A command in a terminal: kitty, else foot, else the system's terminal.
-    // hold: keep the window open after the command ends (to read its output)
+    // A command in a terminal: the one chosen in Settings → Default apps,
+    // else $TERMINAL, else the first installed (kitty, foot, alacritty,
+    // wezterm, ghostty, konsole, …), each started its own way
+    // (assets/scripts/open-app.sh). hold: keep the window open after the
+    // command ends (to read its output)
+    readonly property string openApp: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/open-app.sh").toString().replace("file://", ""))
+    function terminalCommand(args, hold) {
+        return ["env", "IRICE_USER_DIR=" + Config.dir, "bash", openApp, "terminal"].concat(hold ? ["--hold"] : [], ["--"], args);
+    }
     function terminal(args, hold) {
-        run(["sh", "-c", "if command -v kitty >/dev/null; then exec kitty " + (hold ? "--hold " : "") + "\"$@\"; elif command -v foot >/dev/null; then exec foot " + (hold ? "-H " : "") + "\"$@\"; else exec xdg-terminal-exec \"$@\"; fi", "sh"].concat(args));
+        run(terminalCommand(args, hold));
     }
     // An app from its desktop entry
     function app(entry) {
@@ -44,7 +51,7 @@ Singleton {
             entry.execute();
             return;
         }
-        let cmd = entry.runInTerminal ? ["sh", "-c", "exec ${TERMINAL:-kitty} -e \"$@\"", "sh"].concat(entry.command) : entry.command;
+        let cmd = entry.runInTerminal ? terminalCommand(entry.command, false) : entry.command;
         if (env.length > 0)
             cmd = ["env"].concat(env, cmd);
         if (entry.workingDirectory)

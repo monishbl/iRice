@@ -56,6 +56,28 @@ Column {
         }
     }
 
+    // Things also running that do iRice's job twice (services/Conflicts.qml)
+    Group {
+        visible: Conflicts.found.length > 0
+        width: parent.width
+        title: "Also running"
+        footer: "These do jobs iRice already does, so things can happen twice or not show. Stop the ones you don't need; iRice doesn't stop them for you."
+        Repeater {
+            model: Conflicts.found
+            Row {
+                id: other
+                required property var modelData
+                readonly property bool hidden: Conflicts.muted.includes(modelData.id)
+                label: modelData.name.charAt(0).toUpperCase() + modelData.name.slice(1)
+                detail: modelData.what.charAt(0).toUpperCase() + modelData.what.slice(1) + ".\nTo stop it: " + modelData.fix
+                SettingsButton {
+                    text: other.hidden ? "Show alerts" : "Don't show again"
+                    onClicked: other.hidden ? Conflicts.unmute(other.modelData.id) : Conflicts.mute([other.modelData.id])
+                }
+            }
+        }
+    }
+
     Repeater {
         model: Health.groups
         Group {

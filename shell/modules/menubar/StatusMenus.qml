@@ -259,7 +259,17 @@ Scope {
                     topPadding: 4
                     font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                 }
+                // (without power-profiles-daemon: who manages power instead)
+                Text {
+                    visible: !Backends.ppd
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: Backends.powerShort
+                    color: Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
                 Segmented {
+                    visible: Backends.ppd
                     width: parent.width
                     readonly property var values: [PowerProfile.PowerSaver, PowerProfile.Balanced, PowerProfile.Performance]
                     options: PowerProfiles.hasPerformanceProfile ? ["Low Power", "Balanced", "Performance"] : ["Low Power", "Balanced"]

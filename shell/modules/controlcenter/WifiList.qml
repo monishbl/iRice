@@ -173,11 +173,23 @@ Column {
         refresh(true);
     }
 
+    // ── Without NetworkManager: who manages Wi-Fi, and its own app ──────
+    ServiceNotice {
+        visible: Backends.wifiUnmanaged
+        width: parent.width
+        icon: "wifi-slash"
+        title: Backends.wifiTitle
+        text: Backends.wifiReason
+        action: Backends.canStartNm ? "Start NetworkManager" : Backends.wifiApp !== "" ? "Open " + Backends.wifiAppName : ""
+        busy: Health.fixing === "networkmanager"
+        onTriggered: Backends.canStartNm ? Backends.startNm() : Backends.openWifiApp()
+    }
+
     // ── The networks, scrolling once there are more than fit ───────────
     Item {
         width: parent.width
         height: Math.min(listCol.implicitHeight, root.maxListHeight)
-        visible: root.form === null
+        visible: root.form === null && !Backends.wifiUnmanaged
         Flickable {
             id: listFlick
             anchors.fill: parent
@@ -361,7 +373,7 @@ Column {
 
     // A network that hides its name
     ListRow {
-        visible: Networking.wifiEnabled && root.form === null
+        visible: Networking.wifiEnabled && root.form === null && !Backends.wifiUnmanaged
         icon: "plus"
         title: "Join other network…"
         onClicked: {

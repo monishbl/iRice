@@ -10,6 +10,7 @@ Item {
 
     implicitWidth: 38
     implicitHeight: 22
+    opacity: enabled ? 1 : 0.4 // (disabled: can't be switched here, the row says why)
     activeFocusOnTab: true
     Keys.onPressed: event => {
         if ((event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !event.isAutoRepeat) {
@@ -21,8 +22,8 @@ Item {
     Accessible.name: accessibleName
     Accessible.checkable: true
     Accessible.checked: checked
-    Accessible.onToggleAction: root.toggled()
-    Accessible.onPressAction: root.toggled()
+    Accessible.onToggleAction: if (enabled) root.toggled()
+    Accessible.onPressAction: if (enabled) root.toggled()
     FocusRing {
         radius: height / 2
     }

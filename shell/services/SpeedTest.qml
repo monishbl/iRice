@@ -388,8 +388,11 @@ Singleton {
                 }
                 if (l.signal !== undefined)
                     l.quality = Math.max(0, Math.min(1, (l.signal + 90) / 60)); // -90 dBm → 0, -30 → 1
+                // (only NetworkManager says; without it the security isn't known)
                 if (l.security === "")
                     l.security = "Open";
+                if (l.security === undefined)
+                    l.security = "";
                 if (l.kind === "wifi" && !l.ssid)
                     l.kind = "other";
                 root.link = l;

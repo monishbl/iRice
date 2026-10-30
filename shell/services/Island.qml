@@ -495,10 +495,10 @@ Singleton {
     // everyone; Cool-down wins over the rest while it lasts)
     readonly property bool throttled: Power.has("cooldown")
     function hotText(t) {
-        return "CPU " + Math.round(t) + " °C · " + (throttled ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
+        return "CPU " + Math.round(t) + " °C · " + (throttled ? (System.sandboxed ? "would switch to Low Power (sandbox)" : "switched to Low Power to cool down") : Backends.ppd && PowerProfiles.profile === PowerProfile.PowerSaver ? "already on Low Power; close heavy apps" : "close heavy apps or let it cool");
     }
     function throttle(on) {
-        if (on && cfg.hotThrottle)
+        if (on && cfg.hotThrottle && Backends.ppd) // (no energy modes without power-profiles-daemon)
             Power.ask("cooldown", "power-saver", "cooling down: CPU at " + Math.round(Resources.temperature) + " °C");
         else
             Power.release("cooldown");
