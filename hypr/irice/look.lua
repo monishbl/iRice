@@ -19,6 +19,10 @@ end
 default_env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 default_env("QT_QPA_PLATFORM", "wayland;xcb")
 default_env("XDG_MENU_PREFIX", "plasma-")
+-- Claude Desktop keeps its sign-in in its own encrypted file, not KWallet:
+-- the wallet isn't unlocked at login here, so it asked for the wallet
+-- password at every start
+default_env("CLAUDE_PASSWORD_STORE", "basic")
 
 hl.config({
     general = {

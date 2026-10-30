@@ -17,6 +17,18 @@ hl.window_rule({
     no_focus = true
 })
 
+-- Claude's Quick Entry (Ctrl+Alt+Space, or its tray icon): a mostly
+-- transparent XWayland window that closes when it loses focus. Undecorated
+-- and unblurred, so only its prompt bar shows; it keeps focus until you send
+-- or press Esc (with focus following the pointer, moving off it closed it).
+-- Claude's main window isn't floating, so it isn't matched.
+hl.window_rule({
+    name = "irice-claude-quick-entry",
+    match = { class = "^Claude$", title = "^Claude$", xwayland = true, float = true },
+    stay_focused = true, no_blur = true, no_shadow = true, decorate = false, border_size = 0, rounding = 0,
+    opacity = "1.0 override 1.0 override"
+})
+
 -- Settings window floats like an app window
 hl.window_rule({ match = { title = "^iRice Settings$" }, float = true })
 hl.window_rule({ match = { title = "^iRice Settings$" }, center = true })

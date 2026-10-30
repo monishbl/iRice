@@ -52,7 +52,7 @@ hl.on("hyprland.start", function()
     -- dev.sh/demo.sh): that one belongs to your usual desktop, which lost its
     -- display to this session (and, at its exit, any display at all: apps
     -- then waited ~25 s on portals that couldn't start)
-    hl.exec_cmd("dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM ELECTRON_OZONE_PLATFORM_HINT XDG_MENU_PREFIX PATH XDG_DATA_DIRS")
+    hl.exec_cmd("dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM ELECTRON_OZONE_PLATFORM_HINT XDG_MENU_PREFIX CLAUDE_PASSWORD_STORE PATH XDG_DATA_DIRS")
     hl.exec_cmd(ctl .. " start")
     hl.exec_cmd(ctl .. " watchdog")
     hl.exec_cmd("wl-paste --watch cliphist store")
