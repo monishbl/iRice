@@ -356,7 +356,7 @@ Variants {
                                         }
                                     }
                                     // The current space, or where a dragged one would land
-                                    Rectangle {
+                                    Squircle {
                                         anchors { fill: parent; margins: -3 }
                                         radius: 13
                                         color: "transparent"

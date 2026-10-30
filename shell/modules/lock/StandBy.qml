@@ -183,7 +183,7 @@ Item {
                 minutes: clock.date.getMinutes()
                 night: true
             }
-            Rectangle {
+            Squircle {
                 width: parent.side
                 height: parent.side
                 radius: 28

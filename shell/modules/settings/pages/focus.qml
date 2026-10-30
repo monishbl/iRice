@@ -186,7 +186,7 @@ Column {
                 spacing: 4
                 Repeater {
                     model: 7
-                    Rectangle {
+                    Squircle {
                         required property int index
                         readonly property bool on: (page.mode?.schedule?.days ?? []).includes(index)
                         width: 30

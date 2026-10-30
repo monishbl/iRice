@@ -293,7 +293,7 @@ Variants {
                                     { label: "Continue in chat", primary: true, run: () => win.continueInChat() },
                                     { label: "Copy answer", primary: false, run: () => { Quickshell.execDetached(["wl-copy", Ai.quick.answer]); Panels.close(); } }
                                 ]
-                                Rectangle {
+                                Squircle {
                                     required property var modelData
                                     width: label.implicitWidth + 24
                                     height: 28

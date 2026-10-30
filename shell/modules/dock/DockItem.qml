@@ -69,7 +69,7 @@ Item {
             mipmap: true
             source: art.launcherThemed ? art.launcherIcon : ""
         }
-        Rectangle {
+        Squircle {
             visible: root.kind === "launcher" && !art.launcherThemed
             anchors.fill: parent
             anchors.margins: root.size * 0.04
@@ -95,7 +95,7 @@ Item {
         }
 
         // Minimized window: its last frame, with the app's badge
-        Rectangle {
+        Squircle {
             visible: root.kind === "minimized"
             anchors.fill: parent
             anchors.margins: root.size * 0.06

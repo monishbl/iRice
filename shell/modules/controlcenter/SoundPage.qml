@@ -88,7 +88,7 @@ DetailPage {
                 height: 28
 
                 // App icon: click to mute or unmute
-                Rectangle {
+                Squircle {
                     id: iconButton
                     x: 2
                     width: 28
@@ -134,7 +134,7 @@ DetailPage {
                 }
 
                 // The device it plays to; a chooser with more than one
-                Rectangle {
+                Squircle {
                     id: outputButton
                     visible: root.outputs.length > 1 && app.shownOutput !== null
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }

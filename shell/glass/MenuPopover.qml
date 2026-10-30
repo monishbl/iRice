@@ -115,7 +115,7 @@ Popover {
                     spacing: 4
                     Repeater {
                         model: row.modelData.tiles ?? []
-                        Rectangle {
+                        Squircle {
                             id: tile
                             required property var modelData
                             width: 44
@@ -140,7 +140,7 @@ Popover {
                     }
                 }
 
-                Rectangle {
+                Squircle {
                     visible: !row.modelData.separator && !row.modelData.header && !row.modelData.tiles
                     anchors.fill: parent
                     radius: Theme.radius.item + 2

@@ -241,7 +241,7 @@ Variants {
                             spacing: 2
                             Repeater {
                                 model: Object.keys(moduleDefs.all).filter(id => moduleDefs.usable(id) && !cc.layout.some(e => e.id === id))
-                                Rectangle {
+                                Squircle {
                                     required property string modelData
                                     readonly property var def: moduleDefs.all[modelData]
                                     width: gallery.width

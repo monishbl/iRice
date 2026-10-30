@@ -32,7 +32,7 @@ Platter {
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding }
         spacing: 6
 
-        Rectangle {
+        Squircle {
             id: addRow
             width: parent.width
             height: 32

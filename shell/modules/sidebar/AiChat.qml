@@ -92,7 +92,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
             topPadding: 8
-            Rectangle {
+            Squircle {
                 width: 220
                 height: 32
                 radius: Theme.radius.control
@@ -117,7 +117,7 @@ Item {
                     }
                 }
             }
-            Rectangle {
+            Squircle {
                 id: saveKey
                 function save() {
                     if (keyField.text.trim() === "")
@@ -157,7 +157,7 @@ Item {
     }
 
     // Screenshot waiting to be sent with the next message
-    Rectangle {
+    Squircle {
         id: attachmentChip
         visible: Ai.attachment !== null
         anchors { left: parent.left; bottom: composerBox.top; bottomMargin: 8 }
@@ -196,7 +196,7 @@ Item {
     }
 
     // Composer
-    Rectangle {
+    Squircle {
         id: composerBox
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: Math.min(150, composer.contentHeight + 22)
@@ -261,7 +261,7 @@ Item {
     }
 
     // Model menu
-    Rectangle {
+    Squircle {
         id: modelMenu
         visible: false
         anchors { top: header.bottom; topMargin: 6; left: parent.left }
@@ -283,7 +283,7 @@ Item {
                 width: parent.width
                 Repeater {
                     model: Ai.models
-                    Rectangle {
+                    Squircle {
                         required property var modelData
                         width: menuColumn.width
                         height: 30
@@ -318,7 +318,7 @@ Item {
                         }
                     }
                 }
-                Rectangle {
+                Squircle {
                     width: menuColumn.width
                     height: 30
                     radius: 8

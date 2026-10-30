@@ -100,7 +100,7 @@ Column {
         return event.nativeScanCode > 0 ? "code:" + event.nativeScanCode : "";
     }
 
-    component ModChip: Rectangle {
+    component ModChip: Squircle {
         id: chip
         required property string mod
         readonly property bool checked: root.mods.includes(mod)
@@ -121,7 +121,7 @@ Column {
                 event.accepted = true;
             }
         }
-        Rectangle {
+        Squircle {
             anchors { fill: parent; margins: -3 }
             visible: chip.activeFocus
             radius: chip.radius + 3
@@ -162,7 +162,7 @@ Column {
             color: Theme.color.tertiary
             font { family: Theme.font.family; pixelSize: Theme.font.title }
         }
-        Rectangle {
+        Squircle {
             id: catcher
             width: 168
             height: 32

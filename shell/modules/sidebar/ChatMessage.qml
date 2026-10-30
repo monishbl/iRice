@@ -19,7 +19,7 @@ Item {
     implicitHeight: role === "user" ? bubble.y + bubble.height : role === "note" ? noteText.implicitHeight : assistant.implicitHeight
 
     // Attached screenshot, above the bubble
-    Rectangle {
+    Squircle {
         id: shot
         // (a screenshot that's since been deleted leaves no empty box)
         visible: root.role === "user" && root.image !== "" && shotImage.status !== Image.Error
@@ -40,7 +40,7 @@ Item {
     }
 
     // User bubble
-    Rectangle {
+    Squircle {
         id: bubble
         visible: root.role === "user"
         anchors.right: parent.right
@@ -152,7 +152,7 @@ Item {
         }
 
         // Error / refusal
-        Rectangle {
+        Squircle {
             visible: root.status === "error" || root.status === "refused"
             width: parent.width
             height: errorRow.implicitHeight + 16

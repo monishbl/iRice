@@ -91,7 +91,7 @@ Scope {
                         spacing: 6
                         Repeater {
                             model: kbRow.modelData
-                            Rectangle {
+                            Squircle {
                                 id: key
                                 required property var modelData
                                 readonly property string sym: modelData[2] ?? modelData[0]

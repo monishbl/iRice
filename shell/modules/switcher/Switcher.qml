@@ -345,7 +345,7 @@ Scope {
                         Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
                         // Selection (accent ring and tint) and hover
-                        Rectangle {
+                        Squircle {
                             anchors.fill: parent
                             radius: 14
                             color: tile.current ? Qt.alpha(Theme.accent, Theme.dark ? 0.22 : 0.14) : mouse.containsMouse ? Theme.color.fillHover : "transparent"

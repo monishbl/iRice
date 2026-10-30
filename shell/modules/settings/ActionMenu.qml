@@ -115,7 +115,7 @@ Item {
                     width: flick.width
                     Repeater {
                         model: root.items
-                        Rectangle {
+                        Squircle {
                             id: entry
                             required property var modelData
                             required property int index

@@ -247,7 +247,7 @@ Scope {
                 }
                 // Glass over an already-frosted backdrop reads as nothing: a
                 // soft surface and a hairline make the panel its own layer
-                Rectangle {
+                Squircle {
                     anchors.fill: parent
                     radius: win.pr
                     color: Theme.dark ? Qt.rgba(0.07, 0.07, 0.08, 0.42) : Qt.rgba(1, 1, 1, 0.45)

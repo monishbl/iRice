@@ -32,7 +32,7 @@ Item {
     implicitWidth: content.implicitWidth + 18
     implicitHeight: 24
 
-    Rectangle {
+    Squircle {
         anchors.fill: parent
         radius: Theme.radius.item
         color: Qt.alpha(root.color, root.active ? 0.22 : mouse.pressed ? 0.2 : root.hovered ? 0.12 : 0)

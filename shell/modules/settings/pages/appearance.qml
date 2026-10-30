@@ -87,7 +87,7 @@ Column {
             Flow { // (Row here is the settings row)
                 spacing: 8
                 width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
-                Rectangle {
+                Squircle {
                     visible: !EmojiFont.available
                     width: emojiInstall.implicitWidth + 24
                     height: 28
@@ -130,7 +130,7 @@ Column {
                 width: 8 * 40 + 7 * 4
                 Repeater {
                     model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["windows", "windows-logo", "Windows"], ["apple", "apple-logo", "Apple"], ["android", "android-logo", "Android"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["steam", "steam-logo", "Steam"], ["github", "github-logo", "GitHub"], ["circle", "circle-wavy", "Badge"]]
-                    Rectangle {
+                    Squircle {
                         id: choice
                         required property var modelData
                         readonly property bool on: Config.options.appearance.menuIcon === modelData[0]

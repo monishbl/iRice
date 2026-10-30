@@ -12,7 +12,7 @@ Row {
 
     Repeater {
         model: KeyNames.keys(root.keys)
-        Rectangle {
+        Squircle {
             required property string modelData
             width: Math.max(24, label.implicitWidth + 12)
             height: 22

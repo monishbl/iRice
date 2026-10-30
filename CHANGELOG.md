@@ -20,6 +20,7 @@
 - App icons always get their tile after you plug in or unplug a display (one could stay unstyled until a restart).
 - Claude Desktop: its Quick Entry shows just its prompt bar (no blurred panel around it) and stays open while you move the pointer, until you send or press Esc. It no longer asks for your wallet password every time it starts (sign in to Claude once more after updating).
 - Report a Bug works: reports go to iRice's issue tracker.
+- Buttons, text fields, list rows, Settings groups, menu highlights, search fields and cards now have the same smooth, continuous corners as the glass (round pills and circles stay round). Control Center's tiles and sliders also show their colours as intended: a little lighter on dark glass and whiter in Light mode (they came out darker than meant before).
 ## Sharing and spaces fixes · 2026-10-30
 
 - Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).

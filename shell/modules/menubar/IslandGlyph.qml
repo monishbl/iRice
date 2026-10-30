@@ -90,7 +90,7 @@ Item {
             }
         }
 
-        Rectangle {
+        Squircle {
             id: disc
             anchors.fill: parent
             radius: root.hasArt ? 12 : width / 2
@@ -105,7 +105,7 @@ Item {
                 asynchronous: true
             }
             // Low battery and heat: the disc glows
-            Rectangle {
+            Squircle {
                 id: glow
                 anchors.fill: parent
                 radius: parent.radius

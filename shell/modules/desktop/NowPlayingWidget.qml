@@ -10,7 +10,7 @@ Item {
     property bool preview: false
     readonly property var player: Media.player
 
-    Rectangle {
+    Squircle {
         id: art
         width: root.size === "s" ? 64 : parent.height
         height: width

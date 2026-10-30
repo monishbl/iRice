@@ -4,7 +4,7 @@ import QtQuick.Controls as QQC
 // Pop-up button: shows the current choice, opens a list of { value, label }.
 // The list is a Popup, drawn above the whole window: as a child of the row
 // it sat under every row after it, which drew over it and took its clicks.
-Rectangle {
+Squircle {
     id: root
 
     property var options: []
@@ -127,7 +127,7 @@ Rectangle {
                 width: menu.availableWidth
                 Repeater {
                     model: root.options
-                    Rectangle {
+                    Squircle {
                         required property var modelData
                         required property int index
                         readonly property bool lit: itemMouse.containsMouse || index === root.highlighted

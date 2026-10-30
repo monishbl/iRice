@@ -3,7 +3,7 @@ import qs.common
 
 // Text button for Settings pages: neutral fill, `primary` (accent) for the
 // one main action, `danger` for removing. Keyboard: Tab to it, Space or Enter.
-Rectangle {
+Squircle {
     id: root
 
     property string text

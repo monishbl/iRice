@@ -156,7 +156,7 @@ Variants {
                     spacing: 4
                     Repeater {
                         model: tileRow.modelData
-                        Rectangle {
+                        Squircle {
                             id: tile
                             required property string modelData
                             width: 44

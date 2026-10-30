@@ -65,7 +65,7 @@ Item {
             Behavior on opacity { NumberAnimation { duration: 800 } }
         }
     }
-    Rectangle {
+    Squircle {
         id: mask
         anchors.fill: parent
         radius: root.radius

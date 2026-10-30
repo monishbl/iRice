@@ -3,7 +3,7 @@ import qs.common
 
 // A selectable row in a Control Center page: leading icon, title, status
 // text, trailing icons. `busy` shows a spinner in place of the trailing icon.
-Rectangle {
+Squircle {
     id: root
 
     property string icon

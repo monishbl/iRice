@@ -38,7 +38,7 @@ Item {
         spacing: 10
         Repeater {
             model: root.buttons
-            Rectangle {
+            Squircle {
                 id: btn
                 required property var modelData
                 required property int index

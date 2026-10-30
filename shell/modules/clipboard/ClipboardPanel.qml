@@ -124,7 +124,7 @@ Variants {
             }
 
             // Search
-            Rectangle {
+            Squircle {
                 id: search
                 width: parent.width - kindPicker.width - 12
                 height: 36
@@ -220,7 +220,7 @@ Variants {
                         text: rowItem.modelData.section
                     }
 
-                    Rectangle {
+                    Squircle {
                         width: parent.width
                         height: rowItem.modelData.image ? 168 : 44
                         radius: Theme.radius.control
@@ -337,7 +337,7 @@ Variants {
                                 spacing: 8
                                 Repeater {
                                     model: group.modelData.count
-                                    Rectangle {
+                                    Squircle {
                                         id: tile
                                         required property int index
                                         readonly property int row: group.modelData.start + index
@@ -364,7 +364,7 @@ Variants {
                                             onClicked: m => dialog.activate(tile.row, false, m.modifiers & Qt.ShiftModifier)
                                         }
                                         // Pin and remove, on a dark chip so they read over any picture
-                                        Rectangle {
+                                        Squircle {
                                             anchors { top: parent.top; right: parent.right; margins: 8 }
                                             visible: tile.isSelected || tile.entry.pinned === true
                                             width: tileActions.implicitWidth + 4
@@ -407,14 +407,14 @@ Variants {
                 property string path
                 property bool pinned: false
                 readonly property real aspect: img.implicitHeight > 0 ? img.implicitWidth / img.implicitHeight : 0
-                Rectangle {
+                Squircle {
                     id: prevMask
                     anchors.fill: parent
                     radius: 10
                     visible: false
                     layer.enabled: true
                 }
-                Rectangle {
+                Squircle {
                     anchors.fill: parent
                     radius: 10
                     color: Theme.color.fill
@@ -488,7 +488,7 @@ Variants {
                 }
 
                 // Clearing can't be undone (cliphist wipe), so it asks once, inline
-                Rectangle {
+                Squircle {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     visible: Clipboard.items.length > 0
                     width: clearLabel.implicitWidth + 20

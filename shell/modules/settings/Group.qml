@@ -20,7 +20,7 @@ Column {
         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
     }
 
-    Rectangle {
+    Squircle {
         width: root.width
         height: body.implicitHeight
         radius: 12

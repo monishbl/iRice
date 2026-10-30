@@ -50,7 +50,7 @@ Variants {
                     // Up to three windows, stacked back to front
                     Repeater {
                         model: stage.tops
-                        Rectangle {
+                        Squircle {
                             required property var modelData
                             required property int index
                             readonly property int depth: stage.tops.length - 1 - index

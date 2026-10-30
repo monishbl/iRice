@@ -29,7 +29,7 @@ Column {
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body }
         }
-        Rectangle {
+        Squircle {
             width: parent.width
             height: 88
             radius: Theme.radius.control
@@ -54,7 +54,7 @@ Column {
         }
     }
     // What's attached: scrubbed text shown as it will be sent
-    component Preview: Rectangle {
+    component Preview: Squircle {
         id: pv
         property string body
         width: parent?.width ?? 0

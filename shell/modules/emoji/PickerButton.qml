@@ -3,7 +3,7 @@ import qs.common
 
 // Text button for the picker's empty and error states: primary (accent) or
 // secondary (fill). 36 px tall, squishes on press.
-Rectangle {
+Squircle {
     id: root
 
     property string text

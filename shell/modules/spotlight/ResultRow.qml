@@ -3,7 +3,7 @@ import Quickshell.Widgets
 import qs.common
 
 // One Spotlight result. Selected row gets the accent fill.
-Rectangle {
+Squircle {
     id: root
 
     required property var result

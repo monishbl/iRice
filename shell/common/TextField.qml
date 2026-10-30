@@ -1,7 +1,7 @@
 import QtQuick
 
 // Single-line text field with placeholder. Commits on Enter or focus loss.
-Rectangle {
+Squircle {
     id: root
 
     property alias text: input.text

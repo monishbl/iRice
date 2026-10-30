@@ -36,7 +36,7 @@ Item {
     transform: Translate { y: (1 - root.appear) * 8 }
 
     // Leading art or icon
-    Rectangle {
+    Squircle {
         id: lead
         width: root.kind === "music" ? 48 : 30
         height: width

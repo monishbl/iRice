@@ -78,7 +78,7 @@ Variants {
                     }
                 }
 
-                Rectangle {
+                Squircle {
                     width: parent.width
                     height: 196
                     radius: Theme.radius.control
@@ -137,7 +137,7 @@ Variants {
                         width: parent.width - saveButton.width - 12
                         font { family: Theme.font.family; pixelSize: Theme.font.caption }
                     }
-                    Rectangle {
+                    Squircle {
                         id: saveButton
                         anchors.right: parent.right
                         width: saveLabel.implicitWidth + 28

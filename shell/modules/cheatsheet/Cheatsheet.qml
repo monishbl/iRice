@@ -108,7 +108,7 @@ Variants {
 
                     Repeater {
                         model: PT.elements
-                        Rectangle {
+                        Squircle {
                             id: el
                             required property var modelData
                             readonly property int row: modelData[5]

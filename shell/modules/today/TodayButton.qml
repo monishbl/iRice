@@ -3,7 +3,7 @@ import qs.common
 
 // A Today button: 36 px, verb + object, primary (accent) or secondary.
 // Click, Enter or Space; a visible focus ring for the keyboard.
-Rectangle {
+Squircle {
     id: root
 
     property string text
@@ -25,7 +25,7 @@ Rectangle {
     Keys.onSpacePressed: root.activated()
 
     // focus ring: 2 px accent, 2 px off the button
-    Rectangle {
+    Squircle {
         anchors { fill: parent; margins: -4 }
         visible: root.activeFocus
         radius: root.radius + 4

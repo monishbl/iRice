@@ -78,7 +78,7 @@ GlassWindow {
                     readonly property string path: files.get(index, "filePath") ?? ""
                     width: root.cell
                     height: root.cell
-                    Rectangle {
+                    Squircle {
                         anchors.fill: parent
                         radius: Theme.radius.control
                         color: fileMouse.containsMouse ? Theme.color.fill : "transparent"

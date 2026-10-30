@@ -48,7 +48,7 @@ Rectangle {
             id: view
             clip: true
             model: root.options
-            delegate: Rectangle {
+            delegate: Squircle {
                 required property var modelData
                 width: view.width
                 height: 28

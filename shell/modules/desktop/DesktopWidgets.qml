@@ -141,7 +141,7 @@ Item {
         Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
         Repeater {
             model: gridLayer.visible ? root.cols * root.rows : 0
-            Rectangle {
+            Squircle {
                 required property int index
                 x: root.origin.x + (index % root.cols) * (defs.cell + defs.gap)
                 y: root.origin.y + Math.floor(index / root.cols) * (defs.cell + defs.gap)
@@ -154,7 +154,7 @@ Item {
             }
         }
         // Where the dragged widget will snap
-        Rectangle {
+        Squircle {
             visible: !!root.ghost
             readonly property size px: root.ghost ? defs.pixelSize(root.ghost.size) : Qt.size(0, 0)
             x: root.origin.x + (root.ghost?.col ?? 0) * (defs.cell + defs.gap)

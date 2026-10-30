@@ -300,7 +300,7 @@ Platter {
                     spacing: 2
                     Repeater {
                         model: root.week ? root.days : []
-                        Rectangle {
+                        Squircle {
                             id: wday
                             required property var modelData
                             readonly property bool isSelected: root.sameDay(modelData, root.selected)
@@ -458,7 +458,7 @@ Platter {
                             spacing: 8
                             Repeater {
                                 model: root.fitHeight ? root.items : root.items.slice(0, 8)
-                                Rectangle {
+                                Squircle {
                                     id: row
                                     required property var modelData
                                     readonly property bool isEvent: modelData.kind === "event"
@@ -539,7 +539,7 @@ Platter {
                                         }
                                     }
                                     // While dragging: the item follows the pointer, and is what drops
-                                    Rectangle {
+                                    Squircle {
                                         id: ghost
                                         visible: rowDrag.active
                                         parent: root
@@ -667,7 +667,7 @@ Platter {
     }
 
     // ── New / edit: an event or a to-do ─────────────────────────────────
-    Rectangle {
+    Squircle {
         id: editor
         anchors.fill: parent
         radius: root.shapeRadius
@@ -825,7 +825,7 @@ Platter {
         }
 
         MouseArea { anchors.fill: parent; onClicked: editor.close() } // outside the card closes it
-        Rectangle {
+        Squircle {
             id: card
             anchors.centerIn: parent
             width: parent.width - 24
@@ -998,7 +998,7 @@ Platter {
                     spacing: 8
                     Repeater {
                         model: [{ label: "Cancel", every: null }, { label: "This event", every: false }, { label: "All events", every: true }]
-                        Rectangle {
+                        Squircle {
                             id: choice
                             required property var modelData
                             width: choiceText.implicitWidth + 24
@@ -1027,7 +1027,7 @@ Platter {
                     visible: editor.asking === null
                     width: parent.width
                     height: 32
-                    Rectangle {
+                    Squircle {
                         visible: !!editor.editing && !editor.readOnly
                         width: delText.implicitWidth + 24
                         height: 32
@@ -1039,7 +1039,7 @@ Platter {
                     Row {
                         anchors.right: parent.right
                         spacing: 8
-                        Rectangle {
+                        Squircle {
                             width: cancelText.implicitWidth + 24
                             height: 32
                             radius: Theme.radius.control
@@ -1047,7 +1047,7 @@ Platter {
                             Text { id: cancelText; anchors.centerIn: parent; text: editor.readOnly ? "Close" : "Cancel"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
                             MouseArea { id: cancelMouse; anchors.fill: parent; hoverEnabled: true; onClicked: editor.close() }
                         }
-                        Rectangle {
+                        Squircle {
                             visible: !editor.readOnly
                             width: saveText.implicitWidth + 24
                             height: 32

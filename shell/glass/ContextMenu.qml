@@ -149,7 +149,7 @@ GlassWindow {
                         height: 1
                         color: Theme.color.separator
                     }
-                    Rectangle {
+                    Squircle {
                         visible: !row.modelData.separator
                         anchors.fill: parent
                         radius: Theme.radius.item + 2

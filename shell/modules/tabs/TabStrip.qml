@@ -122,7 +122,7 @@ Variants {
                     Behavior on opacity { OpacityAnimator { duration: win.settled ? 150 : 60 } }
 
                     // The well the tabs sit in
-                    Rectangle {
+                    Squircle {
                         anchors.fill: parent
                         radius: 10
                         color: Theme.dark ? Qt.rgba(0.1, 0.1, 0.11, 0.82) : Qt.rgba(0.93, 0.93, 0.94, 0.88)
@@ -144,7 +144,7 @@ Variants {
                                 readonly property bool front: addr === strip.modelData.current
                                 width: tabs.tabW
                                 height: win.barHeight - 6
-                                Rectangle {
+                                Squircle {
                                     anchors.fill: parent
                                     radius: 7
                                     color: tab.front ? (Theme.dark ? "#2C2C31" : "#FFFFFF") : tabMouse.containsMouse ? (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
@@ -206,7 +206,7 @@ Variants {
                         }
                     }
                     // New window of the same app, as another tab
-                    Rectangle {
+                    Squircle {
                         id: plus
                         anchors { right: parent.right; rightMargin: 3; verticalCenter: parent.verticalCenter }
                         width: 24

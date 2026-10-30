@@ -208,7 +208,7 @@ Item {
             Behavior on y { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
 
             // Selection: a soft tile behind the picture, the name highlighted
-            Rectangle {
+            Squircle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 0
                 width: 54
@@ -348,7 +348,7 @@ Item {
                     required property var modelData
                     width: 96
                     height: 96
-                    Rectangle {
+                    Squircle {
                         anchors.fill: parent
                         anchors.margins: 2
                         radius: 10

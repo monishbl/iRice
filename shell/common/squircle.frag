@@ -34,8 +34,7 @@ void main() {
     float cov = clamp(0.5 - d, 0.0, 1.0);
     // border: the band within borderWidth of the edge
     float inner = clamp(0.5 - (d + borderWidth), 0.0, 1.0);
-    vec4 fill = vec4(fillColor.rgb * fillColor.a, fillColor.a);
-    vec4 edge = vec4(borderColor.rgb * borderColor.a, borderColor.a);
-    vec4 c = borderWidth > 0.0 ? mix(edge, fill, inner) : fill;
+    // (ShaderEffect hands colours over already premultiplied)
+    vec4 c = borderWidth > 0.0 ? mix(borderColor, fillColor, inner) : fillColor;
     fragColor = c * cov * qt_Opacity;
 }

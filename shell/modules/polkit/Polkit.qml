@@ -152,7 +152,7 @@ Scope {
                     width: 340 - 40
                     spacing: 10
 
-                    Rectangle {
+                    Squircle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 56
                         height: 56
@@ -177,7 +177,7 @@ Scope {
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
 
-                    Rectangle {
+                    Squircle {
                         width: parent.width
                         height: 36
                         radius: Theme.radius.control

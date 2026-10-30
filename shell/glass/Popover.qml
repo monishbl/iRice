@@ -159,7 +159,7 @@ GlassWindow {
             }
         }
 
-        Rectangle {
+        Squircle {
             x: root.margin
             y: root.margin
             width: parent.width - 2 * root.margin

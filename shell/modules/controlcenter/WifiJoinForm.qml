@@ -329,7 +329,7 @@ Column {
         }
     }
     // A chosen file's name, or "Choose file…"
-    component FileButton: Rectangle {
+    component FileButton: Squircle {
         id: fileButton
         property string path
         signal pick
@@ -361,7 +361,7 @@ Column {
         }
     }
     // Cancel and Join network
-    component FormButton: Rectangle {
+    component FormButton: Squircle {
         id: button
         property string text
         property bool primary: false

@@ -1,7 +1,7 @@
 import QtQuick
 
 // Ghost icon button: transparent, fill on hover, darker on press.
-Rectangle {
+Squircle {
     id: root
 
     property string icon

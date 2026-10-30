@@ -19,7 +19,7 @@ Item {
     Row {
         id: header
         spacing: 8
-        Rectangle {
+        Squircle {
             width: 26
             height: 26
             radius: 7

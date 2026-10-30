@@ -406,7 +406,7 @@ GlassWindow {
             height: root.panelH - root.pad - 4
 
             // Search
-            Rectangle {
+            Squircle {
                 id: search
                 width: parent.width
                 height: 36
@@ -539,7 +539,7 @@ GlassWindow {
                         width: tabRow.tabW
                         height: tabRow.height
 
-                        Rectangle {
+                        Squircle {
                             anchors.centerIn: parent
                             width: 30
                             height: 30
@@ -582,7 +582,7 @@ GlassWindow {
                             }
                         }
                         // Name on hover, after a moment
-                        Rectangle {
+                        Squircle {
                             visible: tabMouse.containsMouse && !tipTimer.running && !tabMouse.pressed
                             z: 10
                             anchors { top: parent.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
@@ -661,7 +661,7 @@ GlassWindow {
 
                     // One highlight and one mouse area per row (cells are just
                     // their text): a search result builds fewer objects
-                    Rectangle {
+                    Squircle {
                         readonly property int col: root.sel - rowItem.modelData.start
                         visible: rowItem.modelData.type === "items" && col >= 0 && col < (rowItem.modelData.items?.length ?? 0)
                         x: col * rowItem.cellW + 1
@@ -796,7 +796,7 @@ GlassWindow {
                     width: gifGrid.cellWidth
                     height: gifGrid.cellHeight
 
-                    Rectangle {
+                    Squircle {
                         id: frame
                         anchors.fill: parent
                         anchors.margins: 3
@@ -821,7 +821,7 @@ GlassWindow {
                             playing: live
                         }
                     }
-                    Rectangle {
+                    Squircle {
                         anchors.fill: frame
                         radius: frame.radius
                         color: "transparent"
@@ -1050,7 +1050,7 @@ GlassWindow {
             }
 
             // ---- Skin tone chooser (right-click, hold, or Alt+Down) ----
-            Rectangle {
+            Squircle {
                 id: tonePopup
                 visible: false
                 z: 20
@@ -1124,7 +1124,7 @@ GlassWindow {
                             required property int index
                             width: 40
                             height: 40
-                            Rectangle {
+                            Squircle {
                                 anchors.fill: parent
                                 radius: Theme.radius.control
                                 color: toneMouse.pressed ? Theme.color.fillPressed : toneItem.index === tonePopup.choice ? Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16) : toneMouse.containsMouse ? Theme.color.fill : "transparent"

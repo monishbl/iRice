@@ -149,7 +149,7 @@ Column {
         Row {
             label: "Preview"
             detail: "Locks the screen now"
-            Rectangle {
+            Squircle {
                 width: lockText.implicitWidth + 28
                 height: 28
                 radius: Theme.radius.control

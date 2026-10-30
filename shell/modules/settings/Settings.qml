@@ -297,7 +297,7 @@ Scope {
                                     color: Theme.color.tertiary
                                     font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                                 }
-                            Rectangle {
+                            Squircle {
                                 id: item
                                 readonly property var modelData: entry.modelData
                                 readonly property bool current: win.sectionId === modelData.id
@@ -328,7 +328,7 @@ Scope {
                                     radius: 12
                                 }
 
-                                Rectangle {
+                                Squircle {
                                     id: tile
                                     x: 6
                                     anchors.verticalCenter: parent.verticalCenter
@@ -356,7 +356,7 @@ Scope {
 
                         Repeater {
                             model: win.results
-                            Rectangle {
+                            Squircle {
                                 id: result
                                 required property var modelData
                                 readonly property var section: win.sections.find(s => s.id === modelData.page.split("/")[0])
@@ -384,7 +384,7 @@ Scope {
                                     radius: 12
                                 }
 
-                                Rectangle {
+                                Squircle {
                                     id: resultTile
                                     x: 6
                                     y: 8
@@ -554,7 +554,7 @@ Scope {
                     }
 
                     // Where a search result landed
-                    Rectangle {
+                    Squircle {
                         id: flash
                         radius: 12
                         color: "transparent"

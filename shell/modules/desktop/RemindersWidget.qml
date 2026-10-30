@@ -102,7 +102,7 @@ Item {
     }
 
     // Large: add one
-    Rectangle {
+    Squircle {
         visible: root.size === "l"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: 32

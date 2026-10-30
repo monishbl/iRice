@@ -17,7 +17,7 @@ Item {
     width: parent?.width ?? 0
     implicitHeight: Math.max(44, texts.implicitHeight + 20)
 
-    Rectangle {
+    Squircle {
         anchors.fill: parent
         anchors.margins: 2
         radius: 8

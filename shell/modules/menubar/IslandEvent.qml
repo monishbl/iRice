@@ -351,7 +351,7 @@ Item {
         }
 
         // The glass card: lighter than the island, with a soft rim
-        Rectangle {
+        Squircle {
             id: card
             width: parent.width
             height: cardRow.implicitHeight + 24

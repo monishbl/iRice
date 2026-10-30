@@ -3,7 +3,7 @@ import qs.common
 
 // Pop-up button for one of several { value, label } options. Its list opens
 // in the page's ActionMenu (`menu`), so it is never hidden under later rows.
-Rectangle {
+Squircle {
     id: root
 
     required property ActionMenu menu

@@ -26,7 +26,7 @@ Variants {
         width: 1
         height: 6
     }
-    component OptionRow: Rectangle {
+    component OptionRow: Squircle {
         id: optionRow
         property string text
         property bool checked
@@ -293,7 +293,7 @@ Variants {
                                     height: 36
                                     color: Theme.color.separator
                                 }
-                                Rectangle {
+                                Squircle {
                                     visible: !tool.modelData.sep
                                     anchors.fill: parent
                                     radius: 12

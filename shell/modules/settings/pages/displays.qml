@@ -21,7 +21,7 @@ Column {
     readonly property int enabledCount: mons.filter(m => m.enabled).length
 
     // ── Keep these settings? ─────────────────────────────────────────────
-    Rectangle {
+    Squircle {
         visible: Displays.confirming
         width: parent.width
         height: visible ? confirmRow.implicitHeight + 24 : 0
@@ -158,7 +158,7 @@ Column {
             Repeater {
                 model: page.placed
 
-                Rectangle {
+                Squircle {
                     id: tile
                     required property var modelData
                     readonly property var size: Displays.logicalSize(modelData)
@@ -178,7 +178,7 @@ Column {
                     border.color: chosen ? Theme.accent : Theme.color.separator
 
                     // Menu bar strip on the one with the focused workspace
-                    Rectangle {
+                    Squircle {
                         visible: tile.modelData.builtIn
                         x: 0
                         y: 0

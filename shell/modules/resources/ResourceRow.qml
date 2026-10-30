@@ -43,7 +43,7 @@ Item {
     implicitWidth: 280
     implicitHeight: 48
 
-    Rectangle {
+    Squircle {
         anchors.fill: parent
         radius: 10
         color: root.highlighted ? Qt.rgba(1, 1, 1, Theme.dark ? 0.08 : 0.35) : "transparent"

@@ -204,7 +204,7 @@ Scope {
                             Panels.share([p]);
                         }
                     }
-                    Rectangle {
+                    Squircle {
                         id: openBtn
                         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                         width: openText.implicitWidth + 28

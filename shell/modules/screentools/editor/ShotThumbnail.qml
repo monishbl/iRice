@@ -282,7 +282,7 @@ GlassWindow {
                 color: Theme.color.label
                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
             }
-            Rectangle {
+            Squircle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: undoText.implicitWidth + 20
                 height: 28

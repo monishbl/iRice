@@ -166,7 +166,8 @@ class CalendarLayoutTests(unittest.TestCase):
         shutil.copy(ROOT / 'shell/modules/notifications/TodoWidget.qml', p / 'TodoWidget.qml')
         for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml', 'FocusRing.qml']:
             shutil.copy(ROOT / 'shell/common' / f, p / 'common' / f)
-        put('modules/controlcenter/Platter.qml', 'import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')
+        put('common/Squircle.qml', 'import QtQuick\nRectangle { id: s; property alias borderWidth: s.border.width; property alias borderColor: s.border.color }')
+        put('modules/controlcenter/Platter.qml','import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')
         put('common/Theme.qml', THEME)
         put('common/Icon.qml', 'import QtQuick\nText { property string name; property bool fill; property bool bold; property int size: 14; text: name === "arrow-up" ? "↑" : name === "caret-left" ? "‹" : name === "caret-right" ? "›" : "+"; font.pixelSize: size }')
         put('common/ElasticControl.qml', 'import QtQuick\nQtObject { property bool pressed; property var effects: [] }')

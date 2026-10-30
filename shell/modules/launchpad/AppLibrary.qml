@@ -123,7 +123,7 @@ Variants {
                     font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.DemiBold }
                 }
 
-                Rectangle {
+                Squircle {
                     id: search
                     anchors.centerIn: parent
                     width: 320
@@ -200,7 +200,7 @@ Variants {
                     height: grid.cellHeight
 
                     // App
-                    Rectangle {
+                    Squircle {
                         visible: dialog.showingApps
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 104
@@ -238,7 +238,7 @@ Variants {
                         visible: !dialog.showingApps
                         anchors.horizontalCenter: parent.horizontalCenter
                         spacing: 8
-                        Rectangle {
+                        Squircle {
                             id: folderCard
                             width: 188
                             height: 188

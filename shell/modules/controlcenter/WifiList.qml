@@ -245,7 +245,7 @@ Column {
                             spacing: 8
                             height: visible ? 40 : 0
 
-                            Rectangle {
+                            Squircle {
                                 width: 180
                                 height: 30
                                 anchors.verticalCenter: parent.verticalCenter
@@ -276,7 +276,7 @@ Column {
                                     }
                                 }
                             }
-                            Rectangle {
+                            Squircle {
                                 id: join
                                 signal clicked
                                 width: 56

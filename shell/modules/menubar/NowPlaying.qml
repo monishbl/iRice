@@ -149,7 +149,7 @@ Variants {
                     spacing: 2
                     Repeater {
                         model: Media.players.filter(p => p !== pop.player)
-                        Rectangle {
+                        Squircle {
                             required property var modelData
                             width: parent.width
                             height: 30

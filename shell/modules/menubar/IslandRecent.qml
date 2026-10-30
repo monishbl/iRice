@@ -190,7 +190,7 @@ Column {
                         height: parent.height
                         x: line.dx
                         opacity: 1 - Math.min(0.7, Math.abs(line.dx) / Math.max(1, line.width))
-                        Rectangle {
+                        Squircle {
                             anchors { fill: parent; leftMargin: -6; rightMargin: -6 }
                             radius: 10
                             color: Qt.rgba(1, 1, 1, lineHover.hovered ? 0.08 : 0)

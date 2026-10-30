@@ -69,7 +69,7 @@ Variants {
                     model: widgetDefs.kinds
                     currentIndex: win.picked
                     boundsBehavior: Flickable.StopAtBounds
-                    delegate: Rectangle {
+                    delegate: Squircle {
                         id: row
                         required property var modelData
                         required property int index
@@ -149,7 +149,7 @@ Variants {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     scale: addMouse.pressed ? 0.95 : addMouse.containsMouse ? 1.04 : 1
                                     Behavior on scale { SpringAnimation { spring: 5; damping: 0.35; epsilon: 0.002 } }
-                                    Rectangle {
+                                    Squircle {
                                         width: sizeCol.px.width
                                         height: sizeCol.px.height
                                         scale: win.previewScale

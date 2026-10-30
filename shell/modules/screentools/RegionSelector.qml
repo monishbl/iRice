@@ -78,7 +78,7 @@ Scope {
                 Rectangle { x: 0; y: parent.s.y + parent.s.height; width: parent.width; height: parent.height - y; color: Qt.rgba(0, 0, 0, 0.35) }
                 Rectangle { x: 0; y: parent.s.y; width: parent.s.x; height: parent.s.height; color: Qt.rgba(0, 0, 0, 0.35) }
                 Rectangle { x: parent.s.x + parent.s.width; y: parent.s.y; width: parent.width - x; height: parent.s.height; color: Qt.rgba(0, 0, 0, 0.35) }
-                Rectangle {
+                Squircle {
                     x: parent.s.x - 1
                     y: parent.s.y - 1
                     width: parent.s.width + 2

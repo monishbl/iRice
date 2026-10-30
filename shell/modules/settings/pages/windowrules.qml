@@ -46,7 +46,7 @@ Column {
 
     // ── Shared pieces ────────────────────────────────────────────────────
     // Ghost text button; `danger` for removing
-    component TextButton: Rectangle {
+    component TextButton: Squircle {
         id: tb
         property string text
         property string icon

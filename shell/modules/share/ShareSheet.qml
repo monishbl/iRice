@@ -119,7 +119,7 @@ Variants {
                         visible: win.devices.length > 0
                         Repeater {
                             model: win.devices
-                            Rectangle {
+                            Squircle {
                                 id: peer
                                 required property var modelData
                                 // The send to it in flight: { done, total, waiting }
@@ -271,7 +271,7 @@ Variants {
                                 { label: "Copy", icon: "copy", act: () => Quickshell.execDetached(["sh", "-c", "printf '%s\\n' \"$@\" | sed 's|^|file://|' | wl-copy -t text/uri-list", "sh"].concat(win.paths)) },
                                 { label: "Show in Files", icon: "folder-open", act: () => Files.reveal(win.paths[0] ?? "") }
                             ]
-                            Rectangle {
+                            Squircle {
                                 id: other
                                 required property var modelData
                                 width: otherRow.implicitWidth + 24

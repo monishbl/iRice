@@ -412,7 +412,7 @@ Column {
             Component.onDestruction: if (active) Updates.logUsers--
             width: parent.width
             height: 240
-            Rectangle {
+            Squircle {
                 anchors { fill: parent; margins: 10 }
                 radius: 8
                 color: Theme.dark ? "#0E0E10" : "#18181B"

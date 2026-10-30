@@ -35,7 +35,7 @@ Item {
         }
     }
 
-    Rectangle {
+    Squircle {
         anchors.fill: parent
         visible: root.shown
         radius: root.radius

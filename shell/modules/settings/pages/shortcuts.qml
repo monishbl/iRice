@@ -94,7 +94,7 @@ Column {
                 event.accepted = true;
             }
         }
-        Rectangle {
+        Squircle {
             anchors { fill: parent; margins: 2 }
             visible: br.activeFocus
             radius: Theme.radius.item
@@ -629,7 +629,7 @@ Column {
                         event.accepted = true;
                     }
                 }
-                Rectangle {
+                Squircle {
                     anchors { fill: parent; margins: 2 }
                     visible: appRow.activeFocus
                     radius: Theme.radius.item

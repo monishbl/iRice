@@ -452,7 +452,7 @@ GlassWindow {
         }
 
         // -- Canvas
-        Rectangle {
+        Squircle {
             id: canvas
             x: win.m + win.pad
             y: topBar.y + win.bar + win.pad
@@ -800,7 +800,7 @@ GlassWindow {
             }
 
             // Banner: a failed action, or unsaved changes
-            Rectangle {
+            Squircle {
                 id: bannerBox
                 visible: win.banner !== null
                 readonly property bool error: win.banner?.kind === "error"

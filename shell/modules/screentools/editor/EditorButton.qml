@@ -4,7 +4,7 @@ import qs.common
 // Toolbar button for the screenshot editor: icon, optional label, and a
 // tooltip after a hover. Variants: ghost (tools), secondary, primary, danger.
 // `selected` marks the active tool; `busy` swaps the icon for a spinner.
-Rectangle {
+Squircle {
     id: root
 
     property string icon
@@ -42,7 +42,7 @@ Rectangle {
     Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
     // Keyboard focus ring
-    Rectangle {
+    Squircle {
         anchors.fill: parent
         anchors.margins: -4
         radius: root.radius + 4
@@ -104,7 +104,7 @@ Rectangle {
         interval: 600
         running: mouse.containsMouse && root.tooltip !== "" && !mouse.pressed
     }
-    Rectangle {
+    Squircle {
         id: tip
         visible: opacity > 0
         opacity: mouse.containsMouse && !tipDelay.running && root.tooltip !== "" ? 1 : 0

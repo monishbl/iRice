@@ -63,7 +63,7 @@ Variants {
                 shadowMargin: 16
                 radius: Config.options.appearance.windowRadius
             }
-            Rectangle {
+            Squircle {
                 anchors.fill: parent
                 radius: Config.options.appearance.windowRadius
                 color: Theme.accentAlpha(0.12)
