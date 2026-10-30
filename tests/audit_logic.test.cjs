@@ -45,7 +45,7 @@ test('translation cancellation and OCR failure clear pending state', () => {
     const translator={generation:0,input:{text:''},result:'old',error:'',activeRequest:{running:true}};
     method('shell/modules/sidebar/Translator.qml','translate',translator)();
     assert.equal(translator.activeRequest.running,false); assert.equal(translator.result,'');
-    const screen={translation:{busy:true},Quickshell:{execDetached:()=>{}}};
+    const screen={translation:{busy:true},missingHint:()=>'',Quickshell:{execDetached:()=>{}}};
     method('shell/services/ScreenTools.qml','failed',screen)('translate');
     assert.equal(screen.translation.busy,false);
 });

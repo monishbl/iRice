@@ -58,6 +58,12 @@
 - Night Light only appears in Control Center when hyprsunset is installed. Emoji fonts install with yay or paru, whichever you have. Recording's microphone list works without pactl. Without NetworkManager, Settings → Network leaves out the Wi-Fi security it can't know instead of guessing. Installed tools are looked for again when System health refreshes and after an update.
 - Overview with **Each its own**: every screen shows the other displays as small labelled targets on the edge that faces them (a display to the right sits at the right edge). Drop a window on one to move it to the space that display is showing, or hold it there a moment to pick one of its spaces. Drag a space onto one to move it there with all its windows, as that display's next space. Both screens' Overviews update right away.
 - Right-click a window in the Overview for **Move to** another display (or one of its spaces), and a space for **Move space to** another display. It works with a row per display too.
+- Screen recording on a computer without hardware video encoding (Intel without intel-media-driver, NVIDIA without libva-nvidia-driver) no longer just fails: iRice records again with the CPU and says which package brings hardware encoding back.
+- External monitors' brightness: with ddcutil installed, the brightness keys, the Control Center slider and the OSD change the brightness of the external display you're working on (DDC/CI), and Settings → Displays has a slider for it. When ddcutil can't reach the displays (i2c-dev not loaded, no access to /dev/i2c-*), Settings → Displays says how to fix it.
+- The GPU graph works on NVIDIA's driver (through nvidia-smi, only while a graph shows, without waking a sleeping GPU) and shows its temperature.
+- Volume and brightness without media keys: Super+F11/F12 lower and raise the volume, Super+F1/F2 the brightness (Settings → Keyboard Shortcuts, Media).
+- The lock screen says "Too many attempts: try again in about 10 minutes" (with the real time left) when too many wrong passwords have locked the account, instead of "Incorrect password" for a password that was right.
+- Text Capture reads your system language as well as English when its tesseract-data package is installed (German with tesseract-data-deu, say), and tells you which package to install when it isn't.
 
 ## Sharing and spaces fixes · 2026-10-30
 

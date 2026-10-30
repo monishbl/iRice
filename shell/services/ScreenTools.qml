@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
 import "../common/ScreenGeometry.js" as ScreenGeometry
+import "OcrLangs.js" as OcrLangs
 
 // Screenshots, OCR, screen translation and recording. Region picking happens
 // in RegionSelector; this service does the capturing and the follow-up.
@@ -49,6 +50,28 @@ Singleton {
         return Math.round((mon?.x ?? 0) + r.x) + "," + Math.round((mon?.y ?? 0) + r.y) + " " + Math.round(r.width) + "x" + Math.round(r.height);
     }
 
+    // Text Capture's languages: the system's (whose tesseract-data-* is
+    // installed) plus English, e.g. "deu+eng" (OcrLangs.js)
+    property string ocrLangs: "eng"
+    property var ocrMissing: [] // system languages without tesseract data
+    readonly property bool hasTesseract: Tools.has("tesseract")
+    onHasTesseractChanged: if (hasTesseract)
+        langList.running = true
+    Process {
+        id: langList
+        command: ["tesseract", "--list-langs"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const p = OcrLangs.pick({ LC_ALL: Quickshell.env("LC_ALL") ?? "", LC_MESSAGES: Quickshell.env("LC_MESSAGES") ?? "", LANG: Quickshell.env("LANG") ?? "", LANGUAGE: Quickshell.env("LANGUAGE") ?? "" }, text);
+                root.ocrLangs = p.langs.join("+");
+                root.ocrMissing = p.missing;
+            }
+        }
+    }
+    function ocrCommand(geo) {
+        return "grim -g '" + geo + "' - | tesseract stdin stdout -l '" + ocrLangs.replace(/[^a-z_+]/g, "") + "' 2>/dev/null";
+    }
+
     function select(mode) {
         if ((mode === "record" || mode === "record-window") && recording)
             return stopRecording();
@@ -71,10 +94,10 @@ Singleton {
         if (mode === "screenshot")
             shoot(["-g", geo], true);
         else if (mode === "ocr")
-            run("ocr", "grim -g '" + geo + "' - | tesseract stdin stdout -l eng 2>/dev/null");
+            run("ocr", ocrCommand(geo));
         else if (mode === "translate") {
             translation = { x: rect.x, y: rect.y, w: rect.width, h: rect.height, screen: screen, source: "", text: "", busy: true, error: "" };
-            run("translate", "grim -g '" + geo + "' - | tesseract stdin stdout -l eng 2>/dev/null");
+            run("translate", ocrCommand(geo));
         } else if (mode === "record" || mode === "record-window")
             startRecording(geo);
         else if (mode === "ask")
@@ -161,7 +184,7 @@ Singleton {
         } else if (kind === "ocr") {
             const text = out.trim();
             if (text === "") {
-                Quickshell.execDetached(["notify-send", "-a", "Text Capture", "No text found", "Try selecting a larger area with clearer text."]);
+                Quickshell.execDetached(["notify-send", "-a", "Text Capture", "No text found", "Try selecting a larger area with clearer text." + missingHint()]);
                 return;
             }
             Quickshell.execDetached(["wl-copy", text]);
@@ -188,13 +211,19 @@ Singleton {
         }
     }
 
+    // "For text in your language, install tesseract-data-deu."
+    function missingHint() {
+        const m = ocrMissing.filter(c => /^[a-z_]+$/.test(c));
+        return m.length === 0 ? "" : " For text in your language, install " + m.map(c => "tesseract-data-" + c).join(" and ") + ".";
+    }
+
     function failed(kind) {
         if (kind === "translate")
             translation = Object.assign({}, translation, { busy: false, error: "Could not read text from the screen." });
         if (kind === "shot" || kind === "shotMarkup" || kind === "ask")
             Quickshell.execDetached(["notify-send", "-a", "Screenshot", "Couldn't take the screenshot", "Make sure grim is installed."]);
         else if (kind === "ocr" || kind === "translate")
-            Quickshell.execDetached(["notify-send", "-a", "Text Capture", "Couldn't read the screen", "Make sure tesseract and its English data are installed."]);
+            Quickshell.execDetached(["notify-send", "-a", "Text Capture", "Couldn't read the screen", "Install tesseract and tesseract-data-eng, then try again." + missingHint()]);
         else if (kind === "translated")
             translation = Object.assign({}, translation, { busy: false, error: "Couldn't translate. Check your connection and that translate-shell is installed." });
     }
@@ -205,5 +234,7 @@ Singleton {
         function region(mode: string): void { root.select(mode || "screenshot"); }
         function ask(): void { root.askScreen(); }
         function stop(): void { root.stopRecording(); }
+        // qs ipc call screen ocrLanguages  (e.g. "deu+eng; missing: fra")
+        function ocrLanguages(): string { return root.ocrLangs + "; missing: " + (root.ocrMissing.join(",") || "none"); }
     }
 }

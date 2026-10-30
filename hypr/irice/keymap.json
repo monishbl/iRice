@@ -562,6 +562,58 @@
   }
  },
  {
+  "id": "vol-up-f12",
+  "keys": "$MOD + F12",
+  "group": "Media",
+  "label": "Volume up (without media keys)",
+  "action": {
+   "shell": "volumeUp"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "vol-down-f11",
+  "keys": "$MOD + F11",
+  "group": "Media",
+  "label": "Volume down (without media keys)",
+  "action": {
+   "shell": "volumeDown"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "bright-up-f2",
+  "keys": "$MOD + F2",
+  "group": "Media",
+  "label": "Brightness up (without media keys)",
+  "action": {
+   "shell": "brightnessUp"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
+  "id": "bright-down-f1",
+  "keys": "$MOD + F1",
+  "group": "Media",
+  "label": "Brightness down (without media keys)",
+  "action": {
+   "shell": "brightnessDown"
+  },
+  "opts": {
+   "locked": true,
+   "repeating": true
+  }
+ },
+ {
   "id": "play-key",
   "keys": "XF86AudioPlay",
   "group": "Media",

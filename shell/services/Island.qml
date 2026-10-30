@@ -439,6 +439,10 @@ Singleton {
             if (root.wants("recording"))
                 root.post({ kind: "recording", icon: "warning-circle", title: "Recording didn't work", subtitle: why, color: Theme.color.danger }, 6000);
         }
+        function onNotice(title, why, brief) {
+            if (root.wants("recording"))
+                root.post({ kind: "recording", icon: "info", title: title, subtitle: brief || why, color: Theme.accents.orange }, 8000);
+        }
     }
 
     // Focus

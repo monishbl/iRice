@@ -258,17 +258,86 @@ Scope {
                 respond(root.password);
             }
         }
+        // pam_faillock says so itself unless set to be silent ("The account
+        // is locked due to 3 failed logins. (9 minutes left to unlock)")
+        onMessageChanged: if (/locked/i.test(message ?? ""))
+            root.pamLocked = true
         onCompleted: result => {
             if (result === PamResult.Success) {
                 System.locked = false;
                 root.error = "";
+                root.fails = 0;
             } else {
-                root.error = "Incorrect password. Try again.";
+                root.fails++;
+                root.error = root.pamLocked ? root.lockedText(root.faillockConf.unlock) : "Incorrect password. Try again.";
                 Sounds.play("error");
+                root.checkLockout();
             }
+            root.pamLocked = false;
             root.password = "";
         }
         onError: root.error = "Couldn't check your password. Try again."
+    }
+
+    // ── Too many attempts (pam_faillock) ────────────────────────────────
+    // After `deny` failures within `fail_interval`, pam_faillock refuses even
+    // the right password until `unlock_time` has passed, and PAM's answer
+    // looks just like a wrong password. After each failure: `faillock --user`
+    // (the user's own tally is readable without root) says whether that's
+    // the case and for how long; where it can't be read, three failures in a
+    // row are taken as a lockout, with the time from faillock.conf.
+    property int fails: 0 // in a row, since the last unlock
+    property bool pamLocked: false
+    property var faillockConf: ({ deny: 3, unlock: 600, interval: 900 }) // pam_faillock's defaults
+    function lockedText(seconds) {
+        if (seconds <= 0)
+            return "Too many attempts: this account stays locked until it's unlocked with faillock --reset from another session.";
+        const m = Math.max(1, Math.ceil(seconds / 60));
+        return "Too many attempts: try again in about " + m + (m === 1 ? " minute." : " minutes.");
+    }
+    function checkLockout() {
+        if (!faillockCheck.running)
+            faillockCheck.running = true;
+    }
+    // faillockConf, then the tally: "CONF deny unlock interval" and
+    // "2026-10-30 13:27:01 TTY /dev/pts/1 V" lines ("NOREAD" when it can't be read)
+    Process {
+        id: faillockCheck
+        command: ["sh", "-c", "f=/etc/security/faillock.conf; v() { [ -r $f ] && sed -n \"s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\\([0-9a-z]*\\).*/\\1/p\" $f | tail -1; }; echo CONF \"$(v deny)\" \"$(v unlock_time)\" \"$(v fail_interval)\"; command -v faillock >/dev/null 2>&1 && faillock --user \"$(id -un)\" 2>/dev/null || echo NOREAD"]
+        stdout: StdioCollector {
+            onStreamFinished: root.judgeLockout(text)
+        }
+    }
+    function judgeLockout(text) {
+        const c = text.match(/^CONF (\S*) (\S*) (\S*)/m);
+        if (c)
+            faillockConf = {
+                deny: parseInt(c[1]) > 0 ? parseInt(c[1]) : 3,
+                unlock: c[2] === "never" ? 0 : (c[2] !== "" && !isNaN(parseInt(c[2])) ? parseInt(c[2]) : 600),
+                interval: parseInt(c[3]) > 0 ? parseInt(c[3]) : 900
+            };
+        const conf = faillockConf;
+        let left = -1; // seconds until it unlocks; -1: not locked
+        if (/^NOREAD/m.test(text) || !/^When\s/m.test(text)) {
+            if (fails >= conf.deny)
+                left = conf.unlock;
+        } else {
+            const now = Date.now();
+            const times = [];
+            const re = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)\s.*\sV\s*$/gm;
+            let m;
+            while ((m = re.exec(text)) !== null)
+                times.push(new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime());
+            const recent = times.filter(t => now - t <= conf.interval * 1000);
+            if (recent.length >= conf.deny) {
+                const last = Math.max.apply(null, recent);
+                left = conf.unlock === 0 ? 0 : Math.max(0, Math.round((last + conf.unlock * 1000 - now) / 1000));
+                if (conf.unlock !== 0 && left <= 0)
+                    left = -1;
+            }
+        }
+        if (left >= 0 && error !== "")
+            error = lockedText(left);
     }
 
     // Sandbox only: `./dev.sh ipc lock unlock` (the sandbox user has no password)

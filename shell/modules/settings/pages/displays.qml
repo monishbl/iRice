@@ -364,6 +364,34 @@ Column {
                 onSelected: i => Displays.set(settingsGroup.m.name, { transform: i + ((settingsGroup.m.transform ?? 0) >= 4 ? 4 : 0) })
             }
         }
+        // External monitors: brightness over DDC/CI (ddcutil)
+        readonly property bool builtIn: /^(eDP|LVDS|DSI)/.test(m?.name ?? "")
+        readonly property var ddc: Brightness.ddcDisplays.find(d => d.output === (m?.name ?? "")) ?? null
+        Row {
+            visible: settingsGroup.ddc !== null && (settingsGroup.m?.enabled ?? false)
+            label: "Brightness"
+            detail: Math.round((Brightness.ddcValues[settingsGroup.m?.name ?? ""] ?? 0.5) * 100) + "%, set on the display itself (DDC/CI)"
+            Slider {
+                width: 220
+                value: Brightness.ddcValues[settingsGroup.m?.name ?? ""] ?? 0.5
+                onMoved: v => Brightness.setDdc(settingsGroup.m.name, v)
+            }
+        }
+        Row {
+            visible: !settingsGroup.builtIn && (settingsGroup.m?.enabled ?? false) && !Brightness.ddcInstalled
+            label: "Brightness"
+            detail: "To change this display's brightness from iRice, install ddcutil (sudo pacman -S ddcutil), then log out and back in."
+        }
+        Row {
+            visible: !settingsGroup.builtIn && (settingsGroup.m?.enabled ?? false) && Brightness.ddcInstalled && settingsGroup.ddc === null
+            label: "Brightness"
+            labelColor: Brightness.ddcProblem !== "" ? Theme.color.danger : Theme.color.label
+            detail: Brightness.ddcProblem === "module" ? "ddcutil can't reach displays because the i2c-dev module isn't loaded. Run sudo modprobe i2c-dev (to load it at every start: echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf), then check again."
+                : Brightness.ddcProblem === "access" ? "ddcutil isn't allowed to open /dev/i2c-*. Add yourself to the i2c group (sudo usermod -aG i2c $USER), log out and back in, then check again."
+                : !Brightness.ddcScanned || Brightness.ddcScanning ? "Looking for DDC/CI support…"
+                : "This display doesn't answer DDC/CI. Turn on DDC/CI in the display's own menu, then check again."
+            SettingsButton { text: "Check Again"; enabled: !Brightness.ddcScanning; onClicked: Brightness.rescanDdc() }
+        }
         Row {
             visible: (settingsGroup.m?.enabled ?? false) && !settingsGroup.m?.mirror
             label: "Flip"

@@ -50,7 +50,7 @@ Singleton {
         ...(tempPath !== "" ? [{ key: "temperature", label: "Temperature", icon: "thermometer-simple", tone: "orange", value: temperature / 100, text: Math.round(temperature) + "°", detail: "", history: tempHistory, max: 100 }] : []),
         { key: "netDown", label: "Download", icon: "arrow-down", tone: "teal", value: 0, text: rate(netDown), detail: "", history: netDownHistory, max: 0 },
         { key: "netUp", label: "Upload", icon: "arrow-up", tone: "pink", value: 0, text: rate(netUp), detail: "", history: netUpHistory, max: 0 },
-        ...(gpuAvailable ? [{ key: "gpu", label: "GPU", icon: "graphics-card", tone: "indigo", value: gpu, text: Math.round(gpu * 100) + "%", detail: "", history: gpuHistory, max: 1 }] : [])
+        ...(gpuAvailable ? [{ key: "gpu", label: "GPU", icon: "graphics-card", tone: "indigo", value: gpu, text: gpuAsleep ? "Asleep" : Math.round(gpu * 100) + "%", detail: gpuTemp > 0 && !gpuAsleep ? Math.round(gpuTemp) + "°C" : "", history: gpuHistory, max: 1 }] : [])
     ]
     // The stats as rows (ResourceRow): processor (with temperature), the GPU
     // where its driver reports load, memory (with swap), network (both ways)
@@ -91,7 +91,11 @@ Singleton {
                 tempFile.reload();
             else if (!root.tempSearched)
                 findTemp.running = true;
-            if (root.gpuPath !== "")
+            if (root.gpuKind === "nvidia") {
+                // a process per sample: only while a graph shows
+                if (root.fast && !nvidiaSmi.running)
+                    nvidiaSmi.running = true;
+            } else if (root.gpuPath !== "")
                 gpuFile.reload();
             else if (!root.gpuSearched)
                 findGpu.running = true;
@@ -198,28 +202,68 @@ Singleton {
 
     // GPU load. amdgpu reports it (gpu_busy_percent); Intel's i915 and xe
     // report how long the GPU has slept (RC6 / idle residency, in ms), so
-    // busy = 1 - slept / elapsed. Found once; with neither there's no GPU graph.
+    // busy = 1 - slept / elapsed; NVIDIA through nvidia-smi (below). Found
+    // once; with none of them there's no GPU graph.
     property string gpuPath: ""
     property string gpuKind: "" // busy | idle
     property bool gpuSearched: false
     property var lastGpu: null // { ms, t }
     Process {
         id: findGpu
-        command: ["sh", "-c", "for f in /sys/class/drm/card*/device/gpu_busy_percent; do [ -r \"$f\" ] && { echo \"busy $f\"; exit; }; done; for f in /sys/class/drm/card*/gt/gt0/rc6_residency_ms /sys/class/drm/card*/device/tile0/gt0/gtidle/idle_residency_ms; do [ -r \"$f\" ] && { echo \"idle $f\"; exit; }; done; true"]
+        // NVIDIA's proprietary driver has no sysfs reading: nvidia-smi. It
+        // comes first when an NVIDIA card drives a connected display (a
+        // desktop with an idle Intel iGPU), last otherwise (a hybrid laptop,
+        // where the integrated GPU draws the desktop)
+        command: ["sh", "-c", "nv=; if command -v nvidia-smi >/dev/null 2>&1 && [ -d /proc/driver/nvidia ]; then nv=present; for c in /sys/class/drm/card*; do case $c in *-*) continue;; esac; case \"$(readlink \"$c/device/driver\")\" in */nvidia) for s in \"$c\"-*/status; do [ \"$(cat \"$s\" 2>/dev/null)\" = connected ] && nv=display; done;; esac; done; fi; [ \"$nv\" = display ] && { echo 'nvidia nvidia-smi'; exit; }; for f in /sys/class/drm/card*/device/gpu_busy_percent; do [ -r \"$f\" ] && { echo \"busy $f\"; exit; }; done; for f in /sys/class/drm/card*/gt/gt0/rc6_residency_ms /sys/class/drm/card*/device/tile0/gt0/gtidle/idle_residency_ms; do [ -r \"$f\" ] && { echo \"idle $f\"; exit; }; done; [ -n \"$nv\" ] && echo 'nvidia nvidia-smi'; true"]
         stdout: StdioCollector {
             onStreamFinished: {
                 root.gpuSearched = true;
                 const f = text.trim().split(" ");
                 root.gpuKind = f[0] ?? "";
                 root.gpuPath = f[1] ?? "";
-                if (root.gpuPath !== "")
+                if (root.gpuKind === "nvidia")
+                    nvidiaSmi.running = root.fast;
+                else if (root.gpuPath !== "")
                     gpuFile.reload();
+            }
+        }
+    }
+    // "utilization, temperature" per GPU (the first is used). A dGPU that
+    // runtime power management has put to sleep isn't woken for a reading.
+    property real gpuTemp: 0 // °C, NVIDIA only
+    property bool gpuAsleep: false
+    Process {
+        id: nvidiaSmi
+        command: ["sh", "-c", "for d in /sys/bus/pci/drivers/nvidia/0000:*; do [ \"$(cat \"$d/power/runtime_status\" 2>/dev/null)\" = suspended ] && { echo asleep; exit 0; }; done; exec nvidia-smi --query-gpu=utilization.gpu,temperature.gpu --format=csv,noheader,nounits"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const l = text.trim().split("\n")[0] ?? "";
+                if (l === "asleep") {
+                    root.gpuAsleep = true;
+                    root.gpu = 0;
+                } else {
+                    const f = l.split(",").map(x => parseFloat(x));
+                    if (!(f[0] >= 0))
+                        return;
+                    root.gpuAsleep = false;
+                    root.gpu = Math.min(100, f[0]) / 100;
+                    root.gpuTemp = f[1] > 0 ? f[1] : 0;
+                }
+                root.gpuHistory = root.push(root.gpuHistory, root.gpu);
+            }
+        }
+        // nvidia-smi doesn't work (driver/library mismatch after an update):
+        // no GPU graph rather than a failing process every second
+        onExited: code => {
+            if (code !== 0) {
+                root.gpuPath = "";
+                root.gpuKind = "";
             }
         }
     }
     FileView {
         id: gpuFile
-        path: root.gpuPath
+        path: root.gpuKind === "nvidia" ? "" : root.gpuPath
         blockLoading: false
         onLoaded: {
             const n = parseInt(text().trim()) || 0;

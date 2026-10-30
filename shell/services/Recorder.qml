@@ -155,11 +155,26 @@ Singleton {
             Qt.callLater(() => launch(what));
     }
 
-    function launch(what) {
+    // Without hardware encoding (Intel without intel-media-driver, NVIDIA
+    // without libva-nvidia-driver, a VM) gpu-screen-recorder exits at once;
+    // launch() then runs it again once with the CPU encoder (H.264 only)
+    property bool cpuEncoding: false // this recording uses the CPU encoder
+    property var lastWhat: null
+    readonly property string cpuNote: "Hardware video encoding isn't available (install intel-media-driver for Intel or libva-nvidia-driver for NVIDIA); recorded with the CPU instead"
+    // Is this stderr gpu-screen-recorder's "can't encode on the GPU"?
+    function hwEncodeFailure(text) {
+        return /vaapi|va-api|libva|failed to create|no h264|(h264|hevc|av1)[^\n]*(not supported|unavailable)|encod(er|ing)|nvenc|cuda|vulkan video/i.test(text || "");
+    }
+
+    function launch(what, cpu, keepFile) {
         if (!what)
             return;
-        const stamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss");
-        file = folder + "/Screen Recording " + stamp + ".mp4";
+        lastWhat = what;
+        cpuEncoding = !!cpu;
+        if (!keepFile) {
+            const stamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd 'at' hh.mm.ss");
+            file = folder + "/Screen Recording " + stamp + ".mp4";
+        }
         const audio = [];
         if (cfg.systemAudio)
             audio.push("default_output");
@@ -174,7 +189,10 @@ Singleton {
                 cmd.push("-w", "region", "-region", m ? m[3] + "x" + m[4] + "+" + m[1] + "+" + m[2] : what.region);
             } else
                 cmd.push("-w", what.output || "screen");
-            cmd.push("-f", String(cfg.fps || 60), "-k", cfg.codec || "h264", "-q", cfg.quality || "high", "-c", "mp4", "-cursor", cfg.cursor ? "yes" : "no");
+            // the CPU encoder only does H.264
+            cmd.push("-f", String(cfg.fps || 60), "-k", cpu ? "h264" : (cfg.codec || "h264"), "-q", cfg.quality || "high", "-c", "mp4", "-cursor", cfg.cursor ? "yes" : "no");
+            if (cpu)
+                cmd.push("-encoder", "cpu");
             if (audio.length > 0)
                 cmd.push("-a", audio.join("|")); // one track, mixed
             cmd.push("-o", file);
@@ -248,6 +266,7 @@ Singleton {
     signal saved(string file)
     signal dropped(string file) // discarded, Undo still possible
     signal failed(string why)
+    signal notice(string title, string why, string brief) // saved, with something to know (brief: one line, for the island)
 
     Process {
         id: proc
@@ -268,10 +287,23 @@ Singleton {
                 dropTimer.restart();
                 root.dropped(f);
             } else if (code !== 0 && code !== 130 && code !== 255) {
-                const e = (errs.text || "").trim().split("\n").filter(l => l.trim() !== "").pop() ?? "";
-                root.failed(e !== "" ? e : "The recorder stopped (code " + code + ").");
-            } else
+                const all = errs.text || "";
+                // no hardware encoder: once more on the CPU, same file
+                if (root.gsr && !root.cpuEncoding && Date.now() - root.started < 10000 && root.hwEncodeFailure(all)) {
+                    console.warn("Recorder: hardware encoding failed, retrying on the CPU:", all.trim().split("\n").pop());
+                    Qt.callLater(() => root.launch(root.lastWhat, true, true));
+                    return;
+                }
+                const e = all.trim().split("\n").filter(l => l.trim() !== "").pop() ?? "";
+                if (root.cpuEncoding && root.hwEncodeFailure(all))
+                    root.failed("Hardware video encoding isn't available and the CPU encoder failed too. Install intel-media-driver (Intel) or libva-nvidia-driver (NVIDIA), or install wf-recorder.");
+                else
+                    root.failed(e !== "" ? e : "The recorder stopped (code " + code + "). Try again, or check that the display is still connected.");
+            } else {
                 root.saved(f);
+                if (root.cpuEncoding)
+                    root.notice("Recorded with the CPU", root.cpuNote, "Install intel-media-driver or libva-nvidia-driver");
+            }
         }
     }
     function open(f) {
@@ -291,6 +323,10 @@ Singleton {
     onFailed: why => {
         if (!islandSays)
             Quickshell.execDetached(["notify-send", "-a", "Screen Recording", "-u", "critical", "Recording didn't work", why]);
+    }
+    onNotice: (title, why, brief) => {
+        if (!islandSays)
+            Quickshell.execDetached(["notify-send", "-a", "Screen Recording", title, why]);
     }
     onDropped: f => {
         if (!islandSays)
