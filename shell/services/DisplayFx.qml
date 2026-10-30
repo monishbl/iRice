@@ -154,6 +154,7 @@ Singleton {
             if (root.ignored(name))
                 return;
             root.hotplugAt = Date.now();
+            root.removedLast = n === "monitorremovedv2";
             if (n === "monitoraddedv2")
                 root.added = root.added.concat([name]);
             else
@@ -315,6 +316,13 @@ Singleton {
     // time, or 600 ms at most), so it plays smoothly; the new screen stays
     // covered meanwhile.
     property var queued: null
+    // Real displays also take a while to show a picture: a monitor syncs for
+    // a second or two after it's switched on, and Intel graphics can blank
+    // the laptop panel for a moment while it reconfigures for two screens.
+    // The effect waits for that (else it played to dark screens, unseen).
+    // The sandbox's outputs show at once.
+    readonly property int syncWait: sandbox ? 0 : (removedLast ? 900 : 1800)
+    property bool removedLast: false
     property real quietSince: 0
     property real lastTick: 0
     property int calm: 0
@@ -333,7 +341,7 @@ Singleton {
             const t = Date.now();
             root.calm = t - root.lastTick < 30 ? root.calm + 1 : 0;
             root.lastTick = t;
-            if (root.calm >= 3 || t - root.quietSince > 600) {
+            if ((root.calm >= 3 || t - root.quietSince > 600) && t - root.hotplugAt >= root.syncWait) {
                 stop();
                 const list = root.queued ?? [];
                 root.queued = null;
