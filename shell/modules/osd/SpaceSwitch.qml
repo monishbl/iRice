@@ -127,10 +127,13 @@ Scope {
                         // A wide, faint band that eases out (no inner edge
                         // to see): strong at the edge, then soft, then nothing
                         readonly property real depth: 72
-                        readonly property color strong: Theme.accentAlpha(0.24)
-                        readonly property color soft: Theme.accentAlpha(0.11)
-                        readonly property color faint: Theme.accentAlpha(0.035)
-                        readonly property color none: Theme.accentAlpha(0)
+                        // (a light shade of the accent: the glow reads as light
+                        // coming in from the edge, not a coloured border)
+                        readonly property color tone: Theme.accentRamp[3] ?? Theme.accent
+                        readonly property color strong: Qt.alpha(tone, 0.45)
+                        readonly property color soft: Qt.alpha(tone, 0.22)
+                        readonly property color faint: Qt.alpha(tone, 0.08)
+                        readonly property color none: Qt.alpha(tone, 0)
                         Rectangle {
                             anchors { left: parent.left; right: parent.right; top: parent.top }
                             height: edges.depth
