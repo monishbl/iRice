@@ -40,6 +40,8 @@ hl.window_rule({ match = { title = "^iRice Settings$" }, center = true })
 for _, m in ipairs({
     { class = "^(org\\.freedesktop\\.impl\\.portal\\.desktop\\.kde|xdg-desktop-portal-gtk|xdg-desktop-portal-gnome|hyprland-share-picker)$" },
     { class = "^(org\\.irice\\.GoogleSignIn|org\\.gnome\\.OnlineAccounts|polkit-kde-authentication-agent-1|org\\.kde\\.polkit-kde-authentication-agent-1)$" },
+    -- (iRice's own file picker prefers zenity, then kdialog: pick-file.py)
+    { class = "^([Zz]enity|org\\.gnome\\.Zenity|kdialog|org\\.kde\\.kdialog)$" },
 }) do
     hl.window_rule({ match = m, float = true })
     hl.window_rule({ match = m, center = true })
