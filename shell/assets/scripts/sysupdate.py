@@ -662,6 +662,28 @@ def cancel():
     return 0
 
 
+AUTOSNAP = {"snapper": "snap-pac", "timeshift": "timeshift-autosnap"}
+
+
+def installed(package):
+    try:
+        return subprocess.run(["pacman", "-Q", "--", package], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def other_power_manager():
+    for name in ("tlp", "auto-cpufreq", "tuned-ppd", "tuned"):
+        if installed(name):
+            return name
+        try:
+            if subprocess.run(["systemctl", "is-active", "--quiet", name], timeout=10).returncode == 0:
+                return name
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return ""
+
+
 def plan_of(a, fake=False):
     """The steps from the arguments, package names checked."""
     def names(flag):
@@ -674,6 +696,14 @@ def plan_of(a, fake=False):
     snap = a[a.index("--snapshot") + 1] if "--snapshot" in a else ""
     p = {"snapshot": snap if snap in ("snapper", "timeshift") else "", "system": "--system" in a,
          "ignore": names("--ignore"), "install": names("--install"), "remove": names("--remove")}
+    # A snapshot tool's pacman hook already takes one around each pacman run
+    # (snap-pac for snapper, timeshift-autosnap): a second would only take space
+    if p["snapshot"] and not fake and installed(AUTOSNAP[p["snapshot"]]):
+        p["snapshot"] = ""
+    # Not power-profiles-daemon next to another power manager (they'd fight;
+    # TLP's package conflicts with it): tools/irice-packages.sh leaves it out too
+    if "power-profiles-daemon" in p["install"] and not fake and other_power_manager():
+        p["install"].remove("power-profiles-daemon")
     then = a[a.index("--then") + 1] if "--then" in a and a.index("--then") + 1 < len(a) else "null"
     try:
         p["then"] = json.loads(then)

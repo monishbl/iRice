@@ -9,7 +9,7 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" 
 pcall(dofile, IRICE_USER_DIR .. "/monitors.lua") -- per-display settings from Settings → Displays
 hl.config({
     input = {
-        kb_layout = "us",
+        kb_layout = "us", -- (only until keyboard.lua, below, sets yours)
         follow_mouse = 1,
         repeat_delay = 250,
         repeat_rate = 35,
@@ -18,6 +18,7 @@ hl.config({
         touchpad = { natural_scroll = true, disable_while_typing = false, clickfinger_behavior = true, scroll_factor = 0.7 }
     }
 })
+pcall(dofile, dir .. "/irice/keyboard.lua") -- your keyboard layout (written by the installer, from localectl)
 
 dofile(dir .. "/irice/look.lua")
 pcall(dofile, dir .. "/irice/cursor.lua") -- macOS cursor when installed

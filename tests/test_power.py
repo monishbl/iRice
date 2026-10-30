@@ -80,6 +80,36 @@ class BatteryGuard(unittest.TestCase):
         self.assertFalse(guard.should_sleep(2, 1, 3))  # charging
 
 
+SHIPPED_HYPRIDLE = """# iRice idle behaviour: lock at 5 min, screen off at 10, sleep at 30.
+# Locking goes through the shell's own lock screen.
+
+# lock_cmd and before_sleep_cmd are added by shell/assets/scripts/start-idle.sh
+# when it starts hypridle: they name this shell (its own qs and folder), which
+# a fixed file can't.
+general {
+    after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })'
+    inhibit_sleep = 3
+    ignore_dbus_inhibit = false
+}
+
+listener {
+    timeout = 300
+    on-timeout = loginctl lock-session
+}
+
+listener {
+    timeout = 600
+    on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })'
+    on-resume = hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })'
+}
+
+listener {
+    timeout = 1800
+    on-timeout = systemctl suspend
+}
+"""
+
+
 class IdleConfig(unittest.TestCase):
     def run_idle(self, listeners, own=None):
         with tempfile.TemporaryDirectory() as d:
@@ -119,6 +149,16 @@ class IdleConfig(unittest.TestCase):
     def test_your_own_hypridle_conf_still_wins(self):
         conf, _ = self.run_idle("ac sleep 60\n", own="listener {\n timeout = 1234\n}\n")
         self.assertIn("timeout = 1234", conf)
+        self.assertNotIn("ac sleep", conf)
+
+    def test_the_copy_an_old_installer_put_there_isnt_yours(self):
+        # (the last hypr/hypridle.conf iRice shipped, which install.sh copied in)
+        conf, _ = self.run_idle("ac sleep 60\n", own=SHIPPED_HYPRIDLE)
+        self.assertIn("ac sleep", conf)
+        self.assertNotIn("loginctl lock-session", conf)
+        # one line changed: it's yours
+        conf, _ = self.run_idle("ac sleep 60\n", own=SHIPPED_HYPRIDLE.replace("timeout = 300", "timeout = 301"))
+        self.assertIn("timeout = 301", conf)
         self.assertNotIn("ac sleep", conf)
 
 

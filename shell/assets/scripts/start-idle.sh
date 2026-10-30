@@ -29,7 +29,8 @@ write_config() {
     local grace=0
     # Keep installed/custom listener timeouts and DPMS behavior. Only the lock
     # target and secure-before-sleep requirement are owned by this launcher.
-    if [[ -r "$user_config" ]]; then
+    # (a copy an earlier installer put there doesn't count: own-hypridle.sh)
+    if "$shell_dir/assets/scripts/own-hypridle.sh" "$user_config"; then
         cat -- "$user_config" >"$idle_dir/hypridle.conf"
     elif [[ -r "$listeners" ]]; then
         {

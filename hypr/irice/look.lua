@@ -10,18 +10,32 @@ if not qtTheme or qtTheme == "" then hl.env("QT_QPA_PLATFORMTHEME", "kde") end
 -- hint, Electron apps (WhatsApp, Discord, Claude, Slack, VS Code…) start under
 -- XWayland: files dragged in from Wayland apps like Dolphin don't drop, and
 -- their windows behave a little differently. Qt apps likewise prefer Wayland,
--- with X11 as the fallback. Plasma's menu prefix gives Dolphin its full
--- "Open with" list. An explicit choice in the environment wins.
+-- with X11 as the fallback. A desktop menu prefix gives Dolphin its full
+-- "Open with" list: Plasma's when it's installed, else Arch's (archlinux-xdg-menu).
+-- An explicit choice in the environment wins.
 local function default_env(name, value)
     local v = os.getenv(name)
     if not v or v == "" then hl.env(name, value) end
 end
+local function exists(path)
+    local f = io.open(path, "r")
+    if f then f:close() end
+    return f ~= nil
+end
 default_env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 default_env("QT_QPA_PLATFORM", "wayland;xcb")
-default_env("XDG_MENU_PREFIX", "plasma-")
--- Claude Desktop keeps its sign-in in its own encrypted file, not KWallet:
--- the wallet isn't unlocked at login here, so it asked for the wallet
--- password at every start
+if exists("/etc/xdg/menus/plasma-applications.menu") then
+    default_env("XDG_MENU_PREFIX", "plasma-")
+elseif exists("/etc/xdg/menus/arch-applications.menu") then
+    default_env("XDG_MENU_PREFIX", "arch-")
+end
+-- Claude Desktop keeps its sign-in in its own file instead of a keyring
+-- ("basic"): KWallet isn't unlocked at login here, so it asked for the wallet
+-- password at every start. That file is only obscured, not locked by your
+-- password, so anything running as you can read it. It works on every
+-- system, so it's the default; to use a keyring instead, set it in
+-- ~/.config/hypr/custom.lua (loaded after this), e.g.
+-- hl.env("CLAUDE_PASSWORD_STORE", "gnome-libsecret"), or "kwallet6".
 default_env("CLAUDE_PASSWORD_STORE", "basic")
 
 hl.config({

@@ -26,6 +26,9 @@ if (( ${#missing[@]} > 0 )); then
     sudo pacman -S --needed --noconfirm "${missing[@]}" || { echo "Package install failed: see above, then run this again."; exit 1; }
 fi
 
+# Your keyboard layout (localectl) for the test session (sandbox/hypr/tty.lua)
+"$ROOT/tools/keyboard-lua.sh" "$ROOT/.sandbox/keyboard.lua"
+
 # The Tahoe icons, cursors and GTK theme (from the AUR, through yay): without
 # them apps fall back to plain icons and the default GTK look
 missing=()

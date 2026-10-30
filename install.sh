@@ -251,7 +251,8 @@ install_packages() {
             # (only the ones installed: pacman stops at a name it doesn't have)
             local pa=()
             mapfile -t pa < <(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null)
-            run sudo pacman -Rdd --noconfirm "${pa[@]}" || warn "PulseAudio wasn't removed (see above); installing PipeWire may ask about it."
+            run sudo pacman -Rdd --noconfirm "${pa[@]}" ||
+                { say "  PulseAudio wasn't removed (see above), and PipeWire can't be installed next to it."; return 1; }
         fi
     fi
     local pm
@@ -288,7 +289,7 @@ install_packages() {
     local hv qv
     hv=$(hypr_version)
     if ! version_ge "${hv:-0}" "$NEED_HYPRLAND"; then
-        say "  Hyprland ${hv:-isn't installed}; iRice needs $NEED_HYPRLAND or newer."
+        say "  Hyprland ${hv:-is missing}; iRice needs $NEED_HYPRLAND or newer."
         if [[ "$(. /etc/os-release 2>/dev/null && echo "${ID:-}")" == manjaro ]]; then
             say "  Manjaro's stable branch gets Arch's updates a few weeks later, so its Hyprland can be too old."
             say "  Wait for it to arrive there, or move to the unstable branch, which follows Arch closely:"
@@ -445,7 +446,18 @@ install_files() {
     for f in "$ROOT/hypr/irice/"*; do
         [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/irice/"
     done
-    run cp "$ROOT/hypr/hypridle.conf" "$CONFIG/hypr/hypridle.conf"
+    # Idle timers come from Settings → Battery & Power (start-idle.sh); a
+    # hypridle.conf here is yours and wins over them. Earlier installers copied
+    # one in: take that out again when it's unchanged, so the settings work
+    if [[ -f "$CONFIG/hypr/hypridle.conf" ]] && ! "$ROOT/shell/assets/scripts/own-hypridle.sh" "$CONFIG/hypr/hypridle.conf"; then
+        run rm -f "$CONFIG/hypr/hypridle.conf"
+    fi
+    # Your keyboard layout, as the system has it (localectl), over the "us" default
+    if [[ $DRY == 1 ]]; then
+        note "would write your keyboard layout (localectl) to $CONFIG/hypr/irice/keyboard.lua"
+    else
+        note "$("$ROOT/tools/keyboard-lua.sh" "$CONFIG/hypr/irice/keyboard.lua")"
+    fi
     # A hyprland.conf next to hyprland.lua would be ambiguous; move it aside
     if [[ -f "$CONFIG/hypr/hyprland.conf" ]]; then
         run mv "$CONFIG/hypr/hyprland.conf" "$CONFIG/hypr/hyprland.conf.pre-irice"
@@ -515,6 +527,17 @@ services() {
             warn "Your network is run by $(for s in systemd-networkd dhcpcd iwd; do systemctl is-active --quiet $s && echo $s && break; done)."
             if ask "Switch it to NetworkManager (iRice's Wi-Fi menus use it; takes effect after a reboot)?" y; then
                 for s in systemd-networkd dhcpcd; do systemctl is-enabled --quiet $s 2>/dev/null && run sudo systemctl disable $s; done
+                # iwd stays and NetworkManager drives it (instead of its own
+                # wpa_supplicant fighting iwd for the Wi-Fi): saved networks are kept
+                if systemctl is-active --quiet iwd; then
+                    if [[ $DRY == 1 ]]; then
+                        note "would write /etc/NetworkManager/conf.d/wifi_backend.conf (wifi.backend=iwd)"
+                    else
+                        sudo mkdir -p /etc/NetworkManager/conf.d &&
+                            printf '# Written by the iRice installer: NetworkManager uses iwd, which ran the Wi-Fi before\n[device]\nwifi.backend=iwd\n' |
+                            sudo tee /etc/NetworkManager/conf.d/wifi_backend.conf >/dev/null
+                    fi
+                fi
                 run sudo systemctl enable NetworkManager
             fi
         fi
@@ -522,7 +545,13 @@ services() {
         svc_on NetworkManager || return 1
     fi
     svc_on bluetooth
-    svc_on power-profiles-daemon
+    # (not next to another power manager: they'd fight over the same settings)
+    local pm
+    if pm=$(power_manager); then
+        note "Energy modes are left to $pm."
+    else
+        svc_on power-profiles-daemon
+    fi
     case "$VIRT" in
         kvm|qemu) svc_on qemu-guest-agent ;;
         oracle) svc_on vboxservice ;;
@@ -592,10 +621,22 @@ user = "greeter"'
         run sudo systemctl enable greetd || return 1 # (started at the next boot)
         GREETER_DONE=1
     elif [[ -z "$OTHER_DM" ]]; then
-        # No login screen: start Hyprland when you log in on the first console
-        local profile="$HOME/.bash_profile"
+        # No login screen: start Hyprland when you log in on the first console,
+        # from the file your login shell reads (bash, zsh, fish or sh)
+        local profile
+        profile=$(login_profile)
         if ! grep -q 'irice: start Hyprland' "$profile" 2>/dev/null; then
-            run sh -c "printf '%s\n' '' '# irice: start Hyprland when logging in on the first console' '[ -z \"\$WAYLAND_DISPLAY\" ] && [ \"\$XDG_VTNR\" = 1 ] && command -v start-hyprland >/dev/null && exec start-hyprland' >> '$profile'"
+            if [[ $DRY == 1 ]]; then
+                note "would add starting Hyprland on tty1 to $profile"
+            elif [[ $profile == *.fish ]]; then
+                mkdir -p "$(dirname "$profile")"
+                printf '%s\n' '# irice: start Hyprland when logging in on the first console' \
+                    'if status is-login; and test -z "$WAYLAND_DISPLAY"; and test "$XDG_VTNR" = 1; and command -q start-hyprland' \
+                    '    exec start-hyprland' 'end' >"$profile"
+            else
+                printf '%s\n' '' '# irice: start Hyprland when logging in on the first console' \
+                    '[ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = 1 ] && command -v start-hyprland >/dev/null && exec start-hyprland' >>"$profile"
+            fi
             note "Log in on the first console (tty1) and Hyprland starts."
         fi
     fi
@@ -612,7 +653,10 @@ verify() {
     local hv qv c missing=()
     hv=$(hypr_version) qv=$(qs_version)
     version_ge "${hv:-0}" "$NEED_HYPRLAND" && ok "Hyprland $hv" || bad "Hyprland ${hv:-missing} (needs $NEED_HYPRLAND+)" "sudo pacman -Syu hyprland"
-    version_ge "${qv:-0}" "$NEED_QUICKSHELL" && ok "Quickshell $qv" || bad "Quickshell ${qv:-missing} (needs $NEED_QUICKSHELL+)" "sudo pacman -S quickshell"
+    if [[ -n "$hv" ]] && ! hypr_tested "$hv"; then
+        meh "Hyprland $hv is newer than this iRice is tested with ($HYPR_MAX)" "irice update brings support once it's ready; until then the glass or some settings may not work"
+    fi
+    version_ge "${qv:-0}" "$NEED_QUICKSHELL" && ok "Quickshell $qv" || bad "Quickshell ${qv:-missing} (needs $NEED_QUICKSHELL+)" "$ROOT/tools/build-quickshell.sh (iRice's own; or sudo pacman -Syu quickshell)"
     for c in hyprctl hypridle wpctl nmcli bluetoothctl grim slurp wl-copy cliphist playerctl brightnessctl notify-send python3 curl jq; do
         command -v "$c" >/dev/null || missing+=("$c")
     done
@@ -668,7 +712,7 @@ verify() {
         fi
     elif [[ -n "$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null)" ]]; then
         ok "Login screen: $(basename "$(readlink /etc/systemd/system/display-manager.service)" .service) (choose Hyprland there)"
-    elif grep -q 'irice: start Hyprland' "$HOME/.bash_profile" 2>/dev/null; then
+    elif grep -q 'irice: start Hyprland' "$(login_profile)" 2>/dev/null; then
         ok "Hyprland starts when you log in on tty1"
     else
         meh "Nothing starts Hyprland at login" "start it with: start-hyprland"

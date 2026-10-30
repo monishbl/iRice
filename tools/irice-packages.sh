@@ -60,6 +60,19 @@ for p in "${notmet[@]}"; do
     [[ -z "$p" ]] && continue
     if pacman -Si -- "$p" >/dev/null 2>&1 || pacman -Sg -- "$p" >/dev/null 2>&1; then missing+=("$p"); else unavailable+=("$p"); fi
 done
+# Not power-profiles-daemon next to another power manager (TLP, auto-cpufreq,
+# tuned): they'd fight over the same settings, and TLP's package conflicts
+# with it (installing it would remove TLP). tuned-ppd stands in for it.
+if [[ " ${missing[*]} " == *" power-profiles-daemon "* ]]; then
+    for p in tlp auto-cpufreq tuned-ppd tuned; do
+        if pacman -Qq -- "$p" >/dev/null 2>&1 || systemctl is-active --quiet "$p" 2>/dev/null; then
+            kept=()
+            for m in "${missing[@]}"; do [[ "$m" == power-profiles-daemon ]] || kept+=("$m"); done
+            missing=("${kept[@]}")
+            break
+        fi
+    done
+fi
 dropped=()
 for p in "${DROPPED[@]}"; do
     pacman -Qq -- "$p" >/dev/null 2>&1 && dropped+=("$p")

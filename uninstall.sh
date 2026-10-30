@@ -68,8 +68,11 @@ run rm -f "$DATA/irice/irice-glass.so" "$DATA/irice/irice-glass.so.new" "$DATA/i
 run rm -rf "$DATA/irice/src"
 run rm -f "$DATA/irice/source" "$DATA/irice/previous-login-manager"
 # The irice command, and starting Hyprland from tty1
-run rm -f "$HOME/.local/bin/irice" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/irice.fish"
-if grep -q 'irice: start Hyprland' "$HOME/.bash_profile" 2>/dev/null; then
-    run sed -i '/# irice: start Hyprland/,+1d' "$HOME/.bash_profile"
-fi
+run rm -f "$HOME/.local/bin/irice" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/irice.fish" \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/irice-start-hyprland.fish"
+for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile" "${ZDOTDIR:-$HOME}/.zprofile"; do
+    if grep -q 'irice: start Hyprland' "$f" 2>/dev/null; then
+        run sed -i '/# irice: start Hyprland/,+1d' "$f"
+    fi
+done
 echo "Done. Log out and back in to start your previous setup."

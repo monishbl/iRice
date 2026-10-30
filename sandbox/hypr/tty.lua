@@ -14,7 +14,7 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 pcall(dofile, IRICE_USER_DIR .. "/monitors.lua") -- per-display settings from Settings → Displays
 hl.config({
     input = {
-        kb_layout = "us",
+        kb_layout = "us", -- (only until keyboard.lua, below, sets yours)
         follow_mouse = 1,
         repeat_delay = 250,
         repeat_rate = 35,
@@ -24,6 +24,12 @@ hl.config({
     },
     ecosystem = { no_update_news = true, no_donation_nag = true }
 })
+-- Your keyboard layout: the installed iRice's (install.sh writes it from
+-- localectl), else the one tools/setup-tty.sh wrote for this folder
+do
+    local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+    if not pcall(dofile, cfg .. "/hypr/irice/keyboard.lua") then pcall(dofile, root .. "/.sandbox/keyboard.lua") end
+end
 
 dofile(root .. "/hypr/irice/look.lua")
 pcall(dofile, root .. "/hypr/irice/cursor.lua") -- macOS cursor when installed

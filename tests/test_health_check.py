@@ -28,6 +28,11 @@ if os.environ.get("FAKE_SLOW") == name:
     time.sleep(10)
 if os.environ.get("FAKE_MODE") == "fail":
     sys.exit(1)
+# FAKE_DOWN: "name" or "name:words in its arguments" that fail, comma-separated
+for down in filter(None, os.environ.get("FAKE_DOWN", "").split(",")):
+    n, _, words = down.partition(":")
+    if n == name and words in args:
+        sys.exit(1)
 answers = {
     "pactl": "Server String: /run/pulse\nServer Name: PulseAudio (on PipeWire 1.6)\n",
     "nmcli": "running:connected\n",
@@ -35,7 +40,12 @@ answers = {
     "cliphist": "",
     "gpu-screen-recorder": "",
 }
-if name == "systemctl":
+if name == "systemctl" and "FAKE_UNITS" in os.environ and ("is-active" in args or "is-enabled" in args):
+    # only the units named in FAKE_UNITS are on
+    if sys.argv[-1] not in os.environ["FAKE_UNITS"].split(","):
+        print("inactive" if "is-active" in args else "disabled"); sys.exit(3)
+    print("active" if "is-active" in args else "enabled")
+elif name == "systemctl":
     print("active")
 elif name == "busctl":
     if "Powered" in args: print("b true")
@@ -50,7 +60,7 @@ elif name == "hyprctl":
     if "irice-glass" in args: print("irice-glass " + os.environ.get("FAKE_PLUGIN", "4"))
     elif "version" in args: print('{"tag": "' + os.environ.get("FAKE_HYPR", "v0.56.2") + '"}')
 elif name == "qs":
-    print("Quickshell 0.3.2 (revision x)")
+    print("Quickshell " + os.environ.get("FAKE_QS", "0.3.2") + " (revision x)")
 else:
     sys.stdout.write(answers.get(name, ""))
 '''
@@ -130,6 +140,62 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(rows["plugin"]["status"], "warn")
         self.assertEqual(rows["hyprland"]["status"], "warn")
         self.assertEqual(self.rows(FAKE_HYPR="v0.56.9")["hyprland"]["status"], "ok")
+
+    def test_quickshell_versions_and_a_fix_that_is_true(self):
+        self.assertEqual(self.rows(FAKE_QS="0.3.3")["quickshell"]["status"], "ok")  # newer than the minimum
+        old = self.rows(FAKE_QS="0.2.1")["quickshell"]
+        self.assertEqual(old["status"], "warn")
+        self.assertIn("older than iRice needs", old["detail"])
+        self.assertIn("tools/build-quickshell.sh", old["fix"])  # (Software Update doesn't build it)
+        self.assertNotIn("Software Update", old["fix"])
+        # iRice's own build, out of step with this iRice: rebuild it
+        own = self.home / ".local/share/irice/quickshell/bin/qs"
+        own.parent.mkdir(parents=True)
+        own.symlink_to(self.bin / "fake")
+        r = self.rows(FAKE_QS="0.3.1")["quickshell"]
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("Rebuild it", r["fix"])
+        self.assertEqual(self.rows()["quickshell"]["detail"], "0.3.2 (iRice's own build)")
+
+    def test_a_hyprland_newer_than_tested_says_so(self):
+        r = self.rows(FAKE_HYPR="v0.57.0")["hyprland"]
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("newer than iRice is tested with (0.56.x)", r["detail"])
+        self.assertIn("older than", self.rows(FAKE_HYPR="v0.55.1")["hyprland"]["detail"])
+
+    def test_an_installed_shell_reads_compat_from_the_recorded_source(self):
+        # (an installed copy has no compat.json next to it: the installer's
+        # record of where iRice came from leads to it)
+        shell = self.home / ".config/quickshell/irice/assets/scripts"
+        shell.mkdir(parents=True)
+        for name in ("health-check.py", "sharing-check.py", "irice-root.py", "bug-report.py"):
+            (shell / name).write_text((SCRIPT.parent / name).read_text())
+        (self.home / ".local/share/irice").mkdir(parents=True)
+        (self.home / ".local/share/irice/source").write_text(str(ROOT) + "\n")
+        out = subprocess.run([sys.executable, "-I", str(shell / "health-check.py"), "--shell-pid", "4242"],
+                             env=dict(self.env, FAKE_HYPR="v0.57.0"), capture_output=True, text=True, timeout=20)
+        rows = {r["id"]: r for r in json.loads(out.stdout)}
+        self.assertEqual(rows["hyprland"]["status"], "warn")
+
+    def test_another_network_or_power_manager_is_off_not_broken(self):
+        rows = self.rows(FAKE_DOWN="nmcli,busctl:ActiveProfile", FAKE_UNITS="iwd,wireplumber")
+        nm = rows["networkmanager"]
+        self.assertEqual(nm["status"], "off")
+        self.assertEqual(nm["detail"], "Network managed by iwd; iRice's Wi-Fi menus need NetworkManager")
+        self.assertFalse(nm["canFix"])
+        self.assertEqual(rows["profiles"]["status"], "fail")  # nothing else manages power: broken
+        # NetworkManager turned on (over iwd) but not running: still broken, with its fix
+        rows = self.rows(FAKE_DOWN="nmcli", FAKE_UNITS="iwd,NetworkManager")
+        self.assertEqual(rows["networkmanager"]["status"], "fail")
+        self.assertEqual(rows["networkmanager"]["fixCommand"], "systemctl enable --now NetworkManager")
+        # TLP installed: energy modes are its job
+        (self.sysroot / "usr/bin").mkdir(parents=True)
+        (self.sysroot / "usr/bin/tlp").write_text("")
+        prof = self.rows(FAKE_DOWN="busctl:ActiveProfile")["profiles"]
+        self.assertEqual((prof["status"], prof["detail"], prof["fix"], prof["canFix"]), ("off", "Managed by TLP", "", False))
+        (self.sysroot / "usr/bin/tlp").unlink()
+        prof = self.rows(FAKE_DOWN="busctl:ActiveProfile", FAKE_UNITS="auto-cpufreq,wireplumber")["profiles"]
+        self.assertEqual((prof["status"], prof["detail"]), ("off", "Managed by auto-cpufreq"))
 
     def test_notifications_owned_by_another_program_is_a_warning(self):
         rows = self.rows(FAKE_SHELL_PID=str(os.getpid()))  # this test runner, not a Quickshell

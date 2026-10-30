@@ -104,8 +104,23 @@ systemctl restart bluetooth
 PAIRING_SCRIPT = PAIRING_SCRIPT.replace("@PLUGINS@", ",".join(PLUGINS))
 PAIRING_SHOWN = f"bluetoothd --noplugin={','.join(PLUGINS)} (a drop-in in {os.path.dirname(DROPIN)}), then restart Bluetooth"
 
+# NetworkManager, unless iwd or systemd-networkd runs the network instead:
+# switching over is a choice (the installer offers it), not a fix
+NETWORK_SCRIPT = r'''set -e
+if ! systemctl is-enabled --quiet NetworkManager; then
+    for s in iwd systemd-networkd; do
+        if systemctl is-active --quiet "$s"; then
+            echo "$s runs your network; iRice's installer can switch it to NetworkManager" >&2
+            exit 1
+        fi
+    done
+fi
+systemctl enable --now NetworkManager
+'''
+NETWORK_SHOWN = "systemctl enable --now NetworkManager"
+
 FIXES = {
-    "networkmanager": ["systemctl", "enable", "--now", "NetworkManager"],
+    "networkmanager": ["/bin/sh", "-c", NETWORK_SCRIPT],
     "bluetooth": ["systemctl", "enable", "--now", "bluetooth"],
     "avahi": ["systemctl", "enable", "--now", "avahi-daemon"],
     "upower": ["systemctl", "enable", "--now", "upower"],

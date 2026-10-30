@@ -57,7 +57,9 @@ _spec = importlib.util.spec_from_file_location("sharing_check", os.path.join(HER
 sharing = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sharing)
 ROOT_FIXES = sharing.irice_root.FIXES
-SHOWN = {"firewall": sharing.FIREWALL_SHOWN, "btpairing": sharing.PAIRING_SHOWN}  # (what the page shows for these)
+SHOWN = {"firewall": sharing.FIREWALL_SHOWN, "btpairing": sharing.PAIRING_SHOWN,  # (what the page shows for these)
+         "networkmanager": sharing.irice_root.NETWORK_SHOWN}
+SYSTEM = os.environ.get("IRICE_SYSTEM_ROOT", "/")  # where /usr is looked for (tests)
 
 _local = threading.local() # per check: whether something it asked hung
 
@@ -120,12 +122,26 @@ def check_wireplumber(_):
 
 # ── Network & sharing ───────────────────────────────────────────────────
 
+def active(unit):
+    code, out = run(["systemctl", "is-active", unit])
+    return code == 0 and out.strip() == "active"
+
+
 def check_networkmanager(_):
     code, out = run(["nmcli", "-t", "-f", "RUNNING,STATE", "general"])
     if code == 0 and out.startswith("running"):
         state = out.strip().split(":", 1)[-1]
         return result("networkmanager", "NetworkManager", "Network & sharing", "ok" if state.startswith("connected") else "warn",
                       "Connected" if state.startswith("connected") else f"Running, {state}")
+    # Something else runs the network on purpose: switching is a choice (the
+    # installer offers it), not a fix. (NetworkManager turned on but stopped
+    # is still broken, even with iwd under it.)
+    # (nmcli hanging means NetworkManager is there, just stuck)
+    if not getattr(_local, "hung", False) and run(["systemctl", "is-enabled", "--quiet", "NetworkManager"])[0] != 0:
+        others = [u for u in ("iwd", "systemd-networkd") if active(u)]
+        if others:
+            return result("networkmanager", "NetworkManager", "Network & sharing", "off",
+                          f"Network managed by {'/'.join(others)}; iRice's Wi-Fi menus need NetworkManager")
     return result("networkmanager", "NetworkManager", "Network & sharing", "fail", "Not running: Wi-Fi and the network menu won't work",
                   "sudo systemctl enable --now NetworkManager")
 
@@ -219,12 +235,27 @@ def check_upower(_):
                   "sudo systemctl enable --now upower")
 
 
+# Power managers that power-profiles-daemon would fight with (iRice leaves it
+# out next to them: install.sh, tools/irice-packages.sh)
+POWER_MANAGERS = (("tlp", "TLP"), ("auto-cpufreq", "auto-cpufreq"), ("tuned", "tuned"))
+
+
+def power_manager():
+    for unit, name in POWER_MANAGERS:
+        if any(os.path.exists(os.path.join(SYSTEM, d, unit)) for d in ("usr/bin", "usr/local/bin")) or active(unit):
+            return name
+    return ""
+
+
 def check_profiles(_):
     for name, path, iface in (("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles", "org.freedesktop.UPower.PowerProfiles"),
                               ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles")):
         code, out = run(["busctl", "--system", "get-property", name, path, iface, "ActiveProfile"])
         if code == 0:
             return result("profiles", "Energy modes", "Power", "ok", bus_value(out).replace("-", " ").capitalize())
+    other = power_manager()
+    if other:
+        return result("profiles", "Energy modes", "Power", "off", f"Managed by {other}")
     return result("profiles", "Energy modes", "Power", "fail", "power-profiles-daemon isn't running: Low Power and Performance won't work",
                   "sudo systemctl enable --now power-profiles-daemon")
 
@@ -307,9 +338,24 @@ def check_disk(_):
 
 # ── iRice itself ────────────────────────────────────────────────────────
 
+def source():
+    """The iRice folder: this one, or (an installed copy of the shell) the one
+    the installer recorded."""
+    if os.path.isfile(os.path.join(REPO, "compat.json")):
+        return REPO
+    for base in (os.environ.get("XDG_DATA_HOME", ""), os.path.expanduser("~/.local/share")):
+        try:
+            src = open(os.path.join(base, "irice", "source")).read().strip() if base else ""
+        except OSError:
+            continue
+        if src and os.path.isfile(os.path.join(src, "compat.json")):
+            return src
+    return REPO
+
+
 def compat():
     try:
-        return json.load(open(os.path.join(REPO, "compat.json")))
+        return json.load(open(os.path.join(source(), "compat.json")))
     except (OSError, ValueError):
         return {}
 
@@ -338,9 +384,13 @@ def check_hyprland(_):
         ok = v >= lo and (not hi or v <= version_tuple(hi))
     if ok:
         return result("hyprland", "Hyprland", "iRice itself", "ok", tag.lstrip("v"))
+    if v >= lo:
+        return result("hyprland", "Hyprland", "iRice itself", "warn",
+                      f"{tag.lstrip('v')} is newer than iRice is tested with ({hi}): the glass or some settings may not work",
+                      "Run Software Update when an iRice that supports it is out")
     return result("hyprland", "Hyprland", "iRice itself", "warn",
-                  f"{tag.lstrip('v')} isn't what iRice is tested with ({rng.get('min', '?')} to {hi or '?'})",
-                  "Run Software Update: it holds Hyprland back or brings an iRice that supports it")
+                  f"{tag.lstrip('v')} is older than iRice needs ({rng.get('min', '?')})",
+                  "Run Software Update (it updates the system)")
 
 
 def check_plugin(_):
@@ -377,13 +427,23 @@ def check_quickshell(opts):
         exe = bundled if os.access(bundled, os.X_OK) else (shutil.which("qs") or "qs")
     code, out = run([exe, "--version"])
     m = re.search(r"Quickshell (\d+\.\d+\.\d+)", out or "")
-    want = compat().get("quickshell", {}).get("bundled", "")
+    qs = compat().get("quickshell", {})
+    want, least = qs.get("bundled", ""), qs.get("min", "") or qs.get("bundled", "")
     if not m:
         return result("quickshell", "Quickshell", "iRice itself", "warn", "Couldn't read its version")
-    if want and m.group(1) != want:
-        return result("quickshell", "Quickshell", "iRice itself", "warn", f"{m.group(1)}, iRice expects {want}",
-                      "Run Software Update (it rebuilds iRice's own Quickshell)")
-    return result("quickshell", "Quickshell", "iRice itself", "ok", m.group(1))
+    # (Software Update doesn't build Quickshell: the fix is the build script, by hand)
+    build = os.path.join(source(), "tools", "build-quickshell.sh") + (f" v{want}" if want else "")
+    restart = ", then restart iRice: Super+Ctrl+Escape"
+    have = m.group(1)
+    if "/irice/quickshell/" in exe:  # iRice's own build
+        if want and have != want:
+            return result("quickshell", "Quickshell", "iRice itself", "warn", f"iRice's own build is {have}; this iRice expects {want}",
+                          "Rebuild it: " + build + restart)
+        return result("quickshell", "Quickshell", "iRice itself", "ok", f"{have} (iRice's own build)")
+    if least and version_tuple(have) < version_tuple(least):
+        return result("quickshell", "Quickshell", "iRice itself", "warn", f"{have}, older than iRice needs ({least})",
+                      "Build iRice its own: " + build + restart)
+    return result("quickshell", "Quickshell", "iRice itself", "ok", have)
 
 
 def check_watchers(_):

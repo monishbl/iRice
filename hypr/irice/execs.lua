@@ -4,7 +4,9 @@ hl.on("hyprland.start", function()
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
     hl.exec_cmd(cfg .. "/quickshell/irice/assets/scripts/launch-shell.sh -c irice") -- picks the icon theme
     hl.exec_cmd("wl-paste --watch cliphist store")
-    hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
+    -- Passwords for apps (the Secret Service), unless something already
+    -- provides it: a keyring unlocked at login (PAM), KWallet, KeePassXC
+    hl.exec_cmd("busctl --user status org.freedesktop.secrets >/dev/null 2>&1 || gnome-keyring-daemon --start --components=secrets")
     -- launch-shell starts the session-specific idle/sleep locker.
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM ELECTRON_OZONE_PLATFORM_HINT XDG_MENU_PREFIX CLAUDE_PASSWORD_STORE")
 end)

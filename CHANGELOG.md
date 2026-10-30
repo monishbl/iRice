@@ -33,6 +33,20 @@
 - The display connect animation waits until both screens show a picture again (a monitor takes a moment to switch on), so you see it play instead of it finishing on dark screens.
 - In a fullscreen app (a video, a game), an incoming call shows as a banner above it, since the island is hidden there.
 - A monitor with speakers is listed in Control Center → Sound while it's plugged in (e.g. **BenQ GW2786TC speakers**): picking it moves sound to the monitor, and **Built-in speakers** brings it back. The laptop's microphone stays on.
+- The installer checks which Hyprland your system is about to get. When it's newer than this iRice is tested with (Arch has 0.57 while iRice is tested with 0.56), it says so and lets you continue anyway (the default) or stop before anything changes. `irice doctor` and System health then point it out until an iRice update supports it.
+- Your keyboard layout is kept: the installer uses the one your system is set to (`localectl`), instead of always US. The iRice test session uses it too.
+- The idle sliders in Settings → Battery & Power work after installing: the installer no longer puts a hypridle.conf of its own in `~/.config/hypr` (which made Settings think you had your own, and replaced yours). If an earlier install left its copy there unchanged, it's taken out the next time you install or update; a hypridle.conf you wrote yourself is kept and still wins.
+- When your repositories don't have Quickshell, or only an older one, the installer builds iRice its own instead of stopping. On Manjaro, a Hyprland that's too old comes with a note on why (its stable branch lags behind Arch) and what to do.
+- System health's Quickshell fix now names the build script to run (Software Update doesn't rebuild Quickshell), and an installed iRice reads its tested versions again.
+- Replacing PulseAudio no longer fails when only part of it is installed.
+- With no login screen, Hyprland starts from tty1 whichever shell you log in with: bash, zsh, fish or sh (it used to be bash only).
+- TLP, auto-cpufreq and tuned are left in charge: neither the installer nor Software Update adds power-profiles-daemon next to them (TLP's package would have been removed), and System health shows energy modes as managed by them instead of broken.
+- Switching a network run by iwd over to NetworkManager keeps iwd underneath, with your saved Wi-Fi networks. When iwd or systemd-networkd runs your network, System health says so instead of offering a fix that would fight it.
+- The Dolphin "Open with" list uses Plasma's menus when they're installed, else Arch's (it was Plasma's even when missing).
+- The keyring only starts when nothing else (KWallet, KeePassXC, a keyring unlocked at login) already keeps your app passwords.
+- No second snapshot before an update when snap-pac (or timeshift-autosnap) already takes one.
+- The installer adds hyprpm (and what it builds plugins with) where it's a package of its own, for the optional title bars.
+
 ## Sharing and spaces fixes · 2026-10-30
 
 - Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).

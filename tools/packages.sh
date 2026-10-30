@@ -20,7 +20,9 @@ PACKAGES=(
     python-cryptography python-protobuf avahi iw wpa_supplicant dnsmasq
     # Screen tools, clipboard, input
     grim slurp wl-clipboard cliphist gpu-screen-recorder wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
-    # (hyprpm, used for the optional hyprbars title bars, ships with the hyprland package)
+    # hyprpm, for the optional hyprbars title bars (a package of its own on some
+    # systems, part of hyprland on others), and what it builds plugins with
+    hyprpm meson cpio
     # Spotlight, Quick Look, sharing, widgets, privacy dots, updates
     libqalculate ripgrep plocate poppler ffmpegthumbnailer file psmisc python jq curl translate-shell pacman-contrib matugen
     # Fonts and icons
@@ -30,6 +32,10 @@ APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none:
 # Emoji styles beyond the default Noto Color Emoji (shell/common/EmojiFont.qml). Off by
 # default; Settings can also install them later, with yay.
 EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
+# What tools/build-quickshell.sh needs, installed only when iRice builds its own
+# Quickshell (yours is missing, or older than compat.json's minimum)
+QUICKSHELL_BUILD=(git cmake ninja qt6-base qt6-declarative qt6-svg qt6-wayland qt6-shadertools spirv-tools
+    wayland wayland-protocols cli11 cpptrace jemalloc libdrm libglvnd libpipewire libxcb mesa pam polkit glib2)
 AUR=(mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
 # Packages iRice used to need and no longer does. Software Update offers to
 # remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.

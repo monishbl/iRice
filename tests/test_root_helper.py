@@ -254,6 +254,38 @@ class Broker(unittest.TestCase):
             os.environ.pop("FAKE_PACMAN_EXIT")
 
 
+class Plan(unittest.TestCase):
+    """sysupdate.py's plan: what it leaves out because the system has it covered."""
+
+    def plan(self, args, installed=(), active=()):
+        # pacman -Q and systemctl is-active answer from the lists given
+        with tempfile.TemporaryDirectory() as d:
+            for name, have in (("pacman", installed), ("systemctl", active)):
+                (Path(d) / name).write_text("#!/bin/sh\nfor a; do last=$a; done\ncase \" %s \" in *\" $last \"*) exit 0 ;; esac\nexit 1\n" % " ".join(have))
+                (Path(d) / name).chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:/usr/bin:/bin"
+            try:
+                return load(SYSUPDATE, "sysupdate_plan").plan_of(args)
+            finally:
+                os.environ["PATH"] = old
+
+    def test_no_second_snapshot_next_to_snap_pac(self):
+        self.assertEqual(self.plan(["--snapshot", "snapper", "--system"])["steps"][0], "snapshot")
+        p = self.plan(["--snapshot", "snapper", "--system"], installed=["snap-pac"])
+        self.assertEqual(p["snapshot"], "")
+        self.assertNotIn("snapshot", p["steps"])
+        self.assertEqual(self.plan(["--snapshot", "timeshift"], installed=["timeshift-autosnap"])["snapshot"], "")
+        self.assertEqual(self.plan(["--snapshot", "timeshift"], installed=["snap-pac"])["snapshot"], "timeshift")
+
+    def test_no_power_profiles_daemon_next_to_another_power_manager(self):
+        args = ["--install", "power-profiles-daemon,jq"]
+        self.assertEqual(self.plan(args)["install"], ["power-profiles-daemon", "jq"])
+        self.assertEqual(self.plan(args, installed=["tlp"])["install"], ["jq"])
+        self.assertEqual(self.plan(args, active=["auto-cpufreq"])["install"], ["jq"])
+        self.assertEqual(self.plan(args, installed=["tuned"])["install"], ["jq"])
+
+
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""
 
