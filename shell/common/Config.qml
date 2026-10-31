@@ -55,6 +55,13 @@ Singleton {
                 property string newEventCalendar: "" // "<account>|<calendar id>"; empty = this computer
                 property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown (Settings → Google)
             }
+            // An Android phone (services/Phone, Settings -> Phone)
+            property JsonObject phone: JsonObject {
+                property bool enabled: true // look for phones (adb)
+                property bool dock: true // in the Dock while connected
+                property bool screenOff: true // its screen stays off while it's shown here
+                property string camera: "back" // as a webcam: back | front
+            }
             // iCloud and Microsoft 365 (services/CloudAccounts)
             property JsonObject cloud: JsonObject {
                 property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown

@@ -36,7 +36,7 @@ Variants {
         // ── Items ───────────────────────────────────────────────────────
         readonly property var mainItems: (cfg.appsButton ? [{ kind: "launcher", id: "Apps" }] : []).concat(Apps.dockApps.map(a => Object.assign({ kind: "app" }, a)))
         readonly property var recentItems: cfg.recentApps ? Apps.recentFor(3).map(a => Object.assign({ kind: "recent" }, a)) : []
-        readonly property var endItems: Apps.minimized.map(t => ({ kind: "minimized", id: "minimized:" + t.address, entry: Apps.entryFor(t.lastIpcObject?.class ?? ""), minimized: t })).concat(cfg.downloads ? [{ kind: "downloads", id: "Downloads" }] : []).concat(cfg.trash ? [{ kind: "trash", id: "Trash" }] : [])
+        readonly property var endItems: Apps.minimized.map(t => ({ kind: "minimized", id: "minimized:" + t.address, entry: Apps.entryFor(t.lastIpcObject?.class ?? ""), minimized: t })).concat(Config.options.phone.dock && Phone.phone ? [{ kind: "phone", id: "phone:" + Phone.phone.serial, phone: Phone.phone }] : []).concat(cfg.downloads ? [{ kind: "downloads", id: "Downloads" }] : []).concat(cfg.trash ? [{ kind: "trash", id: "Trash" }] : [])
         // Flat list with section breaks marked on the first item of a section
         readonly property var items: {
             const out = mainItems.slice();

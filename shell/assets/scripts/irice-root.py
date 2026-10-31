@@ -24,6 +24,12 @@ With the password:
       is copied to /etc/pam.d first). "sufficient": no finger in time, or no
       pam_fprintd, and the password is asked as before. iRice's own lock
       screen needs none of this (its PAM file is in the shell).
+  phonecam on|off
+      a virtual camera for an Android phone's camera (Settings → Phone): the
+      v4l2loopback module with one device, /dev/video42 "Phone camera",
+      loaded now and at every start (modprobe.d and modules-load.d drop-ins
+      named irice-phonecam.conf); off removes them and unloads it when no app
+      is using it.
 With the password, once, at the start:
   update [--snapshot snapper|timeshift] [--system] [--ignore a,b]
          [--install a,b] [--remove a,b] [--setup <shell folder>] [--broker]
@@ -324,6 +330,38 @@ def fingerprint(on, where, etc=PAM_ETC, vendor=PAM_VENDOR, module=PAM_FPRINTD):
         if new != text or (on and src != dest):
             write_root(dest, new.encode(), 0o644)
             changed.append(dest)
+    return changed
+
+
+# ── phonecam (Settings → Phone → Use as webcam) ─────────────────────────
+PHONECAM_DEV = 42
+PHONECAM_OPTIONS = f'options v4l2loopback devices=1 video_nr={PHONECAM_DEV} card_label="Phone camera" exclusive_caps=1\n'
+PHONECAM_FILES = ("/etc/modprobe.d/irice-phonecam.conf", "/etc/modules-load.d/irice-phonecam.conf")
+
+
+def phonecam(on, etc="/etc", run=subprocess.run, dev_dir="/dev"):
+    """Returns what changed. The module itself comes with the kernel or
+    v4l2loopback-dkms (Software Update installs it)."""
+    probe, load = (os.path.join(etc, f[len("/etc/"):]) for f in PHONECAM_FILES)
+    changed = []
+    if on:
+        if run(["modinfo", "v4l2loopback"], capture_output=True).returncode != 0:
+            raise Refused("v4l2loopback isn't installed (v4l2loopback-dkms)")
+        for path, text in ((probe, PHONECAM_OPTIONS), (load, "v4l2loopback\n")):
+            write_root(path, text.encode(), 0o644)
+            changed.append(path)
+        if not os.path.exists(os.path.join(dev_dir, f"video{PHONECAM_DEV}")):
+            # loaded before with other options: again, with ours (only when no app has it open)
+            run(["modprobe", "-r", "v4l2loopback"], capture_output=True)
+            r = run(["modprobe", "v4l2loopback"], capture_output=True, text=True)
+            if r.returncode != 0:
+                raise Refused("another app is using a virtual camera: close it (or restart), then try again")
+    else:
+        for path in (probe, load):
+            if os.path.exists(path):
+                os.unlink(path)
+                changed.append(path)
+        run(["modprobe", "-r", "v4l2loopback"], capture_output=True)
     return changed
 
 
@@ -632,11 +670,15 @@ def main(argv):
             for d in fingerprint(args[0] == "on", args[1]):
                 print("changed", d)
             return 0
+        if cmd == "phonecam" and len(args) == 1 and args[0] in ("on", "off"):
+            for d in phonecam(args[0] == "on"):
+                print("changed", d)
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | "
+        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

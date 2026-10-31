@@ -49,6 +49,18 @@
     <annotate key="org.freedesktop.policykit.exec.argv1">fingerprint</annotate>
   </action>
 
+  <action id="org.irice.root.phonecam">
+    <description>Use your phone as a webcam</description>
+    <message>iRice wants to add a virtual camera for your phone's camera.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/irice/irice-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">phonecam</annotate>
+  </action>
+
   <action id="org.irice.root.wifi-helper">
     <description>Set up a direct Wi-Fi link for Quick Share</description>
     <message>iRice wants to set up a faster Wi-Fi link for Quick Share.</message>

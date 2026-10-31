@@ -21,7 +21,8 @@ Singleton {
     Process {
         id: browser
         running: Tools.has("avahi-browse")
-        command: ["avahi-browse", "-p", "-r", "-k", "_googlecast._tcp"]
+        command: [Tools.watcher, "avahi-browse", "-p", "-r", "-k", "_googlecast._tcp"]
+        stdinEnabled: true // (Tools.watcher: it ends with the shell)
         stdout: SplitParser {
             onRead: line => root.avahiLine(line)
         }

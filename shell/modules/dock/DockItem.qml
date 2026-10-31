@@ -19,7 +19,7 @@ Item {
     readonly property string kind: item.kind
     readonly property bool isApp: kind === "app" || kind === "recent"
     readonly property var windows: isApp ? Apps.windowsOf(item.id) : []
-    readonly property bool running: windows.length > 0
+    readonly property bool running: kind === "phone" ? Phone.mirroring(item.phone?.serial ?? "") : windows.length > 0
     readonly property int base: dock.iconSize
     readonly property real proximity: dock.pointerX < -9999 ? 0 : Math.cos(Math.min(1, Math.abs(dock.pointerX - restCenter) / (base * 2.5)) * Math.PI / 2)
     readonly property real size: base * (1 + (dock.maxScale - 1) * proximity)
@@ -117,7 +117,8 @@ Item {
             size: root.kind === "minimized" ? root.size * 0.5 : root.size
             renderSize: Math.ceil((root.kind === "minimized" ? 0.5 : 1) * root.base * Math.max(1, root.dock.maxScale))
             mipmap: true
-            source: root.kind === "launcher" ? "" : root.kind === "downloads" ? IconLookup.path(["folder-download", "folder-downloads", "folder_download", "folder-download-open"], ["folder", "inode-directory"]) : root.kind === "trash" ? IconLookup.path(trashFiles.count > 0 ? ["user-trash-full", "trash-full", "user-trash"] : ["user-trash", "trash-empty", "user-trash-empty"], ["edit-delete"]) : Apps.iconFor(root.item.entry ?? (root.kind === "minimized" ? (root.item.minimized?.lastIpcObject?.class ?? "") : root.item.id))
+            source: root.kind === "launcher" ? "" : root.kind === "downloads" ? IconLookup.path(["folder-download", "folder-downloads", "folder_download", "folder-download-open"], ["folder", "inode-directory"]) : root.kind === "trash" ? IconLookup.path(trashFiles.count > 0 ? ["user-trash-full", "trash-full", "user-trash"] : ["user-trash", "trash-empty", "user-trash-empty"], ["edit-delete"])
+                : root.kind === "phone" ? IconLookup.path(["phone", "smartphone", "phone-symbolic", "pda"], ["multimedia-player"]) : Apps.iconFor(root.item.entry ?? (root.kind === "minimized" ? (root.item.minimized?.lastIpcObject?.class ?? "") : root.item.id))
         }
 
         // Badge: the app's unread count, or a dot when it wants attention
@@ -185,7 +186,7 @@ Item {
         Text {
             id: label
             anchors.centerIn: parent
-            text: root.kind === "launcher" ? "Apps" : root.kind === "downloads" ? "Downloads" : root.kind === "trash" ? "Trash" : root.kind === "minimized" ? (root.item.minimized?.title || root.item.entry?.name || "Window") : (root.item.entry?.name ?? root.item.id)
+            text: root.kind === "launcher" ? "Apps" : root.kind === "phone" ? (root.item.phone?.model || "Phone") + (root.item.phone?.battery !== undefined ? " · " + root.item.phone.battery + "%" : "") : root.kind === "downloads" ? "Downloads" : root.kind === "trash" ? "Trash" : root.kind === "minimized" ? (root.item.minimized?.title || root.item.entry?.name || "Window") : (root.item.entry?.name ?? root.item.id)
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
         }
@@ -215,6 +216,10 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: m => {
+            if (m.button === Qt.RightButton && root.kind === "phone") {
+                Panels.openSettings("phone");
+                return;
+            }
             if (m.button === Qt.RightButton) {
                 root.dock.menuItem = Object.assign({ trashCount: trashFiles.count, running: root.running }, root.item);
                 root.dock.menuX = mapToItem(null, width / 2, 0).x;
@@ -234,6 +239,9 @@ Item {
                 break;
             case "trash":
                 Files.openTrash();
+                break;
+            case "phone":
+                Phone.mirror(root.item.phone.serial);
                 break;
             default:
                 if (!root.running)

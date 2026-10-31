@@ -44,6 +44,7 @@ Scope {
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366", group: "Devices & Input" },
                 { id: "dictation", name: "Dictation", icon: "microphone", color: "#FF453A", group: "Devices & Input" },
                 { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF", group: "Devices & Input" },
+                { id: "phone", name: "Phone", icon: "device-mobile", color: "#30D158", group: "Devices & Input" },
                 { id: "google", name: "Google", icon: "cloud", color: "#4285F4", group: "Apps" },
                 { id: "icloud", name: "iCloud", icon: "cloud", color: "#5AC8FA", group: "Apps" },
                 { id: "microsoft", name: "Microsoft 365", icon: "microsoft-outlook-logo", color: "#0078D4", group: "Apps" },

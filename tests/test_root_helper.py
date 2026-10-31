@@ -357,6 +357,61 @@ class FingerprintPam(unittest.TestCase):
             self.run_fp(True, "shadow")
 
 
+class PhoneCam(unittest.TestCase):
+    """irice-root.py phonecam: the v4l2loopback drop-ins, and loading it."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        d = Path(self.dir.name)
+        self.etc, self.dev = d / "etc", d / "dev"
+        self.etc.mkdir()
+        self.dev.mkdir()
+        self.r = load(SCRIPTS / "irice-root.py", "irice_root_cam")
+
+        def write(dest, data, mode):
+            Path(dest).parent.mkdir(parents=True, exist_ok=True)
+            Path(dest).write_bytes(data)
+        self.r.write_root = write
+        self.calls = []
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def fake(self, modinfo=0, load=0):
+        def run(cmd, **kw):
+            self.calls.append(cmd)
+            rc = modinfo if cmd[0] == "modinfo" else load if cmd == ["modprobe", "v4l2loopback"] else 0
+            return subprocess.CompletedProcess(cmd, rc, "", "")
+        return run
+
+    def test_on(self):
+        changed = self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
+        self.assertEqual(len(changed), 2)
+        self.assertIn('video_nr=42 card_label="Phone camera" exclusive_caps=1', (self.etc / "modprobe.d/irice-phonecam.conf").read_text())
+        self.assertEqual((self.etc / "modules-load.d/irice-phonecam.conf").read_text(), "v4l2loopback\n")
+        self.assertIn(["modprobe", "v4l2loopback"], self.calls)
+
+    def test_already_there(self):
+        (self.dev / "video42").write_text("")
+        self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
+        self.assertNotIn(["modprobe", "-r", "v4l2loopback"], self.calls)  # (a camera in use isn't pulled away)
+
+    def test_no_module(self):
+        with self.assertRaises(self.r.Refused):
+            self.r.phonecam(True, etc=str(self.etc), run=self.fake(modinfo=1), dev_dir=str(self.dev))
+        self.assertFalse((self.etc / "modprobe.d").exists())
+
+    def test_busy(self):
+        with self.assertRaises(self.r.Refused):
+            self.r.phonecam(True, etc=str(self.etc), run=self.fake(load=1), dev_dir=str(self.dev))
+
+    def test_off(self):
+        self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
+        changed = self.r.phonecam(False, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
+        self.assertEqual(len(changed), 2)
+        self.assertFalse((self.etc / "modprobe.d/irice-phonecam.conf").exists())
+
+
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""
 

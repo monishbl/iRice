@@ -75,7 +75,8 @@ Singleton {
     }
     Process {
         id: child
-        command: ["pipewire", "-c", root.conf]
+        command: [Tools.watcher, "pipewire", "-c", root.conf]
+        stdinEnabled: true // (Tools.watcher: it ends with the shell)
         stderr: StdioCollector { id: childErr }
         onExited: code => {
             if (root.wanted && code !== 0)
