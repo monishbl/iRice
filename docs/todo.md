@@ -88,6 +88,13 @@ Checked with the Realme over USB adb and merged into `main` (a02e2d9):
   device was left "unavailable" afterwards (it now stays NetworkManager's
   behind the shield). Computer → phone with no shared network: joins the
   phone's group, 2.3 MB in 0.1 s, the Wi-Fi back after.
+- **Large files, Wi-Fi never down (31 Oct, 300 MB each way, byte-identical,
+  wlan0 connected and online every 0.5 s throughout):** computer → phone joins
+  the phone's group as a P2P client beside wlan0 (a saved client-mode group:
+  AddPersistentGroup + GroupAdd; a second station interface is refused by
+  the chip), 95 MB/s; phone → computer through our group, now 80 MHz wide
+  (wpa_cli p2p_group_add ht40 vht he: D-Bus GroupAdd can't ask), 35 MB/s
+  (was 6.5 MB/s at 20 MHz).
 - **Takes effect after a Software Update:** the installed root helper's copy of
   the Wi-Fi helper is what runs (and is checked for the shield).
 

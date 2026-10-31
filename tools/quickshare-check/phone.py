@@ -48,6 +48,16 @@ def find(xml, text):
     return None
 
 
+def clickable_around(xml, pos):
+    """The smallest clickable element containing pos: (x1, y1, x2, y2)."""
+    best = None
+    for m in re.finditer(r'<node[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
+        x1, y1, x2, y2 = map(int, m.groups())
+        if x1 <= pos[0] <= x2 and y1 <= pos[1] <= y2 and (best is None or (x2 - x1) * (y2 - y1) < (best[2] - best[0]) * (best[3] - best[1])):
+            best = (x1, y1, x2, y2)
+    return best
+
+
 def tap_target(target, wait):
     end = time.time() + wait
     swiped = False
@@ -60,7 +70,11 @@ def tap_target(target, wait):
             again = find(ui(), target)
             if again != pos:
                 continue
-            sh(f"input tap {pos[0]} {pos[1] - 100}")
+            # (the middle of the clickable tile around the name: a fixed
+            # offset above the name missed when the tile sat low on the screen)
+            tile = clickable_around(xml, pos)
+            x, y = ((tile[0] + tile[2]) // 2, (tile[1] + tile[3]) // 2) if tile else (pos[0], pos[1] - 100)
+            sh(f"input tap {x} {y}")
             print(f"tapped {target} at {pos}", flush=True)
             return True
         if "Send to nearby devices" in xml or not swiped:

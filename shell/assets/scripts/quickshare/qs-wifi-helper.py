@@ -7,7 +7,9 @@ One JSON request per line on stdin, one JSON answer per line on stdout:
       DHCP for the phone: {"ok", "ssid", "passphrase", "freq", "ip", "iface"}
   {"cmd": "join", "ssid", "passphrase", "freq"}
       joins a phone's group on a second interface next to the normal Wi-Fi
-      connection: {"ok", "ip", "gateway", "iface"}
+      connection (while it's connected: as a Wi-Fi Direct client, which
+      chips allow beside it, unlike a second station): {"ok", "ip",
+      "gateway", "iface"}
   {"cmd": "stop"}   tears every link down: {"ok"}
 It starts with {"ok": true, "ready": true}. When stdin closes (the Quick
 Share helper ended, however it ended) or on SIGTERM, everything it made goes:
@@ -472,7 +474,29 @@ class Wpa:
         return False
 
 
-def start_group(wpa, dev, freq, timeout=10, settle=0.5, anywhere=True):
+WPA_CTRL_DIR = "/run/wpa_supplicant"  # (where `wpa_supplicant -O` puts its control sockets)
+
+
+def wide_group_add(p2p_dev, freq, run=None, exists=os.path.exists):
+    """A group on a wide channel (40/80 MHz: ht40, vht, he), through
+    wpa_supplicant's control socket: its D-Bus GroupAdd can't ask for one,
+    and a 20 MHz group carried a phone's files at a fifteenth of the speed
+    of the phone's own 80 MHz one (6.5 against 95 MB/s, on a real laptop).
+    True when one of the asks was taken; False: use GroupAdd."""
+    run = run or (lambda *c: subprocess.run(c, capture_output=True, text=True, timeout=15).stdout)
+    if not (have("wpa_cli") and exists(os.path.join(WPA_CTRL_DIR, p2p_dev))):
+        return False
+    base = ["wpa_cli", "-p", WPA_CTRL_DIR, "-i", p2p_dev, "p2p_group_add"] + ([f"freq={int(freq)}"] if freq else [])
+    for extra in (["ht40", "vht", "he"], ["ht40", "vht"], ["ht40"]):
+        try:
+            if run(*(base + extra)).strip().endswith("OK"):
+                return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return False
+
+
+def start_group(wpa, dev, freq, timeout=10, settle=0.5, anywhere=True, args=None, p2p_dev=None):
     """GroupAdd on the station's P2P device; (group interface path, group path).
 
     The answer is P2PDevice.GroupStarted, on the P2P device's object (not the
@@ -484,9 +508,11 @@ def start_group(wpa, dev, freq, timeout=10, settle=0.5, anywhere=True):
             for name in ("GroupStarted", "GroupFinished", "GroupFormationFailure")]
     try:
         before = set(wpa.get(WPA_PATH, WPA, "Interfaces"))
-        for attempt in ([freq, 0] if freq and anywhere else [freq]):
+        for attempt in ([freq, 0] if freq and anywhere and args is None else [freq]):
+            if args is None and p2p_dev and wide_group_add(p2p_dev, attempt):
+                break
             try:
-                wpa.call(dev, P2P, "GroupAdd", "a{sv}", (group_add_args(attempt),))
+                wpa.call(dev, P2P, "GroupAdd", "a{sv}", (args if args is not None else group_add_args(attempt),))
                 break
             except Refused as e:
                 why = e
@@ -716,7 +742,9 @@ class Links:
         failed = []
         for f, anywhere in tries:
             try:
-                group_iface, group = start_group(wpa, dev, f, anywhere=anywhere)
+                # (wide only on 5 GHz: 2.4 GHz stays 20 MHz beside its neighbours)
+                group_iface, group = start_group(wpa, dev, f, anywhere=anywhere,
+                                                 p2p_dev=f"p2p-dev-{sta}" if not f or f >= 5000 else None)
             except Refused as e:
                 failed.append(str(e))
                 self._remove_new_groups(netdevs)
@@ -766,6 +794,8 @@ class Links:
     def join(self, ssid, passphrase, freq):
         wpa = self._wpa()
         sta = self.station()
+        if self.station_freq(sta):
+            return self._join_as_client(wpa, sta, ssid, passphrase, freq)
         self._nm_off(sta)
         mac = self._virtual(sta, JOIN_IFACE, "managed")
         run("ip", "link", "set", JOIN_IFACE, "up")
@@ -789,6 +819,50 @@ class Links:
             run("ip", "addr", "add", f"{ip}/24", "dev", JOIN_IFACE)
         self.undo.append(lambda: run("ip", "addr", "flush", "dev", JOIN_IFACE, check=False))
         return {"ip": ip, "gateway": gateway, "iface": JOIN_IFACE}
+
+    def _join_as_client(self, wpa, sta, ssid, passphrase, freq):
+        """Next to a connected station: wpa_supplicant's own Wi-Fi Direct
+        client. The phone's group is saved as a persistent group in the
+        client role (P2PDevice.AddPersistentGroup, mode 0), and GroupAdd of
+        it starts a P2P-client interface that joins with its passphrase (no
+        WPS, no prompt on the phone). Chips allow one beside the station
+        ("#{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, #channels <= 2"):
+        a second station interface is refused ("Device or resource busy").
+        NetworkManager would end that group like one we host: the same shield,
+        and its P2P device stays its own."""
+        if self.nm_manages(sta):
+            self._shield(wpa)
+        self._nm_off(sta, p2p_dev=False)
+        dev = wpa.interface(sta)
+        props = join_network(ssid, passphrase, 0)
+        props["mode"] = ("u", 0)
+        (group,) = wpa.call(dev, P2P, "AddPersistentGroup", "a{sv}", (props,))
+        self.undo.append(lambda: wpa.call(dev, P2P, "RemovePersistentGroup", "o", (group,)))
+        args = {"persistent_group_object": ("o", group)}
+        if freq:
+            args["frequency"] = ("i", int(freq))
+        iface_path, _ = start_group(wpa, dev, freq, timeout=20, args=args)
+        self.undo.append(lambda: wpa.call(iface_path, P2P, "Disconnect"))
+        end = time.monotonic() + 20
+        while wpa.get(iface_path, IFACE, "State") != "completed":
+            if time.monotonic() > end:
+                raise Refused("couldn't join the phone's Wi-Fi as a Wi-Fi Direct client")
+            wpa.pump(0.2)
+        ifname = check_ifname(wpa.get(iface_path, IFACE, "Ifname"))
+        try:
+            with open(f"/sys/class/net/{ifname}/address") as f:
+                mac = f.read().strip()
+        except OSError:
+            mac = random_mac()
+        lease = dhcp_client(ifname, mac)
+        if lease:
+            ip, mask, gateway = lease
+            run("ip", "addr", "add", f"{ip}/{prefix_len(mask)}", "dev", ifname)
+        else:
+            gateway = GO_IP
+            ip = f"192.168.49.{random.randint(200, 250)}"
+            run("ip", "addr", "add", f"{ip}/24", "dev", ifname)
+        return {"ip": ip, "gateway": gateway, "iface": ifname}
 
     def teardown(self):
         while self.undo:

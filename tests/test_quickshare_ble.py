@@ -806,6 +806,27 @@ class FakeWpa:
                     self.subs[name]("/w/1", args)  # (on the P2P device's object, not the group's)
 
 
+class WideGroup(unittest.TestCase):
+    """A group asked for on a wide channel through the control socket,
+    narrower asks after a refusal, GroupAdd (False) without the socket."""
+
+    def test_asks_narrower_until_taken(self):
+        asked = []
+
+        def run(*cmd):
+            asked.append(cmd[5:])
+            return "OK" if "he" not in cmd else "FAIL"
+        old = helper.have
+        helper.have = lambda c: True
+        try:
+            self.assertTrue(helper.wide_group_add("p2p-dev-wlan0", 5180, run=run, exists=lambda p: True))
+            self.assertFalse(helper.wide_group_add("p2p-dev-wlan0", 5180, run=run, exists=lambda p: False))
+        finally:
+            helper.have = old
+        self.assertEqual(asked, [("p2p_group_add", "freq=5180", "ht40", "vht", "he"),
+                                 ("p2p_group_add", "freq=5180", "ht40", "vht")])
+
+
 class GroupStart(unittest.TestCase):
     STARTED = ("GroupStarted", ({"interface_object": "/w/2", "group_object": "/w/2/Groups/YU", "role": "GO"},))
 
@@ -1046,7 +1067,16 @@ class WifiPaths(unittest.TestCase):
         self.assertEqual(wifi.same_network(addrs, bytes([192, 168, 1, 77])), bytes([192, 168, 1, 20]))
         self.assertIsNone(wifi.same_network(addrs, bytes([10, 0, 0, 2])))
         self.assertEqual(wifi.parse_iw_link("Connected to aa\n\tSSID: x\n\tfreq: 5220.0\n"), 5220)
-        self.assertEqual(wifi.parse_iw_list("Band 2:\n * P2P-GO\n"), {"5ghz": True, "p2p_go": True})
+        self.assertEqual(wifi.parse_iw_list("Band 2:\n * P2P-GO\n"), {"5ghz": True, "p2p_go": True, "client_beside": False})
+        # (this laptop's Intel AX: a P2P client beside the station, two channels)
+        combos = ("\tvalid interface combinations:\n"
+                  "\t\t * #{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1,\n"
+                  "\t\t   total <= 3, #channels <= 2\n"
+                  "\t\t * #{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1,\n"
+                  "\t\t   total <= 3, #channels <= 1\n")
+        self.assertTrue(wifi.parse_iw_list(combos)["client_beside"])
+        self.assertFalse(wifi.parse_iw_list(combos.replace("#channels <= 2", "#channels <= 1"))["client_beside"])
+        self.assertFalse(wifi.parse_iw_list("\t * #{ managed } <= 2, #{ AP } <= 1,\n\t   total <= 3, #channels <= 2\n")["client_beside"])
         m = wifi.medium_metadata({"addresses": addrs, "station": "wlan0", "frequency": 5220, "5ghz": True})
         self.assertEqual((m.supports_5_ghz, m.ap_frequency, bytes(m.ip_address)), (True, 5220, bytes([192, 168, 1, 20])))
 

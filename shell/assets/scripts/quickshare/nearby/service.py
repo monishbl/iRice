@@ -545,9 +545,22 @@ class QuickShareService:
             await self._release_links(entry)
 
     async def _join(self, sid, entry, info, net, name):
-        """The phone offers a link (sending over Bluetooth): follow it.
-        NetworkManager joins it when it runs the Wi-Fi (no password; the
-        Wi-Fi's own connection pauses meanwhile), else the root helper."""
+        """The phone offers a link (sending over Bluetooth): follow it. Next
+        to this computer's own Wi-Fi when the chip allows it (the root
+        helper's Wi-Fi Direct client interface: nothing pauses; a password),
+        else NetworkManager (no password; the Wi-Fi's own connection pauses
+        meanwhile), else the root helper."""
+        if info.medium != wifi.PATH.WIFI_LAN and self.helper is not None and self.can_host(net) \
+                and wifi.join_beside_possible(net):
+            self.helper.on_auth = lambda: self.emit({
+                "ev": "auth", "session": sid,
+                "message": f"Enter your password to join {name}'s direct Wi-Fi link next to your Wi-Fi. "
+                           "Without it, your Wi-Fi pauses for the transfer."})
+            entry["links"] = True
+            try:
+                return await wifi.join(info, self.helper, net, helper_ok=True)
+            except (wifi.WifiUnavailable, OSError, asyncio.TimeoutError) as e:
+                self._log(f"{sid}: joining next to the Wi-Fi didn't work ({e}); trying the usual way")
         try:
             if info.medium != wifi.PATH.WIFI_LAN and self.pause_wifi and await self.nm_usable(net):
                 nm = entry["nm"] = self.nm_link()

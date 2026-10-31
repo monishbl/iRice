@@ -23,6 +23,7 @@ import asyncio
 import ipaddress
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -103,8 +104,15 @@ def parse_iw_link(text):
 
 
 def parse_iw_list(text):
-    """`iw list` → {"5ghz": bool, "p2p_go": bool}."""
-    return {"5ghz": "Band 2:" in text or "* 5180 MHz" in text, "p2p_go": "P2P-GO" in text}
+    """`iw list` → {"5ghz": bool, "p2p_go": bool, "client_beside": bool}.
+    client_beside: a Wi-Fi Direct client can run next to the normal
+    connection, on its own channel ("#{ managed } <= 1, #{ P2P-client,
+    P2P-GO } <= 1, …, #channels <= 2"): joining a phone's group then needs
+    no pause of this computer's Wi-Fi."""
+    combos = re.findall(r"\*\s+(#\{.*?#channels\s*<=\s*\d+)", re.sub(r"\s*\n\s+(?=[#t])", " ", text), re.S)
+    beside = any("managed" in c and "P2P-client" in c and int(re.search(r"#channels\s*<=\s*(\d+)", c).group(1)) >= 2
+                 for c in combos)
+    return {"5ghz": "Band 2:" in text or "* 5180 MHz" in text, "p2p_go": "P2P-GO" in text, "client_beside": beside}
 
 
 def wifi_interfaces():
@@ -146,7 +154,7 @@ async def network():
     stations = wifi_interfaces()
     station = stations[0] if stations else None
     freq = parse_iw_link(await _run("iw", "dev", station, "link")) if station else None
-    caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False}
+    caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False, "client_beside": False}
     nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
     iwd = bool(await _run("busctl", "--system", "status", "net.connman.iwd"))
     return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm, "iwd": iwd,
@@ -167,6 +175,24 @@ def helper_shields():
             return "zzz-irice-quickshare" in f.read()
     except OSError:
         return False
+
+
+def helper_joins_beside():
+    """Whether that helper joins a phone's group as a Wi-Fi Direct client
+    (next to the connection). Older copies make a second station, which the
+    chip refuses while the Wi-Fi is connected."""
+    try:
+        with open(helper_script()) as f:
+            return "_join_as_client" in f.read()
+    except OSError:
+        return False
+
+
+def join_beside_possible(net):
+    """Joining a phone's group without pausing this computer's Wi-Fi: the
+    helper's client interface next to the connected station."""
+    return bool(net.get("station")) and bool(net.get("frequency")) and net.get("client_beside", False) \
+        and not net.get("iwd", False) and helper_joins_beside()
 
 
 def direct_possible(net):
