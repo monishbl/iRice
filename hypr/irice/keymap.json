@@ -295,6 +295,15 @@
   }
  },
  {
+  "id": "shelf",
+  "keys": "$MOD + ALT + D",
+  "group": "Shell",
+  "label": "Drop shelf",
+  "action": {
+   "shell": "shelf"
+  }
+ },
+ {
   "id": "ocr",
   "keys": "$MOD + SHIFT + X",
   "group": "Screen",

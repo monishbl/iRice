@@ -263,6 +263,37 @@ Variants {
                     Timer { running: ScreenTools.recording; interval: 1000; repeat: true; triggeredOnStart: true; onTriggered: parent.now = Date.now() }
                 }
 
+                // The drop shelf: while it holds something, and during a drag
+                // (drop files on it); click to show or hide it
+                MenuBarItem {
+                    visible: Config.options.shelf.menubar && (Shelf.count > 0 || Shelf.dragging && Shelf.down)
+                    icon: "tray"
+                    fill: Shelf.opened || shelfDrop.containsDrag
+                    color: shelfDrop.containsDrag ? Theme.accent : bar.fg
+                    badge: Shelf.count
+                    onClicked: Shelf.toggle(bar.screen)
+                    DropArea {
+                        id: shelfDrop
+                        anchors.fill: parent
+                        onEntered: d => {
+                            if (d.source)
+                                d.accepted = false;
+                        }
+                        onDropped: d => {
+                            if (Shelf.drop(d.urls, d.text)) {
+                                d.accept(Qt.CopyAction);
+                                Shelf.show("menubar", bar.screen);
+                            }
+                        }
+                    }
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: Shelf.count > 0 ? "Shelf · " + Shelf.count + (Shelf.count === 1 ? " item" : " items") : "Drop here to keep it on the shelf"
+                    }
+                }
+
                 // Caffeine on: a cup; click for its options (or to turn it off)
                 MenuBarItem {
                     visible: System.keepAwake

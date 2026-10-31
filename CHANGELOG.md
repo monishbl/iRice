@@ -1,9 +1,9 @@
 # iRice changelog
 
-## Dictation, Wi-Fi QR codes and fingerprints · 2026-10-31
+## Dictation, a drop shelf, Wi-Fi QR codes and fingerprints · 2026-10-31
 
 - **Dictation.** Press **Super+H**, speak, and press it again: the words are typed where your cursor is. Or hold Super+H while you speak and let go when you're done. It runs on this computer with whisper.cpp; nothing is sent anywhere. Set it up in **Settings → Dictation**: install speech recognition (one password), and download a speech model (Base, 142 MB, suits most people; bigger ones make fewer mistakes but are slower). The island shows when it's listening, with Done and Cancel. Choose the language there too (the system's by default). Other keys or scripts can use `qs ipc call dictation toggle`.
-
+- **Drop shelf.** A place to park files while you get to where they're going. Drag files (or text) and shake the pointer, or hold them at the left or right edge of the screen, and the shelf appears: drop them on it. Later, drag them out one at a time or all together; they stay on the shelf until you remove them, so they can go to more than one place. **Super+Alt+D** opens it too, and while it holds something a tray icon in the menu bar opens it (drop files on that icon as well). Share everything on it to a nearby device in one go. Choose what opens it in **Settings → Desktop & Widgets → Drop shelf**.
 - **Share a Wi-Fi network as a QR code.** In Control Center → Wi-Fi, the network you're on has a QR button (and every saved network has **Share network…** in its menu). Point a phone's camera at the code to join. The password stays hidden until you ask for it, and you can copy it. Needs qrencode (setup installs it).
 - **Wi-Fi codes in screenshots.** Take a screenshot with a Wi-Fi QR code in it (a router's sticker, a café's sign) and the island offers to join that network, or copy its password.
 - **Fingerprints**, for computers with a fingerprint reader. Settings → Lock Screen → **Fingerprint** finds the reader, installs what it needs (one password; some readers, like Dell's Broadcom ControlVault, need packages from the AUR through yay or paru), and adds or removes fingers.

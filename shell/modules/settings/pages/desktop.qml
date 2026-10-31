@@ -242,4 +242,34 @@ Column {
             page: "desktop/recording"
         }
     }
+
+    // ── Drop shelf (services/Shelf) ─────────────────────────────────────
+    Group {
+        width: parent.width
+        title: "Drop shelf"
+        footer: "A place to park files while you get to where they're going: drop them on the shelf, then drag them out again, one at a time or all together. Super+Alt+D opens it too."
+        Row {
+            label: "Shake while dragging"
+            detail: "Shake the pointer quickly from side to side with files held"
+            Switch { checked: Config.options.shelf.shake; onToggled: Config.options.shelf.shake = !checked }
+        }
+        Row {
+            label: "Drag to the side of the screen"
+            detail: "Hold the files at the left or right edge for a moment"
+            Switch { checked: Config.options.shelf.edge; onToggled: Config.options.shelf.edge = !checked }
+        }
+        Row {
+            label: "Menu bar icon"
+            detail: "While the shelf holds something, and while you drag: drop files on it"
+            Switch { checked: Config.options.shelf.menubar; onToggled: Config.options.shelf.menubar = !checked }
+        }
+        Row {
+            label: "Open the shelf"
+            detail: Shelf.count > 0 ? Shelf.count + (Shelf.count === 1 ? " item on it" : " items on it") : "Empty"
+            SettingsButton {
+                text: Shelf.opened ? "Hide Shelf" : "Show Shelf"
+                onClicked: Shelf.opened ? Shelf.hide() : Shelf.show("settings", null)
+            }
+        }
+    }
 }

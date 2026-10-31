@@ -397,6 +397,13 @@ Singleton {
             }
             // Dictation (services/Dictation): speech to text with whisper.cpp, on
             // this computer. Super+H: tap to start and stop, or hold while speaking
+            // The drop shelf (services/Shelf): what opens it besides its
+            // shortcut (Super+Alt+D)
+            property JsonObject shelf: JsonObject {
+                property bool shake: true // shaking the pointer while dragging
+                property bool edge: true // holding a drag at a screen's left or right edge
+                property bool menubar: true // an icon in the menu bar while it holds something
+            }
             property JsonObject dictation: JsonObject {
                 property string model: "base" // tiny | base | small | medium | large-v3-turbo (assets/scripts/dictate.py)
                 property string language: "" // a code ("en"), "auto", or "" for the system's language

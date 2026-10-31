@@ -177,6 +177,12 @@ for _, e in ipairs(user.shortcuts or {}) do
 end
 for _, e in ipairs(later) do bind(e, false) end
 
+-- The left button going down and up, for the drop shelf (a shake or an
+-- edge while dragging: services/Shelf.qml). Non-consuming: apps still get
+-- every click. No description: they aren't shortcuts in the list.
+pcall(hl.bind, "mouse:272", hl.dsp.global("irice:pointerDown"), { non_consuming = true, ignore_mods = true })
+pcall(hl.bind, "mouse:272", hl.dsp.global("irice:pointerUp"), { release = true, non_consuming = true, ignore_mods = true })
+
 -- Moving or resizing a window with Super and the mouse isn't a tap either
 pcall(hl.bind, MOD .. " + mouse:272", hl.dsp.global("irice:superTapCancel"), { non_consuming = true })
 pcall(hl.bind, MOD .. " + mouse:273", hl.dsp.global("irice:superTapCancel"), { non_consuming = true })

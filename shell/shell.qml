@@ -32,6 +32,7 @@ import qs.modules.screentools.editor
 import qs.modules.session
 import qs.modules.settings
 import qs.modules.share
+import qs.modules.shelf
 import qs.modules.sidebar
 import qs.modules.spotlight
 import qs.modules.stagemanager
@@ -111,6 +112,7 @@ ShellRoot {
     RecordCountdown {}
     TodayScreen {}
     TranslationCard {}
+    ShelfWindow {}
     ScreenshotEditor {}
 
     // Compositor keybinds: bind = hl.dsp.global("irice:<name>")
@@ -161,6 +163,11 @@ ShellRoot {
         onPressed: if (!Notifications.replyLatest()) Island.post({ kind: "custom", icon: "chat-circle", title: "Nothing to reply to", subtitle: "Messages you can answer from here show a Reply button", color: Theme.color.secondary }, 3000)
     }
     GlobalShortcut { appid: "irice"; name: "shareSelection"; description: "Share the selected text with a nearby device"; onPressed: Sharing.shareSelection() }
+    // The drop shelf: its shortcut, and the left button going down and up
+    // (keybinds.lua; Shelf follows a held drag for a shake or an edge)
+    GlobalShortcut { appid: "irice"; name: "shelf"; description: "Drop shelf"; onPressed: Shelf.toggle(Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name)) }
+    GlobalShortcut { appid: "irice"; name: "pointerDown"; description: "Left button down (drop shelf)"; onPressed: Shelf.pointerDown() }
+    GlobalShortcut { appid: "irice"; name: "pointerUp"; description: "Left button up (drop shelf)"; onPressed: Shelf.pointerUp() }
     // Dictation: the key going down, and coming back up (keymap.json's
     // release bind)
     GlobalShortcut { appid: "irice"; name: "dictate"; description: "Dictation"; onPressed: Dictation.pressed() }
