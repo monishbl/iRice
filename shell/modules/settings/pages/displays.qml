@@ -466,4 +466,51 @@ Column {
             SettingsButton { text: "Restore Defaults"; enabled: (Config.options.displays.monitors ?? []).length > 0; onClicked: Displays.resetAll() }
         }
     }
+
+    // ── Wireless displays (services/Mirroring) ──────────────────────────
+    Group {
+        id: wireless
+        width: parent.width
+        title: "Wireless displays"
+        footer: !Mirroring.available ? "Show this screen on a TV: Miracast TVs and sticks, Windows' Miracast over the network, and Chromecasts. Needs GNOME Network Displays."
+            : Mirroring.error !== "" ? Mirroring.error
+            : !Mirroring.p2p ? "This computer's Wi-Fi can't do Wi-Fi Direct, which Miracast TVs need. Chromecasts and network Miracast still work."
+            : "Turn on the TV's screen mirroring (Miracast, Screen Mirroring or Cast). Control Center's Screen Mirroring tile does the same."
+        property bool lookingHere: false
+        Component.onCompleted: { lookingHere = Mirroring.available; if (lookingHere) Mirroring.look(true); }
+        Component.onDestruction: if (lookingHere) Mirroring.look(false)
+        Row {
+            visible: !Mirroring.available
+            label: "Add a wireless display"
+            detail: "It asks for your password once."
+            SettingsButton {
+                text: Mirroring.installing ? "Installing…" : "Install"
+                icon: "download-simple"
+                busy: Mirroring.installing
+                enabled: !Updates.running
+                onClicked: Mirroring.install()
+            }
+        }
+        Row {
+            visible: Mirroring.available && Mirroring.displays.length === 0
+            label: "Looking for TVs…"
+            detail: "Nearby TVs and sticks appear here"
+        }
+        Repeater {
+            model: Mirroring.available ? Mirroring.displays : []
+            Row {
+                id: tv
+                required property var modelData
+                readonly property bool here: Mirroring.target === modelData.uuid
+                label: modelData.name
+                detail: here ? (Mirroring.state_ === "streaming" ? "Mirroring" : "Connecting…") : Mirroring.protocolName(modelData.protocol)
+                SettingsButton {
+                    text: tv.here ? "Stop" : "Mirror"
+                    icon: tv.here ? "stop" : "screencast"
+                    busy: tv.here && Mirroring.state_ === "connecting"
+                    onClicked: tv.here ? Mirroring.stop() : Mirroring.start(tv.modelData)
+                }
+            }
+        }
+    }
 }

@@ -106,7 +106,7 @@ Variants {
                     x: sub.pad
                     y: sub.pad
                     width: 320
-                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : caffeinePage.visible ? caffeinePage.height : resourcesPage.visible ? resourcesPage.height : sharingPage.visible ? sharingPage.height : castPage.visible ? castPage.height : 0
+                    height: wifi.visible ? wifi.height : bt.visible ? bt.height : sound.visible ? sound.height : focusPage.visible ? focusPage.height : caffeinePage.visible ? caffeinePage.height : resourcesPage.visible ? resourcesPage.height : sharingPage.visible ? sharingPage.height : castPage.visible ? castPage.height : mirroringPage.visible ? mirroringPage.height : 0
                     Behavior on height { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.3 } }
                     clip: true
                     WifiPage {
@@ -151,6 +151,12 @@ Variants {
                         width: parent.width
                         showBack: false
                         visible: cc.page === "sharing"
+                    }
+                    MirroringPage {
+                        id: mirroringPage
+                        width: parent.width
+                        showBack: false
+                        visible: cc.page === "mirroring"
                     }
                     CastPage {
                         id: castPage

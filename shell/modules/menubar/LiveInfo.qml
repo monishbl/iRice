@@ -41,6 +41,7 @@ Singleton {
         case "dictation":
             return Dictation.stage === "writing" ? "text-aa" : "microphone";
         case "casting":
+        case "mirroring":
             return "screencast";
         }
         return "music-notes";
@@ -70,6 +71,8 @@ Singleton {
             return Dictation.stage === "writing" ? "Writing…" : "Listening";
         case "casting":
             return Cast.title || "Casting";
+        case "mirroring":
+            return "Mirroring to " + Mirroring.targetName;
         }
         return "";
     }
@@ -97,6 +100,8 @@ Singleton {
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");
         case "screenShare":
             return Privacy.stopFailed ? "Still sharing: stop it in " + Privacy.screenApp : Privacy.screenTarget + " · " + since(Privacy.screenStarted);
+        case "mirroring":
+            return Mirroring.state_ === "streaming" ? "Your screen is showing on " + Mirroring.targetName : "Connecting to " + Mirroring.targetName + "…";
         case "casting":
             return "On " + (Cast.device?.name ?? "the TV") + " · " + (Cast.state_ === "playing" ? Timers.format(Math.floor(Cast.time)) + (Cast.duration > 0 ? " of " + Timers.format(Math.floor(Cast.duration)) : "") : Cast.state_ === "paused" ? "Paused" : "Connecting…");
         case "dictation":
@@ -176,6 +181,8 @@ Singleton {
         }
         case "screenShare":
             return [{ piece: "stop", icon: "stop", fill: true, act: () => Privacy.stopSharing(), on: !Privacy.stopping, danger: true }];
+        case "mirroring":
+            return [{ piece: "stop", icon: "stop", fill: true, act: () => Mirroring.stop(), on: true, danger: true }];
         case "casting":
             return [
                 { piece: "play", icon: Cast.state_ === "playing" ? "pause" : "play", fill: true, act: () => Cast.togglePlay(), on: Cast.state_ === "playing" || Cast.state_ === "paused" },

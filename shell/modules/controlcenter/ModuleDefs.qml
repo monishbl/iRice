@@ -40,6 +40,7 @@ QtObject {
                     { separator: true },
                     { text: "Sharing settings…", openPage: "sharing" }
                 ] },
+            mirroring: { label: Mirroring.active ? Mirroring.targetName : "Screen Mirroring", kind: "toggle", sizes: ["2x1", "1x1"], icon: "screencast", on: Mirroring.active, status: Mirroring.active ? (Mirroring.state_ === "streaming" ? "Mirroring" : "Connecting…") : "", available: Mirroring.available, reason: "Needs GNOME Network Displays", page: "mirroring", act: () => Mirroring.active ? Mirroring.stop() : Panels.ccPage = "mirroring" },
             keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
             stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic() },
@@ -67,7 +68,7 @@ QtObject {
             weather: { label: "Weather", kind: "info", sizes: ["2x1", "2x2"], icon: Weather.icon }
         })
 
-    readonly property var defaultLayout: ["wifi:2x1", "nowPlaying:2x2", "bluetooth:1x1", "nightLight:1x1", "focus:2x1", "stageManager:1x1", "darkMode:1x1", "display:4x1", "sound:4x1", "screenshot:1x1", "record:1x1", "keepAwake:1x1", "clipboard:1x1"]
+    readonly property var defaultLayout: ["wifi:2x1", "nowPlaying:2x2", "bluetooth:1x1", "nightLight:1x1", "focus:2x1", "stageManager:1x1", "darkMode:1x1", "display:4x1", "sound:4x1", "screenshot:1x1", "record:1x1", "keepAwake:1x1", "clipboard:1x1", "mirroring:2x1"]
 
     function usable(id) {
         const d = all[id];

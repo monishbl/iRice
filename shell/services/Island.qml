@@ -43,6 +43,8 @@ Singleton {
     readonly property bool swStarted: Timers.swRunning || Timers.swAccum > 0
     readonly property var activities: {
         const a = [];
+        if (Mirroring.active)
+            a.push({ kind: "mirroring", icon: "screencast", color: Theme.accent });
         if (Cast.active)
             a.push({ kind: "casting", icon: "screencast", color: Theme.accent });
         if (Dictation.active)
@@ -99,7 +101,7 @@ Singleton {
 
     // Is this piece of a collapsed live activity switched on? ("music", "bars")
     // Kinds added later start with their defaults until changed in Settings.
-    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"], screenShare: ["icon", "name", "time", "stop"], sysupdate: ["icon", "name", "time"], dictation: ["icon", "name", "time", "stop"], casting: ["icon", "name", "time", "play", "stop"] })
+    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"], screenShare: ["icon", "name", "time", "stop"], sysupdate: ["icon", "name", "time"], dictation: ["icon", "name", "time", "stop"], casting: ["icon", "name", "time", "play", "stop"], mirroring: ["icon", "name", "stop"] })
     function customised(kind) {
         return !liveDefaults[kind] || (cfg.known ?? []).includes("live." + kind) || (cfg.livePieces ?? []).some(x => x.startsWith(kind + "."));
     }
