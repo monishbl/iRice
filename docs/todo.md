@@ -139,6 +139,30 @@ missing otherwise. Ask about the design before building; one at a time.
   Bluetooth is on, at a low duty cycle).
 
 
+## Quick Share: two speed-ups waiting for a hardware check (branch `quickshare-l2cap-shield`)
+
+Written and unit-tested (332 tests pass), not on `main` until checked:
+- **Faster Bluetooth (L2CAP).** Phones open an L2CAP channel first when the
+  computer advertises one; iRice now does (no root), instead of GATT writes
+  acknowledged one at a time (~6 KB/s). Also fixes iRice's own L2CAP when
+  sending (it never worked: "Invalid sdu_length: 0" in the phone's log).
+  **Check:** phone on USB adb (USB debugging on, File transfer mode), then
+  send a photo over Bluetooth only, both ways: speed vs ~6 KB/s, and the
+  file byte-identical. The harness is in this session's scratchpad
+  (blerx.py / blesend.py / phone.py).
+- **Wi-Fi Direct with the internet up.** While the Wi-Fi helper hosts a
+  group, a D-Bus rule refuses wpa_supplicant's RemoveInterface (how
+  NetworkManager ends groups it didn't start), so NetworkManager keeps the
+  normal connection. On this laptop the group goes on 2.4 GHz next to the
+  5 GHz connection (the kernel lacks CFG80211_REG_RELAX_NO_IR, so no 5 GHz
+  group beside a connection). **Check, from a real terminal (not the
+  Claude chat: pkexec needs a tty), e.g. a second SSH session:** run the
+  shield test (`shield-test.py` from the scratchpad; asks the password
+  once). Expect the group up on every line, wlan0 still on the home Wi-Fi,
+  internet up, and the rule off at the end. Then a real receive from a
+  phone on another network.
+Then merge the branch into `main`.
+
 ## Quick Share: tested with a real phone (31 Oct)
 
 Realme GT Neo 3T (Android 14, Play services 26.34) over USB adb, both ways:
