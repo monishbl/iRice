@@ -1,5 +1,13 @@
 # iRice changelog
 
+## Share Wi-Fi as a QR code, and fingerprints · 2026-10-31
+
+- **Share a Wi-Fi network as a QR code.** In Control Center → Wi-Fi, the network you're on has a QR button (and every saved network has **Share network…** in its menu). Point a phone's camera at the code to join. The password stays hidden until you ask for it, and you can copy it. Needs qrencode (setup installs it).
+- **Wi-Fi codes in screenshots.** Take a screenshot with a Wi-Fi QR code in it (a router's sticker, a café's sign) and the island offers to join that network, or copy its password.
+- **Fingerprints**, for computers with a fingerprint reader. Settings → Lock Screen → **Fingerprint** finds the reader, installs what it needs (one password; some readers, like Dell's Broadcom ControlVault, need packages from the AUR through yay or paru), and adds or removes fingers.
+  - **Lock screen:** touch the reader or type your password, whichever comes first.
+  - **Password prompts, sudo and the login screen:** a switch each. They wait a few seconds for a finger, then ask for your password. Your password is still needed once after a restart, at the login screen, to unlock your saved passwords.
+
 ## Quick Share that works without a shared Wi-Fi · 2026-10-31
 
 Tested with a real Android phone, both ways, on the same Wi-Fi and without one.

@@ -106,6 +106,7 @@ Singleton {
                 property string material: "system" // cards and field: glass | frost | solid | system (follows Appearance)
                 property string text: "auto" // light | dark | auto (from the wallpaper)
                 property bool previews: false // notification text on the lock screen (else app names only)
+                property bool fingerprint: true // a finger unlocks it too, once one is added (Fingerprint)
                 property bool standby: true // StandBy: charging and idle shows a full-screen clock
                 property bool standbyShift: true // StandBy moves a little every minute and rests dark for a minute every 15 (burn-in)
                 property list<string> standbyScreens: [] // screens that show StandBy (others go dark); empty = every screen

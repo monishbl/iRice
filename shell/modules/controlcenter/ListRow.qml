@@ -3,6 +3,7 @@ import qs.common
 
 // A selectable row in a Control Center page: leading icon, title, status
 // text, trailing icons. `busy` shows a spinner in place of the trailing icon.
+// `actionIcon`: a small button of its own before it (actionClicked).
 Squircle {
     id: root
 
@@ -13,7 +14,10 @@ Squircle {
     property string status
     property string trailingIcon
     property bool busy: false
+    property string actionIcon
+    property string actionTip
     signal clicked
+    signal actionClicked
     signal menuRequested // right-click (or press and hold): the row's menu
 
     // Keyboard: Tab or the arrows to it, Space or Enter acts, the Menu key
@@ -67,7 +71,7 @@ Squircle {
     }
 
     Column {
-        anchors { left: badge.right; leftMargin: 10; right: trailing.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+        anchors { left: badge.right; leftMargin: 10; right: action.visible ? action.left : trailing.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         Text {
             width: parent.width
             text: root.title
@@ -115,5 +119,15 @@ Squircle {
                 root.menuRequested();
             }
         }
+    }
+
+    IconButton {
+        id: action
+        visible: root.actionIcon !== ""
+        anchors { right: trailing.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
+        icon: root.actionIcon
+        iconSize: 15
+        tooltip: root.actionTip
+        onClicked: root.actionClicked()
     }
 }

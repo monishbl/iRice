@@ -6,6 +6,10 @@ started by the shell once this is done (services/SoftwareUpdate.qml).
 
     sysupdate.py run [--fake] [--system] [--snapshot snapper|timeshift]
                      [--ignore a,b] [--install a,b] [--remove a,b] [--aur]
+                     [--aur-install a,b]
+--aur-install: these packages from the AUR (and their dependencies, from the
+repositories too), in the AUR step instead of updates: drivers Settings
+offers (a fingerprint reader's). Same single password.
     sysupdate.py cancel         stop it while it's still waiting for the password
     sysupdate.py helper-status  exit 0 when iRice's root helper is installed
                                 and the same as this folder's
@@ -499,6 +503,10 @@ NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
 
 def aur_command(helper, plan):
+    if plan.get("aur_install"):
+        cmd = [helper, "-S", "--needed", "--noconfirm", "--sudo", SHIM]
+        cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
+        return cmd + ["--"] + plan["aur_install"]
     cmd = [helper, "-Sua", "--noconfirm", "--sudo", SHIM]
     cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
     if plan["ignore"]:
@@ -516,6 +524,9 @@ def real_run(plan):
         return finish("error", "Can't ask for your password", "pkexec isn't installed (it comes with the polkit package).")
     env = dict(os.environ, LANG="C", LC_ALL="C")
     helper = aur_helper() if "aur" in plan["steps"] else ""
+    if not helper and plan.get("aur_install"):
+        return finish("error", "Needs an AUR helper", "These come from the AUR (" + ", ".join(plan["aur_install"]) +
+                      "), which needs yay or paru. Install one (sudo pacman -S yay, or from the AUR), then try again.")
     if not helper and all(x == "aur" for x in plan["steps"]):
         return finish("done", "Updated")  # (nothing for root to do)
     if cancel_asked:
@@ -695,7 +706,8 @@ def plan_of(a, fake=False):
         return out
     snap = a[a.index("--snapshot") + 1] if "--snapshot" in a else ""
     p = {"snapshot": snap if snap in ("snapper", "timeshift") else "", "system": "--system" in a,
-         "ignore": names("--ignore"), "install": names("--install"), "remove": names("--remove")}
+         "ignore": names("--ignore"), "install": names("--install"), "remove": names("--remove"),
+         "aur_install": names("--aur-install")}
     # A snapshot tool's pacman hook already takes one around each pacman run
     # (snap-pac for snapper, timeshift-autosnap): a second would only take space
     if p["snapshot"] and not fake and installed(AUTOSNAP[p["snapshot"]]):
@@ -712,7 +724,7 @@ def plan_of(a, fake=False):
     # The root helper's own files, when they changed (never in the sandbox)
     p["setup"] = not fake and not helper_current()
     p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
-        (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a else [])
+        (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else [])
     return p
 
 

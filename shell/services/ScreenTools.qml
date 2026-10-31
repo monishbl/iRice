@@ -170,6 +170,7 @@ Singleton {
         if ((kind === "shot" || kind === "shotMarkup") && out.trim() !== "") {
             const file = out.trim();
             Sounds.play("screenshot");
+            WifiShare.scan(file); // (a Wi-Fi code in it: the island offers to join)
             if (hasEditor) {
                 shot(file); // floating thumbnail; click it to mark up
                 return;

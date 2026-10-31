@@ -286,6 +286,77 @@ class Plan(unittest.TestCase):
         self.assertEqual(self.plan(args, installed=["tuned"])["install"], ["jq"])
 
 
+class AurInstall(Plan):
+    """--aur-install: packages Settings offers (a fingerprint reader's driver)."""
+
+    def test_the_aur_step_installs_them(self):
+        p = self.plan(["--aur-install", "libfprint-tod,libfprint-2-tod1-broadcom,fprintd"])
+        self.assertEqual([s for s in p["steps"] if s != "setup"], ["aur"])  # (setup: when the installed helper is older)
+        su = load(SYSUPDATE, "sysupdate_cmd")
+        cmd = su.aur_command("yay", p)
+        self.assertEqual(cmd[:4], ["yay", "-S", "--needed", "--noconfirm"])
+        self.assertEqual(cmd[cmd.index("--") + 1:], ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"])
+        self.assertNotIn("-Sua", cmd)
+
+    def test_names_are_checked(self):
+        with self.assertRaises(SystemExit):
+            self.plan(["--aur-install", "--root=/tmp"])
+
+
+class FingerprintPam(unittest.TestCase):
+    """irice-root.py fingerprint: one marked line, first among the rules."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        d = Path(self.dir.name)
+        self.etc, self.vendor = d / "etc", d / "vendor"
+        self.etc.mkdir()
+        self.vendor.mkdir()
+        self.module = d / "pam_fprintd.so"
+        self.module.write_text("")
+        self.r = load(SCRIPTS / "irice-root.py", "irice_root_fp")
+        self.r.write_root = lambda dest, data, mode: Path(dest).write_bytes(data)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def run_fp(self, on, where):
+        return self.r.fingerprint(on, where, etc=str(self.etc), vendor=str(self.vendor), module=(str(self.module),))
+
+    def test_sudo_on_and_off(self):
+        original = "#%PAM-1.0\nauth\t\tinclude\t\tsystem-auth\naccount\t\tinclude\t\tsystem-auth\n"
+        (self.etc / "sudo").write_text(original)
+        self.run_fp(True, "sudo")
+        lines = (self.etc / "sudo").read_text().splitlines()
+        self.assertEqual(lines[0], "#%PAM-1.0")
+        self.assertIn("pam_fprintd.so", lines[1])
+        self.assertIn("sufficient", lines[1])
+        self.run_fp(True, "sudo")  # (twice: still one line)
+        self.assertEqual((self.etc / "sudo").read_text().count("pam_fprintd"), 1)
+        self.run_fp(False, "sudo")
+        self.assertEqual((self.etc / "sudo").read_text(), original)
+
+    def test_a_vendor_file_is_copied_to_etc(self):
+        (self.vendor / "polkit-1").write_text("#%PAM-1.0\n\nauth include system-auth\n")
+        self.assertEqual(self.run_fp(True, "polkit"), [str(self.etc / "polkit-1")])
+        self.assertIn("pam_fprintd", (self.etc / "polkit-1").read_text())
+        self.assertNotIn("pam_fprintd", (self.vendor / "polkit-1").read_text())
+
+    def test_login_covers_the_login_screens_installed(self):
+        (self.etc / "ly").write_text("#%PAM-1.0\nauth include login\n")
+        (self.etc / "sddm").write_text("#%PAM-1.0\nauth include system-login\n")
+        self.assertEqual(sorted(self.run_fp(True, "login")), sorted([str(self.etc / "ly"), str(self.etc / "sddm")]))
+
+    def test_refused_without_fprintd_or_for_anything_else(self):
+        (self.etc / "sudo").write_text("#%PAM-1.0\nauth include system-auth\n")
+        self.module.unlink()
+        with self.assertRaises(self.r.Refused):
+            self.run_fp(True, "sudo")
+        self.run_fp(False, "sudo")  # (taking it out still works)
+        with self.assertRaises(self.r.Refused):
+            self.run_fp(True, "shadow")
+
+
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""
 

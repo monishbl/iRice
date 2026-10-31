@@ -25,6 +25,18 @@ Column {
     // network, "Other options…" under the password, or "Join other network…"
     // { ssid, hidden, security }; null = the list
     property var form: null
+    // The QR card for sharing a network (WifiShareCard), in place of the list
+    property bool sharing: false
+    function shareNet(n) {
+        asking = null;
+        form = null;
+        sharing = true;
+        WifiShare.share(n.name);
+    }
+    function stopSharing() {
+        sharing = false;
+        WifiShare.close();
+    }
     function enterprise(n) {
         return [WifiSecurityType.Wpa2Eap, WifiSecurityType.WpaEap, WifiSecurityType.Wpa3SuiteB192, WifiSecurityType.Leap, WifiSecurityType.DynamicWep].includes(n?.security);
     }
@@ -33,7 +45,8 @@ Column {
     }
     // A menu with a form in it stays open while the pointer is elsewhere
     // (picking a certificate file opens a window over it)
-    readonly property bool holding: visible && (form !== null || asking !== null)
+    // (and while a phone's camera is pointed at a code)
+    readonly property bool holding: visible && (form !== null || asking !== null || sharing)
     onHoldingChanged: Panels.holdMenus += holding ? 1 : -1
     Component.onDestruction: if (holding) Panels.holdMenus -= 1
     // The pointer is over the list (or its menu is open): rows hold still
@@ -129,6 +142,8 @@ Column {
         } else {
             asking = null;
             form = null;
+            if (sharing)
+                stopSharing();
             menu.close();
         }
     }
@@ -153,6 +168,8 @@ Column {
                         root.asking = n;
                 } });
         items.push({ separator: true });
+        if ((n.connected || n.known) && !enterprise(n))
+            items.push({ text: "Share network…", action: () => root.shareNet(n) });
         items.push({ text: "Copy name", action: () => Quickshell.execDetached(["wl-copy", "--", n.name]) });
         if (n.known)
             items.push({ text: "Forget network", danger: true, action: () => root.forget(n) });
@@ -189,7 +206,7 @@ Column {
     Item {
         width: parent.width
         height: Math.min(listCol.implicitHeight, root.maxListHeight)
-        visible: root.form === null && !Backends.wifiUnmanaged
+        visible: root.form === null && !root.sharing && !Backends.wifiUnmanaged
         Flickable {
             id: listFlick
             anchors.fill: parent
@@ -235,6 +252,9 @@ Column {
                             title: entry.modelData.name
                             status: entry.modelData.connected ? "Connected" : entry.modelData.state === ConnectionState.Connecting || WifiJoin.joining(entry.modelData.name) ? "Connecting…" : root.failed === entry.modelData || WifiJoin.failedFor(entry.modelData.name) !== "" ? "Couldn't connect" : entry.modelData.known ? "Known network" : ""
                             trailingIcon: root.secured(entry.modelData) ? "lock-simple" : ""
+                            actionIcon: entry.modelData.connected && !root.enterprise(entry.modelData) ? "qr-code" : ""
+                            actionTip: "Share this network"
+                            onActionClicked: root.shareNet(entry.modelData)
                             busy: entry.modelData.stateChanging || WifiJoin.joining(entry.modelData.name)
                             onMenuRequested: root.openMenu(entry.modelData)
                             onClicked: {
@@ -373,12 +393,21 @@ Column {
 
     // A network that hides its name
     ListRow {
-        visible: Networking.wifiEnabled && root.form === null && !Backends.wifiUnmanaged
+        visible: Networking.wifiEnabled && root.form === null && !root.sharing && !Backends.wifiUnmanaged
         icon: "plus"
         title: "Join other network…"
         onClicked: {
             root.asking = null;
             root.form = { ssid: "", hidden: true, security: "psk" };
+        }
+    }
+
+    Loader {
+        active: root.sharing
+        visible: active
+        width: parent.width
+        sourceComponent: WifiShareCard {
+            onDone: root.stopSharing()
         }
     }
 

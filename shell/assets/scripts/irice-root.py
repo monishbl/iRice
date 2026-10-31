@@ -16,6 +16,14 @@ Without a password, for an administrator (wheel) at this computer
                      free-form ever runs
   wifi-helper        Quick Share's Wi-Fi helper (qs-wifi-helper.py, next to
                      this file): JSON on stdin and stdout
+With the password:
+  fingerprint on|off polkit|sudo|login
+      a finger is (or isn't) accepted for password prompts (polkit), sudo, or
+      the login screen (greetd, ly, SDDM): one marked line, `auth sufficient
+      pam_fprintd.so`, first in that PAM file (a vendor file in /usr/lib/pam.d
+      is copied to /etc/pam.d first). "sufficient": no finger in time, or no
+      pam_fprintd, and the password is asked as before. iRice's own lock
+      screen needs none of this (its PAM file is in the shell).
 With the password, once, at the start:
   update [--snapshot snapper|timeshift] [--system] [--ignore a,b]
          [--install a,b] [--remove a,b] [--setup <shell folder>] [--broker]
@@ -270,6 +278,53 @@ def write_root(dest, data, mode):
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+# ── fingerprint (Settings → Lock Screen → Fingerprint) ─────────────────
+FP_MARK = "# iRice fingerprint"
+# max-tries / timeout: a finger, or the password after a few seconds (PAM
+# asks one thing at a time; the login screen waits longest)
+FP_LINES = {"polkit": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
+            "sudo": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
+            "login": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=15   " + FP_MARK}
+FP_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm"]}
+PAM_ETC, PAM_VENDOR = "/etc/pam.d", "/usr/lib/pam.d"
+PAM_FPRINTD = ("/usr/lib/security/pam_fprintd.so", "/lib/security/pam_fprintd.so")
+
+
+def pam_without_fingerprint(text):
+    return "".join(l for l in text.splitlines(keepends=True) if FP_MARK not in l)
+
+
+def pam_with_fingerprint(text, line):
+    """The line first among the PAM file's rules (after its header comments
+    and blank lines), any earlier one of ours gone."""
+    lines = pam_without_fingerprint(text).splitlines(keepends=True)
+    at = 0
+    while at < len(lines) and (lines[at].strip() == "" or lines[at].lstrip().startswith("#")):
+        at += 1
+    return "".join(lines[:at] + [line + "\n"] + lines[at:])
+
+
+def fingerprint(on, where, etc=PAM_ETC, vendor=PAM_VENDOR, module=PAM_FPRINTD):
+    """Returns the files changed."""
+    if where not in FP_FILES:
+        raise Refused("fingerprint: polkit, sudo or login")
+    if on and not any(os.path.exists(m) for m in module):
+        raise Refused("pam_fprintd isn't installed (fprintd)")
+    changed = []
+    for name in FP_FILES[where]:
+        dest = os.path.join(etc, name)
+        src = dest if os.path.exists(dest) else os.path.join(vendor, name)
+        if not os.path.exists(src):
+            continue  # (that login screen isn't installed)
+        with open(src) as f:
+            text = f.read()
+        new = pam_with_fingerprint(text, FP_LINES[where]) if on else pam_without_fingerprint(text)
+        if new != text or (on and src != dest):
+            write_root(dest, new.encode(), 0o644)
+            changed.append(dest)
+    return changed
 
 
 # ── wallpaper ───────────────────────────────────────────────────────────
@@ -573,11 +628,16 @@ def main(argv):
             wifi_helper()
         if cmd == "update":
             return update(args, uid)
+        if cmd == "fingerprint" and len(args) == 2 and args[0] in ("on", "off"):
+            for d in fingerprint(args[0] == "on", args[1]):
+                print("changed", d)
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | update … | setup <folder>")
+        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | "
+                      "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)
         return REFUSED_EXIT

@@ -31,6 +31,7 @@ Scope {
         if (busy || password === "")
             return;
         error = "";
+        fingerTries = 0; // (someone's here: the reader gets its tries back)
         pam.start();
     }
 
@@ -165,6 +166,7 @@ Scope {
     function woke() {
         idle = false;
         idleTimer.restart();
+        fingerTries = 0; // (someone's here: the reader may have stopped after five tries)
     }
     onHeldChanged: if (!held) idle = false
     onPasswordChanged: woke()
@@ -248,6 +250,66 @@ Scope {
 
         LockSurface {
             lockScope: root
+        }
+    }
+
+    // ── A finger, next to the password (Settings → Lock Screen →
+    // Fingerprint) ─────────────────────────────────────────────────────
+    // A second PAM conversation, from the shell's own PAM file (only
+    // pam_fprintd: the system's files aren't touched), running while the
+    // lock is up. Each waits up to 30 s; then another, up to five failed
+    // tries in a row (typing, or waking StandBy, gives them back).
+    property string fingerText: "" // what the reader wants, under the field
+    property int fingerTries: 0
+    readonly property bool fingerWanted: held && !leaving && Fingerprint.lockScreen && fingerTries < 5
+    onFingerWantedChanged: {
+        if (fingerWanted) {
+            fingerRetry.restart();
+        } else {
+            fingerRetry.stop();
+            if (finger.active)
+                finger.abort();
+            fingerText = "";
+        }
+        if (!held)
+            fingerTries = 0;
+    }
+    Timer {
+        id: fingerRetry
+        interval: 400 // (a moment after the lock shows, or after a try)
+        onTriggered: if (root.fingerWanted && !finger.active) {
+            root.fingerText = "Touch the fingerprint reader to unlock";
+            finger.start();
+        }
+    }
+    PamContext {
+        id: finger
+        config: "irice-fingerprint"
+        configDirectory: Quickshell.shellDir + "/assets/pam"
+        onMessageChanged: {
+            const m = message ?? "";
+            if (/fail|match|no match|not recogni/i.test(m))
+                root.fingerText = "Not recognised. Try again";
+            else if (/place|swipe|touch|finger/i.test(m))
+                root.fingerText = "Touch the fingerprint reader to unlock";
+        }
+        onCompleted: result => {
+            if (result === PamResult.Success) {
+                System.locked = false;
+                root.error = "";
+                root.fails = 0;
+                root.fingerTries = 0;
+                root.fingerText = "";
+                return;
+            }
+            root.fingerTries++;
+            if (root.fingerWanted)
+                fingerRetry.restart();
+        }
+        onError: {
+            root.fingerTries++;
+            if (root.fingerWanted)
+                fingerRetry.restart();
         }
     }
 

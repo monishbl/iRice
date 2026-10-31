@@ -23,6 +23,12 @@ Scope {
     readonly property string message: preview ? "Authentication is required to install software." : (flow?.message ?? "").replace(/\.$/, "")
     readonly property string prompt: preview ? "Password" : ((flow?.inputPrompt ?? "").trim().replace(/:$/, "") || "Password")
     readonly property bool secret: preview || !(flow?.responseVisible ?? false)
+    // A finger first (fprintd in the PAM stack: Settings → Lock Screen →
+    // Fingerprint): PAM asks for no text while it waits for one, then for the
+    // password once that times out
+    property bool previewFinger: false
+    readonly property bool fingerWait: previewFinger || (flow !== null && !(flow?.isResponseRequired ?? true)
+        && /finger|reader|swipe/i.test(flow?.supplementaryMessage ?? ""))
 
     function submit(text) {
         if (preview) {
@@ -38,6 +44,7 @@ Scope {
 
     function cancel() {
         preview = false;
+        previewFinger = false;
         error = "";
         waiting = false;
         flow?.cancelAuthenticationRequest();
@@ -78,6 +85,11 @@ Scope {
         target: "polkit"
         function preview(): void {
             root.preview = true;
+        }
+        // (the fingerprint step, as it looks while PAM waits for a finger)
+        function previewFinger(): void {
+            root.preview = true;
+            root.previewFinger = true;
         }
     }
 
@@ -158,7 +170,7 @@ Scope {
                         height: 56
                         radius: 16
                         color: Theme.color.toggleOff
-                        Icon { anchors.centerIn: parent; name: "lock-key"; fill: true; size: 28 }
+                        Icon { anchors.centerIn: parent; name: root.fingerWait ? "fingerprint" : "lock-key"; fill: !root.fingerWait; size: 28 }
                     }
                     Text {
                         width: parent.width
@@ -172,7 +184,8 @@ Scope {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.Wrap
-                        text: "Enter the password for " + (Quickshell.env("USER") ?? "your account") + " to allow this."
+                        text: root.fingerWait ? "Touch the fingerprint reader to allow this. The password field comes back in a few seconds."
+                            : "Enter the password for " + (Quickshell.env("USER") ?? "your account") + " to allow this."
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
@@ -180,6 +193,8 @@ Scope {
                     Squircle {
                         width: parent.width
                         height: 36
+                        visible: !root.fingerWait
+                        onVisibleChanged: if (visible) password.forceActiveFocus() // (back after the finger timed out)
                         radius: Theme.radius.control
                         color: Theme.color.fill
                         border.width: 1
@@ -219,10 +234,11 @@ Scope {
                         spacing: 10
                         topPadding: 6
                         Repeater {
-                            model: [{ text: "Cancel", primary: false }, { text: root.waiting ? "Checking…" : "Allow", primary: true }]
+                            model: root.fingerWait ? [{ text: "Cancel", primary: false }]
+                                : [{ text: "Cancel", primary: false }, { text: root.waiting ? "Checking…" : "Allow", primary: true }]
                             Rectangle {
                                 required property var modelData
-                                width: (parent.width - 10) / 2
+                                width: root.fingerWait ? parent.width : (parent.width - 10) / 2
                                 height: 34
                                 radius: 17
                                 color: modelData.primary ? Theme.accent : btnMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill

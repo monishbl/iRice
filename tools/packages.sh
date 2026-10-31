@@ -18,6 +18,8 @@ PACKAGES=(
     # a shared network, Bluetooth LE (bluez above), then Wi-Fi Direct through wpa_supplicant
     # (iw for its links, dnsmasq to hand the phone an address)
     python-cryptography python-protobuf avahi iw wpa_supplicant dnsmasq
+    # Wi-Fi networks as QR codes: making them (Share network) and reading them in screenshots
+    qrencode zbar
     # Screen tools, clipboard, input
     grim slurp wl-clipboard cliphist gpu-screen-recorder wf-recorder tesseract tesseract-data-eng wtype swappy imagemagick
     # hyprpm, for the optional hyprbars title bars (a package of its own on some

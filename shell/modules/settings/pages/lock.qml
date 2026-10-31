@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import Quickshell
 import qs.common
 import qs.modules.settings
@@ -139,6 +140,106 @@ Column {
                             next = [];
                         Config.options.lock.standbyScreens = next;
                     }
+                }
+            }
+        }
+    }
+
+    // ── Fingerprint (services/Fingerprint) ──────────────────────────────
+    // Only on a computer with a reader: what it needs, the fingers, and
+    // where a finger works
+    Component.onCompleted: Fingerprint.refresh()
+    Group {
+        width: parent.width
+        visible: Fingerprint.hasReader
+        title: "Fingerprint"
+        footer: !Fingerprint.ready ? "" : "Password prompts, sudo and the login screen wait a few seconds for a finger, then ask for your password. Changing them asks for your password."
+            + (Fingerprint.pamError !== "" ? " " + Fingerprint.pamError : "")
+
+        // 1. What the reader still needs
+        Row {
+            visible: !Fingerprint.ready
+            label: Fingerprint.reader?.name ?? "Fingerprint reader"
+            detail: Fingerprint.installError !== "" ? Fingerprint.installError
+                : Fingerprint.missing.length > 0 ? "Found. To use it, install " + Fingerprint.missing.join(", ") + ((Fingerprint.info.aur ?? []).length > 0 ? " (from the AUR, with yay or paru)" : "") + ". It asks for your password once."
+                : "Found, but fprintd can't use it yet. Restart, then open this page again."
+            labelColor: Fingerprint.installError !== "" ? Theme.color.danger : Theme.color.label
+            SettingsButton {
+                visible: Fingerprint.missing.length > 0
+                text: Fingerprint.installing ? "Installing…" : "Install"
+                icon: "download-simple"
+                primary: true
+                busy: Fingerprint.installing
+                enabled: !Updates.running
+                onClicked: Fingerprint.install()
+            }
+        }
+
+        // 2. The fingers
+        Repeater {
+            model: Fingerprint.ready ? Fingerprint.enrolled : []
+            Row {
+                required property string modelData
+                label: Fingerprint.fingerNames[modelData] ?? modelData
+                SettingsButton {
+                    text: "Remove"
+                    danger: true
+                    onClicked: Fingerprint.remove(parent.parent.modelData ?? "")
+                }
+            }
+        }
+        Row {
+            id: adding
+            visible: Fingerprint.ready
+            readonly property bool busy: Fingerprint.enrolling || Fingerprint.enrollStage === "waiting"
+            readonly property var free: Object.keys(Fingerprint.fingerNames).filter(f => !Fingerprint.enrolled.includes(f))
+            property string pick: free[0] ?? ""
+            label: busy ? Fingerprint.enrollHint || "Touch the fingerprint reader" : Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
+            detail: busy ? (Fingerprint.enrollStages > 0 ? Fingerprint.enrollCount + " of " + Fingerprint.enrollStages + " · " : "") + (Fingerprint.fingerNames[Fingerprint.enrollFinger] ?? "")
+                : Fingerprint.enrollStage === "done" ? "Added. It works on the lock screen now."
+                : Fingerprint.enrollStage === "error" ? Fingerprint.enrollError
+                : "Touch the reader a few times with the same finger"
+            labelColor: !busy && Fingerprint.enrollStage === "error" ? Theme.color.danger : Theme.color.label
+            QQ.Row {
+                spacing: 8
+                Dropdown {
+                    visible: !adding.busy
+                    width: 190
+                    options: adding.free.map(f => ({ value: f, label: Fingerprint.fingerNames[f] }))
+                    value: adding.pick
+                    onChosen: v => adding.pick = v
+                }
+                SettingsButton {
+                    text: adding.busy ? "Cancel" : "Add"
+                    icon: adding.busy ? "" : "fingerprint"
+                    primary: !adding.busy
+                    enabled: adding.busy || adding.pick !== ""
+                    onClicked: adding.busy ? Fingerprint.cancelEnroll() : Fingerprint.enroll(adding.pick)
+                }
+            }
+        }
+
+        // 3. Where a finger works
+        Row {
+            visible: Fingerprint.ready
+            label: "Unlock the lock screen"
+            detail: "Touch the reader or type your password"
+            Switch { checked: Config.options.lock.fingerprint ?? true; onToggled: Config.options.lock.fingerprint = !checked }
+        }
+        Repeater {
+            model: Fingerprint.ready ? [
+                { key: "polkit", label: "Password prompts", detail: "When an app or iRice asks for an administrator's password" },
+                { key: "sudo", label: "sudo in terminals", detail: "sudo asks for a finger first" },
+                { key: "login", label: "Login screen", detail: "Your password is still needed once after a restart: it unlocks your saved passwords" }
+            ] : []
+            Row {
+                required property var modelData
+                label: modelData.label
+                detail: Fingerprint.pamBusy === modelData.key ? "Changing…" : modelData.detail
+                Switch {
+                    checked: Fingerprint.pam[parent.parent.modelData?.key ?? ""] ?? false
+                    enabled: Fingerprint.pamBusy === ""
+                    onToggled: Fingerprint.setPam(parent.parent.modelData.key, !checked)
                 }
             }
         }

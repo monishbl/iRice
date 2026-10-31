@@ -1,0 +1,7 @@
+#%PAM-1.0
+# iRice's lock screen, next to the password: a finger on the reader
+# (fprintd). Used only by the shell's lock (modules/lock/Lock.qml), from
+# this folder; the system's PAM files aren't touched. Each try waits up to
+# 30 s for a finger; the lock starts a new one after that.
+auth       required     pam_fprintd.so max-tries=3 timeout=30
+account    required     pam_permit.so
