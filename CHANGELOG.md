@@ -1,5 +1,17 @@
 # iRice changelog
 
+## Quick Share that works without a shared Wi-Fi · 2026-10-31
+
+Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
+
+- **Sending to a phone works again.** iRice never found phones to send to: it asked Bluetooth for devices that list Quick Share's service, and phones only carry it as data inside their announcement, so none ever matched. Phones on their Quick Share Receive screen now show up in a moment.
+- **Fast without a shared Wi-Fi, no password.** When the phone and this computer aren't on the same network, the transfer still starts over Bluetooth and then moves to a direct Wi-Fi link: this computer joins the phone's own link when sending, or makes a short-lived hotspot the phone joins when receiving. Your Wi-Fi pauses during that transfer (the internet too) and comes back by itself straight after. Small shares (a link, a small photo) stay on Bluetooth and don't pause anything. Turn it off in Settings → Sharing → **Fast transfers without a shared Wi-Fi**; transfers then stay on Bluetooth, which is slow.
+- Fixed: sending to a phone over its direct Wi-Fi link failed right after the file went: the phone turns off Quick Share's own encryption on that link (the link is encrypted already), and iRice kept using it.
+- Your firewall needs to let phones get an address from the hotspot (DHCP). **Allow through firewall** in Settings → Sharing now opens that too (port 67/udp, as well as Quick Share's and LocalSend's ports), and Quick Share runs it for you, without a password, the first time a phone needs it. System health says when it's missing.
+- Phones find this computer more reliably over Bluetooth: it advertises more often, marked as discoverable like phones do, and starts afresh after every phone that connected (some Bluetooth chips stopped advertising after the first one).
+- A phone that retries a Bluetooth connection is no longer turned away while its first attempt hangs on.
+- Setup now turns on **avahi-daemon**, which lets phones on the same Wi-Fi find this computer by name (the package was installed but never started on a fresh Arch install).
+
 ## Leaner by default · 2026-10-30
 
 - The Anime tab in the sidebar is off, and the overlay (Super+G) no longer offers the floating image, crosshair and FPS limit. Both are still there: turn them on in Settings → Sidebar (Show Anime tab, Gaming overlays).

@@ -268,9 +268,15 @@ class HealthCheck(unittest.TestCase):
         (self.home / ".local/state/irice/sharing-firewall").unlink()
         (self.sysroot / "etc/ufw/user.rules").write_text("-A ufw-user-input -p tcp --dport 22 -j ACCEPT\n")
         self.assertIn("and blocks", self.rows()["firewall"]["detail"])
-        # a range, as `ufw allow 53317:53319/tcp` writes it, lets it through
+        # a range, as `ufw allow 53317:53319/tcp` writes it, lets it through;
+        # without DHCP, phones can't join Quick Share's hotspot (a warning of its own)
         (self.sysroot / "etc/ufw/user.rules").write_text(
             "-A ufw-user-input -p tcp -m multiport --dports 53317:53319 -j ACCEPT\n")
+        self.assertIn("hotspot", self.rows()["firewall"]["detail"])
+        self.assertEqual(self.rows()["firewall"]["status"], "warn")
+        (self.sysroot / "etc/ufw/user.rules").write_text(
+            "-A ufw-user-input -p tcp -m multiport --dports 53317:53319 -j ACCEPT\n"
+            "-A ufw-user-input -p udp --dport 67 -j ACCEPT\n")
         self.assertEqual(self.rows()["firewall"]["status"], "ok")
         (self.sysroot / "etc/systemd/system/bluetooth.service.d").mkdir(parents=True)
         dropin = self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"

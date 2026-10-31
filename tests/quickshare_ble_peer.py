@@ -181,7 +181,7 @@ async def write_raw(writer, data):
     await writer.drain()
 
 
-async def drain_and_switch(p, new_r, new_w, seen):
+async def drain_and_switch(p, new_r, new_w, seen, plain=False):
     """After the intro/ack: LAST_WRITE on the old channel, answer the
     computer's LAST_WRITE, stop at its SAFE_TO_CLOSE, say goodbye in the
     clear, carry on over the new channel (same keys, same counters).
@@ -203,6 +203,7 @@ async def drain_and_switch(p, new_r, new_w, seen):
     goodbye.ParseFromString(await asyncio.wait_for(read_raw(old_r), 5))  # in the clear
     assert goodbye.v1.type == qp.V1.DISCONNECTION
     p.r, p.w = new_r, new_w
+    p.plain = plain  # (as Nearby: the new channel without its encryption, when the offer said so)
 
 
 async def respond_to_offer(p, offer, seen):
@@ -237,5 +238,7 @@ async def offer_and_switch(p, info, server_queue, seen):
     assert b.event_type == BWU.CLIENT_INTRODUCTION
     await write_raw(w, bwu(BWU.CLIENT_INTRODUCTION_ACK,
                            client_introduction_ack=BWU.ClientIntroductionAck()).SerializeToString())
-    await drain_and_switch(p, r, w, seen)
+    plain = info.supports_disabling_encryption
+    assert b.client_introduction.supports_disabling_encryption == plain
+    await drain_and_switch(p, r, w, seen, plain=plain)
     return b.client_introduction.endpoint_id

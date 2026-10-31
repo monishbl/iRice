@@ -81,6 +81,35 @@ class FakeHelper:
         pass
 
 
+class FakeNm:
+    """NmWifi minus NetworkManager: a "hotspot" on 127.0.0.1."""
+    made = []
+
+    def __init__(self):
+        self.hosted = self.joined = None
+        self.restored = 0
+        FakeNm.made.append(self)
+
+    async def host(self, net):
+        self.hosted = net
+        return {"ssid": "DIRECT-iR-NMNM", "passphrase": "nmpass1234", "freq": 2437, "ip": "127.0.0.1", "iface": "wlan0"}
+
+    async def join(self, net, ssid, passphrase):
+        self.joined = (ssid, passphrase)
+        return {"ip": "127.0.0.1", "gateway": "127.0.0.1", "iface": "wlan0"}
+
+    async def restore(self):
+        self.restored += 1
+
+
+async def never(net):
+    return False
+
+
+async def always(net):
+    return True
+
+
 def net(shared=False):
     addrs = [("eth0", ipaddress.IPv4Interface("127.0.0.1/8"))] if shared else []
     return {"addresses": addrs, "station": "wlan0", "frequency": 5180, "5ghz": True, "p2p_go": True}
@@ -115,6 +144,9 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
                                      helper=self.helper, net_probe=probe)
         self.svc.preferred_port = self.svc.upgrade_port = 0  # (any free ports)
         self.svc.can_host = lambda n: True
+        self.svc.nm_can_host = never  # (no real NetworkManager in tests)
+        self.svc.nm_link = FakeNm
+        FakeNm.made = []
         self.answers = True
 
         async def reachable(ip):
@@ -248,6 +280,81 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_direct"])
         self.assertTrue(self.helper.released)  # the group goes with the transfer
 
+    async def nm_ready(self, hotspot=True, fixed=None):
+        """No shared network, no helper: NetworkManager can host."""
+        self.svc.can_host = lambda n: False
+        self.svc.nm_can_host = always
+        self.svc.firewall = lambda: {"kind": "ufw", "allowed": True, "blocks": False, "hotspot": hotspot}
+        self.fixes = 0
+
+        async def allow():
+            self.fixes += 1
+            return {"kind": "ufw", "allowed": True, "blocks": False, "hotspot": fixed}
+        self.svc.allow_hotspot = allow
+
+    async def test_a_hotspot_through_networkmanager_needs_no_password(self):
+        await self.nm_ready()
+        data = os.urandom(300_000)
+        sid = await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT, CR.BLE])
+        _, offer = await read_until_offer(self.p)
+        info = offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info
+        self.assertEqual(info.medium, PATH.WIFI_HOTSPOT)
+        c = info.wifi_hotspot_credentials
+        self.assertEqual((c.ssid, c.password, c.gateway, c.frequency), ("DIRECT-iR-NMNM", "nmpass1234", "127.0.0.1", 2437))
+        self.assertEqual(self.helper.requests, [])  # no root, no password
+        self.assertTrue(self.events.of("note"))  # the Wi-Fi pause is said
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
+        self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_hotspot"])
+        for _ in range(50):  # (the Wi-Fi comes back as the session ends)
+            if FakeNm.made[0].restored:
+                break
+            await asyncio.sleep(0.02)
+        self.assertEqual(FakeNm.made[0].restored, 1)
+
+    async def test_small_shares_dont_pause_the_wifi(self):
+        await self.nm_ready()
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_HOTSPOT])
+        warning = await self.events.wait("warning")
+        self.assertIn("Bluetooth", warning["message"])
+        await self.p.recv_sharing()  # the accept
+        await self.finish(data)
+        self.assertEqual(FakeNm.made, [])
+
+    async def test_a_phone_that_doesnt_join_gets_the_wifi_back_at_once(self):
+        await self.nm_ready()
+        data = os.urandom(300_000)
+        await self.offer_file(data, [CR.WIFI_HOTSPOT])
+        _, offer = await read_until_offer(self.p)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_HOTSPOT)))
+        warning = await self.events.wait("warning")
+        self.assertIn("hotspot", warning["message"])
+        self.assertEqual(FakeNm.made[0].restored, 1)  # before the rest goes over Bluetooth
+        await self.finish(data)
+        self.assertEqual(FakeNm.made[0].restored, 1)
+
+    async def test_a_firewall_without_dhcp_is_fixed_first(self):
+        await self.nm_ready(hotspot=False, fixed=True)
+        data = os.urandom(300_000)
+        await self.offer_file(data, [CR.WIFI_HOTSPOT])
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_HOTSPOT)
+        self.assertEqual(self.fixes, 1)
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
+
+    async def test_a_firewall_that_stays_shut_is_named(self):
+        await self.nm_ready(hotspot=False, fixed=False)
+        data = os.urandom(300_000)
+        await self.offer_file(data, [CR.WIFI_HOTSPOT])
+        warning = await self.events.wait("warning")
+        self.assertIn("firewall", warning["message"])
+        self.assertIn("Settings → Sharing", warning["message"])
+        self.assertEqual(FakeNm.made, [])  # the Wi-Fi was never touched
+        await self.p.recv_sharing()  # the accept
+        await self.finish(data)
+
     async def test_debug_log_names_frames_but_no_secrets(self):
         from nearby import debuglog
         log = Path(self.dir.name, "irice-quickshare.log")
@@ -364,6 +471,17 @@ class FakeBluetooth:
 
 class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
     async def test_joins_the_phones_wifi_direct_group(self):
+        await self.joins(nm=False)
+
+    async def test_networkmanager_joins_it_without_a_password(self):
+        await self.joins(nm=True)
+
+    async def test_a_link_without_nearbys_encryption(self):
+        # (a real phone's Wi-Fi Direct offer: plain frames on the new channel,
+        # whatever the introduction says; encrypting there broke the transfer)
+        await self.joins(nm=True, plain=True)
+
+    async def joins(self, nm, plain=False):
         events = Events()
         helper = FakeHelper()
         # iRice is the central now: it connects to the phone's GATT server
@@ -376,7 +494,10 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
             return net(shared=False)
         svc = QuickShareService(events, None, name="Test laptop", ble=FakeBluetooth(transport), helper=helper,
                                 net_probe=probe)
-        svc.can_host = lambda n: True
+        svc.can_host = lambda n: not nm
+        svc.nm_usable = always if nm else never
+        svc.nm_link = FakeNm
+        FakeNm.made = []
         svc.devices["ble-PH0N"] = {"id": "ble-PH0N", "name": "Pixel 9", "type": "phone", "eid": "PH0N",
                                    "ble": "/org/bluez/hci0/dev_X"}
         with tempfile.TemporaryDirectory() as d:
@@ -404,11 +525,16 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
             info = PATH(medium=PATH.WIFI_DIRECT)
             c = info.wifi_direct_credentials
             c.ssid, c.password, c.frequency, c.gateway = "DIRECT-Ab-Pixel", "phonepass", 5180, "127.0.0.1"
+            info.supports_disabling_encryption = plain
             c.port = server.sockets[0].getsockname()[1]
             who = await bp.offer_and_switch(p, info, arrived, [])
             self.assertEqual(who, svc.endpoint_id)
-            self.assertEqual(helper.requests, [{"cmd": "join", "ssid": "DIRECT-Ab-Pixel", "passphrase": "phonepass",
-                                                "freq": 5180}])
+            if nm:
+                self.assertEqual(helper.requests, [])  # no root, no password
+                self.assertEqual(FakeNm.made[0].joined, ("DIRECT-Ab-Pixel", "phonepass"))
+            else:
+                self.assertEqual(helper.requests, [{"cmd": "join", "ssid": "DIRECT-Ab-Pixel", "passphrase": "phonepass",
+                                                    "freq": 5180}])
             # The file comes over the new socket
             got = b""
             while True:
@@ -424,10 +550,13 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([e["medium"] for e in events.of("transport")], ["ble", "wifi_direct"])
             self.assertEqual(phone.errors, [])
             for _ in range(50):  # (released as the session ends, just after "finished")
-                if helper.released:
+                if helper.released or (FakeNm.made and FakeNm.made[0].restored):
                     break
                 await asyncio.sleep(0.02)
-            self.assertTrue(helper.released)
+            if nm:
+                self.assertEqual(FakeNm.made[0].restored, 1)  # the Wi-Fi's own connection is back
+            else:
+                self.assertTrue(helper.released)
             server.close()
         await svc.close()
         to_phone.stop()

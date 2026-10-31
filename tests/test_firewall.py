@@ -116,7 +116,7 @@ class FixScript(Fakes):
         # the earlier rule of ours goes, then the new ones, only in inet filter input
         self.assertIn("nft delete rule inet filter input handle 7", calls)
         self.assertIn('nft insert rule inet filter input tcp dport 53317-53319 accept comment "irice sharing"', calls)
-        self.assertIn('nft insert rule inet filter input udp dport { 53317, 5353 } accept comment "irice sharing"', calls)
+        self.assertIn('nft insert rule inet filter input udp dport { 53317, 5353, 67 } accept comment "irice sharing"', calls)
         self.assertFalse([c for c in calls if "insert" in c and (" ip filter " in c or " bridge " in c)], calls)
         self.assertFalse([c for c in calls if "add table" in c], calls)
         # Arch's nftables.conf includes nothing: runtime only, and it says so

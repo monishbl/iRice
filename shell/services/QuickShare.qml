@@ -13,9 +13,11 @@ import qs.common
 // transfers show as live activities.
 // Visibility (Settings → Sharing): Off | Everyone for 10 minutes | Everyone,
 // as on Android. On the same network (Wi-Fi or Ethernet) it goes over that;
-// without one, over Bluetooth LE, and the transfer then moves to Wi-Fi
-// Direct (a password prompt: that needs root) or stays on slow Bluetooth
-// with a warning. Bluetooth is never turned on from here except by the
+// without one, phones find it over Bluetooth LE and the transfer moves to a
+// Wi-Fi link: through NetworkManager without a password (this computer's
+// Wi-Fi pauses for the transfer: a hotspot of its own, or the phone's group;
+// Settings → Sharing can turn that off), else Wi-Fi Direct through the root
+// helper (a password prompt), else it stays on slow Bluetooth with a warning. Bluetooth is never turned on from here except by the
 // user's own "Turn on Bluetooth".
 // The helper only runs while visible, while the share sheet looks for
 // devices, or while a transfer is going.
@@ -31,6 +33,9 @@ Singleton {
         function onQuickShareChanged() {
             if (root.cfg.quickShare === "10min")
                 root.everyoneUntil = Date.now() + 10 * 60000;
+        }
+        function onQuickShareHotspotChanged() {
+            root.configure();
         }
     }
     Timer {
@@ -76,7 +81,7 @@ Singleton {
             helper.write(JSON.stringify(obj) + "\n");
     }
     function configure() {
-        tell({ cmd: "config", visible: visible, name: name, folder: folder || "~/Downloads" });
+        tell({ cmd: "config", visible: visible, name: name, folder: folder || "~/Downloads", pause_wifi: cfg.quickShareHotspot !== false });
     }
     onVisibleChanged: configure()
     onNameChanged: configure()
@@ -244,6 +249,9 @@ Singleton {
                     break;
                 case "warning": // a transfer stays on slow Bluetooth: why, and how to fix it
                     Island.post({ kind: "custom", icon: "warning-circle", title: "Slow transfer", subtitle: ev.message, color: Theme.accents.orange }, 8000);
+                    break;
+                case "note": // this computer's Wi-Fi pauses for a fast link
+                    Island.post({ kind: "custom", icon: "wifi-high", title: "Switching to Wi-Fi", subtitle: ev.message, color: Theme.accents.blue }, 5000);
                     break;
                 case "auth": // pkexec is about to ask for the password: say what for
                     Island.post({ kind: "custom", icon: "lock", title: "Password for a faster link", subtitle: ev.message, color: Theme.accents.blue }, 10000);

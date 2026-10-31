@@ -28,8 +28,9 @@ from .transport import StreamTransport, TransportClosed
 PORT = 53318
 MAX_INCOMING = 3  # at once; more are refused (a flood shouldn't fill the disk or the island)
 UPGRADE_WAIT = 10  # sending over Bluetooth: how long the files wait for a faster link
-MEDIUM_NAMES = {"wifi_lan": "Wi-Fi", "wifi_direct": "Wi-Fi Direct", "wifi_hotspot": "Wi-Fi Direct", "ble": "Bluetooth"}
+MEDIUM_NAMES = {"wifi_lan": "Wi-Fi", "wifi_direct": "Wi-Fi Direct", "wifi_hotspot": "Wi-Fi hotspot", "ble": "Bluetooth"}
 SLOW = "Staying on Bluetooth, which is slow"
+ADV_REFRESH = 120  # seconds between fresh advertisements while visible
 
 
 class QuickShareService:
@@ -57,9 +58,16 @@ class QuickShareService:
         self.can_host = wifi.helper_possible  # (whether the root helper can make Wi-Fi links here)
         self.reachable = wifi.reachable  # (whether the phone answers at the address it gave)
         self.firewall = firewall_status  # (whether a firewall may keep phones from reaching us)
+        self.allow_hotspot = allow_hotspot  # (the firewall fix, when it runs without a password)
+        self.nm_can_host = wifi.NmWifi.can_host  # (a hotspot through NetworkManager: no password)
+        self.nm_link = wifi.NmWifi
+        self.nm_usable = wifi.NmWifi.usable
+        self.pause_wifi = True  # (Settings: may the Wi-Fi pause for a fast link without a shared network)
+        self._refresher = None
         if ble is not None:
             ble.on_session = lambda transport: asyncio.ensure_future(self._incoming_transport(transport))
             ble.on_state = self._bluetooth_changed
+            ble.on_session_end = lambda: asyncio.ensure_future(self._readvertise("a phone disconnected"))
 
     def _log(self, what):
         debuglog.log("service", what)
@@ -70,7 +78,9 @@ class QuickShareService:
         return self.info
 
     # ── Visibility ───────────────────────────────────────────────────────
-    async def configure(self, visible=None, name=None, folder=None):
+    async def configure(self, visible=None, name=None, folder=None, pause_wifi=None):
+        if pause_wifi is not None:
+            self.pause_wifi = bool(pause_wifi)
         if folder:
             self.folder = os.path.expanduser(folder)
         renamed = name is not None and name.strip() and name.strip() != self.name
@@ -108,6 +118,8 @@ class QuickShareService:
         self.visible = True
         await self._announce()
         await self._advertise()
+        if self.ble is not None and self._refresher is None:
+            self._refresher = asyncio.ensure_future(self._refresh_loop())
 
     async def _announce(self):
         if self.discovery is None:
@@ -145,8 +157,28 @@ class QuickShareService:
             self._log(f"advertising failed: {e}")
             self.emit({"ev": "error", "message": f"Bluetooth couldn't advertise this computer ({e})."})
 
+    async def _readvertise(self, why):
+        """Advertises afresh: a controller stops a connectable advertisement
+        when a phone connects to it, and doesn't always start it again (seen
+        with phones that found a computer once and never again)."""
+        if not self.visible or self.ble is None or not self.ble.powered or getattr(self.ble, "session", None):
+            return
+        self._log(f"advertising afresh ({why})")
+        await self._advertise()
+
+    async def _refresh_loop(self):
+        try:
+            while self.visible:
+                await asyncio.sleep(ADV_REFRESH)
+                await self._readvertise("every few minutes")
+        except asyncio.CancelledError:
+            pass
+
     async def _hide(self):
         self.visible = False
+        if self._refresher is not None:
+            self._refresher.cancel()
+            self._refresher = None
         if self.discovery is not None:
             try:
                 await self.discovery.unpublish()
@@ -320,8 +352,25 @@ class QuickShareService:
         ip = wifi.phone_address(conn)
         answers = await self.reachable(ip) if ip and wifi.same_network(net.get("addresses", []),
                                                                          conn.remote_metadata.ip_address) else False
-        tries = wifi.host_paths(conn, net, helper_ok, reachable=answers)
-        self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers})")
+        # A hotspot through NetworkManager pauses this computer's own Wi-Fi:
+        # only for shares worth it, and only if the phone can get an address
+        # from it (the firewall lets DHCP through, or its fix does now)
+        total = getattr(entry.get("session"), "total", 0) or 0
+        nm_host = fw_blocked = False
+        if self.pause_wifi and total >= wifi.NM_MIN_BYTES and not answers and await self.nm_can_host(net):
+            fw = self.firewall()
+            if fw.get("hotspot") is False:
+                fw = await self.allow_hotspot()
+            nm_host = fw.get("hotspot") is not False
+            fw_blocked = not nm_host
+            if not nm_host:
+                self._log(f"{sid}: no hotspot: the firewall ({fw.get('kind')}) would keep the phone from getting an address")
+        tries = wifi.host_paths(conn, net, helper_ok, reachable=answers, nm_host=nm_host)
+        self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers}, {total} bytes)")
+        if not tries and fw_blocked:
+            self._warn(sid, f"{SLOW}: this computer's firewall would keep {sender} from joining its hotspot. "
+                            "Allow Quick Share in Settings → Sharing for full speed next time.")
+            return
         if not tries:
             why = wifi.no_direct_reason(net)
             self._warn(sid, f"{SLOW}: {sender} and this computer share no network, and {why}. "
@@ -336,12 +385,20 @@ class QuickShareService:
         for p, mine in tries:
             if conn._closed:
                 return
-            medium = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot"}[p]
+            medium = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot", "nm": "wifi_hotspot"}[p]
             listener = wifi.Listener(medium)
+            nm = None
             try:
                 if p == "lan":
                     port = await listener.open(port=self.upgrade_port)
                     info = wifi.lan_path(mine, port)
+                elif p == "nm":
+                    nm = entry["nm"] = self.nm_link()
+                    self.emit({"ev": "note", "session": sid,
+                               "message": "This computer's Wi-Fi pauses for the transfer and comes back after"})
+                    group = await nm.host(net)
+                    port = await listener.open(port=self.upgrade_port)
+                    info = wifi.hotspot_path(group, port)
                 else:
                     self.helper.on_auth = lambda: self.emit({
                         "ev": "auth", "session": sid,
@@ -353,8 +410,9 @@ class QuickShareService:
                     port = await listener.open(port=self.upgrade_port)
                     info = (wifi.direct_path if p == "direct" else wifi.hotspot_path)(group, port)
                 if await conn.offer_upgrade(info, listener.accept, timeout=30):
+                    nm = None  # (in use: it goes when the transfer ends)
                     return
-                reason = f"{sender} couldn't join the {'shared network' if p == 'lan' else 'link'}"
+                reason = f"{sender} couldn't join the {'shared network' if p == 'lan' else 'hotspot' if p == 'nm' else 'link'}"
                 if p == "lan" and self.firewall().get("blocks"):
                     reason = (f"this computer's firewall ({self.firewall()['kind']}) keeps {sender} from connecting. "
                               "Allow it in Settings → Sharing")
@@ -365,6 +423,9 @@ class QuickShareService:
                 reasons.append(f"the link couldn't be set up ({e})")
             finally:
                 await listener.close()
+                if nm is not None:
+                    entry.pop("nm", None)
+                    await nm.restore()
         if not conn._closed:
             self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
 
@@ -373,6 +434,9 @@ class QuickShareService:
         self.emit({"ev": "warning", "session": sid, "message": message})
 
     async def _release_links(self, entry):
+        nm = entry.pop("nm", None)
+        if nm is not None:
+            await nm.restore()
         if entry.get("links") and self.helper is not None:
             try:
                 await self.helper.release()
@@ -432,7 +496,8 @@ class QuickShareService:
             if transport.medium == "ble":
                 # Tell the phone where it can move us: it hosts, we follow
                 net = await self.net_probe()
-                conn.mediums = wifi.mediums_we_join(self.helper is not None and self.can_host(net))
+                nm_ok = self.pause_wifi and await self.nm_usable(net)
+                conn.mediums = wifi.mediums_we_join(self.helper is not None and self.can_host(net), nm_ok)
                 conn.medium_metadata = wifi.medium_metadata(net)
                 conn.on_upgrade_offer = lambda info: self._join(sid, entry, info, net, name)
             conn.on_upgraded = lambda medium: self._transport_event(sid, medium)
@@ -477,8 +542,15 @@ class QuickShareService:
             await self._release_links(entry)
 
     async def _join(self, sid, entry, info, net, name):
-        """The phone offers a link (sending over Bluetooth): follow it."""
+        """The phone offers a link (sending over Bluetooth): follow it.
+        NetworkManager joins it when it runs the Wi-Fi (no password; the
+        Wi-Fi's own connection pauses meanwhile), else the root helper."""
         try:
+            if info.medium != wifi.PATH.WIFI_LAN and self.pause_wifi and await self.nm_usable(net):
+                nm = entry["nm"] = self.nm_link()
+                self.emit({"ev": "note", "session": sid,
+                           "message": "This computer's Wi-Fi pauses for the transfer and comes back after"})
+                return await wifi.join(info, None, net, nm=nm)
             if info.medium != wifi.PATH.WIFI_LAN:
                 if self.helper is None:
                     raise wifi.WifiUnavailable("joining the phone's Wi-Fi Direct link isn't available here")
@@ -533,9 +605,7 @@ class QuickShareService:
             await self.helper.close()
 
 
-def firewall_status():
-    """sharing-check.py's firewall() ({"kind", "allowed", "blocks"}), or
-    nothing known."""
+def _sharing_check():
     import importlib.util
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                         "sharing-check.py")
@@ -543,6 +613,28 @@ def firewall_status():
         spec = importlib.util.spec_from_file_location("sharing_check", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.firewall()
+        return mod
     except (OSError, ImportError, AttributeError):
-        return {"kind": None, "allowed": None, "blocks": False}
+        return None
+
+
+def firewall_status():
+    """sharing-check.py's firewall() ({"kind", "allowed", "blocks",
+    "hotspot"}), or nothing known."""
+    mod = _sharing_check()
+    try:
+        return mod.firewall() if mod else {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
+    except (OSError, AttributeError):
+        return {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
+
+
+async def allow_hotspot():
+    """Settings → Sharing's firewall fix, run now if it runs without a
+    password (iRice's root helper, for an administrator at the computer):
+    the phone needs DHCP from the hotspot. The firewall afterwards."""
+    mod = _sharing_check()
+    if mod is None or not mod.helper_installed():
+        return firewall_status()
+    result = await asyncio.to_thread(mod.fix, "firewall")
+    debuglog.log("service", f"firewall fix for the hotspot: {result}")
+    return firewall_status()

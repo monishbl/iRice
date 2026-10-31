@@ -365,7 +365,11 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
         ext = bus.exported[bluez.ADV_EXTENDED][1](bluez.ADV)
         self.assertEqual(ext["ServiceData"][1][ble_format.COPRESENCE_UUID][1], adv)
         self.assertEqual(ext["Type"], ("s", "peripheral"))
+        # discoverable and often, like a phone's own (a Pixel's sheet missed a slow one)
+        self.assertEqual(ext["Discoverable"], ("b", True))
+        self.assertEqual((ext["MinInterval"], ext["MaxInterval"]), (("u", 100), ("u", 150)))
         legacy = bus.exported[bluez.ADV_LEGACY][1](bluez.ADV)
+        self.assertEqual(legacy["Discoverable"], ("b", True))
         header = legacy["ServiceData"][1][ble_format.COPRESENCE_UUID][1]
         self.assertTrue(ble_format.is_header(header) and header[0] & 0x10)  # says the extended one is out
         # slot 0 serves the full advertisement
@@ -433,6 +437,36 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
         bus.signal(dev, bluez.PROPS, "PropertiesChanged", (bluez.DEVICE, {"Connected": False}, []))
         with self.assertRaises(TransportClosed):
             await sessions[0].read_frame(1)
+
+    async def test_a_new_request_starts_afresh(self):
+        # (a phone that gave up on a link connects again; the old one is dead)
+        bus = FakeBus(dict(ADAPTER))
+        sessions, ended = [], []
+        ble = bluez.Bluetooth(bus, on_session=sessions.append)
+        ble.on_session_end = lambda: ended.append(True)
+        await ble.start()
+        await ble.advertise(ble_format.advertisement("AB12", endpoint.endpoint_info("D"), b"\0\0"))
+        await bus.exported[bluez.NOTIFY_PATH][2][(bluez.GATT_CHAR, "StartNotify")]((), ":1.9")
+        write = bus.exported[bluez.WRITE_PATH][2][(bluez.GATT_CHAR, "WriteValue")]
+        for dev in ("/org/bluez/hci0/dev_AA", "/org/bluez/hci0/dev_BB"):
+            await write((list(weave.connection_request(509)), {"device": dev, "mtu": 247}), ":1.9")
+        self.assertEqual(len(sessions), 2)
+        self.assertEqual(ended, [True])
+        self.assertEqual(ble.session[0], "/org/bluez/hci0/dev_BB")
+        with self.assertRaises(TransportClosed):
+            await sessions[0].read_frame(1)
+
+    async def test_stray_packets_outside_a_connection_are_left_alone(self):
+        # (seen on a real phone: one more control packet after the transfer moved to Wi-Fi)
+        bus = FakeBus(dict(ADAPTER))
+        sessions = []
+        ble = bluez.Bluetooth(bus, on_session=sessions.append)
+        await ble.start()
+        await ble.advertise(ble_format.advertisement("AB12", endpoint.endpoint_info("D"), b"\0\0"))
+        write = bus.exported[bluez.WRITE_PATH][2][(bluez.GATT_CHAR, "WriteValue")]
+        await write(([0xE2], {"device": "/org/bluez/hci0/dev_AA"}), ":1.9")
+        await write((list(weave.with_counter(weave.data_packet(True, True, b"x"), 3)), {"device": "/d"}), ":1.9")
+        self.assertEqual((sessions, ble.session), ([], None))
 
     async def gatt(self, bus):
         ble = bluez.Bluetooth(bus)
@@ -506,7 +540,7 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ble_format.parse_service_data(ble.slot_value)["endpoint_id"], svc.endpoint_id)
             await svc.close()
 
-    async def test_scan_is_filtered_and_finds_phones(self):
+    async def test_scan_is_le_only_and_finds_phones(self):
         bus = FakeBus(dict(ADAPTER))
         found, lost = [], []
         ble = bluez.Bluetooth(bus)
@@ -514,7 +548,9 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await ble.scan(lambda k, a: found.append((k, a)), lost.append))
         flt = next(c for c in bus.calls if c[2] == "SetDiscoveryFilter")[3][0]
         self.assertEqual(flt["Transport"], ("s", "le"))
-        self.assertEqual(flt["UUIDs"], ("as", [ble_format.COPRESENCE_UUID]))
+        # (no UUID filter: BlueZ would match it against service UUID lists, and
+        # phones carry 0xFEF3 only as service data — a filtered scan finds none)
+        self.assertNotIn("UUIDs", flt)
         info = bytes([0x02]) + bytes(16) + bytes([5]) + b"Pixel"
         adv = ble_format.advertisement("PH0N", info, b"\x01\x02", psm=128)
         dev = "/org/bluez/hci0/dev_C0"

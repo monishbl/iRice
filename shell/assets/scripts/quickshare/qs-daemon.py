@@ -2,7 +2,7 @@
 """iRice's Quick Share helper (services/QuickShare.qml), over stdin/stdout.
 
 Commands, one JSON object per line on stdin:
-  {"cmd": "config", "visible": bool, "name": str, "folder": str}
+  {"cmd": "config", "visible": bool, "name": str, "folder": str, "pause_wifi": bool}
   {"cmd": "discover", "on": bool}
   {"cmd": "send", "to": device id, "files": [paths]}
   {"cmd": "answer", "session": id, "accept": bool}
@@ -73,7 +73,7 @@ async def main():
             from nearby.gbus import BusUnavailable, GioBus
             try:
                 bus = GioBus(loop)
-                ble = Bluetooth(bus, scan_uuids=os.environ.get("IRICE_QS_BLE_SCAN") != "all")
+                ble = Bluetooth(bus, scan_uuids=os.environ.get("IRICE_QS_BLE_SCAN") == "uuids")
                 if not await ble.start():
                     debuglog.log("daemon", "no Bluetooth adapter (yet)")
             except BusUnavailable as e:
@@ -81,7 +81,9 @@ async def main():
                 ble = None
         except ImportError:
             pass
-    from nearby.wifi import WifiHelper
+    from nearby.wifi import NmWifi, WifiHelper
+    # (a run that ended mid-transfer may have left the Wi-Fi on its link)
+    await NmWifi.recover()
     service = QuickShareService(emit, discovery, ble=ble, helper=WifiHelper())
     service.emit_bluetooth()
 
@@ -103,7 +105,7 @@ async def main():
             kind = c.get("cmd")
             try:
                 if kind == "config":
-                    await service.configure(c.get("visible"), c.get("name"), c.get("folder"))
+                    await service.configure(c.get("visible"), c.get("name"), c.get("folder"), c.get("pause_wifi"))
                 elif kind == "discover":
                     await service.discover(bool(c.get("on")))
                 elif kind == "send":

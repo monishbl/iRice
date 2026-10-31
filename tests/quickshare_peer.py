@@ -161,6 +161,9 @@ class Peer:
 
     # ── Encrypted frames ─────────────────────────────────────────────────
     async def send(self, frame):
+        if getattr(self, "plain", False):  # (an upgraded channel without Nearby's encryption)
+            await self.write(frame.SerializeToString())
+            return
         self.sent += 1
         msg = d2d.DeviceToDeviceMessage(message=frame.SerializeToString(), sequence_number=self.sent).SerializeToString()
         iv = os.urandom(16)
@@ -177,6 +180,12 @@ class Peer:
     async def recv(self):
         """The next offline frame that isn't a keep-alive."""
         while True:
+            if getattr(self, "plain", False):
+                f = offline.OfflineFrame()
+                f.ParseFromString(await self.read())
+                if f.v1.type != V1.KEEP_ALIVE:
+                    return f
+                continue
             sm = securemessage.SecureMessage()
             sm.ParseFromString(await self.read())
             assert hmac.compare_digest(hmac.new(self.vmac, sm.header_and_body, hashlib.sha256).digest(), sm.signature)

@@ -81,12 +81,13 @@ def _read(p):
         return None
 
 
-def _opens(rules, port):
-    """Whether ufw's user.rules accept this TCP port: "--dport 53318", or a
+def _opens(rules, port, proto="tcp"):
+    """Whether ufw's user.rules accept this port: "--dport 53318", or a
     list or range ("--dports 53317:53319", as `ufw allow 53317:53319/tcp`
-    writes it)."""
+    writes it). TCP, or proto="udp"."""
+    other = "-p udp" if proto == "tcp" else "-p tcp"
     for line in rules.splitlines():
-        if "-j ACCEPT" not in line or "-p udp" in line:
+        if "-j ACCEPT" not in line or other in line:
             continue
         m = re.search(r"--dports?\s+(\S+)", line)
         for part in (m.group(1).split(",") if m else []):
@@ -116,7 +117,9 @@ def _accepts_all(rules):
 def firewall():
     """{"kind": "ufw" | "firewalld" | "nftables" | "iptables" | None,
     "allowed": True | False | None, "blocks": bool (on, and not known to let
-    sharing through), "runtime": bool (allowed only until the next restart)}."""
+    sharing through), "runtime": bool (allowed only until the next restart),
+    "hotspot": True | False | None (DHCP, 67/udp, gets through: phones joining
+    Quick Share's hotspot need an address from it)}."""
     kind = None
     conf = _read("/etc/ufw/ufw.conf")
     if conf is not None and re.search(r"^\s*ENABLED\s*=\s*yes", conf, re.M) and _active("ufw"):
@@ -128,8 +131,8 @@ def firewall():
     elif os.path.exists(_path("/usr/bin/iptables")) and _active("iptables"):
         kind = "iptables"
     if kind is None:
-        return {"kind": None, "allowed": None, "blocks": False, "runtime": False}
-    allowed, runtime = None, False
+        return {"kind": None, "allowed": None, "blocks": False, "runtime": False, "hotspot": True}
+    allowed, runtime, hotspot = None, False, None
     try:
         with open(MARKER) as f:
             # "kind", or "kind boot=<id>" for a fix that lasts until a restart
@@ -137,6 +140,8 @@ def firewall():
         boot = next((w[5:] for w in words[1:] if w.startswith("boot=")), None)
         if words[:1] == [kind] and (boot is None or boot == _boot()):
             allowed, runtime = True, boot is not None
+            if "dhcp" in words[1:]:
+                hotspot = True
     except OSError:
         pass
     if allowed is None and kind == "ufw":
@@ -157,7 +162,22 @@ def firewall():
         rules = _read("/etc/iptables/iptables.rules")
         if rules is not None and (_accepts_all(rules) or _opens(rules, 53318)):
             allowed = True
-    return {"kind": kind, "allowed": allowed, "blocks": allowed is not True, "runtime": runtime}
+    if hotspot is None and kind == "ufw":
+        rules = _read("/etc/ufw/user.rules")
+        if rules is not None:
+            hotspot = _opens(rules, 67, "udp")
+    elif hotspot is None and kind == "firewalld":
+        # (NetworkManager puts its hotspot in firewalld's nm-shared zone, which allows DHCP)
+        hotspot = True
+    elif hotspot is None and kind == "nftables":
+        drop = _read("/etc/nftables.d/irice.nft") or _read("/etc/nftables.d/irice.conf")
+        if drop is not None:
+            hotspot = " 67 " in drop.replace("}", " ").replace(",", " ")
+    elif hotspot is None and kind == "iptables":
+        rules = _read("/etc/iptables/iptables.rules")
+        if rules is not None:
+            hotspot = _accepts_all(rules) or _opens(rules, 67, "udp")
+    return {"kind": kind, "allowed": allowed, "blocks": allowed is not True, "runtime": runtime, "hotspot": hotspot}
 
 
 def remember(kind, out):
@@ -167,9 +187,10 @@ def remember(kind, out):
     if not kind:
         return ""
     os.makedirs(STATE, exist_ok=True)
-    runtime = "@@runtime" in (out or "").splitlines()
+    lines = (out or "").splitlines()
+    runtime = "@@runtime" in lines
     with open(MARKER, "w") as f:
-        f.write(kind + (f" boot={_boot()}" if runtime else "") + "\n")
+        f.write(kind + (f" boot={_boot()}" if runtime else "") + (" dhcp" if "@@dhcp" in lines else "") + "\n")
     return " ".join(l for l in (out or "").splitlines() if l.strip() and not l.startswith("@@"))[:300]
 
 

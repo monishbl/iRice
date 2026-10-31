@@ -200,11 +200,15 @@ def check_firewall(_):
     name = "Firewall lets sharing through"
     if f["kind"] is None:
         return result("firewall", name, "Network & sharing", "ok", "No firewall turned on")
-    if not f["blocks"]:
+    if not f["blocks"] and f.get("hotspot") is not False:
         return result("firewall", name, "Network & sharing", "ok", f"{f['kind']}: sharing's ports are open" +
                       (" until the next restart (the Fix button opens them again)" if f.get("runtime") else ""))
-    detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
-              " LocalSend and Quick Share (ports 53317-53319, mDNS)")
+    if not f["blocks"]:
+        detail = (f"{f['kind']} keeps phones from joining Quick Share's hotspot (DHCP, port 67): "
+                  "transfers without a shared Wi-Fi stay slow")
+    else:
+        detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
+                  " LocalSend and Quick Share (ports 53317-53319, mDNS, DHCP)")
     r = result("firewall", name, "Network & sharing", "warn", detail,
                "Allow them: Settings → Sharing, or the Fix button here")
     if r["fixRoot"] and f["kind"] in sharing.FIREWALL_SHOWN_BY:

@@ -133,6 +133,9 @@ Singleton {
                 // off | 10min | everyone, as on Android; files go to quickShareFolder
                 property string quickShare: "off"
                 property string quickShareFolder: "" // empty = ~/Downloads
+                // With no shared network, this computer's Wi-Fi pauses for a fast
+                // link (a hotspot of its own, or the phone's group); off: Bluetooth
+                property bool quickShareHotspot: true
             }
 
             property JsonObject sounds: JsonObject {

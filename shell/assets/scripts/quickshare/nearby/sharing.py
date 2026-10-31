@@ -152,6 +152,7 @@ class Receive(Session):
         self.ask = ask
         self.progress = progress or (lambda done, total: None)
         self.max_total = max_total
+        self.total = 0  # bytes of files on offer, once introduced
         self.on_accepted = None  # called once we've said yes (the service upgrades a Bluetooth link then)
 
     async def run(self):
@@ -175,6 +176,7 @@ class Receive(Session):
             await self._respond(RESP.REJECT)
             raise Declined("too many items")
         total = sum(f.size for f in files)
+        self.total = total  # (the service weighs a faster link by it)
         free = shutil.disk_usage(self._existing(self.folder)).free
         if total > free - 64 * 1024 * 1024 or (self.max_total and total > self.max_total):
             await self._respond(RESP.NOT_ENOUGH_SPACE)

@@ -194,10 +194,11 @@ def helper_possible(net):
         (os.path.exists(HELPER) or os.access(ROOT_HELPER, os.X_OK))
 
 
-def mediums_we_join(helper_ok):
-    """For our ConnectionRequest: where we can follow a phone."""
+def mediums_we_join(helper_ok, nm_ok=False):
+    """For our ConnectionRequest: where we can follow a phone (its group or
+    hotspot through the root helper, or NetworkManager)."""
     out = [CR.WIFI_LAN]
-    if helper_ok:
+    if helper_ok or nm_ok:
         out += [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT]
     return out
 
@@ -297,6 +298,236 @@ class WifiHelper:
             pass
 
 
+# ── Through NetworkManager: no root, no password ─────────────────────────
+NM_PROFILE = "irice-quickshare"
+NM_MARKER = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "irice-quickshare-wifi.json")
+NM_HOTSPOT_IP = "10.42.0.1"  # NetworkManager's "shared" network
+NM_MIN_BYTES = 256 * 1024  # smaller shares stay on Bluetooth (no pause for a photo thumbnail or a link)
+NM_JOIN_WAIT = 25
+NM_RESTORE_TRIES, NM_RESTORE_PAUSE = 4, 1.5
+
+
+def parse_iw_phy(text):
+    """`iw phy` → {MHz: "ok" | "no-ir" | "radar" | "disabled"} (qs-wifi-helper.py's)."""
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("* ") or "MHz" not in line:
+            continue
+        try:
+            freq = int(float(line.split()[1]))
+        except (IndexError, ValueError):
+            continue
+        out[freq] = ("disabled" if "disabled" in line else "radar" if "radar detection" in line
+                     else "no-ir" if "no IR" in line or "passive scanning" in line else "ok")
+    return out
+
+
+def nm_hotspot_band(chans):
+    """("a" | "bg", channel) for a hotspot of our own, alone on the radio: a
+    5 GHz channel a computer may start transmitting on (not "no IR", not
+    radar), else 2.4 GHz (Intel chips mark all of 5 GHz "no IR")."""
+    for f, ch in ((5180, 36), (5200, 40), (5220, 44), (5240, 48), (5745, 149), (5765, 153), (5785, 157), (5805, 161)):
+        if chans.get(f) == "ok":
+            return "a", ch
+    for f, ch in ((2437, 6), (2412, 1), (2462, 11)):
+        if chans.get(f, "ok") == "ok":
+            return "bg", ch
+    return "bg", 6
+
+
+def parse_nm_permissions(text):
+    """`nmcli -t -f PERMISSION,VALUE general permissions` → {name: value}."""
+    out = {}
+    for line in text.splitlines():
+        name, _, value = line.partition(":")
+        out[name.removeprefix("org.freedesktop.NetworkManager.")] = value.strip()
+    return out
+
+
+async def _nmcli(*args, timeout=40):
+    """(returncode, stdout, stderr) of nmcli; 127 without it."""
+    if not shutil.which("nmcli"):
+        return 127, "", "no nmcli"
+    try:
+        p = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
+                                                 stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(p.communicate(), timeout)
+        return p.returncode, out.decode(errors="replace"), err.decode(errors="replace")
+    except asyncio.TimeoutError:
+        return 124, "", "nmcli took too long"
+    except OSError as e:
+        return 126, "", str(e)
+
+
+class NmWifi:
+    """A Wi-Fi link through NetworkManager, using this computer's own Wi-Fi
+    for the transfer: hosting a hotspot (receiving) or joining the phone's
+    group (sending). No root and no password (NetworkManager lets the person
+    at the computer share and switch Wi-Fi), and NetworkManager's own
+    connection, so it doesn't end it the way it ends a Wi-Fi Direct group it
+    didn't start. The price: the Wi-Fi's usual connection (and the internet
+    over it) pauses during the transfer, then comes back. For computers whose
+    chip can't run a second network next to the first (Intel: no hotspot on
+    5 GHz, a group next to a connection ended by NetworkManager), which is
+    where a shared network or Bluetooth were the only ways before.
+
+    A marker (NM_MARKER) names the connection to bring back, so a helper that
+    ended mid-transfer is cleaned up by the next one (recover())."""
+
+    def __init__(self):
+        self.station = None
+        self.previous = None  # UUID of the connection to bring back
+        self.active = False
+
+    @staticmethod
+    async def usable(net):
+        """Whether NetworkManager runs the Wi-Fi and lets us switch it."""
+        sta = net.get("station")
+        if not sta or not net.get("nm") or not shutil.which("nmcli"):
+            return False
+        code, out, _ = await _nmcli("-t", "-f", "PERMISSION,VALUE", "general", "permissions", timeout=5)
+        perms = parse_nm_permissions(out) if code == 0 else {}
+        return perms.get("network-control") == "yes" and perms.get("wifi.share.protected") == "yes" and \
+            perms.get("settings.modify.own") == "yes"
+
+    @staticmethod
+    async def can_host(net):
+        if not await NmWifi.usable(net):
+            return False
+        code, out, _ = await _nmcli("-g", "WIFI-PROPERTIES.AP", "device", "show", net["station"], timeout=5)
+        return code == 0 and out.strip() == "yes"
+
+    async def _remember(self, sta):
+        code, out, _ = await _nmcli("-t", "-f", "UUID,DEVICE", "connection", "show", "--active", timeout=5)
+        prev = None
+        for line in out.splitlines():
+            uuid, _, dev = line.partition(":")
+            if dev == sta:
+                prev = uuid
+        self.station, self.previous = sta, prev
+        try:
+            fd = os.open(NM_MARKER + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump({"station": sta, "previous": prev}, f)
+            os.replace(NM_MARKER + ".tmp", NM_MARKER)
+        except OSError:
+            pass
+
+    def _profile_args(self, sta, ssid, passphrase, extra):
+        user = os.environ.get("USER") or ""
+        return (["connection", "add", "type", "wifi", "ifname", sta, "con-name", NM_PROFILE, "autoconnect", "no",
+                 "save", "no", "ssid", ssid] + extra +
+                ["ipv6.method", "disabled", "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", passphrase,
+                 "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp", "wifi-sec.group", "ccmp"] +
+                (["connection.permissions", f"user:{user}"] if user else []))
+
+    async def host(self, net):
+        """A hotspot of our own: {"ssid", "passphrase", "freq", "ip", "iface"}."""
+        sta = net["station"]
+        band, channel = nm_hotspot_band(parse_iw_phy(await _run("iw", "phy")))
+        ssid = "DIRECT-iR-" + new_token(4)
+        passphrase = new_token(12)
+        await _nmcli("connection", "delete", NM_PROFILE, timeout=10)
+        await self._remember(sta)
+        code, _, err = await _nmcli(*self._profile_args(sta, ssid, passphrase, [
+            "802-11-wireless.mode", "ap", "802-11-wireless.band", band, "802-11-wireless.channel", str(channel),
+            "ipv4.method", "shared"]), timeout=10)
+        if code != 0:
+            await self.restore()
+            raise WifiUnavailable(f"NetworkManager wouldn't make a hotspot ({err.strip() or code})")
+        self.active = True
+        _log(f"hotspot via NetworkManager on {sta}, band {band} channel {channel} (was {self.previous})")
+        code, _, err = await _nmcli("-w", "30", "connection", "up", NM_PROFILE, timeout=40)
+        if code != 0:
+            await self.restore()
+            raise WifiUnavailable(f"the hotspot didn't start ({err.strip() or code})")
+        freq = parse_iw_link_or_info(await _run("iw", "dev", sta, "info")) or 0
+        return {"ssid": ssid, "passphrase": passphrase, "freq": freq, "ip": NM_HOTSPOT_IP, "iface": sta}
+
+    async def join(self, net, ssid, passphrase):
+        """Joins a phone's group or hotspot: {"ip", "gateway", "iface"}."""
+        sta = net["station"]
+        await _nmcli("connection", "delete", NM_PROFILE, timeout=10)
+        await self._remember(sta)
+        code, _, err = await _nmcli(*self._profile_args(sta, ssid, passphrase, ["ipv4.method", "auto",
+                                                                                "ipv4.never-default", "yes"]), timeout=10)
+        if code != 0:
+            await self.restore()
+            raise WifiUnavailable(f"NetworkManager wouldn't join the phone's Wi-Fi ({err.strip() or code})")
+        self.active = True
+        _log(f"joining the phone's Wi-Fi via NetworkManager on {sta} (was {self.previous})")
+        code, _, err = await _nmcli("-w", str(NM_JOIN_WAIT), "connection", "up", NM_PROFILE, timeout=NM_JOIN_WAIT + 10)
+        if code != 0:
+            await self.restore()
+            raise WifiUnavailable(f"couldn't join the phone's Wi-Fi ({err.strip() or code})")
+        addrs = [a for n, a in parse_ip_addr(await _run("ip", "-j", "-4", "addr", "show", sta)) if n == sta]
+        if not addrs:
+            await self.restore()
+            raise WifiUnavailable("the phone's Wi-Fi gave this computer no address")
+        code, out, _ = await _nmcli("-g", "IP4.GATEWAY,DHCP4.OPTION", "device", "show", sta, timeout=5)
+        gateway = next((w for w in out.replace("|", " ").split() if w.count(".") == 3 and w[0].isdigit()), "")
+        return {"ip": str(addrs[0].ip), "gateway": gateway, "iface": sta}
+
+    async def restore(self):
+        """Back to the connection the Wi-Fi had (or none)."""
+        if not (self.active or self.station):
+            return
+        self.active = False
+        await _nmcli("connection", "delete", NM_PROFILE, timeout=15)
+        if self.previous:
+            # (right after the link goes, the device can still be busy: a few tries)
+            for attempt in range(NM_RESTORE_TRIES):
+                code, _, err = await _nmcli("-w", "20", "connection", "up", "uuid", self.previous, timeout=30)
+                _log(f"Wi-Fi back on {self.previous}: {'ok' if code == 0 else err.strip() or code}")
+                if code == 0:
+                    break
+                await asyncio.sleep(NM_RESTORE_PAUSE)
+            else:
+                # (whatever NetworkManager would connect to by itself)
+                await _nmcli("device", "connect", self.station, timeout=30)
+        self.station = self.previous = None
+        try:
+            os.remove(NM_MARKER)
+        except OSError:
+            pass
+
+    @staticmethod
+    async def recover():
+        """A marker from a run that ended mid-transfer: put the Wi-Fi back."""
+        try:
+            with open(NM_MARKER) as f:
+                m = json.load(f)
+        except (OSError, ValueError):
+            return False
+        w = NmWifi()
+        w.station, w.previous, w.active = m.get("station"), m.get("previous"), True
+        _log(f"putting the Wi-Fi back after an earlier run ({w.previous})")
+        await w.restore()
+        return True
+
+
+def new_token(n):
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(n))
+
+
+def parse_iw_link_or_info(text):
+    """The frequency from `iw dev X link` ("freq: 2437") or `iw dev X info`
+    ("channel 6 (2437 MHz)")."""
+    f = parse_iw_link(text)
+    if f:
+        return f
+    for line in text.splitlines():
+        if "MHz" in line and "channel" in line:
+            try:
+                return int(float(line.split("(")[1].split()[0]))
+            except (IndexError, ValueError):
+                pass
+    return None
+
+
 # ── Paths: hosting (we offer) ────────────────────────────────────────────
 class Listener:
     """The TCP port a phone connects to after our offer."""
@@ -358,12 +589,14 @@ def hotspot_path(group, port):
     return info
 
 
-def host_paths(conn, net, helper_ok, reachable=True):
+def host_paths(conn, net, helper_ok, reachable=True, nm_host=False):
     """The paths to offer a phone that connected over Bluetooth, best first:
     ("lan", our address) when it's on our network (its ConnectionRequest
     says where; `reachable`: it answers there — a phone can name an address
-    on a network that only looks like ours), then ("direct", None) and
-    ("hotspot", None) when the helper can make them. Empty: stay."""
+    on a network that only looks like ours), then ("direct", None) when the
+    helper can make a group that lasts, then ("nm", None), a hotspot through
+    NetworkManager (`nm_host`: NmWifi.can_host; no password, the Wi-Fi's own
+    connection pauses), then the helper's ("hotspot", None). Empty: stay."""
     theirs = list(conn.remote_mediums)
     meta = conn.remote_metadata
     out = []
@@ -371,11 +604,12 @@ def host_paths(conn, net, helper_ok, reachable=True):
         mine = same_network(net.get("addresses", []), meta.ip_address)
         if mine:
             out.append(("lan", mine))
-    if helper_ok:
-        if CR.WIFI_DIRECT in theirs and direct_possible(net):
-            out.append(("direct", None))
-        if CR.WIFI_HOTSPOT in theirs and hotspot_possible(net):
-            out.append(("hotspot", None))
+    if helper_ok and CR.WIFI_DIRECT in theirs and direct_possible(net):
+        out.append(("direct", None))
+    if nm_host and CR.WIFI_HOTSPOT in theirs:
+        out.append(("nm", None))
+    if helper_ok and CR.WIFI_HOTSPOT in theirs and hotspot_possible(net):
+        out.append(("hotspot", None))
     return out
 
 
@@ -412,8 +646,9 @@ def group_frequency(net, meta):
 
 
 # ── Paths: joining (the phone offers) ────────────────────────────────────
-async def join(info, helper, net, helper_ok=True, timeout=15):
-    """A connected StreamTransport for a path the phone offers."""
+async def join(info, helper, net, helper_ok=True, timeout=15, nm=None):
+    """A connected StreamTransport for a path the phone offers (`nm`: an
+    NmWifi that joins it instead of the helper)."""
     if info.medium == PATH.WIFI_LAN:
         s = info.wifi_lan_socket
         try:
@@ -427,6 +662,17 @@ async def join(info, helper, net, helper_ok=True, timeout=15):
         c = info.wifi_direct_credentials if info.medium == PATH.WIFI_DIRECT else info.wifi_hotspot_credentials
         if not c.ssid or not c.password:
             raise WifiUnavailable("the phone offered a Wi-Fi Direct link without a password (not supported)")
+        medium = "wifi_direct" if info.medium == PATH.WIFI_DIRECT else "wifi_hotspot"
+        if nm is not None:
+            link = await nm.join(net, c.ssid, c.password)
+            gateway = c.gateway if c.gateway and c.gateway != "0.0.0.0" else link.get("gateway")
+            try:
+                if not gateway:
+                    raise WifiUnavailable("the phone's Wi-Fi gave no address to connect to")
+                return await StreamTransport.connect(gateway, c.port, timeout=timeout, medium=medium)
+            except BaseException:
+                await nm.restore()  # (the transfer stays on Bluetooth: the Wi-Fi comes back now)
+                raise
         if net.get("iwd"):
             raise WifiUnavailable(no_direct_reason(net))
         if helper is None or not helper_ok:
@@ -436,7 +682,6 @@ async def join(info, helper, net, helper_ok=True, timeout=15):
         gateway = c.gateway if c.gateway and c.gateway != "0.0.0.0" else link.get("gateway")
         if not gateway:
             raise WifiUnavailable("the phone's Wi-Fi gave no address to connect to")
-        medium = "wifi_direct" if info.medium == PATH.WIFI_DIRECT else "wifi_hotspot"
         return await StreamTransport.connect(gateway, c.port, timeout=timeout, medium=medium,
                                              local_address=link.get("ip"))
     raise WifiUnavailable("the phone offered a link iRice doesn't support")

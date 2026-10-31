@@ -653,6 +653,9 @@ services() {
         svc_on NetworkManager || return 1
     fi
     svc_on bluetooth
+    # mDNS: how phones and computers on the same network find this one by name
+    # (Quick Share, LocalSend, printers); the package alone doesn't start it
+    svc_on avahi-daemon
     # (not next to another power manager: they'd fight over the same settings)
     local pm
     if pm=$(power_manager); then
@@ -831,6 +834,7 @@ verify() {
     [[ -d /usr/share/icons/Papirus || -d /usr/share/icons/MacTahoe ]] && ok "Icon theme ($( [[ -d /usr/share/icons/MacTahoe ]] && echo MacTahoe || echo Papirus))" || meh "No full icon theme; some app icons may be missing" "sudo pacman -S papirus-icon-theme"
     systemctl is-enabled --quiet NetworkManager 2>/dev/null && ok "NetworkManager on" || meh "NetworkManager isn't on (Wi-Fi menus won't work)" "sudo systemctl enable --now NetworkManager"
     systemctl is-enabled --quiet bluetooth 2>/dev/null && ok "Bluetooth service on" || meh "Bluetooth service isn't on" "sudo systemctl enable --now bluetooth"
+    systemctl is-enabled --quiet avahi-daemon 2>/dev/null && ok "mDNS (avahi) on" || meh "avahi-daemon isn't on (phones on the same Wi-Fi won't find this computer)" "sudo systemctl enable --now avahi-daemon"
     # Login
     if systemctl is-enabled --quiet greetd 2>/dev/null; then
         if [[ -f /usr/share/irice/shell/greeter.qml && -f /usr/share/irice/greeter.lua ]] && id greeter >/dev/null 2>&1 && grep -q irice /etc/greetd/config.toml 2>/dev/null; then

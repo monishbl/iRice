@@ -106,12 +106,15 @@ Column {
             }
         }
         Row {
-            visible: page.system.firewall?.blocks ?? false
+            readonly property bool hotspotOnly: !(page.system.firewall?.blocks ?? false) && page.system.firewall?.hotspot === false
+            visible: (page.system.firewall?.blocks ?? false) || hotspotOnly
             label: "Firewall"
-            labelColor: Theme.color.danger
-            detail: (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
+            labelColor: hotspotOnly ? Theme.color.label : Theme.color.danger
+            detail: (hotspotOnly ? "Your firewall (" + page.system.firewall.kind + ") keeps phones from joining Quick Share's hotspot, so transfers without a shared Wi-Fi stay slow. Allowing DHCP (port 67) fixes it"
+                : (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
                 : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
-                + ": phones can't connect to this computer. Allowing ports 53317–53319 and mDNS fixes it" + (page.system.passwordless ? "." : "; it asks for your password.")
+                + ": phones can't connect to this computer. Allowing ports 53317–53319, mDNS and DHCP fixes it")
+                + (page.system.passwordless ? "." : "; it asks for your password.")
                 + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
             SettingsButton {
                 text: "Allow through firewall"
@@ -138,7 +141,7 @@ Column {
         width: parent.width
         title: "Android Quick Share"
         footer: (!QuickShare.available ? "Quick Share needs Python 3 with python-cryptography and python-protobuf."
-            : "Phones on the same Wi-Fi find this computer in their Quick Share sheet as “" + QuickShare.name + "”, and you're asked before anything is saved, with the PIN the phone shows. To send, use Share on a file and pick the phone (its Quick Share open, visible to Everyone). If they don't find each other, allow port 53318 and mDNS (port 5353) in your firewall.")
+            : "Phones nearby find this computer in their Quick Share sheet as “" + QuickShare.name + "” (over the same Wi-Fi, or Bluetooth), and you're asked before anything is saved, with the PIN the phone shows. To send, use Share on a file and pick the phone (its Quick Share open, visible to Everyone).")
             + (QuickShare.error ? " " + QuickShare.error : "")
         Row {
             label: "Visible to phones"
@@ -154,7 +157,7 @@ Column {
         Row {
             label: "Bluetooth"
             detail: !QuickShare.bluetoothAvailable ? "No Bluetooth adapter: phones find this computer only on the same network"
-                : QuickShare.bluetoothOn ? "On: phones without Wi-Fi find this computer too, then transfers move to Wi-Fi when both are on the same network"
+                : QuickShare.bluetoothOn ? "On: phones find this computer without a shared Wi-Fi too, and it finds them"
                 : "Turn on Bluetooth so phones can find this computer without Wi-Fi"
             SettingsButton {
                 visible: QuickShare.bluetoothAvailable && !QuickShare.bluetoothOn
@@ -173,6 +176,16 @@ Column {
                 busy: page.fixing === "pairing"
                 enabled: page.fixing === ""
                 onClicked: page.fixSystem("pairing")
+            }
+        }
+        Row {
+            label: "Fast transfers without a shared Wi-Fi"
+            detail: Config.options.sharing.quickShareHotspot !== false
+                ? "This computer's Wi-Fi pauses during the transfer (the internet too), then comes back"
+                : "Off: they go over Bluetooth, which is slow; the Wi-Fi isn't touched"
+            Switch {
+                checked: Config.options.sharing.quickShareHotspot !== false
+                onToggled: Config.options.sharing.quickShareHotspot = !checked
             }
         }
         Row {

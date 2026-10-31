@@ -124,6 +124,7 @@ class Connection:
         self._resumed.set()
         self._old = None  # the prior channel, while draining
         self._peer_last_write = False
+        self._plain = set()  # channels without Nearby's encryption (see _seal)
         self._upgrading = False
         self._upgrade_failed = asyncio.Event()
         self._upgraded = asyncio.Event()
@@ -222,14 +223,24 @@ class Connection:
                 if self._closed:
                     raise TransportClosed("connection closed")
                 self._log_frame("→", frame, self.transport)
-                await self.transport.write_frame(self._channel.encrypt(frame.SerializeToString()))
+                await self.transport.write_frame(self._seal(self.transport, frame.SerializeToString()))
                 return
 
     async def _send_on(self, transport, frame):
-        """An encrypted frame on a given channel (the old one, mid-upgrade)."""
+        """A frame on a given channel (the old one, mid-upgrade)."""
         async with self._send_lock:
             self._log_frame("→", frame, transport)
-            await transport.write_frame(self._channel.encrypt(frame.SerializeToString()))
+            await transport.write_frame(self._seal(transport, frame.SerializeToString()))
+
+    # A channel a bandwidth upgrade opened without Nearby's own encryption
+    # (the link has its own: Wi-Fi Direct and hotspots are WPA2) carries
+    # plain OfflineFrames; every other channel, encrypted ones (bwu_manager.cc
+    # RunUpgradeProtocol's enable_encryption)
+    def _seal(self, transport, data):
+        return data if transport in self._plain else self._channel.encrypt(data)
+
+    def _open(self, transport, raw):
+        return raw if transport in self._plain else self._channel.decrypt(raw)
 
     def _log_frame(self, arrow, frame, transport):
         if debuglog.enabled():
@@ -244,7 +255,7 @@ class Connection:
             except asyncio.TimeoutError as e:
                 raise ProtocolError("the other device stopped responding") from e
             try:
-                frame = _parse_offline(self._channel.decrypt(raw))
+                frame = _parse_offline(self._open(self._reader, raw))
             except ChannelError as e:
                 raise ProtocolError(f"a message didn't check out ({e})") from e
             if debuglog.enabled():
@@ -322,7 +333,15 @@ class Connection:
                 new = await self.on_upgrade_offer(info)
             if new is None:
                 raise ProtocolError("no way to use that path")
-            intro = BWU.ClientIntroduction(endpoint_id=self.endpoint_id, supports_disabling_encryption=False)
+            # The offer says whether the new channel goes without Nearby's
+            # encryption; Quick Share (point to point) always goes along
+            # (bwu_manager.cc: enable_encryption = !supports_disabling ||
+            # !local_supports_disabling), and says so in the introduction.
+            # A phone that offers it doesn't encrypt there, whatever we say
+            plain = bool(info.supports_disabling_encryption)
+            intro = BWU.ClientIntroduction(endpoint_id=self.endpoint_id, supports_disabling_encryption=plain)
+            if plain:
+                self._plain.add(new)
             await new.write_frame(bwu_frame(BWU.CLIENT_INTRODUCTION, client_introduction=intro).SerializeToString())
             self._log(f"→ CLIENT_INTRODUCTION [{new.medium}]")
             if info.supports_client_introduction_ack:
@@ -380,6 +399,8 @@ class Connection:
             if who != self.remote_id:
                 raise ProtocolError("someone else connected to the upgrade path")
             self._log(f"← CLIENT_INTRODUCTION [{new.medium}]")
+            if intro.v1.bandwidth_upgrade_negotiation.client_introduction.supports_disabling_encryption:
+                self._plain.add(new)  # (it asked for it: Nearby's hosts go along)
             await new.write_frame(bwu_frame(BWU.CLIENT_INTRODUCTION_ACK,
                                             client_introduction_ack=BWU.ClientIntroductionAck()).SerializeToString())
             self._log(f"→ CLIENT_INTRODUCTION_ACK [{new.medium}]")

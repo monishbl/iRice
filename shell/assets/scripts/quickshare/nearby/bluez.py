@@ -10,9 +10,13 @@ Receiving (a phone sends to this computer without a shared network):
               (weave.py). One phone at a time: BlueZ sends a characteristic's
               notifications to everyone subscribed.
 Sending (to a phone on its Receive screen, visible to everyone):
-  scan        discovery filtered to LE and the 0xFEF3 service, only while the
-              share sheet looks (an open-ended unfiltered scan stops BlueZ
-              reconnecting LE mice and keyboards on some chips)
+  scan        LE discovery, only while the share sheet looks (an open-ended
+              scan stops BlueZ reconnecting LE mice and keyboards on some
+              chips). Not filtered by the 0xFEF3 UUID: BlueZ matches that
+              against a device's list of service UUIDs, and phones carry
+              0xFEF3 only as service data, so a filtered scan finds none
+              (tested with a real phone on its Receive screen: nothing in
+              15 s filtered, at once without)
   connect     an L2CAP channel when the phone advertises a PSM (faster to set
               up), else GATT: Device1.Connect, then the weave pair
 Bluetooth off: nothing is powered on from here; the shell offers a button
@@ -31,7 +35,7 @@ import sys
 from . import ble_format, debuglog
 from .gbus import DBusError
 from .transport import TransportClosed
-from .weave import MIN_PACKET, BleSocketTransport, L2capMessages, WeaveError, WeaveSocket
+from .weave import CONTROL, MIN_PACKET, REQUEST, BleSocketTransport, L2capMessages, WeaveError, WeaveSocket
 
 BLUEZ = "org.bluez"
 OM = "org.freedesktop.DBus.ObjectManager"
@@ -58,6 +62,7 @@ ADV_WAKE = ROOT + "/adv2"
 # this fixed data (as RQuickShare sends it: core_lib/src/hdl/blea.rs)
 WAKE_UUID = "0000fe2c-0000-1000-8000-00805f9b34fb"
 WAKE_DATA = bytes([252, 18, 142, 1, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 191, 45, 91, 160, 225, 216, 117, 36, 202, 0])
+CONTROL_REQUEST = CONTROL | REQUEST  # (a weave connection request: control, counter 0)
 CONNECT_TIMEOUT = 20
 SEEN_FOR = 30  # a phone not heard from for this long is gone
 SUBSCRIBE_WAIT = 5  # a phone that wrote but never subscribed to our packets
@@ -67,7 +72,12 @@ CHAR_IFACE = {"methods": {"ReadValue": ("a{sv}", "ay"), "WriteValue": ("aya{sv}"
               "properties": {"UUID": "s", "Service": "o", "Flags": "as", "Value": "ay", "Notifying": "b"}}
 SERVICE_IFACE = {"properties": {"UUID": "s", "Primary": "b", "Characteristics": "ao"}}
 ADV_IFACE = {"methods": {"Release": ("", "")},
-             "properties": {"Type": "s", "ServiceData": "a{sv}", "SecondaryChannel": "s", "Includes": "as"}}
+             "properties": {"Type": "s", "ServiceData": "a{sv}", "SecondaryChannel": "s", "Includes": "as",
+                            "Discoverable": "b", "MinInterval": "u", "MaxInterval": "u"}}
+# Advertising every 100-150 ms (BlueZ's default is about a second or more):
+# a phone's share sheet scans in bursts and lists what it heard, so a slow
+# advertiser shows up late or not at all (as quickshare-direct found with a Pixel)
+ADV_MIN_INTERVAL, ADV_MAX_INTERVAL = 100, 150
 OM_IFACE = {"methods": {"GetManagedObjects": ("", "a{oa{sa{sv}}}")},
             "signals": {"InterfacesAdded": "oa{sa{sv}}", "InterfacesRemoved": "oas"}}
 
@@ -77,10 +87,13 @@ def _bytes(v):
 
 
 def advertisement_properties(service_data, extended):
-    """LEAdvertisement1's properties for one of the two advertisements."""
+    """LEAdvertisement1's properties for one of the two advertisements:
+    connectable, with the "general discoverable" flag (as phones advertise
+    themselves for Quick Share), often (ADV_MIN/MAX_INTERVAL)."""
     props = {"Type": ("s", "peripheral"),
              "ServiceData": ("a{sv}", {ble_format.COPRESENCE_UUID: ("ay", service_data)}),
-             "Includes": ("as", [])}
+             "Includes": ("as", []), "Discoverable": ("b", True),
+             "MinInterval": ("u", ADV_MIN_INTERVAL), "MaxInterval": ("u", ADV_MAX_INTERVAL)}
     if extended:
         # (asks BlueZ for an extended advertisement even when it would fit)
         props["SecondaryChannel"] = ("s", "1M")
@@ -110,7 +123,7 @@ def gatt_objects(slot_value):
     }
 
 
-def discovery_filter(uuids=True):
+def discovery_filter(uuids=False):
     f = {"Transport": ("s", "le"), "DuplicateData": ("b", True)}
     if uuids:
         f["UUIDs"] = ("as", [ble_format.COPRESENCE_UUID])
@@ -157,10 +170,11 @@ class Bluetooth:
     """One adapter's Quick Share roles. on_session(transport) gets each
     phone that connects to us; on_state(state) hears about power changes."""
 
-    def __init__(self, bus, on_session=None, on_state=None, scan_uuids=True):
+    def __init__(self, bus, on_session=None, on_state=None, scan_uuids=False):
         self.bus = bus
         self.on_session = on_session or (lambda transport: None)
         self.on_state = on_state or (lambda state: None)
+        self.on_session_end = lambda: None  # (the service advertises afresh then)
         self.scan_uuids = scan_uuids
         self.adapter = None
         self.address = ""
@@ -424,10 +438,19 @@ class Bluetooth:
             await self.bus.unexport(path)
 
     async def _packet(self, packet, options):
-        """A weave packet a phone wrote to …0101."""
+        """A weave packet a phone wrote to …0101. A connection request always
+        starts afresh (a phone that gave up on a link tries again with a new
+        one, and the old one is dead); anything else outside a connection is
+        left alone (a last packet after the transfer moved to Wi-Fi)."""
         device = options.get("device", "")
         if self.session and self.session[1].closed:
             self.session = None
+        request = bool(packet) and packet[0] == CONTROL_REQUEST
+        if request and self.session is not None:
+            self._end_session("the phone started a new connection")
+        if self.session is None and not request:
+            self.log_packet("ignored outside a connection", packet)
+            return
         if self.session is None:
             mtu = int(options.get("mtu", 0) or 0)
             sock = WeaveSocket(_NotifyLink(self), is_client=False,
@@ -457,6 +480,7 @@ class Bluetooth:
             self.pending = []
             self._log(f"session ended: {why}")
             sock._end(why)
+            self.on_session_end()
 
     # ── Finding phones (sending) ─────────────────────────────────────────
     async def scan(self, found, lost):

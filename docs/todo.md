@@ -139,19 +139,27 @@ missing otherwise. Ask about the design before building; one at a time.
   Bluetooth is on, at a low duty cycle).
 
 
-## Quick Share: paused (30 Oct)
+## Quick Share: tested with a real phone (31 Oct)
 
-Works with a real phone (OnePlus 15): found over Bluetooth, no pairing prompt
-(BlueZ's experimental RAP and LE Audio control plugins left out), fast when
-the phone is on the same Wi-Fi, slow (Bluetooth) otherwise.
-- **Off the same Wi-Fi it stays slow.** NetworkManager removes every Wi-Fi
-  Direct group it didn't start (nm-supplicant-interface.c: GroupStarted →
-  an interface object nobody keeps → RemoveInterface), and Intel Wi-Fi can't
-  run a hotspot on 5 GHz. Ideas: let the phone host and join it as a P2P
-  client through NetworkManager's own Wi-Fi P2P (a wifi-p2p connection);
-  or a hotspot when the laptop's Wi-Fi is on 2.4 GHz.
-- Check the second same-Wi-Fi transfer: once the phone's address didn't
-  answer although it was on the network (Wi-Fi asleep? ping blocked?).
+Realme GT Neo 3T (Android 14, Play services 26.34) over USB adb, both ways:
+- Phone → computer, same Wi-Fi: works (found over mDNS or Bluetooth; a
+  3 MB photo moves to the network and arrives in 0.3 s, byte-identical).
+- Phone → computer, no shared network: the phone finds it over Bluetooth
+  and joins iRice's NetworkManager hotspot within a second; it then needs
+  DHCP, which ufw blocked here (the firewall fix now opens 67/udp, and
+  Quick Share runs it once the update installs the new root helper).
+  **Check after updating:** send a photo from a phone that's on another
+  network (or mobile data); it should move to "Wi-Fi hotspot" in the island.
+  Without DHCP it fails safely: the Wi-Fi comes back at once and the rest
+  goes over Bluetooth (~6 KB/s).
+- Computer → phone, same Wi-Fi: works (byte-identical).
+- Computer → phone, no shared network: works (NetworkManager joins the
+  phone's Wi-Fi Direct group in ~3 s, no password; byte-identical).
+- With the phone's Wi-Fi radio off, Android's Quick Share won't send at all
+  ("Turn on Wi-Fi"): Google's rule, phone to phone too.
+- Still open: Bluetooth-only transfers are ~6 KB/s (acknowledged GATT writes,
+  as Nearby's own clients do; a faster LE connection interval needs root).
+  Receiving over L2CAP (advertising a PSM) could help.
 
 ## Done, tested in the sandbox: needs your check on real hardware
 

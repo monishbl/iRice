@@ -76,9 +76,12 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; the
     ufw allow 53317:53319/tcp comment "iRice sharing"
     ufw allow 53317/udp comment "iRice sharing (LocalSend)"
     ufw allow 5353/udp comment "mDNS"
+    ufw allow 67/udp comment "iRice Quick Share hotspot (DHCP)"
+    echo "@@dhcp"
 elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns
+    firewall-cmd --permanent --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp
     firewall-cmd --reload
+    echo "@@dhcp"
 elif command -v nft >/dev/null 2>&1 && systemctl is-active --quiet nftables; then
     # An accept in a table of our own wouldn't do: nftables runs every base
     # chain on the input hook, and a drop in any of them is final. So the
@@ -100,37 +103,40 @@ elif command -v nft >/dev/null 2>&1 && systemctl is-active --quiet nftables; the
         for h in $(nft -a list chain "$f" "$t" "$c" | sed -n 's/.*comment "irice sharing".*# handle \([0-9]*\).*/\1/p'); do
             nft delete rule "$f" "$t" "$c" handle "$h"
         done
-        nft insert rule "$f" "$t" "$c" udp dport '{ 53317, 5353 }' accept comment '"irice sharing"'
+        nft insert rule "$f" "$t" "$c" udp dport '{ 53317, 5353, 67 }' accept comment '"irice sharing"'
         nft insert rule "$f" "$t" "$c" tcp dport 53317-53319 accept comment '"irice sharing"'
     done
     if [ -n "$persist" ]; then
         {
             echo "# iRice: lets LocalSend and Quick Share through (Settings → Sharing)"
             echo "$chains" | while read -r f t c; do
-                echo "insert rule $f $t $c udp dport { 53317, 5353 } accept comment \"irice sharing\""
+                echo "insert rule $f $t $c udp dport { 53317, 5353, 67 } accept comment \"irice sharing\""
                 echo "insert rule $f $t $c tcp dport 53317-53319 accept comment \"irice sharing\""
             done
         } >/etc/.irice-nftables.tmp
         mv /etc/.irice-nftables.tmp "$persist"
         # (a file nftables can't load at boot would leave no firewall at all)
         if nft -c -f /etc/nftables.conf >/dev/null 2>&1; then
+            echo "@@dhcp"
             echo "Saved in $persist: it stays after a restart"
             exit 0
         fi
         rm -f "$persist"
     fi
+    echo "@@dhcp"
     echo "@@runtime"
     echo "Allowed until the next restart: /etc/nftables.conf doesn't include /etc/nftables.d. To keep it, add the same rules to /etc/nftables.conf"
 elif command -v iptables >/dev/null 2>&1 && systemctl is-active --quiet iptables; then
     for ipt in iptables ip6tables; do
         [ "$ipt" = iptables ] || systemctl is-active --quiet ip6tables || continue
         command -v "$ipt" >/dev/null 2>&1 || continue
-        for r in "-p udp --dport 5353" "-p udp --dport 53317" "-p tcp --dport 53317:53319"; do
+        for r in "-p udp --dport 5353" "-p udp --dport 53317" "-p udp --dport 67" "-p tcp --dport 53317:53319"; do
             # ($r splits into its words)
             $ipt -C INPUT $r -m comment --comment "irice sharing" -j ACCEPT 2>/dev/null ||
                 $ipt -I INPUT $r -m comment --comment "irice sharing" -j ACCEPT
         done
     done
+    echo "@@dhcp"
     echo "@@runtime"
     echo "Allowed until the next restart. To keep it: sudo iptables-save -f /etc/iptables/iptables.rules (and ip6tables-save -f /etc/iptables/ip6tables.rules)"
 else
@@ -138,15 +144,15 @@ else
     exit 1
 fi
 '''
-FIREWALL_SHOWN = ("ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 5353/udp "
-                  "(or firewalld: --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns)")
+FIREWALL_SHOWN = ("ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 5353/udp; ufw allow 67/udp "
+                  "(or firewalld: --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp)")
 # What the page shows before the fix runs, by firewall (sharing-check.py's kind)
 FIREWALL_SHOWN_BY = {
-    "ufw": "ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 5353/udp",
-    "firewalld": "firewall-cmd --permanent --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns; firewall-cmd --reload",
-    "nftables": ("nft insert rule <each input chain> tcp dport 53317-53319 accept, and udp dport { 53317, 5353 } accept "
+    "ufw": "ufw allow 53317:53319/tcp; ufw allow 53317/udp; ufw allow 5353/udp; ufw allow 67/udp",
+    "firewalld": "firewall-cmd --permanent --add-port=53317-53319/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp; firewall-cmd --reload",
+    "nftables": ("nft insert rule <each input chain> tcp dport 53317-53319 accept, and udp dport { 53317, 5353, 67 } accept "
                  "(kept in /etc/nftables.d when nftables.conf includes it, else until the next restart)"),
-    "iptables": "iptables -I INPUT -p tcp --dport 53317:53319 -j ACCEPT, and udp 53317 and 5353 (until the next restart)",
+    "iptables": "iptables -I INPUT -p tcp --dport 53317:53319 -j ACCEPT, and udp 53317, 5353 and 67 (until the next restart)",
 }
 
 # BlueZ plugins that make phones ask to pair for Quick Share (sharing-check.py)
