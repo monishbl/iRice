@@ -2,6 +2,13 @@
 
 ## Works with your other devices · 2026-10-31
 
+- **Works on any Arch-based system**, not only the one it was built on:
+  - Features from the AUR (fingerprint drivers, face unlock) set up an AUR helper when there's none: yay or paru from your distribution's repositories (CachyOS, EndeavourOS, Garuda), pamac on Manjaro, or yay built from the AUR on plain Arch.
+  - The phone's webcam builds its virtual camera for whichever kernel you run (linux, linux-lts, linux-zen…, with its headers) when the kernel doesn't include it.
+  - Face unlock finds infrared cameras that don't say "IR" in their name (they're the ones that only see in greyscale), and says how to switch on an IR light that stays off (linux-enable-ir-emitter).
+  - Fingerprint works with LightDM and LXDM login screens too (GDM already asks for a finger by itself), and a reader without a Linux driver is named as such instead of not shown.
+  - Pages say what's missing on your system and offer to install it or turn it on: network discovery (avahi) for casting, AirPlay and phone pairing; a keyring for iCloud; GNOME Online Accounts and iRice's sign-in helper for Microsoft 365 (built from the page); qrencode for Wi-Fi codes; wtype for dictation. AirPlay says when the sound isn't going through PipeWire, and Miracast when NetworkManager isn't running.
+  - Dictation records with PulseAudio's or ALSA's recorder when PipeWire's isn't there.
 - **AirPlay speakers.** HomePods, Apple TVs and AirPlay speakers on your network can play this computer's sound: turn on **AirPlay speakers** in the new **Settings → Sound** page (it installs PipeWire's AirPlay support the first time, one password). They then appear as outputs there and in Control Center. Sound reaches them about 2 seconds late, which is fine for music but not for videos or calls. Some AirPlay 2-only speakers, and speakers with a password, may not accept it.
 - **Settings → Sound**: the output and input you use, their volumes, AirPlay, and a way to the sound effects.
 - **Face unlock for the lock screen**, on computers with an infrared camera (Windows Hello cameras). In Settings → Lock Screen → **Face**: install Howdy (howdy-next, from the AUR), set up the camera, and add your face; then look at the screen to unlock it, while your password and fingerprint keep working too. It's for the lock screen only (password prompts and sudo still ask for your password or finger), and it's less secure than a password: the page says so. Plain webcams aren't offered, since a photo can fool them.

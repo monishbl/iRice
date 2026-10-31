@@ -474,6 +474,7 @@ Column {
         title: "Wireless displays"
         footer: !Mirroring.available ? "Show this screen on a TV: Miracast TVs and sticks, Windows' Miracast over the network, and Chromecasts. Needs GNOME Network Displays."
             : Mirroring.error !== "" ? Mirroring.error
+            : Needs.checked && !Needs.networkManager ? "Miracast TVs need NetworkManager (for Wi-Fi Direct), which isn't running here. Chromecasts and Miracast over the network still work."
             : !Mirroring.p2p ? "This computer's Wi-Fi can't do Wi-Fi Direct, which Miracast TVs need. Chromecasts and network Miracast still work."
             : "Turn on the TV's screen mirroring (Miracast, Screen Mirroring or Cast). Control Center's Screen Mirroring tile does the same."
         property bool lookingHere: false

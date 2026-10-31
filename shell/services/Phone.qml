@@ -110,15 +110,19 @@ Singleton {
     }
     Process {
         id: camCheck
-        command: ["sh", "-c", "test -e /dev/video42 && echo ready; modinfo v4l2loopback >/dev/null 2>&1 && echo module; :"]
+        // (the running kernel's package: its headers build v4l2loopback-dkms)
+        command: ["sh", "-c", "test -e /dev/video42 && echo ready; modinfo v4l2loopback >/dev/null 2>&1 && echo module; k=$(cat \"/usr/lib/modules/$(uname -r)/pkgbase\" 2>/dev/null || pacman -Qqo \"/usr/lib/modules/$(uname -r)/vmlinux\" 2>/dev/null) && echo \"kernel:$k\"; :"]
         stdout: StdioCollector {
             onStreamFinished: {
                 root.camReady = text.includes("ready");
                 root.camModule = text.includes("module");
+                const k = text.match(/^kernel:(\S+)$/m);
+                root.kernelPackage = k ? k[1] : "";
             }
         }
     }
     property bool camModule: false
+    property string kernelPackage: "" // linux, linux-lts, linux-zen, linux-cachyos…
     Component.onCompleted: checkCam()
     function setWebcam(on) {
         if (!on) {
@@ -217,8 +221,12 @@ Singleton {
             pkgs.push("scrcpy");
         if (!Tools.has("qrencode"))
             pkgs.push("qrencode"); // (pairing by QR code)
-        if (withCamera && !camModule)
+        if (withCamera && !camModule) {
+            // (not in this kernel: built for it, with its headers)
             pkgs.push("v4l2loopback-dkms");
+            if (kernelPackage !== "")
+                pkgs.push(kernelPackage + "-headers");
+        }
         if (pkgs.length === 0)
             return;
         installAsked = true;

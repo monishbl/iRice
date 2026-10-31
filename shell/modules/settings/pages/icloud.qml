@@ -45,6 +45,19 @@ Column {
             }
         }
 
+        // A keyring keeps the password (the Secret Service)
+        Row {
+            visible: page.icloud.length === 0 && Needs.checked && (!Needs.secretTool || !Needs.keyring)
+            label: "A keyring is needed first"
+            detail: "Your app-specific password is kept in a keyring, never in a file. Install GNOME Keyring (KDE's KWallet works too, with its Secret Service on). It asks for your password once."
+            SettingsButton {
+                text: Needs.installing ? "Installing…" : "Install"
+                icon: "download-simple"
+                busy: Needs.installing
+                enabled: !Updates.running
+                onClicked: Needs.install(["gnome-keyring", "libsecret"])
+            }
+        }
         // Signing in
         Row {
             visible: page.icloud.length === 0

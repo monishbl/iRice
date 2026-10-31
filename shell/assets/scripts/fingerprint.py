@@ -36,7 +36,11 @@ FINGERS = ["right-index-finger", "left-index-finger", "right-thumb", "left-thumb
            "left-middle-finger", "right-ring-finger", "left-ring-finger", "right-little-finger", "left-little-finger"]
 MARK = "# iRice fingerprint"
 # Where a finger may be accepted (irice-root.py fingerprint): the PAM file of each
-PAM_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm"]}
+PAM_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm", "lightdm", "lxdm"]}
+# Makers of fingerprint readers (USB): one of theirs that libfprint doesn't
+# know is a reader without a Linux driver yet, said so instead of hidden
+VENDORS = {"27c6": "Goodix", "06cb": "Synaptics", "138a": "Validity", "10a5": "FPC", "1c7a": "Egis",
+           "2808": "FocalTech", "147e": "UPEK", "08ff": "AuthenTec"}
 ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
 
 
@@ -74,6 +78,10 @@ def find_reader(ids=None, known=None):
     for i in sorted(ids):
         if i in known:
             return {"id": i, "name": "Fingerprint reader"}
+    for i in sorted(ids):
+        maker = VENDORS.get(i.split(":")[0])
+        if maker:
+            return {"id": i, "name": maker + " fingerprint reader", "unsupported": True}
     return None
 
 
@@ -83,7 +91,7 @@ def installed(pkg):
 
 def needs(reader):
     """(repo packages, AUR packages) still to install for this reader."""
-    if reader is None:
+    if reader is None or reader.get("unsupported"):
         return [], []
     aur = [p for p in DRIVERS.get(reader["id"], ("", []))[1] if not installed(p)]
     repo = [] if installed("fprintd") else ["fprintd"]
@@ -157,7 +165,7 @@ def status():
     fprintd = installed("fprintd") or bool(shutil.which("fprintd-list"))
     device, fingers = enrolled() if fprintd else (False, [])
     return {"reader": reader, "fprintd": fprintd, "device": device, "packages": repo, "aur": aur,
-            "enrolled": fingers, "pam": pam_state()}
+            "enrolled": fingers, "pam": pam_state(), "gdm": os.path.exists(path("/usr/lib/pam.d/gdm-fingerprint")) or os.path.exists(path("/etc/pam.d/gdm-fingerprint"))}
 
 
 def emit(obj):

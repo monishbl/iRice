@@ -42,9 +42,18 @@ class Camera(unittest.TestCase):
         self.link("by-path", "pci-0000:00:14.0-usb-0:6:1.2-video-index0", "video2")
         self.assertEqual(fc.ir_camera(), {"path": "/dev/v4l/by-path/pci-0000:00:14.0-usb-0:6:1.2-video-index0", "name": "Integrated IR Webcam"})
 
+    def test_ir_camera_without_ir_in_its_name(self):
+        # (many name it like the colour camera: it only gives greyscale)
+        self.node("video0", "Integrated Camera", "Integrated Camera")
+        self.node("video2", "Integrated Camera", "Integrated Camera")
+        fmts = lambda dev: [fc.GREY] if dev.endswith("video2") else [0x47504A4D, 0x56595559]
+        cam = fc.ir_camera(fmts)
+        self.assertEqual(cam["path"], "/dev/video2")
+        self.assertIn("infrared", cam["name"])
+
     def test_plain_webcam_is_not_offered(self):
         self.node("video0", "HD Webcam", "HD Webcam")
-        self.assertIsNone(fc.ir_camera())
+        self.assertIsNone(fc.ir_camera(lambda dev: [0x56595559]))
 
     def test_howdy_config(self):
         (self.root / "etc/howdy").mkdir(parents=True)

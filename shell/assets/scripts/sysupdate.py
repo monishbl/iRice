@@ -64,6 +64,7 @@ import signal
 import socket
 import struct
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -297,6 +298,52 @@ def aur_helper():
     return ""
 
 
+def repo_has(package):
+    """In the distribution's own repositories (CachyOS, EndeavourOS, Garuda
+    and chaotic-aur carry yay and paru; Arch itself doesn't)."""
+    try:
+        return subprocess.run(["pacman", "-Si", "--", package], capture_output=True, timeout=20).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def aur_setup():
+    """How the AUR step is done on this system: (helper, repo packages the
+    root step installs first, whether yay is built first). yay or paru when
+    there; pamac on Manjaro; else yay or paru from the repositories; else
+    yay-bin built from the AUR with makepkg (base-devel and git first)."""
+    h = aur_helper()
+    if h:
+        return h, [], False
+    if shutil.which("pamac"):
+        return "pamac", [], False
+    for cand in ("yay", "paru"):
+        if repo_has(cand):
+            return cand, [cand], False
+    return "yay", [p for p in ("base-devel", "git") if not installed(p)], True
+
+
+def bootstrap_yay(env):
+    """yay-bin from the AUR, built as you (makepkg), installed through the
+    root part (irice-sudo pacman -U). Returns 0 when yay is there."""
+    work = tempfile.mkdtemp(prefix="irice-yay-")
+    try:
+        out("==> Getting yay (an AUR helper) first")
+        code = stream(["git", "clone", "--depth", "1", "https://aur.archlinux.org/yay-bin.git", os.path.join(work, "yay-bin")], aur=True, env=env)
+        if code != 0:
+            return code
+        code = stream(["sh", "-c", 'cd "$1" && makepkg --noconfirm', "sh", os.path.join(work, "yay-bin")], aur=True, env=env)
+        if code != 0:
+            return code
+        built = sorted(f for f in os.listdir(os.path.join(work, "yay-bin"))
+                       if f.endswith((".pkg.tar.zst", ".pkg.tar.xz")) and "-debug-" not in f)
+        if not built:
+            return 1
+        return stream([SHIM, "pacman", "-U", "--noconfirm", os.path.join(work, "yay-bin", built[0])], aur=True, env=env)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 # ── The fake run (sandbox / testing) ────────────────────────────────────
 FAKE = [
     (0.6, ":: Synchronizing package databases..."),
@@ -503,6 +550,11 @@ NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
 
 def aur_command(helper, plan):
+    if helper == "pamac":
+        # (Manjaro: pamac builds AUR packages itself and asks for the password its own way)
+        if plan.get("aur_install"):
+            return ["pamac", "build", "--no-confirm"] + plan["aur_install"]
+        return ["pamac", "upgrade", "--aur", "--no-confirm"]
     if plan.get("aur_install"):
         cmd = [helper, "-S", "--needed", "--noconfirm", "--sudo", SHIM]
         cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
@@ -523,10 +575,18 @@ def real_run(plan):
     if not shutil.which("pkexec"):
         return finish("error", "Can't ask for your password", "pkexec isn't installed (it comes with the polkit package).")
     env = dict(os.environ, LANG="C", LC_ALL="C")
-    helper = aur_helper() if "aur" in plan["steps"] else ""
-    if not helper and plan.get("aur_install"):
-        return finish("error", "Needs an AUR helper", "These come from the AUR (" + ", ".join(plan["aur_install"]) +
-                      "), which needs yay or paru. Install one (sudo pacman -S yay, or from the AUR), then try again.")
+    helper, bootstrap = "", False
+    if "aur" in plan["steps"]:
+        if plan.get("aur_install"):
+            helper, extra, bootstrap = aur_setup()
+            # (yay or paru from the repositories, or what building yay needs, first)
+            plan["install"] = plan["install"] + [x for x in extra if x not in plan["install"]]
+            if extra and "packages" not in plan["steps"]:
+                plan["steps"] = [x for x in plan["steps"] if x != "aur"] + ["packages", "aur"]
+        else:
+            helper = aur_helper()
+            if not helper and shutil.which("pamac"):
+                helper = "pamac"
     if not helper and all(x == "aur" for x in plan["steps"]):
         return finish("done", "Updated")  # (nothing for root to do)
     if cancel_asked:
@@ -561,6 +621,10 @@ def real_run(plan):
             parse("@@step aur")
             broker = Broker(chan)
             try:
+                code = bootstrap_yay(broker.env(env)) if bootstrap else 0
+                if code != 0:
+                    return finish("error", "Couldn't set up the AUR",
+                                  "Building yay (an AUR helper) didn't work. Updates from your distribution are installed. " + tail(3))
                 code = stream(aur_command(helper, plan), aur=True, env=broker.env(env))
             finally:
                 broker.close()

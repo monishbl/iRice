@@ -96,7 +96,7 @@ Singleton {
             } else if (code !== 126) { // (126: the password prompt was cancelled)
                 const said = (jobErr.text + "\n" + jobOut.text).trim().split("\n").filter(l => l.trim() !== "").pop() ?? "";
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : job === "add" ? "No face was found. Look at the camera in good light, then try again." + (said ? " (" + said.replace(/^irice-root: /, "") + ")" : "")
+                    : job === "add" ? "No face was found. Look at the camera, then try again. If the camera's infrared light stays off, it needs linux-enable-ir-emitter (AUR) set up once in a terminal: sudo linux-enable-ir-emitter configure." + (said ? " (" + said.replace(/^irice-root: /, "") + ")" : "")
                     : said.replace(/^irice-root: /, "") || "That didn't work. Update iRice, then try again.";
             }
             root.refresh();

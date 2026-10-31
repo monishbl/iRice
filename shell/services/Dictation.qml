@@ -94,7 +94,11 @@ Singleton {
         }
         error = "";
         wav = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice/dictation-" + Date.now() + ".wav";
-        recorder.command = ["sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" && exec pw-record --rate 16000 --channels 1 --format s16 \"$1\"", "sh", wav];
+        // (PipeWire's recorder, else PulseAudio's, else ALSA's: each stops cleanly on SIGINT)
+        recorder.command = ["sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" || exit 1; "
+            + "if command -v pw-record >/dev/null; then exec pw-record --rate 16000 --channels 1 --format s16 \"$1\"; "
+            + "elif command -v parecord >/dev/null; then exec parecord --rate=16000 --channels=1 --format=s16le --file-format=wav \"$1\"; "
+            + "else exec arecord -q -f S16_LE -r 16000 -c 1 -t wav \"$1\"; fi", "sh", wav];
         recorder.running = true;
         startedAt = Date.now();
         stage = "listening";
@@ -224,11 +228,11 @@ Singleton {
     property bool installAsked: false
     property string installError: ""
     function install() {
-        if (Updates.running || hasBinary)
+        if (Updates.running || (hasBinary && Tools.has("wtype")))
             return;
         installAsked = true;
         installError = "";
-        Updates.update(["--install", "whisper-cpp"]);
+        Updates.update(["--install", ["whisper-cpp"].concat(Tools.has("wtype") ? [] : ["wtype"]).join(",")]);
     }
     Connections {
         target: Updates
@@ -237,6 +241,7 @@ Singleton {
                 return;
             root.installAsked = false;
             root.installError = j.state === "done" ? "" : (j.error || j.text || "The install didn't finish.");
+            Tools.recheck();
             root.refresh();
         }
     }

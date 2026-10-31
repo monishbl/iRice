@@ -42,9 +42,19 @@ DetailPage {
         }
     }
 
+    // Network discovery off (avahi): nothing can be found
+    ListRow {
+        visible: Needs.checked && !Needs.avahi
+        icon: "wifi-high"
+        title: Needs.installing || Health.fixing === "avahi" ? "Turning on…" : "Turn on network discovery"
+        status: "TVs are found with avahi, which isn't running"
+        busy: Needs.installing || Health.fixing === "avahi"
+        onClicked: Needs.turnOnAvahi()
+    }
+
     // None found
     Text {
-        visible: Cast.devices.length === 0
+        visible: Cast.devices.length === 0 && (!Needs.checked || Needs.avahi)
         width: parent.width
         leftPadding: 6
         rightPadding: 6

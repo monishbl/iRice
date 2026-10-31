@@ -303,6 +303,41 @@ class AurInstall(Plan):
             self.plan(["--aur-install", "--root=/tmp"])
 
 
+class AurHelperChoice(unittest.TestCase):
+    """sysupdate.py aur_setup: whatever Arch-based system this is."""
+
+    def setUp(self):
+        self.su = load(SYSUPDATE, "sysupdate_choice")
+        self.which = self.su.shutil.which  # (the shared shutil module: put back after)
+
+    def choose(self, have=(), repo=(), installed=()):
+        su = self.su
+        su.shutil.which = lambda n: "/usr/bin/" + n if n in have else None
+        su.repo_has = lambda n: n in repo
+        su.installed = lambda n: n in installed
+        return su.aur_setup()
+
+    def tearDown(self):
+        self.su.shutil.which = self.which
+
+    def test_yay_or_paru_there(self):
+        self.assertEqual(self.choose(have=("paru",)), ("paru", [], False))
+
+    def test_manjaro_pamac(self):
+        self.assertEqual(self.choose(have=("pamac",), repo=("yay",)), ("pamac", [], False))
+
+    def test_from_the_repositories(self):
+        # (CachyOS, EndeavourOS, Garuda: yay or paru in their own repositories)
+        self.assertEqual(self.choose(repo=("paru",)), ("paru", ["paru"], False))
+
+    def test_plain_arch_builds_yay(self):
+        self.assertEqual(self.choose(installed=("git",)), ("yay", ["base-devel"], True))
+
+    def test_pamac_commands(self):
+        self.assertEqual(self.su.aur_command("pamac", {"aur_install": ["howdy-next"]}), ["pamac", "build", "--no-confirm", "howdy-next"])
+        self.assertEqual(self.su.aur_command("pamac", {"aur_install": [], "ignore": []})[:3], ["pamac", "upgrade", "--aur"])
+
+
 class FingerprintPam(unittest.TestCase):
     """irice-root.py fingerprint: one marked line, first among the rules."""
 

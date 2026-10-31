@@ -72,6 +72,16 @@ Column {
         title: "Without a cable"
         footer: "Android 11 or later, on the same Wi-Fi as this computer. Many phones turn wireless debugging off after a restart or a change of Wi-Fi: pair again then, or use the cable."
         Row {
+            visible: Needs.checked && !Needs.avahi
+            label: "Network discovery is off"
+            detail: "Pairing finds the phone with avahi, which isn't running. It asks for your password once."
+            SettingsButton {
+                text: Needs.installing || Health.fixing === "avahi" ? "Turning on…" : "Turn On"
+                busy: Needs.installing || Health.fixing === "avahi"
+                onClicked: Needs.turnOnAvahi()
+            }
+        }
+        Row {
             label: Phone.pairStage === "waiting" ? "Scan this code on your phone"
                 : Phone.pairStage === "pairing" ? "Pairing…"
                 : Phone.pairStage === "connecting" ? "Connecting…"
@@ -122,7 +132,7 @@ Column {
         Row {
             visible: !Phone.camReady
             label: "Phone camera"
-            detail: !Phone.camModule ? "Needs a virtual camera (v4l2loopback). Install it, then set it up. Each asks for your password once."
+            detail: !Phone.camModule ? "Needs a virtual camera (v4l2loopback" + (Phone.kernelPackage !== "" ? ", built for your " + Phone.kernelPackage + " kernel" : "") + "). Install it, then set it up. Each asks for your password once."
                 : "Set up a virtual camera for it. It asks for your password once."
             SettingsButton {
                 visible: !Phone.camModule

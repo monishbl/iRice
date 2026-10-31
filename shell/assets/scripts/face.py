@@ -36,24 +36,56 @@ def read(p, resolved=False):
         return ""
 
 
-def ir_camera():
-    """The infrared camera: a capture node whose name says IR (laptops'
-    Windows Hello cameras), by its stable path."""
+VIDIOC_ENUM_FMT = 0xC0405602  # _IOWR('V', 2, struct v4l2_fmtdesc), 64 bytes
+GREY = 0x59455247  # 'GREY': 8-bit greyscale, what infrared cameras give
+
+
+def formats(dev):
+    """The pixel formats a camera captures (VIDIOC_ENUM_FMT: nothing is
+    switched on). Empty when it can't be opened."""
+    import fcntl
+    import struct
+    out = []
+    try:
+        fd = os.open(dev, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return out
+    try:
+        for i in range(32):
+            buf = bytearray(struct.pack("II", i, 1) + bytes(56))  # index, V4L2_BUF_TYPE_VIDEO_CAPTURE
+            try:
+                fcntl.ioctl(fd, VIDIOC_ENUM_FMT, buf)
+            except OSError:
+                break
+            out.append(struct.unpack_from("I", buf, 44)[0])  # pixelformat, after flags and description[32]
+    finally:
+        os.close(fd)
+    return out
+
+
+def ir_camera(fmts=formats):
+    """The infrared camera (laptops' Windows Hello cameras), by its stable
+    path: a capture node whose name says IR, or one that only gives
+    greyscale (many don't say IR in their name)."""
     found = []
     for node in sorted(glob.glob(path("/sys/class/video4linux/video*"))):
         name = read(os.path.join(node, "name"), True).strip()
         iface = read(os.path.join(node, "device/interface"), True).strip()
         idx = read(os.path.join(node, "index"), True).strip()
         label = iface or name
-        if not re.search(r"\bIR\b|infrared", label, re.I) or idx not in ("", "0"):
-            continue
         dev = os.path.basename(node)
+        if idx not in ("", "0"):
+            continue
+        named = re.search(r"\bIR\b|infrared", label, re.I)
+        f = [] if named else fmts(path("/dev/" + dev))
+        if not named and not (f and all(x == GREY for x in f)):
+            continue
         stable = ""
         for link in sorted(glob.glob(path("/dev/v4l/by-path/*"))) + sorted(glob.glob(path("/dev/v4l/by-id/*"))):
             if os.path.basename(os.readlink(link)) == dev:
                 stable = "/dev/v4l/" + link.split("/dev/v4l/", 1)[1]
                 break
-        found.append({"path": stable or "/dev/" + dev, "name": label})
+        found.append({"path": stable or "/dev/" + dev, "name": label if named else label + " (infrared)"})
     return found[0] if found else None
 
 

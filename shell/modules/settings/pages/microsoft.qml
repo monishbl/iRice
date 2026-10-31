@@ -45,7 +45,26 @@ Column {
             }
         }
         Row {
-            visible: page.microsoft.length === 0
+            visible: page.microsoft.length === 0 && Needs.checked && (!Needs.goa || !Needs.goaMicrosoft)
+            label: !Needs.goa ? "GNOME Online Accounts is needed" : "GNOME Online Accounts is too old"
+            detail: "Microsoft sign-in goes through GNOME Online Accounts (3.50 or newer), so iRice never sees your password. It asks for your password once."
+            SettingsButton {
+                text: Needs.installing ? "Installing…" : !Needs.goa ? "Install" : "Update"
+                icon: "download-simple"
+                busy: Needs.installing
+                enabled: !Updates.running
+                onClicked: Needs.install(["gnome-online-accounts"])
+            }
+        }
+        Row {
+            visible: page.microsoft.length === 0 && Needs.checked && Needs.goa && Needs.goaMicrosoft && !Needs.goaSignin
+            label: Needs.building ? "Building iRice's sign-in helper…" : "iRice's sign-in helper isn't built yet"
+            detail: Needs.buildError !== "" ? Needs.buildError : "It's built on this computer, with iRice's other native helpers (a minute or two)."
+            labelColor: Needs.buildError !== "" ? Theme.color.danger : Theme.color.label
+            SettingsButton { text: Needs.building ? "Building…" : "Build It"; busy: Needs.building; onClicked: Needs.buildNative() }
+        }
+        Row {
+            visible: page.microsoft.length === 0 && (!Needs.checked || (Needs.goa && Needs.goaMicrosoft && Needs.goaSignin))
             label: "Microsoft 365 account"
             detail: "Outlook calendars and Microsoft To Do, kept in sync. Personal (Outlook.com) and work or school accounts."
             SettingsButton {

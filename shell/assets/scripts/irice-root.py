@@ -20,7 +20,8 @@ With the password:
   fingerprint on|off polkit|sudo|login
       a finger is (or isn't) accepted for password prompts (polkit), sudo, or
       the login screen (greetd, ly, SDDM): one marked line, `auth sufficient
-      pam_fprintd.so`, first in that PAM file (a vendor file in /usr/lib/pam.d
+      pam_fprintd.so`, first in that PAM file (greetd, ly, SDDM, LightDM or
+      LXDM for the login screen; a vendor file in /usr/lib/pam.d
       is copied to /etc/pam.d first). "sufficient": no finger in time, or no
       pam_fprintd, and the password is asked as before. iRice's own lock
       screen needs none of this (its PAM file is in the shell).
@@ -303,7 +304,8 @@ FP_MARK = "# iRice fingerprint"
 FP_LINES = {"polkit": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
             "sudo": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
             "login": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=15   " + FP_MARK}
-FP_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm"]}
+# (GDM isn't here: it asks for a finger by itself, gdm-fingerprint, once one is added)
+FP_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm", "lightdm", "lxdm"]}
 PAM_ETC, PAM_VENDOR = "/etc/pam.d", "/usr/lib/pam.d"
 PAM_FPRINTD = ("/usr/lib/security/pam_fprintd.so", "/lib/security/pam_fprintd.so")
 

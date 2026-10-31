@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.common
+import qs.modules.settings
 import qs.services
 
 // A Wi-Fi network as a QR code (services/WifiShare): another phone's camera
@@ -63,14 +64,27 @@ Column {
             color: Theme.color.secondary
             RotationAnimation on rotation { running: WifiShare.stage === "loading"; from: 0; to: 360; duration: 800; loops: Animation.Infinite }
         }
-        Text {
+        Column {
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
             visible: WifiShare.stage === "error"
+            spacing: 10
+        Text {
+            width: parent.width
             text: WifiShare.error
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
             color: Theme.color.danger
             font { family: Theme.font.family; pixelSize: Theme.font.small }
+        }
+        // (qrencode missing: install it from here)
+        SettingsButton {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: WifiShare.error.includes("qrencode")
+            text: Needs.installing ? "Installing…" : "Install qrencode"
+            busy: Needs.installing
+            enabled: !Updates.running
+            onClicked: Needs.install(["qrencode", "zbar"])
+        }
         }
     }
 

@@ -34,6 +34,17 @@ Column {
             }
         }
         Row {
+            visible: Dictation.hasBinary && Tools.ready && !Tools.has("wtype")
+            label: "Typing into apps needs wtype"
+            detail: "Without it, what you say goes on the clipboard to paste. It asks for your password once."
+            SettingsButton {
+                text: Dictation.installing ? "Installing…" : "Install"
+                busy: Dictation.installing
+                enabled: !Updates.running
+                onClicked: Dictation.install()
+            }
+        }
+        Row {
             visible: Dictation.hasBinary
             label: Dictation.ready ? "Ready" : "Download a speech model to start"
             detail: Dictation.ready ? "Super+H to dictate" : "Speech recognition is installed"

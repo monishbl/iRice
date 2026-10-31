@@ -115,6 +115,22 @@ Column {
         title: "AirPlay"
         footer: "HomePods, Apple TVs and AirPlay speakers on your network appear as outputs above. Some AirPlay 2-only speakers and ones with a password may not accept the sound."
         Row {
+            visible: Needs.checked && !Needs.pipewire
+            label: "AirPlay needs PipeWire"
+            detail: "Your sound isn't going through PipeWire (Arch's default sound server), which AirPlay speakers come in through."
+        }
+        Row {
+            visible: Needs.checked && Needs.pipewire && !Needs.avahi
+            label: "Network discovery is off"
+            detail: "AirPlay speakers are found with avahi, which isn't running. It asks for your password once."
+            SettingsButton {
+                text: Needs.installing || Health.fixing === "avahi" ? "Turning on…" : "Turn On"
+                busy: Needs.installing || Health.fixing === "avahi"
+                onClicked: Needs.turnOnAvahi()
+            }
+        }
+        Row {
+            visible: !Needs.checked || Needs.pipewire
             label: "AirPlay speakers"
             detail: !AirPlay.checked ? ""
                 : AirPlay.installError !== "" ? AirPlay.installError

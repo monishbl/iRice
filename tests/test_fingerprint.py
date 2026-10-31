@@ -54,6 +54,19 @@ class Reader(Root):
         self.assertEqual(fp.find_reader()["name"], "Broadcom ControlVault 3")
 
 
+class Unsupported(Root):
+    def test_maker_without_a_driver(self):
+        self.usb("1-1", "27c6", "55a4")  # (a Goodix reader libfprint doesn't list)
+        r = fp.find_reader()
+        self.assertEqual(r, {"id": "27c6:55a4", "name": "Goodix fingerprint reader", "unsupported": True})
+        self.assertEqual(fp.needs(r), ([], []))
+
+    def test_known_one_wins(self):
+        self.write(fp.HWDB, "usb:v27C6p55A4*\n")
+        self.usb("1-1", "27c6", "55a4")
+        self.assertNotIn("unsupported", fp.find_reader())
+
+
 class Needs(Root):
     cv3 = {"id": "0a5c:5843", "name": "Broadcom ControlVault 3"}
 
@@ -84,7 +97,7 @@ class Pam(Root):
     def test_marked_lines(self):
         self.write("/etc/pam.d/sudo", "auth sufficient pam_fprintd.so " + fp.MARK + "\nauth include system-auth\n")
         self.write("/etc/pam.d/polkit-1", "auth include system-auth\n")
-        self.write("/etc/pam.d/ly", "auth sufficient pam_fprintd.so " + fp.MARK + "\n")
+        self.write("/etc/pam.d/lightdm", "auth sufficient pam_fprintd.so " + fp.MARK + "\n")
         self.assertEqual(fp.pam_state(), {"polkit": False, "sudo": True, "login": True})
 
     def test_missing_files(self):
