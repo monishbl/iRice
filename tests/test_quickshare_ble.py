@@ -296,6 +296,76 @@ class L2cap(unittest.IsolatedAsyncioTestCase):
 
 
 # ── BlueZ through a fake bus ─────────────────────────────────────────────
+class FakeL2capServer:
+    """bluez.L2capServer without a socket: listens on PSM 0x80."""
+
+    def __init__(self, on_session, advertisement, log=None):
+        self.psm = 0
+
+    def start(self):
+        self.psm = 0x80
+        return self.psm
+
+    def stop(self):
+        self.psm = 0
+
+
+class L2capServing(unittest.IsolatedAsyncioTestCase):
+    """The phone's side of an L2CAP channel to us, over a local socket pair
+    (SEQPACKET, like the real channel: one message per SDU)."""
+
+    async def asyncSetUp(self):
+        import os
+        import socket
+        self.os = os
+        a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        a.setblocking(False)
+        b.setblocking(False)
+        self.phone = b
+        self.sessions = []
+        self.server = bluez.L2capServer(self.sessions.append, lambda: b"ADVERT", log=lambda *x: None)
+        self.task = asyncio.ensure_future(self.server._channel(a.detach()))
+
+    async def asyncTearDown(self):
+        self.task.cancel()
+        self.phone.close()
+
+    async def say(self, payload):
+        await asyncio.get_running_loop().sock_sendall(self.phone, struct.pack(">I", len(payload)) + payload)
+
+    async def hear(self):
+        data = await asyncio.wait_for(asyncio.get_running_loop().sock_recv(self.phone, 65536), 2)
+        (n,) = struct.unpack(">I", data[:4])
+        return data[4:4 + n]
+
+    async def test_data_connection_then_frames_with_acks(self):
+        await self.say(bytes([weave.L2CAP_REQUEST_DATA]))
+        self.assertEqual(await self.hear(), bytes([weave.L2CAP_READY]))
+        await asyncio.wait_for(self.task, 2)
+        transport = self.sessions[0]
+        self.assertEqual(transport.medium, "ble")
+        await self.say(weave.CONTROL_PREFIX + weave.control_frame(weave.INTRODUCTION)[3:])  # (skipped)
+        await self.say(weave.SERVICE_HASH + struct.pack(">I", 5) + b"hello")
+        self.assertEqual(await transport.read_frame(2), b"hello")
+        ack = weave.parse_control_frame((await self.hear())[3:])
+        self.assertEqual((ack["type"], ack["received_size"]), (weave.PACKET_ACKNOWLEDGEMENT, 5))
+        await transport.write_frame(b"back")
+        self.assertEqual(await self.hear(), weave.SERVICE_HASH + struct.pack(">I", 4) + b"back")
+
+    async def test_the_advertisement_on_request(self):
+        await self.say(bytes([weave.L2CAP_REQUEST_ADVERTISEMENT]) + b"\x00\x03" + weave.SERVICE_HASH)
+        self.assertEqual(await self.hear(), bytes([weave.L2CAP_ADVERTISEMENT]) + b"\x00\x06ADVERT")
+        await self.say(bytes([weave.L2CAP_REQUEST_DATA]))
+        self.assertEqual(await self.hear(), bytes([weave.L2CAP_READY]))
+        await asyncio.wait_for(self.task, 2)
+        self.assertEqual(len(self.sessions), 1)
+
+    async def test_anything_else_is_dropped(self):
+        await self.say(b"\x42")
+        await asyncio.wait_for(self.task, 2)
+        self.assertEqual(self.sessions, [])
+
+
 class FakeBus:
     """Records calls; answers like BlueZ would; exported objects are kept
     so the test can call into them as BlueZ does."""
@@ -353,6 +423,13 @@ ADAPTER = {"/org/bluez/hci0": {bluez.ADAPTER: {"Powered": True, "Address": "00:1
 
 
 class BlueZ(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self._l2cap = bluez.L2capServer
+        bluez.L2capServer = FakeL2capServer  # (no sockets on the real adapter)
+
+    def tearDown(self):
+        bluez.L2capServer = self._l2cap
+
     async def test_advertises_both_ways_and_serves_gatt(self):
         bus = FakeBus(dict(ADAPTER))
         ble = bluez.Bluetooth(bus)
@@ -536,8 +613,12 @@ class BlueZ(unittest.IsolatedAsyncioTestCase):
             svc.preferred_port = 0
             await svc.configure(visible=True)
             self.assertEqual([c[3][0] for c in bus.calls if c[2] == "RegisterAdvertisement"], expect)
-            # slot 0 keeps the full advertisement either way
-            self.assertEqual(ble_format.parse_service_data(ble.slot_value)["endpoint_id"], svc.endpoint_id)
+            # slot 0 keeps the full advertisement either way, with the L2CAP
+            # channel phones try first; the legacy header names it too
+            full = ble_format.parse_service_data(ble.slot_value)
+            self.assertEqual((full["endpoint_id"], full["psm"]), (svc.endpoint_id, 0x80))
+            header = bus.exported[bluez.ADV_LEGACY][1](bluez.ADV)["ServiceData"][1][ble_format.COPRESENCE_UUID][1]
+            self.assertEqual(ble_format.parse_header(header)["psm"], 0x80)
             await svc.close()
 
     async def test_scan_is_le_only_and_finds_phones(self):
@@ -839,6 +920,94 @@ class GroupStart(unittest.TestCase):
             helper.run = old
         self.assertEqual(ran, [("iw", "dev", "p2p-wlan0-0", "del")])
         self.assertEqual(helper.group_interfaces({"p2p-dev-wlan0", "p2p-grp-3", "qsc0"}), {"p2p-grp-3"})
+
+
+class Shield(unittest.TestCase):
+    """The D-Bus rule that keeps NetworkManager from ending our group."""
+
+    def test_the_rule_refuses_remove_interface_only(self):
+        conf = helper.dbus_shield_conf()
+        self.assertIn('<policy context="mandatory">', conf)
+        self.assertIn('send_member="RemoveInterface"', conf)
+        self.assertIn('send_destination="fi.w1.wpa_supplicant1"', conf)
+        self.assertEqual(conf.count("<deny"), 1)
+
+    def links(self, refused_after_reload=True):
+        import tempfile
+        self.dir = tempfile.TemporaryDirectory()
+        self.events = []
+        events = self.events
+        self.old = (helper.start_group, helper.run, helper.have, helper.DBUS_SHIELD)
+        helper.DBUS_SHIELD = str(Path(self.dir.name, "zzz-irice-quickshare.conf"))
+
+        def start(wpa, dev, freq, anywhere=True, **_):
+            events.append(("group", Path(helper.DBUS_SHIELD).exists()))
+            return ("/w/2", "/w/2/Groups/X")
+
+        class Wpa:
+            reloaded = 0
+
+            def get(self, path, iface, prop):
+                if path == helper.WPA_PATH:
+                    return "info"
+                return {"Ifname": "p2p-wlan0-1", "SSID": b"DIRECT-ab", "Passphrase": "pw", "Frequency": 2437}[prop]
+
+            def set(self, *args):
+                pass
+
+            def interface(self, name):
+                return "/w/1"
+
+            def call(self, path, iface, method, *args):
+                if method == "Disconnect":
+                    events.append(("disconnect", Path(helper.DBUS_SHIELD).exists()))
+
+            def reload_bus(self):
+                Wpa.reloaded += 1
+                events.append(("reload", Path(helper.DBUS_SHIELD).exists()))
+
+            def remove_refused(self):
+                return refused_after_reload and Path(helper.DBUS_SHIELD).exists()
+
+        helper.start_group, helper.run, helper.have = start, (lambda *cmd, check=True: ""), (lambda cmd: False)
+        links = helper.Links()
+        links.wpa = Wpa()
+        links.station = lambda: "wlan0"
+        links.station_freq = lambda sta: 5180
+        links.usable = lambda: {5180: "no-ir", 2437: "ok"}
+        links._netdevs = lambda: set()
+        links._nm_off = lambda sta: None
+        links._address = links._dhcp_server = lambda *a: None
+        links.nm_manages = lambda sta: True
+        return links
+
+    def tearDown(self):
+        if hasattr(self, "old"):
+            helper.start_group, helper.run, helper.have, helper.DBUS_SHIELD = self.old
+            self.dir.cleanup()
+
+    def test_up_before_the_group_down_after_it(self):
+        links = self.links()
+        links.host_p2p(0)
+        self.assertEqual(self.events[:2], [("reload", True), ("group", True)])  # (the rule first)
+        links.teardown()
+        self.assertEqual(self.events[2:], [("disconnect", True), ("reload", False)])  # (the group goes first)
+        self.assertFalse(Path(helper.DBUS_SHIELD).exists())
+
+    def test_a_rule_the_bus_doesnt_take_means_no_group(self):
+        links = self.links(refused_after_reload=False)
+        with self.assertRaisesRegex(helper.Refused, "NetworkManager would end"):
+            links.host_p2p(0)
+        links.teardown()
+        self.assertNotIn("group", [e[0] for e in self.events])
+        self.assertFalse(Path(helper.DBUS_SHIELD).exists())
+
+    def test_without_networkmanager_no_rule(self):
+        links = self.links()
+        links.nm_manages = lambda sta: False
+        links.host_p2p(0)
+        self.assertEqual(self.events, [("group", False)])
+        links.teardown()
 
 
 class WifiPaths(unittest.TestCase):

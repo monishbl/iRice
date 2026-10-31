@@ -35,7 +35,8 @@ import sys
 from . import ble_format, debuglog
 from .gbus import DBusError
 from .transport import TransportClosed
-from .weave import CONTROL, MIN_PACKET, REQUEST, BleSocketTransport, L2capMessages, WeaveError, WeaveSocket
+from .weave import (CONTROL, L2CAP_ADVERTISEMENT, L2CAP_ADVERTISEMENT_FINISHED, L2CAP_READY, L2CAP_REQUEST_ADVERTISEMENT,
+                    L2CAP_REQUEST_DATA, MIN_PACKET, REQUEST, BleSocketTransport, L2capMessages, WeaveError, WeaveSocket)
 
 BLUEZ = "org.bluez"
 OM = "org.freedesktop.DBus.ObjectManager"
@@ -66,6 +67,7 @@ CONTROL_REQUEST = CONTROL | REQUEST  # (a weave connection request: control, cou
 CONNECT_TIMEOUT = 20
 SEEN_FOR = 30  # a phone not heard from for this long is gone
 SUBSCRIBE_WAIT = 5  # a phone that wrote but never subscribed to our packets
+HANDSHAKE_WAIT = 5  # an L2CAP channel's first request
 
 CHAR_IFACE = {"methods": {"ReadValue": ("a{sv}", "ay"), "WriteValue": ("aya{sv}", ""),
                           "StartNotify": ("", ""), "StopNotify": ("", ""), "Confirm": ("", "")},
@@ -175,6 +177,7 @@ class Bluetooth:
         self.on_session = on_session or (lambda transport: None)
         self.on_state = on_state or (lambda state: None)
         self.on_session_end = lambda: None  # (the service advertises afresh then)
+        self.l2cap = None  # L2capServer, while visible
         self.scan_uuids = scan_uuids
         self.adapter = None
         self.address = ""
@@ -307,6 +310,15 @@ class Bluetooth:
         n = (caps or {}).get("MaxAdvLen")
         return int(n) if n else None
 
+    def l2cap_psm(self):
+        """The PSM phones can open an L2CAP channel on (listening from now
+        until unserve), or 0 without L2CAP (IRICE_QS_NO_L2CAP=1: GATT only)."""
+        if os.environ.get("IRICE_QS_NO_L2CAP") == "1":
+            return 0
+        if self.l2cap is None:
+            self.l2cap = L2capServer(lambda transport: self.on_session(transport), lambda: self.slot_value, log=self._log)
+        return self.l2cap.start()
+
     async def advertise(self, advertisement, extended=None):
         """Advertises (or re-advertises) this computer; GATT server included.
         advertisement: the full one (GATT slot 0); extended: what fits in
@@ -321,7 +333,8 @@ class Bluetooth:
         if extended is None:
             extended = advertisement
         ok_ext = bool(extended) and await self._register_adv(ADV_EXTENDED, advertisement_properties(extended, True))
-        header = ble_format.header([(ble_format.SERVICE_ID, advertisement)], extended=ok_ext)
+        psm = self.l2cap.psm if self.l2cap is not None else 0
+        header = ble_format.header([(ble_format.SERVICE_ID, advertisement)], extended=ok_ext, psm=psm)
         ok_legacy = await self._register_adv(ADV_LEGACY, advertisement_properties(header, False))
         self._log(f"advertising: extended {ok_ext}, legacy {ok_legacy}")
         return ok_ext or ok_legacy
@@ -427,6 +440,9 @@ class Bluetooth:
 
     async def unserve(self):
         await self.stop_advertising()
+        if self.l2cap is not None:
+            self.l2cap.stop()
+            self.l2cap = None
         self._end_session("no longer visible")
         if self.served:
             try:
@@ -675,6 +691,13 @@ class Bluetooth:
 AF_BLUETOOTH = 31
 BTPROTO_L2CAP = 0
 BDADDR_LE_PUBLIC, BDADDR_LE_RANDOM = 1, 2
+SOL_BLUETOOTH = 274
+BT_RCVMTU = 13
+BT_MODE, BT_MODE_LE_FLOWCTL = 15, 0x03
+# The most a phone may send before waiting (an SDU, and with it the
+# credits Linux hands out: imtu / mps + 1): many packets per connection
+# event instead of one write and its answer per two, as over GATT
+L2CAP_RCVMTU = 65535
 
 
 class _SockaddrL2(ctypes.Structure):
@@ -683,9 +706,10 @@ class _SockaddrL2(ctypes.Structure):
 
 
 def sockaddr_l2(address, address_type, psm):
-    """struct sockaddr_l2 for an LE address "AA:BB:…" (bdaddr is little-endian)."""
+    """struct sockaddr_l2 for an LE address "AA:BB:…" (bdaddr is little-endian);
+    psm 0 (bind only): any free one."""
     parts = [int(x, 16) for x in address.split(":")]
-    if len(parts) != 6 or not 0 < psm < 0x10000:
+    if len(parts) != 6 or not 0 <= psm < 0x10000:
         raise ValueError("bad Bluetooth address or PSM")
     sa = _SockaddrL2()
     sa.family = AF_BLUETOOTH
@@ -694,6 +718,149 @@ def sockaddr_l2(address, address_type, psm):
     sa.cid = 0
     sa.bdaddr_type = BDADDR_LE_PUBLIC if address_type == "public" else BDADDR_LE_RANDOM
     return sa
+
+
+def _le_socket(libc):
+    """A non-blocking LE L2CAP socket, bound as LE: unbound (or bound as
+    BR/EDR) Linux talks basic mode on it, without the credit-based frames'
+    SDU length, and a phone drops the channel at once ("Invalid sdu_length:
+    0" in its Bluetooth log: it read our 4-byte length prefix as one)."""
+    fd = libc.socket(AF_BLUETOOTH, socket.SOCK_SEQPACKET | socket.SOCK_NONBLOCK | socket.SOCK_CLOEXEC, BTPROTO_L2CAP)
+    if fd < 0:
+        raise OSError(ctypes.get_errno(), "no Bluetooth L2CAP sockets")
+    try:
+        mode = ctypes.c_uint8(BT_MODE_LE_FLOWCTL)
+        libc.setsockopt(fd, SOL_BLUETOOTH, BT_MODE, ctypes.byref(mode), 1)  # (older kernels: the bind does it)
+        mtu = ctypes.c_uint16(L2CAP_RCVMTU)
+        libc.setsockopt(fd, SOL_BLUETOOTH, BT_RCVMTU, ctypes.byref(mtu), 2)
+        local = sockaddr_l2("00:00:00:00:00:00", "public", 0)
+        if libc.bind(fd, ctypes.byref(local), ctypes.sizeof(local)) != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, os.strerror(err))
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _libc():
+    return ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+
+
+def _l2cap_messages(fd, loop):
+    """L2capMessages over a connected L2CAP socket: reads fed as they come;
+    close() also stops reading and closes the socket."""
+    messages = L2capMessages(_L2capLink(fd, loop))
+
+    def readable():
+        try:
+            data = os.read(fd, 65536)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        messages.feed(data)
+        if not data:
+            loop.remove_reader(fd)
+    loop.add_reader(fd, readable)
+    closing = messages.close
+
+    async def close():
+        await closing()
+        loop.remove_reader(fd)
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    messages.close = close
+    return messages
+
+
+class L2capServer:
+    """Phones that find our PSM in the advertisement connect here (Nearby
+    tries L2CAP first, then GATT): each channel asks for the data connection
+    (0x03), we answer ready (0x17), then it's a BLE socket like weave's, with
+    an acknowledgement per frame (ble_socket.cc ProcessIncomingL2capPacketValidation).
+    A request for the advertisement (0x01) is answered with it (0x15)."""
+
+    def __init__(self, on_session, advertisement, log=None):
+        self.on_session = on_session
+        self.advertisement = advertisement  # () -> the full advertisement (GATT slot 0's)
+        self._log = log or (lambda *a: None)
+        self.fd = None
+        self.psm = 0
+        self._tasks = set()
+
+    def start(self):
+        """Listens on a free LE PSM; returns it (0 if L2CAP isn't available)."""
+        if self.fd is not None:
+            return self.psm
+        libc = _libc()
+        try:
+            fd = _le_socket(libc)
+        except OSError as e:
+            self._log(f"no L2CAP channel for phones ({e})")
+            return 0
+        if libc.listen(fd, 4) != 0:
+            self._log(f"L2CAP listen failed ({os.strerror(ctypes.get_errno())})")
+            os.close(fd)
+            return 0
+        sa = _SockaddrL2()
+        size = ctypes.c_uint(ctypes.sizeof(sa))
+        libc.getsockname(fd, ctypes.byref(sa), ctypes.byref(size))
+        self.psm = int.from_bytes(int(sa.psm).to_bytes(2, sys.byteorder), "little")
+        self.fd = fd
+        self._libc = libc
+        loop = asyncio.get_running_loop()
+        loop.add_reader(fd, self._accept)
+        self._log(f"phones can connect over L2CAP (PSM {self.psm})")
+        return self.psm
+
+    def _accept(self):
+        while True:
+            cfd = self._libc.accept4(self.fd, None, None, socket.SOCK_NONBLOCK | socket.SOCK_CLOEXEC)
+            if cfd < 0:
+                return
+            t = asyncio.ensure_future(self._channel(cfd))
+            self._tasks.add(t)
+            t.add_done_callback(self._tasks.discard)
+
+    async def _channel(self, fd):
+        loop = asyncio.get_running_loop()
+        messages = _l2cap_messages(fd, loop)
+        try:
+            while True:
+                first = await messages.recv(HANDSHAKE_WAIT)
+                if first[:1] == bytes([L2CAP_REQUEST_DATA]):
+                    await messages.send(bytes([L2CAP_READY]))
+                    break
+                if first[:1] == bytes([L2CAP_REQUEST_ADVERTISEMENT]):
+                    adv = self.advertisement() or b""
+                    await messages.send(bytes([L2CAP_ADVERTISEMENT]) + len(adv).to_bytes(2, "big") + adv)
+                    continue
+                if first[:1] == bytes([L2CAP_ADVERTISEMENT_FINISHED]):
+                    await messages.close()
+                    return
+                raise WeaveError(f"unexpected L2CAP request {first[:1].hex()}")
+        except (asyncio.TimeoutError, TransportClosed, WeaveError, OSError) as e:
+            self._log(f"L2CAP channel dropped before the data connection ({e or 'no request'})")
+            await messages.close()
+            return
+        self._log("phone connected over L2CAP")
+        transport = BleSocketTransport(messages, is_client=False, acks=True, peer="l2cap", log=self._log, medium="ble")
+        self.on_session(transport)
+
+    def stop(self):
+        if self.fd is None:
+            return
+        try:
+            asyncio.get_running_loop().remove_reader(self.fd)
+        except RuntimeError:
+            pass
+        os.close(self.fd)
+        self.fd, self.psm = None, 0
+        for t in list(self._tasks):
+            t.cancel()
 
 
 class _L2capLink:
@@ -719,10 +886,8 @@ class _L2capLink:
 
 async def connect_l2cap(address, address_type, psm, timeout=10, log=None):
     """A BleSocketTransport over an LE L2CAP channel to a phone's PSM."""
-    libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
-    fd = libc.socket(AF_BLUETOOTH, socket.SOCK_SEQPACKET | socket.SOCK_NONBLOCK | socket.SOCK_CLOEXEC, BTPROTO_L2CAP)
-    if fd < 0:
-        raise OSError(ctypes.get_errno(), "no Bluetooth L2CAP sockets")
+    libc = _libc()
+    fd = _le_socket(libc)
     loop = asyncio.get_running_loop()
     try:
         sa = sockaddr_l2(address, address_type, psm)
@@ -744,33 +909,11 @@ async def connect_l2cap(address, address_type, psm, timeout=10, log=None):
     except BaseException:
         os.close(fd)
         raise
-    messages = L2capMessages(_L2capLink(fd, loop))
-
-    def readable():
-        try:
-            data = os.read(fd, 65536)
-        except BlockingIOError:
-            return
-        except OSError:
-            data = b""
-        messages.feed(data)
-        if not data:
-            loop.remove_reader(fd)
-    loop.add_reader(fd, readable)
-    closing = messages.close
-
-    async def close():
-        await closing()
-        loop.remove_reader(fd)
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-    messages.close = close
+    messages = _l2cap_messages(fd, loop)
     try:
         await messages.request_data_connection()
     except BaseException:
-        await close()
+        await messages.close()
         raise
     transport = BleSocketTransport(messages, is_client=True, acks=True, peer=address, log=log, medium="ble")
     await transport.start()

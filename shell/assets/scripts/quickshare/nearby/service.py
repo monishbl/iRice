@@ -140,14 +140,17 @@ class QuickShareService:
             name = info[18:][:ble_format.MAX_ENDPOINT_INFO - 18].decode("utf-8", "ignore").encode("utf-8")
             info = info[:17] + bytes([len(name)]) + name
         try:
-            adv = ble_format.advertisement(self.endpoint_id, info, self.device_token)
+            # Phones open an L2CAP channel when we name one (much faster than
+            # GATT writes), and fall back to GATT if it fails
+            psm = self.ble.l2cap_psm() if hasattr(self.ble, "l2cap_psm") else 0
+            adv = ble_format.advertisement(self.endpoint_id, info, self.device_token, psm=psm)
             # The extended advertisement must fit the controller (BlueZ says
             # InvalidLength otherwise): a shorter name, or the header only
             longest = await self.ble.max_advertisement()
             extended = adv
             if longest is not None:
                 extended = ble_format.fitting_advertisement(self.endpoint_id, info, self.device_token,
-                                                            longest - ble_format.AD_OVERHEAD) or False
+                                                            longest - ble_format.AD_OVERHEAD, psm=psm) or False
                 self._log(f"controller takes {longest}-byte advertisements: extended "
                           f"{len(extended) if extended else 'skipped'} (full {len(adv)})")
             if not await self.ble.advertise(adv, extended):
