@@ -284,7 +284,6 @@ WlSessionLockSurface {
                     Image {
                         anchors.fill: parent
                         source: Media.artUrl(player.p)
-                        onStatusChanged: if (status === Image.Error) Media.artFailed()
                         retainWhileLoading: true
                         fillMode: Image.PreserveAspectCrop
                         sourceSize: Qt.size(120, 120)

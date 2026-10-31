@@ -49,7 +49,6 @@ Item {
             anchors.fill: parent
             visible: root.kind === "music" && Media.artUrl(root.player) !== ""
             source: root.kind === "music" ? Media.artUrl(root.player) : ""
-            onStatusChanged: if (status === Image.Error) Media.artFailed()
             retainWhileLoading: true
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(96, 96)

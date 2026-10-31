@@ -57,7 +57,6 @@ Variants {
                         Image {
                             anchors.fill: parent
                             source: Media.artUrl(pop.player)
-                            onStatusChanged: if (status === Image.Error) Media.artFailed()
                             retainWhileLoading: true
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(144, 144)
@@ -65,7 +64,7 @@ Variants {
                         }
                         Icon {
                             anchors.centerIn: parent
-                            visible: !pop.player?.trackArtUrl
+                            visible: Media.artUrl(pop.player) === ""
                             name: "music-notes"
                             fill: true
                             size: 28

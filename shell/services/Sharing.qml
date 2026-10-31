@@ -134,6 +134,12 @@ Singleton {
     function dropRequest(id) {
         requests = requests.filter(r => r.id !== id);
     }
+    // A protocol's helper stopped: its open requests failed with it (the
+    // card stayed on "receiving" for good)
+    function helperEnded(via) {
+        if (requests.some(r => r.via === via && (r.state === "asking" || r.state === "receiving")))
+            requests = requests.map(r => r.via === via && (r.state === "asking" || r.state === "receiving") ? Object.assign({}, r, { state: "failed", message: "The transfer stopped before everything arrived." }) : r);
+    }
     function answer(id, accept) {
         const r = findRequest(id);
         if (!r)

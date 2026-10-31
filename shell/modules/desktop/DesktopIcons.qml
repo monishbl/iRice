@@ -150,7 +150,7 @@ Item {
     }
     function trash(path) {
         const name = path.split("/").pop();
-        Quickshell.execDetached(["sh", "-c", "gio trash -- \"$1\" || exit; a=$(notify-send -a Finder -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"", "sh", path, name]);
+        Quickshell.execDetached(["sh", "-c", "gio trash -- \"$1\" || exit; a=$(timeout 600 notify-send -a Finder -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"", "sh", path, name]);
         Sounds.play("trash");
     }
     function menuFor(it, x, y) {

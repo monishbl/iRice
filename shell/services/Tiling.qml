@@ -50,6 +50,23 @@ Singleton {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
+            // A window closed: what was kept for it goes (its size before a
+            // snap, picture-in-picture), or it piled up, and a new window
+            // given the same address got a stale Restore
+            if (event.name === "closewindow") {
+                const a = event.data.replace(/^0x/, "");
+                for (const map of ["previous", "pipped"]) {
+                    const m = root[map];
+                    const gone = Object.keys(m).filter(k => k.replace(/^0x/, "") === a);
+                    if (gone.length) {
+                        const n = Object.assign({}, m);
+                        for (const k of gone)
+                            delete n[k];
+                        root[map] = n;
+                    }
+                }
+                return;
+            }
             if (event.name !== "irice-drag")
                 return;
             const [kind, mon, zone, addr] = event.data.split(",");

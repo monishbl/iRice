@@ -293,13 +293,12 @@ Item {
                 id: islandArt
                 anchors.fill: parent
                 readonly property bool wanted: Config.options.island.playerArt === "island" && Config.options.island.playerLayout !== "side"
-                    && root.expanded && !root.eventInside && !root.recentOver && (Island.player?.trackArtUrl ?? "") !== ""
+                    && root.expanded && !root.eventInside && !root.recentOver && Media.artUrl(Island.player) !== ""
                     && (root.oneAtATime ? root.shownAct?.kind === "music" : Island.activities.some(a => a.kind === "music"))
                 // Loaded once at a fixed size and kept while the music plays:
                 // a size that follows the island reloaded it on every open
                 // (it grows as it opens), and the art flickered
                 source: Media.artUrl(Island.player)
-                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(640, 640)
                 asynchronous: true

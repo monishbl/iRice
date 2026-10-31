@@ -75,7 +75,8 @@ Singleton {
             Hyprland.dispatch("hl.dsp.focus({ window = " + JSON.stringify("pid:" + mirrors[d.serial].processId) + " })");
             return;
         }
-        const args = ["scrcpy", "-s", d.serial, "--window-title", d.model || "Phone", "--stay-awake", "--shortcut-mod=lalt,ralt"];
+        // (setpriv: ends with the shell, like the camera below)
+        const args = ["setpriv", "--pdeathsig", "TERM", "--", "scrcpy", "-s", d.serial, "--window-title", d.model || "Phone", "--stay-awake", "--shortcut-mod=lalt,ralt"];
         if (cfg.screenOff)
             args.push("--turn-screen-off");
         const p = mirrorComp.createObject(root, { serial: d.serial, command: args });
@@ -132,7 +133,9 @@ Singleton {
         }
         if (!phone || !camReady)
             return;
-        camProc.command = ["scrcpy", "-s", phone.serial, "--video-source=camera", "--camera-facing=" + (cfg.camera || "back"),
+        // (setpriv: the phone's camera has no window: if the shell died it
+        // stayed on, unseen)
+        camProc.command = ["setpriv", "--pdeathsig", "TERM", "--", "scrcpy", "-s", phone.serial, "--video-source=camera", "--camera-facing=" + (cfg.camera || "back"),
             "--v4l2-sink=/dev/video42", "--no-playback", "--no-audio", "--no-window"];
         camProc.running = true;
     }

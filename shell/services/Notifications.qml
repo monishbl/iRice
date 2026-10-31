@@ -5,7 +5,7 @@ import Quickshell.Services.Notifications
 import qs.common
 
 // Notification daemon. Everything received is kept for Notification Center
-// until dismissed; new ones also show as banners unless Do Not Disturb is on
+// until dismissed (the newest 200); new ones also show as banners unless Do Not Disturb is on
 // (critical ones always show).
 Singleton {
     id: root
@@ -17,6 +17,7 @@ Singleton {
     property alias popupModel: popupList
     ListModel { id: popupList }
     property var byId: ({})
+    readonly property int keep: 200
 
     // ── Inline replies ──────────────────────────────────────────────────
     // Messaging apps (Discord, Telegram, Signal, KDE Connect…) let you answer
@@ -321,6 +322,11 @@ Singleton {
 
         onNotification: n => {
             n.tracked = true;
+            // At most `keep` stay in Notification Center: the oldest go (a
+            // chatty app's, with their pictures, piled up until dismissed)
+            const all = server.trackedNotifications.values;
+            for (let i = 0; i < all.length - root.keep; i++)
+                all[i].dismiss();
             // Forget it in the lookup maps once it's closed for good (they'd
             // otherwise grow forever); later, so cards animating out still have it
             n.closed.connect(() => Qt.callLater(() => root.forget(n.id)));

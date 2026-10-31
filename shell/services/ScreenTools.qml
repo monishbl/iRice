@@ -181,7 +181,7 @@ Singleton {
                 Launch.run(["swappy", "-f", file, "-o", file]);
                 return;
             }
-            Launch.run(["sh", "-c", "a=$(notify-send -a Screenshot -i \"$1\" -A open=Open -A folder='Show in Folder' 'Screenshot saved' 'Copied to the clipboard'); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", file, Files.manager]);
+            Launch.run(["sh", "-c", "a=$(timeout 600 notify-send -a Screenshot -i \"$1\" -A open=Open -A folder='Show in Folder' 'Screenshot saved' 'Copied to the clipboard'); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", file, Files.manager]);
         } else if (kind === "ocr") {
             const text = out.trim();
             if (text === "") {

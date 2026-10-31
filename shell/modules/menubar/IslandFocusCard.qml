@@ -246,7 +246,6 @@ Item {
             Image {
                 anchors.fill: parent
                 source: Media.artUrl(root.player) // (kept loaded, at a fixed size: no reload and flicker on every open)
-                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(640, 640)
                 asynchronous: true
@@ -261,7 +260,7 @@ Item {
         Icon {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -30
-            visible: !(root.player?.trackArtUrl)
+            visible: Media.artUrl(root.player) === ""
             name: "music-notes"
             size: 40
             color: root.ink2
@@ -357,7 +356,6 @@ Item {
             Image {
                 anchors.fill: parent
                 source: Media.artUrl(root.player)
-                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(144, 144)
                 asynchronous: true
@@ -380,7 +378,7 @@ Item {
             }
             Icon {
                 anchors.centerIn: parent
-                visible: !(root.player?.trackArtUrl)
+                visible: Media.artUrl(root.player) === ""
                 name: "music-notes"
                 size: 28
                 color: root.ink2

@@ -417,7 +417,7 @@ Singleton {
             return;
         lastTrack = track;
         if (wants("music") && player.isPlaying)
-            post({ kind: "music", icon: "music-notes", title: player.trackTitle, subtitle: player.trackArtist ?? "", art: player.trackArtUrl ?? "", color: Theme.accent }, 3500);
+            post({ kind: "music", icon: "music-notes", title: player.trackTitle, subtitle: player.trackArtist ?? "", art: Media.artUrl(player), color: Theme.accent }, 3500);
     }
 
     // Charger and battery

@@ -37,6 +37,14 @@ Singleton {
     property var batteryShown: ({}) // address -> time last seen with batteries
     onDevicesChanged: {
         const now = Date.now();
+        // (keyed by Bluetooth address, which earbuds change every ~15
+        // minutes: entries past their 10 minutes go, or they'd pile up)
+        for (const a in offered)
+            if (now - offered[a] > 600000)
+                delete offered[a];
+        for (const a in batteryShown)
+            if (now - batteryShown[a] > 600000)
+                delete batteryShown[a];
         for (const d of devices) {
             if (d.pairing && d.rssi > -70 && now - (offered[d.address] ?? 0) > 600000 && !paired(d)) {
                 offered[d.address] = now;

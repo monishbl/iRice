@@ -174,6 +174,7 @@ Singleton {
             } else {
                 root.devices = [];
                 root.active = {};
+                Sharing.helperEnded("quickshare");
                 root.transports = {};
                 root.bluetoothEngine = false;
                 if (root.needed)

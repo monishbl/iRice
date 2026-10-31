@@ -40,6 +40,12 @@ Item {
         result = "";
         error = "";
         if (input.text.trim() === "") return;
+        // (a Process that can't start never says it exited, so its object
+        // stayed: one per keystroke without translate-shell)
+        if (Tools.ready && !Tools.has("trans")) {
+            error = "Translating needs translate-shell. Install it, then try again.";
+            return;
+        }
         const request = requestComponent.createObject(root, { version: version, requestedText: input.text,
             command: ["trans", "-brief", "-no-ansi", "-s", source, "-t", target, input.text] });
         activeRequest = request;

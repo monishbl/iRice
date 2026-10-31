@@ -95,7 +95,8 @@ Singleton {
         error = "";
         wav = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice/dictation-" + Date.now() + ".wav";
         // (PipeWire's recorder, else PulseAudio's, else ALSA's: each stops cleanly on SIGINT)
-        recorder.command = ["sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" || exit 1; "
+        // (setpriv: the microphone is let go if the shell dies mid-dictation)
+        recorder.command = ["setpriv", "--pdeathsig", "INT", "--", "sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" || exit 1; "
             + "if command -v pw-record >/dev/null; then exec pw-record --rate 16000 --channels 1 --format s16 \"$1\"; "
             + "elif command -v parecord >/dev/null; then exec parecord --rate=16000 --channels=1 --format=s16le --file-format=wav \"$1\"; "
             + "else exec arecord -q -f S16_LE -r 16000 -c 1 -t wav \"$1\"; fi", "sh", wav];

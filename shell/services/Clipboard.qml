@@ -143,16 +143,27 @@ Singleton {
     // Publish each path only after an atomic decode; never load incomplete files.
     property var previewReady: ({})
     property var pendingPreviews: []
+    // (run even with no images listed: the helper also removes the previews
+    // of entries that are no longer listed)
+    property bool previewsWanted: false
     function decodePreviews(rows) {
         pendingPreviews = rows.filter(r => r.image);
+        previewsWanted = true;
+        const keep = {};
+        for (const r of pendingPreviews)
+            if (previewReady[r.image])
+                keep[r.image] = true;
+        if (Object.keys(keep).length !== Object.keys(previewReady).length)
+            previewReady = keep;
         if (!previewProc.running)
             startPreviews();
     }
     function startPreviews() {
         const want = pendingPreviews;
         pendingPreviews = [];
-        if (!want.length)
+        if (!previewsWanted)
             return;
+        previewsWanted = false;
         previewProc.command = ["python3", "-I", decodeURIComponent(Qt.resolvedUrl("../assets/scripts/clipboard-previews.py").toString().replace("file://", "")), root.db, root.previewDir].concat(...want.map(r => [r.id, r.image]));
         previewProc.running = true;
     }
@@ -214,11 +225,15 @@ Singleton {
 
     function remove(item) {
         Quickshell.execDetached(["sh", "-c", "printf '%s\\t%s\\n' \"$1\" \"$2\" | cliphist -db-path \"$3\" delete", "sh", item.id, item.text, root.db]);
+        if (item.image)
+            Quickshell.execDetached(["rm", "-f", "--", item.image]);
         items = items.filter(i => i.id !== item.id);
     }
 
     function clear() {
         Quickshell.execDetached(["cliphist", "-db-path", root.db, "wipe"]);
+        Quickshell.execDetached(["sh", "-c", "rm -f -- \"$1\"/*", "sh", root.previewDir]);
+        previewReady = {};
         items = [];
     }
 

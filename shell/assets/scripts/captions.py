@@ -35,6 +35,7 @@ import wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 RATE = 16000
 CHUNK = RATE // 10 * 2      # bytes in 100 ms (s16 mono)
+BEHIND = 10                 # seconds of sound kept waiting at most (a slow computer)
 STEP = 1.2                  # s between looks at the sentence being heard
 LONGEST = 8.0               # s: a sentence is finished at this length…
 PAUSE = 0.7                 # …or after this much quiet, once it's this long:
@@ -175,10 +176,21 @@ def run(lang):
     rec = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
     chunks = queue.Queue()
 
+    behind = max(1, int(BEHIND * RATE * 2 / CHUNK))  # (chunks in BEHIND seconds)
+
     def read():
-        # (its own thread: whisper takes a moment, the sound keeps coming)
+        # (its own thread: whisper takes a moment, the sound keeps coming).
+        # On a computer too slow to keep up, the oldest sound is dropped
+        # past BEHIND seconds: captions that far behind don't help, and the
+        # queue grew by 32 KB a second for as long as they were on.
         while True:
             c = rec.stdout.read(CHUNK)
+            if c:
+                while chunks.qsize() >= behind:
+                    try:
+                        chunks.get_nowait()
+                    except queue.Empty:
+                        break
             chunks.put(c)
             if not c:
                 return

@@ -20,7 +20,6 @@ Item {
         Image {
             anchors.fill: parent
             source: Media.artUrl(root.player)
-            onStatusChanged: if (status === Image.Error) Media.artFailed()
             retainWhileLoading: true
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(art.width * 2, art.width * 2)
@@ -28,7 +27,7 @@ Item {
         }
         Icon {
             anchors.centerIn: parent
-            visible: !(root.player?.trackArtUrl)
+            visible: Media.artUrl(root.player) === ""
             name: "music-notes"
             size: 26
             color: Theme.color.tertiary

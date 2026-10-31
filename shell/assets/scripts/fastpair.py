@@ -141,6 +141,14 @@ class Watcher:
             obj, ifaces = params.unpack()
             if "org.bluez.Device1" in ifaces:
                 self.seen(obj, ifaces["org.bluez.Device1"])
+        elif signal == "InterfacesRemoved":
+            # (BlueZ forgets a device it hasn't heard from: so does this.
+            # Phones and watches change their addresses every ~15 minutes,
+            # and `other` kept every one it was ever asked about.)
+            obj, ifaces = params.unpack()
+            if "org.bluez.Device1" in ifaces:
+                self.other.discard(obj)
+                self.devices.pop(obj, None)
         elif signal == "PropertiesChanged":
             # Each advert from every device nearby comes here (DuplicateData):
             # the bus is asked about a device only when this can't tell
@@ -169,6 +177,8 @@ class Watcher:
                 return
             self.seen(path, props)
             if path not in self.devices:
+                if len(self.other) >= 2000:  # (in case removals never come)
+                    self.other.clear()
                 self.other.add(path)
 
     def report(self):
@@ -279,6 +289,8 @@ class Watcher:
 
     def run(self):
         self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", None, None,
+                                  self.Gio.DBusSignalFlags.NONE, self.on_signal)
+        self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", None, None,
                                   self.Gio.DBusSignalFlags.NONE, self.on_signal)
         self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.Properties", "PropertiesChanged", None, None,
                                   self.Gio.DBusSignalFlags.NONE, self.on_signal)

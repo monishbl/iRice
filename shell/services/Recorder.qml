@@ -209,7 +209,9 @@ Singleton {
             else if (cfg.systemAudio)
                 cmd.push("--audio=" + (Pipewire.defaultAudioSink?.name ? Pipewire.defaultAudioSink.name + ".monitor" : "default"));
         }
-        proc.command = ["sh", "-c", "mkdir -p \"$1\" && shift && exec \"$@\"", "sh", folder].concat(cmd);
+        // (setpriv: if the shell dies, the recording is finished and stops
+        // with it, rather than carrying on with no indicator and filling the disk)
+        proc.command = ["setpriv", "--pdeathsig", "INT", "--", "sh", "-c", "mkdir -p \"$1\" && shift && exec \"$@\"", "sh", folder].concat(cmd);
         discarding = false;
         paused = false;
         proc.running = true;
@@ -318,7 +320,7 @@ Singleton {
     readonly property bool islandSays: Config.options.island.enabled && (Config.options.island.events ?? []).includes("recording")
     onSaved: f => {
         if (!islandSays)
-            Quickshell.execDetached(["sh", "-c", "a=$(notify-send -a 'Screen Recording' -i video-x-generic -A open=Open -A folder='Show in Folder' 'Recording saved' \"$(basename \"$1\")\"); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", f, Files.manager]);
+            Quickshell.execDetached(["sh", "-c", "a=$(timeout 600 notify-send -a 'Screen Recording' -i video-x-generic -A open=Open -A folder='Show in Folder' 'Recording saved' \"$(basename \"$1\")\"); [ \"$a\" = open ] && xdg-open \"$1\"; [ \"$a\" = folder ] && ${2:-xdg-open} \"$(dirname \"$1\")\"", "sh", f, Files.manager]);
     }
     onFailed: why => {
         if (!islandSays)
@@ -330,7 +332,7 @@ Singleton {
     }
     onDropped: f => {
         if (!islandSays)
-            Quickshell.execDetached(["sh", "-c", "a=$(notify-send -a 'Screen Recording' -t 8000 -A undo=Undo 'Recording discarded' \"$(basename \"$1\")\"); [ \"$a\" = undo ] && qs -p \"$2\" ipc call recorder undo", "sh", f, decodeURIComponent(Qt.resolvedUrl("..").toString().replace("file://", ""))]);
+            Quickshell.execDetached(["sh", "-c", "a=$(timeout 600 notify-send -a 'Screen Recording' -t 8000 -A undo=Undo 'Recording discarded' \"$(basename \"$1\")\"); [ \"$a\" = undo ] && qs -p \"$2\" ipc call recorder undo", "sh", f, decodeURIComponent(Qt.resolvedUrl("..").toString().replace("file://", ""))]);
     }
 
     // qs ipc call recorder start|stop|pause|discard|undo|toolbar

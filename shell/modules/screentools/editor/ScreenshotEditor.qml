@@ -204,7 +204,7 @@ Scope {
         Process {
             id: n
             property string file
-            command: ["notify-send", "-a", "Screenshot", "-i", file, "-A", "edit=Edit", "-A", "folder=Show in Folder", "Screenshot saved", "Copied to the clipboard"]
+            command: ["timeout", "600", "notify-send", "-a", "Screenshot", "-i", file, "-A", "edit=Edit", "-A", "folder=Show in Folder", "Screenshot saved", "Copied to the clipboard"]
             stdout: StdioCollector {
                 onStreamFinished: {
                     const a = text.trim();

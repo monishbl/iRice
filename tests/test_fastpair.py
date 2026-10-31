@@ -107,3 +107,17 @@ class ClassicTwin(unittest.TestCase):
         self.assertEqual(fp.pick_twin(one, "", "98:34:8C:03:82:DC", fallback=True), one[0][0])
         two = one + [self.dev("11:22:33:44:55:88", "Buds Y", rssi=-60)]
         self.assertIsNone(fp.pick_twin(two, "", "98:34:8C:03:82:DC", fallback=True))  # (which? don't guess)
+
+
+class Forgetting(unittest.TestCase):
+    """Devices BlueZ removes are forgotten (addresses rotate: `other` grew
+    by every phone and watch that ever passed)."""
+
+    def test_removed_devices_are_forgotten(self):
+        w = object.__new__(fp.Watcher)
+        w.devices, w.other = {"/d/buds": {"at": 0}}, {"/d/tv", "/d/watch"}
+        P = Signals.Params
+        w.on_signal(None, None, "/", None, "InterfacesRemoved", P(("/d/tv", ["org.bluez.Device1"])))
+        w.on_signal(None, None, "/", None, "InterfacesRemoved", P(("/d/buds", ["org.bluez.Device1", "org.bluez.Battery1"])))
+        self.assertEqual(w.other, {"/d/watch"})
+        self.assertEqual(w.devices, {})

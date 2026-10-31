@@ -7,10 +7,23 @@ import sys
 import tempfile
 
 
+def prune(directory, keep):
+    """Removes previews of entries no longer listed: the folder is in RAM
+    (XDG_RUNTIME_DIR), and every image copied added one for good."""
+    for path in directory.iterdir():
+        if path.is_file() and str(path) not in keep and not path.name.startswith("tmp"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 def previews(db, directory, pairs):
+    pairs = list(pairs)
     directory = Path(directory)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(directory, 0o700)
+    prune(directory, {str(Path(t)) for _, t in pairs})
     for identifier, target in pairs:
         path = Path(target)
         if path.parent != directory or not identifier.isdigit():

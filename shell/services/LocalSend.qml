@@ -103,6 +103,7 @@ Singleton {
             } else {
                 root.peers = [];
                 root.active = {};
+                Sharing.helperEnded("localsend");
             }
         }
         stdout: SplitParser {

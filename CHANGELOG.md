@@ -2,11 +2,25 @@
 
 ## Island fixes, captions over the video, tucked-away app icons · 2026-11-01
 
+- **Leaks and stray processes, found by checking a running session:**
+  - **Clipboard pictures no longer pile up in memory.** Previews of copied images were kept in RAM (62 MB after a few days here) even after the entries left the clipboard history. They're now removed with their entries, and with Remove and Clear.
+  - **No leftover process after the shell restarts.** Each restart left one finished-but-not-collected process behind.
+  - **The screen recorder, dictation's microphone and the phone's camera stop if the shell ever crashes.** Before, a recording could carry on with no indicator, and the phone's webcam stayed on unseen.
+  - **Fast Pair forgets Bluetooth devices that have gone away.** It kept every nearby phone and watch it had ever seen, and they change addresses every 15 minutes.
+  - **Window snapping forgets closed windows,** so a new window doesn't get an old one's Restore size.
+  - **Notification Center keeps the newest 200.** The oldest go, so a chatty app can't fill memory.
+  - **Notifications with buttons from screenshots, recordings and the desktop's trash** no longer leave a waiting process behind for good. They wait up to 10 minutes.
+  - **Live captions on a slow computer** drop sound more than 10 seconds behind, instead of queueing it without end.
+  - **A Quick Share or LocalSend card no longer gets stuck on "Receiving"** if its helper stops.
+  - **The translator says when translate-shell is missing,** instead of quietly piling up a failed request on each keystroke.
+  - Checked for 10 minutes on a running session, and under a stress test of 100 alerts, 30 island open/close cycles and 40 track changes: the shell's memory stayed flat.
+
 - **Album art in the island loads reliably.** Browsers like Zen save each video's picture under the same file name, so the island sometimes kept the previous picture or showed none. Each track now loads its own picture, a failed load is retried, and the picture is read again a moment after the track changes. The same fix applies to the lock screen, Control Center, the desktop widget and Now Playing.
 - **Album art no longer goes missing after a browser restarts a video.** Zen can leave its old player behind, still saying it's playing, with its picture deleted, and the island showed that one. It now shows the newest player that's playing.
 - **Album art (and the island's black) no longer vanish after the island closes and opens again.** The rounded-corner effect cutting the island to shape stopped drawing after the island shrank and grew. A small shader of iRice's own does that job now.
 - **Alerts no longer take over the open island.** When the island is open (pointed at or pinned) and an alert arrives, the island stays as it is, and the alert drops in as a card just under it. Newest on top; up to two more peek out behind it, with a count of any others. Pointing at the card holds their time. When the island is closed, alerts show in the island as before.
 - **No more tall empty island** when an alert arrived while Recent was open.
+- **Album art shows even when the browser stops sending it.** Zen sometimes drops a video's picture from what it tells the system (after a pause or a seek), or deletes the picture file. The island now keeps the picture it had for that track, and for YouTube videos falls back to the video's own thumbnail. Every place that shows album art uses this.
 - **The island's player has new button places:**
   - **Volume on the left.** Click the speaker to mute. Point at it and a slider opens beside it for the app's own volume (or the system's).
   - **Open the app on the right,** where the speaker was, next to Cast. Point at it to see which app it opens (its name is cut short when long). The island's buttons are round when pointed at.
