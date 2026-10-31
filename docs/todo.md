@@ -34,123 +34,35 @@ Ask about each one's design before building; one at a time.
   back at startup if the desktop won't load.
 - **Phone as a webcam**: now part of "Android phone on the computer" below.
 
-## Integrations: chosen 31 Oct, being built
+## Integrations: built 31 Oct, check with your devices
 
-Design decided 31 Oct (all, then built one after another, testable first:
-AirPlay, Chromecast, iCloud, Drive + Microsoft 365, Android phone, Miracast,
-Fast Pair, Face unlock):
-- AirPlay: off until turned on, in a new Settings -> Sound page (outputs,
-  inputs, AirPlay, sounds); speakers then appear in the output lists.
-- Chromecast: a cast button in Now Playing (island + Control Center), the
-  share sheet for files, and a Spotlight command "Cast to <TV>".
-- iCloud: read and add/edit/delete events; contacts in Spotlight and sharing.
-- Drive/OneDrive: rclone folders (~/Google Drive, ~/OneDrive), own sign-in.
-  Microsoft 365 account (GNOME Online Accounts, ms_graph: calendars and
-  tasks read/write) for Outlook calendar and To Do in Today and Calendar.
-- Android phone: in the dock while connected, a Settings -> Phone page
-  (setup, wireless pairing QR, battery, options), phone camera as a webcam,
-  drag files onto it.
-- Miracast: a Screen Mirroring tile in Control Center and "Add a wireless
-  display" in Settings -> Displays; "Casting to <TV>" in the island.
-- Fast Pair: whenever Bluetooth is on, light scan (a few seconds every half
-  minute, continuous on the charger); island card with Connect, then battery.
-- Face unlock: lock screen only (the laptop has an IR camera, video2).
-
-Official or open ways in only (published APIs, open standards, the Linux
-stack), like Quick Share. For every iRice user, not one laptop: each shows
-only when the computer, phone or account supports it, and says what's
-missing otherwise. Ask about the design before building; one at a time.
-
-### Android phone on the computer (like Phone Link / Phone Hub)
-- Mirror and control any Android phone in a window, use its apps, drag
-  files onto it, and use its camera as a webcam for calls.
-- Tools: ADB (Google's official Android tool) + scrcpy; the webcam through
-  scrcpy's camera source (Android 12+) into a v4l2loopback virtual camera
-  (a kernel module: one-time root setup, through irice-root).
-- Needs USB debugging switched on once (Developer options). Then cable-free
-  with Wireless debugging (Android 11+): Settings shows a pairing QR code the
-  phone scans (adb pair, found over mDNS). Many phones turn wireless
-  debugging off after a restart or Wi-Fi change: explain that plainly and
-  offer the cable as the fallback.
-- Ideas: phone in the dock while connected; "Use phone camera" in the
-  camera chooser; screen off on the phone while mirroring.
-
-### Google Drive and Microsoft 365 (OneDrive, Outlook calendar, To Do)
-- Drive and OneDrive as folders in Files/Dolphin and file pickers; Outlook
-  calendar events and Microsoft To Do in Today and the Calendar, like Google
-  Calendar/Tasks now.
-- Google: the existing GNOME Online Accounts sign-in, with Files on. GNOME
-  apps get it through gvfs; Dolphin (KIO) doesn't see gvfs, so check
-  kio-gdrive, or an rclone mount (official APIs, works in every file
-  manager) as the common path.
-- Microsoft: GNOME Online Accounts' Microsoft 365 account (official
-  Microsoft Graph API): OneDrive through gvfs (same Dolphin question),
-  calendar and To Do read through Graph like Google.qml does. Work/school
-  accounts may need their admin's approval: say so when sign-in is refused.
-- Offline: show what's cached, never fake a sync.
-
-### iCloud Calendar and Contacts
-- iCloud events in Today and the Calendar, iCloud contacts where contacts
-  appear (Spotlight, sharing). For iPhone users.
-- CalDAV/CardDAV (caldav.icloud.com / contacts.icloud.com), Apple's official
-  standard way in. Needs two-factor authentication and an app-specific
-  password from account.apple.com: the sign-in sheet walks through making
-  one, and the password is kept in the keyring, never the config file.
-- Read first; adding/editing events later. Upgraded iCloud Reminders aren't
-  reachable over CalDAV: don't promise reminders.
-- Recurrence goes through the existing ICS expander (fails closed on rules
-  it can't handle, R19).
-
-### Face unlock (like Windows Hello)
-- Unlock with an infrared camera: Howdy (PAM), the same places as fingerprint.
-- Only with an IR camera (some need their IR emitter switched on:
-  linux-enable-ir-emitter); never offered for a plain webcam, which a photo
-  could fool. Clear note that it's less secure than a password.
-- Works alongside fingerprint and password at the same time (the lock
-  screen already runs a second PAM conversation for the finger: Lock.qml).
-
-### Cast the screen to a TV (like Windows "Project" / Miracast)
-- From Control Center: find TVs and sticks that accept Miracast, then mirror
-  the screen or extend it (the TV as an extra display, through a Hyprland
-  virtual output, so spaces work there too).
-- GNOME Network Displays (Miracast over Wi-Fi Direct through
-  NetworkManager; recent versions may also cast to Chromecast: check). Needs
-  a Wi-Fi card with Wi-Fi Direct; say so when it's missing. The Quick Share
-  note above about NetworkManager and Wi-Fi Direct groups applies: let
-  NetworkManager own the group.
-- A clear "Casting to <TV>" island activity with Stop.
-
-### Chromecast and Google TV (Google Cast)
-- Send what's playing (a YouTube link, a video or music file) to a
-  Chromecast or Google TV; control it from the island and Now Playing
-  (pause, seek, volume, stop).
-- Found over mDNS (_googlecast._tcp); open Cast tools (pychromecast/catt).
-  Local files are served from the laptop over the local network only while
-  casting. Media casting only; full screen mirroring to a Chromecast isn't
-  practical (that's the Miracast item, or GNOME Network Displays if it
-  supports Cast).
-
-### AirPlay speakers (Apple)
-- HomePods, Apple TVs and AirPlay speakers appear as outputs in the Sound
-  menu and Control Center, like any other speaker.
-- Built into PipeWire (its RAOP discover module, needs Avahi): a config
-  drop-in turned on from Settings → Sound. Check which AirPlay 2-only
-  devices accept it, password-protected speakers, and the ~2 s delay (fine
-  for music, not video: say so).
-
-### Earbuds pop-up (Google Fast Pair)
-- Open the case of Fast Pair earbuds/headphones (Pixel, OnePlus, Sony, JBL,
-  Bose and many more) near the computer: a card in the island offers
-  Connect, then shows each bud's and the case's battery while connected.
-- Google's Fast Pair spec is public: listen for its BLE advertisements
-  (service 0xFE2C, model ID) through BlueZ, key-based pairing (ECDH), battery
-  from the advertisements' battery data.
-- The device's real name and picture come from Google's model lookup, which
-  needs an API key: fall back to the Bluetooth name and a generic icon.
-  Pairing isn't synced to a Google account (no Google Play services here).
-- Respect Bluetooth off, and don't scan constantly on battery (only while
-  Bluetooth is on, at a low duty cycle).
-
+All built and pushed (988e885 AirPlay, 28b8f9e Chromecast, 52856fc iCloud /
+Microsoft 365 / Drive folders, 673ecd9 Android phone, 33433e8 mirroring,
+793a61e Fast Pair, d320bae face unlock), tested against stand-ins (a real
+PipeWire AirPlay module and an mDNS speaker, a stand-in Chromecast, a real
+CalDAV server (Radicale), a stand-in Microsoft Graph and rclone, a stand-in
+adb, GNOME Network Displays' own dummy TVs, a real nearby Fast Pair advert).
+Still to check with the real things:
+- **AirPlay**: Settings -> Sound -> Install, turn on; a HomePod/Apple TV
+  appears as an output and plays (about 2 s late).
+- **Chromecast**: cast a local video and a YouTube link (needs yt-dlp) to a
+  real Chromecast; Allow through firewall first (port 53320 is new).
+- **iCloud**: sign in with an app-specific password; add/edit/delete an
+  event and see it on the iPhone; contacts in Spotlight.
+- **Microsoft 365**: Sign in with Microsoft (goa-signin ms_graph, rebuilt by
+  the next update's native helpers); Outlook events and To Do tasks appear.
+- **Drive / OneDrive folders**: Install rclone, Connect: the browser sign-in,
+  then ~/Google Drive opens in Dolphin.
+- **Android phone**: Settings -> Phone -> Install; USB debugging on; Show
+  Screen; pair by QR; webcam (Set Up asks for the password: v4l2loopback).
+- **Mirroring**: Screen Mirroring tile with a Miracast TV (Intel AX201 says
+  P2P is supported) and a Chromecast.
+- **Fast Pair**: the WH-CH720N or realme Buds T100 in pairing mode -> the
+  island's Connect; open the case while connected -> batteries.
+- **Face unlock**: Settings -> Lock Screen -> Face -> Install (AUR,
+  howdy-next, compiles), Set Up, Add Face, lock and look. Check that
+  pam_howdy works for the shell (a non-root lock screen), as it does for
+  hyprlock.
 
 ## Quick Share: two speed-ups waiting for a hardware check (branch `quickshare-l2cap-shield`)
 
