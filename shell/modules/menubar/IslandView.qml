@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Services.Mpris
 import qs.common
 import qs.glass
+import qs.modules.captions
 import qs.services
 
 // The dynamic island at the top centre of the menu bar, black like the
@@ -39,8 +40,13 @@ Item {
 
     readonly property var primary: Island.primary
     readonly property bool hovering: pointer.x >= shape.x - 4 && pointer.x < shape.x + shape.width + 4 && pointer.y >= 0 && pointer.y < shape.y + shape.height + 4
+    // (The compact pill's own buttons, stop or pause, don't open it: the
+    // island grew under the pointer on the way to them and the click landed
+    // on the open island instead)
+    readonly property bool overControls: compact && trailW > 0 && pointer.x >= shape.x + trailX - 4 && pointer.x < shape.x + trailX + trailW + 4 && pointer.y < shape.y + 30
+    readonly property bool hoverWants: hovering && !overControls
     property bool hoverOpen: false
-    onHoveringChanged: hovering ? (closeDelay.stop(), openDelay.restart()) : (openDelay.stop(), closeDelay.restart())
+    onHoverWantsChanged: hoverWants ? (closeDelay.stop(), openDelay.restart()) : (openDelay.stop(), hovering || closeDelay.restart())
     Timer { id: openDelay; interval: 140; onTriggered: root.hoverOpen = true }
     Timer { id: closeDelay; interval: 260; onTriggered: root.hoverOpen = false }
 
@@ -279,7 +285,8 @@ Item {
                 // Loaded once at a fixed size and kept while the music plays:
                 // a size that follows the island reloaded it on every open
                 // (it grows as it opens), and the art flickered
-                source: Island.player?.trackArtUrl ?? ""
+                source: Media.artUrl(Island.player)
+                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(640, 640)
                 asynchronous: true
@@ -524,7 +531,7 @@ Item {
 
                 // Live alerts, newest at the bottom; a burst staggers in.
                 // Up to four show, as many as fit in the island's window
-                // (the menu bar's, 340px); more scroll, newest in view
+                // (the menu bar's, 420px); more scroll, newest in view
                 Flickable {
                     id: alertScroll
                     readonly property int cap: 4
@@ -639,6 +646,16 @@ Item {
                         }
                     }
                 }
+                // Captions in the island while something else has the focus
+                // (the music): their last words still show, under it
+                CaptionLines {
+                    visible: !Island.event && !root.recentOver && root.oneAtATime && Captions.enabled && Captions.placement === "island" && (root.shownAct?.kind ?? "") !== "captions"
+                    width: body.width
+                    height: visible ? implicitHeight : 0
+                    ink: "#F5F5F7"
+                    size: Theme.font.small
+                    lines: 2
+                }
                 // All at once: music still gets the full player (big art,
                 // controls over it, open the app, volume), the rest are rows
                 IslandFocusCard {
@@ -670,7 +687,7 @@ Item {
                 IslandRecent {
                     id: recent
                     width: parent.width
-                    visible: !Island.event && Island.history.length > 0
+                    visible: !Island.event && Island.history.length > 0 && (!collapsible || root.recentOpen)
                     shown: root.expanded
                     collapsible: Island.activities.length > 0
                     open: root.recentOpen
@@ -679,6 +696,23 @@ Item {
                     maxHeight: Math.min(Math.max(4 * rowH, root.recentOver ? root.recentHoldH - body.y - y - 14 - 28 : 0) + 28, root.height - shape.y - body.y - y - 16)
                 }
             }
+        }
+
+        // Recent, when live activities share the island: a button at the top
+        // left (the pin's twin) that opens the last alerts in their place
+        IconButton {
+            visible: opacity > 0.01 && !root.showingEvent && Island.activities.length > 0 && Island.history.length > 0
+            x: 6
+            y: 3
+            width: 26
+            height: 26
+            icon: "clock-counter-clockwise"
+            fill: root.recentOpen
+            iconSize: 14
+            iconColor: root.recentOpen ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
+            tooltip: root.recentOpen ? "Hide recent alerts" : "Recent alerts · " + Math.min(8, Island.history.length)
+            opacity: root.expanded && root.h > 40 ? root.contentIn : 0
+            onClicked: root.toggleRecent()
         }
 
         // Pin: keep the island open even with nothing happening

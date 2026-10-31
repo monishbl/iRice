@@ -6,10 +6,12 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.common
 
-// Shake to find the pointer (Settings → Mouse): Hyprland notices the shake
-// (hypr/irice/findpointer.lua) and calls irice:findPointer; the pointer then
-// grows for a moment (hyprctl setcursor, bigger and back), and a ring
-// shrinks onto it, following it while it moves.
+// Shake to find the pointer (Settings → Accessibility): Hyprland notices the
+// shake (hypr/irice/findpointer.lua) and calls irice:findPointer. Then, as
+// findPointer.style says: a ring shrinks onto the pointer, following it
+// while it moves (ring); the pointer itself is big for a moment (grow,
+// hyprctl setcursor: one step up and one back, since every size change
+// reloads the theme and steps in between stuttered); or both.
 Singleton {
     id: root
 
@@ -30,6 +32,8 @@ Singleton {
         function find(): void { root.show(); }
     }
 
+    readonly property string style: Config.options.findPointer.style || "ring"
+    readonly property bool ring: style !== "grow"
     property bool active: false
     property real px: 0 // the pointer, in the layout's coordinates
     property real py: 0
@@ -39,8 +43,8 @@ Singleton {
         active = true;
         px = 0;
         py = 0; // (until it's been read: no ring in the corner)
-        follow.running = true;
-        grow.running = true;
+        follow.running = ring;
+        grow.running = style !== "ring";
         done.restart();
     }
     Timer {
@@ -51,7 +55,8 @@ Singleton {
     // Where it is, while the ring shows
     Process {
         id: follow
-        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/pointer-follow.py", "1.4"]
+        // (every 8 ms: at the 40 ms a drag needs, the ring trailed in jumps)
+        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/pointer-follow.py", "1.4", "0.008"]
         stdout: SplitParser {
             onRead: line => {
                 const m = line.match(/^\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\s*$/);
@@ -68,8 +73,7 @@ Singleton {
         id: grow
         command: ["sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; "
             + "trap 'hyprctl setcursor \"$h\" 24 >/dev/null' EXIT; "
-            + "for s in 44 64 80; do hyprctl setcursor \"$h\" $s >/dev/null; sleep 0.03; done; sleep 0.8; "
-            + "hyprctl setcursor \"$h\" 48 >/dev/null; sleep 0.05", "sh",
+            + "hyprctl setcursor \"$h\" 72 >/dev/null; sleep 1.1", "sh",
             Config.options.appearance.cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS"]
     }
 
@@ -90,16 +94,17 @@ Singleton {
 
             Rectangle {
                 id: ring
-                readonly property real size: 150 * scale_
                 property real scale_: 1
-                visible: root.px !== 0 || root.py !== 0
+                visible: root.ring && (root.px !== 0 || root.py !== 0)
                 x: root.px - win.where.x - width / 2
                 y: root.py - win.where.y - height / 2
-                width: size
-                height: size
-                radius: size / 2
+                // (one size, scaled on the GPU: resizing redrew it every frame)
+                width: 150
+                height: 150
+                radius: 75
+                scale: scale_
+                border.width: 3 / Math.max(0.5, scale_) // (the line stays 3 px thick)
                 color: Qt.alpha(Theme.accent, 0.12)
-                border.width: 3
                 border.color: Theme.accent
                 opacity: 0
                 // In: shrinking onto the pointer; out: fading where it is

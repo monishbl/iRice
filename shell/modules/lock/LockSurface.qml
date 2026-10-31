@@ -283,7 +283,9 @@ WlSessionLockSurface {
                     color: Qt.rgba(1, 1, 1, 0.12)
                     Image {
                         anchors.fill: parent
-                        source: player.p?.trackArtUrl ?? ""
+                        source: Media.artUrl(player.p)
+                        onStatusChanged: if (status === Image.Error) Media.artFailed()
+                        retainWhileLoading: true
                         fillMode: Image.PreserveAspectCrop
                         sourceSize: Qt.size(120, 120)
                         asynchronous: true

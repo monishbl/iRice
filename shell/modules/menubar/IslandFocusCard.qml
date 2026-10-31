@@ -3,11 +3,12 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import qs.common
+import qs.modules.captions
 import qs.services
 
 // The open island's view of one live activity.
 //   music      a mini player: big art, title and artist, a seek bar, and
-//              open-the-player / previous / play-pause / next / volume
+//              volume / previous / play-pause / next / Cast / open-the-player
 //   timer      the time left, the phase, progress, play-pause / skip / reset
 //   stopwatch  the time, laps, lap / play-pause / reset
 //   recording  how long, and stop
@@ -27,7 +28,7 @@ Item {
     readonly property bool fineClock: visible && Timers.swRunning && kind === "stopwatch"
     onFineClockChanged: Timers.swFine = Math.max(0, Timers.swFine + (fineClock ? 1 : -1))
     Component.onDestruction: if (fineClock) Timers.swFine = Math.max(0, Timers.swFine - 1)
-    implicitHeight: kind === "music" ? (overlay ? 200 : 132) : 80
+    implicitHeight: kind === "music" ? (overlay ? 200 : 132) : kind === "captions" ? captionsCard.implicitHeight : 80
 
     // MPRIS doesn't push the position; ask for it while visible
     Timer {
@@ -80,10 +81,17 @@ Item {
         }
     }
     function nudgeVolume(d) {
-        if (ownVolume)
-            player.volume = Math.max(0, Math.min(1, player.volume + d));
-        else
-            Audio.setVolume(Math.max(0, Math.min(1, Audio.volume + d)));
+        setVolume(volume + d);
+    }
+    function setVolume(v) {
+        v = Math.max(0, Math.min(1, v));
+        if (ownVolume) {
+            player.volume = v;
+        } else {
+            Audio.setVolume(v);
+            if (Audio.muted && v > 0)
+                Audio.toggleMute();
+        }
     }
 
     component Ctl: IconButton {
@@ -92,6 +100,86 @@ Item {
         fill: true
         iconSize: 18
         iconColor: root.ink
+    }
+
+    // The volume, on the left of the controls: a click on the speaker mutes;
+    // the pointer on it opens a slider beside it (the player's own volume
+    // when it has one, else the system's). The wheel works over both.
+    component Volume: Item {
+        id: vol
+        readonly property bool open: volHover.hovered || volDrag.pressed
+        width: open ? 104 : 36
+        height: 36
+        Behavior on width { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+        HoverHandler { id: volHover }
+        WheelHandler { onWheel: e => root.nudgeVolume(e.angleDelta.y > 0 ? 0.05 : -0.05) }
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: Qt.rgba(1, 1, 1, vol.open ? 0.12 : 0)
+            Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+        }
+        Ctl {
+            id: speaker
+            icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"
+            fill: !vol.open
+            tooltip: root.muted ? "Unmute" : "Mute"
+            onClicked: root.toggleMute()
+        }
+        Item {
+            anchors { left: speaker.right; leftMargin: 2; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+            height: 20
+            visible: opacity > 0.01
+            opacity: Math.max(0, (vol.width - 60) / 44)
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width
+                height: 4
+                radius: 2
+                color: Qt.rgba(1, 1, 1, 0.25)
+                Rectangle {
+                    width: parent.width * (root.muted ? 0 : root.volume)
+                    height: parent.height
+                    radius: 2
+                    color: root.ink
+                }
+            }
+            MouseArea {
+                id: volDrag
+                anchors { fill: parent; topMargin: -8; bottomMargin: -8 }
+                cursorShape: Qt.PointingHandCursor
+                preventStealing: true
+                onPressed: m => root.setVolume(m.x / width)
+                onPositionChanged: m => {
+                    if (pressed)
+                        root.setVolume(m.x / width);
+                }
+            }
+            Accessible.role: Accessible.Slider
+            Accessible.name: "Volume"
+        }
+    }
+    // Under the song: the volume on the left, previous / play / next in the
+    // middle, then Cast and open the player's window on the right
+    component Transport: Item {
+        property int playIcon: 24
+        height: 44
+        Volume {
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+        }
+        Row {
+            anchors.centerIn: parent
+            spacing: 10
+            Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
+            Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: parent.parent.playIcon; width: 44; onClicked: root.player?.togglePlaying() }
+            Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
+        }
+        Row {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            spacing: 4
+            Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; iconSize: 17; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; onClicked: root.openCast() }
+            Ctl { icon: "arrow-square-out"; fill: false; iconSize: 17; tooltip: "Open " + (root.player?.identity || "the player"); onClicked: root.openPlayer() }
+        }
     }
 
     // ── Music, controls over the art ────────────────────────────────────
@@ -108,7 +196,8 @@ Item {
             visible: root.artStyle === "faded"
             Image {
                 anchors.fill: parent
-                source: root.player?.trackArtUrl ?? "" // (kept loaded, at a fixed size: no reload and flicker on every open)
+                source: Media.artUrl(root.player) // (kept loaded, at a fixed size: no reload and flicker on every open)
+                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(640, 640)
                 asynchronous: true
@@ -131,37 +220,23 @@ Item {
         Column {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 12 }
             spacing: 6
-            Item {
+            Column {
+                id: titleCol
                 width: parent.width
-                height: titleCol.height
-                Column {
-                    id: titleCol
-                    width: parent.width - openBtn.width - 4
-                    spacing: 0
-                    Marquee {
-                        text: root.player?.trackTitle || "Not Playing"
-                        maxWidth: titleCol.width
-                        scroll: Island.shows("music", "scroll")
-                        color: root.ink
-                        font { family: Theme.font.family; pixelSize: 16; weight: Font.DemiBold }
-                    }
-                    Text {
-                        width: parent.width
-                        text: [root.player?.trackArtist, root.player?.trackAlbum].filter(x => !!x).join(" · ")
-                        elide: Text.ElideRight
-                        color: Qt.rgba(1, 1, 1, 0.75)
-                        font { family: Theme.font.family; pixelSize: Theme.font.small }
-                    }
+                spacing: 0
+                Marquee {
+                    text: root.player?.trackTitle || "Not Playing"
+                    maxWidth: titleCol.width
+                    scroll: Island.shows("music", "scroll")
+                    color: root.ink
+                    font { family: Theme.font.family; pixelSize: 16; weight: Font.DemiBold }
                 }
-                Ctl {
-                    id: openBtn
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    width: 32
-                    height: 32
-                    icon: "arrow-square-out"
-                    fill: false
-                    iconSize: 16
-                    onClicked: root.openPlayer()
+                Text {
+                    width: parent.width
+                    text: [root.player?.trackArtist, root.player?.trackAlbum].filter(x => !!x).join(" · ")
+                    elide: Text.ElideRight
+                    color: Qt.rgba(1, 1, 1, 0.75)
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
             }
             Item {
@@ -208,31 +283,8 @@ Item {
                     }
                 }
             }
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
-                Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
-                Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: 24; width: 44; onClicked: root.player?.togglePlaying() }
-                Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
-                Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; onClicked: root.openCast() }
-                Ctl {
-                    icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"
-                    onClicked: root.toggleMute()
-                    WheelHandler { onWheel: e => root.nudgeVolume(e.angleDelta.y > 0 ? 0.05 : -0.05) }
-                    Rectangle {
-                        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 3 }
-                        width: 18
-                        height: 2
-                        radius: 1
-                        color: Qt.rgba(1, 1, 1, 0.25)
-                        Rectangle {
-                            width: parent.width * (root.muted ? 0 : root.volume)
-                            height: parent.height
-                            radius: 1
-                            color: root.ink
-                        }
-                    }
-                }
+            Transport {
+                width: parent.width
             }
         }
     }
@@ -255,7 +307,8 @@ Item {
             }
             Image {
                 anchors.fill: parent
-                source: root.player?.trackArtUrl ?? ""
+                source: Media.artUrl(root.player)
+                onStatusChanged: if (status === Image.Error) Media.artFailed()
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(144, 144)
                 asynchronous: true
@@ -358,40 +411,45 @@ Item {
             }
         }
 
-        Row {
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
-            spacing: 6
-            Ctl { icon: "arrow-square-out"; fill: false; iconSize: 17; onClicked: root.openPlayer() }
-            Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
-            Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: 22; width: 44; onClicked: root.player?.togglePlaying() }
-            Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
-            Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; iconSize: 17; onClicked: root.openCast() }
-            Ctl {
-                id: vol
-                icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"
-                onClicked: root.toggleMute()
-                WheelHandler { onWheel: e => root.nudgeVolume(e.angleDelta.y > 0 ? 0.05 : -0.05) }
-                // The level, as a thin arc under the icon
-                Rectangle {
-                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 3 }
-                    width: 18
-                    height: 2
-                    radius: 1
-                    color: Qt.rgba(1, 1, 1, 0.2)
-                    Rectangle {
-                        width: parent.width * (root.muted ? 0 : root.volume)
-                        height: parent.height
-                        radius: 1
-                        color: root.ink
-                    }
-                }
+        Transport {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            playIcon: 22
+        }
+    }
+
+    // ── Live captions: the last words, up to four lines, and Off ────────
+    Item {
+        visible: root.kind === "captions"
+        anchors.fill: parent
+        Column {
+            id: captionsCard
+            width: parent.width - offBtn.width - 8
+            spacing: 4
+            Text {
+                text: "Live captions"
+                color: root.ink2
+                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
             }
+            CaptionLines {
+                width: parent.width
+                ink: root.ink
+                size: Theme.font.body
+                lines: 4
+            }
+        }
+        Ctl {
+            id: offBtn
+            anchors { right: parent.right; top: parent.top }
+            icon: "x"
+            fill: false
+            tooltip: "Turn off live captions"
+            onClicked: Captions.cfg.enabled = false
         }
     }
 
     // ── Timer, stopwatch, recording, transfer, call ─────────────────────
     Item {
-        visible: root.kind !== "music" && root.kind !== ""
+        visible: root.kind !== "music" && root.kind !== "captions" && root.kind !== ""
         anchors.fill: parent
 
         Rectangle {

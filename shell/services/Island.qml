@@ -78,7 +78,9 @@ Singleton {
     onActivitiesChanged: {
         const kinds = activities.map(x => x.kind);
         const added = kinds.find(k => !lastKinds.includes(k));
-        if (added)
+        // (music coming and going, a video paused and played, doesn't take
+        // the focus from captions: they're what's being read)
+        if (added && !(added === "music" && focusKind === "captions" && kinds.includes("captions")))
             focusKind = added;
         lastKinds = kinds;
     }

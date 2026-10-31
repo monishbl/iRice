@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.common
+import qs.modules.captions
 import qs.services
 
 // One live activity in the expanded island, with its controls. Fades and
@@ -15,7 +16,7 @@ Item {
     readonly property var player: Island.player
 
     readonly property bool hasTimeline: kind === "music" && (player?.lengthSupported ?? false) && (player?.length ?? 0) > 0
-    implicitHeight: kind === "music" ? (hasTimeline ? 60 : 52) : LiveInfo.progress(kind) >= 0 ? 42 : 36
+    implicitHeight: kind === "music" ? (hasTimeline ? 60 : 52) : kind === "captions" ? Math.max(36, info.implicitHeight + 8) : LiveInfo.progress(kind) >= 0 ? 42 : 36
 
     // MPRIS doesn't push the position; ask for it while the row shows
     Timer {
@@ -46,15 +47,17 @@ Item {
         clip: true
         Image {
             anchors.fill: parent
-            visible: root.kind === "music" && (root.player?.trackArtUrl ?? "") !== ""
-            source: root.kind === "music" ? (root.player?.trackArtUrl ?? "") : ""
+            visible: root.kind === "music" && Media.artUrl(root.player) !== ""
+            source: root.kind === "music" ? Media.artUrl(root.player) : ""
+            onStatusChanged: if (status === Image.Error) Media.artFailed()
+            retainWhileLoading: true
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(96, 96)
             asynchronous: true
         }
         Icon {
             anchors.centerIn: parent
-            visible: !(root.kind === "music" && (root.player?.trackArtUrl ?? "") !== "")
+            visible: !(root.kind === "music" && Media.artUrl(root.player) !== "")
             name: root.activity.icon
             fill: true
             size: 15
@@ -63,16 +66,27 @@ Item {
     }
 
     Column {
+        id: info
         anchors { left: lead.right; leftMargin: 12; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         spacing: 1
         Text {
             width: parent.width
-            text: LiveInfo.title(root.kind)
+            text: root.kind === "captions" ? "Live captions" : LiveInfo.title(root.kind)
             elide: Text.ElideRight
             color: "#F5F5F7"
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
+        // Captions: the last words, a few lines of them
+        CaptionLines {
+            visible: root.kind === "captions"
+            width: parent.width
+            height: visible ? implicitHeight : 0
+            ink: "#F5F5F7"
+            size: Theme.font.small
+            lines: 3
+        }
         Text {
+            visible: root.kind !== "captions"
             width: parent.width
             text: LiveInfo.detail(root.kind)
             elide: Text.ElideRight

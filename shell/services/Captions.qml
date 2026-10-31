@@ -86,6 +86,12 @@ Singleton {
         function toggle(): void { root.toggle(); }
         function on(): void { root.cfg.enabled = true; }
         function off(): void { root.cfg.enabled = false; }
+        // (to see how they look: qs ipc call captions demo "a sentence" "the next")
+        function demo(before: string, now: string): void {
+            root.lines = [before];
+            root.partial = now;
+            root.quiet = false;
+        }
     }
     GlobalShortcut {
         appid: "irice"

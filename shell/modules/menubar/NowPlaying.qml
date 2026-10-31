@@ -56,7 +56,9 @@ Variants {
                         color: Theme.color.fill
                         Image {
                             anchors.fill: parent
-                            source: pop.player?.trackArtUrl ?? ""
+                            source: Media.artUrl(pop.player)
+                            onStatusChanged: if (status === Image.Error) Media.artFailed()
+                            retainWhileLoading: true
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(144, 144)
                             asynchronous: true

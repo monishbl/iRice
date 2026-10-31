@@ -41,10 +41,18 @@ Variants {
         // given back as the pointer leaves
         WlrLayershell.keyboardFocus: islandOn && island.wantsKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         anchors { top: true; left: true; right: true }
+        // The tray behind its arrow (bar.cfg.collapseTray)
+        readonly property bool trayCollapses: cfg.collapseTray && SystemTray.items.values.length > 0
+        property bool trayOpen: false
+        Timer {
+            running: bar.trayOpen && !Panels.isOpen("trayMenu", bar.screen)
+            interval: 12000
+            onTriggered: bar.trayOpen = false
+        }
         // Taller than the bar so the dynamic island can open below it; only the
         // 30px bar is reserved, and input is masked to the bar and the island
         readonly property bool islandOn: Config.options.island.enabled
-        implicitHeight: islandOn ? 340 : 30
+        implicitHeight: islandOn ? 420 : 30
         exclusionMode: autoHide ? ExclusionMode.Ignore : ExclusionMode.Normal
         exclusiveZone: autoHide ? 0 : 30
         // Auto-hide: only a 2px strip catches the pointer while hidden
@@ -197,7 +205,7 @@ Variants {
                 id: island
                 visible: bar.islandOn
                 width: parent.width
-                height: 340
+                height: 420
                 screen: bar.screen
                 fg: bar.fg
                 pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
@@ -312,10 +320,15 @@ Variants {
                     }
                 }
 
+                // The apps' icons (the tray). Collapsed (Settings → Menu Bar),
+                // they wait behind an arrow: a click slides them out to its
+                // left, and they tuck away again a while later (not while one
+                // of their menus is open)
                 Repeater {
                     model: SystemTray.items
                     MenuBarItem {
                         required property var modelData
+                        visible: !bar.trayCollapses || bar.trayOpen
                         image: IconLookup.safe(modelData.icon, "application-x-executable")
                         color: bar.fg
                         active: Panels.isOpen("trayMenu", bar.screen) && Panels.trayMenu === modelData.menu
@@ -333,6 +346,20 @@ Variants {
                             screen: bar.screen
                             text: modelData.tooltipTitle || modelData.title || modelData.id
                         }
+                    }
+                }
+
+                MenuBarItem {
+                    visible: bar.trayCollapses
+                    icon: bar.trayOpen ? "caret-right" : "caret-left"
+                    bold: true
+                    color: bar.fg
+                    onClicked: bar.trayOpen = !bar.trayOpen
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered
+                        screen: bar.screen
+                        text: bar.trayOpen ? "Hide app icons" : "Show app icons · " + SystemTray.items.values.length
                     }
                 }
 

@@ -2,7 +2,8 @@
 """The pointer's place, over and over, while a button is held (services/Shelf.qml
 starts it after a moment's hold and stops it when the button comes up): one
 "X, Y" line every 40 ms from Hyprland's socket, for at most a minute (or the
-seconds given: pointer-follow.py 1.5, for the ring that finds the pointer)."""
+seconds and interval given: pointer-follow.py 1.4 0.008, for the ring that
+finds the pointer, which has to keep up with it)."""
 import os
 import socket
 import sys
@@ -19,6 +20,10 @@ def main():
         limit = min(LIMIT, float(sys.argv[1])) if len(sys.argv) > 1 else LIMIT
     except ValueError:
         limit = LIMIT
+    try:
+        interval = max(0.004, float(sys.argv[2])) if len(sys.argv) > 2 else INTERVAL
+    except ValueError:
+        interval = INTERVAL
     end = time.monotonic() + limit
     while time.monotonic() < end:
         try:
@@ -30,7 +35,7 @@ def main():
             sys.stdout.flush()
         except (OSError, BrokenPipeError):
             return 1
-        time.sleep(INTERVAL)
+        time.sleep(interval)
     return 0
 
 

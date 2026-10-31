@@ -49,10 +49,12 @@ Item {
                 radius: 5
                 clip: true
                 color: Qt.alpha(root.ink, 0.15)
-                visible: root.kind === "music" && (root.player?.trackArtUrl ?? "") !== ""
+                visible: root.kind === "music" && Media.artUrl(root.player) !== ""
                 Image {
                     anchors.fill: parent
-                    source: root.kind === "music" ? (root.player?.trackArtUrl ?? "") : ""
+                    source: root.kind === "music" ? Media.artUrl(root.player) : ""
+                    onStatusChanged: if (status === Image.Error) Media.artFailed()
+                    retainWhileLoading: true
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(36, 36)
                     asynchronous: true
@@ -79,7 +81,7 @@ Item {
             }
             Icon {
                 anchors.centerIn: parent
-                visible: root.kind !== "recording" && !callApp.visible && !(root.kind === "music" && (root.player?.trackArtUrl ?? "") !== "")
+                visible: root.kind !== "recording" && !callApp.visible && !(root.kind === "music" && Media.artUrl(root.player) !== "")
                 name: root.activity?.icon ?? ""
                 fill: true
                 size: 14

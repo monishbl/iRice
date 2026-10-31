@@ -19,7 +19,9 @@ Item {
         clip: true
         Image {
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
+            source: Media.artUrl(root.player)
+            onStatusChanged: if (status === Image.Error) Media.artFailed()
+            retainWhileLoading: true
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(art.width * 2, art.width * 2)
             asynchronous: true

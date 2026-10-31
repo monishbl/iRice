@@ -146,6 +146,7 @@ Column {
         Toggle { key: "resources"; text: "CPU and memory" }
         Toggle { key: "weather"; text: "Weather" }
         Toggle { key: "keyboardLayout"; text: "Keyboard layout"; hint: "Shown when you have more than one layout." }
+        Toggle { key: "collapseTray"; text: "Tuck away app icons"; hint: "The icons apps put in the menu bar wait behind an arrow; click it to show them." }
         Toggle { key: "search"; text: "Search"; hint: "Spotlight still opens with " + KeyNames.combo("SUPER Space") + "." }
         Toggle { key: "ai"; text: "AI"; hint: "The sidebar still opens with " + KeyNames.combo("SUPER A") + "." }
         Toggle { key: "controlCenter"; text: "Control Center"; hint: "Still opens with " + KeyNames.combo("SUPER C") + "." }

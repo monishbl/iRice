@@ -61,14 +61,15 @@ Column {
         }
         Row {
             label: "Show them"
-            detail: Captions.placement === "island" ? "In the island at the top: the last words, one line"
+            detail: Captions.placement === "island" ? "In the island at the top: the last words, a few lines when it's open"
                 : Captions.placement === "strip" ? "Across the bottom of the screen; windows make room for them"
+                : Captions.placement === "video" ? "Over the bottom of the window that's playing, up to three lines, like a film's subtitles"
                 : "In a bar above the Dock. Drag it anywhere."
             Segmented {
-                width: 240
-                options: ["Floating", "Island", "Bottom"]
-                current: Captions.placement === "island" ? 1 : Captions.placement === "strip" ? 2 : 0
-                onSelected: i => Captions.cfg.placement = ["bar", "island", "strip"][i]
+                width: 320
+                options: ["Floating", "Over video", "Island", "Bottom"]
+                current: ["bar", "video", "island", "strip"].indexOf(Captions.placement) < 0 ? 0 : ["bar", "video", "island", "strip"].indexOf(Captions.placement)
+                onSelected: i => Captions.cfg.placement = ["bar", "video", "island", "strip"][i]
             }
         }
         Row {
@@ -101,8 +102,21 @@ Column {
         title: "Pointer"
         Row {
             label: "Shake to find the pointer"
-            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, with a ring around it"
+            detail: "Move the mouse quickly back and forth to see where the pointer is"
             Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
+        }
+        Row {
+            visible: Config.options.findPointer.enabled
+            label: "Show it with"
+            detail: Config.options.findPointer.style === "grow" ? "The pointer grows big for a moment. A few apps draw their own pointer; over those it stays its size."
+                : Config.options.findPointer.style === "both" ? "A ring, and the pointer grows big for a moment (not over the few apps that draw their own)"
+                : "A ring that closes in on the pointer"
+            Segmented {
+                width: 280
+                options: ["Ring", "Bigger pointer", "Both"]
+                current: Math.max(0, ["ring", "grow", "both"].indexOf(Config.options.findPointer.style))
+                onSelected: i => Config.options.findPointer.style = ["ring", "grow", "both"][i]
+            }
         }
     }
 }

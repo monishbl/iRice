@@ -1,5 +1,24 @@
 # iRice changelog
 
+## Island fixes, captions over the video, tucked-away app icons · 2026-11-01
+
+- **Album art in the island loads reliably.** Browsers like Zen save each video's picture under the same file name, so the island sometimes kept the previous picture or showed none. Each track now loads its own picture, a failed load is retried, and the picture is read again a moment after the track changes. The same fix applies to the lock screen, Control Center, the desktop widget and Now Playing.
+- **The island's player has new button places:**
+  - **Volume on the left.** Click the speaker to mute. Point at it and a slider opens beside it for the app's own volume (or the system's).
+  - **Open the app on the right,** where the speaker was, next to Cast.
+  - **Recent alerts moved to a button at the top left,** next to the pin's corner. It no longer takes a row at the bottom of the island.
+- **The island no longer gets cut off at the bottom** when music, captions and the status row show together. It has more room to grow.
+- **The compact island's buttons work on the first click.** Pointing at pause, stop or close no longer opens the island under the pointer, so the click reaches the button. Pointing anywhere else on the pill still opens it.
+- **Live captions over the video.** A new place for them in Settings → Accessibility → Show them → **Over video**. The captions sit over the bottom of the window that's playing, like a film's subtitles, up to three lines, and clicks go through to the window. Without a playing window, they use the focused one.
+- **Captions in the island show more:**
+  - **Several lines,** instead of one line cut off at the end.
+  - **They stay in view.** Music starting, or a video paused and played, no longer takes the island's focus away from captions.
+- **Shake to find the pointer has a setting for how it shows:** a ring (the default), a bigger pointer, or both, in Settings → Accessibility. Both are smoother:
+  - **The ring** follows the pointer 125 times a second instead of 25, and no longer jumps.
+  - **The pointer** grows in one step, instead of four steps that each stuttered.
+  - Apps that draw their own pointer, such as foot, keep its normal size.
+- **Tuck away app icons.** The icons apps put in the menu bar now wait behind an arrow. Click it to show them; they tuck away again after 12 seconds, but not while one of their menus is open. Turn it off in Settings → Menu Bar → Tuck away app icons.
+
 ## Live captions, faster Quick Share, going back after an update · 2026-10-31
 
 - **Quick Share is much faster without Wi-Fi in common:**

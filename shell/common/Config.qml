@@ -240,6 +240,7 @@ Singleton {
                 property bool bluetooth: false
                 property bool sound: false // volume lives in Control Center
                 property bool keyboardLayout: true // shown only with 2+ layouts
+                property bool collapseTray: true // apps' icons hidden behind an arrow until clicked
                 property string notificationIndicator: "bellDot" // bellDot | dot | count | bellCount | off
                 property bool scrollGestures: true // left half: brightness, right half: volume
                 // Extra buttons: screenshot | colorPicker | mic | keyboard | darkMode | powerProfile | record
@@ -434,7 +435,7 @@ Singleton {
                 // Live captions (Settings → Accessibility, services/Captions):
                 // subtitles for the sound this computer plays
                 property bool enabled: false
-                property string placement: "bar" // bar (floating, movable) | island | strip (across the bottom)
+                property string placement: "bar" // bar (floating, movable) | video (over the playing window) | island | strip (across the bottom)
                 property string language: "auto" // "auto", or a code ("en")
                 property real barX: -1 // the floating bar's place on its display (-1: centred above the Dock)
                 property real barY: -1
@@ -443,6 +444,7 @@ Singleton {
                 // Shake the mouse: the pointer grows for a moment, with a ring
                 // around it (hypr/irice/findpointer.lua, services/FindPointer)
                 property bool enabled: true
+                property string style: "ring" // ring (around it) | grow (a bigger pointer) | both
             }
             property JsonObject workspaces: JsonObject {
                 // Moving to another display (keyboard or pointer)
