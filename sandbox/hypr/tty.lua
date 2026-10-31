@@ -34,6 +34,7 @@ end
 
 dofile(root .. "/hypr/irice/look.lua")
 pcall(dofile, root .. "/hypr/irice/cursor.lua") -- macOS cursor when installed
+pcall(dofile, root .. "/hypr/irice/findpointer.lua") -- shake to find the pointer
 pcall(dofile, root .. "/hypr/irice/tabs.lua") -- window tabs
 dofile(root .. "/hypr/irice/rules.lua")
 -- (the shell here keeps its config in the sandbox home)

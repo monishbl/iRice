@@ -34,13 +34,6 @@ if [[ ! -e "$DIR/irice-shell.missing" ]]; then
     exit 0
 fi
 rm -f "$DIR/irice-shell.missing"
-# The restarts of the last 15 minutes, written down
-now=$(date +%s)
-recent=$( { cat "$DIR/irice-shell.restarts" 2>/dev/null; echo "$now"; } | awk -v n="$now" '$1 > n - 900')
-printf '%s\n' "$recent" >"$DIR/irice-shell.restarts"
-if [[ $(printf '%s\n' "$recent" | grep -c .) -ge 3 && ! -e "$DIR/irice-recovery.shown" ]] && "$HERE/recover.sh" --check; then
-    : >"$DIR/irice-recovery.shown" # (once a session)
-    setsid -f "$HERE/recover.sh" "$@" >/dev/null 2>&1 9>&-
-fi
+"$HERE/shell-restarted.sh" "$DIR" "$@" 9>&- # (the third time soon after an update: the recovery window)
 setsid -f "$HERE/launch-shell.sh" "$@" >/dev/null 2>&1 9>&-
 sleep 2 # let it register before the lock is released

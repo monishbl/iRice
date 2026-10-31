@@ -129,7 +129,9 @@ case "${1:-start}" in
             gone=0
             pids=($(shell_pids))
             if (( ${#pids[@]} == 0 )); then
-                start # crashed
+                # crashed (the third time soon after an update: the recovery window too)
+                "$SHELL_DIR/assets/scripts/shell-restarted.sh" "$LOCKDIR" -p "$SHELL_DIR" 8>&-
+                start
                 misses=0
                 sleep 10
                 continue
