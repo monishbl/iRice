@@ -14,7 +14,7 @@ Singleton {
     SystemClock {
         id: clock
         precision: SystemClock.Seconds
-        enabled: ScreenTools.recording || Calls.active || Privacy.shareInIsland
+        enabled: ScreenTools.recording || Calls.active || Privacy.shareInIsland || Dictation.active
     }
     function since(t) {
         return Timers.format(Math.max(0, Math.floor((clock.date - t) / 1000)));
@@ -38,6 +38,8 @@ Singleton {
             return Privacy.shares[0]?.window ? "app-window" : "screencast";
         case "sysupdate":
             return "arrow-circle-up";
+        case "dictation":
+            return Dictation.stage === "writing" ? "text-aa" : "microphone";
         }
         return "music-notes";
     }
@@ -62,6 +64,8 @@ Singleton {
             return "Sharing screen · " + Privacy.screenApp + (Privacy.shares.length > 1 ? " and " + (Privacy.shares.length - 1) + " more" : "");
         case "sysupdate":
             return "Updating · " + SoftwareUpdate.stepName(SoftwareUpdate.stepNow || "system");
+        case "dictation":
+            return Dictation.stage === "writing" ? "Writing…" : "Listening";
         }
         return "";
     }
@@ -89,6 +93,8 @@ Singleton {
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");
         case "screenShare":
             return Privacy.stopFailed ? "Still sharing: stop it in " + Privacy.screenApp : Privacy.screenTarget + " · " + since(Privacy.screenStarted);
+        case "dictation":
+            return Dictation.stage === "writing" ? "Turning your words into text" : Dictation.pressedAt > 0 ? "Let go of the keys to stop" : "Press Super+H again when you're done";
         case "sysupdate":
             return (Updates.job?.text ?? "") + (Updates.job?.package && (Updates.job.phase === "install" || Updates.job.phase === "download") ? " · " + Updates.job.package : "");
         }
@@ -110,6 +116,8 @@ Singleton {
             return since(Calls.started);
         case "screenShare":
             return since(Privacy.screenStarted);
+        case "dictation":
+            return Dictation.stage === "writing" ? "" : since(Dictation.startedAt);
         case "sysupdate":
             return Updates.job?.phase === "auth" ? "Password" : Math.round(Math.max(0, Updates.progress) * 100) + "%";
         }
@@ -158,6 +166,12 @@ Singleton {
         }
         case "screenShare":
             return [{ piece: "stop", icon: "stop", fill: true, act: () => Privacy.stopSharing(), on: !Privacy.stopping, danger: true }];
+        case "dictation":
+            // Stop types what was said; Cancel drops it
+            return [
+                { piece: "cancel", icon: "x", fill: false, act: () => Dictation.cancel(), on: true },
+                { piece: "stop", icon: "check", fill: true, act: () => Dictation.stop(), on: Dictation.stage === "listening" }
+            ];
         case "sysupdate":
             // Details: Software Update with the output open; Cancel only while
             // it still waits for the password (never mid-transaction)

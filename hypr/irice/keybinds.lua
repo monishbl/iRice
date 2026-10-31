@@ -129,6 +129,18 @@ local function bind(e, user)
             })
             if not released then log("couldn't bind tap release: " .. tostring(releaseError)) end
         end
+        -- A shortcut that also acts when let go (Dictation: held down, it
+        -- listens until then): a release bind on its last key, whatever mods
+        -- are still down. It fires on every release of that key, so the
+        -- shell ignores one it didn't see pressed. (No description: it isn't
+        -- a shortcut of its own in the list.)
+        if e.action.release then
+            local last = keys:match("([^+%s]+)%s*$")
+            local released, releaseError = pcall(hl.bind, last, hl.dsp.global("irice:" .. e.action.release), {
+                release = true, ignore_mods = true, non_consuming = true
+            })
+            if not released then log("couldn't bind release of " .. tostring(e.id) .. ": " .. tostring(releaseError)) end
+        end
         -- Other Super shortcuts cancel a pending tap.
         if e.action.shell ~= "superTap" and norm:find("^" .. MOD .. "%+") then
             pcall(hl.bind, keys, hl.dsp.global("irice:superTapCancel"), {})

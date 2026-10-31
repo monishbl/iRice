@@ -1,6 +1,8 @@
 # iRice changelog
 
-## Share Wi-Fi as a QR code, and fingerprints · 2026-10-31
+## Dictation, Wi-Fi QR codes and fingerprints · 2026-10-31
+
+- **Dictation.** Press **Super+H**, speak, and press it again: the words are typed where your cursor is. Or hold Super+H while you speak and let go when you're done. It runs on this computer with whisper.cpp; nothing is sent anywhere. Set it up in **Settings → Dictation**: install speech recognition (one password), and download a speech model (Base, 142 MB, suits most people; bigger ones make fewer mistakes but are slower). The island shows when it's listening, with Done and Cancel. Choose the language there too (the system's by default). Other keys or scripts can use `qs ipc call dictation toggle`.
 
 - **Share a Wi-Fi network as a QR code.** In Control Center → Wi-Fi, the network you're on has a QR button (and every saved network has **Share network…** in its menu). Point a phone's camera at the code to join. The password stays hidden until you ask for it, and you can copy it. Needs qrencode (setup installs it).
 - **Wi-Fi codes in screenshots.** Take a screenshot with a Wi-Fi QR code in it (a router's sticker, a café's sign) and the island offers to join that network, or copy its password.

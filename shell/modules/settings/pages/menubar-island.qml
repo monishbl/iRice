@@ -86,7 +86,8 @@ Column {
                 { kind: "transfer", label: "Transfers show", pieces: [["icon", "Icon"], ["name", "File name"], ["time", "Progress"], ["open", "Open Downloads"], ["cancel", "Cancel copy"]] },
                 { kind: "call", label: "Calls show", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["mute", "Mute"], ["open", "Open"], ["leave", "Leave"]] },
                 { kind: "screenShare", label: "Screen sharing shows", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["stop", "Stop"]] },
-                { kind: "sysupdate", label: "System updates show", pieces: [["icon", "Icon"], ["name", "Updating system"], ["time", "Progress"], ["details", "Details"], ["cancel", "Cancel"]] }
+                { kind: "sysupdate", label: "System updates show", pieces: [["icon", "Icon"], ["name", "Updating system"], ["time", "Progress"], ["details", "Details"], ["cancel", "Cancel"]] },
+                { kind: "dictation", label: "Dictation shows", pieces: [["icon", "Microphone"], ["name", "Listening"], ["time", "Time"], ["stop", "Done"], ["cancel", "Cancel"]] }
             ] : []
             Row {
                 id: pieceRow

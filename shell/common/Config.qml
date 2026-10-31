@@ -395,6 +395,13 @@ Singleton {
             property JsonObject keyboard: JsonObject {
                 property string superTap: "overview" // tapping Super alone: overview | spotlight | none
             }
+            // Dictation (services/Dictation): speech to text with whisper.cpp, on
+            // this computer. Super+H: tap to start and stop, or hold while speaking
+            property JsonObject dictation: JsonObject {
+                property string model: "base" // tiny | base | small | medium | large-v3-turbo (assets/scripts/dictate.py)
+                property string language: "" // a code ("en"), "auto", or "" for the system's language
+                property bool sounds: true // a tick as it starts and stops listening
+            }
             property JsonObject workspaces: JsonObject {
                 // Moving to another display (keyboard or pointer)
                 // How the display you moved to shows it: glow (a soft accent glow at its edges) | dim (it dims briefly) | off.

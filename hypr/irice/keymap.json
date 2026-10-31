@@ -285,6 +285,16 @@
   }
  },
  {
+  "id": "dictate",
+  "keys": "$MOD + H",
+  "group": "Shell",
+  "label": "Dictation (tap to start and stop, or hold while you speak)",
+  "action": {
+   "shell": "dictate",
+   "release": "dictateRelease"
+  }
+ },
+ {
   "id": "ocr",
   "keys": "$MOD + SHIFT + X",
   "group": "Screen",

@@ -161,6 +161,10 @@ ShellRoot {
         onPressed: if (!Notifications.replyLatest()) Island.post({ kind: "custom", icon: "chat-circle", title: "Nothing to reply to", subtitle: "Messages you can answer from here show a Reply button", color: Theme.color.secondary }, 3000)
     }
     GlobalShortcut { appid: "irice"; name: "shareSelection"; description: "Share the selected text with a nearby device"; onPressed: Sharing.shareSelection() }
+    // Dictation: the key going down, and coming back up (keymap.json's
+    // release bind)
+    GlobalShortcut { appid: "irice"; name: "dictate"; description: "Dictation"; onPressed: Dictation.pressed() }
+    GlobalShortcut { appid: "irice"; name: "dictateRelease"; description: "Dictation (key let go)"; onPressed: Dictation.released() }
     GlobalShortcut { appid: "irice"; name: "askScreen"; description: "Ask AI about part of the screen"; onPressed: ScreenTools.select("ask") }
     component Snap: GlobalShortcut {
         required property string layout
