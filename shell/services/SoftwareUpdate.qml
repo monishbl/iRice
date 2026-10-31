@@ -35,6 +35,7 @@ Singleton {
     function check() {
         if (running || checking)
             return;
+        clearFinished();
         asked = true;
         hold = -1;
         // This check's compat.json is read once the iRice check has said which
@@ -48,6 +49,19 @@ Singleton {
         snapProc.running = true;
         helperProc.running = true;
     }
+    // A new check: the last run's result (Updated, iRice's notes) gives way
+    // to what's found now, instead of hiding it until Done. A restart that
+    // run needed is still asked for.
+    property bool restartPending: false
+    function clearFinished() {
+        if (running)
+            return;
+        if (Updates.job && Updates.job.state === "done" && Updates.job.restart)
+            restartPending = true;
+        Updates.dismiss();
+        IriceUpdate.dismissResult();
+    }
+
     // The tested Hyprland range of the version that would be installed
     property var compat: null
     property bool compatPending: false // a check is waiting for its compat.json

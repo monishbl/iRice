@@ -51,6 +51,17 @@ Column {
                 onClicked: SoftwareUpdate.check()
             }
         }
+        // (the last update needed one; its result made way for a new check)
+        Row {
+            visible: SoftwareUpdate.restartPending && !SoftwareUpdate.running
+            label: "Restart to finish the last update"
+            detail: "The kernel or system libraries changed."
+            SettingsButton {
+                text: "Restart"
+                icon: "arrow-clockwise"
+                onClicked: Quickshell.execDetached(["systemctl", "reboot"])
+            }
+        }
     }
 
     // Errors say what happened and what to do
