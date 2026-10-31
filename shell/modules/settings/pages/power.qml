@@ -135,10 +135,11 @@ Column {
         width: parent.width
         title: "Lid and waking"
         visible: page.battery
-        footer: "Do nothing keeps the computer running with the lid closed; with another display, it carries on there. If iRice isn't running, closing the lid sleeps, as it always has."
+        footer: "Lock and Do nothing keep the computer running with the lid closed (Wi-Fi, downloads and music carry on; the built-in screen goes off); with another display, it carries on there. A critically low battery still sleeps. If iRice isn't running, closing the lid sleeps, as it always has."
         Row { label: "Closing the lid on battery"; Lid { key: "lidBattery" } }
         Row { label: "Closing the lid on the charger"; Lid { key: "lidAc" } }
         Row { label: "With another display connected"; detail: "On the charger"; Lid { key: "lidExternal" } }
+        Row { label: "With Caffeine on"; detail: "Instead of sleeping"; Lid { key: "lidCaffeine" } }
         Row {
             label: "Require the password after sleep"
             Segmented {

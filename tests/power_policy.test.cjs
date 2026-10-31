@@ -67,6 +67,25 @@ test('the lid is only taken from logind when a setting differs from its default'
     assert.equal(P.lidNeedsInhibit({ lidAc: 'sleep', lidBattery: 'sleep', lidExternal: 'sleep' }), true);
 });
 
+test('lid: Caffeine keeps it awake instead of sleeping', () => {
+    const cfg = { lidAc: 'sleep', lidBattery: 'sleep', lidExternal: 'nothing', lidCaffeine: 'lock' };
+    assert.equal(P.lidAction(false, 0, cfg, true), 'lock');
+    assert.equal(P.lidAction(true, 0, cfg, true), 'lock');
+    assert.equal(P.lidAction(true, 1, cfg, true), 'nothing'); // docked stays docked
+    assert.equal(P.lidAction(false, 0, cfg, false), 'sleep');
+    assert.equal(P.lidAction(false, 0, { ...cfg, lidCaffeine: 'nothing' }, true), 'nothing');
+    assert.equal(P.lidAction(false, 0, { ...cfg, lidCaffeine: 'sleep' }, true), 'sleep');
+    assert.equal(P.lidAction(false, 0, { lidBattery: 'sleep' }, true), 'lock'); // older config: lock
+    assert.equal(P.lidAction(false, 0, { ...cfg, lidBattery: 'nothing' }, true), 'nothing'); // a lid that doesn't sleep is left alone
+});
+
+test('Caffeine takes the lid from logind unless it is set to sleep', () => {
+    const cfg = { lidAc: 'sleep', lidBattery: 'sleep', lidExternal: 'nothing', lidCaffeine: 'lock' };
+    assert.equal(P.lidNeedsInhibit(cfg, false), false);
+    assert.equal(P.lidNeedsInhibit(cfg, true), true);
+    assert.equal(P.lidNeedsInhibit({ ...cfg, lidCaffeine: 'sleep' }, true), false);
+});
+
 test('idle listeners: per source, in order, never-ones left out', () => {
     const l = P.idleListeners({ idleDimAc: 0, idleLockAc: 300, idleOffAc: 600, idleSleepAc: 0,
         idleDimBattery: 120, idleLockBattery: 60, idleOffBattery: 300, idleSleepBattery: 900 });

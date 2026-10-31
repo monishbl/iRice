@@ -367,6 +367,7 @@ Singleton {
                 property string lidAc: "sleep"
                 property string lidBattery: "sleep"
                 property string lidExternal: "nothing" // on the charger with another display connected
+                property string lidCaffeine: "lock" // with Caffeine on, instead of sleeping: lock | nothing | sleep
                 property int passwordAfterSleep: 0 // seconds asleep before the password is needed again: 0 | 60 | 300
                 property bool appEnergy: true // keep an hour of which apps used the CPU (a look every 5 min)
             }

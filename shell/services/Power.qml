@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.UPower
 import qs.common
@@ -245,11 +246,12 @@ Singleton {
 
     // ── Lid ─────────────────────────────────────────────────────────────
     // Closing the lid is logind's to handle (it sleeps), unless a setting
-    // here says otherwise: then iRice holds a handle-lid-switch inhibitor
-    // and acts itself. If the shell isn't running the inhibitor goes with
+    // here says otherwise (or Caffeine is on, and keeps it awake): then
+    // iRice holds a handle-lid-switch inhibitor and acts itself, and the
+    // built-in screen goes off until the lid opens. If the shell isn't running the inhibitor goes with
     // it and logind sleeps as usual, so the lid never does nothing by
     // accident.
-    readonly property bool lidMine: !sandboxed && hasBattery && Policy.lidNeedsInhibit(cfg)
+    readonly property bool lidMine: !sandboxed && hasBattery && Policy.lidNeedsInhibit(cfg, System.keepAwake)
     Process {
         running: root.lidMine
         command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=handle-lid-switch", "--who=iRice", "--why=Lid settings (Battery & Power)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
@@ -261,18 +263,30 @@ Singleton {
         stdout: SplitParser {
             onRead: line => {
                 const m = line.match(/'LidClosed': <(true|false)>/);
-                if (m && m[1] === "true")
-                    root.lidClosed();
+                if (m)
+                    m[1] === "true" ? root.lidClosed() : root.lidOpened();
             }
         }
     }
     function lidClosed() {
         const external = Quickshell.screens.filter(s => !/^(eDP|LVDS|DSI)/.test(s.name)).length;
-        const act = Policy.lidAction(!onBattery, external, cfg);
-        if (act === "sleep")
+        const act = Policy.lidAction(!onBattery, external, cfg, System.keepAwake);
+        if (act === "sleep") {
             System.power("sleep");
-        else if (act === "lock")
+            return;
+        }
+        if (act === "lock")
             System.power("lock");
+        builtInScreens(false);
+    }
+    function lidOpened() {
+        builtInScreens(true);
+    }
+    // The laptop's own screen, off under a closed lid (others carry on)
+    function builtInScreens(on) {
+        for (const s of Quickshell.screens)
+            if (/^(eDP|LVDS|DSI)/.test(s.name))
+                Hyprland.dispatch("hl.dsp.dpms({ action = \"" + (on ? "enable" : "disable") + "\", monitor = \"" + s.name + "\" })");
     }
 
     // ── Apps using significant energy ───────────────────────────────────

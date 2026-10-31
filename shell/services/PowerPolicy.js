@@ -41,15 +41,18 @@ function batteryStage(percent, onBattery) {
 // ── Lid ─────────────────────────────────────────────────────────────────
 // What closing the lid does: "sleep" | "lock" | "nothing". On the charger
 // with another display connected, its own setting (like a docked laptop).
-function lidAction(onAc, externalDisplays, cfg) {
-    if (onAc && externalDisplays > 0)
-        return cfg.lidExternal ?? "nothing";
-    return (onAc ? cfg.lidAc : cfg.lidBattery) ?? "sleep";
+// With Caffeine on, a lid that would sleep does what lidCaffeine says
+// instead (lock and keep running, by default).
+function lidAction(onAc, externalDisplays, cfg, caffeine) {
+    const act = onAc && externalDisplays > 0 ? (cfg.lidExternal ?? "nothing") : ((onAc ? cfg.lidAc : cfg.lidBattery) ?? "sleep");
+    return caffeine && act === "sleep" ? (cfg.lidCaffeine ?? "lock") : act;
 }
 // iRice only takes the lid over from logind (an inhibitor) when some setting
-// isn't logind's own default: sleep, except docked
-function lidNeedsInhibit(cfg) {
-    return (cfg.lidAc ?? "sleep") !== "sleep" || (cfg.lidBattery ?? "sleep") !== "sleep" || (cfg.lidExternal ?? "nothing") !== "nothing";
+// isn't logind's own default: sleep, except docked; or Caffeine is on and
+// keeps it awake
+function lidNeedsInhibit(cfg, caffeine) {
+    return (cfg.lidAc ?? "sleep") !== "sleep" || (cfg.lidBattery ?? "sleep") !== "sleep" || (cfg.lidExternal ?? "nothing") !== "nothing"
+        || (caffeine === true && (cfg.lidCaffeine ?? "lock") !== "sleep");
 }
 
 // ── Idle ────────────────────────────────────────────────────────────────
