@@ -83,6 +83,12 @@ Column {
         visible: page.microsoft.length > 0
         title: "Calendars"
         footer: "Shown calendars appear in Calendar, Today and Spotlight. Repeating events show here but are changed in Outlook."
+        Row {
+            visible: !CloudAccounts.calendars.some(c => CloudAccounts.account(c.account)?.provider === "microsoft")
+            label: "No calendars yet"
+            detail: CloudAccounts.busy ? "Syncing…" : "They appear after the first sync"
+            labelColor: Theme.color.secondary
+        }
         Repeater {
             model: CloudAccounts.calendars.filter(c => CloudAccounts.account(c.account)?.provider === "microsoft")
             Row {
@@ -111,8 +117,13 @@ Column {
             label: "New to-dos go to"
             Dropdown {
                 width: 260
-                options: [{ value: "", label: "This computer only" }].concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
-                value: Config.options.google.taskListId.startsWith("cloud|") ? Config.options.google.taskListId : ""
+                // (a Google list, chosen on the Google page, is named as such:
+                // not passed off as this computer)
+                readonly property string current: Config.options.google.taskListId
+                options: [{ value: "", label: "This computer only" }]
+                    .concat(current !== "" && !current.startsWith("cloud|") ? [{ value: current, label: "A Google Tasks list" }] : [])
+                    .concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
+                value: current
                 onChosen: v => Config.options.google.taskListId = v
             }
         }

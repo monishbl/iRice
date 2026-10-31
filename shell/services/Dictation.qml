@@ -36,7 +36,7 @@ Singleton {
             }
         }
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: Startup.later(() => refresh()) // (after the desktop is up)
 
     // The language whisper listens for: the setting, or the system's (a
     // "C" locale has none: whisper works it out)

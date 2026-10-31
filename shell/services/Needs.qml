@@ -52,7 +52,7 @@ Singleton {
             }
         }
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: Startup.later(() => refresh()) // (after the desktop is up)
 
     // iRice's native helpers (goa-signin among them): built here, as you
     property bool building: false

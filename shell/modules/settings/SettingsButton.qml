@@ -32,6 +32,14 @@ Squircle {
     }
     Accessible.role: Accessible.Button
     Accessible.name: text
+    // (the settings row it's in: "Use" or "Remove" alone don't say what for)
+    Accessible.description: {
+        let p = parent;
+        for (let i = 0; p && i < 4; i++, p = p.parent)
+            if (typeof p.label === "string" && p.label !== "")
+                return p.label;
+        return "";
+    }
     Accessible.onPressAction: if (active) root.clicked()
 
     FocusRing {

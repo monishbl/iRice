@@ -36,7 +36,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             width: 200
             value: level.node?.audio?.volume ?? 0
-            accessibleName: "Volume"
+            accessibleName: level.mic ? "Input volume" : "Output volume"
             onMoved: v => {
                 if (level.node?.audio) {
                     level.node.audio.muted = false;
@@ -82,7 +82,12 @@ Column {
     Group {
         width: parent.width
         title: "Input"
-        footer: page.inputs.length === 0 ? "No microphone found." : ""
+        Row {
+            visible: page.inputs.length === 0
+            label: "No microphone found"
+            detail: "Connect one, or check that it's turned on"
+            labelColor: Theme.color.secondary
+        }
         Row {
             visible: page.inputs.length > 0
             label: "Input volume"

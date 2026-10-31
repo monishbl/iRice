@@ -489,12 +489,13 @@ WlSessionLockSurface {
                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
             }
             // What the fingerprint reader or the face camera wants
-            // (Lock.qml), when nothing's wrong
+            // (Lock.qml), under a wrong-password message too: the finger
+            // still works then
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
                 readonly property bool isFace: surface.lockScope.faceText !== "" && surface.lockScope.fingerText === ""
-                visible: (surface.lockScope.fingerText !== "" || surface.lockScope.faceText !== "") && surface.lockScope.error === ""
+                visible: surface.lockScope.fingerText !== "" || surface.lockScope.faceText !== ""
                 Icon {
                     anchors.verticalCenter: parent.verticalCenter
                     name: parent.isFace ? "smiley" : "fingerprint"

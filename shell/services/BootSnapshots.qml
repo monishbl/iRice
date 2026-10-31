@@ -51,7 +51,7 @@ Singleton {
             }
         }
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: Startup.later(() => refresh()) // (after the desktop is up)
     Connections {
         target: Updates
         function onFinished(j) {

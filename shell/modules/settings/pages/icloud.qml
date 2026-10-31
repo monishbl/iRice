@@ -97,7 +97,13 @@ Column {
         width: parent.width
         visible: page.icloud.length > 0
         title: "Calendars"
-        footer: CloudAccounts.calendars.length === 0 ? "No calendars yet. They appear after the first sync." : "Shown calendars appear in Calendar, Today and Spotlight. Add an event from Notification Center's calendar and pick an iCloud calendar for it. Repeating events show here but are changed on your iPhone or at icloud.com."
+        footer: "Shown calendars appear in Calendar, Today and Spotlight. Add an event from Notification Center's calendar and pick an iCloud calendar for it. Repeating events show here but are changed on your iPhone or at icloud.com."
+        Row {
+            visible: !CloudAccounts.calendars.some(c => CloudAccounts.account(c.account)?.provider === "icloud")
+            label: "No calendars yet"
+            detail: CloudAccounts.busy ? "Syncing…" : "They appear after the first sync"
+            labelColor: Theme.color.secondary
+        }
         Repeater {
             model: CloudAccounts.calendars.filter(c => CloudAccounts.account(c.account)?.provider === "icloud")
             Row {

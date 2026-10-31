@@ -123,7 +123,7 @@ Singleton {
     }
     property bool camModule: false
     property string kernelPackage: "" // linux, linux-lts, linux-zen, linux-cachyos…
-    Component.onCompleted: checkCam()
+    Component.onCompleted: Startup.later(() => checkCam()) // (after the desktop is up)
     function setWebcam(on) {
         if (!on) {
             if (camProc.running)

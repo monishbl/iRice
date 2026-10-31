@@ -40,7 +40,7 @@ Singleton {
             }
         }
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: Startup.later(() => refresh()) // (after the desktop is up)
 
     // One job at a time (the rest wait their turn): connect (the browser
     // opens) | mount | unmount | disconnect

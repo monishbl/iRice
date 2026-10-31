@@ -44,7 +44,7 @@ Singleton {
             }
         }
     }
-    Component.onCompleted: check()
+    Component.onCompleted: Startup.later(() => check()) // (after the desktop is up)
     onWantedChanged: apply()
 
     // On when wanted and installed, off otherwise

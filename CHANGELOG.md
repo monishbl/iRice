@@ -8,6 +8,12 @@
 - **When the desktop won't start after an update:**
   - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
   - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
+- **Smaller things:**
+  - The lock screen still says "Touch the fingerprint reader" under a wrong-password message.
+  - Settings buttons tell screen readers which row they belong to ("Remove" for the left thumb, not just "Remove"), and the Sound page's two sliders are named Output volume and Input volume.
+  - With no microphone, the Sound page says so in its Input section instead of showing an empty card. iCloud and Microsoft 365 do the same while there are no calendars yet.
+  - The To Do list chooser names a Google Tasks list chosen elsewhere instead of calling it "This computer only".
+- **Lighter login:** six status checks (dictation, drives, AirPlay, missing packages, the phone's webcam, snapshots) now run one at a time, 15 seconds after the desktop is up, instead of all at once at login.
 - **Snapshots in the boot menu.** On GRUB with btrfs and snapper, a switch in the same section makes GRUB list your snapshots (grub-btrfs; it installs grub-btrfs if needed). Start from one and the island says so. To keep that snapshot, restore it in Btrfs Assistant, which the page opens for you or offers to install.
 
 ## Fixes for today's features · 2026-10-31
