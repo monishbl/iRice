@@ -20,6 +20,10 @@
   - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
   - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
 - **Shake to find the pointer.** Move the mouse (or your finger on the trackpad) quickly back and forth: the pointer grows for a moment and a ring closes in on it. Ordinary fast movement, dragging and drawing don't set it off. Turn it off in Settings → Mouse. Hyprland checks the pointer's position 5 times a second while it's still, and 25 times a second while it moves.
+- **"Allow through firewall" works again**, and every update now brings iRice's system helper up to date with it:
+  - **Why it seemed broken:** an update installed the system helper before downloading the new iRice, so the helper stayed one update behind. Its firewall fix only knew the older rules, said "done", and added nothing new.
+  - **What changed:** the update now installs the helper from the version it's downloading. An outdated helper alone also counts as something to update, so it can be brought up to date right away.
+  - **Until then:** Settings → Sharing uses the current fix, with your password.
 - **Smaller things:**
   - The lock screen still says "Touch the fingerprint reader" under a wrong-password message.
   - Settings buttons tell screen readers which row they belong to ("Remove" for the left thumb, not just "Remove"), and the Sound page's two sliders are named Output volume and Input volume.

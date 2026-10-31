@@ -308,7 +308,7 @@ Column {
         footer: "Your system is updated first, then iRice, which restarts the shell; your apps keep running. Your password is asked once, at the start."
         Row {
             label: SoftwareUpdate.undecided > 0 ? page.plural(SoftwareUpdate.undecided, "thing") + " left to decide" : "Ready to update"
-            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "iRice's packages" : "", page.plan.irice ? "iRice" : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
+            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "iRice's packages" : "", page.plan.setup && !page.plan.irice ? "iRice's system helper (for the firewall fix, Quick Share and more)" : "", page.plan.irice ? "iRice" : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
             SettingsButton {
                 text: "Update"
                 icon: "arrow-circle-up"

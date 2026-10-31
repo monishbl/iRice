@@ -61,6 +61,16 @@ def helper_installed():
     return os.access(HELPER, os.X_OK)
 
 
+def helper_current():
+    """The installed helper is this folder's (Software Update installs it
+    in its root step; until then it can be older, with older fixes)."""
+    try:
+        with open(HELPER, "rb") as a, open(_spec.origin, "rb") as b:
+            return a.read() == b.read()
+    except OSError:
+        return False
+
+
 def _path(p):
     return os.path.join(ROOT, p.lstrip("/"))
 
@@ -210,7 +220,7 @@ def pairing():
 
 
 def status():
-    return {"firewall": firewall(), "pairing": pairing(), "passwordless": helper_installed()}
+    return {"firewall": firewall(), "pairing": pairing(), "passwordless": helper_installed() and helper_current()}
 
 
 def older_firewall_fix(p):
@@ -228,7 +238,10 @@ def fix(what):
     kind = firewall()["kind"] if what == "firewall" else None
     try:
         p = None
-        if helper_installed():
+        # (an older installed helper has older fixes: its firewall fix said
+        # "done" while adding none of the newer rules, so the button seemed
+        # to do nothing. This folder's script then, with the password)
+        if helper_installed() and helper_current():
             p = subprocess.run(["pkexec", HELPER, "fix", "btpairing" if what == "pairing" else what],
                                capture_output=True, text=True, timeout=120)
             if p.returncode == irice_root.REFUSED_EXIT or older_firewall_fix(p):  # (an older helper without this fix: ask as before)

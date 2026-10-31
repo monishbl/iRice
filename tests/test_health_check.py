@@ -291,7 +291,8 @@ class HealthCheck(unittest.TestCase):
         self.assertTrue(rows["avahi"]["fixPassword"])  # not installed yet: the password
         helper = self.sysroot / "usr/lib/irice/irice-root"
         helper.parent.mkdir(parents=True)
-        helper.write_text("#!/bin/sh\n")
+        # (the installed helper is this folder's, as Software Update leaves it)
+        helper.write_bytes((ROOT / "shell/assets/scripts/irice-root.py").read_bytes())
         helper.chmod(0o755)
         rows = self.rows(FAKE_MODE="fail")
         self.assertTrue(rows["avahi"]["fixRoot"])  # (still confirmed first)
@@ -307,6 +308,14 @@ class HealthCheck(unittest.TestCase):
         self.assertIn(f"pkexec {helper} fix btpairing", self.log.read_text())
         p = subprocess.run([sys.executable, "-I", str(sharing), "status"], env=self.env, capture_output=True, text=True, timeout=20)
         self.assertTrue(json.loads(p.stdout)["passwordless"])
+        # An older installed helper has older fixes (its firewall fix added
+        # none of the newer rules): this folder's script, with the password
+        helper.write_text("#!/bin/sh\n# an older helper\n")
+        p = subprocess.run([sys.executable, "-I", str(sharing), "fix", "pairing"], env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertTrue(json.loads(p.stdout)["ok"], p.stdout)
+        self.assertEqual(self.log.read_text().count(f"pkexec {helper} fix btpairing"), 1)
+        p = subprocess.run([sys.executable, "-I", str(sharing), "status"], env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertFalse(json.loads(p.stdout)["passwordless"])
 
     def test_a_refused_password_says_so(self):
         out = self.check("fix", "avahi", FAKE_MODE="fail")

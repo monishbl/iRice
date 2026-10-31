@@ -615,6 +615,36 @@ def undo_terminal():
 
 
 # ── The root helper ─────────────────────────────────────────────────────
+# The system part runs before the iRice part downloads the new version: its
+# setup step would install this (older) folder's helper, which then stayed
+# one update behind (a fix in the new version, like the firewall's DHCP
+# rule, did nothing until the next update). With --incoming REF it installs
+# the helper files as the version about to be installed has them.
+REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@~^-]{0,200}$")
+
+
+def stage_incoming(ref):
+    """The files the helper's setup installs, from git REF (the version the
+    iRice part installs next), in the run folder: its path, or None."""
+    if not REF.match(ref or ""):
+        return None
+    repo = os.path.dirname(SHELL)
+    out = os.path.join(DIR, "incoming")
+    shutil.rmtree(out, ignore_errors=True)
+    for rel, _dest, _mode in root_helper().FILES:
+        try:
+            r = subprocess.run(["git", "-C", repo, "show", f"{ref}:shell/{rel}"], capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if r.returncode != 0:
+            return None
+        path = os.path.join(out, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(r.stdout)
+    return out
+
+
 def root_helper():
     spec = importlib.util.spec_from_file_location("irice_root", SOURCE)
     mod = importlib.util.module_from_spec(spec)
@@ -622,12 +652,13 @@ def root_helper():
     return mod
 
 
-def helper_current():
+def helper_current(folder=None):
     """Whether everything the root helper's setup installs is there and the
-    same as in this folder (else the update's root part installs it)."""
+    same as in this folder, or `folder` (the incoming version's: else the
+    update's root part installs it)."""
     for rel, dest, mode in root_helper().FILES:
         try:
-            with open(os.path.join(SHELL, rel), "rb") as a, open(os.path.join(SYSTEM, dest.lstrip("/")), "rb") as b:
+            with open(os.path.join(folder or SHELL, rel), "rb") as a, open(os.path.join(SYSTEM, dest.lstrip("/")), "rb") as b:
                 if a.read() != b.read():
                     return False
         except OSError:
@@ -648,7 +679,7 @@ def root_command(plan, broker):
         if plan.get(k):
             cmd += ["--" + k, ",".join(plan[k])]
     if plan["setup"]:
-        cmd += ["--setup", SHELL]
+        cmd += ["--setup", plan.get("setup_dir") or SHELL]
     if broker:
         cmd.append("--broker")
     return cmd
@@ -1032,8 +1063,12 @@ def plan_of(a, fake=False):
         p["then"] = json.loads(then)
     except ValueError:
         p["then"] = None
-    # The root helper's own files, when they changed (never in the sandbox)
-    p["setup"] = not fake and not helper_current()
+    # The root helper's own files, when they changed (never in the sandbox):
+    # the incoming version's when an iRice update follows
+    incoming = a[a.index("--incoming") + 1] if "--incoming" in a and a.index("--incoming") + 1 < len(a) else ""
+    os.makedirs(DIR, exist_ok=True)
+    p["setup_dir"] = (stage_incoming(incoming) if incoming and not fake else None) or SHELL
+    p["setup"] = not fake and not helper_current(p["setup_dir"])
     p["kind"] = "update" if p["system"] or "--aur" in a else "install"
     p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
         (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else [])
@@ -1067,7 +1102,10 @@ if __name__ == "__main__":
     if a[0] == "cancel":
         sys.exit(cancel())
     if a[0] == "helper-status":
-        current = helper_current()
+        # (--incoming REF: against the version an update would install)
+        ref = a[a.index("--incoming") + 1] if "--incoming" in a and a.index("--incoming") + 1 < len(a) else ""
+        os.makedirs(DIR, exist_ok=True)
+        current = helper_current(stage_incoming(ref) if ref else None)
         print(json.dumps({"current": current}))
         sys.exit(0 if current else 1)
     fake = "--fake" in a or os.environ.get("IRICE_FAKE_SYSUPDATE") == "1" or os.environ.get("IRICE_SANDBOX") == "1"

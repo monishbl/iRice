@@ -116,3 +116,35 @@ class RootChecksFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IncomingHelper(unittest.TestCase):
+    """The update's root step installs the helper as the version about to
+    be installed has it (git REF), not this folder's older copy."""
+
+    def test_staged_from_the_ref(self):
+        import subprocess
+        su = load(SCRIPTS / "sysupdate.py", "sysupdate_incoming")
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d, "repo")
+            files = [rel for rel, _, _ in su.root_helper().FILES]
+            for rel in files:
+                p = repo / "shell" / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("old " + rel)
+            git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, check=True)
+            git("init", "-q")
+            git("-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+            git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "old")
+            (repo / "shell" / files[0]).write_text("new")
+            git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "new")
+            git("checkout", "-q", "HEAD~1")  # (the folder is still the old version)
+            su.SHELL = str(repo / "shell")
+            su.DIR = str(Path(d, "run"))
+            os.makedirs(su.DIR)
+            out = su.stage_incoming("master") or su.stage_incoming("main")
+            self.assertIsNotNone(out)
+            self.assertEqual(Path(out, files[0]).read_text(), "new")
+            self.assertEqual(Path(out, files[1]).read_text(), "old " + files[1])
+            self.assertIsNone(su.stage_incoming("--upload-pack=x"))  # (not a ref: refused)
+            self.assertIsNone(su.stage_incoming("no-such-ref"))

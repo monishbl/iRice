@@ -98,9 +98,13 @@ Singleton {
     // folder's: the update's root part installs it (one password then,
     // none for the small fixes afterwards), even when only iRice changes
     property bool helperCurrent: true
+    // (against the version an iRice update would install: the update's root
+    // step installs the helper as that version has it)
+    readonly property string incoming: IriceUpdate.report?.available ? (IriceUpdate.report.upstream ?? "") : ""
+    onIncomingChanged: if (!helperProc.running) helperProc.running = true
     Process {
         id: helperProc
-        command: ["python3", "-I", Updates.script, "helper-status"]
+        command: ["python3", "-I", Updates.script, "helper-status"].concat(root.incoming !== "" ? ["--incoming", root.incoming] : [])
         onExited: code => root.helperCurrent = code === 0 || root.fakeRun
     }
 
@@ -192,7 +196,7 @@ Singleton {
             aurCount: aurCount
         };
     }
-    readonly property bool anything: plan.irice || plan.system || plan.aur || plan.install.length > 0 || plan.remove.length > 0
+    readonly property bool anything: plan.irice || plan.system || plan.aur || plan.install.length > 0 || plan.remove.length > 0 || (plan.setup && !root.fakeRun)
     readonly property int undecided: (plan.irice ? IriceUpdate.undecided : 0) + (hyprTooNew && hold === -1 ? 1 : 0)
     readonly property bool canUpdate: checked && !checking && anything && undecided === 0 && !running && (IriceUpdate.allowed || fakeRun)
     // The steps, for the progress view: the system job's, then iRice's
@@ -231,7 +235,11 @@ Singleton {
         const after = { irice: p.irice, rebuild: p.rebuild, at: Date.now() / 1000 };
         // (the root helper's setup rides along with an iRice update too, so
         // its one password comes when you asked for an update)
-        const rootPart = p.system || p.aur || p.install.length > 0 || p.remove.length > 0 || (p.setup && p.irice);
+        // (and an outdated helper on its own: the fixes that need it, like the
+        // firewall's, use the old ones until it's installed)
+        const rootPart = p.system || p.aur || p.install.length > 0 || p.remove.length > 0 || p.setup;
+        if (p.setup && root.incoming !== "")
+            args.push("--incoming", root.incoming);
         // (what follows travels with the job: its status keeps it, so a shell
         // restart in between doesn't lose it)
         if (rootPart)
