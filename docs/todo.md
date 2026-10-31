@@ -1,16 +1,31 @@
 # iRice: later
 
+## Built 31 Oct: check on real hardware
+
+Done and pushed (bdb631a, 0d41611, 6aebe8e), tested in the sandbox; these
+parts need the real laptop:
+- **Fingerprint**: Settings -> Lock Screen -> Fingerprint -> Install (libfprint-tod
+  + libfprint-2-tod1-broadcom + fprintd from the AUR), then enrol a finger.
+  Check: the Broadcom ControlVault 3 (0a5c:5843) shows up in fprintd; the lock
+  screen takes a finger and a password at once; password prompts and sudo wait
+  ~10 s for a finger then ask for the password; the login screen (ly).
+- **Dictation**: Settings -> Dictation -> Install (whisper-cpp), Base is
+  downloaded by default. Check Super+H tap and hold with the real microphone
+  (the hold's release bind was only checked as registered, not pressed: wtype
+  can't press compositor binds in the sandbox), and typing into a browser and a
+  terminal (wtype; it falls back to the clipboard).
+- **Drop shelf**: drag real files from Dolphin/Nautilus (the sandbox had only
+  text drags), shake and edge on the real touchpad, and dragging out into a
+  browser upload and an email. A release sometimes went missing in the
+  sandbox (covered: 4 s still, or the follower's end, counts as up).
+- **Wi-Fi QR**: qrencode and zbar come with the next update (packages.sh);
+  scan the code with a phone, and a screenshot of a router sticker.
+
 ## New features: chosen 31 Oct, not started
 
 Ask about each one's design before building; one at a time.
-- **Voice typing anywhere** (like Windows Win+H): a shortcut, speak, and the
-  text types into the focused app. Offline (whisper.cpp or similar), nothing
-  sent anywhere.
 - **Live captions** (like Windows 11 / Android): subtitles for any audio the
   laptop plays (calls, videos) in a small floating bar. Offline.
-- **Drop shelf** (like Yoink / Dropover / ChromeOS Holding Space): shake a
-  file while dragging to open a shelf that holds it; collect from several
-  places, then drop them all at once.
 - **Shake to find the pointer** (like macOS / KDE): wiggle the mouse and the
   pointer grows big for a moment.
 - **Undo a bad update** (like openSUSE / Silverblue): Software Update already
@@ -54,16 +69,6 @@ missing otherwise. Ask about the design before building; one at a time.
   accounts may need their admin's approval: say so when sign-in is refused.
 - Offline: show what's cached, never fake a sync.
 
-### Share Wi-Fi by QR code (like Android / iOS)
-- "Share" on the connected network in the Wi-Fi menu: a QR code a phone's
-  camera joins from (the standard WIFI:T:WPA;S:<name>;P:<password>;; text),
-  with the password shown under it on request. Hidden networks and
-  WPA3/open networks handled; enterprise (802.1X) networks can't be shared.
-- Reading the saved password may need a system password prompt: ask once,
-  at the start, never in between.
-- The other way round: a Wi-Fi QR in a screenshot or region capture
-  (decoded locally, zbar) offers "Join <network>".
-
 ### iCloud Calendar and Contacts
 - iCloud events in Today and the Calendar, iCloud contacts where contacts
   appear (Spotlight, sharing). For iPhone users.
@@ -76,25 +81,13 @@ missing otherwise. Ask about the design before building; one at a time.
 - Recurrence goes through the existing ICS expander (fails closed on rules
   it can't handle, R19).
 
-### Fingerprint unlock (like Touch ID / Windows Hello)
-- Unlock the lock screen, approve system password prompts (polkit, Software
-  Update) and optionally sudo and the login screen with a finger.
-- fprintd + libfprint (works with most built-in readers); enrolment in
-  Settings → Lock Screen through fprintd's D-Bus API (pick a finger, touch
-  several times, progress shown). Some readers need a vendor driver from the
-  AUR (e.g. Dell/Broadcom ControlVault, some Goodix): detect the reader,
-  name the package, install it on request.
-- The lock screen tries finger and password at the same time (two PAM
-  conversations), never "touch first, then you may type". After a restart the
-  password is still needed once (it unlocks the keyring), like macOS.
-- Shown only when a supported reader is found.
-
 ### Face unlock (like Windows Hello)
 - Unlock with an infrared camera: Howdy (PAM), the same places as fingerprint.
 - Only with an IR camera (some need their IR emitter switched on:
   linux-enable-ir-emitter); never offered for a plain webcam, which a photo
   could fool. Clear note that it's less secure than a password.
-- Works alongside fingerprint and password at the same time.
+- Works alongside fingerprint and password at the same time (the lock
+  screen already runs a second PAM conversation for the finger: Lock.qml).
 
 ### Cast the screen to a TV (like Windows "Project" / Miracast)
 - From Control Center: find TVs and sticks that accept Miracast, then mirror
