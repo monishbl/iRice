@@ -63,6 +63,11 @@ Column {
             detail: page.cfg.accelProfile === "flat" ? "The pointer moves the same distance however fast you move the mouse. Good for games and precise work." : "Faster movements carry the pointer further"
             Choice { key: "accelProfile"; values: ["adaptive", "flat"]; options: ["On", "Off"]; width: 160 }
         }
+        Row {
+            label: "Shake to find the pointer"
+            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, with a ring around it. Works with a trackpad too."
+            Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
+        }
     }
 
     Group {

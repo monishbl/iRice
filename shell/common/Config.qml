@@ -430,6 +430,11 @@ Singleton {
                 property string language: "" // a code ("en"), "auto", or "" for the system's language
                 property bool sounds: true // a tick as it starts and stops listening
             }
+            property JsonObject findPointer: JsonObject {
+                // Shake the mouse: the pointer grows for a moment, with a ring
+                // around it (hypr/irice/findpointer.lua, services/FindPointer)
+                property bool enabled: true
+            }
             property JsonObject workspaces: JsonObject {
                 // Moving to another display (keyboard or pointer)
                 // How the display you moved to shows it: glow (a soft accent glow at its edges) | dim (it dims briefly) | off.

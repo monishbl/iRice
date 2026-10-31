@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The pointer's place, over and over, while a button is held (services/Shelf.qml
 starts it after a moment's hold and stops it when the button comes up): one
-"X, Y" line every 40 ms from Hyprland's socket, for at most a minute."""
+"X, Y" line every 40 ms from Hyprland's socket, for at most a minute (or the
+seconds given: pointer-follow.py 1.5, for the ring that finds the pointer)."""
 import os
 import socket
 import sys
@@ -14,7 +15,11 @@ LIMIT = 60
 def main():
     path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", ""), "hypr",
                         os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", ""), ".socket.sock")
-    end = time.monotonic() + LIMIT
+    try:
+        limit = min(LIMIT, float(sys.argv[1])) if len(sys.argv) > 1 else LIMIT
+    except ValueError:
+        limit = LIMIT
+    end = time.monotonic() + limit
     while time.monotonic() < end:
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:

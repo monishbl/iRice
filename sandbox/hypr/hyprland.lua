@@ -19,6 +19,7 @@ hl.config({
 
 dofile(root .. "/hypr/irice/look.lua")
 pcall(dofile, root .. "/hypr/irice/cursor.lua") -- macOS cursor when installed
+pcall(dofile, root .. "/hypr/irice/findpointer.lua") -- shake to find the pointer
 pcall(dofile, root .. "/hypr/irice/tabs.lua") -- window tabs
 dofile(root .. "/hypr/irice/rules.lua")
 pcall(dofile, (os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/irice/window-rules.lua")

@@ -22,6 +22,7 @@ pcall(dofile, dir .. "/irice/keyboard.lua") -- your keyboard layout (written by 
 
 dofile(dir .. "/irice/look.lua")
 pcall(dofile, dir .. "/irice/cursor.lua") -- macOS cursor when installed
+pcall(dofile, dir .. "/irice/findpointer.lua") -- shake to find the pointer
 pcall(dofile, dir .. "/irice/tabs.lua") -- window tabs
 pcall(dofile, dir .. "/irice/vm.lua") -- only in a virtual machine (written by the installer)
 pcall(dofile, dir .. "/irice/gpu.lua") -- only with an NVIDIA GPU (written by the installer)

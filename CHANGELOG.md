@@ -1,6 +1,6 @@
 # iRice changelog
 
-## Going back after an update · 2026-10-31
+## Going back after an update, finding the pointer · 2026-10-31
 
 - **Go back to before the last update.** If an update broke something, use **Settings → Software Update → Going back → Go Back**. The packages it changed return to the versions you had before. Those versions come from pacman's cache, or from Arch's archive when the cache no longer has them. Your files and settings aren't touched, and packages the update added stay. It asks for your password once and takes a snapshot first when you have snapper or Timeshift.
   - A version you went back from is skipped by later updates until a newer one comes out. You can include it anyway, per package.
@@ -8,6 +8,7 @@
 - **When the desktop won't start after an update:**
   - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
   - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
+- **Shake to find the pointer.** Move the mouse (or your finger on the trackpad) quickly back and forth: the pointer grows for a moment and a ring closes in on it. Ordinary fast movement, dragging and drawing don't set it off. Turn it off in Settings → Mouse. Hyprland checks the pointer's position 5 times a second while it's still, and 25 times a second while it moves.
 - **Smaller things:**
   - The lock screen still says "Touch the fingerprint reader" under a wrong-password message.
   - Settings buttons tell screen readers which row they belong to ("Remove" for the left thumb, not just "Remove"), and the Sound page's two sliders are named Output volume and Input volume.
