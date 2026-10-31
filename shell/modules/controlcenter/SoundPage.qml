@@ -32,9 +32,10 @@ DetailPage {
         model: ScriptModel { values: root.outputs } // (keeps rows, and a slider being dragged, when another device comes or goes)
         ListRow {
             required property var modelData
-            icon: AudioStreams.outputIcon(modelData)
+            icon: AirPlay.isAirPlay(modelData) ? "airplay" : AudioStreams.outputIcon(modelData)
             highlighted: Pipewire.defaultAudioSink === modelData
             title: AudioStreams.outputName(modelData)
+            status: AirPlay.isAirPlay(modelData) ? "AirPlay · about 2 s behind" : ""
             onClicked: Pipewire.preferredDefaultAudioSink = modelData
         }
     }

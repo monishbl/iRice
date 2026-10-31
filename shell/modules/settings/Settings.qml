@@ -38,6 +38,7 @@ Scope {
                 { id: "network", name: "Network", icon: "wifi-high", color: "#0A84FF", group: "Devices & Input" },
                 { id: "bluetooth", name: "Bluetooth", icon: "bluetooth", color: "#0A84FF", group: "Devices & Input" },
                 { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF", group: "Devices & Input" },
+                { id: "sound", name: "Sound", icon: "speaker-high", color: "#FF375F", group: "Devices & Input" },
                 { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366", group: "Devices & Input" },
                 { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366", group: "Devices & Input" },
                 { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366", group: "Devices & Input" },

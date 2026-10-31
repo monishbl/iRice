@@ -1,5 +1,10 @@
 # iRice changelog
 
+## Works with your other devices · 2026-10-31
+
+- **AirPlay speakers.** HomePods, Apple TVs and AirPlay speakers on your network can play this computer's sound: turn on **AirPlay speakers** in the new **Settings → Sound** page (it installs PipeWire's AirPlay support the first time, one password). They then appear as outputs there and in Control Center. Sound reaches them about 2 seconds late, which is fine for music but not for videos or calls. Some AirPlay 2-only speakers, and speakers with a password, may not accept it.
+- **Settings → Sound**: the output and input you use, their volumes, AirPlay, and a way to the sound effects.
+
 ## Dictation, a drop shelf, Wi-Fi QR codes and fingerprints · 2026-10-31
 
 - **Dictation.** Press **Super+H**, speak, and press it again: the words are typed where your cursor is. Or hold Super+H while you speak and let go when you're done. It runs on this computer with whisper.cpp; nothing is sent anywhere. Set it up in **Settings → Dictation**: install speech recognition (one password), and download a speech model (Base, 142 MB, suits most people; bigger ones make fewer mistakes but are slower). The island shows when it's listening, with Done and Cancel. Choose the language there too (the system's by default). Other keys or scripts can use `qs ipc call dictation toggle`.

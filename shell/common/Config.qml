@@ -139,6 +139,10 @@ Singleton {
                 property bool quickShareHotspot: true
             }
 
+            // Settings -> Sound
+            property JsonObject audio: JsonObject {
+                property bool airplay: false // AirPlay speakers as outputs (services/AirPlay)
+            }
             property JsonObject sounds: JsonObject {
                 property bool enabled: true
                 property bool startup: true // when you log in (not on shell reloads)
