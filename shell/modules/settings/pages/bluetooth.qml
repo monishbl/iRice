@@ -101,4 +101,14 @@ Column {
             }
         }
     }
+
+    // Fast Pair (services/FastPair)
+    Group {
+        width: parent.width
+        footer: "Earbuds and headphones with Google Fast Pair (Pixel Buds, many Sony, JBL, Bose, OnePlus and others): open the case near the computer to connect them in one click, and to see their batteries. Looks only while Bluetooth is on."
+        Row {
+            label: "Show earbuds nearby"
+            Switch { checked: Config.options.fastPair.enabled; onToggled: Config.options.fastPair.enabled = !checked }
+        }
+    }
 }

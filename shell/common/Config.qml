@@ -55,6 +55,10 @@ Singleton {
                 property string newEventCalendar: "" // "<account>|<calendar id>"; empty = this computer
                 property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown (Settings → Google)
             }
+            // Earbuds nearby: Google Fast Pair (services/FastPair)
+            property JsonObject fastPair: JsonObject {
+                property bool enabled: true
+            }
             // An Android phone (services/Phone, Settings -> Phone)
             property JsonObject phone: JsonObject {
                 property bool enabled: true // look for phones (adb)

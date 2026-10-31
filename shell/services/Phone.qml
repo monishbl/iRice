@@ -24,7 +24,9 @@ Singleton {
     readonly property var waiting: devices.find(d => d.state === "unauthorized") ?? null
     Process {
         id: watcher
-        running: root.cfg.enabled && root.hasAdb
+        // (only once scrcpy is installed: until then nobody asked for it, and
+        // adb's server would run for nothing)
+        running: root.cfg.enabled && root.hasAdb && root.hasScrcpy
         command: [Tools.watcher, "python3", "-I", root.script, "watch"]
         stdinEnabled: true // (Tools.watcher: it, and adb track-devices, end with the shell)
         stdout: SplitParser {
@@ -42,9 +44,9 @@ Singleton {
                         root.arrived(d);
             }
         }
-        onExited: if (root.cfg.enabled && root.hasAdb) rewatch.restart()
+        onExited: if (root.cfg.enabled && root.hasAdb && root.hasScrcpy) rewatch.restart()
     }
-    Timer { id: rewatch; interval: 5000; onTriggered: watcher.running = root.cfg.enabled && root.hasAdb }
+    Timer { id: rewatch; interval: 5000; onTriggered: watcher.running = root.cfg.enabled && root.hasAdb && root.hasScrcpy }
 
     // Said once per connection
     function arrived(d) {
