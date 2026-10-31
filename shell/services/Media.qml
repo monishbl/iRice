@@ -3,14 +3,24 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
 
-// The player worth showing: the one you picked, else one that's playing,
-// else the most recent.
+// The player worth showing: the one you picked, else the newest one that's
+// playing, else the most recent.
 Singleton {
     id: root
 
     property var pinned: null
     readonly property var players: Mpris.players.values
-    readonly property var player: (pinned && players.includes(pinned)) ? pinned : players.find(p => p.isPlaying) ?? players[players.length - 1] ?? null
+    // (Newest first: a browser that restarts a tab's media session can leave
+    // the old player behind, still saying "Playing", with a picture file
+    // that's been deleted. The first one playing was that ghost: no art.)
+    readonly property var player: {
+        if (pinned && players.includes(pinned))
+            return pinned;
+        for (let i = players.length - 1; i >= 0; i--)
+            if (players[i].isPlaying)
+                return players[i];
+        return players[players.length - 1] ?? null;
+    }
 
     // ── Album art ───────────────────────────────────────────────────────
     // A player's art, ready for an Image. Browsers write it to a file whose

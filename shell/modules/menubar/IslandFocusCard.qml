@@ -159,6 +159,49 @@ Item {
             Accessible.name: "Volume"
         }
     }
+    // Open the player's window: pointed at, it widens to the left to say
+    // which app (cut short to the room there is)
+    component OpenApp: Item {
+        id: oa
+        property real maxWidth: 140
+        readonly property bool open: oaHover.hovered && name.text !== ""
+        width: open ? Math.min(maxWidth, name.implicitWidth + 32 + 10) : 36
+        height: 36
+        Behavior on width { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+        HoverHandler { id: oaHover }
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: Qt.rgba(1, 1, 1, oa.open ? 0.12 : 0)
+            Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+        }
+        Text {
+            id: name
+            anchors { left: parent.left; leftMargin: 10; right: openIcon.left; verticalCenter: parent.verticalCenter }
+            // (the app's own name, "Zen Browser", over what the player calls
+            // itself, "Mozilla zen")
+            text: Apps.entryFor(root.player?.desktopEntry ?? "")?.name || root.player?.identity || ""
+            elide: Text.ElideRight
+            opacity: Math.max(0, (oa.width - 52) / 30)
+            visible: opacity > 0.01
+            color: root.ink
+            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+        }
+        Ctl {
+            id: openIcon
+            anchors.right: parent.right
+            width: oa.open ? 32 : 36
+            icon: "arrow-square-out"
+            fill: false
+            iconSize: 17
+            tooltip: "Open " + (name.text || "the player")
+            onClicked: root.openPlayer()
+        }
+        // (the name is part of the button too)
+        TapHandler {
+            onTapped: root.openPlayer()
+        }
+    }
     // Under the song: the volume on the left, previous / play / next in the
     // middle, then Cast and open the player's window on the right
     component Transport: Item {
@@ -175,10 +218,12 @@ Item {
             Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
         }
         Row {
+            id: trailing
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             spacing: 4
-            Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; iconSize: 17; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; onClicked: root.openCast() }
-            Ctl { icon: "arrow-square-out"; fill: false; iconSize: 17; tooltip: "Open " + (root.player?.identity || "the player"); onClicked: root.openPlayer() }
+            Ctl { id: castBtn; visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; iconSize: 17; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; onClicked: root.openCast() }
+            // (as wide as the room right of play / next allows)
+            OpenApp { maxWidth: parent.parent.width / 2 - 68 - 6 - (castBtn.visible ? castBtn.width + 4 : 0) }
         }
     }
 

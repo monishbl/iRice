@@ -8,6 +8,11 @@ from gi.repository import Gio, GLib
 
 ART = sys.argv[1] if len(sys.argv) > 1 else ""
 TRACKS = [("Midnight City", "M83", "Hurry Up, We're Dreaming"), ("Blinding Lights", "The Weeknd", "After Hours"), ("Levitating", "Dua Lipa", "Future Nostalgia")]
+# FAKEPLAYER_NAME / FAKEPLAYER_IDENTITY: its bus name (two at once) and app name
+# FAKEPLAYER_TRACK="Title|Artist": the first track instead (names with = & ? to test)
+if os.environ.get("FAKEPLAYER_TRACK"):
+    t, _, a = os.environ["FAKEPLAYER_TRACK"].partition("|")
+    TRACKS[0] = (t, a, "")
 XML = """<node>
 <interface name="org.mpris.MediaPlayer2">
  <method name="Raise"/><method name="Quit"/>
@@ -50,7 +55,7 @@ def meta():
 def props(iface):
     if iface == "org.mpris.MediaPlayer2":
         return {"CanQuit": GLib.Variant("b", False), "CanRaise": GLib.Variant("b", False), "HasTrackList": GLib.Variant("b", False),
-                "Identity": GLib.Variant("s", "Test Player"), "DesktopEntry": GLib.Variant("s", "foot"),
+                "Identity": GLib.Variant("s", os.environ.get("FAKEPLAYER_IDENTITY", "Test Player")), "DesktopEntry": GLib.Variant("s", "foot"),
                 "SupportedUriSchemes": GLib.Variant("as", []), "SupportedMimeTypes": GLib.Variant("as", [])}
     return {"PlaybackStatus": GLib.Variant("s", "Playing" if state["playing"] else "Paused"), "Rate": GLib.Variant("d", 1.0),
             "Metadata": GLib.Variant("a{sv}", meta()), "Volume": GLib.Variant("d", state["vol"]), "Position": GLib.Variant("x", int(pos() * 1e6)),
@@ -98,5 +103,5 @@ def acquired(c, name):
         c.register_object("/org/mpris/MediaPlayer2", i, call, get, setp)
 
 
-Gio.bus_own_name(Gio.BusType.SESSION, "org.mpris.MediaPlayer2.irice_test", Gio.BusNameOwnerFlags.NONE, acquired, None, None)
+Gio.bus_own_name(Gio.BusType.SESSION, "org.mpris.MediaPlayer2." + os.environ.get("FAKEPLAYER_NAME", "irice_test"), Gio.BusNameOwnerFlags.NONE, acquired, None, None)
 GLib.MainLoop().run()
