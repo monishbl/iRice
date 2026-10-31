@@ -160,6 +160,10 @@ Singleton {
         { title: "Mission Control", glyph: "squares-four", keywords: "overview workspaces windows expose", run: () => Panels.show("missionControl") }
     ]
 
+    // "Cast to <TV>" for each Chromecast nearby (what's playing goes there)
+    readonly property var castActions: Cast.devices.map(d => ({ title: "Cast to " + d.name, glyph: Cast.iconFor(d), keywords: "cast chromecast google tv television screen play " + d.name, run: () => Cast.castPlaying(d) }))
+        .concat(Cast.active ? [{ title: "Stop Casting", glyph: "stop", keywords: "stop cast casting chromecast tv", run: () => Cast.stop() }] : [])
+
     function query(text) {
         const raw = text.trim();
         const q = raw.toLowerCase();
@@ -274,7 +278,7 @@ Singleton {
         for (const x of apps)
             out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry), score: x.s });
 
-        const acts = actions.map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
+        const acts = actions.concat(castActions).map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
         for (const x of acts)
             out.push({ section: "Actions", title: x.a.title, subtitle: "", glyph: x.a.glyph, run: x.a.run, score: x.s });
 

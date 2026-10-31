@@ -113,7 +113,7 @@ Column {
             detail: (hotspotOnly ? "Your firewall (" + page.system.firewall.kind + ") keeps phones from joining Quick Share's hotspot, so transfers without a shared Wi-Fi stay slow. Allowing DHCP (port 67) fixes it"
                 : (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
                 : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
-                + ": phones can't connect to this computer. Allowing ports 53317–53319, mDNS and DHCP fixes it")
+                + ": phones can't connect to this computer. Allowing ports 53317–53320, mDNS and DHCP fixes it")
                 + (page.system.passwordless ? "." : "; it asks for your password.")
                 + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
             SettingsButton {

@@ -40,6 +40,8 @@ Singleton {
             return "arrow-circle-up";
         case "dictation":
             return Dictation.stage === "writing" ? "text-aa" : "microphone";
+        case "casting":
+            return "screencast";
         }
         return "music-notes";
     }
@@ -66,6 +68,8 @@ Singleton {
             return "Updating · " + SoftwareUpdate.stepName(SoftwareUpdate.stepNow || "system");
         case "dictation":
             return Dictation.stage === "writing" ? "Writing…" : "Listening";
+        case "casting":
+            return Cast.title || "Casting";
         }
         return "";
     }
@@ -93,6 +97,8 @@ Singleton {
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");
         case "screenShare":
             return Privacy.stopFailed ? "Still sharing: stop it in " + Privacy.screenApp : Privacy.screenTarget + " · " + since(Privacy.screenStarted);
+        case "casting":
+            return "On " + (Cast.device?.name ?? "the TV") + " · " + (Cast.state_ === "playing" ? Timers.format(Math.floor(Cast.time)) + (Cast.duration > 0 ? " of " + Timers.format(Math.floor(Cast.duration)) : "") : Cast.state_ === "paused" ? "Paused" : "Connecting…");
         case "dictation":
             return Dictation.stage === "writing" ? "Turning your words into text" : Dictation.pressedAt > 0 ? "Let go of the keys to stop" : "Press Super+H again when you're done";
         case "sysupdate":
@@ -118,6 +124,8 @@ Singleton {
             return since(Privacy.screenStarted);
         case "dictation":
             return Dictation.stage === "writing" ? "" : since(Dictation.startedAt);
+        case "casting":
+            return Cast.state_ === "playing" || Cast.state_ === "paused" ? Timers.format(Math.floor(Cast.time)) : "";
         case "sysupdate":
             return Updates.job?.phase === "auth" ? "Password" : Math.round(Math.max(0, Updates.progress) * 100) + "%";
         }
@@ -126,6 +134,8 @@ Singleton {
 
     // 0..1 for a progress bar, or -1 for none
     function progress(kind) {
+        if (kind === "casting")
+            return Cast.duration > 0 ? Math.min(1, Cast.time / Cast.duration) : -1;
         return kind === "timer" ? Timers.progress : kind === "transfer" ? Transfers.progress : kind === "sysupdate" ? Math.max(0, Updates.progress) : -1;
     }
 
@@ -166,6 +176,11 @@ Singleton {
         }
         case "screenShare":
             return [{ piece: "stop", icon: "stop", fill: true, act: () => Privacy.stopSharing(), on: !Privacy.stopping, danger: true }];
+        case "casting":
+            return [
+                { piece: "play", icon: Cast.state_ === "playing" ? "pause" : "play", fill: true, act: () => Cast.togglePlay(), on: Cast.state_ === "playing" || Cast.state_ === "paused" },
+                { piece: "stop", icon: "stop", fill: true, act: () => Cast.stop(), on: true, danger: true }
+            ];
         case "dictation":
             // Stop types what was said; Cancel drops it
             return [

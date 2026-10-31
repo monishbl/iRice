@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # A fake MPRIS player for testing the island: plays a 3:30 "track",
 # answers PlayPause/Next/Previous, reports position and volume.
-import sys, time
+# FAKEPLAYER_URL: what it says it plays (xesam:url), e.g. a file:// URL to
+# test casting.
+import os, sys, time
 from gi.repository import Gio, GLib
 
 ART = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -40,6 +42,8 @@ def meta():
          "xesam:artist": GLib.Variant("as", [a]), "xesam:album": GLib.Variant("s", al), "mpris:length": GLib.Variant("x", 210 * 1000000)}
     if ART:
         m["mpris:artUrl"] = GLib.Variant("s", ART)
+    if os.environ.get("FAKEPLAYER_URL"):
+        m["xesam:url"] = GLib.Variant("s", os.environ["FAKEPLAYER_URL"])
     return m
 
 

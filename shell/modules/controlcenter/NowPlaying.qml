@@ -63,6 +63,8 @@ Platter {
 
         Repeater {
             model: [
+                // To a Chromecast or Google TV (Control Center's Cast page)
+                ...(Cast.devices.length > 0 || Cast.active ? [{ icon: "screencast", fill: Cast.active, action: () => Panels.ccPage = "cast", enabled: true }] : []),
                 { icon: "skip-back", action: () => root.player?.previous(), enabled: root.player?.canGoPrevious ?? false },
                 { icon: root.player?.isPlaying ? "pause" : "play", action: () => root.player?.togglePlaying(), enabled: root.player?.canTogglePlaying ?? false },
                 { icon: "skip-forward", action: () => root.player?.next(), enabled: root.player?.canGoNext ?? false }
@@ -79,8 +81,9 @@ Platter {
                 Icon {
                     anchors.centerIn: parent
                     name: parent.modelData.icon
-                    fill: true
+                    fill: parent.modelData.fill ?? true
                     size: 18
+                    color: parent.modelData.icon === "screencast" && Cast.active ? Theme.accent : Theme.color.label
                 }
                 MouseArea {
                     id: mouse

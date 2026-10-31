@@ -87,6 +87,7 @@ Column {
                 { kind: "call", label: "Calls show", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["mute", "Mute"], ["open", "Open"], ["leave", "Leave"]] },
                 { kind: "screenShare", label: "Screen sharing shows", pieces: [["icon", "Icon"], ["name", "App"], ["time", "Duration"], ["stop", "Stop"]] },
                 { kind: "sysupdate", label: "System updates show", pieces: [["icon", "Icon"], ["name", "Updating system"], ["time", "Progress"], ["details", "Details"], ["cancel", "Cancel"]] },
+                { kind: "casting", label: "Casting shows", pieces: [["icon", "Icon"], ["name", "Title"], ["time", "Time"], ["play", "Pause"], ["stop", "Stop"]] },
                 { kind: "dictation", label: "Dictation shows", pieces: [["icon", "Microphone"], ["name", "Listening"], ["time", "Time"], ["stop", "Done"], ["cancel", "Cancel"]] }
             ] : []
             Row {

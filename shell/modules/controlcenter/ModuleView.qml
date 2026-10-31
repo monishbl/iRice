@@ -286,6 +286,21 @@ Item {
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
         }
+        // To a Chromecast or Google TV: the Cast page (like AirPlay's
+        // corner button on a Mac)
+        IconButton {
+            visible: (Cast.devices.length > 0 || Cast.active) && root.rows === 2
+            anchors { right: parent.right; top: parent.top; margins: 4 }
+            width: 28
+            height: 28
+            icon: "screencast"
+            fill: Cast.active
+            iconSize: 15
+            iconColor: Cast.active ? Theme.accent : Theme.color.secondary
+            tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "") : "Cast to a TV"
+            enabled: !root.editing && !root.preview
+            onClicked: Panels.ccPage = "cast"
+        }
         Row {
             id: mediaControls
             anchors { right: root.rows === 2 ? undefined : parent.right; rightMargin: 6; horizontalCenter: root.rows === 2 ? parent.horizontalCenter : undefined }

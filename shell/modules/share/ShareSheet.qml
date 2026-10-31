@@ -44,7 +44,17 @@ Variants {
             // didn't find the function and the call failed)
             onShownChanged: win.look(shown)
             Component.onDestruction: win.look(false)
-            readonly property var devices: Sharing.devices
+            // Nearby devices, and Chromecasts for one video, song or photo
+            readonly property bool castable: win.paths.length === 1 && win.note === "" && /\.(mp4|m4v|webm|mkv|mov|mp3|m4a|aac|ogg|oga|opus|flac|wav|jpe?g|png|gif|webp)$/i.test(win.paths[0])
+            readonly property var devices: Sharing.devices.concat(castable ? Cast.devices.map(d => Object.assign({}, d, { cast: true })) : [])
+            function sendTo(dev) {
+                if (dev.cast) {
+                    Cast.castFile(dev, win.paths[0]);
+                    Panels.close();
+                } else {
+                    Sharing.send(dev, win.paths);
+                }
+            }
 
             property real progress: 0
             Component.onCompleted: {
@@ -134,7 +144,7 @@ Variants {
                                     const k = event.key;
                                     if ((k === Qt.Key_Space || k === Qt.Key_Return || k === Qt.Key_Enter) && !event.isAutoRepeat) {
                                         if (!peer.sending)
-                                            Sharing.send(peer.modelData, win.paths);
+                                            win.sendTo(peer.modelData);
                                     } else if (k === Qt.Key_Left || k === Qt.Key_Right) {
                                         nextItemInFocusChain(k === Qt.Key_Right)?.forceActiveFocus(k === Qt.Key_Right ? Qt.TabFocusReason : Qt.BacktabFocusReason);
                                     } else {
@@ -143,8 +153,8 @@ Variants {
                                     event.accepted = true;
                                 }
                                 Accessible.role: Accessible.Button
-                                Accessible.name: "Send to " + (modelData.name ?? "")
-                                Accessible.onPressAction: if (!peer.sending) Sharing.send(peer.modelData, win.paths)
+                                Accessible.name: (modelData.cast ? "Cast to " : "Send to ") + (modelData.name ?? "")
+                                Accessible.onPressAction: if (!peer.sending) win.sendTo(peer.modelData)
                                 FocusRing {
                                     radius: 18
                                 }
@@ -159,7 +169,7 @@ Variants {
                                         color: Theme.accent
                                         Icon {
                                             anchors.centerIn: parent
-                                            name: peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
+                                            name: peer.modelData.cast ? Cast.iconFor(peer.modelData) : peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
                                             fill: true
                                             size: 26
                                             color: Theme.color.onAccent
@@ -201,7 +211,7 @@ Variants {
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: peer.sending ? (peer.sending.waiting ? "Waiting…" : Math.round(100 * (peer.sending.total > 0 ? peer.sending.done / peer.sending.total : 0)) + "%")
-                                            : peer.modelData.prefer === "quickshare" ? "Quick Share" : "LocalSend"
+                                            : peer.modelData.cast ? "Cast" : peer.modelData.prefer === "quickshare" ? "Quick Share" : "LocalSend"
                                         color: Theme.color.secondary
                                         font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                                     }
@@ -213,7 +223,7 @@ Variants {
                                     cursorShape: Qt.PointingHandCursor
                                     // (The sheet stays: the ring shows the send; the
                                     // island takes over once it's closed)
-                                    onClicked: if (!peer.sending) Sharing.send(peer.modelData, win.paths)
+                                    onClicked: if (!peer.sending) win.sendTo(peer.modelData)
                                 }
                             }
                         }

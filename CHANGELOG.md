@@ -4,6 +4,7 @@
 
 - **AirPlay speakers.** HomePods, Apple TVs and AirPlay speakers on your network can play this computer's sound: turn on **AirPlay speakers** in the new **Settings → Sound** page (it installs PipeWire's AirPlay support the first time, one password). They then appear as outputs there and in Control Center. Sound reaches them about 2 seconds late, which is fine for music but not for videos or calls. Some AirPlay 2-only speakers, and speakers with a password, may not accept it.
 - **Settings → Sound**: the output and input you use, their volumes, AirPlay, and a way to the sound effects.
+- **Chromecast and Google TV.** Send what's playing to a TV or speaker on your Wi-Fi: the cast button in Control Center's Now Playing (and in the island's player) lists them, and **Cast to <TV>** in Spotlight does it in one go. Videos, songs and photos also go to a TV from the share sheet. The island shows what's playing there, with pause and stop, and the player on this computer pauses. Local files are played straight from this computer over your network: **Allow through firewall** in Settings → Sharing opens the port for it (53320). Videos from web pages (YouTube and others) need yt-dlp installed. Apps that don't say what they're playing (some browsers) can't be cast; Cast says so.
 
 ## Dictation, a drop shelf, Wi-Fi QR codes and fingerprints · 2026-10-31
 

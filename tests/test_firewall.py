@@ -63,7 +63,7 @@ if name == "nft":
     if args == "list chains":
         sys.stdout.write(open(os.environ["FAKE_CHAINS"]).read())
     elif args.startswith("-a list chain"):
-        print('\t\ttcp dport 53317-53319 accept comment "irice sharing" # handle 7')
+        print('\t\ttcp dport 53317-53320 accept comment "irice sharing" # handle 7')
         print('\t\ttcp dport 22 accept # handle 3')
     elif args.startswith("-c -f"):
         sys.exit(int(os.environ.get("FAKE_CHECK", "0")))
@@ -115,7 +115,7 @@ class FixScript(Fakes):
         calls = self.calls()
         # the earlier rule of ours goes, then the new ones, only in inet filter input
         self.assertIn("nft delete rule inet filter input handle 7", calls)
-        self.assertIn('nft insert rule inet filter input tcp dport 53317-53319 accept comment "irice sharing"', calls)
+        self.assertIn('nft insert rule inet filter input tcp dport 53317-53320 accept comment "irice sharing"', calls)
         self.assertIn('nft insert rule inet filter input udp dport { 53317, 5353, 67 } accept comment "irice sharing"', calls)
         self.assertFalse([c for c in calls if "insert" in c and (" ip filter " in c or " bridge " in c)], calls)
         self.assertFalse([c for c in calls if "add table" in c], calls)
@@ -132,7 +132,7 @@ class FixScript(Fakes):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertNotIn("@@runtime", p.stdout)
         drop = (self.etc / "nftables.d/irice.nft").read_text()
-        self.assertIn('insert rule inet filter input tcp dport 53317-53319 accept comment "irice sharing"', drop)
+        self.assertIn('insert rule inet filter input tcp dport 53317-53320 accept comment "irice sharing"', drop)
         self.assertIn("nft -c -f " + str(self.etc) + "/nftables.conf", self.calls())
         # nftables couldn't load the file at boot: it's taken out again, runtime only
         p = self.fix(FAKE_UNITS="nftables", FAKE_CHECK="1")
@@ -144,7 +144,7 @@ class FixScript(Fakes):
         p = self.fix(FAKE_UNITS="iptables")
         self.assertEqual(p.returncode, 0, p.stderr)
         calls = self.calls()
-        self.assertIn('iptables -I INPUT -p tcp --dport 53317:53319 -m comment --comment irice sharing -j ACCEPT', calls)
+        self.assertIn('iptables -I INPUT -p tcp --dport 53317:53320 -m comment --comment irice sharing -j ACCEPT', calls)
         self.assertIn('iptables -I INPUT -p udp --dport 5353 -m comment --comment irice sharing -j ACCEPT', calls)
         self.assertFalse([c for c in calls if c.startswith("ip6tables")])  # (ip6tables.service isn't on)
         self.assertIn("@@runtime", p.stdout.splitlines())

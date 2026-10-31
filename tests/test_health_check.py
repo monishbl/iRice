@@ -256,7 +256,7 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(rows["firewall"]["status"], "warn")
         self.assertIn("may block", rows["firewall"]["detail"])
         self.assertTrue(rows["firewall"]["fixRoot"])
-        self.assertIn("ufw allow 53317:53319/tcp", rows["firewall"]["fixCommand"])
+        self.assertIn("ufw allow 53317:53320/tcp", rows["firewall"]["fixCommand"])
         self.assertEqual(rows["btpairing"]["status"], "warn")
         self.assertIn("--noplugin=rap,vcp,micp,mcp,bass", rows["btpairing"]["fixCommand"])
         # the fix: one pkexec of the fixed script, then the firewall counts as open

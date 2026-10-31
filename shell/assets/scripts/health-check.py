@@ -208,7 +208,7 @@ def check_firewall(_):
                   "transfers without a shared Wi-Fi stay slow")
     else:
         detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
-                  " LocalSend and Quick Share (ports 53317-53319, mDNS, DHCP)")
+                  " LocalSend and Quick Share (ports 53317-53320, mDNS, DHCP)")
     r = result("firewall", name, "Network & sharing", "warn", detail,
                "Allow them: Settings → Sharing, or the Fix button here")
     if r["fixRoot"] and f["kind"] in sharing.FIREWALL_SHOWN_BY:
