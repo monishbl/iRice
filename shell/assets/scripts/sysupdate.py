@@ -655,12 +655,21 @@ def root_helper():
 def helper_current(folder=None):
     """Whether everything the root helper's setup installs is there and the
     same as in this folder, or `folder` (the incoming version's: else the
-    update's root part installs it)."""
+    update's root part installs it). An installed file only root may read
+    (/etc/polkit-1/rules.d is 0700) can't be compared: it counts as current,
+    or the update would offer the helper again every time, for nothing."""
     for rel, dest, mode in root_helper().FILES:
         try:
-            with open(os.path.join(folder or SHELL, rel), "rb") as a, open(os.path.join(SYSTEM, dest.lstrip("/")), "rb") as b:
-                if a.read() != b.read():
+            with open(os.path.join(folder or SHELL, rel), "rb") as a:
+                mine = a.read()
+        except OSError:
+            return False
+        try:
+            with open(os.path.join(SYSTEM, dest.lstrip("/")), "rb") as b:
+                if mine != b.read():
                     return False
+        except PermissionError:
+            continue
         except OSError:
             return False
     return True

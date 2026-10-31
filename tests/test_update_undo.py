@@ -148,3 +148,23 @@ class IncomingHelper(unittest.TestCase):
             self.assertEqual(Path(out, files[1]).read_text(), "old " + files[1])
             self.assertIsNone(su.stage_incoming("--upload-pack=x"))  # (not a ref: refused)
             self.assertIsNone(su.stage_incoming("no-such-ref"))
+
+
+class HelperCurrent(unittest.TestCase):
+    def test_a_file_only_root_may_read_counts_as_current(self):
+        su = load(SCRIPTS / "sysupdate.py", "sysupdate_current")
+        with tempfile.TemporaryDirectory() as d:
+            su.SYSTEM = d
+            for rel, dest, mode in su.root_helper().FILES:
+                p = Path(d, dest.lstrip("/"))
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes((SCRIPTS.parent.parent / rel).read_bytes())
+            self.assertTrue(su.helper_current())
+            rules = Path(d, "etc/polkit-1/rules.d")
+            rules.chmod(0o000)  # (as on a real system: 0700 root)
+            try:
+                self.assertTrue(su.helper_current())
+                Path(d, "usr/lib/irice/irice-root").write_text("older")
+                self.assertFalse(su.helper_current())
+            finally:
+                rules.chmod(0o755)
