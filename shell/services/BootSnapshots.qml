@@ -33,7 +33,9 @@ Singleton {
             "echo \"root:$(findmnt -no FSTYPE,OPTIONS / 2>/dev/null | tr -s ' ' ' ')\"",
             "{ findmnt -no FSTYPE / | grep -q btrfs || grep -q 'subvol=' /proc/cmdline; } 2>/dev/null && echo btrfs",
             "{ test -d /boot/grub || test -d /boot/grub2; } && command -v grub-mkconfig >/dev/null && echo grub",
-            "command -v grub-btrfsd >/dev/null && echo grubBtrfs",
+            // (grub-btrfsd itself is 0744, root's only: `command -v` never
+            // finds it as you. Its GRUB script, readable by all, says it's there)
+            "{ test -e /etc/grub.d/41_snapshots-btrfs || test -e /usr/bin/grub-btrfsd; } && echo grubBtrfs",
             "systemctl is-enabled --quiet grub-btrfsd 2>/dev/null && echo menuOn",
             "test -f /etc/snapper/configs/root && echo snapper",
             "command -v btrfs-assistant >/dev/null && echo assistant",
