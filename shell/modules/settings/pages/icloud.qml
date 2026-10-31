@@ -9,6 +9,7 @@ import qs.services
 // and iCloud contacts in Spotlight (services/CloudAccounts)
 Column {
     id: page
+    readonly property bool signingHere: CloudAccounts.signingIn && CloudAccounts.signingInto === "icloud"
     width: parent?.width ?? 0
     spacing: 24
     readonly property var icloud: CloudAccounts.accounts.filter(a => a.provider === "icloud")
@@ -25,8 +26,8 @@ Column {
     Group {
         width: parent.width
         title: "iCloud account"
-        footer: CloudAccounts.lastError !== "" && !CloudAccounts.busy ? CloudAccounts.lastError
-            : CloudAccounts.signingIn ? "Checking your Apple ID…"
+        footer: CloudAccounts.lastError !== "" && !CloudAccounts.busy && CloudAccounts.errorFrom !== "microsoft" ? CloudAccounts.lastError
+            : page.signingHere ? "Checking your Apple ID…"
             : page.icloud.length > 0 ? "Calendars sync when you sign in, unlock or open Notification Center, and every 15 minutes while you use the computer. Your app-specific password is kept in your keyring."
             : "iCloud needs an app-specific password: Apple's way to let an app outside Apple's in, without your real password. Making one needs two-factor authentication on your Apple ID."
 
@@ -80,9 +81,9 @@ Column {
             label: "Sign in to iCloud"
             detail: "Calendars and contacts. Your real Apple ID password is never asked for."
             SettingsButton {
-                text: CloudAccounts.signingIn ? "Signing in…" : "Sign in"
+                text: page.signingHere ? "Signing in…" : "Sign in"
                 primary: true
-                busy: CloudAccounts.signingIn
+                busy: page.signingHere
                 enabled: !CloudAccounts.busy && appleId.text.trim() !== "" && password.text.trim() !== ""
                 onClicked: {
                     CloudAccounts.connectICloud(appleId.text.trim(), password.text);

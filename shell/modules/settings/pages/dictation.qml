@@ -73,7 +73,7 @@ Column {
                 readonly property bool loading: Dictation.downloading === modelData.value
                 label: modelData.label + (chosen ? " · in use" : "")
                 detail: loading ? "Downloading… " + Math.round(Dictation.downloadProgress * 100) + "%"
-                    : Dictation.downloadError !== "" && Dictation.downloading === "" && chosen && !have ? Dictation.downloadError
+                    : Dictation.downloadError !== "" && Dictation.downloading === "" && Dictation.lastDownload === modelData.value && !have ? Dictation.downloadError
                     : modelData.detail + " · " + (modelData.mb >= 1000 ? (modelData.mb / 1000).toFixed(1) + " GB" : modelData.mb + " MB") + (have ? " · downloaded" : "")
                 labelColor: Theme.color.label
                 QQ.Row {
@@ -93,13 +93,12 @@ Column {
                         visible: !modelRow.have
                         text: modelRow.loading ? "Cancel" : "Download"
                         icon: modelRow.loading ? "" : "download-simple"
-                        primary: !modelRow.loading && modelRow.chosen
+                        primary: !modelRow.loading && modelRow.chosen && Dictation.hasBinary
                         enabled: modelRow.loading || Dictation.downloading === ""
                         onClicked: {
                             if (modelRow.loading) {
                                 Dictation.cancelDownload();
                             } else {
-                                Config.options.dictation.model = modelRow.modelData.value;
                                 Dictation.download(modelRow.modelData.value);
                             }
                         }

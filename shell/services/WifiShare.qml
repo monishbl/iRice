@@ -22,41 +22,57 @@ Singleton {
     property string qr: "" // the code's file
     property string error: ""
 
+    property int request: 0 // (an answer to an older one is dropped)
     function share(name) {
         close();
         ssid = name;
         stage = "loading";
-        shareProc.command = ["python3", "-I", script, "share", name];
-        shareProc.running = true;
+        request++;
+        const p = shareComp.createObject(root, { req: request, command: ["python3", "-I", script, "share", name] });
+        p.running = true;
+    }
+    function forget(file) {
+        Quickshell.execDetached(["python3", "-I", script, "forget", file]);
     }
     function close() {
         if (qr !== "")
-            Quickshell.execDetached(["python3", "-I", script, "forget", qr]);
+            forget(qr);
+        request++;
         stage = "";
         qr = "";
         password = ""; // (not kept once the card is gone)
         error = "";
     }
-    Process {
-        id: shareProc
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let r = {};
-                try {
-                    r = JSON.parse(text);
-                } catch (e) {}
-                if (root.stage !== "loading")
-                    return; // (closed meanwhile)
-                if (r.ok) {
-                    root.qr = r.qr;
-                    root.password = r.password ?? "";
-                    root.security = r.security ?? "";
-                    root.stage = "ready";
-                } else {
-                    root.error = r.error || "The network couldn't be shared.";
-                    root.stage = "error";
+    Component {
+        id: shareComp
+        Process {
+            id: job
+            property int req
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    let r = {};
+                    try {
+                        r = JSON.parse(text);
+                    } catch (e) {}
+                    if (job.req !== root.request || root.stage !== "loading") {
+                        // (closed, or another network asked for, meanwhile: its
+                        // code holds the password, so it isn't left behind)
+                        if (r.qr)
+                            root.forget(r.qr);
+                        return;
+                    }
+                    if (r.ok) {
+                        root.qr = r.qr;
+                        root.password = r.password ?? "";
+                        root.security = r.security ?? "";
+                        root.stage = "ready";
+                    } else {
+                        root.error = r.error || "The network couldn't be shared.";
+                        root.stage = "error";
+                    }
                 }
             }
+            onExited: job.destroy()
         }
     }
 
@@ -92,10 +108,10 @@ Singleton {
                 if (joinable)
                     WifiJoin.join({ ssid: w.ssid, hidden: w.hidden, security: w.security === "nopass" ? "open" : "psk", psk: w.password });
                 else
-                    Quickshell.execDetached(["wl-copy", "--", w.password]);
+                    Clipboard.copyText(w.password);
             },
             action2: joinable && w.password !== "" ? "Copy Password" : "",
-            onAction2: () => Quickshell.execDetached(["wl-copy", "--", w.password])
+            onAction2: () => Clipboard.copyText(w.password)
         }, 12000);
     }
 }

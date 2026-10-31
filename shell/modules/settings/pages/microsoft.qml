@@ -10,6 +10,7 @@ import qs.services
 // (services/CloudAccounts), and OneDrive as a folder (services/CloudDrives)
 Column {
     id: page
+    readonly property bool signingHere: CloudAccounts.signingIn && CloudAccounts.signingInto === "microsoft"
     width: parent?.width ?? 0
     spacing: 24
     readonly property var microsoft: CloudAccounts.accounts.filter(a => a.provider === "microsoft")
@@ -26,8 +27,8 @@ Column {
     Group {
         width: parent.width
         title: "Microsoft account"
-        footer: CloudAccounts.lastError !== "" && !CloudAccounts.busy ? CloudAccounts.lastError
-            : CloudAccounts.signingIn ? "Sign in to Microsoft in your browser, then come back here…"
+        footer: CloudAccounts.lastError !== "" && !CloudAccounts.busy && CloudAccounts.errorFrom !== "icloud" ? CloudAccounts.lastError
+            : page.signingHere ? "Sign in to Microsoft in your browser, then come back here…"
             : page.microsoft.length > 0 ? "Outlook calendars and To Do sync when you sign in, unlock or open Notification Center, and every 15 minutes while you use the computer."
             : "Your password stays with Microsoft: iRice uses the account through GNOME Online Accounts and never sees it. Work or school accounts may need their admin's approval."
         Repeater {
@@ -68,9 +69,9 @@ Column {
             label: "Microsoft 365 account"
             detail: "Outlook calendars and Microsoft To Do, kept in sync. Personal (Outlook.com) and work or school accounts."
             SettingsButton {
-                text: CloudAccounts.signingIn ? "Waiting for the browser…" : "Sign in with Microsoft"
+                text: page.signingHere ? "Waiting for the browser…" : "Sign in with Microsoft"
                 primary: true
-                busy: CloudAccounts.signingIn
+                busy: page.signingHere
                 enabled: !CloudAccounts.busy
                 onClicked: CloudAccounts.connectMicrosoft()
             }

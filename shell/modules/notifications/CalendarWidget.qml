@@ -824,7 +824,8 @@ Platter {
                     Config.options.google.newEventCalendar = "";
                 }
                 if (!saved) {
-                    error = (target.startsWith("cloud|") || editing?.e?.cloud ? CloudAccounts.lastError : Google.lastError) || "Could not save the event.";
+                    // (an edit is the event's own service's; a new one the chosen calendar's)
+                    error = ((editing ? !!editing.e?.cloud : target.startsWith("cloud|")) ? CloudAccounts.lastError : Google.lastError) || "Could not save the event.";
                     asking = null;
                     return;
                 }

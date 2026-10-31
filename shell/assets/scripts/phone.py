@@ -26,6 +26,7 @@ import re
 import secrets
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -155,7 +156,14 @@ def pair(limit=180):
                 continue
             _, host, port = found[0]
             emit({"stage": "pairing"})
-            r = subprocess.run([exe, "pair", f"{host}:{port}", password], capture_output=True, text=True, timeout=30)
+            try:
+                # (the code on its input: adb asks for it when it isn't on the
+                # command line, where any program could read it)
+                r = subprocess.run([exe, "pair", f"{host}:{port}"], input=password + "\n",
+                                   capture_output=True, text=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                emit({"ok": False, "error": "The phone stopped answering. Try again."})
+                return 1
             if r.returncode != 0 or "Successfully paired" not in r.stdout:
                 emit({"ok": False, "error": "The phone refused the pairing. Try again."})
                 return 1
@@ -164,7 +172,14 @@ def pair(limit=180):
             while time.monotonic() < end:
                 for _, h, p in browse("_adb-tls-connect._tcp"):
                     if h == host:
-                        subprocess.run([exe, "connect", f"{h}:{p}"], capture_output=True, text=True, timeout=30)
+                        try:
+                            c = subprocess.run([exe, "connect", f"{h}:{p}"], capture_output=True, text=True, timeout=30)
+                        except subprocess.TimeoutExpired:
+                            c = None
+                        # (adb says "failed to connect" and still exits 0)
+                        if c is None or "connected to" not in c.stdout:
+                            emit({"ok": False, "error": "Paired, but the phone didn't connect. Connect it with a cable once, or pair again."})
+                            return 1
                         emit({"ok": True, "error": ""})
                         return 0
                 time.sleep(1)
@@ -177,7 +192,16 @@ def pair(limit=180):
             pass
 
 
+class Stopped(BaseException):
+    """SIGTERM (Cancel): raised so the code's file is removed."""
+
+
+def stopped(*_):
+    raise Stopped()
+
+
 def main(argv):
+    signal.signal(signal.SIGTERM, stopped)
     if argv[:1] == ["watch"]:
         return watch()
     if argv[:1] == ["pair"]:
@@ -187,4 +211,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Stopped:
+        sys.exit(143)

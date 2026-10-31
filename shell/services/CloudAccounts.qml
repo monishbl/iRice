@@ -47,14 +47,27 @@ Singleton {
 
     // ── Events: iCloud's as iCalendar text (read by Calendar), Microsoft's
     // already one per occurrence ─────────────────────────────────────────
-    readonly property var parsed: (state_.events ?? []).map(e => {
-        const cal = calendar(e.account, e.calendarId);
-        if (!cal || !shown(cal))
-            return null;
-        if (e.ics !== undefined)
-            return { raw: e, cal: cal, evs: Calendar.parseIcs(e.ics), notes: descriptionOf(e.ics) };
-        return { raw: e, cal: cal, evs: null, notes: e.notes ?? "" };
-    }).filter(x => x !== null)
+    readonly property var parsed: {
+        const seen = {};
+        const out = (state_.events ?? []).map(e => {
+            const cal = calendar(e.account, e.calendarId);
+            if (!cal || !shown(cal))
+                return null;
+            if (e.ics === undefined)
+                return { raw: e, cal: cal, evs: null, notes: e.notes ?? "" };
+            // (read once per version: every answer from the helper has them all)
+            const k = keyOf(e) + "|" + (e.etag || e.ics);
+            const c = icsCache[k] ?? { evs: Calendar.parseIcs(e.ics), notes: descriptionOf(e.ics) };
+            seen[k] = c;
+            return { raw: e, cal: cal, evs: c.evs, notes: c.notes };
+        }).filter(x => x !== null);
+        for (const k of Object.keys(icsCache))
+            if (!seen[k])
+                delete icsCache[k];
+        Object.assign(icsCache, seen);
+        return out;
+    }
+    readonly property var icsCache: ({}) // (changed in place: never notifies)
     function descriptionOf(ics) {
         const m = ics.replace(/\r?\n[ \t]/g, "").match(/^DESCRIPTION[^:\n]*:(.*)$/m);
         return m ? m[1].replace(/\\n/gi, "\n").replace(/\\([,;\\])/g, "$1").trim() : "";
@@ -215,18 +228,23 @@ Singleton {
     // ── Accounts ────────────────────────────────────────────────────────
     function connectICloud(appleId, password) {
         signingIn = true;
+        signingInto = "icloud";
         send({ cmd: "connectICloud", appleId: appleId, password: password });
     }
     // Microsoft: GNOME Online Accounts' Microsoft 365 sign-in (goa-signin
     // ms_graph), then the account it made
     function connectMicrosoft() {
+        if (msSignin.running)
+            return;
         signingIn = true;
+        signingInto = "microsoft";
         lastError = "";
         msSignin.running = true;
     }
     Process {
         id: msSignin
-        command: [Quickshell.shellDir + "/native/build/goa-signin", "ms_graph"]
+        // (built here, or installed with iRice's package; neither: said so)
+        command: ["sh", "-c", "exe=\"$1/native/build/goa-signin\"; [ -x \"$exe\" ] || exe=$(command -v irice-goa-signin) || { echo '{\"error\":\"Connecting needs iRice\\u2019s native helpers. Run Software Update, then try again.\"}'; exit 1; }; exec \"$exe\" ms_graph", "sh", Quickshell.shellDir]
         stdout: StdioCollector {
             onStreamFinished: {
                 let r = {};
@@ -237,13 +255,24 @@ Singleton {
                     root.send({ cmd: "connectMicrosoft", goa: r.account, identity: r.identity ?? "" });
                 } else {
                     root.signingIn = false;
-                    if (!r.cancelled)
+                    if (!r.cancelled) {
                         root.lastError = r.error || "Couldn't open the Microsoft sign-in. Update iRice, then try again.";
+                        root.errorFrom = "microsoft";
+                    }
                 }
             }
         }
     }
     property bool signingIn: false
+    property string signingInto: "" // icloud | microsoft (each page says only its own)
+    property string errorFrom: "" // whose lastError: icloud | microsoft | "" (any)
+    function providerOf(request) {
+        if (request?.cmd === "connectICloud")
+            return "icloud";
+        if (request?.cmd === "connectMicrosoft")
+            return "microsoft";
+        return request?.account ? (account(request.account)?.provider ?? "") : "";
+    }
     function disconnect(id) {
         send({ cmd: "disconnect", account: id });
     }
@@ -268,9 +297,18 @@ Singleton {
     function pump() {
         if (helper.running || queue.length === 0)
             return;
-        current = queue[0];
+        current = { request: freshEtag(queue[0].request), key: queue[0].key };
         queue = queue.slice(1);
         helper.running = true; // (the request goes once it has started)
+    }
+    // A change waits its turn: by then an earlier one may have changed the
+    // event's version (etag), which the server checks
+    function freshEtag(r) {
+        if (r.etag === undefined)
+            return r;
+        const cur = r.cmd.startsWith("event") ? (state_.events ?? []).find(e => e.account === r.account && e.calendarId === r.calendarId && (e.href ?? e.id) === r.id)
+            : (state_.tasks ?? []).find(t => t.account === r.account && t.listId === r.listId && t.id === r.id);
+        return cur ? Object.assign({}, r, { etag: cur.etag ?? "" }) : r;
     }
     Process {
         id: helper
@@ -289,13 +327,15 @@ Singleton {
                     root.state_ = s;
                     root.offline = !!s.offline;
                     root.lastError = s.error ?? "";
+                    root.errorFrom = root.providerOf(done?.request);
                     if (s.error && done && /^(event|task)/.test(done.request.cmd))
                         Quickshell.execDetached(["notify-send", "-a", "iRice", "Change not saved", s.error]);
                 } else {
                     root.lastError = "The calendar helper didn't answer. Check that Python 3 is installed.";
                 }
-                // the server's version is shown now
-                if (done?.key)
+                // the server's version is shown now (unless more changes to it
+                // are still on their way, or it's waiting to be deleted)
+                if (done?.key && !root.queue.some(q => q.key === done.key) && !root.deleting.some(d => d.key === done.key))
                     root.setOverride(done.key, null);
                 if (["connectICloud", "connectMicrosoft"].includes(done?.request.cmd))
                     root.signingIn = false;

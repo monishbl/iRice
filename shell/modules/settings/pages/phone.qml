@@ -13,12 +13,14 @@ Column {
     width: parent?.width ?? 0
     spacing: 24
     readonly property var phone: Phone.phone
+    readonly property bool needsTools: !Phone.hasAdb || !Phone.hasScrcpy || !Tools.has("qrencode")
+    readonly property bool pairing: ["starting", "waiting", "pairing", "connecting"].includes(Phone.pairStage)
     Component.onCompleted: Phone.checkCam()
 
     // What it needs
     Group {
         width: parent.width
-        visible: !Phone.hasAdb || !Phone.hasScrcpy || !Tools.has("qrencode")
+        visible: page.needsTools
         footer: "scrcpy shows the phone's screen in a window and lets you use it with your mouse and keyboard. Both are Google's and open source tools."
         Row {
             label: "Android tools and scrcpy"
@@ -48,7 +50,7 @@ Column {
             SettingsButton {
                 text: Phone.mirroring(page.phone?.serial ?? "") ? "Showing" : "Show Screen"
                 icon: "device-mobile"
-                primary: !Phone.mirroring(page.phone?.serial ?? "")
+                primary: !Phone.mirroring(page.phone?.serial ?? "") && !page.needsTools
                 enabled: Phone.hasScrcpy
                 onClicked: Phone.mirror(page.phone.serial)
             }
@@ -82,20 +84,21 @@ Column {
             }
         }
         Row {
-            label: Phone.pairStage === "waiting" ? "Scan this code on your phone"
+            label: Phone.pairStage === "starting" ? "Getting a code…"
+                : Phone.pairStage === "waiting" ? "Scan this code on your phone"
                 : Phone.pairStage === "pairing" ? "Pairing…"
                 : Phone.pairStage === "connecting" ? "Connecting…"
                 : Phone.pairStage === "done" ? "Paired"
                 : "Pair with a QR code"
             detail: Phone.pairStage === "waiting" ? "On the phone: Developer options → Wireless debugging → Pair device with QR code"
-                : Phone.pairStage === "error" ? Phone.pairError
+                : Phone.pairStage === "error" ? (Phone.pairError || "Pairing didn't work. Check the phone is on the same Wi-Fi, then try again.")
                 : Phone.pairStage === "done" ? "Your phone is connected over Wi-Fi."
                 : "Your phone connects over Wi-Fi from then on"
             labelColor: Phone.pairStage === "error" ? Theme.color.danger : Theme.color.label
             SettingsButton {
-                text: Phone.pairStage === "waiting" || Phone.pairStage === "pairing" || Phone.pairStage === "connecting" ? "Cancel" : "Pair"
+                text: page.pairing ? "Cancel" : "Pair"
                 enabled: Phone.hasAdb
-                onClicked: Phone.pairStage === "waiting" || Phone.pairStage === "pairing" || Phone.pairStage === "connecting" ? Phone.cancelPair() : Phone.pair()
+                onClicked: page.pairing ? Phone.cancelPair() : Phone.pair()
             }
         }
         // The code, on white (cameras read dark on light)
@@ -132,7 +135,8 @@ Column {
         Row {
             visible: !Phone.camReady
             label: "Phone camera"
-            detail: !Phone.camModule ? "Needs a virtual camera (v4l2loopback" + (Phone.kernelPackage !== "" ? ", built for your " + Phone.kernelPackage + " kernel" : "") + "). Install it, then set it up. Each asks for your password once."
+            detail: Phone.installError !== "" && !page.needsTools ? Phone.installError
+                : !Phone.camModule ? "Needs a virtual camera (v4l2loopback" + (Phone.kernelPackage !== "" ? ", built for your " + Phone.kernelPackage + " kernel" : "") + "). Install it, then set it up. Each asks for your password once."
                 : "Set up a virtual camera for it. It asks for your password once."
             SettingsButton {
                 visible: !Phone.camModule

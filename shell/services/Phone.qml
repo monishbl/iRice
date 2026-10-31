@@ -22,11 +22,12 @@ Singleton {
     property var devices: [] // [{ serial, state, wireless, model, android, battery, charging }]
     readonly property var phone: devices.find(d => d.state === "device") ?? null
     readonly property var waiting: devices.find(d => d.state === "unauthorized") ?? null
-    Process {
+    KeptProcess {
         id: watcher
         // (only once scrcpy is installed: until then nobody asked for it, and
         // adb's server would run for nothing)
-        running: root.cfg.enabled && root.hasAdb && root.hasScrcpy
+        wanted: root.cfg.enabled && root.hasAdb && root.hasScrcpy
+        firstWait: 5000
         command: [Tools.watcher, "python3", "-I", root.script, "watch"]
         stdinEnabled: true // (Tools.watcher: it, and adb track-devices, end with the shell)
         stdout: SplitParser {
@@ -44,9 +45,8 @@ Singleton {
                         root.arrived(d);
             }
         }
-        onExited: if (root.cfg.enabled && root.hasAdb && root.hasScrcpy) rewatch.restart()
+        onRunningChanged: if (!running) root.devices = [] // (it went away: nothing is known now)
     }
-    Timer { id: rewatch; interval: 5000; onTriggered: watcher.running = root.cfg.enabled && root.hasAdb && root.hasScrcpy }
 
     // Said once per connection
     function arrived(d) {
@@ -71,8 +71,8 @@ Singleton {
         if (!d)
             return;
         if (mirrors[d.serial]) {
-            // (already up: bring it forward)
-            Hyprland.dispatch("hl.dsp.focus({ window = \"title:^" + (d.model || "Phone").replace(/[\^$.*+?()[\]{}|\\"]/g, "\\$&") + "$\" })");
+            // (already up: bring it forward, found by its process)
+            Hyprland.dispatch("hl.dsp.focus({ window = " + JSON.stringify("pid:" + mirrors[d.serial].processId) + " })");
             return;
         }
         const args = ["scrcpy", "-s", d.serial, "--window-title", d.model || "Phone", "--stay-awake", "--shortcut-mod=lalt,ralt"];
@@ -149,8 +149,14 @@ Singleton {
     // The virtual camera: one password (irice-root phonecam on)
     property bool camSetting: false
     function setUpCam() {
-        camSetting = true;
+        if (camSetup.running)
+            return;
         camError = "";
+        if (Tools.ready && !Tools.has("pkexec")) {
+            camError = "Changing this needs polkit (pkexec), which isn't installed. Install polkit, then try again.";
+            return;
+        }
+        camSetting = true;
         camSetup.running = true;
     }
     Process {
@@ -204,7 +210,15 @@ Singleton {
                 }
             }
         }
-        onExited: if (root.pairStage === "waiting" || root.pairStage === "starting") root.pairStage = ""
+        onExited: {
+            if (root.pairStage === "waiting" || root.pairStage === "starting") {
+                root.pairStage = "";
+            } else if (root.pairStage === "pairing" || root.pairStage === "connecting") {
+                // (it ended without saying how it went)
+                root.pairStage = "error";
+                root.pairError = "Pairing stopped. Try again.";
+            }
+        }
     }
 
     // ── Installing scrcpy (and adb, and the camera module) ──────────────

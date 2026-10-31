@@ -17,24 +17,29 @@ Singleton {
     // ── Devices nearby (Avahi, _googlecast._tcp, followed while running) ─
     // [{ id, name, model, host, port }]
     property var devices: []
-    property var found: ({}) // avahi name -> device
-    Process {
+    property var found: ({}) // "interface;protocol;avahi name" -> device
+    KeptProcess {
         id: browser
-        running: Tools.has("avahi-browse")
+        // (not while avahi-daemon is off: it would only end, again and again)
+        wanted: Tools.has("avahi-browse") && (!Needs.checked || Needs.avahi)
         command: [Tools.watcher, "avahi-browse", "-p", "-r", "-k", "_googlecast._tcp"]
         stdinEnabled: true // (Tools.watcher: it ends with the shell)
         stdout: SplitParser {
             onRead: line => root.avahiLine(line)
         }
-        // (avahi-daemon restarted: look again)
-        onExited: restartBrowser.restart()
+        // (avahi-daemon restarted: what it knew is gone; looked for again)
+        onRunningChanged: if (!running) {
+            root.found = {};
+            root.devices = [];
+        }
     }
-    Timer { id: restartBrowser; interval: 10000; onTriggered: browser.running = Tools.has("avahi-browse") }
     function avahiLine(line) {
         const f = line.split(";");
         if (f.length < 4)
             return;
-        const key = f[3];
+        // (a device is heard once per interface and IP version: it's gone
+        // when the last of those goes)
+        const key = f[1] + ";" + f[2] + ";" + f[3];
         const next = Object.assign({}, found);
         if (f[0] === "-") {
             delete next[key];
@@ -44,16 +49,17 @@ Singleton {
             let m;
             while ((m = re.exec(f[9])) !== null)
                 txt[m[1]] = m[2];
-            const dev = { id: txt.id || key, name: txt.fn || key, model: txt.md || "", host: f[7], port: Number(f[8]) || 8009 };
-            // IPv4 over IPv6
-            if (next[key] && !next[key].host.includes(":") && dev.host.includes(":"))
-                return;
-            next[key] = dev;
+            next[key] = { id: txt.id || f[3], name: txt.fn || f[3], model: txt.md || "", host: f[7], port: Number(f[8]) || 8009 };
         } else {
             return;
         }
         found = next;
-        devices = Object.values(next).sort((a, b) => a.name.localeCompare(b.name));
+        // One per device, IPv4 over IPv6
+        const byId = {};
+        for (const d of Object.values(next))
+            if (!byId[d.id] || (byId[d.id].host.includes(":") && !d.host.includes(":")))
+                byId[d.id] = d;
+        devices = Object.values(byId).sort((a, b) => a.name.localeCompare(b.name));
     }
     function iconFor(dev) {
         return /nest|home|speaker|audio/i.test(dev?.model ?? "") ? "speaker-hifi" : "television-simple";

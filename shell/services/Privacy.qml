@@ -49,23 +49,13 @@ Singleton {
     }
 
     // ── Microphone ──────────────────────────────────────────────────────
-    Process {
-        id: pactlWatch
-        running: Tools.has("pactl")
-        command: [Tools.watcher, "pactl", "subscribe"]
-        stdinEnabled: true // the watcher ends when this closes (the shell quit)
-        stdout: SplitParser {
-            onRead: line => {
-                if (line.includes("source-output") || line.includes("'source'"))
-                    micRefresh.restart();
-            }
+    // (the shell's one pactl subscribe: services/PulseEvents)
+    Connections {
+        target: PulseEvents
+        function onEvent(line) {
+            if (line.includes("source-output") || line.includes("'source'"))
+                micRefresh.restart();
         }
-        onExited: pactlRetry.start()
-    }
-    Timer {
-        id: pactlRetry
-        interval: 5000
-        onTriggered: pactlWatch.running = Tools.has("pactl")
     }
     Timer {
         id: micRefresh

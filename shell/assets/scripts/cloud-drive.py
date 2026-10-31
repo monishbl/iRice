@@ -23,8 +23,10 @@ irice-gdrive and irice-onedrive).
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 DRIVES = {
     "gdrive": {"type": "drive", "folder": "Google Drive", "args": ["scope", "drive"]},
@@ -60,8 +62,50 @@ def remotes():
     return [l.strip().rstrip(":") for l in r.stdout.splitlines() if l.strip()]
 
 
+def mount_points(table=None):
+    """Every mount point (from the kernel's table: a mount whose rclone has
+    died is still there, though its folder can't be opened)."""
+    points = set()
+    try:
+        with open(table or os.environ.get("IRICE_MOUNTINFO") or "/proc/self/mountinfo") as f:
+            for line in f:
+                parts = line.split(" ")
+                if len(parts) > 4:
+                    # (spaces and the like are written as \040)
+                    points.add(parts[4].encode().decode("unicode_escape").encode("latin-1").decode())
+    except OSError:
+        pass
+    return points
+
+
 def mounted(path):
-    return run(["mountpoint", "-q", path]).returncode == 0 if os.path.isdir(path) else False
+    return os.path.realpath(path) in mount_points()
+
+
+def alive(path):
+    try:
+        os.stat(path)
+        return True
+    except OSError:  # (ENOTCONN: its rclone is gone)
+        return False
+
+
+def fusermount():
+    return shutil.which("fusermount3") or "fusermount"
+
+
+def has_systemd():
+    try:
+        return run(["systemctl", "--user", "show-environment"], timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def unit_state(name):
+    try:
+        return run(["systemctl", "--user", "is-active", unit(name)], timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def status():
@@ -74,29 +118,49 @@ def mount(name):
     exe = rclone()
     path = folder(name)
     if mounted(path):
-        return {"ok": True, "error": ""}
+        if alive(path):
+            return {"ok": True, "error": ""}
+        run([fusermount(), "-uz", path])  # (left behind by an rclone that died)
     os.makedirs(path, exist_ok=True)
     if os.listdir(path):
         return {"ok": False, "error": f"~/{DRIVES[name]['folder']} already has files in it. Move them out, then try again."}
     cmd = [exe, "mount", remote(name) + ":", path, "--vfs-cache-mode", "full", "--vfs-cache-max-size", "2G",
            "--dir-cache-time", "1m", "--poll-interval", "1m"]
-    # A user unit (it outlives a shell restart); without systemd, rclone's own daemon
-    r = run(["systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit(name), "-p", "Restart=on-failure",
-             "-p", "RestartSec=10"] + cmd)
-    if r.returncode != 0:
+    if has_systemd():
+        # A user unit (it outlives a shell restart). Tried again after a
+        # failure, but not forever (a sign-in that has expired)
+        state = unit_state(name)
+        if state not in ("active", "activating", "reloading"):
+            run(["systemctl", "--user", "reset-failed", unit(name)])
+            r = run(["systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit(name), "-p", "Restart=on-failure",
+                     "-p", "RestartSec=10", "-p", "StartLimitIntervalSec=120", "-p", "StartLimitBurst=3"] + cmd)
+            if r.returncode != 0:
+                return {"ok": False, "error": (r.stderr.strip().splitlines() or ["rclone couldn't mount it."])[-1]}
+    else:
         r = run(cmd + ["--daemon"])
         if r.returncode != 0:
             return {"ok": False, "error": (r.stderr.strip().splitlines() or ["rclone couldn't mount it."])[-1]}
-    return {"ok": True, "error": ""}
+    # (it says it worked once the folder is there)
+    for _ in range(40):
+        if mounted(path):
+            return {"ok": True, "error": ""}
+        if has_systemd() and unit_state(name) == "failed":
+            break
+        time.sleep(0.25)
+    if mounted(path) or unit_state(name) in ("active", "activating"):
+        return {"ok": True, "error": ""}  # (slow to come up, but coming)
+    return {"ok": False, "error": "The drive couldn't be opened. Disconnect it, then connect it again."}
 
 
 def unmount(name):
     path = folder(name)
-    run(["systemctl", "--user", "stop", unit(name)])
     if mounted(path):
-        r = run([shutil.which("fusermount3") or "fusermount", "-u", path])
+        r = run([fusermount(), "-u", path])
         if r.returncode != 0:
-            return {"ok": False, "error": "A file in it is still open. Close it, then try again."}
+            if alive(path):
+                return {"ok": False, "error": "A file in it is still open. Close it, then try again."}
+            run([fusermount(), "-uz", path])  # (its rclone is gone)
+    run(["systemctl", "--user", "stop", unit(name)])
     return {"ok": True, "error": ""}
 
 
@@ -112,6 +176,10 @@ def connect(name):
         except subprocess.TimeoutExpired:
             run([exe, "config", "delete", remote(name)])
             return {"ok": False, "error": "Sign-in took too long. Try again."}
+        except Stopped:
+            # (Cancel: rclone, waiting for the browser, is ended by run())
+            run([exe, "config", "delete", remote(name)])
+            raise
         if r.returncode != 0 or remote(name) not in remotes():
             run([exe, "config", "delete", remote(name)])
             return {"ok": False, "error": "Sign-in didn't finish. Try again, and approve access in the browser."}
@@ -132,7 +200,16 @@ def disconnect(name):
     return {"ok": True, "error": ""}
 
 
+class Stopped(BaseException):
+    """SIGTERM (Cancel in Settings)."""
+
+
+def stopped(*_):
+    raise Stopped()
+
+
 def main(argv):
+    signal.signal(signal.SIGTERM, stopped)
     if argv[:1] == ["status"]:
         print(json.dumps(status()))
         return 0
@@ -145,4 +222,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Stopped:
+        print(json.dumps({"ok": False, "error": ""}))
+        sys.exit(143)

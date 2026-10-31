@@ -42,18 +42,35 @@ Singleton {
     }
     Component.onCompleted: refresh()
 
-    // One job at a time: connect (the browser opens) | mount | unmount | disconnect
+    // One job at a time (the rest wait their turn): connect (the browser
+    // opens) | mount | unmount | disconnect
     property string busy: "" // "<job> <drive>"
+    property var waiting: [] // ["<job> <drive>"]
     property var errors: ({}) // drive -> message
     function act(job, name) {
-        if (job_.running)
+        if (job_.running || busy !== "") {
+            if (busy !== job + " " + name && !waiting.includes(job + " " + name))
+                waiting = waiting.concat([job + " " + name]);
             return;
+        }
         busy = job + " " + name;
         const e = Object.assign({}, errors);
         delete e[name];
         errors = e;
         job_.command = ["python3", "-I", script, job, name];
         job_.running = true;
+    }
+    // Connecting waits for the browser (up to 5 minutes): this stops waiting
+    function cancel() {
+        if (job_.running && busy.startsWith("connect "))
+            job_.signal(15);
+    }
+    function next() {
+        if (waiting.length === 0)
+            return;
+        const [job, name] = waiting[0].split(" ");
+        waiting = waiting.slice(1);
+        act(job, name);
     }
     Process {
         id: job_
@@ -64,13 +81,14 @@ Singleton {
                     r = JSON.parse(text);
                 } catch (e) {}
                 const name = root.busy.split(" ")[1];
-                if (!r.ok) {
+                if (!r.ok && r.error !== "") { // ("": cancelled)
                     const e = Object.assign({}, root.errors);
                     e[name] = r.error || "That didn't work. Try again.";
                     root.errors = e;
                 }
                 root.busy = "";
                 root.refresh();
+                root.next();
             }
         }
     }

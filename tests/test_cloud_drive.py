@@ -26,8 +26,17 @@ elif a[:2] == ["config", "create"]:
 elif a[:2] == ["config", "delete"]:
     remotes = [r for r in remotes if r != a[2]]; json.dump(remotes, open(st, "w"))
 '''
-FAKE_SYSTEMD_RUN = '#!/bin/sh\necho "$@" >> "$FAKE_DIR/units"\n'
-FAKE_MOUNTPOINT = '#!/bin/sh\n[ -e "$FAKE_DIR/mounted" ]\n'
+# (systemd-run "mounts" it: a line in the stand-in mount table, its spaces
+# written as the kernel writes them)
+FAKE_SYSTEMD_RUN = r'''#!/usr/bin/env python3
+import os, sys
+d = os.environ["FAKE_DIR"]
+open(os.path.join(d, "units"), "a").write(" ".join(sys.argv[1:]) + "\n")
+a = sys.argv[1:]
+path = a[a.index("mount") + 2]
+open(os.path.join(d, "mountinfo"), "a").write("36 35 0:41 / " + path.replace(" ", "\\040") + " rw - fuse.rclone x rw\n")
+'''
+FAKE_FUSERMOUNT = '#!/bin/sh\n: > "$FAKE_DIR/mountinfo"\n'
 
 
 class Drive(unittest.TestCase):
@@ -36,12 +45,13 @@ class Drive(unittest.TestCase):
         t = Path(self.tmp.name)
         (t / "bin").mkdir()
         (t / "home").mkdir()
-        for name, text in (("rclone", FAKE_RCLONE), ("systemd-run", FAKE_SYSTEMD_RUN), ("mountpoint", FAKE_MOUNTPOINT),
-                           ("systemctl", "#!/bin/sh\n"), ("fusermount3", "#!/bin/sh\nrm -f \"$FAKE_DIR/mounted\"\n")):
+        for name, text in (("rclone", FAKE_RCLONE), ("systemd-run", FAKE_SYSTEMD_RUN),
+                           ("systemctl", "#!/bin/sh\n"), ("fusermount3", FAKE_FUSERMOUNT)):
             (t / "bin" / name).write_text(text)
             (t / "bin" / name).chmod(0o755)
         self.env = dict(os.environ, HOME=str(t / "home"), FAKE_DIR=str(t), PATH=str(t / "bin") + ":" + os.environ["PATH"],
-                        IRICE_RCLONE=str(t / "bin" / "rclone"))
+                        IRICE_RCLONE=str(t / "bin" / "rclone"), IRICE_MOUNTINFO=str(t / "mountinfo"))
+        (t / "mountinfo").write_text("")
         self.t = t
 
     def tearDown(self):
@@ -63,6 +73,7 @@ class Drive(unittest.TestCase):
         self.assertIn("--vfs-cache-mode full", units)
         st = self.run_("status")
         self.assertTrue(st["drives"]["gdrive"]["connected"])
+        self.assertTrue(st["drives"]["gdrive"]["mounted"])
         self.assertFalse(st["drives"]["onedrive"]["connected"])
 
     def test_failed_signin_leaves_nothing(self):
@@ -82,11 +93,17 @@ class Drive(unittest.TestCase):
 
     def test_disconnect(self):
         self.run_("connect", "gdrive")
-        (self.t / "mounted").write_text("")
         r = self.run_("disconnect", "gdrive")
         self.assertTrue(r["ok"], r)
         self.assertFalse(self.run_("status")["drives"]["gdrive"]["connected"])
         self.assertFalse((self.t / "home" / "Google Drive").exists())  # (the empty mount point)
+
+    def test_mount_table_reads_escaped_spaces(self):
+        (self.t / "home" / "Google Drive").mkdir()
+        (self.t / "mountinfo").write_text("36 35 0:41 / " + str(self.t / "home") + "/Google\\040Drive rw - fuse.rclone x rw\n")
+        self.assertTrue(self.run_("status")["drives"]["gdrive"]["mounted"])
+        self.assertTrue(self.run_("mount", "gdrive")["ok"])
+        self.assertFalse((self.t / "units").exists())  # (already there: nothing started)
 
 
 if __name__ == "__main__":

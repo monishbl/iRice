@@ -27,7 +27,9 @@ Scope {
     // Fingerprint): PAM asks for no text while it waits for one, then for the
     // password once that times out
     property bool previewFinger: false
-    readonly property bool fingerWait: previewFinger || (flow !== null && !(flow?.isResponseRequired ?? true)
+    // (not while a typed password is checked: the last message can still
+    // be about the finger)
+    readonly property bool fingerWait: previewFinger || (flow !== null && !waiting && !(flow?.isResponseRequired ?? true)
         && /finger|reader|swipe/i.test(flow?.supplementaryMessage ?? ""))
 
     function submit(text) {
@@ -128,6 +130,9 @@ Scope {
 
             Item {
                 id: body
+                // (Escape while the field is away, waiting for a finger)
+                focus: true
+                Keys.onEscapePressed: root.cancel()
                 width: 340 + 2 * win.m
                 height: content.implicitHeight + 40 + 2 * win.m
                 x: (parent.width - width) / 2 + shake
@@ -194,7 +199,7 @@ Scope {
                         width: parent.width
                         height: 36
                         visible: !root.fingerWait
-                        onVisibleChanged: if (visible) password.forceActiveFocus() // (back after the finger timed out)
+                        onVisibleChanged: visible ? password.forceActiveFocus() : body.forceActiveFocus() // (back after the finger timed out)
                         radius: Theme.radius.control
                         color: Theme.color.fill
                         border.width: 1

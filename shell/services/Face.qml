@@ -66,8 +66,12 @@ Singleton {
     function run(job) {
         if (rootJob.running)
             return;
-        busy = job;
         error = "";
+        if (Tools.ready && !Tools.has("pkexec")) {
+            error = "Changing this needs polkit (pkexec), which isn't installed. Install polkit, then try again.";
+            return;
+        }
+        busy = job;
         rootJob.command = ["pkexec", "/usr/lib/irice/irice-root", "face"].concat(job === "setup" ? ["setup", camera.path] : [job]);
         rootJob.running = true;
     }

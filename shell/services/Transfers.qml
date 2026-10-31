@@ -144,9 +144,10 @@ Singleton {
     // ── Copies ──────────────────────────────────────────────────────────
     property var copies: []
     property var lastCopy: ({}) // pid -> { pos, at }
-    Process {
+    KeptProcess {
         id: copyWatch
-        running: root.on
+        wanted: root.on
+        firstWait: 5000
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/transfers.sh").toString().replace("file://", ""))]
         stdout: SplitParser {
@@ -167,11 +168,5 @@ Singleton {
                 root.lastCopy = seen;
             }
         }
-        onExited: if (root.on) copyRetry.start()
-    }
-    Timer {
-        id: copyRetry
-        interval: 5000
-        onTriggered: copyWatch.running = root.on
     }
 }

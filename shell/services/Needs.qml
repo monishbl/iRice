@@ -32,9 +32,11 @@ Singleton {
         id: probe
         command: ["sh", "-c", [
             "command -v avahi-daemon >/dev/null && echo avahiInstalled",
-            "systemctl is-active --quiet avahi-daemon && echo avahi",
+            // (systemd's word, else the daemon's own socket and process:
+            // any init system)
+            "{ systemctl is-active --quiet avahi-daemon 2>/dev/null || { test -S /run/avahi-daemon/socket && pgrep -x avahi-daemon >/dev/null; }; } && echo avahi",
             "timeout 3 pw-cli info 0 >/dev/null 2>&1 && echo pipewire",
-            "systemctl is-active --quiet NetworkManager && echo networkManager",
+            "{ systemctl is-active --quiet NetworkManager 2>/dev/null || pgrep -x NetworkManager >/dev/null; } && echo networkManager",
             "command -v secret-tool >/dev/null && echo secretTool",
             "{ busctl --user list 2>/dev/null; busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ListActivatableNames 2>/dev/null; } | grep -q org.freedesktop.secrets && echo keyring",
             "{ test -x /usr/lib/goa-daemon || test -x /usr/libexec/goa-daemon; } && echo goa",
@@ -66,6 +68,11 @@ Singleton {
         id: builder
         command: [Quickshell.shellDir + "/native/build.sh"]
         stderr: StdioCollector { id: buildErr }
+        // (no build.sh: nothing ends, so it is said here)
+        onRunningChanged: if (!running && root.building) {
+            root.building = false;
+            root.refresh();
+        }
         onExited: code => {
             root.building = false;
             if (code !== 0)
@@ -76,11 +83,13 @@ Singleton {
 
     // Installing what's missing (Software Update's job), then a fresh look
     property bool installAsked: false
+    property var installPackages: []
     readonly property bool installing: Updates.running && installAsked
     function install(packages) {
         if (Updates.running || packages.length === 0)
             return;
         installAsked = true;
+        installPackages = packages;
         Updates.update(["--install", packages.join(",")]);
     }
     Connections {
@@ -90,7 +99,7 @@ Singleton {
                 root.installAsked = false;
                 Tools.recheck();
                 // (Online Accounts just came: its sign-in helper can be built now)
-                if (j.state === "done" && !root.goaSignin)
+                if (j.state === "done" && !root.goaSignin && root.installPackages.includes("gnome-online-accounts"))
                     root.buildNative();
                 else
                     root.refresh();

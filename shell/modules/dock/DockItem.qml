@@ -20,6 +20,8 @@ Item {
     readonly property bool isApp: kind === "app" || kind === "recent"
     readonly property var windows: isApp ? Apps.windowsOf(item.id) : []
     readonly property bool running: kind === "phone" ? Phone.mirroring(item.phone?.serial ?? "") : windows.length > 0
+    // (the phone as it is now: its battery changes after it came)
+    readonly property var livePhone: kind === "phone" ? (Phone.devices.find(d => d.serial === item.phone?.serial) ?? item.phone) : null
     readonly property int base: dock.iconSize
     readonly property real proximity: dock.pointerX < -9999 ? 0 : Math.cos(Math.min(1, Math.abs(dock.pointerX - restCenter) / (base * 2.5)) * Math.PI / 2)
     readonly property real size: base * (1 + (dock.maxScale - 1) * proximity)
@@ -186,7 +188,7 @@ Item {
         Text {
             id: label
             anchors.centerIn: parent
-            text: root.kind === "launcher" ? "Apps" : root.kind === "phone" ? (root.item.phone?.model || "Phone") + (root.item.phone?.battery !== undefined ? " · " + root.item.phone.battery + "%" : "") : root.kind === "downloads" ? "Downloads" : root.kind === "trash" ? "Trash" : root.kind === "minimized" ? (root.item.minimized?.title || root.item.entry?.name || "Window") : (root.item.entry?.name ?? root.item.id)
+            text: root.kind === "launcher" ? "Apps" : root.kind === "phone" ? (root.livePhone?.model || "Phone") + (root.livePhone?.battery !== undefined ? " · " + root.livePhone.battery + "%" : "") : root.kind === "downloads" ? "Downloads" : root.kind === "trash" ? "Trash" : root.kind === "minimized" ? (root.item.minimized?.title || root.item.entry?.name || "Window") : (root.item.entry?.name ?? root.item.id)
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
         }

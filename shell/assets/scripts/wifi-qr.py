@@ -93,20 +93,24 @@ def security_of(key_mgmt):
 
 
 def nmcli(*args):
-    p = subprocess.run(["nmcli", "--escape", "no", *args], capture_output=True, text=True, timeout=10)
+    try:
+        p = subprocess.run(["nmcli", "--escape", "no", *args], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return p.stdout if p.returncode == 0 else None
 
 
 def profile_for(ssid):
-    """The saved connection for this network name: the active one first."""
-    out = nmcli("-t", "-f", "UUID,TYPE,ACTIVE", "connection", "show") or ""
+    """The saved connection for this network name: the one named after it
+    (usually), then the active one, first."""
+    out = nmcli("-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show") or ""
     rows = []
     for line in out.splitlines():
-        # (--escape no: a UUID has no colons; TYPE and ACTIVE neither)
-        parts = line.rsplit(":", 2)
-        if len(parts) == 3 and parts[1] == "802-11-wireless":
-            rows.append((parts[2] == "yes", parts[0]))
-    for _, uuid in sorted(rows, reverse=True):
+        # (--escape no: a NAME can hold colons; UUID, TYPE and ACTIVE can't)
+        parts = line.rsplit(":", 3)
+        if len(parts) == 4 and parts[2] == "802-11-wireless":
+            rows.append((parts[0] == ssid, parts[3] == "yes", parts[1]))
+    for _, _, uuid in sorted(rows, reverse=True):
         if (nmcli("-g", "802-11-wireless.ssid", "connection", "show", uuid) or "").rstrip("\n") == ssid:
             return uuid
     return None
@@ -128,11 +132,17 @@ def share(ssid):
         return {"ok": False, "error": "This computer hasn't saved that network, so it has no password to share."}
     key_mgmt = (nmcli("-g", "802-11-wireless-security.key-mgmt", "connection", "show", uuid) or "").strip()
     security = security_of(key_mgmt)
+    wep = ""
+    if key_mgmt == "none":
+        # (NetworkManager calls WEP "none" too: it's open only without a key)
+        wep = (nmcli("-s", "-g", "802-11-wireless-security.wep-key0", "connection", "show", uuid) or "").rstrip("\n")
+        if wep:
+            security = "WEP"
     if security is None:
         return {"ok": False, "error": "Networks you sign in to with a username (like eduroam) can't be shared "
                                       "with a code."}
-    password = ""
-    if security != "nopass":
+    password = wep
+    if security in ("WPA", "SAE"):
         password = (nmcli("-s", "-g", "802-11-wireless-security.psk", "connection", "show", uuid) or "").rstrip("\n")
         if not password:
             return {"ok": False, "error": "NetworkManager didn't give the password (it may be kept in a keyring "

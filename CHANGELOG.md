@@ -1,5 +1,40 @@
 # iRice changelog
 
+## Fixes for today's features · 2026-10-31
+
+- **Face unlock no longer undoes a lock you made by hand.** The camera starts looking when someone touches the keyboard or mouse after the lock appears, not the moment it locks while you're still in front of it. Its three tries, and the fingerprint reader's five, come back when you return after a while, not on every key you type. A fingerprint reader that waited 30 s without a finger no longer counts that as a failed try, so it keeps listening.
+- **Dictation can't get stuck.** If the microphone couldn't be recorded, Super+H stopped working until a restart; now it says so and is ready again. Cancel also stops the speech recognition working in the background, and a cancelled model download no longer leaves a large unfinished file behind. Downloading a bigger model keeps the one you have working until the new one is here.
+- **iCloud:**
+  - Changing an event's notes no longer changes its reminder instead.
+  - Two quick changes to the same event, or a change and then a delete, no longer fail with "This event changed on your other devices".
+  - A change that was saved is no longer reported as "Change not saved" when only the refresh afterwards failed.
+  - Each change refreshes less.
+- **Google Drive and OneDrive:**
+  - Both drives come back at login, not just the first.
+  - A drive that can't be opened (an expired sign-in) stops retrying after a few tries instead of every 10 seconds.
+  - A drive whose rclone stopped can be unmounted and opened again.
+  - Connecting can be cancelled.
+- **Watchers stay off when you turn a feature off.** Fast Pair, phones, casting and others kept running after being turned off if they had restarted once. They now wait longer between restarts when something keeps failing, and casting doesn't look for TVs while network discovery is off. Network discovery and NetworkManager are also recognised on systems without systemd.
+- **Privacy:**
+  - Dictated text and Wi-Fi passwords are passed to the typing and clipboard tools privately, not on their command line.
+  - A Wi-Fi code that was still being made when you closed the card is now deleted.
+  - Picking another network quickly can no longer show the first network's code.
+  - Phone pairing codes aren't put on a command line either.
+- **Screen mirroring:** Stop works while it's still connecting, and choosing another TV quickly no longer leaves the first one mirroring. Settings → Displays starts looking for TVs as soon as GNOME Network Displays is installed, and says if the install didn't work.
+- **AirPlay** can't start a second copy of its PipeWire client when turned off and on quickly.
+- **Phone:**
+  - Pairing no longer sticks on "Pairing…" when the phone stops answering, and no longer says "Paired" when it didn't connect.
+  - A failed webcam install says why.
+  - The Dock shows the phone's current battery.
+- **Fingerprint and Face settings** ask once more, naming the finger, before removing a fingerprint or your faces. Adding a finger can no longer add the same finger twice. Turning fingerprint off for password prompts goes back to your system's own file.
+- **Other fixes:**
+  - The phone's webcam setup says when another app's virtual camera (OBS) is in the way, instead of reporting success.
+  - On Manjaro, Software Update's AUR step respects the packages you hold back.
+  - Wi-Fi codes work for WEP networks.
+  - Escape cancels a password prompt while it waits for a finger.
+  - The iCloud and Microsoft 365 pages each show only their own errors and sign-in.
+- **Lighter:** one sound-server listener instead of two, and Fast Pair asks Bluetooth about each nearby device once instead of on every signal it sends. With all of today's features in, the shell uses the same memory and processor at rest as before them.
+
 ## Works with your other devices · 2026-10-31
 
 - **Works on any Arch-based system**, not only the one it was built on:

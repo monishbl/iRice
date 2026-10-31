@@ -18,9 +18,9 @@ FAKE_NMCLI = r'''#!/usr/bin/env python3
 import json, os, sys
 st = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")))
 a = [x for x in sys.argv[1:] if x not in ("--escape", "no")]
-if a[:5] == ["-t", "-f", "UUID,TYPE,ACTIVE", "connection", "show"]:
+if a[:5] == ["-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show"]:
     for c in st["conns"]:
-        print(f"{c['uuid']}:802-11-wireless:{'yes' if c.get('active') else 'no'}")
+        print(f"{c.get('name', c['ssid'])}:{c['uuid']}:802-11-wireless:{'yes' if c.get('active') else 'no'}")
     sys.exit(0)
 secret = a[0] == "-s"
 if secret:
@@ -29,6 +29,8 @@ field, uuid = a[1], a[-1]
 c = next(c for c in st["conns"] if c["uuid"] == uuid)
 if field == "802-11-wireless-security.psk":
     print(c.get("psk", "") if secret else "")
+elif field == "802-11-wireless-security.wep-key0":
+    print(c.get("wep", "") if secret else "")
 else:
     print({"802-11-wireless.ssid": c["ssid"], "802-11-wireless-security.key-mgmt": c.get("km", "wpa-psk"),
            "802-11-wireless.hidden": "yes" if c.get("hidden") else "no"}[field])
@@ -89,6 +91,14 @@ class Share(unittest.TestCase):
         self.assertEqual(qr.parent, Path(self.dir.name, "run/irice"))
         self.run_script("forget", str(qr))
         self.assertFalse(qr.exists())
+
+    def test_profile_names_with_colons_and_wep(self):
+        self.conns({"uuid": "u1", "ssid": "Lab", "name": "Lab: 2nd floor", "km": "none", "wep": "abcde"},
+                   {"uuid": "u2", "ssid": "Cafe", "km": "none"})
+        r = self.run_script("share", "Lab")
+        self.assertEqual((r["ok"], r["security"], r["password"]), (True, "WEP", "abcde"))
+        r = self.run_script("share", "Cafe")
+        self.assertEqual((r["ok"], r["security"], r["password"]), (True, "nopass", ""))
 
     def test_forget_touches_only_its_own_codes(self):
         other = Path(self.dir.name, "run/keep.svg")

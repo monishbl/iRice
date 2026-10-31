@@ -259,4 +259,25 @@ Singleton {
         const hist = items.filter(i => kind === "all" || (kind === "images") === !!i.image).filter(i => i.image ? q === "" : match(i.text)).filter(i => !isPinned(i)).map(i => ({ item: i, text: i.text, image: i.image, pinned: false, section: sectionFor(stamps[i.id], now) }));
         return pinRows.concat(hist);
     }
+
+    // Text onto the clipboard through wl-copy's input, not its command line
+    // (which any program can read: a password, what was dictated)
+    function copyText(text) {
+        const c = stdinCopy.createObject(root, { text: String(text ?? "") });
+        c.running = true;
+    }
+    Component {
+        id: stdinCopy
+        Process {
+            id: c
+            property string text
+            command: ["wl-copy"]
+            stdinEnabled: true
+            onStarted: {
+                write(text);
+                stdinEnabled = false;
+            }
+            onRunningChanged: if (!running) c.destroy()
+        }
+    }
 }

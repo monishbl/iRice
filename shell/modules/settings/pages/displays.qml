@@ -477,13 +477,27 @@ Column {
             : Needs.checked && !Needs.networkManager ? "Miracast TVs need NetworkManager (for Wi-Fi Direct), which isn't running here. Chromecasts and Miracast over the network still work."
             : !Mirroring.p2p ? "This computer's Wi-Fi can't do Wi-Fi Direct, which Miracast TVs need. Chromecasts and network Miracast still work."
             : "Turn on the TV's screen mirroring (Miracast, Screen Mirroring or Cast). Control Center's Screen Mirroring tile does the same."
+        // (looks while the page is up: from the moment it's installed, too)
         property bool lookingHere: false
-        Component.onCompleted: { lookingHere = Mirroring.available; if (lookingHere) Mirroring.look(true); }
+        function lookIfAvailable() {
+            if (Mirroring.available !== lookingHere) {
+                lookingHere = Mirroring.available;
+                Mirroring.look(lookingHere);
+            }
+        }
+        Component.onCompleted: lookIfAvailable()
         Component.onDestruction: if (lookingHere) Mirroring.look(false)
+        readonly property Connections availableWatch: Connections {
+            target: Mirroring
+            function onAvailableChanged() {
+                wireless.lookIfAvailable();
+            }
+        }
         Row {
             visible: !Mirroring.available
             label: "Add a wireless display"
-            detail: "It asks for your password once."
+            detail: Mirroring.installError !== "" ? Mirroring.installError : "It asks for your password once."
+            labelColor: Mirroring.installError !== "" ? Theme.color.danger : Theme.color.label
             SettingsButton {
                 text: Mirroring.installing ? "Installing…" : "Install"
                 icon: "download-simple"
@@ -508,7 +522,6 @@ Column {
                 SettingsButton {
                     text: tv.here ? "Stop" : "Mirror"
                     icon: tv.here ? "stop" : "screencast"
-                    busy: tv.here && Mirroring.state_ === "connecting"
                     onClicked: tv.here ? Mirroring.stop() : Mirroring.start(tv.modelData)
                 }
             }

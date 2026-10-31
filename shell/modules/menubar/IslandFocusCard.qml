@@ -214,7 +214,7 @@ Item {
                 Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
                 Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: 24; width: 44; onClicked: root.player?.togglePlaying() }
                 Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
-                Ctl { visible: Cast.devices.length > 0; icon: "screencast"; fill: false; onClicked: root.openCast() }
+                Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; onClicked: root.openCast() }
                 Ctl {
                     icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"
                     onClicked: root.toggleMute()
@@ -365,7 +365,7 @@ Item {
             Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
             Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: 22; width: 44; onClicked: root.player?.togglePlaying() }
             Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
-            Ctl { visible: Cast.devices.length > 0; icon: "screencast"; fill: false; iconSize: 17; onClicked: root.openCast() }
+            Ctl { visible: Cast.devices.length > 0 || Cast.active; icon: "screencast"; fill: Cast.active; tooltip: Cast.active ? "Casting to " + (Cast.device?.name ?? "a TV") : "Cast to a TV"; iconSize: 17; onClicked: root.openCast() }
             Ctl {
                 id: vol
                 icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"

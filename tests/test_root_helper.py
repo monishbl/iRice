@@ -336,6 +336,8 @@ class AurHelperChoice(unittest.TestCase):
     def test_pamac_commands(self):
         self.assertEqual(self.su.aur_command("pamac", {"aur_install": ["howdy-next"]}), ["pamac", "build", "--no-confirm", "howdy-next"])
         self.assertEqual(self.su.aur_command("pamac", {"aur_install": [], "ignore": []})[:3], ["pamac", "upgrade", "--aur"])
+        # (what you hold back stays held back with pamac too)
+        self.assertEqual(self.su.aur_command("pamac", {"aur_install": [], "ignore": ["hyprland", "mesa"]})[-2:], ["--ignore", "hyprland,mesa"])
 
 
 class FingerprintPam(unittest.TestCase):
@@ -376,6 +378,9 @@ class FingerprintPam(unittest.TestCase):
         self.assertEqual(self.run_fp(True, "polkit"), [str(self.etc / "polkit-1")])
         self.assertIn("pam_fprintd", (self.etc / "polkit-1").read_text())
         self.assertNotIn("pam_fprintd", (self.vendor / "polkit-1").read_text())
+        # (off again: the copy goes, and the package's own file is used)
+        self.assertEqual(self.run_fp(False, "polkit"), [str(self.etc / "polkit-1")])
+        self.assertFalse((self.etc / "polkit-1").exists())
 
     def test_login_covers_the_login_screens_installed(self):
         (self.etc / "ly").write_text("#%PAM-1.0\nauth include login\n")
@@ -412,10 +417,12 @@ class PhoneCam(unittest.TestCase):
     def tearDown(self):
         self.dir.cleanup()
 
-    def fake(self, modinfo=0, load=0):
+    def fake(self, modinfo=0, load=0, appears=True):
         def run(cmd, **kw):
             self.calls.append(cmd)
             rc = modinfo if cmd[0] == "modinfo" else load if cmd == ["modprobe", "v4l2loopback"] else 0
+            if cmd == ["modprobe", "v4l2loopback"] and rc == 0 and appears:
+                (self.dev / "video42").write_text("")  # (the module made it)
             return subprocess.CompletedProcess(cmd, rc, "", "")
         return run
 
@@ -439,6 +446,11 @@ class PhoneCam(unittest.TestCase):
     def test_busy(self):
         with self.assertRaises(self.r.Refused):
             self.r.phonecam(True, etc=str(self.etc), run=self.fake(load=1), dev_dir=str(self.dev))
+
+    def test_loaded_by_another_app(self):
+        # (modprobe -r refused, modprobe a no-op: no video42)
+        with self.assertRaises(self.r.Refused):
+            self.r.phonecam(True, etc=str(self.etc), run=self.fake(appears=False), dev_dir=str(self.dev))
 
     def test_off(self):
         self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))

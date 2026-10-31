@@ -19,6 +19,7 @@ from whisper.cpp's own Hugging Face repository.
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -97,13 +98,15 @@ def download(name, opener=urllib.request.urlopen):
             raise Incomplete()
         os.replace(part, dest)
     except Exception as e:  # noqa: BLE001
+        emit({"ok": False, "error": "The download didn't finish. Try again." if isinstance(e, Incomplete)
+              else "Couldn't download the model. Check your internet connection, then try again."})
+        return 1
+    finally:
+        # (also when cancelled: Stopped below; a part can be 1.6 GB)
         try:
             os.unlink(part)
         except OSError:
             pass
-        emit({"ok": False, "error": "The download didn't finish. Try again." if isinstance(e, Incomplete)
-              else "Couldn't download the model. Check your internet connection, then try again."})
-        return 1
     emit({"ok": True, "error": ""})
     return 0
 
@@ -160,7 +163,17 @@ def transcribe(wav, name, lang, run=subprocess.run):
             pass
 
 
+class Stopped(BaseException):
+    """SIGTERM (Cancel): raised so the `finally`s run, and subprocess.run
+    ends whisper-cli instead of leaving it working."""
+
+
+def stopped(*_):
+    raise Stopped()
+
+
 def main(argv):
+    signal.signal(signal.SIGTERM, stopped)
     if argv[:1] == ["status"]:
         print(json.dumps(status()))
         return 0
@@ -179,4 +192,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Stopped:
+        sys.exit(143)

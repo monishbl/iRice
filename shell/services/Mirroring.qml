@@ -24,9 +24,9 @@ Singleton {
     }
     readonly property bool looking: available && (lookers > 0 || stream !== "")
 
-    Process {
+    KeptProcess {
         id: watcher
-        running: root.looking
+        wanted: root.looking
         command: [Tools.watcher, "python3", "-I", root.script, "watch"]
         stdinEnabled: true // (Tools.watcher: it, and the daemon it started, end with it)
         stdout: SplitParser {
@@ -55,30 +55,42 @@ Singleton {
         stop();
     }
 
+    readonly property bool starting: target !== "" && stream === ""
     function start(d) {
-        if (active)
+        if (active || starting)
             stop();
         error = "";
         target = d.uuid;
         lastName = d.name;
-        starter.command = ["python3", "-I", script, "start", d.uuid];
-        starter.running = true;
+        const p = startComp.createObject(root, { uuid: d.uuid, command: ["python3", "-I", script, "start", d.uuid] });
+        p.running = true;
     }
-    Process {
-        id: starter
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let r = {};
-                try {
-                    r = JSON.parse(text);
-                } catch (e) {}
-                if (r.ok) {
-                    root.stream = r.stream;
-                } else {
-                    root.target = "";
-                    root.error = r.error || "The TV didn't answer.";
+    Component {
+        id: startComp
+        Process {
+            id: job
+            property string uuid
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    let r = {};
+                    try {
+                        r = JSON.parse(text);
+                    } catch (e) {}
+                    if (root.target !== job.uuid || root.stream !== "") {
+                        // (stopped, or another TV chosen, before it answered)
+                        if (r.ok && r.stream)
+                            Quickshell.execDetached(["python3", "-I", root.script, "stop", r.stream]);
+                        return;
+                    }
+                    if (r.ok) {
+                        root.stream = r.stream;
+                    } else {
+                        root.target = "";
+                        root.error = r.error || "The TV didn't answer.";
+                    }
                 }
             }
+            onExited: job.destroy()
         }
     }
     function stop() {
@@ -95,10 +107,12 @@ Singleton {
     // gnome-network-displays, through Software Update's job
     readonly property bool installing: Updates.running && installAsked
     property bool installAsked: false
+    property string installError: ""
     function install() {
         if (Updates.running)
             return;
         installAsked = true;
+        installError = "";
         Updates.update(["--install", "gnome-network-displays"]);
     }
     Connections {
@@ -106,6 +120,7 @@ Singleton {
         function onFinished(j) {
             if (root.installAsked) {
                 root.installAsked = false;
+                root.installError = j.state === "done" ? "" : (j.error || j.text || "The install didn't finish.");
                 Tools.recheck();
             }
         }

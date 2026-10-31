@@ -15,6 +15,15 @@ Column {
     spacing: 12
     property bool reveal: false
 
+    // (qrencode just installed: the code is made again)
+    Connections {
+        target: Needs
+        function onInstallingChanged() {
+            if (!Needs.installing && WifiShare.stage === "error" && WifiShare.error.includes("qrencode"))
+                WifiShare.share(WifiShare.ssid);
+        }
+    }
+
     Item {
         width: parent.width
         height: 28
@@ -127,9 +136,13 @@ Column {
         IconButton {
             id: copy
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            icon: "copy"
-            tooltip: "Copy password"
-            onClicked: Quickshell.execDetached(["wl-copy", "--", WifiShare.password])
+            icon: copied.running ? "check" : "copy"
+            tooltip: copied.running ? "Copied" : "Copy password"
+            onClicked: {
+                Clipboard.copyText(WifiShare.password);
+                copied.restart();
+            }
+            Timer { id: copied; interval: 1500 }
         }
     }
 }

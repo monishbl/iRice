@@ -135,6 +135,12 @@ class Secrets:
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
+def _site(url):
+    """The registered domain, near enough: p42-caldav.icloud.com -> icloud.com."""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return ".".join(host.split(".")[-2:])
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None
@@ -142,8 +148,13 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def http(method, url, body=None, headers=None, auth=None, token=None):
     """(status, headers, text). Redirects are followed for every method
-    (PROPFIND and REPORT too, which urllib wouldn't)."""
+    (PROPFIND and REPORT too, which urllib wouldn't), but the password or
+    token only goes over https to the same service (iCloud sends you on to
+    pNN-caldav.icloud.com)."""
+    home, secure = _site(url), urllib.parse.urlsplit(url).scheme == "https"
     for _ in range(5):
+        if _site(url) != home or (secure and urllib.parse.urlsplit(url).scheme != "https"):
+            auth = token = None
         h = dict(headers or {})
         if auth:
             h["Authorization"] = "Basic " + base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
@@ -217,15 +228,23 @@ def patch_ics(text, fields):
     (alarms, attendees, the app's own properties) left as it was."""
     lines = unfold(text)
     out, in_event, done = [], False, False
+    depth = 0  # (inside the event's own parts: an alarm has a DESCRIPTION too)
     keys = {"title": "SUMMARY", "location": "LOCATION", "notes": "DESCRIPTION"}
     now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     replaced = set()
     for line in lines:
         if not line:
             continue
-        name = re.split(r"[;:]", line, 1)[0].upper()
+        name = re.split(r"[;:]", line, maxsplit=1)[0].upper()
         if line.upper() == "BEGIN:VEVENT" and not done:
             in_event = True
+            out.append(line)
+            continue
+        if in_event and name == "BEGIN":
+            depth += 1
+        if in_event and depth > 0:
+            if name == "END":
+                depth -= 1
             out.append(line)
             continue
         if in_event and line.upper() == "END:VEVENT":
@@ -235,6 +254,10 @@ def patch_ics(text, fields):
                     out.append(prop + ":" + ics_escape(fields[k]))
             if "start" in fields and "DTSTART" not in replaced:
                 out.append("DTSTART" + ics_time(fields["start"], fields.get("allDay")))
+                end = fields.get("end") or fields["start"]
+                if fields.get("allDay") and end <= fields["start"]:
+                    end = fields["start"] + 86400000
+                out.append("DTEND" + ics_time(end, fields.get("allDay")))
             in_event, done = False, True
             out.append(line)
             continue
@@ -512,6 +535,7 @@ class Hub:
         self.accounts = read("accounts.json", [])
         self.cache = read("cache.json", {})
         self.secrets = Secrets()
+        self.passwords = {}
 
     def save(self):
         write("accounts.json", self.accounts)
@@ -524,7 +548,10 @@ class Hub:
         return a
 
     def dav(self, a, card=False):
-        password = self.secrets.lookup(a["identity"])
+        # (looked up once a run: calendars and contacts both need it)
+        if a["identity"] not in self.passwords:
+            self.passwords[a["identity"]] = self.secrets.lookup(a["identity"])
+        password = self.passwords[a["identity"]]
         if not password:
             raise Failed("The app-specific password isn't in your keyring any more. Sign in to iCloud again.")
         return Dav(a.get("cardServer" if card else "server") or (ICLOUD_CARD if card else ICLOUD), a["identity"], password)
@@ -570,19 +597,22 @@ class Hub:
         self.save()
 
     # Syncing: all of an account, or nothing of it (the last good copy stays)
-    def sync(self, only=None):
+    def sync(self, only=None, contacts=True):
         """Every account, or `only` that one (after a change to it: another
-        account's trouble isn't this change's)."""
+        account's trouble isn't this change's). contacts=False: the contacts
+        are kept as they were (a change to an event doesn't touch them)."""
         errors = []
         for a in self.accounts:
             if only and a["id"] != only:
                 continue
             try:
-                got = self.sync_icloud(a) if a["provider"] == "icloud" else self.sync_microsoft(a)
+                got = self.sync_icloud(a, contacts) if a["provider"] == "icloud" else self.sync_microsoft(a)
             except Failed as e:
                 errors.append((a, e))
                 continue
             for k in ("calendars", "events", "taskLists", "tasks", "contacts"):
+                if k == "contacts" and k not in got:
+                    continue
                 self.cache[k] = [x for x in self.cache.get(k, []) if x.get("account") != a["id"]] + got.get(k, [])
             a["syncedAt"] = int(time.time() * 1000)
         self.cache["syncedAt"] = int(time.time() * 1000)
@@ -591,7 +621,16 @@ class Hub:
             a, e = errors[0]
             raise type(e)(str(e))
 
-    def sync_icloud(self, a):
+    def refreshed(self, a):
+        """After a change the server took: a refresh that then fails (the
+        network dropped, a 5xx) doesn't make the change a failure; the next
+        sync picks it up."""
+        try:
+            self.sync(only=a["id"], contacts=False)
+        except Failed:
+            pass
+
+    def sync_icloud(self, a, with_contacts=True):
         d = self.dav(a)
         home = a.get("home") or d.home("calendar-home-set")
         a["home"] = home
@@ -603,14 +642,18 @@ class Hub:
                 p = ics_props(e["ics"])
                 events.append(dict(e, account=a["id"], calendarId=c["id"], uid=p["uid"],
                                    writable=c["writable"] and not p["repeats"]))
+        out = {"calendars": [dict(c, account=a["id"]) for c in cals], "events": events}
+        if not with_contacts:
+            return out
         contacts = []
         try:
             cd = self.dav(a, card=True)
-            contacts = cd.contacts(a.get("cardHome") or cd.home("addressbook-home-set"))
+            a["cardHome"] = a.get("cardHome") or cd.home("addressbook-home-set")  # (kept: found once)
+            contacts = cd.contacts(a["cardHome"])
         except Failed:
             pass  # (contacts are a bonus: calendars still sync)
-        return {"calendars": [dict(c, account=a["id"]) for c in cals], "events": events,
-                "contacts": [dict(c, account=a["id"]) for c in contacts]}
+        out["contacts"] = [dict(c, account=a["id"]) for c in contacts]
+        return out
 
     def sync_microsoft(self, a):
         g = self.graph(a)
@@ -646,7 +689,7 @@ class Hub:
             self.dav(a).put(url, new_ics(uid, f), create=True)
         else:
             self.graph(a).call("POST", f"/me/calendars/{urllib.parse.quote(req['calendarId'])}/events", graph_event_body(f))
-        self.sync(only=a["id"])
+        self.refreshed(a)
 
     def event_patch(self, req):
         a, f = self.account(req["account"]), req.get("fields", {})
@@ -654,12 +697,12 @@ class Hub:
             d = self.dav(a)
             text, etag = d.get(req["id"])
             if req.get("etag") and etag and etag != req["etag"]:
-                self.sync(only=a["id"])
+                self.refreshed(a)
                 raise Failed("This event changed on your other devices. It shows as it is there now.")
             d.put(req["id"], patch_ics(text, f), etag=etag or req.get("etag"))
         else:
             self.graph(a).call("PATCH", f"/me/events/{urllib.parse.quote(req['id'])}", graph_event_body(f), etag=req.get("etag"))
-        self.sync(only=a["id"])
+        self.refreshed(a)
 
     def event_delete(self, req):
         a = self.account(req["account"])
@@ -667,7 +710,7 @@ class Hub:
             self.dav(a).delete(req["id"], req.get("etag"))
         else:
             self.graph(a).call("DELETE", f"/me/events/{urllib.parse.quote(req['id'])}")
-        self.sync(only=a["id"])
+        self.refreshed(a)
 
     def task(self, req):
         a = self.account(req["account"])
@@ -688,7 +731,7 @@ class Hub:
             g.call("PATCH", base + "/" + urllib.parse.quote(req["id"]), body, etag=req.get("etag"))
         else:
             g.call("DELETE", base + "/" + urllib.parse.quote(req["id"]))
-        self.sync(only=a["id"])
+        self.refreshed(a)
 
     def state(self):
         c = self.cache

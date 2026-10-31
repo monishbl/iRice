@@ -75,7 +75,7 @@ Singleton {
     }
 
     function start() {
-        if (active)
+        if (active || recorder.running || transcriber.running)
             return;
         if (!ready) {
             refresh();
@@ -99,6 +99,7 @@ Singleton {
             + "if command -v pw-record >/dev/null; then exec pw-record --rate 16000 --channels 1 --format s16 \"$1\"; "
             + "elif command -v parecord >/dev/null; then exec parecord --rate=16000 --channels=1 --format=s16le --file-format=wav \"$1\"; "
             + "else exec arecord -q -f S16_LE -r 16000 -c 1 -t wav \"$1\"; fi", "sh", wav];
+        recorder.file = wav;
         recorder.running = true;
         startedAt = Date.now();
         stage = "listening";
@@ -112,21 +113,24 @@ Singleton {
         limit.stop();
         stage = "writing";
         tick();
-        if (Date.now() - startedAt < 500)
+        if (Date.now() - startedAt < 500 || !recorder.running)
             stage = ""; // (too short to hold any words: dropped quietly)
-        recorder.signal(2); // (SIGINT: pw-record finishes the file)
+        if (recorder.running)
+            recorder.signal(2); // (SIGINT: pw-record finishes the file)
     }
     // Stop without typing anything
     function cancel() {
         if (!active)
             return;
         limit.stop();
-        cancelled = true;
-        if (recorder.running)
+        // (cancelled: for the process that is told to end, to drop its result)
+        if (recorder.running) {
+            cancelled = true;
             recorder.signal(2);
-        if (transcriber.running) {
+        } else if (transcriber.running) {
+            cancelled = true;
             transcriber.signal(15);
-            Quickshell.execDetached(["rm", "-f", wav]);
+            Quickshell.execDetached(["rm", "-f", transcriber.file]);
         }
         stage = "";
         pressedAt = 0;
@@ -146,18 +150,29 @@ Singleton {
 
     Process {
         id: recorder
+        property string file // (this recording's: the next may have begun)
+        stderr: StdioCollector { id: recErr }
         onExited: {
+            const f = file;
             if (root.cancelled || root.stage !== "writing") {
                 root.cancelled = false;
-                Quickshell.execDetached(["rm", "-f", root.wav]);
+                Quickshell.execDetached(["rm", "-f", f]);
+                if (root.stage === "listening") {
+                    // (it ended by itself: no microphone, or no sound server)
+                    limit.stop();
+                    root.pressedAt = 0;
+                    root.fail("The microphone couldn't be recorded. Check the input in Settings → Sound, then try again.");
+                }
                 return;
             }
-            transcriber.command = ["python3", "-I", root.script, "transcribe", root.wav, root.model, root.language];
+            transcriber.file = f;
+            transcriber.command = ["python3", "-I", root.script, "transcribe", f, root.model, root.language];
             transcriber.running = true;
         }
     }
     Process {
         id: transcriber
+        property string file
         stdout: StdioCollector {
             onStreamFinished: {
                 if (root.cancelled) {
@@ -183,21 +198,33 @@ Singleton {
             Island.post({ kind: "custom", icon: "microphone", title: "Didn't catch that", subtitle: "Speak a little closer to the microphone, then try again", color: Theme.color.secondary }, 3000);
             return;
         }
+        if (!Tools.has("wtype")) {
+            copyInstead(text);
+            return;
+        }
+        // (through its input: a command line can be read by any program)
         typer.text = text;
-        typer.command = ["wtype", "--", text];
+        typer.stdinEnabled = true;
         typer.running = true;
     }
     Process {
         id: typer
         property string text
+        command: ["wtype", "-"]
+        stdinEnabled: true
+        onStarted: {
+            write(text);
+            stdinEnabled = false;
+        }
         onExited: code => {
-            if (code !== 0) {
-                // (no virtual keyboard here: it goes on the clipboard instead)
-                Quickshell.execDetached(["wl-copy", "--", typer.text]);
-                Island.post({ kind: "custom", icon: "clipboard-text", title: "Copied what you said", subtitle: "Typing into this app didn't work: paste it with Ctrl+V", color: Theme.accent }, 5000);
-            }
+            if (code !== 0)
+                root.copyInstead(typer.text); // (no virtual keyboard here)
             typer.text = "";
         }
+    }
+    function copyInstead(text) {
+        Clipboard.copyText(text);
+        Island.post({ kind: "custom", icon: "clipboard-text", title: "Copied what you said", subtitle: "Typing into this app didn't work: paste it with Ctrl+V", color: Theme.accent }, 5000);
     }
     function fail(why) {
         stage = "";
@@ -250,12 +277,18 @@ Singleton {
     property string downloading: ""
     property real downloadProgress: 0
     property string downloadError: ""
+    property bool downloadOk: false
+    property string lastDownload: "" // (which one an error is about)
+    // (the model in use changes once the new one is here: until then the
+    // one you have keeps working)
     function download(name) {
         if (downloader.running)
             return;
         downloading = name;
+        lastDownload = name;
         downloadProgress = 0;
         downloadError = "";
+        downloadOk = false;
         downloader.command = ["python3", "-I", script, "download", name];
         downloader.running = true;
     }
@@ -277,9 +310,13 @@ Singleton {
                     root.downloadProgress = m.done / m.total;
                 if (m.ok === false)
                     root.downloadError = m.error ?? "";
+                if (m.ok === true)
+                    root.downloadOk = true;
             }
         }
         onExited: {
+            if (root.downloadOk)
+                Config.options.dictation.model = root.downloading;
             root.downloading = "";
             root.refresh();
         }

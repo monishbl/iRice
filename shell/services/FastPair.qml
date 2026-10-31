@@ -17,9 +17,9 @@ Singleton {
     readonly property bool wanted: Config.options.fastPair.enabled && (Bluetooth.defaultAdapter?.enabled ?? false)
 
     property var devices: [] // [{ address, name, model, pairing, rssi, battery }]
-    Process {
+    KeptProcess {
         id: watcher
-        running: root.wanted
+        wanted: root.wanted
         command: [Tools.watcher, "python3", "-I", root.script, "watch"]
         stdinEnabled: true // (Tools.watcher: it ends with the shell, and scanning stops)
         stdout: SplitParser {
@@ -30,9 +30,7 @@ Singleton {
                 } catch (e) {}
             }
         }
-        onExited: if (root.wanted) again.restart()
     }
-    Timer { id: again; interval: 10000; onTriggered: watcher.running = root.wanted }
 
     // Said once per device for a while (a card that keeps coming back would nag)
     property var offered: ({}) // address -> time

@@ -164,14 +164,41 @@ Scope {
         running: root.held && root.canStandBy && !root.idle
         onTriggered: root.idle = true
     }
+    // Someone at the keyboard or mouse. Coming back (from StandBy, or after
+    // 30 s without a touch) gives the reader and the camera their tries back;
+    // typing doesn't (or the camera would never stop). The camera first
+    // looks on the first touch after the lock shows: locking by hand while
+    // in front of it isn't undone straight away.
+    property real heldAt: 0
+    property real lastTouch: 0
+    property bool faceArmed: false
     function woke() {
+        const now = Date.now();
+        const back = idle || now - lastTouch > 30000;
+        lastTouch = now;
         idle = false;
         idleTimer.restart();
-        fingerTries = 0; // (someone's here: the reader may have stopped after five tries)
-        faceTries = 0; // (and the camera looks again)
+        if (!faceArmed && now - heldAt > 2000) {
+            faceArmed = true;
+            faceTries = 0;
+        }
+        if (back) {
+            fingerTries = 0;
+            faceTries = 0;
+        }
     }
-    onHeldChanged: if (!held) idle = false
-    onPasswordChanged: woke()
+    onHeldChanged: {
+        if (!held)
+            idle = false;
+        // (a new lock: everything starts over)
+        heldAt = Date.now();
+        lastTouch = heldAt;
+        faceArmed = false;
+        faceBroken = false;
+        faceTries = 0;
+        fingerTries = 0;
+    }
+    onPasswordChanged: if (password !== "") woke()
     readonly property bool standby: held && !leaving && canStandBy && idle && password === "" && !busy
 
     // Burn-in protection (lock.standbyShift): every minute the content moves
@@ -259,10 +286,12 @@ Scope {
     // Fingerprint) ─────────────────────────────────────────────────────
     // A second PAM conversation, from the shell's own PAM file (only
     // pam_fprintd: the system's files aren't touched), running while the
-    // lock is up. Each waits up to 30 s; then another, up to five failed
-    // tries in a row (typing, or waking StandBy, gives them back).
+    // lock is up. Each waits up to 30 s; then another (a wait that ran out
+    // isn't a try), up to five fingers in a row that didn't match (coming
+    // back gives them back).
     property string fingerText: "" // what the reader wants, under the field
     property int fingerTries: 0
+    property bool fingerNoMatch: false // (this conversation was told no)
     readonly property bool fingerWanted: held && !leaving && Fingerprint.lockScreen && fingerTries < 5
     onFingerWantedChanged: {
         if (fingerWanted) {
@@ -273,14 +302,13 @@ Scope {
                 finger.abort();
             fingerText = "";
         }
-        if (!held)
-            fingerTries = 0;
     }
     Timer {
         id: fingerRetry
         interval: 400 // (a moment after the lock shows, or after a try)
         onTriggered: if (root.fingerWanted && !finger.active) {
             root.fingerText = "Touch the fingerprint reader to unlock";
+            root.fingerNoMatch = false;
             finger.start();
         }
     }
@@ -290,8 +318,10 @@ Scope {
         configDirectory: Quickshell.shellDir + "/assets/pam"
         onMessageChanged: {
             const m = message ?? "";
-            if (/fail|match|no match|not recogni/i.test(m))
+            if (/fail|no match|not match|not recogni/i.test(m)) {
                 root.fingerText = "Not recognised. Try again";
+                root.fingerNoMatch = true;
+            }
             else if (/place|swipe|touch|finger/i.test(m))
                 root.fingerText = "Touch the fingerprint reader to unlock";
         }
@@ -304,12 +334,10 @@ Scope {
                 root.fingerText = "";
                 return;
             }
-            root.fingerTries++;
-            if (root.fingerWanted)
-                fingerRetry.restart();
-        }
-        onError: {
-            root.fingerTries++;
+            // (a reader that errors counts; a 30 s wait without a finger doesn't.
+            // An error comes here too, after onError: counted once)
+            if (root.fingerNoMatch || result === PamResult.Error)
+                root.fingerTries++;
             if (root.fingerWanted)
                 fingerRetry.restart();
         }
@@ -317,11 +345,13 @@ Scope {
 
     // ── Your face, next to the password (Settings → Lock Screen → Face) ──
     // A third PAM conversation, from the shell's own PAM file (pam_howdy:
-    // Howdy with the infrared camera). It looks when the lock shows and each
-    // time someone's back (woke), three tries each time; never in StandBy.
+    // Howdy with the infrared camera). It looks at the first touch after the
+    // lock shows and each time someone's back (woke), three tries each time;
+    // never in StandBy.
     property string faceText: ""
     property int faceTries: 0
-    readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceTries < 3
+    property bool faceBroken: false // (Howdy or the camera failed: not again until the next lock)
+    readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceArmed && !faceBroken && faceTries < 3
     onFaceWantedChanged: {
         if (faceWanted) {
             faceRetry.restart();
@@ -359,7 +389,7 @@ Scope {
                 faceRetry.restart();
         }
         onError: {
-            root.faceTries = 3; // (Howdy or the camera isn't working: the password is there)
+            root.faceBroken = true; // (Howdy or the camera isn't working: the password is there)
             root.faceText = "";
         }
     }

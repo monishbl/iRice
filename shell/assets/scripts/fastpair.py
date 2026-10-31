@@ -70,6 +70,7 @@ class Watcher:
         self.Gio, self.GLib = Gio, GLib
         self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
         self.devices = {}  # path -> info
+        self.other = set()  # paths asked about that had no Fast Pair data
         self.last = None
         self.adapter = None
         self.scanning = False
@@ -105,13 +106,34 @@ class Watcher:
             if "org.bluez.Device1" in ifaces:
                 self.seen(obj, ifaces["org.bluez.Device1"])
         elif signal == "PropertiesChanged":
+            # Each advert from every device nearby comes here (DuplicateData):
+            # the bus is asked about a device only when this can't tell
             iface_name, changed, _ = params.unpack()
-            if iface_name == "org.bluez.Device1" and ("ServiceData" in changed or "RSSI" in changed):
-                try:
-                    (props,) = self.call(path, "org.freedesktop.DBus.Properties", "GetAll", ("org.bluez.Device1",), "(s)")
-                except Exception:  # noqa: BLE001
+            if iface_name != "org.bluez.Device1":
+                return
+            sd = changed.get("ServiceData")
+            if sd is not None:
+                if FAST_PAIR not in sd:
                     return
-                self.seen(path, props)
+                self.other.discard(path)
+                if path in self.devices:
+                    self.seen(path, changed)
+                    return
+            elif "RSSI" in changed:
+                if path in self.devices:
+                    self.devices[path].update(rssi=changed["RSSI"], at=time.monotonic())
+                    return
+                if path in self.other:
+                    return  # (asked before: not Fast Pair)
+            else:
+                return
+            try:
+                (props,) = self.call(path, "org.freedesktop.DBus.Properties", "GetAll", ("org.bluez.Device1",), "(s)")
+            except Exception:  # noqa: BLE001
+                return
+            self.seen(path, props)
+            if path not in self.devices:
+                self.other.add(path)
 
     def report(self):
         now = time.monotonic()

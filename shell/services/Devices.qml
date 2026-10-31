@@ -245,31 +245,23 @@ Singleton {
             return; // the Bluetooth alert already said it
         Island.post({ kind: "audio", icon: outputIcon(key + " " + title), title: title, subtitle: detail, color: Theme.accents.purple }, 3000);
     }
-    Process {
-        id: subscribe
-        running: Island.enabled && Tools.has("pactl") && !pactlRetry.running
-        stdinEnabled: true
-        command: [Tools.watcher, "pactl", "subscribe"]
-        onExited: pactlRetry.start()
-        stdout: SplitParser {
-            onRead: line => {
-                // (not "sink-input": every stream starting or stopping would re-read all outputs)
-                if (/ on (sink|server|card) #/.test(line))
-                    sinkPoll.restart();
-                // (a display with speakers plugged in or out changes its card)
-                if (/ on card #/.test(line))
-                    AudioProfiles.refresh();
-            }
+    // (the shell's one pactl subscribe: services/PulseEvents)
+    Connections {
+        target: PulseEvents
+        enabled: Island.enabled
+        function onEvent(line) {
+            // (not "sink-input": every stream starting or stopping would re-read all outputs)
+            if (/ on (sink|server|card) #/.test(line))
+                sinkPoll.restart();
+            // (a display with speakers plugged in or out changes its card)
+            if (/ on card #/.test(line))
+                AudioProfiles.refresh();
         }
-    }
-    Timer {
-        id: pactlRetry
-        interval: 10000 // the sound server restarted, or isn't up yet
     }
     Timer {
         id: sinkPoll
         interval: 350
-        running: subscribe.running // once at start, to learn the current output
+        running: Island.enabled && PulseEvents.running // once at start, to learn the current output
         onTriggered: sinkQuery.running = true
     }
     Process {

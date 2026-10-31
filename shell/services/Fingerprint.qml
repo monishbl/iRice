@@ -145,8 +145,12 @@ Singleton {
     function setPam(where, on) {
         if (pamProc.running)
             return;
-        pamBusy = where;
         pamError = "";
+        if (Tools.ready && !Tools.has("pkexec")) {
+            pamError = "Changing this needs polkit (pkexec), which isn't installed. Install polkit, then try again.";
+            return;
+        }
+        pamBusy = where;
         pamProc.command = ["pkexec", rootHelper, "fingerprint", on ? "on" : "off", where];
         pamProc.running = true;
     }

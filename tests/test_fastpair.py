@@ -34,5 +34,42 @@ class Parse(unittest.TestCase):
         self.assertEqual(fp.parse(bytes([0x00, 0x00, 0x33, 60])), {"pairing": False, "battery": {"left": {"level": 60, "charging": False}}, "showUi": True})
 
 
+class Signals(unittest.TestCase):
+    """The bus is asked about a device only when an advert can't say."""
+
+    class Params:
+        def __init__(self, v):
+            self.v = v
+
+        def unpack(self):
+            return self.v
+
+    def setUp(self):
+        self.w = object.__new__(fp.Watcher)
+        self.w.devices, self.w.other, self.asked = {}, set(), []
+        props = {"/d/buds": {"Address": "AA:BB", "Alias": "Buds", "RSSI": -50, "ServiceData": {fp.FAST_PAIR: bytes([0x2C, 0xC1, 0x6A])}},
+                 "/d/tv": {"Address": "CC:DD", "RSSI": -40, "ServiceData": {}}}
+        self.w.call = lambda path, *a, **k: (self.asked.append(path), (props[path],))[1]
+
+    def changed(self, path, **props):
+        self.w.on_signal(None, None, path, None, "PropertiesChanged", self.Params(("org.bluez.Device1", props, [])))
+
+    def test_unknown_then_known(self):
+        self.changed("/d/buds", RSSI=-50)
+        self.assertEqual(self.asked, ["/d/buds"])
+        self.assertTrue(self.w.devices["/d/buds"]["pairing"])
+        self.changed("/d/buds", RSSI=-45)  # (known: no question)
+        self.assertEqual(self.asked, ["/d/buds"])
+        self.assertEqual(self.w.devices["/d/buds"]["rssi"], -45)
+
+    def test_other_devices_are_asked_about_once(self):
+        for rssi in (-40, -41, -42):
+            self.changed("/d/tv", RSSI=rssi)
+        self.assertEqual(self.asked, ["/d/tv"])
+        self.changed("/d/tv", ServiceData={"0000180f-0000-1000-8000-00805f9b34fb": b"x"})
+        self.assertEqual(self.asked, ["/d/tv"])
+        self.assertEqual(self.w.devices, {})
+
+
 if __name__ == "__main__":
     unittest.main()

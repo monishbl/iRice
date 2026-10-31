@@ -64,6 +64,11 @@ Group {
                 enabled: CloudDrives.busy === ""
                 onClicked: CloudDrives.act("connect", root.drive)
             }
+            SettingsButton {
+                visible: CloudDrives.busy === "connect " + root.drive
+                text: "Cancel"
+                onClicked: CloudDrives.cancel()
+            }
         }
     }
 }

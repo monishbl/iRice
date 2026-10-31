@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import qs.common
 
 // Dock badges: unread counts apps report over D-Bus (the Unity LauncherEntry
 // API: Telegram, Discord, Thunderbird, Signal, Element...), and a dot for
@@ -44,9 +45,9 @@ Singleton {
         counts = c;
         pending = null;
     }
-    Process {
+    KeptProcess {
         id: monitor
-        running: Tools.has("dbus-monitor")
+        wanted: Tools.has("dbus-monitor")
         stdinEnabled: true
         command: [Tools.watcher, "dbus-monitor", "--session", "type='signal',interface='com.canonical.Unity.LauncherEntry',member='Update'"]
         stdout: SplitParser {
@@ -81,12 +82,6 @@ Singleton {
                     root.flush();
             }
         }
-        onExited: retry.start()
-    }
-    Timer {
-        id: retry
-        interval: 10000
-        onTriggered: monitor.running = Tools.has("dbus-monitor")
     }
 
     // ── Urgent windows ──────────────────────────────────────────────────

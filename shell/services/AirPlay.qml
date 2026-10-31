@@ -62,14 +62,21 @@ Singleton {
     }
     Process {
         id: starter
-        command: ["systemd-run", "--user", "--quiet", "--collect", "--unit=" + root.unit, "-p", "Restart=on-failure", "-p", "RestartSec=5", "pipewire", "-c", root.conf]
+        // (100: no systemd user manager. A unit left over, restarting or
+        // stopping, is cleared first: one copy only)
+        command: ["sh", "-c", "systemctl --user show-environment >/dev/null 2>&1 || exit 100; "
+            + "systemctl --user stop \"$1\" 2>/dev/null; systemctl --user reset-failed \"$1\" 2>/dev/null; "
+            + "exec systemd-run --user --quiet --collect --unit=\"$1\" -p Restart=on-failure -p RestartSec=5 pipewire -c \"$2\"", "sh", root.unit, root.conf]
+        stderr: StdioCollector { id: starterErr }
         onExited: code => {
             if (code === 0) {
                 root.running = true;
-            } else {
-                // (no systemd user manager: the shell runs it itself)
+            } else if (code === 100) {
+                // (the shell runs it itself)
                 child.running = true;
                 root.running = true;
+            } else {
+                root.error = starterErr.text.trim().split("\n").pop() || "AirPlay couldn't start.";
             }
         }
     }
@@ -77,10 +84,12 @@ Singleton {
         id: child
         command: [Tools.watcher, "pipewire", "-c", root.conf]
         stdinEnabled: true // (Tools.watcher: it ends with the shell)
-        stderr: StdioCollector { id: childErr }
+        property string lastErr: ""
+        stderr: SplitParser { onRead: line => child.lastErr = line } // (only the last: it runs for hours)
         onExited: code => {
             if (root.wanted && code !== 0)
-                root.error = (childErr.text.trim().split("\n").pop() || "AirPlay stopped.").replace(/^\[[^\]]*\]\[[^\]]*\]\s*/, "");
+                root.error = (child.lastErr.trim() || "AirPlay stopped.").replace(/^\[[^\]]*\]\[[^\]]*\]\s*/, "");
+            child.lastErr = "";
             root.running = false;
         }
     }

@@ -450,6 +450,14 @@ class Session:
         except CastError as e:
             self.report(state="error", error=str(e))
             return 1
+        except subprocess.SubprocessError:
+            # (yt-dlp took too long to find the video)
+            self.report(state="error", error="The video's site didn't answer in time. Try again.")
+            return 1
+        except (ValueError, AttributeError, TypeError, KeyError):
+            # (a request that isn't what it should be: still a status line)
+            self.report(state="error", error="That couldn't be cast. Try again.")
+            return 1
         except (OSError, ssl.SSLError) as e:
             self.report(state="error", error="Lost the connection to the device." if self.sock else f"Couldn't reach the device ({e.strerror or e}).")
             return 1

@@ -339,6 +339,15 @@ def fingerprint(on, where, etc=PAM_ETC, vendor=PAM_VENDOR, module=PAM_FPRINTD):
         with open(src) as f:
             text = f.read()
         new = pam_with_fingerprint(text, FP_LINES[where]) if on else pam_without_fingerprint(text)
+        # Off, and /etc's copy is the package's file again (it was copied
+        # here to turn this on): removed, so the package's updates apply
+        vsrc = os.path.join(vendor, name)
+        if not on and src == dest and os.path.exists(vsrc):
+            with open(vsrc) as f:
+                if f.read() == new:
+                    os.unlink(dest)
+                    changed.append(dest)
+                    continue
         if new != text or (on and src != dest):
             write_root(dest, new.encode(), 0o644)
             changed.append(dest)
@@ -428,6 +437,11 @@ def phonecam(on, etc="/etc", run=subprocess.run, dev_dir="/dev"):
             r = run(["modprobe", "v4l2loopback"], capture_output=True, text=True)
             if r.returncode != 0:
                 raise Refused("another app is using a virtual camera: close it (or restart), then try again")
+            # (modprobe says yes when it was loaded already, with other
+            # options, by an app still using it: the camera is checked for)
+            run(["udevadm", "settle", "--timeout=5"], capture_output=True)
+            if not os.path.exists(os.path.join(dev_dir, f"video{PHONECAM_DEV}")):
+                raise Refused("another app's virtual camera is in the way (OBS?): close it, or restart, then try again")
     else:
         for path in (probe, load):
             if os.path.exists(path):

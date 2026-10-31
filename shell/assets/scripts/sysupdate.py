@@ -335,11 +335,17 @@ def bootstrap_yay(env):
         code = stream(["sh", "-c", 'cd "$1" && makepkg --noconfirm', "sh", os.path.join(work, "yay-bin")], aur=True, env=env)
         if code != 0:
             return code
-        built = sorted(f for f in os.listdir(os.path.join(work, "yay-bin"))
-                       if f.endswith((".pkg.tar.zst", ".pkg.tar.xz")) and "-debug-" not in f)
+        # (where makepkg put it: PKGDEST and PKGEXT can be set in makepkg.conf)
+        try:
+            listed = subprocess.run(["makepkg", "--packagelist"], cwd=os.path.join(work, "yay-bin"), capture_output=True,
+                                    text=True, timeout=60, env=env).stdout.split()
+        except (OSError, subprocess.SubprocessError):
+            listed = []
+        built = [f for f in listed if os.path.isfile(f) and "-debug-" not in os.path.basename(f)]
         if not built:
+            out("Building yay didn't leave a package to install.")
             return 1
-        return stream([SHIM, "pacman", "-U", "--noconfirm", os.path.join(work, "yay-bin", built[0])], aur=True, env=env)
+        return stream([SHIM, "pacman", "-U", "--noconfirm", built[0]], aur=True, env=env)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -554,7 +560,10 @@ def aur_command(helper, plan):
         # (Manjaro: pamac builds AUR packages itself and asks for the password its own way)
         if plan.get("aur_install"):
             return ["pamac", "build", "--no-confirm"] + plan["aur_install"]
-        return ["pamac", "upgrade", "--aur", "--no-confirm"]
+        cmd = ["pamac", "upgrade", "--aur", "--no-confirm"]
+        if plan["ignore"]:
+            cmd += ["--ignore", ",".join(plan["ignore"])]  # (what you hold back stays held back)
+        return cmd
     if plan.get("aur_install"):
         cmd = [helper, "-S", "--needed", "--noconfirm", "--sudo", SHIM]
         cmd += ["--answerdiff", "None", "--answerclean", "None", "--answeredit", "None"] if helper == "yay" else ["--skipreview"]
@@ -582,7 +591,8 @@ def real_run(plan):
             # (yay or paru from the repositories, or what building yay needs, first)
             plan["install"] = plan["install"] + [x for x in extra if x not in plan["install"]]
             if extra and "packages" not in plan["steps"]:
-                plan["steps"] = [x for x in plan["steps"] if x != "aur"] + ["packages", "aur"]
+                # (in place: the progress the shell reads is this same list)
+                plan["steps"][:] = [x for x in plan["steps"] if x != "aur"] + ["packages", "aur"]
         else:
             helper = aur_helper()
             if not helper and shutil.which("pamac"):

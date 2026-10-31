@@ -7,6 +7,9 @@ import qs.services
 
 Column {
     id: page
+    // A fingerprint or the faces, about to go (they can't be brought back:
+    // asked once more, by name)
+    property string confirming: "" // a finger | "faces"
     width: parent?.width ?? 0
     spacing: 22
 
@@ -180,12 +183,30 @@ Column {
         Repeater {
             model: Fingerprint.ready ? Fingerprint.enrolled : []
             Row {
+                id: fingerRow
                 required property string modelData
+                readonly property bool asking: page.confirming === modelData
                 label: Fingerprint.fingerNames[modelData] ?? modelData
-                SettingsButton {
-                    text: "Remove"
-                    danger: true
-                    onClicked: Fingerprint.remove(parent.parent.modelData ?? "")
+                detail: asking ? "It's deleted from the reader: you'd add it again to use it." : ""
+                QQ.Row {
+                    spacing: 8
+                    SettingsButton {
+                        visible: fingerRow.asking
+                        text: "Keep"
+                        onClicked: page.confirming = ""
+                    }
+                    SettingsButton {
+                        text: fingerRow.asking ? "Remove " + (Fingerprint.fingerNames[fingerRow.modelData] ?? "fingerprint") : "Remove"
+                        danger: true
+                        onClicked: {
+                            if (!fingerRow.asking) {
+                                page.confirming = fingerRow.modelData;
+                                return;
+                            }
+                            page.confirming = "";
+                            Fingerprint.remove(fingerRow.modelData);
+                        }
+                    }
                 }
             }
         }
@@ -194,7 +215,9 @@ Column {
             visible: Fingerprint.ready
             readonly property bool busy: Fingerprint.enrolling || Fingerprint.enrollStage === "waiting"
             readonly property var free: Object.keys(Fingerprint.fingerNames).filter(f => !Fingerprint.enrolled.includes(f))
-            property string pick: free[0] ?? ""
+            property string pick: ""
+            // (the one picked, while it's still free: once added, the next)
+            readonly property string chosen: free.includes(pick) ? pick : (free[0] ?? "")
             label: busy ? Fingerprint.enrollHint || "Touch the fingerprint reader" : Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
             detail: busy ? (Fingerprint.enrollStages > 0 ? Fingerprint.enrollCount + " of " + Fingerprint.enrollStages + " · " : "") + (Fingerprint.fingerNames[Fingerprint.enrollFinger] ?? "")
                 : Fingerprint.enrollStage === "done" ? "Added. It works on the lock screen now."
@@ -207,15 +230,15 @@ Column {
                     visible: !adding.busy
                     width: 190
                     options: adding.free.map(f => ({ value: f, label: Fingerprint.fingerNames[f] }))
-                    value: adding.pick
+                    value: adding.chosen
                     onChosen: v => adding.pick = v
                 }
                 SettingsButton {
                     text: adding.busy ? "Cancel" : "Add"
                     icon: adding.busy ? "" : "fingerprint"
                     primary: !adding.busy
-                    enabled: adding.busy || adding.pick !== ""
-                    onClicked: adding.busy ? Fingerprint.cancelEnroll() : Fingerprint.enroll(adding.pick)
+                    enabled: adding.busy || adding.chosen !== ""
+                    onClicked: adding.busy ? Fingerprint.cancelEnroll() : Fingerprint.enroll(adding.chosen)
                 }
             }
         }
@@ -287,11 +310,23 @@ Column {
             QQ.Row {
                 spacing: 8
                 SettingsButton {
+                    visible: page.confirming === "faces"
+                    text: "Keep"
+                    onClicked: page.confirming = ""
+                }
+                SettingsButton {
                     visible: Face.faces > 0
-                    text: Face.busy === "clear" ? "Removing…" : "Remove All"
+                    text: Face.busy === "clear" ? "Removing…" : page.confirming === "faces" ? (Face.faces === 1 ? "Remove your face" : "Remove all " + Face.faces + " faces") : "Remove All"
                     danger: true
                     enabled: Face.busy === ""
-                    onClicked: Face.clearFaces()
+                    onClicked: {
+                        if (page.confirming !== "faces") {
+                            page.confirming = "faces";
+                            return;
+                        }
+                        page.confirming = "";
+                        Face.clearFaces();
+                    }
                 }
                 SettingsButton {
                     text: Face.faces === 0 ? "Add Face" : "Add Another"

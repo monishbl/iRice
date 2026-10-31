@@ -176,7 +176,7 @@ Singleton {
     Timer {
         id: follow
         interval: 120
-        onTriggered: if (root.down && !root.windowMove) follower.running = true
+        onTriggered: if (root.down && !root.windowMove && !follower.running) follower.running = true // (one at a time: a second would be queued)
     }
     // A release can go missing (a surface appearing under the pointer): a
     // pointer that hasn't moved for 4 s, or a follower that ended, counts as
