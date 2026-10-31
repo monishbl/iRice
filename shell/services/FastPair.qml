@@ -70,7 +70,7 @@ Singleton {
         if (connector.running)
             return;
         connecting = d.name || "the earbuds";
-        connector.command = ["python3", "-I", script, "connect", d.address];
+        connector.command = ["python3", "-I", script, "connect", d.address, d.name || ""];
         connector.running = true;
         Island.post({ kind: "custom", icon: "headphones", title: "Connecting " + connecting + "…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 8000);
     }

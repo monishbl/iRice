@@ -73,3 +73,37 @@ class Signals(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClassicTwin(unittest.TestCase):
+    """Connect pairs the earbuds' classic side: the LE advert has no name
+    (BlueZ calls it by its address), and pairing with it is refused."""
+    AUDIO = 0x240404
+
+    def dev(self, address, name=None, paired=False, rssi=-50, cls=AUDIO):
+        return ("/org/bluez/hci0/dev_" + address.replace(":", "_"),
+                {"Address": address, "Alias": name or address.replace(":", "-"), "Name": name, "Paired": paired, "RSSI": rssi, "Class": cls})
+
+    def test_an_address_is_not_a_name(self):
+        self.assertEqual(fp.real_name("98-34-8C-03-82-DC"), "")
+        self.assertEqual(fp.real_name("realme Buds Air 5"), "realme Buds Air 5")
+
+    def test_by_name(self):
+        devs = [self.dev("11:22:33:44:55:66", "Other buds"), self.dev("AA:BB:CC:00:00:01", "realme Buds Air 5")]
+        self.assertEqual(fp.pick_twin(devs, "realme Buds Air 5", "98:34:8C:03:82:DC"), devs[1][0])
+
+    def test_by_address_tail_when_nameless(self):
+        # (the user's buds: LE 98:34:8C:03:82:DC, the classic side shares 03:82:DC)
+        devs = [self.dev("11:22:33:44:55:66", "Other buds"), self.dev("29:46:8C:03:82:DC", "Buds")]
+        self.assertEqual(fp.pick_twin(devs, "98-34-8C-03-82-DC", "98:34:8C:03:82:DC"), devs[1][0])
+
+    def test_paired_and_non_audio_are_skipped(self):
+        devs = [self.dev("29:46:8C:03:82:DC", "Buds", paired=True), self.dev("AA:46:8C:03:82:DC", "Phone", cls=0x5a020c)]
+        self.assertIsNone(fp.pick_twin(devs, "", "98:34:8C:03:82:DC", fallback=True))
+
+    def test_fallback_only_one_close_audio_device(self):
+        one = [self.dev("11:22:33:44:55:66", "Buds X", rssi=-55), self.dev("11:22:33:44:55:77", "Far", rssi=-90)]
+        self.assertIsNone(fp.pick_twin(one, "", "98:34:8C:03:82:DC"))  # (not before the scan is over)
+        self.assertEqual(fp.pick_twin(one, "", "98:34:8C:03:82:DC", fallback=True), one[0][0])
+        two = one + [self.dev("11:22:33:44:55:88", "Buds Y", rssi=-60)]
+        self.assertIsNone(fp.pick_twin(two, "", "98:34:8C:03:82:DC", fallback=True))  # (which? don't guess)

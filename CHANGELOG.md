@@ -18,6 +18,7 @@
   - **The ring** follows the pointer 125 times a second instead of 25, and no longer jumps.
   - **The pointer** grows in one step, instead of four steps that each stuttered.
   - Apps that draw their own pointer, such as foot, keep its normal size.
+- **Fast Pair connects instead of failing to pair.** Earbuds announce themselves over Bluetooth LE without a name, and Connect tried to pair with that announcement, which earbuds refuse. It now finds the earbuds' classic Bluetooth side, by name, by address, or as the one audio device in pairing mode close by, and pairs with that. If it can't find them, it tells you to hold the button on the case until the light flashes.
 - **Tuck away app icons.** The icons apps put in the menu bar now wait behind an arrow. Click it to show them; they tuck away again after 12 seconds, but not while one of their menus is open. Turn it off in Settings → Menu Bar → Tuck away app icons.
 
 ## Live captions, faster Quick Share, going back after an update · 2026-10-31

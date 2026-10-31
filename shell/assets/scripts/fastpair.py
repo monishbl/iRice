@@ -21,6 +21,7 @@ else 4 seconds every 30. Devices not heard from for 20 seconds are dropped.
 needs an API key: the Bluetooth name is used instead.)
 """
 import json
+import re
 import sys
 import time
 
@@ -57,6 +58,41 @@ def parse(data):
                 out["showUi"] = kind == 3
         i += 1 + length
     return out
+
+
+ADDRESS_LIKE = re.compile(r"^[0-9A-F]{2}([-:][0-9A-F]{2}){5}$", re.I)
+
+
+def real_name(name):
+    """A name, or "" for none: BlueZ calls a nameless LE advert by its
+    address ("98-34-8C-03-82-DC"), which no classic device is called."""
+    name = (name or "").strip()
+    return "" if ADDRESS_LIKE.match(name) else name
+
+
+def pick_twin(devices, name, address, fallback=False):
+    """The earbuds' classic (BR/EDR) side among devices [(path, Device1
+    props)] found by a classic scan, for the Fast Pair advert at `address`
+    (LE) called `name` (or ""): an unpaired audio device with that name,
+    or that address, or one sharing its last three bytes (buds give their LE
+    and classic sides addresses that differ only at the front). With
+    `fallback` (the scan is over), the one audio device in pairing mode
+    that's close by, when there's exactly one."""
+    name = real_name(name)
+    tail = (address or "").upper()[-8:]
+    near = []
+    for path, d in devices:
+        if d.get("Paired") or not str(d.get("Address", "")).strip():
+            continue
+        if not (AUDIO_UUIDS & set(d.get("UUIDs", [])) or (d.get("Class", 0) >> 8) & 0x1F == 0x04):
+            continue
+        if name and name in (d.get("Alias"), d.get("Name")):
+            return path
+        if tail and str(d.get("Address", "")).upper()[-8:] == tail:
+            return path
+        if (d.get("RSSI") or -127) >= -70:
+            near.append(path)
+    return near[0] if fallback and len(near) == 1 else None
 
 
 def emit(obj):
@@ -182,17 +218,21 @@ class Watcher:
         return True
 
     # Connect: the classic side when it shows up, else the LE side
-    def connect(self, address):
-        """Returns {"ok", "error"}."""
+    def connect(self, address, hint=""):
+        """Returns {"ok", "error"}. `hint`: the name the card showed."""
         self.adapter, _ = self.find_adapter()
         try:
             found = [(p, i["org.bluez.Device1"]) for p, i in self.objects().items()
                      if "org.bluez.Device1" in i and i["org.bluez.Device1"].get("Address") == address]
             path = found[0][0] if found else None
-            name = (found[0][1].get("Alias") or found[0][1].get("Name") or "") if found else ""
-            target = self.classic_twin(name) or path
+            name = real_name(hint) or (real_name(found[0][1].get("Alias") or found[0][1].get("Name")) if found else "")
+            # (Earbuds pair over classic Bluetooth: pairing with the LE
+            # advert itself is refused, "failed to pair". Without the classic
+            # side there's nothing to pair with.)
+            target = self.classic_twin(name, address)
             if not target:
-                raise RuntimeError("The earbuds went out of range. Open the case near the computer and try again.")
+                raise RuntimeError("Couldn't find the earbuds. Hold the button on the case until the light flashes, then try again." if path
+                                   else "The earbuds went out of range. Open the case near the computer and try again.")
             dev = "org.bluez.Device1"
             try:
                 self.call(target, dev, "Pair", timeout=60000)
@@ -207,9 +247,9 @@ class Watcher:
             return {"ok": False, "error": "Pairing didn't finish. Put the earbuds in pairing mode and try again."
                     if "Failed" in msg or "Timeout" in msg else msg.split(":")[-1].strip()}
 
-    def classic_twin(self, name):
-        """An unpaired audio device with the same name, found by a short
-        classic (BR/EDR) scan."""
+    def classic_twin(self, name, address):
+        """The earbuds' classic side (pick_twin), found by a short classic
+        (BR/EDR) scan."""
         if not self.adapter:
             return None
         try:
@@ -221,17 +261,15 @@ class Watcher:
             self.call(self.adapter, "org.bluez.Adapter1", "StartDiscovery")
         except Exception:  # noqa: BLE001
             return None
+        def devices():
+            return [(p, i["org.bluez.Device1"]) for p, i in self.objects().items() if "org.bluez.Device1" in i]
         try:
             for _ in range(10):
                 time.sleep(1)
-                for p, ifaces in self.objects().items():
-                    d = ifaces.get("org.bluez.Device1")
-                    if not d or d.get("Paired") or not str(d.get("Address", "")).strip():
-                        continue
-                    audio = AUDIO_UUIDS & set(d.get("UUIDs", [])) or (d.get("Class", 0) >> 8) & 0x1F == 0x04
-                    if audio and name and (d.get("Alias") == name or d.get("Name") == name):
-                        return p
-            return None
+                p = pick_twin(devices(), name, address)
+                if p:
+                    return p
+            return pick_twin(devices(), name, address, fallback=True)
         finally:
             try:
                 self.call(self.adapter, "org.bluez.Adapter1", "StopDiscovery")
@@ -265,14 +303,14 @@ def main(argv):
             emit({"devices": [], "error": str(e)})
             return 1
         return 0
-    if len(argv) == 2 and argv[0] == "connect":
+    if len(argv) in (2, 3) and argv[0] == "connect":
         try:
-            r = Watcher().connect(argv[1])
+            r = Watcher().connect(argv[1], argv[2] if len(argv) == 3 else "")
         except Exception as e:  # noqa: BLE001
             r = {"ok": False, "error": str(e)}
         print(json.dumps(r))
         return 0 if r["ok"] else 1
-    print(json.dumps({"error": "usage: fastpair.py watch | connect ADDRESS"}))
+    print(json.dumps({"error": "usage: fastpair.py watch | connect ADDRESS [NAME]"}))
     return 2
 
 
