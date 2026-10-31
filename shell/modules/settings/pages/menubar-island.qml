@@ -89,7 +89,8 @@ Column {
                 { kind: "sysupdate", label: "System updates show", pieces: [["icon", "Icon"], ["name", "Updating system"], ["time", "Progress"], ["details", "Details"], ["cancel", "Cancel"]] },
                 { kind: "mirroring", label: "Screen mirroring shows", pieces: [["icon", "Icon"], ["name", "TV"], ["stop", "Stop"]] },
                 { kind: "casting", label: "Casting shows", pieces: [["icon", "Icon"], ["name", "Title"], ["time", "Time"], ["play", "Pause"], ["stop", "Stop"]] },
-                { kind: "dictation", label: "Dictation shows", pieces: [["icon", "Microphone"], ["name", "Listening"], ["time", "Time"], ["stop", "Done"], ["cancel", "Cancel"]] }
+                { kind: "dictation", label: "Dictation shows", pieces: [["icon", "Microphone"], ["name", "Listening"], ["time", "Time"], ["stop", "Done"], ["cancel", "Cancel"]] },
+                { kind: "captions", label: "Live captions show", pieces: [["icon", "Icon"], ["name", "Captions"], ["stop", "Turn off"]] }
             ] : []
             Row {
                 id: pieceRow

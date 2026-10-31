@@ -23,6 +23,11 @@ Process {
             startedAt = Date.now();
             return;
         }
+        if (restarting) {
+            restarting = false;
+            resting = false;
+            return;
+        }
         // (ended, or never started: a missing binary emits no exited())
         if (!wanted || resting)
             return;
@@ -32,6 +37,20 @@ Process {
         quickEnds++;
         resting = true;
         rest.restart();
+    }
+    // Started again now (its command changed): no waiting, no back-off.
+    // It's stopped, and started once it has really ended.
+    property bool restarting: false
+    function restart() {
+        if (!wanted)
+            return;
+        rest.stop();
+        if (!running) {
+            resting = false;
+            return;
+        }
+        restarting = true;
+        resting = true;
     }
     onWantedChanged: if (!wanted) {
         rest.stop();

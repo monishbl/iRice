@@ -21,18 +21,26 @@ parts need the real laptop:
 - **Wi-Fi QR**: qrencode and zbar come with the next update (packages.sh);
   scan the code with a phone, and a screenshot of a router sticker.
 
-## New features: chosen 31 Oct, not started
+## Built 31 Oct (evening): check on real hardware
 
-Ask about each one's design before building; one at a time.
-- **Live captions** (like Windows 11 / Android): subtitles for any audio the
-  laptop plays (calls, videos) in a small floating bar. Offline.
-- **Shake to find the pointer** (like macOS / KDE): wiggle the mouse and the
-  pointer grows big for a moment.
-- **Undo a bad update** (like openSUSE / Silverblue): Software Update already
-  takes a snapper snapshot before updating (snapper + btrfs-assistant are on
-  this laptop); add "Go back to before the last update" in Settings and a way
-  back at startup if the desktop won't load.
-- **Phone as a webcam**: now part of "Android phone on the computer" below.
+All pushed, tested in the sandbox; these parts need the real laptop:
+- **Go back to before an update** (Settings -> Software Update -> Going back):
+  after the next real update, check the section lists it, then Go Back and
+  confirm the password dialog and pacman -U of the cached versions (a test
+  with curl/mesa found both in /var/cache/pacman/pkg). The recovery window
+  (shell stopping 3x in 15 min after an update) and `irice undo-update` from a
+  text console were only checked up to the password. Snapshots in the boot
+  menu: the switch turns grub-btrfsd on (it's off on this laptop); then the
+  GRUB "snapshots" submenu, booting one, and the island's notice. Keeping a
+  snapshot is done in Btrfs Assistant (the page opens it).
+- **Shake to find the pointer**: the ring was checked in the sandbox; the
+  pointer growing (hyprctl setcursor 44 -> 80 -> 24) can't be seen in a
+  nested Hyprland. Check it grows and comes back, with the mouse and the
+  touchpad, and that drawing/dragging doesn't set it off.
+- **Live captions**: install whisper.cpp and the Tiny model from Settings ->
+  Accessibility, then play a video. Checked in the sandbox with a speech
+  sample played into a silent test output; check it with the real speakers,
+  Bluetooth headphones (the default output's monitor), and Super+Ctrl+L.
 
 ## Integrations: built 31 Oct, check with your devices
 

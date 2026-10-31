@@ -41,6 +41,8 @@ Singleton {
         case "dictation":
             return Dictation.stage === "writing" ? "text-aa" : "microphone";
         case "casting":
+        case "captions":
+            return "closed-captioning";
         case "mirroring":
             return "screencast";
         }
@@ -71,6 +73,8 @@ Singleton {
             return Dictation.stage === "writing" ? "Writing…" : "Listening";
         case "casting":
             return Cast.title || "Casting";
+        case "captions":
+            return Captions.latest || "Live captions";
         case "mirroring":
             return "Mirroring to " + Mirroring.targetName;
         }
@@ -100,6 +104,8 @@ Singleton {
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");
         case "screenShare":
             return Privacy.stopFailed ? "Still sharing: stop it in " + Privacy.screenApp : Privacy.screenTarget + " · " + since(Privacy.screenStarted);
+        case "captions":
+            return Captions.error !== "" ? Captions.error : !Captions.ready ? "Set them up in Settings → Accessibility" : Captions.previous;
         case "mirroring":
             return Mirroring.state_ === "streaming" ? "Your screen is showing on " + Mirroring.targetName : "Connecting to " + Mirroring.targetName + "…";
         case "casting":
@@ -181,6 +187,8 @@ Singleton {
         }
         case "screenShare":
             return [{ piece: "stop", icon: "stop", fill: true, act: () => Privacy.stopSharing(), on: !Privacy.stopping, danger: true }];
+        case "captions":
+            return [{ piece: "stop", icon: "x", fill: false, act: () => Captions.cfg.enabled = false, on: true }];
         case "mirroring":
             return [{ piece: "stop", icon: "stop", fill: true, act: () => Mirroring.stop(), on: true, danger: true }];
         case "casting":

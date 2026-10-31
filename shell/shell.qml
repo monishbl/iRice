@@ -32,6 +32,7 @@ import qs.modules.screentools.editor
 import qs.modules.session
 import qs.modules.settings
 import qs.modules.share
+import qs.modules.captions
 import qs.modules.shelf
 import qs.modules.sidebar
 import qs.modules.spotlight
@@ -62,7 +63,7 @@ ShellRoot {
         ScreenTools.translation = null;
     }
     // Services that must run without a UI referencing them
-    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices, Privacy, NetworkAlerts, Sounds, Transfers, Calls, Badges, ScreenTime, Todos, AppTheme, LocalSend, QuickShare, WindowRules, IriceUpdate, Displays, Mouse, Spaces, Backends, Conflicts, AirPlay, Cast, CloudAccounts, CloudDrives, Phone, FastPair, Shelf, Dictation, Fingerprint, Face, Needs, BootSnapshots, FindPointer]
+    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices, Privacy, NetworkAlerts, Sounds, Transfers, Calls, Badges, ScreenTime, Todos, AppTheme, LocalSend, QuickShare, WindowRules, IriceUpdate, Displays, Mouse, Spaces, Backends, Conflicts, AirPlay, Cast, CloudAccounts, CloudDrives, Phone, FastPair, Shelf, Dictation, Fingerprint, Face, Needs, BootSnapshots, FindPointer, Captions]
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Bold.ttf") }
@@ -79,6 +80,7 @@ ShellRoot {
     Spotlight {}
     Menus {}
     NowPlaying {}
+    CaptionsWindow {}
     StatusMenus {}
     WindowControls {}
     SessionDialog {}

@@ -41,6 +41,7 @@ QtObject {
                     { text: "Sharing settings…", openPage: "sharing" }
                 ] },
             mirroring: { label: Mirroring.active ? Mirroring.targetName : "Screen Mirroring", kind: "toggle", sizes: ["2x1", "1x1"], icon: "screencast", on: Mirroring.active, status: Mirroring.active ? (Mirroring.state_ === "streaming" ? "Mirroring" : "Connecting…") : "", available: Mirroring.available, reason: "Needs GNOME Network Displays", page: "mirroring", act: () => Mirroring.active ? Mirroring.stop() : Panels.ccPage = "mirroring" },
+            captions: { label: "Live Captions", kind: "toggle", sizes: ["1x1", "2x1"], icon: "closed-captioning", on: Captions.enabled, status: Captions.enabled ? "On" : "", act: () => Captions.ready || Captions.enabled ? Captions.toggle() : Panels.openSettings("accessibility") },
             keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
             stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic() },

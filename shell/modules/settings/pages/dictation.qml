@@ -115,30 +115,7 @@ Column {
             detail: "The language you speak. Automatic works for most, but may mistake a short sentence for another language."
             Dropdown {
                 width: 220
-                options: [
-                    { value: "", label: "Same as the system" },
-                    { value: "auto", label: "Automatic" },
-                    { value: "en", label: "English" },
-                    { value: "hi", label: "Hindi" },
-                    { value: "es", label: "Spanish" },
-                    { value: "fr", label: "French" },
-                    { value: "de", label: "German" },
-                    { value: "it", label: "Italian" },
-                    { value: "pt", label: "Portuguese" },
-                    { value: "nl", label: "Dutch" },
-                    { value: "ru", label: "Russian" },
-                    { value: "ar", label: "Arabic" },
-                    { value: "zh", label: "Chinese" },
-                    { value: "ja", label: "Japanese" },
-                    { value: "ko", label: "Korean" },
-                    { value: "ta", label: "Tamil" },
-                    { value: "te", label: "Telugu" },
-                    { value: "bn", label: "Bengali" },
-                    { value: "ur", label: "Urdu" },
-                    { value: "tr", label: "Turkish" },
-                    { value: "pl", label: "Polish" },
-                    { value: "uk", label: "Ukrainian" }
-                ]
+                options: Dictation.languages
                 value: Config.options.dictation.language
                 onChosen: v => Config.options.dictation.language = v
             }

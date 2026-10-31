@@ -430,6 +430,15 @@ Singleton {
                 property string language: "" // a code ("en"), "auto", or "" for the system's language
                 property bool sounds: true // a tick as it starts and stops listening
             }
+            property JsonObject captions: JsonObject {
+                // Live captions (Settings → Accessibility, services/Captions):
+                // subtitles for the sound this computer plays
+                property bool enabled: false
+                property string placement: "bar" // bar (floating, movable) | island | strip (across the bottom)
+                property string language: "auto" // "auto", or a code ("en")
+                property real barX: -1 // the floating bar's place on its display (-1: centred above the Dock)
+                property real barY: -1
+            }
             property JsonObject findPointer: JsonObject {
                 // Shake the mouse: the pointer grows for a moment, with a ring
                 // around it (hypr/irice/findpointer.lua, services/FindPointer)

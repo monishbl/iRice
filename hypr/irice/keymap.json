@@ -295,6 +295,15 @@
   }
  },
  {
+  "id": "captions",
+  "keys": "$MOD + CTRL + L",
+  "group": "Shell",
+  "label": "Live captions on or off",
+  "action": {
+   "shell": "captions"
+  }
+ },
+ {
   "id": "shelf",
   "keys": "$MOD + ALT + D",
   "group": "Shell",

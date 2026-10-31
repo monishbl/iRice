@@ -278,12 +278,14 @@ Singleton {
     property real downloadProgress: 0
     property string downloadError: ""
     property bool downloadOk: false
+    property bool downloadUse: true
     property string lastDownload: "" // (which one an error is about)
     // (the model in use changes once the new one is here: until then the
     // one you have keeps working)
-    function download(name) {
+    function download(name, use) {
         if (downloader.running)
             return;
+        downloadUse = use !== false; // (Live captions fetch Tiny without changing Dictation's model)
         downloading = name;
         lastDownload = name;
         downloadProgress = 0;
@@ -315,7 +317,7 @@ Singleton {
             }
         }
         onExited: {
-            if (root.downloadOk)
+            if (root.downloadOk && root.downloadUse)
                 Config.options.dictation.model = root.downloading;
             root.downloading = "";
             root.refresh();
@@ -326,6 +328,32 @@ Singleton {
         refreshLater.restart();
     }
     Timer { id: refreshLater; interval: 500; onTriggered: root.refresh() }
+
+    // The languages offered (Dictation, Live captions): "" is the system's
+    readonly property var languages: [
+        { value: "", label: "Same as the system" },
+        { value: "auto", label: "Automatic" },
+        { value: "en", label: "English" },
+        { value: "hi", label: "Hindi" },
+        { value: "es", label: "Spanish" },
+        { value: "fr", label: "French" },
+        { value: "de", label: "German" },
+        { value: "it", label: "Italian" },
+        { value: "pt", label: "Portuguese" },
+        { value: "nl", label: "Dutch" },
+        { value: "ru", label: "Russian" },
+        { value: "ar", label: "Arabic" },
+        { value: "zh", label: "Chinese" },
+        { value: "ja", label: "Japanese" },
+        { value: "ko", label: "Korean" },
+        { value: "ta", label: "Tamil" },
+        { value: "te", label: "Telugu" },
+        { value: "bn", label: "Bengali" },
+        { value: "ur", label: "Urdu" },
+        { value: "tr", label: "Turkish" },
+        { value: "pl", label: "Polish" },
+        { value: "uk", label: "Ukrainian" }
+    ]
 
     // name: label, size in MB (dictate.py MODELS)
     readonly property var models: [

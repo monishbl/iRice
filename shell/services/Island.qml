@@ -49,6 +49,8 @@ Singleton {
             a.push({ kind: "casting", icon: "screencast", color: Theme.accent });
         if (Dictation.active)
             a.push({ kind: "dictation", icon: "microphone", color: Theme.accents.red });
+        if (Captions.enabled && Captions.placement === "island")
+            a.push({ kind: "captions", icon: "closed-captioning", color: Theme.accent });
         if (ScreenTools.recording)
             a.push({ kind: "recording", icon: Recorder.paused ? "pause-circle" : "record", color: Recorder.paused ? Qt.rgba(1, 1, 1, 0.55) : Theme.accents.red }); // grey while paused
         if (timerStarted)
@@ -101,7 +103,7 @@ Singleton {
 
     // Is this piece of a collapsed live activity switched on? ("music", "bars")
     // Kinds added later start with their defaults until changed in Settings.
-    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"], screenShare: ["icon", "name", "time", "stop"], sysupdate: ["icon", "name", "time"], dictation: ["icon", "name", "time", "stop"], casting: ["icon", "name", "time", "play", "stop"], mirroring: ["icon", "name", "stop"] })
+    readonly property var liveDefaults: ({ transfer: ["icon", "name", "time", "open", "cancel"], call: ["icon", "name", "time", "mute"], screenShare: ["icon", "name", "time", "stop"], sysupdate: ["icon", "name", "time"], dictation: ["icon", "name", "time", "stop"], casting: ["icon", "name", "time", "play", "stop"], mirroring: ["icon", "name", "stop"], captions: ["icon", "name", "stop"] })
     function customised(kind) {
         return !liveDefaults[kind] || (cfg.known ?? []).includes("live." + kind) || (cfg.livePieces ?? []).some(x => x.startsWith(kind + "."));
     }

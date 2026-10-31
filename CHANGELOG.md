@@ -1,7 +1,12 @@
 # iRice changelog
 
-## Going back after an update, finding the pointer · 2026-10-31
+## Live captions, going back after an update, finding the pointer · 2026-10-31
 
+- **Live captions.** Subtitles for whatever this computer plays: videos, calls, podcasts. Turn them on in the new **Settings → Accessibility** page, with **Super+Ctrl+L**, or from a Control Center tile you can add.
+  - **How it works:** captions are made on this computer with whisper.cpp's Tiny model (75 MB, downloaded once), about 2 seconds behind the speech. Nothing is saved or sent anywhere, and the microphone is never captioned.
+  - **Where they show:** in a floating bar above the Dock that you can drag anywhere, in the island, or in a strip across the bottom of the screen that windows make room for. White on dark, so they read over any picture.
+  - **Language:** Automatic, or choose one, which is more accurate.
+  - **Cost:** silence isn't transcribed, so they cost almost nothing while nothing is playing.
 - **Go back to before the last update.** If an update broke something, use **Settings → Software Update → Going back → Go Back**. The packages it changed return to the versions you had before. Those versions come from pacman's cache, or from Arch's archive when the cache no longer has them. Your files and settings aren't touched, and packages the update added stay. It asks for your password once and takes a snapshot first when you have snapper or Timeshift.
   - A version you went back from is skipped by later updates until a newer one comes out. You can include it anyway, per package.
   - If some earlier versions are gone from your computer, the page says which ones and nothing is changed.
