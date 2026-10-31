@@ -1,7 +1,11 @@
 # iRice changelog
 
-## Live captions, going back after an update, finding the pointer · 2026-10-31
+## Live captions, faster Quick Share, going back after an update · 2026-10-31
 
+- **Quick Share is much faster without Wi-Fi in common:**
+  - **Over Bluetooth:** phones now use a direct Bluetooth channel (L2CAP), about 7 to 15 times faster than before (51 to 104 KB/s instead of 7 KB/s), in both directions.
+  - **Over Wi-Fi Direct:** when a phone sends while you're not on the same Wi-Fi, this computer can now make a Wi-Fi Direct link for it without dropping your own Wi-Fi, so your internet stays up during the transfer. It asks for your password the first time.
+  - Checked with a real phone, both ways.
 - **Live captions.** Subtitles for whatever this computer plays: videos, calls, podcasts. Turn them on in the new **Settings → Accessibility** page, with **Super+Ctrl+L**, or from a Control Center tile you can add.
   - **How it works:** captions are made on this computer with whisper.cpp's Tiny model (75 MB, downloaded once), about 2 seconds behind the speech. Nothing is saved or sent anywhere, and the microphone is never captioned.
   - **Where they show:** in a floating bar above the Dock that you can drag anywhere, in the island, or in a strip across the bottom of the screen that windows make room for. White on dark, so they read over any picture.

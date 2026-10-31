@@ -75,27 +75,21 @@ Still to check with the real things:
   pam_howdy works for the shell (a non-root lock screen), as it does for
   hyprlock.
 
-## Quick Share: two speed-ups waiting for a hardware check (branch `quickshare-l2cap-shield`)
+## Quick Share: faster Bluetooth and Wi-Fi Direct next to your Wi-Fi (merged 31 Oct)
 
-Written and unit-tested (332 tests pass), not on `main` until checked:
-- **Faster Bluetooth (L2CAP): checked 31 Oct** with the Realme on USB adb,
-  Bluetooth only, 100 KB photos, byte-identical both ways. Phone → computer
-  over L2CAP (PSM 128): 1.95 s (about 51 KB/s), against 13.4 s (7 KB/s) over
-  GATT. Computer → phone first failed ("[Errno 90] Message too long": writes
-  bigger than the phone's MTU); fixed on the branch (bd27dad: writes split
-  to BT_SNDMTU), then 100 KB in under a second once the file started.
-- **Wi-Fi Direct with the internet up.** While the Wi-Fi helper hosts a
-  group, a D-Bus rule refuses wpa_supplicant's RemoveInterface (how
-  NetworkManager ends groups it didn't start), so NetworkManager keeps the
-  normal connection. On this laptop the group goes on 2.4 GHz next to the
-  5 GHz connection (the kernel lacks CFG80211_REG_RELAX_NO_IR, so no 5 GHz
-  group beside a connection). **Check, from a real terminal (not the
-  Claude chat: pkexec needs a tty), e.g. a second SSH session:** run
-  `python3 tools/quickshare-check/shield-test.py` (on the branch; asks the
-  password once). Expect the group up on every line, wlan0 still on the home Wi-Fi,
-  internet up, and the rule off at the end. Then a real receive from a
-  phone on another network.
-Then merge the branch into `main` (only the Wi-Fi Direct shield test is left).
+Checked with the Realme over USB adb and merged into `main` (a02e2d9):
+- **L2CAP:** Bluetooth-only transfers, byte-identical both ways. Phone →
+  computer 51-104 KB/s (was 7 KB/s over GATT); computer → phone 100 KB in
+  under a second, after fixing writes bigger than the phone's MTU.
+- **Wi-Fi Direct next to NetworkManager (the shield):** shield-test.py (group
+  up 20 s on 5 GHz ch 149, home Wi-Fi and internet up, rule gone after);
+  then phone → computer with no shared network: the phone joined our group,
+  2.3 MB byte-identical, internet up throughout. Fixed on the way: the P2P
+  device was left "unavailable" afterwards (it now stays NetworkManager's
+  behind the shield). Computer → phone with no shared network: joins the
+  phone's group, 2.3 MB in 0.1 s, the Wi-Fi back after.
+- **Takes effect after a Software Update:** the installed root helper's copy of
+  the Wi-Fi helper is what runs (and is checked for the shield).
 
 ## Quick Share: tested with a real phone (31 Oct)
 
