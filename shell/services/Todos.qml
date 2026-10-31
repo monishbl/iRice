@@ -15,7 +15,7 @@ Singleton {
     // changes find their to-do by it when they run. A position in the list
     // isn't enough: a Google sync can add or reorder tasks while a row or
     // the editor is open, and the change would land on another task.
-    readonly property var list: localList.map(t => Object.assign({ key: "local/" + t.id }, t)).concat(Google.tasks)
+    readonly property var list: localList.map(t => Object.assign({ key: "local/" + t.id }, t)).concat(Google.tasks).concat(CloudAccounts.tasks)
     function find(ref) {
         const key = typeof ref === "string" ? ref : ref?.key;
         return key ? list.find(t => t.key === key) ?? null : null;
@@ -78,6 +78,15 @@ Singleton {
 
     function addItem(item) {
         const destination = Config.options.google.taskListId;
+        // Microsoft To Do ("cloud|<account>|<list>")
+        if (destination.startsWith("cloud|")) {
+            const ref = destination.slice(6);
+            if (!CloudAccounts.taskLists.some(l => l.account + "|" + l.id === ref)) {
+                Quickshell.execDetached(["notify-send", "-a", "Reminders", "Task not added", "That Microsoft To Do list isn't available. Choose another list in Settings → Microsoft 365."]);
+                return false;
+            }
+            return CloudAccounts.addTask(ref, item);
+        }
         if (destination) {
             if (!Google.connected || !Google.find(Google.taskLists, destination)) {
                 Google.lastError = "Connect Google and select an available task list, or switch new tasks to Local in Settings → Google.";
@@ -104,6 +113,8 @@ Singleton {
             return false;
         if (t.google)
             return Google.updateTask(t, patch);
+        if (t.cloud)
+            return CloudAccounts.updateTask(t, patch);
         const l = localList.slice();
         const i = l.findIndex(x => x.id === t.id);
         l[i] = Object.assign({}, l[i], patch);
@@ -120,6 +131,10 @@ Singleton {
             Google.removeTask(t);
             return t;
         }
+        if (t.cloud) {
+            CloudAccounts.removeTask(t);
+            return t;
+        }
         const at = localList.findIndex(x => x.id === t.id);
         UiState.data.todos = localList.filter(x => x.id !== t.id);
         return Object.assign({ at: at }, t);
@@ -129,6 +144,10 @@ Singleton {
             return;
         if (t.google) {
             Google.restoreTask(t);
+            return;
+        }
+        if (t.cloud) {
+            CloudAccounts.restoreTask(t);
             return;
         }
         const item = Object.assign({}, t);

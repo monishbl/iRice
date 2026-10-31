@@ -16,7 +16,12 @@
 //     {"account": "/org/gnome/OnlineAccounts/Accounts/…", "identity": "you@…"}
 //     {"error": "…", "cancelled": true|false}
 //
-//     goa-signin           (ends by itself; 5 minutes at most)
+//     goa-signin [PROVIDER] (ends by itself; 5 minutes at most)
+//
+// PROVIDER is GOA's provider type: google (the default) or ms_graph
+// (Microsoft 365: Outlook calendars and To Do, CloudAccounts.qml). GOA
+// brings its own Microsoft app registration, so its "Client ID (Optional)"
+// stays empty.
 #define GOA_API_IS_SUBJECT_TO_CHANGE
 #define GOA_BACKEND_API_IS_SUBJECT_TO_CHANGE
 #include <adwaita.h>
@@ -31,6 +36,8 @@ static GApplication* app;
 static gboolean printed;
 static guint clicker;
 static int tries;
+static const char* provider_type = "google";
+static const char* provider_name = "Google";
 
 static void print_json(const char* key, const char* value, const char* key2, const char* value2, gboolean cancelled) {
     if (printed)
@@ -106,9 +113,10 @@ static void added(GObject* source, GAsyncResult* res, gpointer) {
 }
 
 static void with_provider(GoaClient* client) {
-    GoaProvider* provider = goa_provider_get_for_provider_type("google");
+    GoaProvider* provider = goa_provider_get_for_provider_type(provider_type);
     if (!provider) {
-        print_json("error", "This GNOME Online Accounts has no Google provider.", NULL, NULL, FALSE);
+        g_autofree char* msg = g_strdup_printf("This GNOME Online Accounts has no %s provider. Update gnome-online-accounts.", provider_name);
+        print_json("error", msg, NULL, NULL, FALSE);
         g_application_quit(app);
         return;
     }
@@ -144,7 +152,8 @@ static gboolean closed(GtkWindow*, gpointer) {
 static void activate(GApplication* application, gpointer) {
     // A plain small window for GOA's dialog to sit in (it needs a parent)
     window = GTK_WINDOW(adw_application_window_new(GTK_APPLICATION(application)));
-    gtk_window_set_title(window, "Connect Google account");
+    g_autofree char* title = g_strdup_printf("Connect %s account", provider_name);
+    gtk_window_set_title(window, title);
     gtk_window_set_default_size(window, 460, 520);
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window),
         GTK_WIDGET(adw_status_page_new()));
@@ -156,6 +165,12 @@ static void activate(GApplication* application, gpointer) {
 }
 
 int main(int argc, char** argv) {
+    // (the provider is ours to read: GApplication would take it for a file)
+    if (argc > 1) {
+        provider_type = argv[1];
+        provider_name = g_strcmp0(provider_type, "ms_graph") == 0 ? "Microsoft 365" : g_strcmp0(provider_type, "google") == 0 ? "Google" : provider_type;
+        argc = 1;
+    }
     adw_init();
     AdwApplication* a = adw_application_new("org.irice.GoogleSignIn", G_APPLICATION_NON_UNIQUE);
     app = G_APPLICATION(a);

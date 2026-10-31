@@ -54,6 +54,9 @@ Singleton {
                     calendar: e.calendar, local: false, alert: -1, notes: e.notes,
                     google: true, source: e, writable: !!e.writable, recurring: !!e.series, accountName: e.accountName });
         }
+        // iCloud and Microsoft 365
+        for (const e of CloudAccounts.between(from, to))
+            out.push(e);
         return out.sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
     }
 
@@ -115,6 +118,10 @@ Singleton {
         return e; // for Undo
     }
     function restoreEvent(e) {
+        if (e?.cloud) {
+            CloudAccounts.restoreEvent(e);
+            return;
+        }
         if (e?.google) {
             Google.restoreEvent(e.source);
             return;
@@ -131,9 +138,14 @@ Singleton {
     // alert, location, notes }. `every`: a repeating Google event's whole
     // series instead of this occurrence.
     function editable(e) {
-        return !!e && (e.local || (e.google && e.writable));
+        return !!e && (e.local || ((e.google || e.cloud) && e.writable));
     }
     function change(e, fields, every) {
+        if (e.cloud) {
+            const f = Object.assign({}, fields);
+            delete f.alert; // (the calendar keeps its own alerts)
+            return CloudAccounts.updateEvent(e, f);
+        }
         if (e.google) {
             const f = Object.assign({}, fields);
             delete f.alert; // (Google keeps its own reminders)
@@ -144,6 +156,8 @@ Singleton {
     }
     // Returns what Undo puts back (a Google event is only deleted once the Undo has run out)
     function discard(e, every) {
+        if (e.cloud)
+            return CloudAccounts.removeEvent(e) ? e : null;
         if (e.google)
             return Google.removeEvent(e.source, every) ? e : null;
         return remove(e.id);

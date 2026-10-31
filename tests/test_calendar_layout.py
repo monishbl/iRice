@@ -55,6 +55,18 @@ Singleton {
     function identity(a) { return ''; }
 }'''
 
+# iCloud and Microsoft 365: nothing connected
+CLOUD = '''pragma Singleton
+import QtQuick
+import Quickshell
+Singleton {
+    property var calendars: []
+    property var accounts: []
+    property string lastError: ''
+    function shown(c) { return true; }
+    function providerName(a) { return ''; }
+}'''
+
 # 45 open to-dos, all due on the 29th: the busy day
 TODOS = '''pragma Singleton
 import QtQuick
@@ -176,6 +188,7 @@ class CalendarLayoutTests(unittest.TestCase):
         put('services/Calendar.qml', CALENDAR)
         put('services/Todos.qml', TODOS)
         put('services/Google.qml', GOOGLE)
+        put('services/CloudAccounts.qml', CLOUD)
         put('shell.qml', SHELL)
 
         env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software',

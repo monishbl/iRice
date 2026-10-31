@@ -293,6 +293,17 @@ Singleton {
             out.push(aiRow(raw));
         out.push({ section: "Web", title: "Search the web for “" + raw + "”", subtitle: "", glyph: "globe", run: () => Launch.open("https://duckduckgo.com/?q=" + encodeURIComponent(raw)) });
 
+        // Contacts (iCloud): copy their email or number
+        if (q.length >= 2)
+            for (const c of CloudAccounts.searchContacts(raw, 3)) {
+                const how = c.emails[0] ?? c.phones[0] ?? "";
+                out.push({ section: "Contacts", title: c.name, subtitle: [c.emails[0], c.phones[0]].filter(x => x).join(" · "), glyph: "user-circle",
+                    run: () => {
+                        Quickshell.execDetached(["wl-copy", "--", how]);
+                        Island.post({ kind: "custom", icon: "copy", title: "Copied " + (c.emails[0] ? "email" : "number"), subtitle: how, color: Theme.accent }, 3000);
+                    } });
+            }
+
         // Notes by name
         if (q.length >= 3)
             for (const n of Notes.search(raw, 4))

@@ -45,6 +45,8 @@ Scope {
                 { id: "dictation", name: "Dictation", icon: "microphone", color: "#FF453A", group: "Devices & Input" },
                 { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF", group: "Devices & Input" },
                 { id: "google", name: "Google", icon: "cloud", color: "#4285F4", group: "Apps" },
+                { id: "icloud", name: "iCloud", icon: "cloud", color: "#5AC8FA", group: "Apps" },
+                { id: "microsoft", name: "Microsoft 365", icon: "microsoft-outlook-logo", color: "#0078D4", group: "Apps" },
                 { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A", group: "Apps" },
                 { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
                 { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },

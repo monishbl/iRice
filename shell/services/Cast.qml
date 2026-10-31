@@ -107,9 +107,10 @@ Singleton {
         duration = 0;
         error = "";
         state_ = "connecting";
-        session.running = true;
-        send(cmd);
+        firstCommand = cmd;
+        session.running = true; // (the command goes once it has started)
     }
+    property var firstCommand: null
     property var pendingCast: null
 
     function send(obj) {
@@ -133,6 +134,11 @@ Singleton {
         id: session
         command: ["python3", "-I", root.script, "session"]
         stdinEnabled: true
+        // (written once it's running: a write before that is lost)
+        onStarted: {
+            write(JSON.stringify(root.firstCommand) + "\n");
+            root.firstCommand = null;
+        }
         stdout: SplitParser {
             onRead: line => {
                 let s;

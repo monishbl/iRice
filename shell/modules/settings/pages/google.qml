@@ -190,8 +190,9 @@ Column {
                 width: 260
                 options: [{ value: "", label: "This computer only" }].concat(Google.taskLists.map(l => ({ value: l.account + "|" + l.id,
                     label: l.title + (Google.accounts.length > 1 ? " · " + Google.identity(l.account) : "") })))
-                // (a bare list id is from before several accounts)
-                value: { const l = Google.find(Google.taskLists, Config.options.google.taskListId); return l ? l.account + "|" + l.id : ""; }
+                    .concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
+                // (a bare list id is from before several accounts; "cloud|…" is Microsoft To Do)
+                value: { const v = Config.options.google.taskListId; if (v.startsWith("cloud|")) return v; const l = Google.find(Google.taskLists, v); return l ? l.account + "|" + l.id : ""; }
                 onChosen: v => Config.options.google.taskListId = v
             }
         }
@@ -254,4 +255,7 @@ Column {
         }
     }
 
+
+    // Google Drive as a folder (rclone)
+    DriveGroup { width: parent.width; drive: "gdrive" }
 }

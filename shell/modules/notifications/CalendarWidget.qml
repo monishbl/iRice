@@ -125,7 +125,7 @@ Platter {
 
     // Move an item to another day, keeping its time
     function moveTo(item, day) {
-        if (item.kind === "event" && item.e.google) {
+        if (item.kind === "event" && (item.e.google || item.e.cloud)) {
             const e = item.e;
             const s = e.start;
             const start = e.allDay ? new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
@@ -685,10 +685,13 @@ Platter {
         property string error: ""
         // Where a new event goes: "" this computer, or "<account>|<calendar>"
         property string target: ""
-        readonly property bool google: editing ? !!editing.e?.google : !isTodo && target !== ""
+        // (an account's calendar: Google, iCloud, Microsoft 365; they keep a location)
+        readonly property bool google: editing ? !!(editing.e?.google || editing.e?.cloud) : !isTodo && target !== ""
         readonly property var targets: [{ value: "", label: "This computer" }].concat(Google.calendars
             .filter(c => c.writable && Google.shown(c))
             .map(c => ({ value: c.account + "|" + c.id, label: c.title + (Google.accounts.length > 1 ? " · " + Google.identity(c.account) : "") })))
+            .concat(CloudAccounts.calendars.filter(c => c.writable && CloudAccounts.shown(c))
+                .map(c => ({ value: "cloud|" + c.account + "|" + c.id, label: c.title + " · " + CloudAccounts.providerName(c.account) })))
         // A repeating event: this occurrence or all of them? (then `asking(every)`)
         property var asking: null
         function ask(item, then) {
@@ -805,7 +808,13 @@ Platter {
                 let saved = true;
                 if (editing)
                     saved = Calendar.change(editing.e, fields, !!every);
-                else if (google) {
+                else if (google && target.startsWith("cloud|")) {
+                    delete fields.alert;
+                    const bar = target.indexOf("|", 6);
+                    saved = CloudAccounts.addEvent(target.slice(6, bar), target.slice(bar + 1), fields);
+                    if (saved)
+                        Config.options.google.newEventCalendar = target;
+                } else if (google) {
                     delete fields.alert;
                     saved = Google.addEvent(target, fields);
                     if (saved)
@@ -815,7 +824,7 @@ Platter {
                     Config.options.google.newEventCalendar = "";
                 }
                 if (!saved) {
-                    error = Google.lastError || "Could not save the event.";
+                    error = (target.startsWith("cloud|") || editing?.e?.cloud ? CloudAccounts.lastError : Google.lastError) || "Could not save the event.";
                     asking = null;
                     return;
                 }
@@ -962,17 +971,18 @@ Platter {
                     width: parent.width
                     wrapMode: Text.Wrap
                     text: editor.editing?.e ? Calendar.timeText(editor.editing.e) + (editor.editing.e.location ? " · " + editor.editing.e.location : "")
-                        + (editor.editing.e.google ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). You can view this calendar but not change it."
+                        + (editor.editing.e.cloud && editor.editing.e.recurring ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). Change repeating events on your phone or on the web."
+                            : editor.editing.e.google || editor.editing.e.cloud ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). You can view this calendar but not change it."
                             : "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only).")
                         + (editor.editing.e.repeatUnsupported ? "\nThis event repeats in a way iRice can't show yet, so only its first date is here. Your calendar app has the rest." : "") : ""
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
                 Text {
-                    visible: !editor.readOnly && !!editor.editing?.e?.google
+                    visible: !editor.readOnly && !!(editor.editing?.e?.google || editor.editing?.e?.cloud)
                     width: parent.width
                     elide: Text.ElideRight
-                    text: editor.editing?.e?.google ? editor.editing.e.calendar + " · " + editor.editing.e.accountName : ""
+                    text: editor.editing?.e?.google || editor.editing?.e?.cloud ? editor.editing.e.calendar + " · " + editor.editing.e.accountName : ""
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }

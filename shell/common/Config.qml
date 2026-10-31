@@ -55,6 +55,10 @@ Singleton {
                 property string newEventCalendar: "" // "<account>|<calendar id>"; empty = this computer
                 property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown (Settings → Google)
             }
+            // iCloud and Microsoft 365 (services/CloudAccounts)
+            property JsonObject cloud: JsonObject {
+                property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown
+            }
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
