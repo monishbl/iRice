@@ -691,7 +691,7 @@ class Links:
             p = subprocess.Popen(["dnsmasq", "--keep-in-foreground", "--conf-file=/dev/null", f"--interface={iface}",
                                   "--bind-interfaces", "--except-interface=lo", "--port=0", "--no-resolv",
                                   "--no-hosts", f"--dhcp-range={prefix}.10,{prefix}.99,255.255.255.0,1h",
-                                  "--dhcp-option=3", "--dhcp-option=6", "--dhcp-leasefile=/dev/null",
+                                  "--dhcp-option=3", "--dhcp-option=6", "--leasefile-ro",  # (no lease file: /dev/null made it complain every minute)
                                   "--pid-file="], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.undo.append(lambda: (p.terminate(), p.wait(5)))
         else:
