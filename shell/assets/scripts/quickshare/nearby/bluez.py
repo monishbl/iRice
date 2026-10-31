@@ -692,7 +692,7 @@ AF_BLUETOOTH = 31
 BTPROTO_L2CAP = 0
 BDADDR_LE_PUBLIC, BDADDR_LE_RANDOM = 1, 2
 SOL_BLUETOOTH = 274
-BT_RCVMTU = 13
+BT_SNDMTU, BT_RCVMTU = 12, 13
 BT_MODE, BT_MODE_LE_FLOWCTL = 15, 0x03
 # The most a phone may send before waiting (an SDU, and with it the
 # credits Linux hands out: imtu / mps + 1): many packets per connection
@@ -863,15 +863,28 @@ class L2capServer:
             t.cancel()
 
 
+def send_mtu(fd, libc=None):
+    """The most one write may carry on a connected channel (the phone's
+    MTU): each write is one packet (SOCK_SEQPACKET), and a bigger one fails
+    with EMSGSIZE. The phone reads the packets as one stream."""
+    libc = libc or _libc()
+    mtu = ctypes.c_uint16(0)
+    size = ctypes.c_uint(2)
+    if libc.getsockopt(fd, SOL_BLUETOOTH, BT_SNDMTU, ctypes.byref(mtu), ctypes.byref(size)) != 0 or mtu.value < 23:
+        return 23  # (the smallest an LE channel may have)
+    return mtu.value
+
+
 class _L2capLink:
-    def __init__(self, fd, loop):
+    def __init__(self, fd, loop, mtu=None):
         self.fd, self.loop = fd, loop
+        self.mtu = mtu or send_mtu(fd)
 
     async def send(self, data):
         view = memoryview(data)
         while view:
             try:
-                n = os.write(self.fd, view)
+                n = os.write(self.fd, view[:self.mtu])
                 view = view[n:]
             except BlockingIOError:
                 fut = self.loop.create_future()

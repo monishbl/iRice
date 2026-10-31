@@ -7,6 +7,7 @@ exported and called, never the real D-Bus), and the root Wi-Fi helper's
 pure parts (checks, channel choice, D-Bus arguments, DHCP packets).
 """
 import asyncio
+import socket
 import hashlib
 import importlib.util
 import struct
@@ -287,6 +288,28 @@ class L2cap(unittest.IsolatedAsyncioTestCase):
         m.feed(b"\x00\x00\x00\x01\x16")
         with self.assertRaises(weave.WeaveError):
             await asking
+
+    def test_writes_fit_the_channel_mtu(self):
+        # (one write is one packet: bigger than the phone's MTU fails with
+        # EMSGSIZE; the phone reads the packets back as one stream)
+        a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        a.setblocking(False)
+
+        async def run():
+            link = bluez._L2capLink(a.fileno(), asyncio.get_running_loop(), mtu=100)
+            await link.send(bytes(range(256)) * 4)
+        asyncio.run(run())
+        packets = []
+        b.setblocking(False)
+        while True:
+            try:
+                packets.append(b.recv(4096))
+            except BlockingIOError:
+                break
+        self.assertTrue(all(len(p) <= 100 for p in packets))
+        self.assertEqual(b"".join(packets), bytes(range(256)) * 4)
+        a.close()
+        b.close()
 
     def test_sockaddr(self):
         sa = bluez.sockaddr_l2("AA:BB:CC:DD:EE:FF", "random", 0x81)
