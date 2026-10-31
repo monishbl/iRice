@@ -55,8 +55,8 @@ Still to check with the real things:
   then ~/Google Drive opens in Dolphin.
 - **Android phone**: Settings -> Phone -> Install; USB debugging on; Show
   Screen; pair by QR; webcam (Set Up asks for the password: v4l2loopback).
-- **Mirroring**: Screen Mirroring tile with a Miracast TV (this laptop's Wi-Fi reports Wi-Fi Direct (iw), so
-  P2P is supported) and a Chromecast.
+- **Mirroring**: Screen Mirroring tile with a Miracast TV (this laptop's Wi-Fi reports Wi-Fi Direct (iw), so it should work)
+  and with a Chromecast.
 - **Fast Pair**: the WH-CH720N or realme Buds T100 in pairing mode -> the
   island's Connect; open the case while connected -> batteries.
 - **Face unlock**: Settings -> Lock Screen -> Face -> Install (AUR,
