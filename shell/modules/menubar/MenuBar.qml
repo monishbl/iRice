@@ -210,6 +210,13 @@ Variants {
                 fg: bar.fg
                 pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
             }
+            // Alerts that come while the island is open: a card under it
+            IslandAlertStack {
+                screen: bar.screen
+                active: bar.islandOn && island.alertsBelow
+                top: content.y + island.y + island.shape.y + island.h
+                unseen: island.unseen
+            }
 
             // ── Right ───────────────────────────────────────────────────
             Row {

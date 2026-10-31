@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
@@ -29,7 +28,18 @@ Item {
     // to the full alert. A ringing call always shows its card.
     property bool fsOpen: false
     readonly property bool pillMode: overFs && fsMode === "compact" && showingEvent && !fsOpen && !Island.ringingUp
-    onShowingEventChanged: if (!showingEvent) fsOpen = false
+    onShowingEventChanged: {
+        if (!showingEvent)
+            fsOpen = false;
+        // Open already (hovered or pinned) when they start: the alerts go in
+        // a card under the island (IslandAlertStack), which stays as it is,
+        // until they're all gone. (Decided once: pointing at an alert shown
+        // in the island doesn't send it below.)
+        alertsBelow = showingEvent && (hoverOpen || Island.pinned) && !overFs;
+    }
+    property bool alertsBelow: false
+    // The alerts are in the island itself
+    readonly property bool eventInside: showingEvent && !alertsBelow
     onOverFsChanged: fsOpen = false
     readonly property bool lifted: overFs && (showingEvent || h > 27.5)
     // Nobody can see it (covered by a fullscreen app, or the lock screen):
@@ -51,7 +61,7 @@ Item {
     Timer { id: closeDelay; interval: 260; onTriggered: root.hoverOpen = false }
 
     // (Over a fullscreen app only alerts open it: not the pointer, not the pin)
-    readonly property bool expanded: (hoverOpen && !overFs) || (Island.event !== null && !pillMode) || (Island.pinned && !overFs)
+    readonly property bool expanded: (hoverOpen && !overFs) || (eventInside && !pillMode) || (Island.pinned && !overFs)
     readonly property bool compact: !expanded && !overFs && primary !== null
     // The black pill is up: open, or the compact alert pill
     readonly property bool filled: expanded || pillMode
@@ -88,7 +98,7 @@ Item {
     }
     readonly property bool showingEvent: Island.event !== null
     // The pointer resting on the alerts holds their time (Island.hold)
-    readonly property bool holding: hovering && showingEvent
+    readonly property bool holding: hovering && eventInside
     onHoldingChanged: {
         Island.hold(screen?.name ?? "", holding);
         if (!holding)
@@ -108,7 +118,7 @@ Item {
     readonly property bool wantsKeys: holding && clicked
     focus: true
     Keys.onEscapePressed: event => {
-        if (!showingEvent) {
+        if (!eventInside) {
             event.accepted = false;
             return;
         }
@@ -156,10 +166,11 @@ Item {
         : layout === "beside" ? 2 * pad + dotsW + 21 + area
         : pad + leadW + 12 + trailW + pad
     readonly property real pillW: Math.min(420, pill.implicitWidth + 28)
-    readonly property real targetW: pillMode ? pillW : showingEvent ? (Island.hasCard ? 440 : 392) : expanded ? 392 : compact ? compactW : dotsW + 14
+    readonly property real targetW: pillMode ? pillW : eventInside ? (Island.hasCard ? 440 : 392) : expanded ? 392 : compact ? compactW : dotsW + 14
     // (Recent opened over the activities keeps the island as tall as it was,
     // so it doesn't shrink out from under the pointer and close)
-    readonly property real targetH: expanded ? Math.max(body.y + body.implicitHeight + (showingEvent ? 16 : 14), recentOver ? recentHoldH : 0) : pillMode ? 30 : 26
+    // (not while an alert has the island: it held the list's height, empty)
+    readonly property real targetH: expanded ? Math.max(body.y + body.implicitHeight + (eventInside ? 16 : 14), recentOver && !eventInside ? recentHoldH : 0) : pillMode ? 30 : 26
     property real w: targetW
     property real h: targetH
     // Corners follow the height as it springs (no spring of their own: lagging
@@ -198,6 +209,13 @@ Item {
     onTargetWChanged: if (filled) openW = targetW
     Behavior on w { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
     Behavior on h { SpringAnimation { spring: Theme.motion.spring + 1.2; damping: Theme.motion.damping + 0.04; epsilon: 0.3 } }
+
+    // Cuts a layer to the island's own shape (common/squircleclip.frag)
+    component SquircleClip: ShaderEffect {
+        readonly property size size: Qt.size(width, height)
+        readonly property real radius: root.r
+        fragmentShader: Qt.resolvedUrl("../../common/squircleclip.frag.qsb")
+    }
 
     // The visible shape, centred at the top
     readonly property alias shape: shape
@@ -239,12 +257,7 @@ Item {
             opacity: shape.fade
             visible: opacity > 0.01
             layer.enabled: true
-            layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: inkMask
-                maskThresholdMin: 0.5
-                maskSpreadAtMin: 1
-            }
+            layer.effect: SquircleClip {}
             // Running hot, while open: a faint red arch rising from the bottom
             // edge, breathing slowly, behind the black so it only glows
             // through the glassy lower part. A pre-blurred glow image that only
@@ -280,7 +293,7 @@ Item {
                 id: islandArt
                 anchors.fill: parent
                 readonly property bool wanted: Config.options.island.playerArt === "island" && Config.options.island.playerLayout !== "side"
-                    && root.expanded && !Island.event && !root.recentOver && (Island.player?.trackArtUrl ?? "") !== ""
+                    && root.expanded && !root.eventInside && !root.recentOver && (Island.player?.trackArtUrl ?? "") !== ""
                     && (root.oneAtATime ? root.shownAct?.kind === "music" : Island.activities.some(a => a.kind === "music"))
                 // Loaded once at a fixed size and kept while the music plays:
                 // a size that follows the island reloaded it on every open
@@ -313,12 +326,7 @@ Item {
             visible: shape.heat > 0.01
             opacity: shape.heat
             layer.enabled: visible
-            layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: inkMask
-                maskThresholdMin: 0.5
-                maskSpreadAtMin: 1
-            }
+            layer.effect: SquircleClip {}
             readonly property real cx: dots.x + dots.activeCenter
             // Only soft ripples (no glow under the chip): three pre-blurred
             // glows that swell and fade in turn, 1.5 s apart, on a slow clock
@@ -347,17 +355,6 @@ Item {
                     opacity: 0.32 * Math.sin(Math.PI * t)
                 }
             }
-        }
-        // The island's own shape (continuous corners, exactly the glass's
-        // squircle): the black, the album art and the hot glow are cut to it,
-        // so no second, rounder corner shows inside the glass's
-        Squircle {
-            id: inkMask
-            anchors.fill: parent
-            radius: root.r
-            color: "black"
-            visible: false
-            layer.enabled: true
         }
         // A faint rim on the same curve (over the art too: one outline)
         Squircle {
@@ -396,10 +393,10 @@ Item {
                 fg: root.ink
                 x: !root.compact || root.layout !== "beside" ? (root.w - width) / 2 : root.groupLeft
                 y: root.expanded ? 7 : 2
-                opacity: root.showingEvent || root.overFs || (root.compact && root.layout === "replace") ? 0 : 1
+                opacity: root.eventInside || root.overFs || (root.compact && root.layout === "replace") ? 0 : 1
                 // (hidden under an alert or over a fullscreen app, it takes no clicks:
                 // a click on the alert pill switched spaces)
-                enabled: !root.showingEvent && !root.overFs
+                enabled: !root.eventInside && !root.overFs
                 Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Behavior on y { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.06; epsilon: 0.2 } }
             }
@@ -518,8 +515,8 @@ Item {
             // Expanded body
             Column {
                 id: body
-                x: root.showingEvent ? 18 : 12
-                y: root.showingEvent ? 16 : 36
+                x: root.eventInside ? 18 : 12
+                y: root.eventInside ? 16 : 36
                 width: (root.expanded ? root.targetW : root.openW) - 2 * x
                 spacing: 10
                 visible: root.h > 30
@@ -556,7 +553,7 @@ Item {
                         spacing: 10
                         Repeater {
                             id: alertRepeater
-                            model: Island.alerts
+                            model: root.alertsBelow ? null : Island.alerts
                             IslandEvent {
                                 required property int uid
                                 required property int index
@@ -607,7 +604,7 @@ Item {
                 // Otherwise: what's live (one focused card, or all stacked),
                 // then a small status row
                 Item {
-                    visible: !Island.event && !root.recentOver && root.oneAtATime && Island.activities.length > 0
+                    visible: !root.eventInside && !root.recentOver && root.oneAtATime && Island.activities.length > 0
                     width: body.width
                     height: visible ? focusCard.implicitHeight + (pageDots.visible ? 14 : 0) : 0
                     IslandFocusCard {
@@ -649,7 +646,7 @@ Item {
                 // Captions in the island while something else has the focus
                 // (the music): their last words still show, under it
                 CaptionLines {
-                    visible: !Island.event && !root.recentOver && root.oneAtATime && Captions.enabled && Captions.placement === "island" && (root.shownAct?.kind ?? "") !== "captions"
+                    visible: !root.eventInside && !root.recentOver && root.oneAtATime && Captions.enabled && Captions.placement === "island" && (root.shownAct?.kind ?? "") !== "captions"
                     width: body.width
                     height: visible ? implicitHeight : 0
                     ink: "#F5F5F7"
@@ -660,13 +657,13 @@ Item {
                 // controls over it, open the app, volume), the rest are rows
                 IslandFocusCard {
                     readonly property var musicAct: Island.activities.find(a => a.kind === "music") ?? null
-                    visible: !Island.event && !root.recentOver && !root.oneAtATime && musicAct !== null
+                    visible: !root.eventInside && !root.recentOver && !root.oneAtATime && musicAct !== null
                     width: body.width
                     height: visible ? implicitHeight : 0
                     activity: musicAct ?? { kind: "music" }
                 }
                 Repeater {
-                    model: Island.event || root.recentOver || root.oneAtATime ? [] : Island.activities.filter(a => a.kind !== "music")
+                    model: root.eventInside || root.recentOver || root.oneAtATime ? [] : Island.activities.filter(a => a.kind !== "music")
                     IslandActivity {
                         required property var modelData
                         required property int index
@@ -678,7 +675,7 @@ Item {
                 }
                 IslandStatus {
                     width: parent.width
-                    visible: !Island.event
+                    visible: !root.eventInside
                     delay: Island.activities.length * 45
                     shown: root.expanded
                 }
@@ -687,7 +684,7 @@ Item {
                 IslandRecent {
                     id: recent
                     width: parent.width
-                    visible: !Island.event && Island.history.length > 0 && (!collapsible || root.recentOpen)
+                    visible: !root.eventInside && Island.history.length > 0 && (!collapsible || root.recentOpen)
                     shown: root.expanded
                     collapsible: Island.activities.length > 0
                     open: root.recentOpen
@@ -701,7 +698,7 @@ Item {
         // Recent, when live activities share the island: a button at the top
         // left (the pin's twin) that opens the last alerts in their place
         IconButton {
-            visible: opacity > 0.01 && !root.showingEvent && Island.activities.length > 0 && Island.history.length > 0
+            visible: opacity > 0.01 && !root.eventInside && Island.activities.length > 0 && Island.history.length > 0
             x: 6
             y: 3
             width: 26
@@ -717,7 +714,7 @@ Item {
 
         // Pin: keep the island open even with nothing happening
         IconButton {
-            visible: opacity > 0.01 && !root.showingEvent
+            visible: opacity > 0.01 && !root.eventInside
             x: parent.width - width - 6
             y: 3
             width: 26

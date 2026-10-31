@@ -4,9 +4,12 @@
 
 - **Album art in the island loads reliably.** Browsers like Zen save each video's picture under the same file name, so the island sometimes kept the previous picture or showed none. Each track now loads its own picture, a failed load is retried, and the picture is read again a moment after the track changes. The same fix applies to the lock screen, Control Center, the desktop widget and Now Playing.
 - **Album art no longer goes missing after a browser restarts a video.** Zen can leave its old player behind, still saying it's playing, with its picture deleted, and the island showed that one. It now shows the newest player that's playing.
+- **Album art (and the island's black) no longer vanish after the island closes and opens again.** The rounded-corner effect cutting the island to shape stopped drawing after the island shrank and grew. A small shader of iRice's own does that job now.
+- **Alerts no longer take over the open island.** When the island is open (pointed at or pinned) and an alert arrives, the island stays as it is, and the alert drops in as a card just under it. Newest on top; up to two more peek out behind it, with a count of any others. Pointing at the card holds their time. When the island is closed, alerts show in the island as before.
+- **No more tall empty island** when an alert arrived while Recent was open.
 - **The island's player has new button places:**
   - **Volume on the left.** Click the speaker to mute. Point at it and a slider opens beside it for the app's own volume (or the system's).
-  - **Open the app on the right,** where the speaker was, next to Cast. Point at it to see which app it opens (its name is cut short when long).
+  - **Open the app on the right,** where the speaker was, next to Cast. Point at it to see which app it opens (its name is cut short when long). The island's buttons are round when pointed at.
   - **Recent alerts moved to a button at the top left,** next to the pin's corner. It no longer takes a row at the bottom of the island.
 - **The island no longer gets cut off at the bottom** when music, captions and the status row show together. It has more room to grow.
 - **The compact island's buttons work on the first click.** Pointing at pause, stop or close no longer opens the island under the pointer, so the click reaches the button. Pointing anywhere else on the pill still opens it.

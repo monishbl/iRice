@@ -97,6 +97,7 @@ Item {
     component Ctl: IconButton {
         width: 36
         height: 36
+        radius: height / 2 // (round on the island, like its controls)
         fill: true
         iconSize: 18
         iconColor: root.ink
@@ -123,6 +124,7 @@ Item {
             id: speaker
             icon: root.muted ? "speaker-x" : root.volume < 0.4 ? "speaker-low" : "speaker-high"
             fill: !vol.open
+            color: "transparent" // (the pill around it shows the hover)
             tooltip: root.muted ? "Unmute" : "Mute"
             onClicked: root.toggleMute()
         }
@@ -172,7 +174,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: Qt.rgba(1, 1, 1, oa.open ? 0.12 : 0)
+            color: Qt.rgba(1, 1, 1, oaTap.pressed ? 0.2 : oaHover.hovered ? 0.12 : 0)
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         }
         Text {
@@ -194,11 +196,13 @@ Item {
             icon: "arrow-square-out"
             fill: false
             iconSize: 17
+            color: "transparent" // (the pill shows the hover: one round shape)
             tooltip: "Open " + (name.text || "the player")
             onClicked: root.openPlayer()
         }
         // (the name is part of the button too)
         TapHandler {
+            id: oaTap
             onTapped: root.openPlayer()
         }
     }
