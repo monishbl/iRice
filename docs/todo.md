@@ -1,5 +1,25 @@
 # iRice: later
 
+## New features: chosen 31 Oct, not started
+
+Ask about each one's design before building; one at a time.
+- **Voice typing anywhere** (like Windows Win+H): a shortcut, speak, and the
+  text types into the focused app. Offline (whisper.cpp or similar), nothing
+  sent anywhere.
+- **Live captions** (like Windows 11 / Android): subtitles for any audio the
+  laptop plays (calls, videos) in a small floating bar. Offline.
+- **Drop shelf** (like Yoink / Dropover / ChromeOS Holding Space): shake a
+  file while dragging to open a shelf that holds it; collect from several
+  places, then drop them all at once.
+- **Shake to find the pointer** (like macOS / KDE): wiggle the mouse and the
+  pointer grows big for a moment.
+- **Undo a bad update** (like openSUSE / Silverblue): Software Update already
+  takes a snapper snapshot before updating (snapper + btrfs-assistant are on
+  this laptop); add "Go back to before the last update" in Settings and a way
+  back at startup if the desktop won't load.
+- **Phone as a webcam** (like Continuity Camera): the OnePlus camera as a
+  webcam for calls (v4l2loopback; e.g. DroidCam or scrcpy --video-source=camera).
+
 ## Quick Share: paused (30 Oct)
 
 Works with a real phone (OnePlus 15): found over Bluetooth, no pairing prompt
