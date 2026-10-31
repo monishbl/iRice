@@ -150,13 +150,31 @@ async def network():
     nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
     iwd = bool(await _run("busctl", "--system", "status", "net.connman.iwd"))
     return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm, "iwd": iwd,
-            "driver": wifi_driver(station) if station else "", **caps}
+            "shield": nm and helper_shields(), "driver": wifi_driver(station) if station else "", **caps}
+
+
+def helper_script():
+    """The Wi-Fi helper that would run: the root helper's copy once installed."""
+    installed = os.path.join(os.path.dirname(ROOT_HELPER), "qs-wifi-helper.py")
+    return installed if os.access(ROOT_HELPER, os.X_OK) and os.path.exists(installed) else HELPER
+
+
+def helper_shields():
+    """Whether that helper keeps NetworkManager from ending its group (a D-Bus
+    rule while it lasts: qs-wifi-helper.py DBUS_SHIELD). Older copies don't."""
+    try:
+        with open(helper_script()) as f:
+            return "zzz-irice-quickshare" in f.read()
+    except OSError:
+        return False
 
 
 def direct_possible(net):
-    """Whether a Wi-Fi Direct group we host can last (see nm_manages). The
+    """Whether a Wi-Fi Direct group we host can last: not where NetworkManager
+    runs the Wi-Fi (see nm_manages) unless the helper shields it from that. The
     helper makes links through wpa_supplicant, which doesn't run next to iwd."""
-    return net.get("p2p_go", True) and not net.get("nm", False) and not net.get("iwd", False)
+    return net.get("p2p_go", True) and (not net.get("nm", False) or net.get("shield", False)) \
+        and not net.get("iwd", False)
 
 
 def hotspot_possible(net):
@@ -171,8 +189,8 @@ def no_direct_reason(net):
     shared network and Bluetooth still work)."""
     if net.get("iwd"):
         return "iwd runs the Wi-Fi here, and Wi-Fi Direct needs wpa_supplicant instead"
-    if net.get("nm") and net.get("p2p_go", True):
-        return "NetworkManager ends Wi-Fi Direct links it didn't make"
+    if net.get("nm") and net.get("p2p_go", True) and not net.get("shield"):
+        return "NetworkManager ends Wi-Fi Direct links it didn't make (iRice's next update works around that)"
     return "Wi-Fi Direct isn't available here"
 
 

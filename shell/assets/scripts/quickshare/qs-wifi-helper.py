@@ -139,20 +139,53 @@ def ap_freq(station, hint, chans, driver=""):
     return f
 
 
+# NetworkManager ends every Wi-Fi Direct group it didn't start: told of it
+# (GroupStarted, on the station's own wpa_supplicant object) it wraps the
+# group's interface, nothing keeps the wrapper, and disposing it calls
+# wpa_supplicant's RemoveInterface (nm-supplicant-interface.c; no setting
+# turns that off). While our group lasts, a D-Bus policy refuses that one
+# call to everyone: the group stays, and NetworkManager keeps the Wi-Fi's own
+# connection, so the internet stays up. This helper doesn't call
+# RemoveInterface meanwhile (P2PDevice.Disconnect ends the group). In /etc,
+# as the bus reads policy only from /usr/share and /etc; one left by a
+# helper that died is removed when the next one starts.
+DBUS_SHIELD = "/etc/dbus-1/system.d/zzz-irice-quickshare.conf"
+
+
+def dbus_shield_conf():
+    return """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <!-- iRice Quick Share, while it hosts a Wi-Fi Direct group (removed afterwards):
+       NetworkManager would end the group with RemoveInterface -->
+  <policy context="mandatory">
+    <deny send_destination="fi.w1.wpa_supplicant1" send_interface="fi.w1.wpa_supplicant1"
+          send_member="RemoveInterface"/>
+  </policy>
+</busconfig>
+"""
+
+
 NM_CONF_DIR = "/run/NetworkManager/conf.d"
 NM_CONF = "90-irice-quickshare.conf"
 
 
-def nm_unmanaged_conf(station):
+def nm_unmanaged_conf(station, p2p_dev=True):
     """The drop-in that keeps NetworkManager off our interfaces: wpa_supplicant's
     group interfaces ("p2p-<station>-N", or "p2p-grp-N" for long names), our
     own, and, while the link lasts, its own P2P device (p2p-dev-<station>):
     told of a group it didn't ask for, that device ends it ("notified a group
     start but we are not trying to connect", then AP-DISABLED in the same
     second, on a real laptop). The station's connection is on the station
-    itself and isn't touched. Appended (+=) to whatever the user lists already."""
-    specs = [f"interface-name:p2p-dev-{station}", f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
-             f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
+    itself and isn't touched. Appended (+=) to whatever the user lists already.
+    p2p_dev=False (a group hosted behind the D-Bus shield): its P2P device
+    stays NetworkManager's. The shield already stops it ending the group, and
+    handing the device back afterwards leaves it "unavailable" (managed-type
+    external) until the Wi-Fi is turned off and on, which breaks Miracast
+    (Screen Mirroring) meanwhile: seen on a real laptop."""
+    specs = ([f"interface-name:p2p-dev-{station}"] if p2p_dev else []) + \
+        [f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
+         f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
     return "# iRice Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
            "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
 
@@ -422,6 +455,22 @@ class Wpa:
         except Refused:
             pass
 
+    def reload_bus(self):
+        """The bus re-reads its policy (dbus-daemon and dbus-broker alike)."""
+        self.bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReloadConfig",
+                           None, None, self.Gio.DBusCallFlags.NONE, 15000, None)
+
+    def remove_refused(self):
+        """Whether RemoveInterface is refused now (asked about an interface
+        that doesn't exist: refused, or "unknown interface")."""
+        try:
+            self.bus.call_sync(WPA, WPA_PATH, WPA, "RemoveInterface",
+                               self.GLib.Variant("(o)", ("/fi/w1/wpa_supplicant1/Interfaces/4294967295",)),
+                               None, self.Gio.DBusCallFlags.NONE, 5000, None)
+        except self.GLib.Error as e:
+            return "AccessDenied" in (self.Gio.DBusError.get_remote_error(e) or "")
+        return False
+
 
 def start_group(wpa, dev, freq, timeout=10, settle=0.5, anywhere=True):
     """GroupAdd on the station's P2P device; (group interface path, group path).
@@ -541,14 +590,14 @@ class Links:
     def usable():
         return parse_iw_phy(run("iw", "phy", check=False)) if have("iw") else {}
 
-    def _nm_off(self, sta):
+    def _nm_off(self, sta, p2p_dev=True):
         """NetworkManager keeps off our interfaces until teardown (see the top)."""
         if self.nm_conf or not os.path.isdir(os.path.dirname(NM_CONF_DIR)):
             return
         os.makedirs(NM_CONF_DIR, exist_ok=True)
         path = os.path.join(NM_CONF_DIR, NM_CONF)
         with open(path, "w") as f:
-            f.write(nm_unmanaged_conf(sta))
+            f.write(nm_unmanaged_conf(sta, p2p_dev))
         self.nm_conf = path
         nm_reload()
 
@@ -560,6 +609,36 @@ class Links:
             self.nm_conf = None
             nm_reload()
         self.undo.append(restore)
+
+    @staticmethod
+    def nm_manages(sta):
+        if not have("nmcli"):
+            return False
+        for line in run("nmcli", "-t", "-f", "DEVICE,STATE", "device", check=False).splitlines():
+            dev, _, state = line.partition(":")
+            if dev == sta:
+                return not state.startswith("unmanaged")
+        return False
+
+    def _shield(self, wpa):
+        """NetworkManager can't end our group meanwhile (see DBUS_SHIELD)."""
+        os.makedirs(os.path.dirname(DBUS_SHIELD), exist_ok=True)
+        with open(DBUS_SHIELD + ".tmp", "w") as f:
+            f.write(dbus_shield_conf())
+        os.replace(DBUS_SHIELD + ".tmp", DBUS_SHIELD)
+
+        def lift():
+            unshield(wpa)
+        self.undo.append(lift)
+        try:
+            wpa.reload_bus()
+        except Exception as e:  # noqa: BLE001
+            raise Refused(f"the system bus wouldn't take the rule that keeps NetworkManager off the group ({e})") from None
+        for _ in range(20):  # (dbus-broker applies a reload a moment after answering)
+            if wpa.remove_refused():
+                return
+            time.sleep(0.1)
+        raise Refused("NetworkManager would end the Wi-Fi Direct group (the system bus didn't take the rule against it)")
 
     def _netdevs(self):
         try:
@@ -621,7 +700,10 @@ class Links:
         wpa = self._wpa()
         sta = self.station()
         freq = go_freq(self.station_freq(sta), hint, self.usable())
-        self._nm_off(sta)
+        shielded = self.nm_manages(sta)
+        if shielded:
+            self._shield(wpa)
+        self._nm_off(sta, p2p_dev=not shielded)
         dev = wpa.interface(sta)
         netdevs = self._netdevs()
         self.undo.append(lambda: self._remove_new_groups(netdevs))
@@ -717,6 +799,17 @@ class Links:
                 pass
 
 
+def unshield(wpa):
+    try:
+        os.remove(DBUS_SHIELD)
+    except FileNotFoundError:
+        return
+    try:
+        wpa.reload_bus()
+    except Exception:  # noqa: BLE001 (the file is gone: the next reload drops it)
+        pass
+
+
 def main():
     links = Links()
 
@@ -728,7 +821,12 @@ def main():
     if os.geteuid() != 0:
         answer({"ok": False, "error": "The Wi-Fi helper needs root (pkexec)."})
         return
-    answer({"ok": True, "ready": True})
+    if os.path.exists(DBUS_SHIELD):  # (left by a helper that died)
+        try:
+            unshield(links._wpa())
+        except Refused:
+            pass
+    answer({"ok": True, "ready": True, "shield": True})
     try:
         for line in sys.stdin:
             try:
