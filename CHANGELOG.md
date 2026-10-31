@@ -8,6 +8,7 @@
   - **Sending to a phone no longer pauses your Wi-Fi:** this computer joins the phone's Wi-Fi Direct link as a second, Wi-Fi Direct connection beside your own (Wi-Fi chips allow one), where it used to drop your Wi-Fi for the transfer.
   - **Wider links:** links this computer makes now use a wide 80 MHz channel instead of 20 MHz.
   - **Checked with a real phone, 300 MB each way, byte-identical, with your Wi-Fi and internet up the whole time:** 95 MB/s to the phone, 35 MB/s from it (6.5 MB/s before the wider channel).
+- **Fast transfers without asking.** A new switch in Settings → Sharing lets Quick Share set up its direct Wi-Fi link without asking for your password each time. Turning it on or off asks once. It applies to your account only, at this computer; updates and everything else still ask.
 - **Live captions.** Subtitles for whatever this computer plays: videos, calls, podcasts. Turn them on in the new **Settings → Accessibility** page, with **Super+Ctrl+L**, or from a Control Center tile you can add.
   - **How it works:** captions are made on this computer with whisper.cpp's Tiny model (75 MB, downloaded once), about 2 seconds behind the speech. Nothing is saved or sent anywhere, and the microphone is never captioned.
   - **Where they show:** in a floating bar above the Dock that you can drag anywhere, in the island, or in a strip across the bottom of the screen that windows make room for. White on dark, so they read over any picture.

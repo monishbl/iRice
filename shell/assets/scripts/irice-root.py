@@ -54,6 +54,10 @@ With the password, once, at the start:
       update has). Only pacman runs, from /usr/bin, its arguments checked
       (check_pacman); output and exit code go back the same way. It ends
       when sysupdate.py closes the socket, so nothing outlives the update.
+  quickshare-trust on|off
+      Quick Share's Wi-Fi helper starts without the password for you (a
+      polkit rule naming you, at this computer, in the session on screen);
+      off removes it. /etc/irice/quickshare-trusted says it's on
   bootmenu on|off
       snapshots in GRUB's boot menu: grub-btrfs's daemon (grub-btrfsd), on
       or off; on also writes the submenu now
@@ -457,6 +461,59 @@ def phonecam(on, etc="/etc", run=subprocess.run, dev_dir="/dev"):
     return changed
 
 
+# ── quickshare-trust (Settings → Sharing → Fast transfers without asking) ─
+# Quick Share's Wi-Fi helper (it makes and joins Wi-Fi Direct links) asks
+# for the password each time it starts. On: a polkit rule lets it start
+# without asking, for the person who turned it on, at this computer, in the
+# session on screen; nothing else changes (updates and the rest still ask).
+# A marker readable by all says it's on (polkit's rules.d is root's only).
+QS_TRUST_RULE = "/etc/polkit-1/rules.d/49-irice-quickshare.rules"
+QS_TRUST_MARK = "/etc/irice/quickshare-trusted"
+
+
+def quickshare_trust_rule(user):
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}\$?", user or ""):
+        raise Refused("unusable user name")
+    return f"""// iRice: Quick Share's Wi-Fi helper starts without the password for {user}
+// (Settings → Sharing → Fast transfers without asking; off removes this file)
+polkit.addRule(function (action, subject) {{
+    if (action.id !== "org.irice.root.wifi-helper")
+        return polkit.Result.NOT_HANDLED;
+    if (action.lookup("program") !== "/usr/lib/irice/irice-root")
+        return polkit.Result.NOT_HANDLED;
+    var words = String(action.lookup("command_line") || "").split(" ");
+    if (words[0] !== "/usr/lib/irice/irice-root" || words[1] !== "wifi-helper" || words.length !== 2)
+        return polkit.Result.NOT_HANDLED;
+    if (subject.user === "{user}" && subject.active && subject.local)
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+}});
+"""
+
+
+def quickshare_trust(on, uid, prefix=None):
+    """Returns the files changed."""
+    prefix = PREFIX if prefix is None else prefix
+    rule = os.path.join(prefix, QS_TRUST_RULE.lstrip("/"))
+    mark = os.path.join(prefix, QS_TRUST_MARK.lstrip("/"))
+    if on:
+        try:
+            user = pwd.getpwuid(uid).pw_name
+        except KeyError:
+            raise Refused("unknown user") from None
+        if uid == 0:
+            raise Refused("turn it on as yourself, not as root")
+        write_root(rule, quickshare_trust_rule(user).encode(), 0o644)
+        write_root(mark, (user + "\n").encode(), 0o644)
+        return [rule, mark]
+    changed = []
+    for path in (rule, mark):
+        if os.path.exists(path):
+            os.unlink(path)
+            changed.append(path)
+    return changed
+
+
 # ── bootmenu (Settings → Software Update → Going back) ──────────────────
 GRUB_BTRFS_SCRIPT = "/etc/grub.d/41_snapshots-btrfs"
 
@@ -824,6 +881,10 @@ def main(argv):
             for d in phonecam(args[0] == "on"):
                 print("changed", d)
             return 0
+        if cmd == "quickshare-trust" and len(args) == 1 and args[0] in ("on", "off"):
+            for d in quickshare_trust(args[0] == "on", uid):
+                print("changed", d)
+            return 0
         if cmd == "bootmenu" and len(args) == 1 and args[0] in ("on", "off"):
             for d in bootmenu(args[0] == "on"):
                 print(d)
@@ -833,6 +894,7 @@ def main(argv):
                 print("installed", d)
             return 0
         raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
+                      "quickshare-trust on|off | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

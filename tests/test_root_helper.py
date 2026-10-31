@@ -6,6 +6,7 @@ into a temporary folder. Nothing real is asked or changed.
 import importlib.util
 import json
 import os
+import shutil
 import socket
 import stat
 import subprocess
@@ -642,3 +643,58 @@ class WifiHelperStart(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuickShareTrust(unittest.TestCase):
+    """irice-root.py quickshare-trust: a polkit rule letting Quick Share's
+    Wi-Fi helper start without the password, for the one person who asked."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.r = load(SCRIPTS / "irice-root.py", "irice_root_trust")
+        self.r.write_root = lambda dest, data, mode: (os.makedirs(os.path.dirname(dest), exist_ok=True), Path(dest).write_bytes(data))
+        self.user = __import__("pwd").getpwuid(os.getuid()).pw_name
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_on_and_off(self):
+        changed = self.r.quickshare_trust(True, os.getuid(), prefix=self.dir.name)
+        rule = Path(self.dir.name, "etc/polkit-1/rules.d/49-irice-quickshare.rules")
+        mark = Path(self.dir.name, "etc/irice/quickshare-trusted")
+        self.assertEqual(sorted(changed), sorted([str(rule), str(mark)]))
+        self.assertIn(f'subject.user === "{self.user}"', rule.read_text())
+        self.assertEqual(mark.read_text().strip(), self.user)
+        self.r.quickshare_trust(False, os.getuid(), prefix=self.dir.name)
+        self.assertFalse(rule.exists() or mark.exists())
+
+    def test_not_for_root_or_odd_names(self):
+        with self.assertRaises(self.r.Refused):
+            self.r.quickshare_trust(True, 0, prefix=self.dir.name)
+        with self.assertRaises(self.r.Refused):
+            self.r.quickshare_trust_rule('x"; return polkit.Result.YES; //')
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_the_rule_allows_only_the_wifi_helper_for_that_user(self):
+        harness = r"""
+var rules = [];
+var polkit = { Result: { YES: "yes", NOT_HANDLED: "nh" }, addRule: function (f) { rules.push(f); } };
+%s
+function ask(id, prog, cmd, user, active, local) {
+    var action = { id: id, lookup: function (k) { return k === "program" ? prog : cmd; } };
+    var subject = { user: user, active: active, local: local };
+    return rules[0](action, subject);
+}
+var H = "/usr/lib/irice/irice-root";
+console.log(JSON.stringify([
+    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", true, true),
+    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "bob", true, true),
+    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", false, true),
+    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", true, false),
+    ask("org.irice.root.update", H, H + " update", "alice", true, true),
+    ask("org.irice.root.wifi-helper", "/bin/sh", H + " wifi-helper", "alice", true, true),
+    ask("org.irice.root.wifi-helper", H, H + " wifi-helper extra", "alice", true, true)
+]));
+""" % self.r.quickshare_trust_rule("alice")
+        out = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
+        self.assertEqual(json.loads(out.stdout), ["yes", "nh", "nh", "nh", "nh", "nh", "nh"], out.stderr)

@@ -139,7 +139,10 @@ Singleton {
     // shell restarted. If it exits while still needed, it's tried again a
     // few seconds later (then less often).
     onNeededChanged: sync()
-    Component.onCompleted: sync()
+    Component.onCompleted: {
+        sync();
+        checkTrust();
+    }
     function sync() {
         if (needed && !helper.running)
             helper.running = true;
@@ -268,6 +271,8 @@ Singleton {
                     Island.post({ kind: "custom", icon: "wifi-high", title: "Switching to Wi-Fi", subtitle: ev.message, color: Theme.accents.blue }, 5000);
                     break;
                 case "auth": // pkexec is about to ask for the password: say what for
+                    if (root.trusted)
+                        break; // (it won't ask: Fast transfers without asking)
                     Island.post({ kind: "custom", icon: "lock", title: "Password for a faster link", subtitle: ev.message, color: Theme.accents.blue }, 10000);
                     break;
                 }
@@ -300,5 +305,44 @@ Singleton {
         for (const w of wifi)
             Island.post({ kind: "custom", icon: "wifi-high", title: "Wi-Fi network from " + ev.from, subtitle: w.ssid, color: Theme.accents.green,
                 action: "Copy Password", onAction: () => Quickshell.execDetached(["wl-copy", "--", w.password]) }, 10000);
+    }
+
+    // ── Fast transfers without asking (Settings → Sharing) ──────────────
+    // A polkit rule lets the Wi-Fi helper start without the password, for
+    // you (iRice's root helper: quickshare-trust). Turning it on or off asks
+    // once. /etc/irice/quickshare-trusted (readable by all) says it's on.
+    property bool trusted: false
+    property bool trustBusy: false
+    property string trustError: ""
+    function checkTrust() {
+        trustProbe.running = true;
+    }
+    Process {
+        id: trustProbe
+        command: ["test", "-e", "/etc/irice/quickshare-trusted"]
+        onExited: code => root.trusted = code === 0
+    }
+    function setTrusted(on) {
+        if (trustProc.running)
+            return;
+        trustError = "";
+        if (Tools.ready && !Tools.has("pkexec")) {
+            trustError = "Changing this needs polkit (pkexec), which isn't installed.";
+            return;
+        }
+        trustBusy = true;
+        trustProc.command = ["pkexec", "/usr/lib/irice/irice-root", "quickshare-trust", on ? "on" : "off"];
+        trustProc.running = true;
+    }
+    Process {
+        id: trustProc
+        stderr: StdioCollector { id: trustErr }
+        onExited: code => {
+            root.trustBusy = false;
+            if (code !== 0 && code !== 126)
+                root.trustError = code === 127 ? "Not allowed (an administrator's password is needed)."
+                    : (trustErr.text.replace(/^irice-root: /, "").trim() || "That didn't change. Update iRice, then try again.");
+            root.checkTrust();
+        }
     }
 }

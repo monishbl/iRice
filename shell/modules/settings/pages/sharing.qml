@@ -181,11 +181,24 @@ Column {
         Row {
             label: "Fast transfers without a shared Wi-Fi"
             detail: Config.options.sharing.quickShareHotspot !== false
-                ? "This computer's Wi-Fi pauses during the transfer (the internet too), then comes back"
-                : "Off: they go over Bluetooth, which is slow; the Wi-Fi isn't touched"
+                ? "A direct Wi-Fi link with the phone, next to your own Wi-Fi where this computer's Wi-Fi allows it (else your Wi-Fi pauses during the transfer, then comes back)"
+                : "Off: they go over Bluetooth, which is slower; the Wi-Fi isn't touched"
             Switch {
                 checked: Config.options.sharing.quickShareHotspot !== false
                 onToggled: Config.options.sharing.quickShareHotspot = !checked
+            }
+        }
+        Row {
+            visible: Config.options.sharing.quickShareHotspot !== false
+            label: "Fast transfers without asking"
+            detail: QuickShare.trustError !== "" ? QuickShare.trustError
+                : QuickShare.trusted ? "The direct Wi-Fi link is set up without your password. Any app running as you could set one up too; turn this off to be asked again."
+                : "Off: your password is asked each time a direct Wi-Fi link is set up. Changing this asks for it once."
+            labelColor: QuickShare.trustError !== "" ? Theme.color.danger : Theme.color.label
+            Switch {
+                enabled: !QuickShare.trustBusy
+                checked: QuickShare.trusted
+                onToggled: QuickShare.setTrusted(!checked)
             }
         }
         Row {
