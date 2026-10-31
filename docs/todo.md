@@ -9,8 +9,8 @@ parts need the real laptop:
   Check: the Broadcom ControlVault 3 (0a5c:5843) shows up in fprintd; the lock
   screen takes a finger and a password at once; password prompts and sudo wait
   ~10 s for a finger then ask for the password; the login screen (ly).
-- **Dictation**: Settings -> Dictation -> Install (whisper-cpp), Base is
-  downloaded by default. Check Super+H tap and hold with the real microphone
+- **Dictation**: Settings -> Dictation -> Install (whisper-cpp), then Download
+  Base (142 MB). Check Super+H tap and hold with the real microphone
   (the hold's release bind was only checked as registered, not pressed: wtype
   can't press compositor binds in the sandbox), and typing into a browser and a
   terminal (wtype; it falls back to the clipboard).
