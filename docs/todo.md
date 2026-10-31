@@ -34,7 +34,27 @@ Ask about each one's design before building; one at a time.
   back at startup if the desktop won't load.
 - **Phone as a webcam**: now part of "Android phone on the computer" below.
 
-## Integrations: chosen 31 Oct, not started
+## Integrations: chosen 31 Oct, being built
+
+Design decided 31 Oct (all, then built one after another, testable first:
+AirPlay, Chromecast, iCloud, Drive + Microsoft 365, Android phone, Miracast,
+Fast Pair, Face unlock):
+- AirPlay: off until turned on, in a new Settings -> Sound page (outputs,
+  inputs, AirPlay, sounds); speakers then appear in the output lists.
+- Chromecast: a cast button in Now Playing (island + Control Center), the
+  share sheet for files, and a Spotlight command "Cast to <TV>".
+- iCloud: read and add/edit/delete events; contacts in Spotlight and sharing.
+- Drive/OneDrive: rclone folders (~/Google Drive, ~/OneDrive), own sign-in.
+  Microsoft 365 account (GNOME Online Accounts, ms_graph: calendars and
+  tasks read/write) for Outlook calendar and To Do in Today and Calendar.
+- Android phone: in the dock while connected, a Settings -> Phone page
+  (setup, wireless pairing QR, battery, options), phone camera as a webcam,
+  drag files onto it.
+- Miracast: a Screen Mirroring tile in Control Center and "Add a wireless
+  display" in Settings -> Displays; "Casting to <TV>" in the island.
+- Fast Pair: whenever Bluetooth is on, light scan (a few seconds every half
+  minute, continuous on the charger); island card with Connect, then battery.
+- Face unlock: lock screen only (the laptop has an IR camera, video2).
 
 Official or open ways in only (published APIs, open standards, the Linux
 stack), like Quick Share. For every iRice user, not one laptop: each shows
