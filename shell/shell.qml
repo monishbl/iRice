@@ -62,7 +62,7 @@ ShellRoot {
         ScreenTools.translation = null;
     }
     // Services that must run without a UI referencing them
-    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices, Privacy, NetworkAlerts, Sounds, Transfers, Calls, Badges, ScreenTime, Todos, AppTheme, LocalSend, QuickShare, WindowRules, IriceUpdate, Displays, Mouse, Spaces, Backends, Conflicts, AirPlay, Cast, CloudAccounts, CloudDrives, Phone, FastPair, Shelf, Dictation, Fingerprint]
+    readonly property var services: [Power, Weather, Decorations, KeyboardLayout, Tools, Tiling, StageManager, Focus, Calendar, Devices, Privacy, NetworkAlerts, Sounds, Transfers, Calls, Badges, ScreenTime, Todos, AppTheme, LocalSend, QuickShare, WindowRules, IriceUpdate, Displays, Mouse, Spaces, Backends, Conflicts, AirPlay, Cast, CloudAccounts, CloudDrives, Phone, FastPair, Shelf, Dictation, Fingerprint, Face]
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Bold.ttf") }

@@ -412,6 +412,68 @@ class PhoneCam(unittest.TestCase):
         self.assertFalse((self.etc / "modprobe.d/irice-phonecam.conf").exists())
 
 
+class FaceUnlock(unittest.TestCase):
+    """irice-root.py face: Howdy's camera in its config, and faces only for
+    the person who asked."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        d = Path(self.dir.name)
+        self.config = d / "config.ini"
+        self.models = d / "models"
+        self.models.mkdir()
+        self.r = load(SCRIPTS / "irice-root.py", "irice_root_face")
+        self.r.write_root = lambda dest, data, mode: Path(dest).write_bytes(data)
+        self.calls = []
+        self.uid = os.getuid()
+        self.me = __import__("pwd").getpwuid(self.uid).pw_name
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def face(self, args, exists=lambda p: True, which=lambda n: "/usr/bin/howdy"):
+        def run(cmd, **kw):
+            self.calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return self.r.face(args, self.uid, run=run, config=str(self.config), exists=exists, which=which, models=str(self.models))
+
+    def test_setup_sets_the_camera(self):
+        self.config.write_text("[core]\nno_confirmation = false\n\n[video]\ndevice_path = none\ndark_threshold = 60\n")
+        cam = "/dev/v4l/by-path/pci-0000:00:14.0-usb-0:6:1.2-video-index0"
+        self.face(["setup", cam])
+        text = self.config.read_text()
+        self.assertIn("device_path = " + cam, text)
+        self.assertEqual(text.count("device_path"), 1)
+        self.assertIn("dark_threshold = 60", text)
+        self.assertIn(["/usr/bin/howdy", "download-models"], self.calls)
+
+    def test_setup_without_a_video_section(self):
+        self.config.write_text("[core]\nx = 1\n")
+        (self.models / "a.onnx").write_text("")
+        self.face(["setup", "/dev/video2"])
+        self.assertTrue(self.config.read_text().endswith("[video]\ndevice_path = /dev/video2\n"))
+        self.assertEqual(self.calls, [])  # (models already there)
+
+    def test_not_a_camera(self):
+        for bad in ("/etc/shadow", "/dev/video2; rm -rf /", "/dev/v4l/by-path/../../etc/passwd"):
+            with self.assertRaises(self.r.Refused):
+                self.face(["setup", bad])
+        with self.assertRaises(self.r.Refused):
+            self.face(["setup", "/dev/video9"], exists=lambda p: False)
+
+    def test_faces_are_the_callers(self):
+        self.face(["add"])
+        self.face(["clear"])
+        self.assertEqual(self.calls[0][:5], ["/usr/bin/howdy", "-U", self.me, "--plain", "-y"])
+        self.assertEqual(self.calls[1], ["/usr/bin/howdy", "-U", self.me, "-y", "clear"])
+        with self.assertRaises(self.r.Refused):
+            self.face(["add", "someone-else"])
+
+    def test_no_howdy(self):
+        with self.assertRaises(self.r.Refused):
+            self.face(["add"], which=lambda n: None)
+
+
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""
 

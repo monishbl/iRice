@@ -122,6 +122,8 @@ Singleton {
                 property string text: "auto" // light | dark | auto (from the wallpaper)
                 property bool previews: false // notification text on the lock screen (else app names only)
                 property bool fingerprint: true // a finger unlocks it too, once one is added (Fingerprint)
+                property bool face: true // your face unlocks it too, once one is added (Face: Howdy, IR camera)
+                property int faceCount: 0 // faces added from Settings (Howdy's own list is root's)
                 property bool standby: true // StandBy: charging and idle shows a full-screen clock
                 property bool standbyShift: true // StandBy moves a little every minute and rests dark for a minute every 15 (burn-in)
                 property list<string> standbyScreens: [] // screens that show StandBy (others go dark); empty = every screen

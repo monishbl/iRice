@@ -24,6 +24,13 @@ With the password:
       is copied to /etc/pam.d first). "sufficient": no finger in time, or no
       pam_fprintd, and the password is asked as before. iRice's own lock
       screen needs none of this (its PAM file is in the shell).
+  face setup <camera> | add | clear | list
+      face unlock for iRice's lock screen, with Howdy (howdy-next): setup
+      downloads Howdy's face models (once) and sets the infrared camera
+      (a /dev/v4l/by-path, /dev/v4l/by-id or /dev/videoN path that exists) in
+      /etc/howdy/config.ini; add, clear and list the faces of the person who
+      asked (never anyone else's). iRice's lock screen uses its own PAM file;
+      no system PAM file is touched.
   phonecam on|off
       a virtual camera for an Android phone's camera (Settings → Phone): the
       v4l2loopback module with one device, /dev/video42 "Phone camera",
@@ -50,15 +57,18 @@ Files are read as you (the person who started pkexec or sudo), never as
 root: a symlink in your home can't make root read anything you can't.
 """
 import contextlib
+import glob
 import json
 import os
 import pwd
 import re
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import time
 
 LIB = "/usr/lib/irice"
 PACMAN = "/usr/bin/pacman"
@@ -331,6 +341,66 @@ def fingerprint(on, where, etc=PAM_ETC, vendor=PAM_VENDOR, module=PAM_FPRINTD):
             write_root(dest, new.encode(), 0o644)
             changed.append(dest)
     return changed
+
+
+# ── face (Settings → Lock Screen → Face) ─────────────────────────────────
+HOWDY_CONFIG = "/etc/howdy/config.ini"
+CAMERA_PATH = re.compile(r"^/dev/(v4l/by-(path|id)/[\w:.\-]+|video\d{1,3})$")
+
+
+def howdy_device(text, device):
+    """config.ini with [video] device_path set, everything else as it was."""
+    lines = text.splitlines()
+    out, section, done = [], "", False
+    for line in lines:
+        m = re.match(r"^\s*\[(.+)\]\s*$", line)
+        if m:
+            if section == "video" and not done:
+                out.append(f"device_path = {device}")
+                done = True
+            section = m.group(1).strip().lower()
+        elif section == "video" and re.match(r"^\s*device_path\s*=", line):
+            if not done:
+                out.append(f"device_path = {device}")
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        if section != "video":
+            out += ["", "[video]"]
+        out.append(f"device_path = {device}")
+    return "\n".join(out) + "\n"
+
+
+def face(args, uid, run=subprocess.run, config=HOWDY_CONFIG, exists=os.path.exists, which=shutil.which,
+         models="/usr/share/howdy/models"):
+    """Returns the exit status; howdy's own output goes straight through."""
+    howdy = which("howdy")
+    if not howdy:
+        raise Refused("Howdy isn't installed (howdy-next)")
+    user = pwd.getpwuid(uid).pw_name
+    if args[:1] == ["setup"] and len(args) == 2:
+        device = args[1]
+        if not CAMERA_PATH.match(device) or not exists(device):
+            raise Refused(f"not a camera: {device}")
+        if not glob.glob(os.path.join(models, "*.onnx")):
+            r = run([howdy, "download-models"])
+            if r.returncode != 0:
+                raise Refused("Howdy's face models couldn't be downloaded (check the internet connection)")
+        try:
+            with open(config) as f:
+                text = f.read()
+        except FileNotFoundError:
+            text = ""
+        write_root(config, howdy_device(text, device).encode(), 0o644)
+        return 0
+    if args == ["add"]:
+        return run([howdy, "-U", user, "--plain", "-y", "add", "iRice " + time.strftime("%Y-%m-%d %H.%M")]).returncode
+    if args == ["clear"]:
+        return run([howdy, "-U", user, "-y", "clear"]).returncode
+    if args == ["list"]:
+        return run([howdy, "-U", user, "--plain", "list"]).returncode
+    raise Refused("face: setup <camera> | add | clear | list")
 
 
 # ── phonecam (Settings → Phone → Use as webcam) ─────────────────────────
@@ -670,6 +740,8 @@ def main(argv):
             for d in fingerprint(args[0] == "on", args[1]):
                 print("changed", d)
             return 0
+        if cmd == "face" and args:
+            return face(args, uid)
         if cmd == "phonecam" and len(args) == 1 and args[0] in ("on", "off"):
             for d in phonecam(args[0] == "on"):
                 print("changed", d)
@@ -678,7 +750,7 @@ def main(argv):
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | "
+        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

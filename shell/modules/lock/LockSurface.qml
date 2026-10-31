@@ -488,20 +488,22 @@ WlSessionLockSurface {
                 color: surface.ink
                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
             }
-            // What the fingerprint reader wants (Lock.qml), when nothing's wrong
+            // What the fingerprint reader or the face camera wants
+            // (Lock.qml), when nothing's wrong
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
-                visible: surface.lockScope.fingerText !== "" && surface.lockScope.error === ""
+                readonly property bool isFace: surface.lockScope.faceText !== "" && surface.lockScope.fingerText === ""
+                visible: (surface.lockScope.fingerText !== "" || surface.lockScope.faceText !== "") && surface.lockScope.error === ""
                 Icon {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: "fingerprint"
+                    name: parent.isFace ? "smiley" : "fingerprint"
                     size: 14
                     color: surface.ink
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: surface.lockScope.fingerText
+                    text: surface.lockScope.fingerText || surface.lockScope.faceText
                     color: surface.ink
                     opacity: 0.85
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }

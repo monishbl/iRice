@@ -32,6 +32,7 @@ Scope {
             return;
         error = "";
         fingerTries = 0; // (someone's here: the reader gets its tries back)
+        faceTries = 0;
         pam.start();
     }
 
@@ -167,6 +168,7 @@ Scope {
         idle = false;
         idleTimer.restart();
         fingerTries = 0; // (someone's here: the reader may have stopped after five tries)
+        faceTries = 0; // (and the camera looks again)
     }
     onHeldChanged: if (!held) idle = false
     onPasswordChanged: woke()
@@ -310,6 +312,55 @@ Scope {
             root.fingerTries++;
             if (root.fingerWanted)
                 fingerRetry.restart();
+        }
+    }
+
+    // ── Your face, next to the password (Settings → Lock Screen → Face) ──
+    // A third PAM conversation, from the shell's own PAM file (pam_howdy:
+    // Howdy with the infrared camera). It looks when the lock shows and each
+    // time someone's back (woke), three tries each time; never in StandBy.
+    property string faceText: ""
+    property int faceTries: 0
+    readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceTries < 3
+    onFaceWantedChanged: {
+        if (faceWanted) {
+            faceRetry.restart();
+        } else {
+            faceRetry.stop();
+            if (face.active)
+                face.abort();
+            faceText = "";
+        }
+    }
+    Timer {
+        id: faceRetry
+        interval: 300
+        onTriggered: if (root.faceWanted && !face.active) {
+            root.faceText = "Looking for your face…";
+            face.start();
+        }
+    }
+    PamContext {
+        id: face
+        config: "irice-face"
+        configDirectory: Quickshell.shellDir + "/assets/pam"
+        onCompleted: result => {
+            if (result === PamResult.Success) {
+                System.locked = false;
+                root.error = "";
+                root.fails = 0;
+                root.faceTries = 0;
+                root.faceText = "";
+                return;
+            }
+            root.faceTries++;
+            root.faceText = root.faceTries < 3 ? "Face not recognised" : "";
+            if (root.faceWanted)
+                faceRetry.restart();
+        }
+        onError: {
+            root.faceTries = 3; // (Howdy or the camera isn't working: the password is there)
+            root.faceText = "";
         }
     }
 

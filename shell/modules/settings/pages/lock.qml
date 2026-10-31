@@ -148,7 +148,7 @@ Column {
     // ── Fingerprint (services/Fingerprint) ──────────────────────────────
     // Only on a computer with a reader: what it needs, the fingers, and
     // where a finger works
-    Component.onCompleted: Fingerprint.refresh()
+    Component.onCompleted: { Fingerprint.refresh(); Face.refresh(); }
     Group {
         width: parent.width
         visible: Fingerprint.hasReader
@@ -242,6 +242,71 @@ Column {
                     onToggled: Fingerprint.setPam(parent.parent.modelData.key, !checked)
                 }
             }
+        }
+    }
+
+    // ── Face (services/Face) ────────────────────────────────────────────
+    // Only with an infrared camera; the lock screen only
+    Group {
+        width: parent.width
+        visible: Face.hasCamera
+        title: "Face"
+        footer: Face.error !== "" ? Face.error
+            : !Face.installed ? "Look at the screen to unlock it, with your laptop's infrared camera (" + (Face.camera?.name ?? "") + "). It's less secure than a password or a fingerprint: someone who looks very like you might get in. Your password always works too."
+            : "Look at the screen when it's locked. Face unlock is for the lock screen only; password prompts and sudo still ask for your password or finger. Each change asks for your password."
+        Row {
+            visible: !Face.installed
+            label: "Face unlock"
+            detail: Face.installError !== "" ? Face.installError : "Needs Howdy (howdy-next, from the AUR, with yay or paru). It asks for your password once."
+            labelColor: Face.installError !== "" ? Theme.color.danger : Theme.color.label
+            SettingsButton {
+                text: Face.installing ? "Installing…" : "Install"
+                icon: "download-simple"
+                busy: Face.installing
+                enabled: !Updates.running
+                onClicked: Face.install()
+            }
+        }
+        Row {
+            visible: Face.installed && !Face.setUp
+            label: "Set up the camera"
+            detail: "Uses " + (Face.camera?.name ?? "the IR camera") + " and downloads Howdy's face models"
+            SettingsButton {
+                text: Face.busy === "setup" ? "Setting up…" : "Set Up"
+                primary: true
+                busy: Face.busy === "setup"
+                enabled: Face.busy === ""
+                onClicked: Face.setUpCamera()
+            }
+        }
+        Row {
+            visible: Face.setUp
+            label: Face.busy === "add" ? "Look at the camera…" : Face.faces === 0 ? "Add your face" : Face.faces === 1 ? "1 face added" : Face.faces + " faces added"
+            detail: Face.busy === "add" ? "Hold still for a moment, in normal light" : Face.faces === 0 ? "Look at the camera for a few seconds" : "Add another (with glasses, say) for better recognition"
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    visible: Face.faces > 0
+                    text: Face.busy === "clear" ? "Removing…" : "Remove All"
+                    danger: true
+                    enabled: Face.busy === ""
+                    onClicked: Face.clearFaces()
+                }
+                SettingsButton {
+                    text: Face.faces === 0 ? "Add Face" : "Add Another"
+                    icon: "smiley"
+                    primary: Face.faces === 0
+                    busy: Face.busy === "add"
+                    enabled: Face.busy === ""
+                    onClicked: Face.addFace()
+                }
+            }
+        }
+        Row {
+            visible: Face.setUp && Face.faces > 0
+            label: "Unlock the lock screen"
+            detail: "Look at the screen or type your password"
+            Switch { checked: Config.options.lock.face ?? true; onToggled: Config.options.lock.face = !checked }
         }
     }
 

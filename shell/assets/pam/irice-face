@@ -1,0 +1,7 @@
+#%PAM-1.0
+# iRice's lock screen, next to the password and the fingerprint: your face,
+# with Howdy (howdy-next) and an infrared camera. Used only by the shell's
+# lock (modules/lock/Lock.qml), from this folder; the system's PAM files
+# aren't touched.
+auth       required     pam_howdy.so
+account    required     pam_permit.so
