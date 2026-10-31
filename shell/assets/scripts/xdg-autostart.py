@@ -79,8 +79,25 @@ def config_home():
     return os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
 
 
+def apps_config_home():
+    """Where apps keep their settings, and their autostart entries (FDM,
+    CachyOS Hello…). The tty session gives the shell folders of its own
+    (IRICE_TTY: tty-shell.sh), never the apps (common/Launch.qml, child_env
+    below): Settings → Login Items, run from the shell, read an empty folder
+    of its own while login started the apps' (seen on a real laptop)."""
+    if os.environ.get("IRICE_TTY") == "1":
+        return os.path.join(os.path.expanduser("~"), ".config")
+    return config_home()
+
+
 def user_dir():
-    return os.path.join(config_home(), "autostart")
+    return os.path.join(apps_config_home(), "autostart")
+
+
+def irice_dir():
+    """iRice's own settings: IRICE_USER_DIR when the session says (the tty
+    session keeps them apart), else $XDG_CONFIG_HOME/irice."""
+    return os.environ.get("IRICE_USER_DIR") or os.path.join(config_home(), "irice")
 
 
 def system_dirs():
@@ -99,7 +116,7 @@ def dirs():
 def start_at_login():
     """Settings → Login Items → Start them when you log in (default on)."""
     try:
-        with open(os.path.join(config_home(), "irice", "config.json"), encoding="utf-8") as f:
+        with open(os.path.join(irice_dir(), "config.json"), encoding="utf-8") as f:
             v = json.load(f).get("loginItems", {}).get("startAtLogin", True)
         return v is not False
     except (OSError, ValueError, AttributeError):

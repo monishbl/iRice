@@ -34,6 +34,8 @@ class Autostart(unittest.TestCase):
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(d / "home"),
                         XDG_CONFIG_HOME=str(d / "home/.config"), XDG_CONFIG_DIRS=str(d / "etc/xdg"),
                         XDG_RUNTIME_DIR=str(self.rt), HYPRLAND_INSTANCE_SIGNATURE="sig1", XDG_CURRENT_DESKTOP="Hyprland")
+        for k in ("IRICE_USER_DIR", "IRICE_TTY"):  # (not this session's)
+            self.env.pop(k, None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -284,6 +286,28 @@ class Autostart(unittest.TestCase):
         p = subprocess.run([sys.executable, "-I", str(SCRIPT), "list"], env=dict(env, IRICE_SYSTEM_ROOT=str(root)),
                            capture_output=True, text=True, timeout=20)
         self.assertEqual([i["file"] for i in json.loads(p.stdout)["items"]], ["app.desktop"])
+
+
+    def test_tty_session_lists_the_apps_folder(self):
+        # (the tty session gives the shell folders of its own: Login Items
+        # still lists and changes the ones apps write and login starts)
+        d = Path(self.tmp.name)
+        self.entry(self.user, "FDM", Exec="app --hidden")
+        shell_cfg = d / "sandbox/.config"
+        (shell_cfg / "autostart").mkdir(parents=True)
+        out = json.loads(self.run_it("list", XDG_CONFIG_HOME=str(shell_cfg), IRICE_TTY="1").stdout)
+        self.assertIn("FDM.desktop", [i["file"] for i in out["items"]])
+        out = json.loads(self.run_it("list", XDG_CONFIG_HOME=str(shell_cfg)).stdout)
+        self.assertNotIn("FDM.desktop", [i["file"] for i in out["items"]])  # (a normal session: its own XDG_CONFIG_HOME)
+
+    def test_the_switch_is_read_from_irice_user_dir(self):
+        d = Path(self.tmp.name)
+        self.entry(self.user, "app", Exec="app")
+        irice = d / "sandbox/.config/irice"
+        irice.mkdir(parents=True)
+        (irice / "config.json").write_text(json.dumps({"loginItems": {"startAtLogin": False}}))
+        self.run_it(IRICE_USER_DIR=str(irice))
+        self.assertEqual(self.started(), [])  # (turned off in the session's own settings)
 
 
 if __name__ == "__main__":

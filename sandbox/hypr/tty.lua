@@ -65,7 +65,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(ctl .. " watchdog")
     hl.exec_cmd("wl-paste --watch cliphist store")
     -- Apps that start with your session (XDG autostart), once per session
-    hl.exec_cmd("python3 -I " .. root .. "/shell/assets/scripts/xdg-autostart.py --wait-tray 15")
+    -- (the switch in Settings → Login Items is in this session's own iRice settings)
+    hl.exec_cmd("IRICE_USER_DIR='" .. IRICE_USER_DIR .. "' python3 -I " .. root .. "/shell/assets/scripts/xdg-autostart.py --wait-tray 15")
     -- ./demo.sh: a playing track and a few notifications once the shell is up
     if os.getenv("IRICE_DEMO") == "1" then
         hl.exec_cmd(root .. "/sandbox/demo-extras.sh")
