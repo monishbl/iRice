@@ -128,11 +128,51 @@ Singleton {
     property int hold: -1
     // What holding back means: Hyprland and the hypr* / aquamarine libraries
     // it's built with (and anything named for it, like its portal)
-    readonly property var held: hold === 1 ? Updates.list.concat(Updates.aurList).map(p => p.name).filter(n => /^(hypr|aquamarine)|hyprland/.test(n)) : []
+    readonly property var heldHypr: hold === 1 ? Updates.list.concat(Updates.aurList).map(p => p.name).filter(n => /^(hypr|aquamarine)|hyprland/.test(n)) : []
+    // Everything kept back this time: Hyprland's (above), and versions you
+    // went back from (until a newer one comes, or you include them)
+    readonly property var held: heldHypr.concat(skipped.filter(n => !heldHypr.includes(n)))
     property bool removeDropped: true
     // AUR packages are built from scripts anyone can submit, and they're
     // built here without showing you what changed: only when you ask
     property bool includeAur: false
+
+    // ── Going back (sysupdate.py undo-check: the last update, what it
+    // replaced, and whether the earlier versions are still here) ─────────
+    property var undo: ({}) // { at, packages: [{ name, from, to }], files, missing, skip: { name: version } }
+    readonly property int undoCount: undo.packages?.length ?? 0
+    readonly property bool canGoBack: undoCount > 0 && (undo.missing?.length ?? 0) === 0 && !running
+    function checkUndo() {
+        if (!undoProc.running)
+            undoProc.running = true;
+    }
+    Process {
+        id: undoProc
+        command: ["python3", "-I", Updates.script, "undo-check"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.undo = JSON.parse(text);
+                } catch (e) {}
+            }
+        }
+    }
+    function goBack() {
+        if (!canGoBack || Updates.running)
+            return;
+        const args = ["--undo"];
+        if (snapshot !== "")
+            args.push("--snapshot", snapshot);
+        Updates.update(args);
+    }
+    // Updates offered at a version you went back from: kept back, unless
+    // you include them (this session)
+    property var includeSkipped: []
+    readonly property var skipped: Updates.list.concat(Updates.aurList).filter(p => (undo.skip ?? {})[p.name] === p.to && !includeSkipped.includes(p.name)).map(p => p.name)
+    readonly property var skippedAll: Updates.list.concat(Updates.aurList).filter(p => (undo.skip ?? {})[p.name] === p.to)
+    function includeSkip(name, on) {
+        includeSkipped = on ? includeSkipped.concat([name]) : includeSkipped.filter(n => n !== name);
+    }
 
     // ── The plan ────────────────────────────────────────────────────────
     readonly property var plan: {
@@ -207,6 +247,7 @@ Singleton {
     Connections {
         target: Updates
         function onFinished(j) {
+            root.checkUndo(); // (a new update to go back from, or one gone back from)
             const after = j.then;
             if (j.state !== "done" || !after || !(after.irice || (after.rebuild ?? []).length > 0))
                 return;

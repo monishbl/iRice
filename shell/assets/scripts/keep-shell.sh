@@ -3,7 +3,8 @@
 # every 30 s (execs.lua); if this session has had no iRice shell for two
 # checks in a row (so not during a restart or a repair), it starts one.
 # Starts, repairs and this check share one lock, so they never race into
-# duplicate bars.
+# duplicate bars. A shell that stopped three times in 15 minutes soon after an
+# update gets the recovery screen too (recover.sh: go back to before it).
 #   keep-shell.sh <launch arguments, e.g. -c irice>
 set -uo pipefail
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:-}"
@@ -33,5 +34,13 @@ if [[ ! -e "$DIR/irice-shell.missing" ]]; then
     exit 0
 fi
 rm -f "$DIR/irice-shell.missing"
+# The restarts of the last 15 minutes, written down
+now=$(date +%s)
+recent=$( { cat "$DIR/irice-shell.restarts" 2>/dev/null; echo "$now"; } | awk -v n="$now" '$1 > n - 900')
+printf '%s\n' "$recent" >"$DIR/irice-shell.restarts"
+if [[ $(printf '%s\n' "$recent" | grep -c .) -ge 3 && ! -e "$DIR/irice-recovery.shown" ]] && "$HERE/recover.sh" --check; then
+    : >"$DIR/irice-recovery.shown" # (once a session)
+    setsid -f "$HERE/recover.sh" "$@" >/dev/null 2>&1 9>&-
+fi
 setsid -f "$HERE/launch-shell.sh" "$@" >/dev/null 2>&1 9>&-
 sleep 2 # let it register before the lock is released

@@ -10,6 +10,14 @@ started by the shell once this is done (services/SoftwareUpdate.qml).
 --aur-install: these packages from the AUR (and their dependencies, from the
 repositories too), in the AUR step instead of updates: drivers Settings
 offers (a fingerprint reader's). Same single password.
+    sysupdate.py run --undo [--snapshot …]
+                                go back to before the last update: the
+                                package versions it replaced, from pacman's
+                                cache (or Arch's archive), one password
+    sysupdate.py undo-check     JSON: what going back would do (Settings)
+    sysupdate.py undo --terminal
+                                the same in a terminal, asking first
+                                (irice undo-update, the recovery screen)
     sysupdate.py cancel         stop it while it's still waiting for the password
     sysupdate.py helper-status  exit 0 when iRice's root helper is installed
                                 and the same as this folder's
@@ -150,7 +158,7 @@ def at(lo, hi, frac):
     return int(max(state["percent"], min(99, p)))
 
 
-WEIGHT = {"snapshot": 6, "setup": 1, "system": 64, "packages": 12, "remove": 4, "aur": 14}
+WEIGHT = {"snapshot": 6, "setup": 1, "system": 64, "packages": 12, "remove": 4, "aur": 14, "undo": 60}
 
 
 def begin(step):
@@ -161,7 +169,8 @@ def begin(step):
     before = sum(WEIGHT.get(x, 10) for x in steps[:steps.index(step)]) if step in steps else 0
     span = (100 * before / total, 100 * (before + WEIGHT.get(step, 10)) / total)
     text = {"snapshot": "Taking a snapshot", "setup": "Setting up iRice's system helper", "system": "Checking for updates", "packages": "Installing iRice's packages",
-            "remove": "Removing unused packages", "aur": "Updating from the AUR"}.get(step, step)
+            "remove": "Removing unused packages", "aur": "Updating from the AUR",
+            "undo": "Going back to the earlier versions"}.get(step, step)
     set_(step=step, phase=step if step != "system" else "sync", text=text, done=0, total=0, percent=at(0, 0, 0))
 
 
@@ -375,6 +384,8 @@ FAKE = [
 
 
 FAKE_STEP = {
+    "undo": [(0.4, "loading packages..."), (0.3, "warning: downgrading package mesa (25.2.1-1 => 25.1.6-1)"),
+             (0.3, ":: Processing package changes..."), (0.6, "(1/2) downgrading mesa"), (0.6, "(2/2) downgrading lib32-mesa")],
     "snapshot": [(0.8, "Creating snapshot: Before iRice update"), (0.6, "Snapshot 412 created")],
     "packages": [(0.4, "resolving dependencies..."), (0.3, ":: Processing package changes..."),
                  (0.8, "(1/1) installing gpu-screen-recorder")],
@@ -402,6 +413,205 @@ def fake_run(plan):
             out(line)
             parse(line)
     finish("done", "Updated")
+
+
+# ── Going back (Settings → Software Update, the recovery screen) ────────
+# Each run that changed packages is written down: which versions it
+# replaced (pacman -Q before and after), the last few kept. Going back puts
+# the replaced versions back with pacman -U, from pacman's cache (or yay's
+# and paru's, for AUR packages; else Arch's own archive): your files and
+# settings aren't touched, packages the update added stay. A version you
+# went back from is then skipped by Software Update until a newer one comes.
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
+HISTORY = os.path.join(STATE_DIR, "updates.json")
+KEEP = 5
+ARCHIVE = "https://archive.archlinux.org/packages"
+PKGFILE = re.compile(r"^(?P<name>.+)-(?P<ver>[^-/]+-[^-/]+)-(?P<arch>[^-/]+)\.pkg\.tar\.(zst|xz|gz|bz2)$")
+
+
+def query():
+    """{name: version} of everything installed, None if pacman can't say."""
+    try:
+        r = subprocess.run(["pacman", "-Q"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return dict(l.split(None, 1) for l in r.stdout.splitlines() if len(l.split()) == 2)
+
+
+def history():
+    try:
+        with open(HISTORY) as f:
+            h = json.load(f)
+        if isinstance(h, dict):
+            h.setdefault("updates", [])
+            h.setdefault("skip", {})
+            return h
+    except (OSError, ValueError):
+        pass
+    return {"updates": [], "skip": {}}
+
+
+def save_history(h):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = HISTORY + ".new"
+    with open(tmp, "w") as f:
+        json.dump(h, f)
+    os.replace(tmp, HISTORY)
+
+
+def record(before, after, kind, at=None):
+    """Writes down what a run changed: [name, from, to] (None: not there)."""
+    if before is None or after is None:
+        return None
+    changes = [[n, before.get(n), after.get(n)] for n in sorted(set(before) | set(after)) if before.get(n) != after.get(n)]
+    if not changes:
+        return None
+    h = history()
+    entry = {"at": at or time.time(), "kind": kind, "changes": changes}
+    h["updates"] = (h["updates"] + [entry])[-KEEP:]
+    # (a skipped package that changed since: no longer skipped)
+    for n, _, _ in changes:
+        h["skip"].pop(n, None)
+    save_history(h)
+    return entry
+
+
+def last_update(h):
+    """The latest update, when it's the latest run and not gone back from."""
+    ups = [u for u in h["updates"] if u.get("kind") in ("update", "undo")]
+    if not ups or ups[-1].get("kind") != "update" or ups[-1].get("undone"):
+        return None
+    return ups[-1]
+
+
+def cache_dirs():
+    dirs = []
+    try:
+        r = subprocess.run(["pacman-conf", "CacheDir"], capture_output=True, text=True, timeout=10)
+        dirs = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    home = os.path.expanduser("~")
+    # (yay and paru keep the AUR packages they built in each one's folder)
+    return (dirs or ["/var/cache/pacman/pkg/"]) + [os.path.join(home, ".cache/yay"), os.path.join(home, ".cache/paru/clone")]
+
+
+def package_files(dirs):
+    """(name, version) -> path, for every package file in these folders
+    (and one level down: yay's and paru's per-package folders)."""
+    found = {}
+    for d in dirs:
+        try:
+            top = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in top:
+            entries = [e]
+            if e.is_dir(follow_symlinks=False):
+                try:
+                    entries = list(os.scandir(e.path))
+                except OSError:
+                    continue
+            for f in entries:
+                m = PKGFILE.match(f.name)
+                if m and f.is_file():
+                    found.setdefault((m["name"], m["ver"]), f.path)
+    return found
+
+
+def in_archive(name, ver, opener=None):
+    """Arch's archive of every package version it shipped: the URL, or ""."""
+    import urllib.request
+    opener = opener or urllib.request.urlopen
+    for arch in ("x86_64", "any"):
+        for ext in ("zst", "xz"):
+            url = f"{ARCHIVE}/{name[0]}/{name}/{name}-{ver}-{arch}.pkg.tar.{ext}"
+            try:
+                with opener(urllib.request.Request(url, method="HEAD", headers={"User-Agent": "iRice"}), timeout=10) as r:
+                    if r.status == 200:
+                        return url
+            except Exception:  # noqa: BLE001 (404, offline: not there)
+                pass
+    return ""
+
+
+def undo_plan(h=None, installed=None, files=None, archive=in_archive):
+    """What going back would do: {"at", "packages": [{name, from, to}],
+    "files", "missing"}; {} when there's nothing to go back from."""
+    h = h or history()
+    u = last_update(h)
+    if not u:
+        return {}
+    installed = installed if installed is not None else (query() or {})
+    files = files if files is not None else package_files(cache_dirs())
+    out = {"at": u["at"], "packages": [], "files": [], "missing": []}
+    for name, frm, to in u["changes"]:
+        if frm is None or installed.get(name) == frm:
+            continue  # (added by the update: stays; or already back)
+        out["packages"].append({"name": name, "from": frm, "to": to})
+        path = files.get((name, frm)) or archive(name, frm)
+        if path:
+            out["files"].append(path)
+        else:
+            out["missing"].append(f"{name} {frm}")
+    return out
+
+
+def gone_back(u_at, packages):
+    """After going back: the update is marked, and the versions you left are
+    skipped until newer ones come."""
+    h = history()
+    for u in h["updates"]:
+        if u.get("at") == u_at:
+            u["undone"] = True
+    for p in packages:
+        if p.get("to"):
+            h["skip"][p["name"]] = p["to"]
+    save_history(h)
+
+
+FAKE_UNDO = {"at": time.time() - 3 * 3600, "packages": [{"name": "mesa", "from": "25.1.6-1", "to": "25.2.1-1"},
+                                                     {"name": "lib32-mesa", "from": "25.1.6-1", "to": "25.2.1-1"}],
+             "files": ["/var/cache/pacman/pkg/mesa-25.1.6-1-x86_64.pkg.tar.zst"], "missing": []}
+
+
+def undo_terminal():
+    """irice undo-update: the same, in a terminal (the desktop may not be
+    there), asking first. pkexec asks for the password right there."""
+    plan = undo_plan()
+    if not plan:
+        print("There's no update to go back from.")
+        return 1
+    when = time.strftime("%A %d %B, %H:%M", time.localtime(plan["at"]))
+    n = len(plan["packages"])
+    print(f"The update on {when} changed {n} package{'' if n == 1 else 's'}.")
+    if plan["missing"]:
+        print("These earlier versions aren't on this computer any more, so it can't go back:")
+        for m in plan["missing"]:
+            print("  " + m)
+        return 1
+    if not plan["packages"]:
+        print("They're already back as they were.")
+        return 0
+    for p in plan["packages"][:20]:
+        print(f"  {p['name']}: {p['to'] or '(removed)'} -> {p['from']}")
+    if len(plan["packages"]) > 20:
+        print(f"  … and {len(plan['packages']) - 20} more")
+    try:
+        if input("Go back to the earlier versions? [y/N] ").strip().lower() not in ("y", "yes"):
+            return 1
+    except EOFError:
+        return 1
+    root = [INSTALLED] if os.access(INSTALLED, os.X_OK) else [sys.executable, "-I", SOURCE]
+    code = subprocess.run(["pkexec"] + root + ["update", "--downgrade", ",".join(plan["files"])]).returncode
+    if code == 0:
+        gone_back(plan["at"], plan["packages"])
+        print("Done. Restart the computer to use the earlier versions everywhere.")
+    else:
+        print("Going back didn't finish; nothing was changed.")
+    return code
 
 
 # ── The root helper ─────────────────────────────────────────────────────
@@ -434,8 +644,8 @@ def root_command(plan, broker):
         cmd += ["--snapshot", plan["snapshot"]]
     if plan["system"]:
         cmd.append("--system")
-    for k in ("ignore", "install", "remove"):
-        if plan[k]:
+    for k in ("ignore", "install", "remove", "downgrade"):
+        if plan.get(k):
             cmd += ["--" + k, ",".join(plan[k])]
     if plan["setup"]:
         cmd += ["--setup", SHELL]
@@ -616,11 +826,18 @@ def real_run(plan):
         if code == 21:
             text = open(LOG, errors="replace").read()
             if plan["ignore"] and re.search(r"could not satisfy dependencies|unable to satisfy|breaks dependency", text):
-                return finish("error", "Keeping Hyprland back clashes with other updates",
-                              "Other updates need the newer Hyprland libraries. Choose Update anyway, or update later. " + tail(3))
+                if any(re.search(r"hypr|aquamarine", n) for n in plan["ignore"]):
+                    return finish("error", "Keeping Hyprland back clashes with other updates",
+                                  "Other updates need the newer Hyprland libraries. Choose Update anyway, or update later. " + tail(3))
+                return finish("error", "Keeping packages back clashes with other updates",
+                              "Other updates need the newer " + ", ".join(plan["ignore"][:4]) +
+                              ". Include them in Software Update, or update later. " + tail(3))
             return finish("error", "The system update didn't finish", tail())
         if code == 22:
             return finish("error", "iRice's packages didn't install", "Your system is updated. " + tail())
+        if code == 24:
+            return finish("error", "Going back didn't finish",
+                          "Nothing was changed. " + tail(3))
         if code == 23:
             return finish("error", "Unused packages weren't removed",
                           "Everything else is done. Something else may still need them: " + tail(3))
@@ -677,6 +894,7 @@ def run(fake, plan):
         except FileNotFoundError:
             pass
     state["steps"] = plan["steps"]
+    state["kind"] = plan["kind"]
     state["ignore"] = plan["ignore"]
     state["then"] = plan["then"]  # what the shell does after (the iRice part)
     state["pidStart"] = start_time(os.getpid())
@@ -703,12 +921,29 @@ def run(fake, plan):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)  # only Cancel (SIGUSR1) stops it, and only before the password
     signal.signal(signal.SIGUSR1, on_term)  # (cancel)
     signal.signal(signal.SIGHUP, signal.SIG_IGN)  # the shell going away is no reason to stop
+    before = None if fake else query()
     try:
-        fake_run(plan) if fake else real_run(plan)
+        undo = plan.get("undo")
+        if undo is not None and not undo.get("packages"):
+            finish("error", "Nothing to go back from", "The last update's earlier versions are already back, or there was no update.")
+        elif undo is not None and undo.get("missing"):
+            finish("error", "The earlier versions aren't here any more",
+                   "pacman's cache no longer has: " + ", ".join(undo["missing"][:8]) + (" and more" if len(undo["missing"]) > 8 else "") +
+                   ". Nothing was changed.")
+        else:
+            fake_run(plan) if fake else real_run(plan)
+            if undo is not None and state["state"] == "done" and not fake:
+                gone_back(undo["at"], undo["packages"])
     except Exception as e:  # anything unexpected still ends in a readable state
         out(f"sysupdate: {e!r}")
         finish("error", "The update stopped", str(e))
     finally:
+        if not fake:
+            try:
+                # (written down even when it stopped partway: what did change)
+                record(before, query(), plan["kind"])
+            except OSError as e:
+                out(f"sysupdate: the update history wasn't written ({e})")
         log.close()
     return 0
 
@@ -779,6 +1014,8 @@ def plan_of(a, fake=False):
             raise SystemExit("not a package name: " + ", ".join(bad))
         return out
     snap = a[a.index("--snapshot") + 1] if "--snapshot" in a else ""
+    if "--undo" in a:
+        return undo_plan_of(snap, fake)
     p = {"snapshot": snap if snap in ("snapper", "timeshift") else "", "system": "--system" in a,
          "ignore": names("--ignore"), "install": names("--install"), "remove": names("--remove"),
          "aur_install": names("--aur-install")}
@@ -797,13 +1034,33 @@ def plan_of(a, fake=False):
         p["then"] = None
     # The root helper's own files, when they changed (never in the sandbox)
     p["setup"] = not fake and not helper_current()
+    p["kind"] = "update" if p["system"] or "--aur" in a else "install"
     p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
         (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else [])
     return p
 
 
+def undo_plan_of(snap, fake):
+    """run --undo: going back to before the last update, as a run."""
+    u = dict(FAKE_UNDO) if fake else undo_plan()
+    p = {"snapshot": snap if snap in ("snapper", "timeshift") else "", "system": False, "ignore": [], "install": [],
+         "remove": [], "aur_install": [], "then": None, "kind": "undo", "undo": u, "downgrade": u.get("files", [])}
+    if p["snapshot"] and not fake and installed(AUTOSNAP[p["snapshot"]]):
+        p["snapshot"] = ""
+    p["setup"] = not fake and not helper_current()
+    p["steps"] = (["snapshot"] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + ["undo"]
+    return p
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
+    if a[:1] == ["undo-check"]:
+        fake = os.environ.get("IRICE_FAKE_SYSUPDATE") == "1" or os.environ.get("IRICE_SANDBOX") == "1"
+        h = history()
+        print(json.dumps(dict(FAKE_UNDO if fake else undo_plan(h), skip=h["skip"])))
+        sys.exit(0)
+    if a[:2] == ["undo", "--terminal"]:
+        sys.exit(undo_terminal())
     if not a or a[0] not in ("run", "cancel", "helper-status"):
         print(__doc__, file=sys.stderr)
         sys.exit(2)

@@ -1,5 +1,15 @@
 # iRice changelog
 
+## Going back after an update · 2026-10-31
+
+- **Go back to before the last update.** If an update broke something, use **Settings → Software Update → Going back → Go Back**. The packages it changed return to the versions you had before. Those versions come from pacman's cache, or from Arch's archive when the cache no longer has them. Your files and settings aren't touched, and packages the update added stay. It asks for your password once and takes a snapshot first when you have snapper or Timeshift.
+  - A version you went back from is skipped by later updates until a newer one comes out. You can include it anyway, per package.
+  - If some earlier versions are gone from your computer, the page says which ones and nothing is changed.
+- **When the desktop won't start after an update:**
+  - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
+  - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
+- **Snapshots in the boot menu.** On GRUB with btrfs and snapper, a switch in the same section makes GRUB list your snapshots (grub-btrfs; it installs grub-btrfs if needed). Start from one and the island says so. To keep that snapshot, restore it in Btrfs Assistant, which the page opens for you or offers to install.
+
 ## Fixes for today's features · 2026-10-31
 
 - **Face unlock no longer undoes a lock you made by hand.** The camera starts looking when someone touches the keyboard or mouse after the lock appears, not the moment it locks while you're still in front of it. Its three tries, and the fingerprint reader's five, come back when you return after a while, not on every key you type. A fingerprint reader that waited 30 s without a finger no longer counts that as a failed try, so it keeps listening.

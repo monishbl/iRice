@@ -40,17 +40,23 @@ With the password:
       is using it.
 With the password, once, at the start:
   update [--snapshot snapper|timeshift] [--system] [--ignore a,b]
-         [--install a,b] [--remove a,b] [--setup <shell folder>] [--broker]
+         [--install a,b] [--remove a,b] [--downgrade f,g] [--setup <shell folder>] [--broker]
       the whole system part of an update (sysupdate.py starts it): snapshot,
       this helper's own files (--setup), pacman -Syu, iRice's packages,
       dropped ones. "@@step" lines say where it is; exit codes say which
-      step failed (20 snapshot, 21 system, 22 install, 23 remove). Then
+      step failed (20 snapshot, 21 system, 22 install, 23 remove, 24
+      downgrade). --downgrade: going back to before an update, pacman -U of
+      earlier package files, only from pacman's cache, your yay/paru cache
+      or Arch's archive (archive.archlinux.org). Then
       "@@root-done", and with --broker it stays for the AUR step: the AUR
       helper builds as you and runs `irice-sudo pacman …` for the root
       parts, which sysupdate.py passes here over stdin (a socket only the
       update has). Only pacman runs, from /usr/bin, its arguments checked
       (check_pacman); output and exit code go back the same way. It ends
       when sysupdate.py closes the socket, so nothing outlives the update.
+  bootmenu on|off
+      snapshots in GRUB's boot menu: grub-btrfs's daemon (grub-btrfsd), on
+      or off; on also writes the submenu now
   setup <shell folder>
       the same files as --setup, on their own (install.sh, with sudo)
 
@@ -451,6 +457,25 @@ def phonecam(on, etc="/etc", run=subprocess.run, dev_dir="/dev"):
     return changed
 
 
+# ── bootmenu (Settings → Software Update → Going back) ──────────────────
+GRUB_BTRFS_SCRIPT = "/etc/grub.d/41_snapshots-btrfs"
+
+
+def bootmenu(on, run=subprocess.run, which=shutil.which, exists=os.path.exists):
+    """Snapshots in GRUB's boot menu: grub-btrfs's daemon (grub-btrfsd)
+    keeps a "snapshots" submenu up to date as snapper makes them. On also
+    writes the submenu now. Returns what it did."""
+    if not which("grub-btrfsd") or not exists(GRUB_BTRFS_SCRIPT):
+        raise Refused("grub-btrfs isn't installed")
+    if on:
+        if run(["systemctl", "enable", "--now", "grub-btrfsd.service"], capture_output=True).returncode != 0:
+            raise Refused("grub-btrfsd didn't start")
+        run([GRUB_BTRFS_SCRIPT], capture_output=True)
+        return ["enabled grub-btrfsd"]
+    run(["systemctl", "disable", "--now", "grub-btrfsd.service"], capture_output=True)
+    return ["disabled grub-btrfsd"]
+
+
 # ── wallpaper ───────────────────────────────────────────────────────────
 def image_kind(data):
     if data[:3] == b"\xff\xd8\xff":
@@ -541,9 +566,39 @@ SNAPSHOT = {
 NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
 
-def parse_update(args):
+# Going back: an earlier package's file, from where earlier packages are kept
+PKGFILE = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*-[^-/]+-[^-/]+-[a-z0-9_]+\.pkg\.tar\.(zst|xz|gz|bz2)$")
+ARCHIVE_URL = re.compile(r"^https://archive\.archlinux\.org/packages/[a-z0-9]/[a-z0-9@._+-]+/[a-z0-9@._+:-]+\.pkg\.tar\.(zst|xz)$")  # (":": an epoch)
+
+
+def package_dirs(uid, run=subprocess.run):
+    dirs = []
+    try:
+        r = run(["pacman-conf", "CacheDir"], capture_output=True, text=True, timeout=10)
+        dirs = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        home = pwd.getpwuid(uid).pw_dir
+    except KeyError:
+        home = ""
+    return (dirs or ["/var/cache/pacman/pkg/"]) + ([os.path.join(home, ".cache/yay"), os.path.join(home, ".cache/paru/clone")] if home else [])
+
+
+def check_package_file(v, dirs):
+    if ARCHIVE_URL.match(v):
+        return v
+    path = os.path.realpath(v)
+    if not v.startswith("/") or not PKGFILE.match(os.path.basename(path)) or not os.path.isfile(path):
+        raise Refused(f"not a package file: {v}")
+    if not any(path.startswith(os.path.realpath(d).rstrip("/") + "/") for d in dirs):
+        raise Refused(f"not from a package cache: {v}")
+    return path
+
+
+def parse_update(args, dirs=None):
     """update's arguments, strictly: known flags only, package names checked."""
-    p = {"snapshot": "", "system": False, "ignore": [], "install": [], "remove": [], "setup": "", "broker": False}
+    p = {"snapshot": "", "system": False, "ignore": [], "install": [], "remove": [], "downgrade": [], "setup": "", "broker": False}
     i = 0
     while i < len(args):
         a = args[i]
@@ -551,7 +606,7 @@ def parse_update(args):
             p[a[2:]] = True
             i += 1
             continue
-        if a not in ("--snapshot", "--ignore", "--install", "--remove", "--setup") or i + 1 >= len(args):
+        if a not in ("--snapshot", "--ignore", "--install", "--remove", "--downgrade", "--setup") or i + 1 >= len(args):
             raise Refused(f"unknown argument: {a}")
         v = args[i + 1]
         i += 2
@@ -561,6 +616,8 @@ def parse_update(args):
             p["snapshot"] = v
         elif a == "--setup":
             p["setup"] = check_folder(v)
+        elif a == "--downgrade":
+            p["downgrade"] = [check_package_file(f, dirs or []) for f in v.split(",") if f]
         else:
             names = [n for n in v.split(",") if n]
             bad = [n for n in names if not NAME.match(n)]
@@ -688,7 +745,7 @@ def serve(sock, log=None, pacman=None):
 
 def update(args, uid, out=sys.stdout):
     """Returns the exit code (see the top of this file)."""
-    p = parse_update(args)
+    p = parse_update(args, package_dirs(uid))
     # Nothing sysupdate.py does (exiting, closing its end) may stop a transaction
     for s in (signal.SIGPIPE, signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(s, signal.SIG_IGN)
@@ -709,6 +766,11 @@ def update(args, uid, out=sys.stdout):
             say("Installed " + ", ".join(done) if done else "iRice's system helper is up to date")
         except (OSError, Refused) as e:
             say(f"iRice's system helper wasn't installed: {e}")
+    if p["downgrade"]:
+        say("@@step undo")
+        if subprocess.run([PACMAN, "-U", "--noconfirm", "--"] + p["downgrade"], stdout=out, stderr=subprocess.STDOUT,
+                          env=dict(os.environ, LANG="C", LC_ALL="C")).returncode != 0:
+            return 24
     code = subprocess.run(["/bin/sh", "-c", UPDATE_SCRIPT, "sh", p["snapshot"], ",".join(p["ignore"]),
                            ",".join(p["install"]), ",".join(p["remove"]), "1" if p["system"] else "0"],
                           stdout=out, stderr=subprocess.STDOUT).returncode
@@ -762,11 +824,15 @@ def main(argv):
             for d in phonecam(args[0] == "on"):
                 print("changed", d)
             return 0
+        if cmd == "bootmenu" and len(args) == 1 and args[0] in ("on", "off"):
+            for d in bootmenu(args[0] == "on"):
+                print(d)
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | "
+        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

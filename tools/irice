@@ -4,6 +4,7 @@
 #   irice update            get the latest iRice and install it
 #   irice rebuild [--load]  rebuild the glass plugin, shaders and native helpers (after a Hyprland or Qt update)
 #   irice repair            restart the shell (duplicated bars, a frozen shell); apps keep running
+#   irice undo-update       go back to before the last update (works from a text console too)
 #   irice logs              the shell's log
 #   irice uninstall         remove iRice and put your previous Hyprland config back
 set -uo pipefail
@@ -56,6 +57,10 @@ case "${1:-help}" in
         ;;
     repair)
         exec "$CONFIG/quickshell/irice/assets/scripts/repair-shell.sh"
+        ;;
+    undo-update)
+        # (the installed shell's copy: it works without the source folder)
+        exec python3 -I "$CONFIG/quickshell/irice/assets/scripts/sysupdate.py" undo --terminal
         ;;
     logs)
         exec qs log -c irice -t "${2:-80}" -f

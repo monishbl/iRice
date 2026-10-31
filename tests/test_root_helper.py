@@ -541,7 +541,7 @@ class SysUpdate(unittest.TestCase):
         self.log = d / "calls"
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", XDG_RUNTIME_DIR=str(self.run_dir),
                         IRICE_SYSTEM_ROOT=str(self.sysroot), FAKE_LOG=str(self.log), FAKE_PACMAN=str(self.bin / "pacman"),
-                        HELPER_SOURCE=str(SOURCE))
+                        HELPER_SOURCE=str(SOURCE), XDG_STATE_HOME=str(d / "state"))
         for k in ("IRICE_FAKE_SYSUPDATE", "IRICE_SANDBOX"):
             self.env.pop(k, None)
 
@@ -573,7 +573,8 @@ class SysUpdate(unittest.TestCase):
         self.assertIn(f"--sudo {SHIM}", yay)
         self.assertNotIn("pkexec", yay)
         # pacman only, and only as allowed
-        pacman = [c for c in calls if c.startswith("pacman ")]
+        # (pacman -Q before and after: what changed, for going back)
+        pacman = [c for c in calls if c.startswith("pacman ") and c != "pacman -Q"]
         self.assertEqual(pacman, ["pacman -Syu --noconfirm",
                                   "pacman -U --config /etc/pacman.conf --noconfirm -- /tmp/apple_cursor.pkg.tar.zst",
                                   "pacman -D --asdeps apple_cursor"])

@@ -189,8 +189,9 @@ Singleton {
         if (ok && (j.then?.irice || (j.then?.rebuild?.length ?? 0) > 0))
             return;
         const n = (j.upgraded ?? []).length;
-        const title = ok ? (n > 0 ? n + " update" + (n === 1 ? "" : "s") + " installed" : j.text) : j.text;
-        const sub = ok ? (j.restart ? "Restart to finish: the kernel or system libraries changed" : "Your system is up to date") : (j.error || "See Software Update for details").split("\n").slice(-1)[0];
+        const back = j.kind === "undo";
+        const title = ok ? (back ? "Back to the earlier versions" : n > 0 ? n + " update" + (n === 1 ? "" : "s") + " installed" : j.text) : j.text;
+        const sub = ok ? (j.restart ? "Restart to finish: the kernel or system libraries changed" : back ? (n === 1 ? "1 package went back" : n + " packages went back") : "Your system is up to date") : (j.error || "See Software Update for details").split("\n").slice(-1)[0];
         if (Island.enabled && Island.wants("sysupdate"))
             Island.post({ kind: "sysupdate", icon: ok ? (j.restart ? "arrow-clockwise" : "check-circle") : "warning-circle", title: title, subtitle: sub, color: ok ? Theme.accents.green : Theme.color.danger, action: ok && j.restart ? "Restart" : "Details", onAction: () => ok && j.restart ? Quickshell.execDetached(["systemctl", "reboot"]) : Panels.openSettings("update") }, 8000);
         else

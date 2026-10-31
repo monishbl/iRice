@@ -20,6 +20,10 @@ Column {
     readonly property var plan: SoftwareUpdate.plan
     readonly property var job: Updates.job
     readonly property bool over: !!job && job.state !== "running" && !SoftwareUpdate.running
+    Component.onCompleted: {
+        SoftwareUpdate.checkUndo();
+        BootSnapshots.refresh();
+    }
     readonly property bool showPlan: SoftwareUpdate.checked && !SoftwareUpdate.running && !page.over && SoftwareUpdate.anything
     readonly property var kinds: [
         { kind: "setting", title: "Settings with new defaults", footer: "You kept these at their defaults. Your current value stays unless you choose the new one." },
@@ -121,7 +125,7 @@ Column {
         visible: page.showPlan && SoftwareUpdate.hyprTooNew
         width: parent.width
         title: "Hyprland"
-        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.held.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the Liquid Glass plugin can't be built for it, glass falls back to frosted until iRice catches up." : "This iRice is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
+        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.heldHypr.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the Liquid Glass plugin can't be built for it, glass falls back to frosted until iRice catches up." : "This iRice is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
         Row {
             label: "Hyprland " + SoftwareUpdate.hyprShort + " isn't supported by this iRice yet"
             detail: "Choose what to do for this update."
@@ -215,7 +219,7 @@ Column {
         visible: page.showPlan && (page.plan.system || page.plan.aur || IriceUpdate.packages.missing.length > 0 || IriceUpdate.packages.dropped.length > 0)
         width: parent.width
         title: "Packages affected"
-        footer: SoftwareUpdate.snapshot !== "" ? "A snapshot is taken first (" + SoftwareUpdate.snapshot + "), so you can roll back." : "Without a snapshot tool, pacman keeps the old packages in its cache, and iRice backs up your settings."
+        footer: SoftwareUpdate.snapshot !== "" ? "A snapshot is taken first (" + SoftwareUpdate.snapshot + "). Afterwards you can go back to the versions you have now, below." : "Afterwards you can go back to the versions you have now, below: pacman keeps them in its cache. iRice backs up your settings."
         Column {
             width: parent.width
             bottomPadding: 8
@@ -233,7 +237,7 @@ Column {
                     name: modelData.name
                     from: modelData.from
                     to: modelData.to
-                    badge: isHeld ? "held for iRice" : modelData.aur ? (SoftwareUpdate.includeAur ? "AUR" : "AUR · not included") : ""
+                    badge: isHeld ? (SoftwareUpdate.heldHypr.includes(modelData.name) ? "held for iRice" : "skipped · you went back from it") : modelData.aur ? (SoftwareUpdate.includeAur ? "AUR" : "AUR · not included") : ""
                     dim: isHeld || (modelData.aur && !SoftwareUpdate.includeAur)
                 }
             }
@@ -324,7 +328,7 @@ Column {
         title: "Update"
         footer: Updates.fake ? "In the dev sandbox the update is simulated; nothing is installed." : SoftwareUpdate.running ? "Keeps going if you close Settings; the island shows how far it is." : ""
         Row {
-            label: Updates.interrupted ? "The last update was interrupted" : SoftwareUpdate.running ? (IriceUpdate.applying ? "Updating iRice" : page.job?.text || "Updating") : page.job?.state === "done" ? ((page.job.upgraded?.length ?? 0) > 0 ? page.plural(page.job.upgraded.length, "package") + " updated" : "Updated") : page.job?.text ?? ""
+            label: Updates.interrupted ? "The last update was interrupted" : SoftwareUpdate.running ? (IriceUpdate.applying ? "Updating iRice" : page.job?.text || "Updating") : page.job?.state === "done" ? (page.job.kind === "undo" ? "Back to the earlier versions" : (page.job.upgraded?.length ?? 0) > 0 ? page.plural(page.job.upgraded.length, "package") + " updated" : "Updated") : page.job?.text ?? ""
             detail: Updates.interrupted ? "Update again to finish; pacman picks up where it stopped." : SoftwareUpdate.running ? (page.job?.phase === "auth" ? "Enter your password in the dialog." : page.job?.package ?? "") : page.job?.state === "error" ? page.job.error : page.job?.restart ? "Restart to finish: the kernel or system libraries changed." : ""
             QQ.Row {
                 spacing: 8
@@ -440,6 +444,102 @@ Column {
                     target: logView
                     anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 2 }
                 }
+            }
+        }
+    }
+
+    // ── Going back ──────────────────────────────────────────────────────
+    // The last update undone (its earlier package versions put back), the
+    // versions you went back from (skipped until newer ones come), and
+    // snapshots at startup (GRUB's menu: for when the desktop won't start)
+    Group {
+        id: goingBack
+        readonly property bool fromSnapshot: BootSnapshots.booted !== ""
+        visible: !SoftwareUpdate.running && (fromSnapshot || SoftwareUpdate.undoCount > 0 || SoftwareUpdate.skippedAll.length > 0 || BootSnapshots.canMenu)
+        width: parent.width
+        title: "Going back"
+        footer: fromSnapshot ? "" : "If the desktop doesn't start after an update, iRice offers to go back on its own. From a text console (Ctrl+Alt+F3), run: irice undo-update"
+        property bool asking: false // (Go Back pressed once: what it does, then Go Back again)
+
+        // Started from a snapshot
+        Row {
+            visible: goingBack.fromSnapshot
+            label: "Started from snapshot " + BootSnapshots.booted
+            labelColor: Theme.accent
+            detail: BootSnapshots.assistant ? "Your system is as it was then, until you restart. To keep it, restore this snapshot in Btrfs Assistant (Snapper → Restore), then restart."
+                : "Your system is as it was then, until you restart. To keep it, restore this snapshot with Btrfs Assistant: install it, then choose Snapper → Restore."
+            SettingsButton {
+                text: BootSnapshots.assistant ? "Open Btrfs Assistant" : Needs.installing ? "Installing…" : "Install Btrfs Assistant"
+                busy: !BootSnapshots.assistant && Needs.installing
+                enabled: BootSnapshots.assistant || !Updates.running
+                onClicked: BootSnapshots.assistant ? BootSnapshots.openAssistant() : Needs.install(["btrfs-assistant"])
+            }
+        }
+        // The last update
+        Row {
+            visible: SoftwareUpdate.undoCount > 0 && !goingBack.fromSnapshot
+            readonly property bool missing: (SoftwareUpdate.undo.missing?.length ?? 0) > 0
+            label: goingBack.asking ? "Go back to the earlier versions?" : "Go back to before the last update"
+            labelColor: missing ? Theme.color.secondary : Theme.color.label
+            detail: missing ? "Some earlier versions aren't on this computer any more: " + (SoftwareUpdate.undo.missing ?? []).slice(0, 4).join(", ") + ((SoftwareUpdate.undo.missing?.length ?? 0) > 4 ? "…" : "")
+                : goingBack.asking ? page.plural(SoftwareUpdate.undoCount, "package") + " go back to the version before " + Qt.formatDateTime(new Date(SoftwareUpdate.undo.at * 1000), "dddd h:mm ap") + ". Your files and settings stay as they are. It asks for your password."
+                : "The update on " + Qt.formatDateTime(new Date(SoftwareUpdate.undo.at * 1000), "d MMMM, h:mm ap") + " changed " + page.plural(SoftwareUpdate.undoCount, "package") + ". " + (SoftwareUpdate.undo.packages ?? []).slice(0, 3).map(p => p.name).join(", ") + (SoftwareUpdate.undoCount > 3 ? "…" : "")
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    visible: goingBack.asking
+                    text: "Cancel"
+                    onClicked: goingBack.asking = false
+                }
+                SettingsButton {
+                    text: "Go Back"
+                    icon: goingBack.asking ? "" : "clock-counter-clockwise"
+                    enabled: SoftwareUpdate.canGoBack
+                    onClicked: {
+                        if (!goingBack.asking) {
+                            goingBack.asking = true;
+                            return;
+                        }
+                        goingBack.asking = false;
+                        SoftwareUpdate.goBack();
+                    }
+                }
+            }
+        }
+        // Skipped until a newer version comes
+        Repeater {
+            model: SoftwareUpdate.skippedAll
+            Row {
+                required property var modelData
+                label: modelData.name + " " + modelData.to
+                detail: SoftwareUpdate.includeSkipped.includes(modelData.name) ? "Included in this update" : "Skipped: you went back from this version. A newer one is installed as usual."
+                Switch {
+                    checked: SoftwareUpdate.includeSkipped.includes(parent.parent.modelData.name)
+                    onToggled: SoftwareUpdate.includeSkip(parent.parent.modelData.name, !checked)
+                }
+            }
+        }
+        // Snapshots in the boot menu
+        Row {
+            visible: BootSnapshots.canMenu && !goingBack.fromSnapshot
+            label: "Snapshots in the boot menu"
+            detail: BootSnapshots.error !== "" ? BootSnapshots.error
+                : !BootSnapshots.grubBtrfs ? "To start from a snapshot when the desktop won't load, GRUB can list them (grub-btrfs). It asks for your password once."
+                : BootSnapshots.menuOn ? "GRUB lists your snapshots under “snapshots”: start from one to see your system as it was."
+                : "GRUB can list your snapshots, to start from one when the desktop won't load."
+            labelColor: BootSnapshots.error !== "" ? Theme.color.danger : Theme.color.label
+            SettingsButton {
+                visible: !BootSnapshots.grubBtrfs
+                text: Needs.installing ? "Installing…" : "Install"
+                busy: Needs.installing
+                enabled: !Updates.running
+                onClicked: Needs.install(["grub-btrfs"])
+            }
+            Switch {
+                visible: BootSnapshots.grubBtrfs
+                enabled: !BootSnapshots.busy
+                checked: BootSnapshots.menuOn
+                onToggled: BootSnapshots.setMenu(!checked)
             }
         }
     }
