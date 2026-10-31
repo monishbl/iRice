@@ -100,6 +100,7 @@ ShellRoot {
     TabStrip {}
     QuickLook {}
     ShareSheet {}
+    IncomingCard {}
     WidgetGallery {}
     Sidebar {}
     Polkit {}

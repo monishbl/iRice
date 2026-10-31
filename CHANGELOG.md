@@ -20,6 +20,10 @@
   - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
   - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
 - **Shake to find the pointer.** Move the mouse (or your finger on the trackpad) quickly back and forth: the pointer grows for a moment and a ring closes in on it. Ordinary fast movement, dragging and drawing don't set it off. Turn it off in Settings → Mouse. Hyprland checks the pointer's position 5 times a second while it's still, and 25 times a second while it moves.
+- **Sharing looks like AirDrop on iOS, in glass:**
+  - **The share sheet** shows a preview of what you're sharing, nearby devices as round avatars in a row, and Copy and Show in Files as a grouped list. Under each avatar it says Waiting…, then Sending… as a ring fills, then Sent ✓ or Declined.
+  - **Someone sending to you** gets an AirDrop-style card in the middle of the screen. It shows who it is, what they're sending, and the PIN their phone shows, with Decline and Accept. Accept, and a ring fills around them as it arrives. When it's done: Open or Show in Files. Hide leaves the transfer to the island.
+  - Quick Share and LocalSend look the same.
 - **"Allow through firewall" works again**, and every update now brings iRice's system helper up to date with it:
   - **Why it seemed broken:** an update installed the system helper before downloading the new iRice, so the helper stayed one update behind. Its firewall fix only knew the older rules, said "done", and added nothing new.
   - **What changed:** the update now installs the helper from the version it's downloading. An outdated helper alone also counts as something to update, so it can be brought up to date right away.

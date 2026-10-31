@@ -121,14 +121,9 @@ Singleton {
                     const n = ev.files.length;
                     const what = n === 1 ? ev.files[0].name : ev.files[0].name + " and " + (n - 1) + " more";
                     root.active = Object.assign({}, root.active, { [ev.session]: { id: ev.session, kind: "receive", name: what, peer: ev.from, done: 0, total: ev.total, speed: 0, at: Date.now(), waiting: true } });
-                    Island.post({
-                        kind: "custom", icon: "paper-plane-tilt", title: ev.from, subtitle: "Wants to share " + what + " · " + root.size(ev.total), color: Theme.accents.blue,
-                        action: "Accept", onAction: () => root.tell({ cmd: "answer", session: ev.session, accept: true }),
-                        action2: "Decline", onAction2: () => {
-                            root.tell({ cmd: "answer", session: ev.session, accept: false });
-                            root.finish(ev.session);
-                        }
-                    }, 60000);
+                    // (the AirDrop-style card asks: modules/share/IncomingCard)
+                    Sharing.addRequest({ id: "ls:" + ev.session, via: "localsend", session: ev.session, from: ev.from, type: ev.type ?? "mobile",
+                        what: what, files: ev.files ?? [], total: ev.total ?? 0, pin: "" });
                     break;
                 }
                 case "progress":
@@ -138,12 +133,18 @@ Singleton {
                     break;
                 case "finished":
                     root.finish(ev.session);
-                    if (ev.dir === "in") {
+                    if (ev.dir === "in" && Sharing.shownRequest("ls:" + ev.session) && (ev.paths ?? []).length > 0) {
+                        Sharing.updateRequest("ls:" + ev.session, { state: "done", paths: ev.paths });
+                        Sounds.play("received");
+                    } else if (ev.dir === "in") {
+                        Sharing.dropRequest("ls:" + ev.session);
                         const first = ev.paths[0] ?? "";
                         Island.post({ kind: "custom", icon: "check-circle", title: "Received from " + ev.from, subtitle: ev.paths.length === 1 ? first.split("/").pop() : ev.paths.length + " files in Downloads", color: Theme.accents.green,
                             action: "Show", onAction: () => ev.paths.length === 1 ? Panels.quickLook(first) : Transfers.openDownloads() }, 6000);
                         Sounds.play("received");
                     } else {
+                        if (ev.to)
+                            Sharing.outcome(ev.to, "sent");
                         Island.post({ kind: "custom", icon: "paper-plane-tilt", title: "Sent to " + (ev.to ?? "device"), subtitle: ev.paths.length === 1 ? ev.paths[0].split("/").pop() : ev.paths.length + " files", color: Theme.accents.green }, 3000);
                     }
                     break;
@@ -152,19 +153,32 @@ Singleton {
                     root.finish(ev.session);
                     // Incoming: declined here needs no word; unanswered, it expired
                     if (ev.dir === "in") {
+                        Sharing.dropRequest("ls:" + ev.session);
                         if (ev.expired)
                             Island.post({ kind: "custom", icon: "clock", title: "Request from " + ev.from + " expired", subtitle: "Nothing was received", color: Qt.rgba(1, 1, 1, 0.6) }, 3000);
                     } else {
+                        if (ev.to)
+                            Sharing.outcome(ev.to, "declined");
                         Island.post({ kind: "custom", icon: "x-circle", title: (ev.to ?? "They") + " declined", subtitle: "Nothing was sent", color: Qt.rgba(1, 1, 1, 0.6) }, 3000);
                     }
                     break;
-                case "failed":
-                    if (String(ev.session).startsWith("out-"))
+                case "failed": {
+                    const out = String(ev.session).startsWith("out-");
+                    if (out) {
                         root.sendPending = false;
+                        if (root.active[ev.session]?.peer)
+                            Sharing.outcome(root.active[ev.session].peer, "failed");
+                    }
                     root.finish(ev.session);
+                    if (!out && Sharing.shownRequest("ls:" + ev.session)) {
+                        Sharing.updateRequest("ls:" + ev.session, { state: "failed", message: ev.message === "Cancelled" ? "" : ev.message });
+                        break;
+                    }
+                    Sharing.dropRequest("ls:" + ev.session);
                     if (ev.message !== "Cancelled")
                         Island.post({ kind: "custom", icon: "warning-circle", title: "Sharing stopped", subtitle: ev.message, color: Theme.accents.orange }, 5000);
                     break;
+                }
                 case "error":
                     root.error = ev.message;
                     break;

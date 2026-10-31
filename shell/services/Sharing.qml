@@ -112,4 +112,98 @@ Singleton {
         else
             Quickshell.execDetached(["notify-send", "-a", "iRice", title, subtitle]);
     }
+
+    // ── Incoming requests (modules/share/IncomingCard: AirDrop's alert) ──
+    // One shown at a time, both protocols alike: asking (Accept / Decline),
+    // then receiving (a ring around the sender), then done (Open, Show in
+    // Files) or failed. Hidden: the transfer goes on in the island, and what
+    // arrives is said there as before.
+    // [{ id ("qs:in-1"), via, session, from, type, what, files, total, pin,
+    //    state: asking | receiving | done | failed, paths, message, hidden }]
+    property var requests: []
+    readonly property var request: requests.find(r => !r.hidden) ?? null
+    function addRequest(r) {
+        requests = requests.filter(x => x.id !== r.id).concat([Object.assign({ state: "asking", hidden: false, paths: [], message: "" }, r)]);
+    }
+    function findRequest(id) {
+        return requests.find(r => r.id === id) ?? null;
+    }
+    function updateRequest(id, patch) {
+        requests = requests.map(r => r.id === id ? Object.assign({}, r, patch) : r);
+    }
+    function dropRequest(id) {
+        requests = requests.filter(r => r.id !== id);
+    }
+    function answer(id, accept) {
+        const r = findRequest(id);
+        if (!r)
+            return;
+        if (r.via === "demo") {
+            accept ? updateRequest(id, { state: "receiving" }) : dropRequest(id);
+            return;
+        }
+        const svc = r.via === "quickshare" ? QuickShare : LocalSend;
+        svc.tell({ cmd: "answer", session: r.session, accept: accept });
+        if (accept) {
+            updateRequest(id, { state: "receiving" });
+        } else {
+            svc.finish(r.session);
+            dropRequest(id);
+        }
+    }
+    // The card shows this transfer's progress (the service's own item)
+    function progressOf(r) {
+        if (r?.via === "demo")
+            return r.progress ?? null;
+        const svc = r?.via === "quickshare" ? QuickShare : LocalSend;
+        return r ? (svc.active[r.session] ?? null) : null;
+    }
+    // A request that ended while hidden is said in the island, as before
+    function shownRequest(id) {
+        const r = findRequest(id);
+        return !!r && !r.hidden;
+    }
+    function cancelRequest(id) {
+        const r = findRequest(id);
+        if (!r)
+            return;
+        if (r.via === "demo") {
+            dropRequest(id);
+            return;
+        }
+        (r.via === "quickshare" ? QuickShare : LocalSend).cancel(r.session);
+        dropRequest(id);
+    }
+
+    // ── How sends ended, for the sheet ("Sent" under a device, a while) ──
+    property var outcomes: ({}) // nameKey -> { state: sent | declined | failed, at }
+    function outcome(name, state) {
+        const o = Object.assign({}, outcomes);
+        o[Devices.nameKey(name)] = { state: state, at: Date.now() };
+        outcomes = o;
+    }
+    function outcomeFor(device) {
+        const o = outcomes[Devices.nameKey(device?.name)];
+        return o && Date.now() - o.at < 60000 ? o.state : "";
+    }
+
+    // The dev sandbox only: the incoming card without a phone
+    //   qs ipc call sharingdemo ask | progress <0-100> | done | fail
+    IpcHandler {
+        target: "sharingdemo"
+        enabled: Quickshell.env("IRICE_SANDBOX") === "1"
+        function ask(): void {
+            root.addRequest({ id: "demo:1", via: "demo", session: "1", from: "Padma's phone", type: "phone", what: "2 photos",
+                files: [{ name: "IMG_2041.jpg", mime: "image/jpeg" }, { name: "IMG_2042.jpg", mime: "image/jpeg" }], total: 6200000, pin: "4821" });
+        }
+        function progress(pct: int): void {
+            root.updateRequest("demo:1", { state: "receiving", progress: { done: 6200000 * pct / 100, total: 6200000, waiting: false, transport: "Wi-Fi Direct" } });
+        }
+        function done(): void {
+            root.updateRequest("demo:1", { state: "done", paths: ["/tmp/IMG_2041.jpg", "/tmp/IMG_2042.jpg"] });
+        }
+        function fail(): void {
+            root.updateRequest("demo:1", { state: "failed", message: "Padma's phone stopped sending." });
+        }
+    }
 }

@@ -195,16 +195,9 @@ Singleton {
                 case "incoming": {
                     const what = root.describe(ev);
                     root.active = Object.assign({}, root.active, { [ev.session]: { id: ev.session, kind: "receive", via: "quickshare", name: what, peer: ev.from, done: 0, total: ev.total, speed: 0, at: Date.now(), waiting: true } });
-                    Island.post({
-                        kind: "custom", icon: "share-network", title: ev.from,
-                        subtitle: "Wants to share " + what + (ev.total > 0 ? " · " + Transfers.size(ev.total) : "") + " · PIN " + ev.pin,
-                        color: Theme.accents.blue,
-                        action: "Accept", onAction: () => root.tell({ cmd: "answer", session: ev.session, accept: true }),
-                        action2: "Decline", onAction2: () => {
-                            root.tell({ cmd: "answer", session: ev.session, accept: false });
-                            root.finish(ev.session);
-                        }
-                    }, 60000);
+                    // (the AirDrop-style card asks: modules/share/IncomingCard)
+                    Sharing.addRequest({ id: "qs:" + ev.session, via: "quickshare", session: ev.session, from: ev.from, type: ev.type ?? "phone",
+                        what: what, files: ev.files ?? [], total: ev.total ?? 0, pin: ev.pin ?? "" });
                     break;
                 }
                 case "connected":
@@ -218,26 +211,47 @@ Singleton {
                     break;
                 case "finished":
                     root.finish(ev.session);
-                    if (ev.dir === "in")
-                        root.received(ev);
-                    else
+                    if (ev.dir === "in") {
+                        // (the card says what came, when it's showing)
+                        const shown = Sharing.shownRequest("qs:" + ev.session) && (ev.paths ?? []).length > 0;
+                        if (shown)
+                            Sharing.updateRequest("qs:" + ev.session, { state: "done", paths: ev.paths });
+                        else
+                            Sharing.dropRequest("qs:" + ev.session);
+                        root.received(ev, shown);
+                    } else {
+                        Sharing.outcome(ev.to, "sent");
                         Island.post({ kind: "custom", icon: "paper-plane-tilt", title: "Sent to " + ev.to, subtitle: ev.paths.length === 1 ? ev.paths[0].split("/").pop() : ev.paths.length + " files", color: Theme.accents.green }, 3000);
+                    }
                     break;
                 case "declined":
                     root.sendPending = false;
                     root.finish(ev.session);
+                    if (ev.to)
+                        Sharing.outcome(ev.to, ev.reason === "declined" ? "declined" : "failed");
                     Island.post({ kind: "custom", icon: "x-circle", title: ev.reason === "declined" ? ev.to + " declined" : "Not sent to " + ev.to, subtitle: ev.reason === "declined" ? "Nothing was sent" : ev.reason.charAt(0).toUpperCase() + ev.reason.slice(1), color: Qt.rgba(1, 1, 1, 0.6) }, 4000);
                     break;
                 case "ended":
                     root.finish(ev.session);
+                    Sharing.dropRequest("qs:" + ev.session);
                     break;
-                case "failed":
-                    if (String(ev.session).startsWith("out-"))
+                case "failed": {
+                    const out = String(ev.session).startsWith("out-");
+                    if (out) {
                         root.sendPending = false;
+                        if (root.active[ev.session]?.peer)
+                            Sharing.outcome(root.active[ev.session].peer, "failed");
+                    }
                     root.finish(ev.session);
+                    if (!out && Sharing.shownRequest("qs:" + ev.session)) {
+                        Sharing.updateRequest("qs:" + ev.session, { state: "failed", message: ev.message === "Cancelled" ? "" : ev.message });
+                        break;
+                    }
+                    Sharing.dropRequest("qs:" + ev.session);
                     if (ev.message !== "Cancelled")
                         Island.post({ kind: "custom", icon: "warning-circle", title: "Quick Share stopped", subtitle: ev.message, color: Theme.accents.orange }, 6000);
                     break;
+                }
                 case "error":
                     root.error = ev.message;
                     break;
@@ -263,9 +277,9 @@ Singleton {
 
     // What arrived: files (Show), a link (Open), text (Copy), a Wi-Fi network
     // (Copy password; joining is up to you)
-    function received(ev) {
+    function received(ev, filesShown) {
         Sounds.play("received");
-        const paths = ev.paths ?? [];
+        const paths = filesShown ? [] : (ev.paths ?? []);
         const texts = ev.texts ?? [];
         const wifi = ev.wifi ?? [];
         if (paths.length > 0) {
