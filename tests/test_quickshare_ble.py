@@ -894,7 +894,7 @@ class GroupStart(unittest.TestCase):
             links.station_freq = lambda sta: 5180
             links.usable = lambda: {5180: "no-ir", 2437: "ok", 2412: "ok", 2462: "ok"}
             links._netdevs = lambda: set()
-            links._nm_off = lambda sta: None
+            links._nm_off = lambda sta, p2p_dev=True: None
             links._address = links._dhcp_server = lambda *a: None
             r = links.host_p2p(0)
         finally:
@@ -928,6 +928,9 @@ class GroupStart(unittest.TestCase):
                 self.assertFalse(os.path.exists(path))
                 self.assertEqual(ran[-1], ("nmcli", "general", "reload", "conf"))
                 self.assertEqual(len(ran), 2)
+                # (behind the shield: the P2P device stays NetworkManager's)
+                self.assertNotIn("p2p-dev-wlan0", helper.nm_unmanaged_conf("wlan0", p2p_dev=False))
+                self.assertIn("interface-name:p2p-wlan0-*", helper.nm_unmanaged_conf("wlan0", p2p_dev=False))
             finally:
                 helper.NM_CONF_DIR, helper.run, helper.have = old
 
@@ -999,7 +1002,7 @@ class Shield(unittest.TestCase):
         links.station_freq = lambda sta: 5180
         links.usable = lambda: {5180: "no-ir", 2437: "ok"}
         links._netdevs = lambda: set()
-        links._nm_off = lambda sta: None
+        links._nm_off = lambda sta, p2p_dev=True: self.events.append(("nm_off", p2p_dev))
         links._address = links._dhcp_server = lambda *a: None
         links.nm_manages = lambda sta: True
         return links
@@ -1012,9 +1015,10 @@ class Shield(unittest.TestCase):
     def test_up_before_the_group_down_after_it(self):
         links = self.links()
         links.host_p2p(0)
-        self.assertEqual(self.events[:2], [("reload", True), ("group", True)])  # (the rule first)
+        # (the rule first; NetworkManager keeps its P2P device)
+        self.assertEqual(self.events[:3], [("reload", True), ("nm_off", False), ("group", True)])
         links.teardown()
-        self.assertEqual(self.events[2:], [("disconnect", True), ("reload", False)])  # (the group goes first)
+        self.assertEqual(self.events[3:], [("disconnect", True), ("reload", False)])  # (the group goes first)
         self.assertFalse(Path(helper.DBUS_SHIELD).exists())
 
     def test_a_rule_the_bus_doesnt_take_means_no_group(self):
@@ -1029,7 +1033,7 @@ class Shield(unittest.TestCase):
         links = self.links()
         links.nm_manages = lambda sta: False
         links.host_p2p(0)
-        self.assertEqual(self.events, [("group", False)])
+        self.assertEqual(self.events, [("nm_off", True), ("group", False)])
         links.teardown()
 
 

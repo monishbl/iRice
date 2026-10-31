@@ -170,16 +170,22 @@ NM_CONF_DIR = "/run/NetworkManager/conf.d"
 NM_CONF = "90-irice-quickshare.conf"
 
 
-def nm_unmanaged_conf(station):
+def nm_unmanaged_conf(station, p2p_dev=True):
     """The drop-in that keeps NetworkManager off our interfaces: wpa_supplicant's
     group interfaces ("p2p-<station>-N", or "p2p-grp-N" for long names), our
     own, and, while the link lasts, its own P2P device (p2p-dev-<station>):
     told of a group it didn't ask for, that device ends it ("notified a group
     start but we are not trying to connect", then AP-DISABLED in the same
     second, on a real laptop). The station's connection is on the station
-    itself and isn't touched. Appended (+=) to whatever the user lists already."""
-    specs = [f"interface-name:p2p-dev-{station}", f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
-             f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
+    itself and isn't touched. Appended (+=) to whatever the user lists already.
+    p2p_dev=False (a group hosted behind the D-Bus shield): its P2P device
+    stays NetworkManager's. The shield already stops it ending the group, and
+    handing the device back afterwards leaves it "unavailable" (managed-type
+    external) until the Wi-Fi is turned off and on, which breaks Miracast
+    (Screen Mirroring) meanwhile: seen on a real laptop."""
+    specs = ([f"interface-name:p2p-dev-{station}"] if p2p_dev else []) + \
+        [f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
+         f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
     return "# iRice Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
            "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
 
@@ -584,14 +590,14 @@ class Links:
     def usable():
         return parse_iw_phy(run("iw", "phy", check=False)) if have("iw") else {}
 
-    def _nm_off(self, sta):
+    def _nm_off(self, sta, p2p_dev=True):
         """NetworkManager keeps off our interfaces until teardown (see the top)."""
         if self.nm_conf or not os.path.isdir(os.path.dirname(NM_CONF_DIR)):
             return
         os.makedirs(NM_CONF_DIR, exist_ok=True)
         path = os.path.join(NM_CONF_DIR, NM_CONF)
         with open(path, "w") as f:
-            f.write(nm_unmanaged_conf(sta))
+            f.write(nm_unmanaged_conf(sta, p2p_dev))
         self.nm_conf = path
         nm_reload()
 
@@ -694,9 +700,10 @@ class Links:
         wpa = self._wpa()
         sta = self.station()
         freq = go_freq(self.station_freq(sta), hint, self.usable())
-        if self.nm_manages(sta):
+        shielded = self.nm_manages(sta)
+        if shielded:
             self._shield(wpa)
-        self._nm_off(sta)
+        self._nm_off(sta, p2p_dev=not shielded)
         dev = wpa.interface(sta)
         netdevs = self._netdevs()
         self.undo.append(lambda: self._remove_new_groups(netdevs))
