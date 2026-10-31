@@ -148,7 +148,7 @@ Written and unit-tested (332 tests pass), not on `main` until checked:
   sending (it never worked: "Invalid sdu_length: 0" in the phone's log).
   **Check:** phone on USB adb (USB debugging on, File transfer mode), then
   send a photo over Bluetooth only, both ways: speed vs ~6 KB/s, and the
-  file byte-identical. The harness is in this session's scratchpad
+  file byte-identical. Drivers: tools/quickshare-check on the branch
   (blerx.py / blesend.py / phone.py).
 - **Wi-Fi Direct with the internet up.** While the Wi-Fi helper hosts a
   group, a D-Bus rule refuses wpa_supplicant's RemoveInterface (how
@@ -156,9 +156,9 @@ Written and unit-tested (332 tests pass), not on `main` until checked:
   normal connection. On this laptop the group goes on 2.4 GHz next to the
   5 GHz connection (the kernel lacks CFG80211_REG_RELAX_NO_IR, so no 5 GHz
   group beside a connection). **Check, from a real terminal (not the
-  Claude chat: pkexec needs a tty), e.g. a second SSH session:** run the
-  shield test (`shield-test.py` from the scratchpad; asks the password
-  once). Expect the group up on every line, wlan0 still on the home Wi-Fi,
+  Claude chat: pkexec needs a tty), e.g. a second SSH session:** run
+  `python3 tools/quickshare-check/shield-test.py` (on the branch; asks the
+  password once). Expect the group up on every line, wlan0 still on the home Wi-Fi,
   internet up, and the rule off at the end. Then a real receive from a
   phone on another network.
 Then merge the branch into `main`.
