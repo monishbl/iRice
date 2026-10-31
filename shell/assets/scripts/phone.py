@@ -66,11 +66,17 @@ def details(dev):
     """Its name, Android version and battery (only for one that's allowed us in)."""
     if dev["state"] != "device":
         return dev
-    props = shell(dev["serial"], "getprop ro.product.marketname; getprop ro.product.model; getprop ro.build.version.release")
+    # Its name: the phone's own (Settings → About phone), else the maker's
+    # (Realme, Oppo and OnePlus keep theirs in ro.vendor.oplus.market.name),
+    # else the model code ("RMX3371")
+    props = shell(dev["serial"], "settings get global device_name; getprop ro.product.marketname; "
+                  "getprop ro.vendor.oplus.market.name; getprop ro.product.vendor.marketname; "
+                  "getprop ro.product.model; getprop ro.build.version.release")
     lines = [l.strip() for l in props.splitlines()]
-    while len(lines) < 3:
+    while len(lines) < 6:
         lines.append("")
-    dev = dict(dev, model=lines[0] or lines[1] or dev["model"], android=lines[2])
+    names = [n for n in lines[:5] if n and n != "null"]
+    dev = dict(dev, model=names[0] if names else dev["model"], android=lines[5])
     batt = shell(dev["serial"], "dumpsys", "battery")
     m = re.search(r"^\s*level:\s*(\d+)", batt, re.M)
     if m:

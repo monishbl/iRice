@@ -61,8 +61,11 @@ Still to check with the real things:
   the next update's native helpers); Outlook events and To Do tasks appear.
 - **Drive / OneDrive folders**: Install rclone, Connect: the browser sign-in,
   then ~/Google Drive opens in Dolphin.
-- **Android phone**: Settings -> Phone -> Install; USB debugging on; Show
-  Screen; pair by QR; webcam (Set Up asks for the password: v4l2loopback).
+- **Android phone**: the watcher was checked with the Realme over USB (31 Oct:
+  name, Android 14, battery, charging; it now shows "realme GT NEO 3T", not
+  "RMX3371"). Still to check: Settings -> Phone -> Install (scrcpy isn't
+  installed yet); Show Screen; pair by QR; webcam (Set Up asks for the
+  password: v4l2loopback).
 - **Mirroring**: Screen Mirroring tile with a Miracast TV (this laptop's Wi-Fi reports Wi-Fi Direct (iw), so it should work)
   and with a Chromecast.
 - **Fast Pair**: the WH-CH720N or realme Buds T100 in pairing mode -> the
@@ -75,14 +78,12 @@ Still to check with the real things:
 ## Quick Share: two speed-ups waiting for a hardware check (branch `quickshare-l2cap-shield`)
 
 Written and unit-tested (332 tests pass), not on `main` until checked:
-- **Faster Bluetooth (L2CAP).** Phones open an L2CAP channel first when the
-  computer advertises one; iRice now does (no root), instead of GATT writes
-  acknowledged one at a time (~6 KB/s). Also fixes iRice's own L2CAP when
-  sending (it never worked: "Invalid sdu_length: 0" in the phone's log).
-  **Check:** phone on USB adb (USB debugging on, File transfer mode), then
-  send a photo over Bluetooth only, both ways: speed vs ~6 KB/s, and the
-  file byte-identical. Drivers: tools/quickshare-check on the branch
-  (blerx.py / blesend.py / phone.py).
+- **Faster Bluetooth (L2CAP): checked 31 Oct** with the Realme on USB adb,
+  Bluetooth only, 100 KB photos, byte-identical both ways. Phone → computer
+  over L2CAP (PSM 128): 1.95 s (about 51 KB/s), against 13.4 s (7 KB/s) over
+  GATT. Computer → phone first failed ("[Errno 90] Message too long": writes
+  bigger than the phone's MTU); fixed on the branch (bd27dad: writes split
+  to BT_SNDMTU), then 100 KB in under a second once the file started.
 - **Wi-Fi Direct with the internet up.** While the Wi-Fi helper hosts a
   group, a D-Bus rule refuses wpa_supplicant's RemoveInterface (how
   NetworkManager ends groups it didn't start), so NetworkManager keeps the
@@ -94,7 +95,7 @@ Written and unit-tested (332 tests pass), not on `main` until checked:
   password once). Expect the group up on every line, wlan0 still on the home Wi-Fi,
   internet up, and the rule off at the end. Then a real receive from a
   phone on another network.
-Then merge the branch into `main`.
+Then merge the branch into `main` (only the Wi-Fi Direct shield test is left).
 
 ## Quick Share: tested with a real phone (31 Oct)
 

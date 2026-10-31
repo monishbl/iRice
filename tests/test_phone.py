@@ -23,7 +23,8 @@ if a[:1] == ["track-devices"]:
 elif a[:2] == ["-s", "R5CT1234"] and a[2] == "shell":
     cmd = " ".join(a[3:])
     if "getprop" in cmd:
-        print("realme GT Master Edition\nRMX3371\n14")
+        # (no device name set, no ro.product.marketname: Realme's own property)
+        print("null\n\nrealme GT Master Edition\n\nRMX3371\n14")
     elif "dumpsys battery" in cmd:
         print("Current Battery Service state:\n  AC powered: false\n  status: 2\n  level: 76\n")
 '''
