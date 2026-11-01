@@ -63,27 +63,30 @@ Singleton {
     }
 
     // preview: play even when the sound is switched off (Settings' Play buttons)
+    // (logging in is its own: its switch and volume only, sound effects on
+    // or off)
     function play(name, preview) {
         const key = setting[name] ?? name;
-        if (!preview && (!cfg.enabled || cfg[key] === false))
+        const own = name === "startup";
+        if (!preview && ((!own && !cfg.enabled) || cfg[key] === false))
             return;
         const now = Date.now();
         if (!preview && now - (lastPlayed[name] ?? 0) < (spacing[name] ?? 0))
             return;
         lastPlayed[name] = now;
-        playFile(file(name));
+        playFile(file(name), own ? cfg.startupVolume : undefined);
     }
-    function playFile(f) {
-        const cmd = command(f);
+    function playFile(f, volume) {
+        const cmd = command(f, volume);
         if (cmd.length > 0)
             Quickshell.execDetached(cmd);
     }
     // The player command for a file ([] when there's no player), for a
     // sound that has to stop part-way (the ringtone, in a Process)
-    function command(f) {
+    function command(f, volume) {
         if (!f)
             return [];
-        const v = Math.max(0, Math.min(1, cfg.volume));
+        const v = Math.max(0, Math.min(1, volume ?? cfg.volume));
         if (Tools.has("pw-play"))
             return ["pw-play", "--volume", v.toFixed(2), f];
         if (Tools.has("paplay"))

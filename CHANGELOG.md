@@ -1,5 +1,10 @@
 # iRice changelog
 
+## A signature sound for logging in, with its own volume · 2026-11-01
+
+- **Logging in has one signature sound, in every style.** A quick glint runs up a D-flat major chord and opens into the chord itself, warm and wide, with an added ninth on top. Then a shimmer blooms out of it and lifts a little, in a long room. It's built to sound full on laptop speakers: the depth is in overtones rather than sub-bass that small speakers can't play. It's much louder than the other sounds (about −15 dB on average, against −30 to −36 dB for unlock and notifications in the Minimal style).
+- **Its own volume and switch.** Settings → Notifications → Logging in has the sound's switch, Play and Choose…, and a volume of its own (90% to start). It plays even with sound effects off, and the effects' volume doesn't change it.
+
 ## Fingerprint: an animated set-up, no false "Not recognised", the reader in every password prompt · 2026-11-01
 
 - **Adding a finger is animated.** A large fingerprint fills ridge by ridge from the bottom as each touch is taken. Each touch that counts sends out a ring; when the reader wants another try (off-centre, too quick), it shakes red; when it's done, it turns into a green check. The finger being added and how far along it is show underneath, and each added finger has a fingerprint beside its name.

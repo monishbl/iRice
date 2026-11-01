@@ -181,6 +181,9 @@ Singleton {
                 property string displaysFile: ""
                 property string pack: "marimba" // style of iRice's sounds: marimba | soft | keys | taps | minimal | glass (assets/sounds/<pack>)
                 property real volume: 0.6
+                // The log-in sound's own volume: it plays at this, louder than
+                // the rest, even with sound effects off (only `startup` stops it)
+                property real startupVolume: 0.9
             }
 
             // Screen recording (services/Recorder.qml): gpu-screen-recorder,

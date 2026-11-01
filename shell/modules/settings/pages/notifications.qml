@@ -30,8 +30,9 @@ Column {
         required property string key
         property string sound: key // what Play plays
         property bool custom: true // can use your own file
+        property bool always: false // (logging in: shown with sound effects off too)
         readonly property string file: custom ? Config.options.sounds[key + "File"] : ""
-        visible: Config.options.sounds.enabled
+        visible: always || Config.options.sounds.enabled
         detail: file !== "" ? file.split("/").pop() : ""
 
         QQ.Row {
@@ -49,6 +50,27 @@ Column {
                 onClicked: Config.options.sounds[srow.key + "File"] = ""
             }
             Switch { checked: Config.options.sounds[srow.key]; onToggled: Config.options.sounds[srow.key] = !checked }
+        }
+    }
+
+    // Logging in: its own sound, switch and volume, apart from the effects
+    Group {
+        width: parent.width
+        title: "Logging in"
+        footer: "Plays once when you log in, at its own volume, even with sound effects off."
+        SoundRow { key: "startup"; label: "Sound when you log in"; always: true }
+        Row {
+            visible: Config.options.sounds.startup
+            label: "Volume"
+            detail: Math.round(Config.options.sounds.startupVolume * 100) + "%"
+            Slider {
+                width: 220
+                from: 0
+                to: 1
+                value: Config.options.sounds.startupVolume
+                onMoved: v => Config.options.sounds.startupVolume = v
+                onPressedChanged: if (!pressed) Sounds.play("startup", true) // hear the level
+            }
         }
     }
 
@@ -81,7 +103,6 @@ Column {
                 }
             }
         }
-        SoundRow { key: "startup"; label: "When you log in" }
         SoundRow { key: "charging"; label: "Plugging in the charger" }
         SoundRow { key: "displays"; label: "Connecting a display" }
         SoundRow { key: "lock"; label: "Locking and unlocking"; custom: false }

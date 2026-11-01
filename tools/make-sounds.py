@@ -10,9 +10,10 @@ is original. The packs:
   marimba  a wooden mallet: bright attack, warm body, quick decay
   keys     a felt electric piano: gentle tines with a soft bell overtone
   taps     short low "thocks" and ticks, almost no melody
-  minimal  quiet ticks; only logging in gets a (soft) tone
+  minimal  quiet ticks
   glass    the first set: glassy taps, sparkles and pops (the most playful)
 Each pack has the same events (see EVENTS); Sounds.qml picks the folder.
+Logging in (startup) is one signature sound, the same in every pack.
 """
 import math, os, random, struct, subprocess, tempfile, wave
 
@@ -88,18 +89,113 @@ def finish(buf, name, peak_db):
     print(name, f"{n / RATE:.2f}s")
 
 
-def startup():
-    # F major, spread over three octaves; each note is three slightly detuned
-    # voices for warmth, the top ones with a little shimmer
-    buf = buffer(2.6)
-    notes = [(41, 0.9, -0.3), (48, 0.75, 0.25), (53, 0.7, -0.15), (57, 0.5, 0.3), (60, 0.42, -0.25), (65, 0.22, 0.1)]
-    for k, (m, amp, pan) in enumerate(notes):
-        for cents, p in ((-4, -0.4), (0, 0.0), (5, 0.4)):
+# ── Startup: one signature for every pack ───────────────────────────────
+# Logging in is the moment to be glad of, so it's the loudest sound and the
+# same in every style (like a computer's own chime): a quick glint rising up
+# a D-flat major chord, opening into the chord itself, warm and wide (an
+# added ninth on top), then a shimmer that blooms out of it and lifts a
+# little, in a long room. Bright and opening, not a boom.
+# Laptop speakers play little below 150 Hz, so the depth is in overtones
+# and everything under ~130 Hz is filtered out, which no small speaker
+# plays anyway and which would only use up loudness.
+
+def reverb(buf, seconds, wet):
+    """A long, smooth room: four combs and two allpasses per side
+    (Schroeder), each side with its own lengths so the tail is wide."""
+    left, right = buf
+    out = []
+    for side, ch in enumerate((left, right)):
+        n = len(ch)
+        acc = [0.0] * n
+        spread = 23 * side
+        for d in (1557, 1617, 1491, 1422):
+            d += spread
+            g = 10 ** (-3 * d / (seconds * RATE))  # 60 dB down after `seconds`
+            line = [0.0] * n
+            damp, lp = 0.25, 0.0
+            for i in range(n):
+                fb = line[i - d] if i >= d else 0.0
+                lp = fb * (1 - damp) + lp * damp
+                line[i] = ch[i] + g * lp
+                acc[i] += line[i] * 0.25
+        for d, g in ((225 + spread, 0.6), (556 + spread, 0.6)):
+            x = acc
+            y = [0.0] * n
+            for i in range(n):
+                xd = x[i - d] if i >= d else 0.0
+                yd = y[i - d] if i >= d else 0.0
+                y[i] = -g * x[i] + xd + g * yd
+            acc = y
+        out.append(acc)
+    for ch, w in zip((left, right), out):
+        for i in range(len(ch)):
+            ch[i] = ch[i] + wet * w[i]
+
+
+def highpass(buf, cutoff, poles=2):
+    """Removes what's below `cutoff` Hz (one-pole stages, 6 dB/octave each)."""
+    a = 1 / (1 + 2 * math.pi * cutoff / RATE)
+    for ch in buf:
+        for _ in range(poles):
+            px = py = 0.0
+            for i in range(len(ch)):
+                x = ch[i]
+                py = a * (py + x - px)
+                px = x
+                ch[i] = py
+
+
+def saturate(buf, drive):
+    """A little density, like a big speaker pushed: soft clipping."""
+    for ch in buf:
+        k = math.tanh(drive)
+        for i in range(len(ch)):
+            ch[i] = math.tanh(drive * ch[i]) / k
+
+
+_SIGNATURE = None  # the first pack's file, copied to the rest
+
+
+def signature_startup():
+    global _SIGNATURE
+    dest = os.path.join(OUT, "startup.ogg")
+    if _SIGNATURE:
+        if os.path.abspath(_SIGNATURE) != os.path.abspath(dest):
+            with open(_SIGNATURE, "rb") as a, open(dest, "wb") as b:
+                b.write(a.read())
+        print("startup (signature)")
+        return
+    rng_state = random.getstate()
+    random.seed(1984)
+    buf = buffer(5.0)
+    # the glint: a quick run up the chord, glassy, left to right
+    for k, m in enumerate((61, 65, 68, 73, 77)):
+        tone(buf, 0.045 * k, hz(m), 0.32 - 0.03 * k, attack=0.003, tau=0.5, pan=-0.6 + 0.3 * k,
+             partials=((1, 1), (2.0, 0.25), (3.0, 0.08), (4.2, 0.05)))
+    hit = 0.24
+    # the chord: D-flat major with an added ninth, from just under middle C
+    # to two octaves up; three voices a few cents apart for each note (warm
+    # and wide), lower notes ring longer
+    warm = ((1, 1), (2, 0.55), (3, 0.3), (4, 0.16), (5, 0.08), (6, 0.04))
+    chord = [(49, 0.3, -0.15), (56, 0.36, 0.3), (61, 0.42, -0.35), (65, 0.4, 0.35), (68, 0.36, -0.3),
+             (75, 0.28, 0.4), (77, 0.24, -0.2), (80, 0.18, 0.25)]
+    for k, (m, amp, pan) in enumerate(chord):
+        for cents, p in ((-6, -0.35), (0, 0.0), (7, 0.35)):
             f = hz(m) * 2 ** (cents / 1200)
-            tone(buf, 0.012 * k, f, amp / 3, attack=0.09 + 0.02 * k, tau=0.95 - 0.06 * k,
-                 pan=max(-1, min(1, pan + p * 0.3)), partials=((1, 1), (2, 0.18), (3, 0.05)),
-                 shimmer=0.06 if m >= 57 else 0.0)
-    finish(buf, "startup", -6)
+            tone(buf, hit + 0.004 * k, f, amp / 3, attack=0.014, tau=2.2 - 0.12 * k,
+                 pan=max(-1, min(1, pan + p * 0.4)), partials=warm, shimmer=0.03 if m >= 75 else 0.0)
+    # a warm body an octave under the chord, through its overtones
+    tone(buf, hit, hz(37), 0.2, attack=0.01, tau=1.4, partials=((2, 1), (3, 0.6), (4, 0.4), (5, 0.2)))
+    # the bloom: high notes swelling out of the chord, rising into tune
+    for k, (m, amp, pan) in enumerate(((85, 0.14, -0.5), (89, 0.12, 0.5), (92, 0.09, -0.2), (97, 0.06, 0.3))):
+        tone(buf, hit + 0.3 + 0.1 * k, hz(m), amp, attack=0.6, tau=1.3, pan=pan,
+             partials=((1, 1), (2, 0.12)), shimmer=0.07, glide=0.985, glide_time=0.45)
+    reverb(buf, 3.0, 0.3)
+    saturate(buf, 1.25)
+    highpass(buf, 130, poles=3)  # (after the saturation, which adds low difference tones)
+    finish(buf, "startup", -0.8)
+    random.setstate(rng_state)
+    _SIGNATURE = dest
 
 
 def charging():
@@ -198,7 +294,7 @@ def error():
 
 
 def glass_pack():
-    startup()
+    signature_startup()
     charging()
     display("display-connect", 72, 79)
     display("display-disconnect", 79, 72)
@@ -232,9 +328,6 @@ class Pack:
     def tick(self, buf, t, kind):
         """kind: lock | unlock | volume | error"""
         raise NotImplementedError
-    def chord(self, buf):
-        """The startup sound"""
-        raise NotImplementedError
 
 
 class Soft(Pack):
@@ -250,11 +343,6 @@ class Soft(Pack):
         else:  # a soft, low latch; unlocking a fifth up
             f = 330 if kind == "lock" else 495
             tone(buf, t, f, 0.9, attack=0.003, tau=0.03, partials=((1, 1), (2, 0.1)))
-    def chord(self, buf):
-        for k, (m, amp, pan) in enumerate([(41, 0.8, -0.2), (48, 0.6, 0.2), (53, 0.55, -0.1), (57, 0.4, 0.15)]):
-            for cents in (-3, 3):
-                tone(buf, 0.03 * k, hz(m) * 2 ** (cents / 1200), amp / 2, attack=0.25, tau=0.9, pan=pan,
-                     partials=((1, 1), (2, 0.1)))
 
 
 class Marimba(Pack):
@@ -268,10 +356,6 @@ class Marimba(Pack):
         f = {"lock": 392, "unlock": 523, "volume": 659, "error": 196}[kind]
         tau = 0.05 if kind != "error" else 0.12
         tone(buf, t, f, 1.0, attack=0.0015, tau=tau, partials=self.bar)
-    def chord(self, buf):
-        # a rolled F major on a low bar, like a gentle mallet sweep
-        for k, m in enumerate((53, 57, 60, 65, 69)):
-            tone(buf, 0.07 * k, hz(m - 12), 0.6, attack=0.002, tau=0.45, pan=-0.3 + 0.15 * k, partials=self.bar)
 
 
 class Keys(Pack):
@@ -283,10 +367,6 @@ class Keys(Pack):
     def tick(self, buf, t, kind):
         f = {"lock": hz(64), "unlock": hz(71), "volume": hz(76), "error": hz(52)}[kind]
         tone(buf, t, f, 1.0, attack=0.004, tau=0.06 if kind != "error" else 0.15, partials=self.tine)
-    def chord(self, buf):
-        # an Fmaj9 voicing, played softly with the notes a touch apart
-        for k, (m, amp, pan) in enumerate([(41, 0.7, -0.2), (52, 0.45, 0.1), (55, 0.45, -0.1), (57, 0.4, 0.2), (60, 0.35, -0.15), (64, 0.25, 0.15)]):
-            tone(buf, 0.025 * k, hz(m), amp, attack=0.01, tau=1.0, pan=pan, partials=self.tine, shimmer=0.05)
 
 
 class Taps(Pack):
@@ -300,11 +380,6 @@ class Taps(Pack):
         f = {"lock": 260, "unlock": 300, "volume": 380, "error": 170}[kind]
         tone(buf, t, f, 1.0, attack=0.001, tau=0.025 if kind != "error" else 0.05, partials=((1, 1), (2.3, 0.25)))
         tone(buf, t, 3000, 0.07, attack=0.0005, tau=0.003)
-    def chord(self, buf):
-        # three soft knocks rising, over a low bloom that fades
-        for k, m in enumerate((65, 69, 72)):
-            self.note(buf, 0.12 * k, m, 0.8, pan=-0.2 + 0.2 * k)
-        tone(buf, 0.3, hz(41), 0.35, attack=0.2, tau=0.5, partials=((1, 1), (2, 0.1)))
 
 
 class Minimal(Pack):
@@ -317,9 +392,6 @@ class Minimal(Pack):
     def tick(self, buf, t, kind):
         f = {"lock": 700, "unlock": 900, "volume": 1000, "error": 450}[kind]
         tone(buf, t, f, 1.0, attack=0.0008, tau=0.008 if kind != "error" else 0.02, partials=((1, 1), (1.5, 0.2)))
-    def chord(self, buf):
-        tone(buf, 0.0, hz(53), 0.7, attack=0.2, tau=0.6, partials=((1, 1), (2, 0.06)))
-        tone(buf, 0.05, hz(60), 0.4, attack=0.25, tau=0.55, partials=((1, 1),))
 
 
 def phrase(pack, name, length, notes, peak):
@@ -331,9 +403,7 @@ def phrase(pack, name, length, notes, peak):
 
 
 def build(pack):
-    buf = buffer(1.6 if pack.name == "taps" else 3.2 if pack.name == "keys" else 2.6)
-    pack.chord(buf)
-    finish(buf, "startup", -7 + pack.gain)
+    signature_startup()
     # charging: two notes up a fourth
     phrase(pack, "charging", 0.6, [(0, 79, 0.6, -0.1, 0.8), (0.09, 84, 0.7, 0.1, 1.0)], -7)
     # displays: a fifth up, or down
@@ -412,6 +482,7 @@ if __name__ == "__main__":
     import sys
     only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
     only_ring = sys.argv[1:] == ["ringtone"]  # tools/make-sounds.py ringtone: just ringtone.ogg
+    only_startup = sys.argv[1:] == ["startup"]  # tools/make-sounds.py startup: just startup.ogg
     for pack in (Soft(), Marimba(), Keys(), Taps(), Minimal(), None):
         random.seed(7)  # the same files every run
         OUT = os.path.join(ROOT, pack.name if pack else "glass")
@@ -421,6 +492,8 @@ if __name__ == "__main__":
             today(pack) if pack else today_glass()
         elif only_ring:
             ringtone(pack) if pack else ringtone_glass()
+        elif only_startup:
+            signature_startup()
         elif pack:
             build(pack)
         else:
