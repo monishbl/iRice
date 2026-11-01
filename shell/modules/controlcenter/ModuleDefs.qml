@@ -63,6 +63,8 @@ QtObject {
             appLibrary: { label: "App Library", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
             display: { label: "Display", kind: "slider", sizes: ["4x1", "1x2"], icon: "sun", available: Brightness.available, reason: "No adjustable display brightness" },
             sound: { label: "Sound", kind: "slider", sizes: ["4x1", "1x2"], icon: Audio.icon, page: "sound" },
+            // (only in Edit Controls to begin with: not in the default layout)
+            micLevel: { label: "Microphone level", kind: "slider", sizes: ["4x1", "1x2"], icon: Audio.micMuted ? "microphone-slash" : "microphone", page: "mic", available: AudioStreams.inputs.length > 0, reason: "No microphone found" },
             nowPlaying: { label: "Now Playing", kind: "media", sizes: ["2x2", "4x1"], icon: "music-notes" },
             battery: { label: "Battery", kind: "info", sizes: ["2x1", "1x1"], icon: "battery-high", available: Island.hasBattery, reason: "No battery" },
             resources: { label: "CPU & Memory", kind: "info", sizes: ["2x1", "2x2"], icon: "cpu", page: "resources" },

@@ -253,6 +253,9 @@ Singleton {
                 property list<string> layout: []
                 // A glass panel behind the controls; off = each control is its own glass chip (Tahoe)
                 property bool background: false
+                // The Sound menu (Control Center and the menu bar) also shows the
+                // microphone, its level and the inputs, under the outputs
+                property bool micInSound: true
                 // Extra toggles row; ones whose tools aren't installed are hidden
                 property list<string> toggles: ["mic", "lowPower", "stageManager", "screenshot", "colorPicker", "gameMode", "antiFlashbang", "keyboard", "musicRecognition", "record", "easyEffects", "warp"]
             }

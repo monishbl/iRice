@@ -211,9 +211,9 @@ Item {
         accessibleName: root.def.label ?? root.moduleId
         anchors.fill: parent
         icon: root.def.icon
-        value: root.moduleId === "display" ? Brightness.value : (Audio.muted ? 0 : Audio.volume)
+        value: root.moduleId === "display" ? Brightness.value : root.moduleId === "micLevel" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
         hasMore: !!root.def.page && !root.editing
-        onMoved: v => { if (root.preview || root.editing) return; root.moduleId === "display" ? Brightness.set(v, true) : Audio.setVolume(v, true); }
+        onMoved: v => { if (root.preview || root.editing) return; root.moduleId === "display" ? Brightness.set(v, true) : root.moduleId === "micLevel" ? Audio.setMicVolume(v, true) : Audio.setVolume(v, true); }
         onMore: root.openPage(root.def.page)
         enabled: !root.editing && !root.preview
     }

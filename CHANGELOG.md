@@ -14,6 +14,7 @@
 - **A battery level that arrives late traces in.** Headphones often report their level seconds after connecting: the ring now draws itself round from empty and the number fades in, rather than popping up drawn.
 - **Bluetooth devices warn when they run low,** at 20% and again at 10%, on the device's own card with its picture (once each, until it's charged past 25%).
 - **Earbuds show left, right and case.** When paired earbuds broadcast separate levels (case open), their card shows three small rings, and the Batteries widget a ring each.
+- **Microphone in Control Center.** A new "Microphone level" slider is in Edit Controls (not added to your layout). Its arrow opens a Microphone page with the level and the inputs, each with its device's picture. The Sound menu (Control Center and the menu bar) shows the same microphone section under the outputs and apps, and Settings → Sound → "Microphone in the Sound menu" turns that off. The Sound page's outputs show device pictures too.
 - **The volume, microphone and brightness bar works with the mouse.** Point at it and it stays up. Click, drag or scroll along it to set the level, and click its icon to mute. The button at its end opens a list underneath:
   - **Volume:** the outputs, with their device pictures and a tick on the current one, plus App volumes › (each app playing, with its own level) and Sound settings.
   - **Microphone:** the inputs.

@@ -33,6 +33,7 @@ DetailPage {
         ListRow {
             required property var modelData
             icon: AirPlay.isAirPlay(modelData) ? "airplay" : AudioStreams.outputIcon(modelData)
+            picture: AirPlay.isAirPlay(modelData) ? "" : AudioStreams.picture(modelData)
             highlighted: Pipewire.defaultAudioSink === modelData
             title: AudioStreams.outputName(modelData)
             status: AirPlay.isAirPlay(modelData) ? "AirPlay · about 2 s behind" : ""
@@ -237,5 +238,12 @@ DetailPage {
                 }
             }
         }
+    }
+
+    // The microphone too (Settings → Sound → Microphone in the Sound menu)
+    MicSection {
+        visible: Config.options.controlCenter.micInSound
+        width: parent.width
+        showTitle: true
     }
 }

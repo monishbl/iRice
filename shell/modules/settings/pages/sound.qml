@@ -84,6 +84,14 @@ Column {
         width: parent.width
         title: "Input"
         Row {
+            label: "Microphone in the Sound menu"
+            detail: "Its level and the inputs, under the outputs in Control Center's and the menu bar's Sound menu."
+            Switch {
+                checked: Config.options.controlCenter.micInSound
+                onToggled: Config.options.controlCenter.micInSound = !checked
+            }
+        }
+        Row {
             visible: page.inputs.length === 0
             label: "No microphone found"
             detail: "Connect one, or check that it's turned on"
