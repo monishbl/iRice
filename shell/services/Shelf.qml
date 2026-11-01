@@ -14,6 +14,9 @@ import "ShelfLogic.js" as Logic
 // It opens:
 //   - shaking the pointer while dragging something (shelf.shake)
 //   - holding a drag at the left or right edge of a screen (shelf.edge)
+// and only for a real drag of files: a selection, a scrollbar, a slider, or
+// a browser's image or link dragged about never opens it
+// (modules/shelf/ShelfProbes). Text and links can still go onto it once open.
 //   - Super+Alt+D (keymap.json "shelf"), or its menu bar icon (shelf.menubar)
 // While the left button is held (keybinds.lua: pointerDown / pointerUp,
 // non-consuming), the pointer is followed (assets/scripts/pointer-follow.py);
@@ -133,8 +136,46 @@ Singleton {
     property bool dragging: false // moved far enough to be a drag
     property bool windowMove: false // (it's a window being moved)
     property var samples: [] // [{t, x}] the last moment's x positions
-    property real edgeSince: 0
-    property string edgeSide: ""
+    // (ShelfProbes: drop areas while the button is held, and one under the
+    // pointer after a shake, to tell a real drag of something)
+    property bool probing: false
+    property var probe: null // { x, y, screen } just after a shake
+    Timer {
+        id: probeEnd
+        interval: 900
+        onTriggered: root.probe = null
+    }
+    property string edgeAt: ""
+    property var edgeScreen: null
+    Timer {
+        id: edgeHold
+        interval: 350
+        onTriggered: {
+            if (root.opened || !root.down)
+                return;
+            root.side = root.edgeAt;
+            root.atY = root.last.y - (root.edgeScreen?.y ?? 0);
+            root.show("edge", root.edgeScreen);
+        }
+    }
+    function dragArrived(where, scr, y) {
+        if (opened)
+            return;
+        if (where === "shake") {
+            side = probe && scr && probe.x > scr.x + scr.width / 2 ? "right" : "left";
+            atY = probe && scr ? probe.y - scr.y : -1;
+            show("shake", scr);
+            probe = null;
+        } else {
+            edgeAt = where;
+            edgeScreen = scr;
+            edgeHold.restart();
+        }
+    }
+    function dragLeft(where) {
+        if (where !== "shake")
+            edgeHold.stop();
+    }
 
     function pointerDown() {
         if (!watching)
@@ -145,7 +186,7 @@ Singleton {
         dragging = false;
         windowMove = false;
         samples = [];
-        edgeSince = 0;
+        probe = null;
         lastMove = Date.now();
         follow.restart();
     }
@@ -153,6 +194,9 @@ Singleton {
         if (!down)
             return;
         down = false;
+        probing = false;
+        probe = null;
+        edgeHold.stop();
         follow.stop();
         if (follower.running)
             follower.signal(15);
@@ -166,6 +210,7 @@ Singleton {
         function onRawEvent(event) {
             if (event.name === "irice-drag" && root.down) {
                 root.windowMove = true;
+                root.probing = false;
                 if (follower.running)
                     follower.signal(15);
             }
@@ -176,7 +221,13 @@ Singleton {
     Timer {
         id: follow
         interval: 120
-        onTriggered: if (root.down && !root.windowMove && !follower.running) follower.running = true // (one at a time: a second would be queued)
+        onTriggered: {
+            if (root.down && !root.windowMove) {
+                root.probing = true;
+                if (!follower.running)
+                    follower.running = true; // (one at a time: a second would be queued)
+            }
+        }
     }
     // A release can go missing (a surface appearing under the pointer): a
     // pointer that hasn't moved for 4 s, or a follower that ended, counts as
@@ -214,25 +265,16 @@ Singleton {
             return;
         const scr = Quickshell.screens.find(s => x >= s.x && x < s.x + s.width && y >= s.y && y < s.y + s.height) ?? null;
 
-        // Shaken: the pointer turned back and forth quickly
+        // Shaken: the pointer turned back and forth quickly. Whether it's
+        // carrying something is for the drop area put under it to tell
+        // (ShelfProbes: dragArrived)
         samples = samples.filter(s => now - s.t < 700).concat([{ t: now, x: x }]);
         if (cfg.shake && !opened && Logic.shaken(samples, 40)) {
-            side = scr && x > scr.x + scr.width / 2 ? "right" : "left";
-            atY = scr ? y - scr.y : -1;
-            show("shake", scr);
+            probe = { x: x, y: y, screen: scr };
+            probeEnd.restart();
             samples = [];
         }
-
-        // Held at the left or right edge
-        const at = !scr ? "" : x <= scr.x + 2 ? "left" : x >= scr.x + scr.width - 3 ? "right" : "";
-        if (at !== edgeSide) {
-            edgeSide = at;
-            edgeSince = now;
-        } else if (cfg.edge && at !== "" && !opened && now - edgeSince > 350) {
-            side = at;
-            atY = y - scr.y;
-            show("edge", scr);
-        }
+        // (held at an edge: the edge strips tell, ShelfProbes)
     }
     // qs ipc call shelf toggle | open | close | clear
     IpcHandler {

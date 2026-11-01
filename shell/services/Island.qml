@@ -734,7 +734,7 @@ Singleton {
                 return;
             }
             if (kind === "output") { // the volume row after switching to headphones
-                root.hud("volume", "realme TechLife Buds T100");
+                root.hud("volume", "Buds");
                 started.elapsed = was;
                 return;
             }
