@@ -1,15 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
 <defs>
-  <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#ECECEF"/><stop offset="1" stop-color="#C9C9D0"/></linearGradient>
-  <linearGradient id="side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D4D4DA"/><stop offset="0.5" stop-color="#FAFAFA"/><stop offset="1" stop-color="#C4C4CB"/></linearGradient>
-  <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A4A52"/><stop offset="1" stop-color="#242428"/></linearGradient>
-  <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34343B"/><stop offset="0.5" stop-color="#1D1D21"/><stop offset="1" stop-color="#121214"/></linearGradient>
-  <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000000" stop-opacity="0.32"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCFCFD"/><stop offset="0.6" stop-color="#E7E7EB"/><stop offset="1" stop-color="#CACAD1"/></linearGradient>
+  <linearGradient id="shellH" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C9C9D0"/><stop offset="0.3" stop-color="#F6F6F8"/><stop offset="0.7" stop-color="#ECECEF"/><stop offset="1" stop-color="#BEBEC6"/></linearGradient>
+  <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D9D9DF"/><stop offset="1" stop-color="#F3F3F5"/></linearGradient>
+  <linearGradient id="graphite" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46464D"/><stop offset="1" stop-color="#1E1E22"/></linearGradient>
+  <linearGradient id="fabric" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E2E2E6"/><stop offset="1" stop-color="#B9B9C1"/></linearGradient>
+  <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A4260"/><stop offset="0.55" stop-color="#1D2030"/><stop offset="1" stop-color="#121318"/></linearGradient>
+  <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+  <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+  <linearGradient id="well" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8E8E97"/><stop offset="1" stop-color="#B9B9C1"/></linearGradient>
+  <radialGradient id="cavity" cx="0.5" cy="0.35" r="0.65"><stop offset="0" stop-color="#2E2E34"/><stop offset="1" stop-color="#18181B"/></radialGradient>
+  <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000000" stop-opacity="0.38"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
 </defs>
-<ellipse cx="64" cy="102" rx="58" ry="4" fill="url(#shadow)"/>
-<rect x="22" y="22" width="84" height="60" rx="5" fill="url(#side)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
-<rect x="25.5" y="25.5" width="77" height="53" rx="2.5" fill="url(#screen)"/>
-<path d="M28 28 L80 28 L28 70 Z" fill="#FFFFFF" opacity="0.05"/>
-<path d="M10 82 H118 L114 92 C113 94 111 95 109 95 H19 C17 95 15 94 14 92 Z" fill="url(#body)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
-<rect x="54" y="82" width="20" height="3" rx="1.5" fill="#A9A9B1"/>
+<ellipse cx="64" cy="104" rx="62" ry="3.5" fill="url(#shadow)"/>
+<rect x="18" y="18" width="92" height="66" rx="6" fill="url(#shellH)"/>
+<rect x="20.5" y="20.5" width="87" height="61" rx="4" fill="#0C0C0E"/>
+<rect x="23" y="23" width="82" height="56" rx="2.5" fill="url(#screen)"/>
+<rect x="23" y="23" width="82" height="56" rx="2.5" fill="url(#sheen)"/>
+<rect x="58" y="20.5" width="12" height="3.5" rx="1.75" fill="#000000"/>
+<path d="M6 84 H122 L119 94 C118.5 96 117 97 115 97 H13 C11 97 9.5 96 9 94 Z" fill="url(#shell)"/>
+<rect x="52" y="84" width="24" height="3" rx="1.5" fill="#000000" opacity="0.15"/>
 </svg>
