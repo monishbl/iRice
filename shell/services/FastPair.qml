@@ -33,7 +33,7 @@ Singleton {
     }
 
     // Said once per device for a while (a card that keeps coming back would nag)
-    property var offered: ({}) // address -> time
+    property var offered: ({}) // address (the paired one's, when known) -> time
     property var batteryShown: ({}) // address -> time last seen with batteries
     onDevicesChanged: {
         const now = Date.now();
@@ -46,12 +46,15 @@ Singleton {
             if (now - batteryShown[a] > 600000)
                 delete batteryShown[a];
         for (const d of devices) {
-            if (d.pairing && d.rssi > -70 && now - (offered[d.address] ?? 0) > 600000 && !paired(d)) {
-                offered[d.address] = now;
+            // (earbuds keep advertising, from new addresses, while they
+            // connect and after: offered once per pair of earbuds)
+            const id = d.known?.address || d.address;
+            if (d.pairing && d.rssi > -70 && now - (offered[id] ?? 0) > 600000 && !busy && !paired(d)) {
+                offered[id] = now;
                 // (`known`: paired with this computer before, from another
                 // address: they're connected, not paired again)
                 Island.post({
-                    kind: "custom", icon: "headphones", title: d.known?.name || d.name || "Earbuds nearby",
+                    kind: "custom", key: "bt:" + id, icon: "headphones", title: d.known?.name || d.name || "Earbuds nearby",
                     subtitle: d.known ? "Paired with this computer, not connected" : "Ready to pair with this computer",
                     color: Theme.accent, action: "Connect", onAction: () => root.connect(d)
                 }, 15000);
@@ -68,15 +71,17 @@ Singleton {
     }
     readonly property bool ownAudioConnected: (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && /audio|headset|headphone|earbud/i.test(String(b.icon ?? "") + " " + String(b.deviceName ?? b.name ?? "")))
     function paired(d) {
-        return d.known?.connected || (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && b.name && (b.name === d.name || b.name === d.known?.name));
+        return (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && (b.address === d.known?.address || (b.name && b.name === d.name)));
     }
     function batteryText(b) {
         const part = (label, x) => x ? label + " " + x.level + "%" + (x.charging ? " ⚡" : "") : "";
         return [part("L", b.left), part("R", b.right), part("Case", b.case)].filter(x => x).join(" · ");
     }
 
-    // Pair, trust, connect (one at a time). "Connecting…" stays up until it's
-    // done (pairing can take a minute): then the result takes its place
+    // Pair, trust, connect (one at a time), in the offer's own card (its
+    // key): "Connecting…" until it's done (pairing can take a minute), then
+    // "Connected", as the Bluetooth alert (Devices) says it too
+    readonly property bool busy: connector.running
     property string connecting: ""
     property int connectingUid: 0
     property var connectingDevice: null
@@ -95,7 +100,7 @@ Singleton {
         connectingDevice = d;
         connector.command = ["python3", "-I", script].concat(args);
         connector.running = true;
-        connectingUid = Island.post({ kind: "custom", icon: "headphones", title: "Connecting " + connecting + "…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 120000) || 0;
+        connectingUid = Island.post({ kind: "custom", key: "bt:" + (d.known?.address || d.address), icon: "headphones", title: connecting, subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 120000) || 0;
     }
     Process {
         id: connector
@@ -105,12 +110,20 @@ Singleton {
                 try {
                     r = JSON.parse(text);
                 } catch (e) {}
-                if (root.connectingUid)
-                    Island.remove(root.connectingUid);
                 const d = root.connectingDevice;
-                Island.post(r.ok ? { kind: "custom", icon: "headphones", title: root.connecting + " connected", subtitle: "Sound plays there now", color: Theme.accents.green }
-                    : Object.assign({ kind: "custom", icon: "headphones", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger },
+                // (newly paired earbuds have another address than their advert's)
+                const key = "bt:" + (r.address || d?.known?.address || d?.address || "");
+                const card = Island.find(key);
+                if (root.connectingUid && root.connectingUid !== card)
+                    Island.remove(root.connectingUid);
+                if (r.ok) {
+                    // (unless the Bluetooth alert has said it, with the battery)
+                    if (Island.byUid[card]?.kind !== "device")
+                        Island.post({ kind: "device", key: key, icon: "headphones", title: root.connecting, subtitle: "Connected", color: Theme.accents.blue }, 3500);
+                } else {
+                    Island.post(Object.assign({ kind: "custom", key: key, icon: "headphones", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger },
                         r.known && d ? { action: "Pair again", onAction: () => root.repair(d, r.known) } : {}), r.known ? 15000 : 6000);
+                }
                 root.connecting = "";
                 root.connectingUid = 0;
                 root.connectingDevice = null;

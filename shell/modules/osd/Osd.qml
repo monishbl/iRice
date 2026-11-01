@@ -51,11 +51,26 @@ Scope {
     Timer { interval: 2000; running: true; onTriggered: root.armed = true }
     Timer { id: hideTimer; interval: 1600; onTriggered: root.shown = false }
 
+    // Another output or microphone (headphones connecting) isn't a change of
+    // volume: its own level and mute arriving, just after, say nothing new
+    property var sinkSeen: null
+    property var sourceSeen: null
+    property real switchedAt: 0
+    function switched() {
+        if (Audio.sink !== sinkSeen || Audio.source !== sourceSeen) {
+            sinkSeen = Audio.sink;
+            sourceSeen = Audio.source;
+            switchedAt = Date.now();
+        }
+        return Date.now() - switchedAt < 1500;
+    }
     Connections {
         target: Audio
-        function onVolumeChanged() { root.show("volume"); }
-        function onMutedChanged() { root.show("volume"); }
-        function onMicMutedChanged() { root.show("mic"); }
+        function onSinkChanged() { root.switched(); }
+        function onSourceChanged() { root.switched(); }
+        function onVolumeChanged() { if (!root.switched()) root.show("volume"); }
+        function onMutedChanged() { if (!root.switched()) root.show("volume"); }
+        function onMicMutedChanged() { if (!root.switched()) root.show("mic"); }
     }
     Connections {
         target: Brightness

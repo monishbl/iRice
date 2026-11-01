@@ -188,6 +188,19 @@ Singleton {
             return 0;
         }
         const now = Date.now();
+        // One thing, one card: an alert with the `key` of one that's up (a
+        // device: "bt:" + its address) takes its place, so earbuds go from
+        // Connect to Connecting… to Connected in the same card
+        if (e.key)
+            for (let i = 0; i < alerts.count; i++) {
+                const u = alerts.get(i).uid;
+                if (byUid[u]?.key === e.key) {
+                    const ev = Object.assign({ uid: u, delay: 0, at: now, expires: now + (ms ?? 3000), hid: record(e, byUid[u].hid) }, e);
+                    byUid = Object.assign({}, byUid, { [u]: ev });
+                    note(e, u);
+                    return u;
+                }
+            }
         // HUD and music update their row in place
         if (e.kind === "hud" || e.kind === "music")
             for (let i = 0; i < alerts.count; i++) {
@@ -253,7 +266,10 @@ Singleton {
                 setHistory(history.map(h => h.hid === hid ? Object.assign({}, h, shown) : h));
         }
     }
-    function remove(uid) {
+    // (`since`: unless it was posted or changed from then on)
+    function remove(uid, since) {
+        if (since && (byUid[uid]?.at ?? 0) >= since)
+            return;
         for (let i = 0; i < alerts.count; i++)
             if (alerts.get(i).uid === uid)
                 return removeAt(i);
@@ -270,13 +286,21 @@ Singleton {
     }
     // Close everything (an alert's action ran, or the island was clicked),
     // except a ringing call (sticky: only Answer or Decline end it) and,
-    // given `before`, alerts from that uid on (the action's own "Connecting…")
-    function dismiss(before) {
+    // given `since`, alerts posted or changed from then on (the action's own
+    // "Connecting…")
+    function dismiss(since) {
         for (let i = alerts.count - 1; i >= 0; i--) {
             const u = alerts.get(i).uid;
-            if (!byUid[u]?.sticky && !(before && u >= before))
+            if (!byUid[u]?.sticky && !(since && (byUid[u]?.at ?? 0) >= since))
                 removeAt(i);
         }
+    }
+    // The alert up with this `key` (post), or 0
+    function find(key) {
+        for (let i = 0; i < alerts.count; i++)
+            if (byUid[alerts.get(i).uid]?.key === key)
+                return alerts.get(i).uid;
+        return 0;
     }
     // ── History ─────────────────────────────────────────────────────────
     // Every alert that isn't a notification (those are in Notification Center
@@ -294,16 +318,20 @@ Singleton {
         kept.items = JSON.stringify(list);
         kept.nextHid = nextHid;
     }
-    function record(e) {
+    // (`same`: the line of the card this one replaces, by its key)
+    function record(e, same) {
         if (unrecorded.includes(e.kind) || !e.title)
             return 0;
         const now = Date.now();
         // (missed calls from different people stay apart)
-        const old = history.find(h => h.kind === e.kind && h.title === e.title && now - h.at < 60000 && (e.kind !== "missedCall" || h.subtitle === (e.subtitle ?? "")));
+        const kept = same ? history.find(h => h.hid === same) : null;
+        const old = kept ?? history.find(h => (e.key ? h.key === e.key : h.kind === e.kind && h.title === e.title) && now - h.at < 60000 && (e.kind !== "missedCall" || h.subtitle === (e.subtitle ?? "")));
         const hid = old ? old.hid : nextHid++;
-        const entry = { hid: hid, kind: e.kind, icon: e.icon ?? "bell", title: e.title, subtitle: e.subtitle ?? "", color: String(e.color ?? "#FFFFFF"), at: now, times: old ? old.times + 1 : 1 };
+        const entry = { hid: hid, kind: e.kind, icon: e.icon ?? "bell", title: e.title, subtitle: e.subtitle ?? "", color: String(e.color ?? "#FFFFFF"), at: now, times: old ? old.times + (kept ? 0 : 1) : 1 };
         if (e.battery !== undefined)
             entry.battery = e.battery;
+        if (e.key)
+            entry.key = e.key;
         setHistory([entry].concat(history.filter(h => h.hid !== hid)).slice(0, historyMax));
         // Its button (Open a download or a drive, What's new), while it means something
         const a = Object.assign({}, historyActs);
@@ -666,7 +694,7 @@ Singleton {
             }
             return out.join("\n");
         }
-        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect>
+        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected>
         function demo(kind: string): void {
             const was = started.elapsed;
             started.elapsed = true;
@@ -683,9 +711,11 @@ Singleton {
                 notification: { kind: "notification", headline: "Here, I found the door code in your messages from Mac.", card: { name: "Mac Tyler", time: "Thursday", text: "There's a spare key on the hook by the coat rack! The front door code is #1997", initials: "MT", appIcon: "org.gnome.Polari" } },
                 music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" },
                 download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} },
-                // (a button that posts its own "Connecting…", as Fast Pair's does)
-                connect: { kind: "custom", icon: "headphones", title: "Buds nearby", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
-                    onAction: () => root.post({ kind: "custom", icon: "headphones", title: "Connecting Buds…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 20000) }
+                // (Fast Pair's card: Connect turns it into "Connecting…", and
+                // `demo connected` into the Bluetooth alert, in the same card)
+                connect: { kind: "custom", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
+                    onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
+                connected: { kind: "device", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up
             const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" || kind === "connect" ? root.longMs : 5000;

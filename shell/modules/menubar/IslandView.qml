@@ -561,7 +561,7 @@ Item {
                                 delay: event?.delay ?? 0
                                 unseen: root.unseen
                                 wheelDismiss: !alertScroll.overflows
-                                onActed: (uid, mark) => Island.dismiss(mark)
+                                onActed: (uid, since) => Island.dismiss(since)
                                 onDismissRequested: Island.remove(uid)
                                 // A hairline between stacked alerts
                                 Rectangle {

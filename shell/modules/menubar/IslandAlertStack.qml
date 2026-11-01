@@ -128,7 +128,7 @@ Scope {
                         width: parent.width - 36
                         event: Island.byUid[root.newest[0]] ?? null
                         unseen: root.unseen
-                        onActed: uid => Island.remove(uid)
+                        onActed: (uid, since) => Island.remove(uid, since)
                         onDismissRequested: Island.remove(root.newest[0])
                     }
                     // How many are waiting behind it

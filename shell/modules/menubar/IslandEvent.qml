@@ -21,12 +21,12 @@ Item {
     readonly property bool isRinging: kind === "ringing"
     property bool unseen: false // nobody can see the island (its animations hold)
     // One of its buttons ran (`uid`: this alert's). Alerts the button itself
-    // posted ("Connecting…") have uids from `mark` on: they stay up.
-    signal acted(int uid, int mark)
+    // posted or changed ("Connecting…") are from `since` on: they stay up.
+    signal acted(int uid, real since)
     function act(f) {
-        const uid = event?.uid ?? 0, mark = Island.nextUid;
+        const uid = event?.uid ?? 0, since = Date.now();
         f?.();
-        acted(uid, mark);
+        acted(uid, since);
     }
     signal dismissRequested // swiped up, the close button, or Esc (IslandView removes it)
     // A wheel or two-finger swipe up over it dismisses it too (off while the

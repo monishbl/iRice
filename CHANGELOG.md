@@ -7,6 +7,9 @@
 - **Fast Pair connects earbuds that are already paired.** Earbuds in pairing mode advertise from a nameless address of their own, so ones paired before (the realme Buds T100 here) weren't recognised and the pairing failed. They're now matched by the company the advert names, or by name or address, and simply connected. The card says "Paired with this computer, not connected", and nothing is offered when they're connected already.
   - **"Connecting…" stays until it's done** (pairing can take a minute), then the result replaces it.
   - **If earbuds that were reset won't take the old pairing, the card offers Pair again,** which forgets the old pairing and pairs them afresh.
+- **One card per device, not a pile of them.** Connecting earbuds used to stack up to four alerts: "Connect", "Disconnected", "connected · Sound plays there now", and "Connected" again. Now the same card goes from Connect to Connecting… to Connected, battery included, and Recent keeps one line for it. Alerts can carry a key (a Bluetooth device's is its address), and an alert with the key of one already up replaces it.
+  - **Fast Pair offers Connect once per pair of earbuds,** and not at all while they're connecting or connected (they keep advertising, from new addresses).
+- **No microphone or volume bar when headphones connect.** The bar showed whenever the default microphone or output changed, because the new device's own mute and level counted as a change. Changes in the 1.5 s after a switch are now ignored.
 - **Leaks and stray processes, found by checking a running session:**
   - **Clipboard pictures no longer pile up in memory.** Previews of copied images were kept in RAM (62 MB after a few days here) even after the entries left the clipboard history. They're now removed with their entries, and with Remove and Clear.
   - **No leftover process after the shell restarts.** Each restart left one finished-but-not-collected process behind.

@@ -48,6 +48,10 @@ Singleton {
             // comings and goings aren't announced
             if (QuickShare.running && (icon === "device-mobile" || icon === "bluetooth"))
                 continue;
+            // (earbuds drop and come back while Fast Pair connects them: its
+            // "Connecting…" card stays until they're in)
+            if (!d.connected && FastPair.busy)
+                continue;
             if (d.connected && (icon === "headphones" || icon === "speaker-hifi"))
                 lastBtAudio = Date.now();
             postBt(d, icon);
@@ -61,6 +65,7 @@ Singleton {
     function postBt(d, icon) {
         Island.post(Object.assign({
             kind: "device",
+            key: "bt:" + d.address,
             icon: icon,
             title: d.name || d.deviceName || d.address,
             subtitle: d.connected ? "Connected" : "Disconnected",

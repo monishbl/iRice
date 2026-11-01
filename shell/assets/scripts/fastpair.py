@@ -14,7 +14,9 @@ BlueZ:
                         "case": {"level", "charging"}}}]}
   fastpair.py connect ADDRESS [NAME]
                         connects them (pairs and trusts them first, unless
-                        they're paired already): {"ok", "error", "known"}
+                        they're paired already): {"ok", "error", "address"
+                        (theirs, on success), "known" (a paired address that
+                        wouldn't connect)}
   fastpair.py repair ADDRESS KNOWN [NAME]
                         forgets KNOWN, their old pairing (earbuds that were
                         reset no longer take it), and pairs them afresh
@@ -345,11 +347,17 @@ class Watcher:
                     raise
             self.call(target, "org.freedesktop.DBus.Properties", "Set", (dev, "Trusted", self.GLib.Variant("b", True)), "(ssv)")
             self.call(target, dev, "Connect", timeout=30000)
-            return {"ok": True, "error": ""}
+            return {"ok": True, "error": "", "address": self.address_of(target)}
         except Exception as e:  # noqa: BLE001
             msg = getattr(e, "message", str(e))
             return {"ok": False, "error": "Pairing didn't finish. Put the earbuds in pairing mode and try again."
                     if "Failed" in msg or "Timeout" in msg else msg.split(":")[-1].strip()}
+
+    def address_of(self, path):
+        try:
+            return self.call(path, "org.freedesktop.DBus.Properties", "Get", ("org.bluez.Device1", "Address"), "(ss)")[0]
+        except Exception:  # noqa: BLE001
+            return ""
 
     def connect_known(self, path):
         """Connects earbuds paired before (a second try when BlueZ is busy
@@ -364,7 +372,7 @@ class Watcher:
             for attempt in range(2):
                 try:
                     self.call(path, dev, "Connect", timeout=30000)
-                    return {"ok": True, "error": "", "known": address}
+                    return {"ok": True, "error": "", "address": address}
                 except Exception as e:  # noqa: BLE001
                     msg = getattr(e, "message", str(e))
                     if attempt or not re.search(r"busy|InProgress|AlreadyConnected", msg, re.I):
@@ -373,7 +381,7 @@ class Watcher:
         except Exception as e:  # noqa: BLE001
             msg = getattr(e, "message", str(e))
             if "AlreadyConnected" in msg:
-                return {"ok": True, "error": "", "known": known.get("Address", "")}
+                return {"ok": True, "error": "", "address": known.get("Address", "")}
         # (in pairing mode and paired, yet they won't connect: they were reset,
         # or they're busy with a phone; the card offers to pair them again)
         return {"ok": False, "known": known.get("Address", ""),
@@ -403,7 +411,7 @@ class Watcher:
                     raise
             self.call(target, "org.freedesktop.DBus.Properties", "Set", (dev, "Trusted", self.GLib.Variant("b", True)), "(ssv)")
             self.call(target, dev, "Connect", timeout=30000)
-            return {"ok": True, "error": ""}
+            return {"ok": True, "error": "", "address": self.address_of(target)}
         except Exception as e:  # noqa: BLE001
             msg = getattr(e, "message", str(e))
             return {"ok": False, "error": "Pairing didn't finish. Put the earbuds in pairing mode and try again."
