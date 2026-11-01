@@ -6,37 +6,44 @@
 		<link rel="icon" href="data:," />
 		<title>iRice hero film</title>
 		<!--
-		The site's hero: a 27 s muted loop, made like a launch film rather than a
-		screen recording. Black type cards, then the iRice UI rebuilt (sharp at
-		3x) over the leaves; the one real screen is the desktop (2x screenshots
-		from the sandbox). The island's black pill is the thread: it opens the
-		film, the camera pulls out of it to the desktop and dives back into it
-		between chapters, every card grows out of it and folds back into it,
-		and it ends the film the way it began, so the loop has no seam.
+		The site's hero: a 32.5 s muted loop, cut on a 0.5 s beat.
 
-		  Preview: node ~/.claude/skills/product-film/tools/serve.mjs site/film
+		It opens on glass: liquid gathers on a photo into a chip, the photos
+		change beneath it in liquid wipes, "iRice" rises in the glass with its
+		colours splitting, and the chip hits the screen. The ring of that
+		impact opens the real desktop (the leaves line up to the pixel), whose
+		widgets pop in. Then six features, each a title and the UI proving it,
+		joined by match cuts (the earbuds in the battery widget become the
+		island card; the card folds into the Quick Share disc; the caption bar
+		becomes the dictation island), jump cuts (Quick Share 18 → 62 → 100%,
+		four Spotlight answers on four beats), motion cuts (whips up and left,
+		with motion blur) and liquid glass warps (glass.js). It ends where it
+		began: the chip forms on the petals, says where to get it, and melts.
+
+		The warps bend images, so the scenes on either side of each one are
+		stills of this film: render once with ?nowarp=1, capture the frames at
+		WARPS' edges into assets/snap/, then render normally.
+
+		  Preview: node tools/serve.mjs .      (from site/film)
 		           http://localhost:4173/hero/film.html?player=1
-		  Render:  node ~/.claude/skills/product-film/tools/render.mjs hero/film.html --root site/film --fps 30 --shutter 2
+		  Render:  PLAYWRIGHT_FROM=<kit>/package.json CHROME=<chromium> \
+		           node tools/render.mjs hero/film.html --root . --fps 30 --shutter 2
 
-		  t (s)        shot                                          carries out
-		  0.00–1.60    pill pops, opens like the island; "iRice"      the pill
-		  1.60–3.35    pill rises; "Tahoe, on Hyprland." word by word the pill
-		  3.35–5.70    desktop: the camera pulls back out of the pill  the pill (now the island)
-		  5.70–6.05    dive into the island                           black
-		  6.05–7.50    "Your earbuds, found."                         black
-		  7.50–10.75   island card: Connect → press → L/R/Case rings  folds to the pill
-		  10.75–11.30  fold, dive                                     black
-		  11.30–12.75  "Your phone, shared."                          black
-		  12.75–16.05  Quick Share: ring 0 → 100%, saved, 2 photos    folds to the pill
-		  16.05–16.60  fold, dive                                     black
-		  16.60–17.75  "Just ask."                                    black
-		  17.75–20.30  Spotlight: types "18% of 2450", answer 441     folds to the pill
-		  20.30–20.85  fold, dive                                     black
-		  20.85–22.20  "All in glass."                                black
-		  22.20–23.45  Control Center tilts, settles; pull back       the island
-		  23.45–23.80  dive into the island                           black
-		  23.80–26.80  pull out of the pill; Install in one line, URL  the pill (held 2 s)
-		  26.80–27.20  the pill closes and goes                       black (frame 0)
+		  t (s)        shot                                        cut out
+		  0.00–1.60    petals; droplets gather into a glass chip   liquid wipe
+		  1.50–2.60    the photos change under the chip (2 wipes)  —
+		  2.50–3.45    "iRice" rises in the glass; colours split    impact
+		  3.50–4.30    the impact ring opens the desktop           (seamless)
+		  4.30–6.25    the desktop; widgets pop in; creep          punch-in on the earbuds
+		  6.25–6.80    zoom to the earbuds in the battery widget   match cut
+		  6.80–9.55    Your earbuds, found: Connect → rings         fold to the disc
+		  9.55–12.25   Your phone, shared: 18% | 62% | saved       whip up
+		  12.25–16.00  Just ask: four answers, a beat each         whip left
+		  16.00–18.75  Captions, live: words over a video          match cut (bar → island)
+		  18.75–21.50  Just say it: the island listens, words land  liquid warp
+		  21.50–24.40  StandBy: the clock turns 10:10               liquid warp
+		  24.40–27.40  All in glass: Control Center settles        liquid warp
+		  27.40–32.50  the chip on the petals; install; it melts   (loops to 0)
 		-->
 		<style>
 			@font-face {
@@ -55,8 +62,8 @@
 			:root {
 				--accent: #2997ff;
 				--ink: #f5f5f7;
-				--ink2: rgba(235, 235, 245, 0.62);
-				--ink3: rgba(235, 235, 245, 0.42);
+				--ink2: rgba(235, 235, 245, 0.66);
+				--ink3: rgba(235, 235, 245, 0.45);
 				--green: #30d158;
 				--red: #ff453a;
 				--blue: #0a84ff;
@@ -106,44 +113,35 @@
 				font-style: normal;
 				line-height: 1;
 			}
-			/* the island: black, with a hairline of light on its rim */
+			#gl {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+			}
 			.pill {
 				background: #000;
 				border-radius: 999px;
-				box-shadow:
-					inset 0 0 0 1px rgba(255, 255, 255, 0.13),
-					0 0 0 0.5px rgba(255, 255, 255, 0.06);
-				display: flex;
-				align-items: center;
-				justify-content: center;
+				box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.13);
 				overflow: hidden;
 			}
-			#wpill {
-				box-shadow: inset 0 0 0 0.3px rgba(255, 255, 255, 0.16);
-			}
-			#wpill span {
-				font-size: 14.5px;
-				font-weight: 600;
-				letter-spacing: -0.02em;
-			}
-			/* type cards */
-			.line {
-				font-size: 124px;
+			.title {
+				font-size: 104px;
 				font-weight: 600;
 				letter-spacing: -0.035em;
 				line-height: 1;
+				text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25);
 			}
 			.acc {
 				color: var(--accent);
 			}
-			/* the stage behind every card: the leaves, dimmed */
 			#bg {
 				width: 2000px;
 				height: 1125px;
 				background: url('assets/leaves-blur.jpg') center / cover;
-				filter: brightness(0.62) saturate(1.1);
+				filter: brightness(0.6) saturate(1.1);
 			}
-			/* rebuilt UI */
 			.card {
 				box-sizing: border-box;
 				overflow: hidden;
@@ -160,7 +158,114 @@
 				position: absolute;
 				inset: 0;
 			}
-			/* island card */
+			/* desktop widgets (world px, at 1x) */
+			.wd {
+				border-radius: 30px;
+				background: rgba(30, 30, 34, 0.42);
+				box-shadow:
+					inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+					inset 0 1px 0 rgba(255, 255, 255, 0.2),
+					0 16px 40px rgba(0, 0, 0, 0.18);
+				backdrop-filter: blur(22px) saturate(1.5);
+				box-sizing: border-box;
+				overflow: hidden;
+			}
+			#wCal {
+				width: 350px;
+				height: 200px;
+				padding: 22px 26px;
+				display: flex;
+				gap: 26px;
+			}
+			#wCal .day {
+				font-size: 19px;
+				font-weight: 650;
+				color: var(--red);
+				letter-spacing: 0.04em;
+			}
+			#wCal .num {
+				font-size: 84px;
+				font-weight: 300;
+				line-height: 1;
+				margin-top: 4px;
+			}
+			#wCal .ev {
+				border-left: 4px solid var(--blue);
+				padding-left: 12px;
+				margin-top: 8px;
+			}
+			#wCal .ev b {
+				display: block;
+				font-size: 21px;
+				font-weight: 600;
+			}
+			#wCal .ev span {
+				font-size: 18px;
+				color: var(--ink2);
+			}
+			#wBat {
+				width: 350px;
+				height: 170px;
+				padding: 0 22px;
+				display: flex;
+				align-items: center;
+				gap: 18px;
+			}
+			#wBat img {
+				width: 92px;
+				height: 92px;
+			}
+			.mring {
+				width: 74px;
+				text-align: center;
+				position: relative;
+			}
+			.mring svg {
+				width: 74px;
+				height: 74px;
+				display: block;
+			}
+			.mring b {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 74px;
+				line-height: 74px;
+				font-size: 24px;
+				font-weight: 600;
+				font-variant-numeric: tabular-nums;
+			}
+			.mring i {
+				font-style: normal;
+				font-size: 16px;
+				color: var(--ink2);
+			}
+			#wWx,
+			#wPh {
+				width: 170px;
+				height: 170px;
+			}
+			#wWx {
+				padding: 20px 22px;
+			}
+			#wWx .phf {
+				font-size: 46px;
+				color: #ffd60a;
+			}
+			#wWx b {
+				display: block;
+				font-size: 46px;
+				font-weight: 500;
+				margin-top: 10px;
+			}
+			#wWx span {
+				font-size: 18px;
+				color: var(--ink2);
+			}
+			#wPh {
+				background: url('assets/photo-a.jpg') center / cover;
+			}
+			/* the island card */
 			#bud .in {
 				display: flex;
 				align-items: center;
@@ -220,7 +325,6 @@
 			#rings {
 				display: flex;
 				gap: 30px;
-				flex: none;
 				position: absolute;
 				right: 64px;
 				top: 50%;
@@ -229,6 +333,7 @@
 			.ring {
 				width: 132px;
 				text-align: center;
+				position: relative;
 			}
 			.ring svg {
 				width: 132px;
@@ -237,14 +342,13 @@
 			}
 			.ring b {
 				position: absolute;
+				left: 0;
+				top: 0;
 				width: 132px;
-				height: 132px;
 				line-height: 132px;
 				font-size: 46px;
 				font-weight: 600;
 				font-variant-numeric: tabular-nums;
-				margin-top: -132px;
-				display: block;
 			}
 			.ring i {
 				font-style: normal;
@@ -281,8 +385,7 @@
 				align-items: center;
 				justify-content: center;
 			}
-			#discFill .ph,
-			#discFill .phf {
+			#discFill .ph {
 				position: absolute;
 				font-size: 104px;
 				color: #fff;
@@ -339,10 +442,7 @@
 				margin-left: -26px;
 			}
 			#ans {
-				background: rgba(48, 209, 88, 0.26);
-				box-shadow:
-					inset 0 0 0 2px rgba(48, 209, 88, 0.55),
-					0 30px 80px rgba(0, 0, 0, 0.3);
+				border-radius: 44px;
 				backdrop-filter: blur(30px) saturate(1.3);
 			}
 			#ans .in {
@@ -355,7 +455,6 @@
 				width: 136px;
 				height: 136px;
 				border-radius: 34px;
-				background: var(--orange);
 				display: flex;
 				align-items: center;
 				justify-content: center;
@@ -365,7 +464,7 @@
 				font-size: 76px;
 				color: #fff;
 			}
-			#n441 {
+			#ansBig {
 				font-size: 96px;
 				font-weight: 650;
 				letter-spacing: -0.02em;
@@ -377,11 +476,170 @@
 				color: var(--ink2);
 				margin-top: 10px;
 			}
-			/* end card */
-			.end {
-				font-size: 54px;
+			/* captions */
+			#vid {
+				width: 1320px;
+				height: 742px;
+				border-radius: 34px;
+				overflow: hidden;
+				box-shadow:
+					0 40px 100px rgba(0, 0, 0, 0.45),
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.15);
+			}
+			#vidImg {
+				position: absolute;
+				inset: 0;
+				background: url('assets/p-ocean.jpg') center / cover;
+			}
+			#ccBadge {
+				position: absolute;
+				left: 30px;
+				top: 30px;
+				padding: 12px 22px;
+				border-radius: 999px;
+				background: rgba(0, 0, 0, 0.55);
+				backdrop-filter: blur(16px);
+				font-size: 30px;
+				font-weight: 600;
+				display: flex;
+				gap: 12px;
+				align-items: center;
+			}
+			#ccBadge .ph {
+				font-size: 36px;
+			}
+			#cap {
+				background: rgba(0, 0, 0, 0.74);
+				border-radius: 999px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				overflow: hidden;
+			}
+			#capText {
+				font-size: 46px;
+				font-weight: 500;
+			}
+			/* dictation */
+			#dict {
+				position: absolute;
+				inset: 0;
+				display: flex;
+				align-items: center;
+				padding: 0 44px;
+				gap: 22px;
+			}
+			#dot {
+				width: 22px;
+				height: 22px;
+				border-radius: 50%;
+				background: var(--red);
+				flex: none;
+			}
+			#dictLabel {
+				font-size: 44px;
+				font-weight: 600;
+				flex: 1;
+			}
+			#wave {
+				display: flex;
+				gap: 7px;
+				align-items: center;
+				height: 64px;
+			}
+			#wave i {
+				width: 8px;
+				border-radius: 4px;
+				background: #fff;
+				display: block;
+			}
+			#note .in {
+				padding: 46px 56px;
+			}
+			#noteHead {
+				font-size: 34px;
+				color: var(--ink2);
+				font-weight: 600;
+			}
+			#noteText {
+				font-size: 60px;
 				font-weight: 500;
 				letter-spacing: -0.01em;
+				margin-top: 18px;
+				white-space: normal;
+				line-height: 1.2;
+			}
+			/* StandBy */
+			#clk {
+				font-size: 380px;
+				font-weight: 200;
+				letter-spacing: -0.04em;
+				line-height: 1;
+				font-variant-numeric: tabular-nums;
+				display: flex;
+			}
+			.dig {
+				display: inline-block;
+				position: relative;
+				overflow: hidden;
+				height: 380px;
+			}
+			.dig span {
+				display: block;
+			}
+			#sbDate {
+				font-size: 56px;
+				color: var(--ink2);
+				font-weight: 500;
+			}
+			.sbw {
+				width: 560px;
+				height: 250px;
+				border-radius: 46px;
+				background: rgba(44, 44, 48, 0.75);
+				padding: 40px 46px;
+				box-sizing: border-box;
+			}
+			.sbw .k {
+				font-size: 30px;
+				font-weight: 650;
+				letter-spacing: 0.04em;
+			}
+			.sbw b {
+				display: block;
+				font-size: 54px;
+				font-weight: 600;
+				margin-top: 18px;
+				letter-spacing: -0.01em;
+			}
+			.sbw span {
+				font-size: 36px;
+				color: var(--ink2);
+			}
+			#sbCap {
+				font-size: 48px;
+				color: var(--ink2);
+				font-weight: 500;
+			}
+			/* glass */
+			#vig {
+				width: 1920px;
+				height: 1080px;
+				background: radial-gradient(ellipse 900px 700px at 22% 50%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 70%);
+			}
+			/* end */
+			.end {
+				font-size: 60px;
+				font-weight: 600;
+				letter-spacing: -0.01em;
+				color: #1d1d1f;
+				/* (a light halo lifts it off the petals' darker reds) */
+				text-shadow:
+					0 0 18px rgba(255, 255, 255, 0.95),
+					0 0 42px rgba(255, 255, 255, 0.8);
+			}
+			#e2 {
+				color: #0066cc;
 			}
 			#player {
 				position: fixed;
@@ -404,18 +662,31 @@
 	</head>
 	<body>
 		<div id="art">
-			<!-- the real desktop, with the camera on it -->
 			<div id="world">
 				<img id="desk" class="a" src="assets/desk.webp" style="width: 1920px; height: 1080px" alt="" />
 				<img id="ccimg" class="a" src="assets/cc.webp" style="width: 1920px; height: 1080px" data-persp="2400" alt="" />
-				<div id="wpill" class="a pill" style="width: 236px; height: 30px"><span id="wname">iRice</span></div>
+				<div id="wCal" class="a wd">
+					<div><div class="day">SUNDAY</div><div class="num">1</div></div>
+					<div style="flex: 1">
+						<div class="ev"><b>Design review</b><span>10:30 – 11:15</span></div>
+						<div class="ev" style="border-color: var(--green)"><b>Gym</b><span>18:00</span></div>
+					</div>
+				</div>
+				<div id="wBat" class="a wd">
+					<img id="wBud" src="assets/earbuds.svg" alt="" />
+					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#30d158" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="39" transform="rotate(-90 37 37)" /></svg><b>80</b><i>Left</i></div>
+					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#30d158" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="46.8" transform="rotate(-90 37 37)" /></svg><b>76</b><i>Right</i></div>
+					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#ff453a" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="159.7" transform="rotate(-90 37 37)" /></svg><b>18</b><i>Case</i></div>
+				</div>
+				<div id="wWx" class="a wd"><span class="phf">&#xe540;</span><b>24°</b><span>Sunny</span></div>
+				<div id="wPh" class="a wd"></div>
 			</div>
 
-			<!-- the stage: the leaves, and the rebuilt UI -->
 			<div id="bg" class="a"></div>
+			<div id="vig" class="a"></div>
 
 			<div id="bud" class="a pill card" style="width: 1340px; height: 276px">
-				<div class="in" id="budIn">
+				<div class="in">
 					<img src="assets/earbuds.svg" alt="" />
 					<div id="budText">
 						<div class="name">Pixel Buds Pro 2</div>
@@ -431,245 +702,387 @@
 			</div>
 
 			<div id="qs" class="a card glass" style="width: 780px; height: 700px; border-radius: 64px">
-				<div class="in" id="qsIn">
+				<div class="in">
 					<div id="disc">
 						<svg viewBox="0 0 280 280"><circle cx="140" cy="140" r="128" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="12" /><circle id="qsArc" cx="140" cy="140" r="128" fill="none" stroke="#64d2ff" stroke-width="12" stroke-linecap="round" transform="rotate(-90 140 140)" /></svg>
-						<div id="discFill"><span class="ph" id="phoneGlyph">&#xe1e4;</span><span class="ph" id="checkGlyph" style="font-family: 'Phosphor'; font-weight: 700">&#xe182;</span></div>
+						<div id="discFill"><span class="ph" id="phoneGlyph">&#xe1e4;</span><span class="ph" id="checkGlyph" style="font-weight: 700">&#xe182;</span></div>
 					</div>
 					<div id="qsName">Galaxy S25 Ultra</div>
 					<div id="qsLine">Receiving 2 photos… 0%</div>
 					<div id="qsSize">0.0 MB of 6.2 MB</div>
 				</div>
 			</div>
-
 			<div id="photoA" class="a photo" style="background-image: url('assets/photo-a.jpg')"></div>
 			<div id="photoB" class="a photo" style="background-image: url('assets/photo-b.jpg')"></div>
+
 			<div id="bar" class="a pill card glass" style="width: 1300px; height: 136px">
-				<div class="in" id="barIn"><span class="ph">&#xe30c;</span><span id="query"></span><span id="caret"></span></div>
+				<div class="in"><span class="ph">&#xe30c;</span><span id="query"></span><span id="caret"></span></div>
 			</div>
-			<div id="ans" class="a card" style="width: 1300px; height: 224px; border-radius: 44px">
-				<div class="in" id="ansIn">
-					<div id="tile"><span class="phf">&#xe538;</span></div>
-					<div>
-						<div id="n441">0</div>
-						<div id="ansSub">18% of 2450 · Enter copies it</div>
-					</div>
+			<div id="ans" class="a card" style="width: 1300px; height: 224px">
+				<div class="in">
+					<div id="tile"><span class="phf" id="tileGlyph">&#xe538;</span></div>
+					<div><div id="ansBig">0</div><div id="ansSub">18% of 2450 · Enter copies it</div></div>
 				</div>
 			</div>
 
-			<!-- the pill the cards grow out of and fold back into (screen space) -->
-			<div id="spill" class="a pill" style="width: 180px; height: 54px"></div>
+			<div id="vid" class="a">
+				<div id="vidImg"></div>
+				<div id="ccBadge"><span class="ph">&#xe1a4;</span>Live Captions</div>
+			</div>
+			<div id="cap" class="a"><span id="capText"></span><div id="dict"><div id="dot"></div><div id="dictLabel">Listening…</div><div id="wave"></div></div></div>
+			<div id="note" class="a card glass" style="width: 1240px; height: 330px; border-radius: 48px">
+				<div class="in"><div id="noteHead">Groceries</div><div id="noteText"></div></div>
+			</div>
 
-			<!-- type cards -->
-			<div id="t0" class="a line">Tahoe, on Hyprland.</div>
-			<div id="t1" class="a line">Your earbuds, found.</div>
-			<div id="t2" class="a line">Your phone, shared.</div>
-			<div id="t3" class="a line">Just ask.</div>
-			<div id="t4" class="a line">All in glass.</div>
+			<div id="clk" class="a"><span class="dig"><span>1</span></span><span class="dig"><span>0</span></span><span>:</span><span class="dig" id="d3"><span>0</span><span>1</span></span><span class="dig" id="d4"><span>9</span><span>0</span></span></div>
+			<div id="sbDate" class="a">Sunday, 1 November</div>
+			<div id="sbw1" class="a sbw"><div class="k" style="color: var(--red)">NEXT</div><b>Design review</b><span>10:30 – 11:15 · in 20 min</span></div>
+			<div id="sbw2" class="a sbw"><div class="k" style="color: #ffd60a">WEATHER</div><b>24° Sunny</b><span>High 29° · Low 19°</span></div>
+			<div id="sbCap" class="a">StandBy, while it charges.</div>
+
+			<div id="spill" class="a pill" style="width: 54px; height: 54px"></div>
+
+			<div id="h1" class="a title">Your earbuds, found.</div>
+			<div id="h2" class="a title">Your phone, shared.</div>
+			<div id="h3" class="a title">Just ask.</div>
+			<div id="h4" class="a title">Captions, live.</div>
+			<div id="h5" class="a title">Just say it.</div>
+			<div id="h6" class="a title">All in glass.</div>
+
+			<!-- the glass: above everything but the end card's words -->
+			<canvas id="gl"></canvas>
 			<div id="e1" class="a end">Install in one line.</div>
-			<div id="e2" class="a end acc">irice.monishbl.in</div>
+			<div id="e2" class="a end">irice.monishbl.in</div>
 		</div>
 		<div id="player" hidden><button type="button">Play</button><input type="range" min="0" value="0" /><span data-time></span></div>
 
 		<script type="module">
-			import { createFilm, split, typer, counter, ramp, lerp, EASE } from '../engine/film.js';
+			import { createFilm, split, counter, ramp, lerp, EASE } from '../engine/film.js';
 			import * as R from '../engine/recipes.js';
+			import { createGlass } from './glass.js';
 
+			const NOWARP = new URLSearchParams(location.search).has('nowarp');
+			/* the liquid warps: [t0, t1, still before, still after (or a photo), direction] */
+			const WARPS = [
+				[21.5, 22.0, 'snapD', 'snapS1', [0, -1]],
+				[24.4, 24.9, 'snapS2', 'snapC1', [1, 0]],
+				[27.4, 27.9, 'snapC2', 'petals', [-1, 0]],
+			];
+			const images = { petals: 'assets/p-petals.jpg', ocean: 'assets/p-ocean.jpg', leaves: 'assets/p-leaves.jpg', desk: 'assets/desk.webp' };
+			if (!NOWARP) Object.assign(images, { snapD: 'assets/snap/d.jpg', snapS1: 'assets/snap/s1.jpg', snapS2: 'assets/snap/s2.jpg', snapC1: 'assets/snap/c1.jpg', snapC2: 'assets/snap/c2.jpg' });
+
+			await document.fonts.load('650 250px Geist');
 			await document.fonts.ready;
 			await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => (i.onload = i.onerror = r)))));
-			const f = createFilm({ duration: 27.2 });
-			const C = { x: 960, y: 540 };
+			const G = await createGlass(document.getElementById('gl'), {
+				images,
+				text: { word: 'iRice', font: '650 250px Geist', x: 960, y: 548, blur: 14 },
+			});
+			const f = createFilm({ duration: 32.5 });
+			const E = EASE;
+			const at = (sel, x, y) => f.tw(sel, [[0, { x, y }]]);
 
-			/* ── the world: the desktop, and the pill that is its island ── */
-			const IX = 960, IY = 15.5; /* the island, in the desktop's own px */
-			const PILL_Y = 43.5; /* camera y that puts the island at screen y ≈ 400 at 5x */
-			f.tw(['#desk', '#ccimg'], [[0, { x: 960, y: 540 }]]);
-			f.tw('#wpill', [[0, { x: IX, y: IY }]]);
-			f.tw('#bg', [[0, { x: 960, y: 540 }]]);
+			/* ═══ the glass: a function of t ══════════════════════════════════ */
+			const CX = 960, CY = 540, HW = 330, HH = 130;
+			/* droplets gathering (t0 → t1), the chip forming (t1 → t2) */
+			const gather = (t, t0, t1, t2) => {
+				const starts = [[790, 470, 74], [1110, 600, 92], [985, 400, 58], [860, 640, 50]];
+				const balls = starts.map(([x, y, r], i) => {
+					const a = E.back(ramp(t, t0 + i * 0.12, t0 + i * 0.12 + 0.32));
+					const m = E.io(ramp(t, t0 + 0.3, t2));
+					const shrink = 1 - E.i(ramp(t, t1, t2));
+					return [lerp(x, CX, m), lerp(y, CY, m), r * a * shrink];
+				});
+				return { balls, rectOn: E.emph(ramp(t, t1, t2)) };
+			};
+			const glassAt = (t) => {
+				/* a liquid warp between two scenes */
+				for (const [t0, t1, a, b, dir] of WARPS)
+					if (t >= t0 && t < t1) return NOWARP ? null : { t, a, b, wipe: E.io(ramp(t, t0, t1)), wipeDir: dir, kB: 1 };
+				/* the opener */
+				if (t < 4.3) {
+					const s = { t, glass: 1, wob: 1 - 0.75 * ramp(t, 1.6, 2.6), rect: [CX, CY, HW, HH], rectR: 130, kA: lerp(1.08, 1.0, E.io(ramp(t, 0, 3.4))) };
+					Object.assign(s, gather(t, 0.3, 1.0, 1.6));
+					/* the photos change beneath it */
+					if (t < 1.5) s.a = 'petals';
+					else if (t < 2.0) Object.assign(s, { a: 'petals', b: 'ocean', wipe: E.io(ramp(t, 1.5, 2.0)), wipeDir: [1, 0] });
+					else if (t < 2.1) s.a = 'ocean';
+					else if (t < 2.6) Object.assign(s, { a: 'ocean', b: 'leaves', wipe: E.io(ramp(t, 2.1, 2.6)), wipeDir: [0, 1] });
+					else s.a = 'leaves';
+					/* the word rises; the colours split */
+					s.text = E.o(ramp(t, 2.55, 3.15));
+					s.disp = 0.2 + 0.8 * E.i(ramp(t, 2.4, 3.4));
+					/* it gathers itself, then hits */
+					const squeeze = 1 - 0.07 * E.o(ramp(t, 3.15, 3.45));
+					const burst = 1 + 0.9 * E.expoIn(ramp(t, 3.45, 3.62));
+					s.rect = [CX, CY, HW * squeeze * burst, HH * squeeze * burst];
+					s.glass = 1 - ramp(t, 3.5, 3.62);
+					if (t >= 3.5) Object.assign(s, { a: 'leaves', b: 'desk', shock: [CX, CY, 2300 * E.o(ramp(t, 3.5, 4.25)), 1 - 0.8 * ramp(t, 3.5, 4.28)] });
+					return s;
+				}
+				/* the end: the chip on the petals, then it melts */
+				if (t >= 27.9) {
+					const s = { t, a: 'petals', glass: 1, wob: 1 - 0.7 * ramp(t, 28.9, 29.6), rect: [CX, CY, HW, HH], rectR: 130, kA: lerp(1.0, 1.08, ramp(t, 27.4, 32.5)) };
+					Object.assign(s, gather(t, 28.0, 28.55, 29.1));
+					s.text = E.o(ramp(t, 29.0, 29.6)) * (1 - E.i(ramp(t, 31.85, 32.05)));
+					s.disp = 0.2 + 0.6 * E.io(ramp(t, 28.9, 29.6));
+					/* melting: the chip lets go, droplets part and dry */
+					const melt = E.i(ramp(t, 31.9, 32.35));
+					if (melt > 0) {
+						s.rectOn = 1 - melt;
+						s.wob = 0.3 + melt;
+						s.balls = [[CX - 150 * melt, CY - 20 * melt, 80 * Math.sin(Math.PI * melt)], [CX + 170 * melt, CY + 30 * melt, 70 * Math.sin(Math.PI * melt)], [CX + 20, CY - 60 * melt, 50 * Math.sin(Math.PI * melt)]];
+					}
+					s.glass = 1 - ramp(t, 32.3, 32.48);
+					return s;
+				}
+				return null;
+			};
+			const glEl = document.getElementById('gl');
+			f.fx((t) => {
+				const s = glassAt(t);
+				glEl.style.display = s ? '' : 'none';
+				if (s) G.draw(s);
+				/* the impact shakes the frame a little, and settles */
+				const k = t >= 3.5 && t < 4.1 ? Math.exp(-(t - 3.5) * 9) : 0;
+				const dx = k * 14 * Math.sin((t - 3.5) * 70), dy = k * 9 * Math.cos((t - 3.5) * 83);
+				const v = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+				if (glEl.style.transform !== v) glEl.style.transform = v;
+			});
 
-			/* 0.00–1.60 · a dot pops, opens like the island, and says its name */
-			f.cam([
-				[0, { cx: IX, cy: IY, s: 5 }],
-				[1.45, { cx: IX, cy: IY, s: 5 }],
-				[1.9, { cy: PILL_Y }, 'io'],
-			]);
-			f.tw('#wpill', [
-				[0.12, { s: 0.3, o: 0, w: 30 }],
-				[0.3, { s: 1, o: 1 }, 'back'],
-				[0.5, { w: 30 }],
-				[0.98, { w: 236 }, 'emph'],
-			]);
-			f.tw('#wname', [[0.8, { o: 0, dy: 3, blur: 2 }], [1.1, { o: 1, dy: 0, blur: 0 }, 'o']]);
-
-			/* 1.60–3.35 · Tahoe, on Hyprland. */
-			const t0 = split(f.$('#t0'), 'words');
-			t0.at(-1).classList.add('acc'); /* one accent word per line: the last */
-			R.wordAppend(f, '#t0', t0, [1.7, 2.0, 2.28], { cx: 960, y: 690 });
-			f.tw('#t0', [[3.12, { o: 1, blur: 0 }], [3.34, { o: 0, blur: 14 }, 'i']]);
-			f.show('#t0', 1.6, 3.4);
-
-			/* 3.35–5.70 · the desktop: the camera pulls back out of the pill */
-			f.tw('#wname', [[3.2, { o: 1 }], [3.4, { o: 0 }, 'i']]);
-			f.tw('#desk', [[3.35, { o: 0 }], [3.7, { o: 1 }, 'o']]);
-			/* (at 5x, the view's top must not pass the desktop's top edge: cy >= 108) */
-			f.cam([
-				[3.38, { cx: IX, cy: PILL_Y, s: 5 }],
-				[3.72, { cy: 112 }, 'o'],
-				[5.3, { cx: 960, cy: 540, s: 1 }, 'io5'],
-				[5.68, { s: 1.025 }, 'lin'],
-			]);
-			/* 5.70–6.05 · dive into the island: its black fills the frame */
-			f.zoomAbout(5.68, 6.05, IX, IY, 80, 'expoIn');
-			f.show('#desk', 0, 6.06);
-			/* the world shows for the opening, and again from Control Center to the end
-			   (show() keeps one range per element, so this one is an fx) */
-			const worldOn = [[0, 6.06], [22.2, Infinity]];
+			/* ═══ the desktop comes to life (4.30–6.80) ══════════════════════ */
+			const worldOn = [[4.29, 6.8], [24.65, 27.65]];
 			f.fx((t) => (f.W.style.display = worldOn.some(([a, b]) => t >= a && t < b) ? '' : 'none'));
+			at(['#desk', '#ccimg'], 960, 540);
+			f.show(['#desk', '#wCal', '#wBat', '#wWx', '#wPh'], 4.29, 6.8);
+			at('#wCal', 245, 160);
+			at('#wBat', 245, 355);
+			at('#wWx', 155, 532);
+			at('#wPh', 335, 532);
+			[['#wCal', 4.4], ['#wBat', 4.52], ['#wWx', 4.64], ['#wPh', 4.76]].forEach(([id, t]) => {
+				f.tw(id, [[t, { s: 0.55, o: 0, blur: 6 }], [t + 0.16, { o: 1, blur: 0 }, 'o'], [t + 0.38, { s: 1 }, 'back']]);
+			});
+			f.cam([
+				[4.29, { cx: 960, cy: 540, s: 1 }],
+				[6.25, { s: 1.05 }, 'lin'],
+			]);
+			/* punch in on the earbuds in the battery widget: they become the island card.
+			   (they sit near the left edge: the camera stops where the desktop ends,
+			   so the earbuds land left of centre, and the card starts from there) */
+			const ZS = 3.4, BUD = { x: 70 + 22 + 46, y: 355 }; /* the widget's left + padding + half the picture */
+			const CAMX = 960 / ZS; /* the leftmost the view can go */
+			f.cam([[6.25, { cx: 960, cy: 540, s: 1.05 }], [6.8, { cx: CAMX, cy: BUD.y, s: ZS }, 'io5']]);
+			const BUDX = (BUD.x - CAMX) * ZS + 960; /* where the earbuds are on screen at the cut */
 
-			/* a type card: words append on black, hold (creeping), then leave */
-			const card = (sel, times, out) => {
+			/* ═══ the stage ══════════════════════════════════════════════════ */
+			at('#bg', 960, 540);
+			f.show('#bg', 6.8, 21.75);
+			f.tw('#bg', [[6.8, { s: 1.04 }], [21.75, { s: 1.0 }, 'lin']]);
+			const title = (sel, t, out, y = 190) => {
 				const w = split(f.$(sel), 'words');
 				w.at(-1).classList.add('acc');
-				R.wordAppend(f, sel, w, times, { cx: 960, y: 540 });
-				f.tw(sel, [[times[0], { s: 1 }], [out - 0.2, { s: 1.035 }, 'lin'], [out - 0.2, { o: 1, blur: 0 }], [out, { o: 0, blur: 16, s: 1.06 }, 'i']]);
-				f.show(sel, times[0] - 0.05, out + 0.02);
-			};
-			/* the stage fades up behind a card and goes with it */
-			const stage = (t0s, t1s) => {
-				f.tw('#bg', [[t0s, { o: 0, s: 1.06 }], [t0s + 0.45, { o: 1 }, 'o'], [t1s - 0.3, { s: 1.0 }, 'lin'], [t1s - 0.3, { o: 1 }], [t1s, { o: 0 }, 'i']]);
-			};
-			/* a card grows out of the pill: the pill pops at the centre, then opens to the card's box */
-			const grow = (sel, t, w, h, y, br, fill) => {
-				f.tw('#spill', [
-					[t, { x: 960, y, w: 180, h: 54, br: 27, o: 0, s: 0.4, bg: '#000000' }],
-					[t + 0.14, { o: 1, s: 1 }, 'o'],
-					[t + 0.16, { w: 180, h: 54, br: 27, bg: '#000000' }],
-					[t + 0.56, { w, h, br, bg: fill }, 'emph'],
-					[t + 0.6, { o: 1 }],
-					[t + 0.7, { o: 0 }, 'lin'],
-				]);
-				f.tw(sel, [[t + 0.5, { x: 960, y, o: 0 }], [t + 0.62, { o: 1 }, 'lin']]);
-			};
-			/* and folds back into it, which then dives toward the camera */
-			const fold = (sel, t, w, h, y, br, fill) => {
-				f.tw(sel, [[t, { o: 1 }], [t + 0.08, { o: 0 }, 'lin']]);
-				f.tw('#spill', [
-					[t, { x: 960, y, w, h, br, bg: fill, o: 1, s: 1 }, 'step'],
-					[t + 0.3, { w: 180, h: 54, br: 27, bg: '#000000' }, 'emph'],
-					[t + 0.32, { s: 1 }],
-					[t + 0.55, { s: 30 }, 'expoIn'],
-					[t + 0.55, { o: 1 }],
-					[t + 0.56, { o: 0 }, 'step'],
-				]);
+				f.tw(sel, [[0, { x: 960, y }]]);
+				w.forEach((s, i) => f.tw(s, [[t + i * 0.07, { o: 0, dy: 26, blur: 10 }], [t + i * 0.07 + 0.3, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+				f.show(sel, t, out);
 			};
 
-			/* ── chapter 1 · Your earbuds, found. ── */
-			card('#t1', [6.12, 6.42, 6.78], 7.5);
-			stage(7.55, 11.3);
-			grow('#bud', 7.55, 1340, 276, 540, 138, '#000000');
-			f.show('#bud', 7.5, 10.9);
-			f.tw('#bud', [[8.1, { s: 1 }], [10.75, { s: 1.045 }, 'lin']]);
-			f.tw('#budIn', [[8.0, { o: 0, blur: 8 }], [8.3, { o: 1, blur: 0 }, 'o']]);
-			/* Connect: the focus ring, the press, then a spinner */
-			f.tw('#btnRing', [[8.62, { o: 0 }], [8.74, { o: 1 }, 'o'], [9.0, { o: 1 }], [9.15, { o: 0 }, 'i']]);
-			f.tw('#btn', [[8.72, { sc: 1 }], [8.8, { sc: 0.94 }, 'o'], [8.98, { sc: 1 }, 'o'], [9.36, { sc: 1, o: 1 }], [9.52, { sc: 0.6, o: 0 }, 'i']]);
-			f.tw('#btnLabel', [[8.82, { o: 1 }], [8.9, { o: 0 }, 'lin']]);
-			f.tw('#spin', [[8.84, { o: 0 }], [8.92, { o: 1 }, 'lin']]);
+			/* ═══ Your earbuds, found (6.80–9.55) ════════════════════════════ */
+			/* the card picks up where the widget's earbuds are: same place, same size */
+			const s0 = (92 * ZS) / 168;
+			f.show('#bud', 6.8, 9.6);
+			f.tw('#bud', [
+				[6.8, { x: BUDX + 532 * s0, y: 540, s: s0 }],
+				[7.3, { x: 960, y: 620, s: 1 }, 'o'],
+				[9.5, { s: 1.03 }, 'lin'],
+			]);
+			title('#h1', 7.0, 9.6);
+			f.tw('#btnRing', [[7.72, { o: 0 }], [7.82, { o: 1 }, 'o'], [8.05, { o: 1 }], [8.2, { o: 0 }, 'i']]);
+			f.tw('#btn', [[7.82, { sc: 1 }], [7.9, { sc: 0.94 }, 'o'], [8.06, { sc: 1 }, 'o'], [8.38, { sc: 1, o: 1 }], [8.52, { sc: 0.6, o: 0 }, 'i']]);
+			f.tw('#btnLabel', [[7.92, { o: 1 }], [7.98, { o: 0 }, 'lin']]);
+			f.tw('#spin', [[7.94, { o: 0 }], [8.0, { o: 1 }, 'lin']]);
 			f.fx((t) => (f.$('#spin').style.transform = `rotate(${Math.round(t * 420) % 360}deg)`));
-			f.tw('#budSub1', [[8.84, { o: 1 }], [8.92, { o: 0 }, 'lin']]);
-			f.show('#budSub1', 0, 8.92);
-			f.show('#budSub2', 8.92, 9.42);
-			f.tw('#budSub2', [[8.92, { o: 0 }], [9.0, { o: 1 }, 'lin']]);
-			f.show('#budSub3', 9.42);
-			f.tw('#budSub3', [[9.42, { o: 0 }], [9.5, { o: 1 }, 'lin']]);
-			/* connected: three rings trace in, staggered, as the numbers count */
+			f.show('#budSub1', 0, 7.98);
+			f.show('#budSub2', 7.98, 8.42);
+			f.show('#budSub3', 8.42);
 			const RING = 2 * Math.PI * 56;
-			[['#rL', 80, 9.5], ['#rR', 76, 9.62], ['#rC', 18, 9.74]].forEach(([id, v, t]) => {
+			[['#rL', 80, 8.48], ['#rR', 76, 8.58], ['#rC', 18, 8.68]].forEach(([id, v, t]) => {
 				f.tw(id, [[t - 0.02, { o: 0, sc: 0.7 }], [t + 0.22, { o: 1, sc: 1 }, 'back']]);
 				const arc = f.$(id + ' .arc'), num = f.$(id + ' b');
 				arc.setAttribute('stroke-dasharray', RING.toFixed(2));
-				f.fx(counter(num, 0, v, t, t + 0.7));
-				f.fx((tt) => arc.setAttribute('stroke-dashoffset', (RING * (1 - (v / 100) * EASE.o(ramp(tt, t, t + 0.7)))).toFixed(2)));
+				f.fx(counter(num, 0, v, t, t + 0.6));
+				f.fx((tt) => arc.setAttribute('stroke-dashoffset', (RING * (1 - (v / 100) * E.o(ramp(tt, t, t + 0.6)))).toFixed(2)));
 			});
-			fold('#bud', 10.75, 1340, 276, 540, 138, '#000000');
+			f.tw('#h1', [[9.45, { o: 1 }], [9.58, { o: 0 }, 'i']]);
 
-			/* ── chapter 2 · Your phone, shared. ── */
-			card('#t2', [11.36, 11.66, 11.98], 12.75);
-			stage(12.8, 16.6);
-			grow('#qs', 12.8, 780, 700, 540, 64, '#1c1c20');
-			f.show('#qs', 12.75, 16.2);
-			f.tw('#qs', [[13.3, { s: 1 }], [16.05, { s: 1.04 }, 'lin']]);
-			f.tw('#qsIn', [[13.25, { o: 0, blur: 8 }], [13.55, { o: 1, blur: 0 }, 'o']]);
-			/* the transfer: 0 → 100% (slowing into the end), then saved */
+			/* ═══ Your phone, shared (9.55–12.25) ════════════════════════════ */
+			/* the card folds into a dot, which becomes the Quick Share disc */
+			f.tw('#bud', [[9.55, { o: 1 }], [9.6, { o: 0 }, 'lin']]);
+			f.tw('#spill', [
+				[9.55, { x: 960, y: 620, w: 1340, h: 276, br: 138, bg: '#000000', o: 0, s: 1.03 }],
+				[9.551, { o: 1 }, 'step'],
+				[9.82, { w: 54, h: 54, br: 27, s: 1 }, 'emph'],
+				[10.05, { y: 454, w: 200, h: 200, br: 100, bg: '#0a84ff' }, 'io'],
+				[10.08, { o: 1 }],
+				[10.1, { o: 0 }, 'lin'],
+			]);
+			f.show('#spill', 9.54, 10.12);
+			f.show('#qs', 9.95, 12.55);
+			f.tw('#qs', [[9.95, { x: 960, y: 600, o: 0, s: 0.96 }], [10.2, { o: 1, s: 1 }, 'o']]);
+			title('#h2', 10.1, 12.55);
+			/* jump cuts on the beat: the same shot, later, framed a little closer */
+			f.tw('#qs', [[10.749, { s: 1 }], [10.75, { s: 1.1 }, 'step'], [11.249, { s: 1.1 }], [11.25, { s: 1 }, 'step']]);
 			const QR = 2 * Math.PI * 128, arcQ = f.$('#qsArc');
 			arcQ.setAttribute('stroke-dasharray', QR.toFixed(2));
-			const prog = (t) => EASE.io(ramp(t, 13.45, 15.05));
+			const prog = (t) => (t < 10.75 ? 0.18 * E.o(ramp(t, 10.2, 10.7)) : t < 11.25 ? 0.62 + 0.05 * ramp(t, 10.75, 11.2) : 1);
 			f.fx((t) => {
 				const p = prog(t);
 				arcQ.setAttribute('stroke-dashoffset', (QR * (1 - p)).toFixed(2));
-				const line = t < 15.1 ? `Receiving 2 photos… ${Math.round(p * 100)}%` : 'Saved to Pictures';
+				arcQ.style.opacity = t < 11.25 ? 1 : 0;
+				const line = t < 11.25 ? `Receiving 2 photos… ${Math.round(p * 100)}%` : 'Saved to Pictures';
 				if (f.$('#qsLine').textContent !== line) f.$('#qsLine').textContent = line;
 				const size = `${(6.2 * p).toFixed(1)} MB of 6.2 MB`;
 				if (f.$('#qsSize').textContent !== size) f.$('#qsSize').textContent = size;
+				f.$('#qsSize').style.opacity = t < 11.25 ? 1 : 0;
+				f.$('#discFill').style.background = t < 11.25 ? '#0a84ff' : '#30d158';
+				f.$('#phoneGlyph').style.opacity = t < 11.25 ? 1 : 0;
 			});
-			f.tw('#qsSize', [[15.05, { o: 1 }], [15.2, { o: 0 }, 'i']]);
-			f.tw('#qsArc', [[15.05, { o: 1 }], [15.25, { o: 0 }, 'i']]);
-			f.tw('#discFill', [[15.1, { bg: '#0a84ff', sc: 1 }], [15.22, { bg: '#30d158', sc: 1.08 }, 'o'], [15.42, { sc: 1 }, 'o']]);
-			f.tw('#phoneGlyph', [[15.1, { o: 1, sc: 1 }], [15.2, { o: 0, sc: 0.6 }, 'i']]);
-			f.tw('#checkGlyph', [[15.16, { o: 0, sc: 0.4 }], [15.46, { o: 1, sc: 1 }, 'back']]);
-			/* the two photos come out of the card */
-			f.tw('#photoA', [[15.3, { x: 960, y: 520, o: 0, s: 0.5, r: 0 }], [15.68, { x: 470, y: 470, o: 1, s: 1, r: -7 }, 'o'], [16.05, { x: 452, y: 462, r: -6 }, 'lin']]);
-			f.tw('#photoB', [[15.42, { x: 960, y: 560, o: 0, s: 0.5, r: 0 }], [15.8, { x: 1450, y: 612, o: 1, s: 1, r: 6 }, 'o'], [16.05, { x: 1466, y: 620, r: 5 }, 'lin']]);
-			f.tw(['#photoA', '#photoB'], [[16.05, { o: 1 }], [16.18, { o: 0, s: 0.7 }, 'i']]);
-			f.show(['#photoA', '#photoB'], 15.28, 16.2);
-			fold('#qs', 16.05, 780, 700, 540, 64, '#1c1c20');
+			f.tw('#checkGlyph', [[11.25, { o: 0, sc: 0.5 }], [11.45, { o: 1, sc: 1 }, 'back']]);
+			/* the photos come out of the card */
+			f.show(['#photoA', '#photoB'], 11.35, 12.55);
+			f.tw('#photoA', [[11.35, { x: 960, y: 560, o: 0, s: 0.5, r: 0 }], [11.7, { x: 470, y: 520, o: 1, s: 1, r: -7 }, 'o'], [12.25, { x: 455, y: 512, r: -6 }, 'lin']]);
+			f.tw('#photoB', [[11.47, { x: 960, y: 600, o: 0, s: 0.5, r: 0 }], [11.82, { x: 1450, y: 680, o: 1, s: 1, r: 6 }, 'o'], [12.25, { x: 1464, y: 688, r: 5 }, 'lin']]);
+			/* whip up: everything leaves upward, blurred, and Spotlight rises into its place */
+			const whipUp = (sel, y0) => f.tw(sel, [[12.25, { y: y0, mby: 0 }], [12.5, { y: y0 - 1300, mby: 90 }, 'i']]);
+			whipUp('#qs', 600);
+			whipUp('#photoA', 512);
+			whipUp('#photoB', 688);
+			whipUp('#h2', 190);
 
-			/* ── chapter 3 · Just ask. ── */
-			card('#t3', [16.66, 16.96], 17.75);
-			stage(17.8, 20.85);
-			grow('#bar', 17.8, 1300, 136, 430, 68, '#1c1c20');
-			f.show('#bar', 17.75, 20.45);
-			f.tw('#barIn', [[18.25, { o: 0 }], [18.45, { o: 1 }, 'o']]);
-			f.fx(typer(f.$('#query'), '18% of 2450', 18.5, 13));
-			f.fx((t) => (f.$('#caret').style.opacity = t < 18.45 || t > 19.25 ? (Math.floor(t * 2.4) % 2 ? 0 : 1) : 1));
-			f.tw('#ans', [[19.35, { x: 960, y: 690, o: 0, s: 0.96 }], [19.7, { y: 650, o: 1, s: 1 }, 'o']]);
-			f.fx(counter(f.$('#n441'), 0, 441, 19.4, 19.95));
-			f.tw('#tile', [[19.4, { sc: 0.5, o: 0 }], [19.7, { sc: 1, o: 1 }, 'back']]);
-			f.show('#ans', 19.3, 20.4);
-			f.tw(['#bar', '#ans'], [[19.7, { s: 1 }], [20.3, { s: 1.03 }, 'lin']]);
-			f.tw('#ans', [[20.3, { o: 1 }], [20.4, { o: 0, y: 610 }, 'i']]);
-			fold('#bar', 20.3, 1300, 136, 430, 68, '#1c1c20');
+			/* ═══ Just ask (12.50–16.00) ═════════════════════════════════════ */
+			f.show(['#bar', '#h3'], 12.5, 16.26);
+			f.tw('#bar', [[12.5, { x: 960, y: 1500, mby: 70 }], [12.82, { y: 470, mby: 0 }, 'o']]);
+			title('#h3', 12.62, 16.26);
+			/* the questions: the first typed, then a new one on each beat */
+			const QS = [
+				[12.9, '18% of 2450', 441, '18% of 2450 · Enter copies it', '#ff9f0a', ''],
+				[14.6, '5 km in miles', '3.1069 miles', '5 km · Enter copies it', '#30d158', ''],
+				[15.1, 'time in Tokyo', '6:30 PM', 'Monday in Tokyo · 3 h 30 min ahead', '#0a84ff', ''],
+				[15.6, 'days until christmas', '54 days', 'Friday 25 December 2026', '#ff453a', ''],
+			];
+			const qAt = (t) => [...QS].reverse().find((q) => t >= q[0]) ?? QS[0];
+			f.fx((t) => {
+				const q = qAt(t);
+				const first = q === QS[0];
+				const n = first ? Math.max(0, Math.min(q[1].length, Math.floor((t - 13.0) * 13))) : q[1].length;
+				const s = q[1].slice(0, n);
+				if (f.$('#query').textContent !== s) f.$('#query').textContent = s;
+				f.$('#caret').style.opacity = first && n < q[1].length ? 1 : Math.floor(t * 2.4) % 2 ? 0 : 1;
+				const big = typeof q[2] === 'number' ? Math.round(q[2] * E.o(ramp(t, 13.95, 14.4))).toString() : q[2];
+				if (f.$('#ansBig').textContent !== big) f.$('#ansBig').textContent = big;
+				if (f.$('#ansSub').textContent !== q[3]) f.$('#ansSub').textContent = q[3];
+				f.$('#tile').style.background = q[4];
+				if (f.$('#tileGlyph').textContent !== q[5]) f.$('#tileGlyph').textContent = q[5];
+				const tint = { '#ff9f0a': '255,159,10', '#30d158': '48,209,88', '#0a84ff': '10,132,255', '#ff453a': '255,69,58' }[q[4]];
+				f.$('#ans').style.background = `rgba(${tint},0.24)`;
+				f.$('#ans').style.boxShadow = `inset 0 0 0 2px rgba(${tint},0.55), 0 30px 80px rgba(0,0,0,0.3)`;
+			});
+			f.show('#ans', 13.85, 16.26);
+			f.tw('#ans', [[13.85, { x: 960, y: 700, o: 0, s: 0.96 }], [14.15, { y: 670, o: 1, s: 1 }, 'o']]);
+			f.tw('#tile', [[13.9, { sc: 0.5, o: 0 }], [14.15, { sc: 1, o: 1 }, 'back']]);
+			/* each new answer is a jump cut: a hard reframe on the beat */
+			f.tw(['#bar', '#ans'], [[14.599, { s: 1 }], [14.6, { s: 1.05 }, 'step'], [15.099, { s: 1.05 }], [15.1, { s: 1 }, 'step'], [15.599, { s: 1 }], [15.6, { s: 1.05 }, 'step']]);
+			/* whip left into the captions */
+			const whipL = (sel, x0) => f.tw(sel, [[16.0, { x: x0, mbx: 0 }], [16.25, { x: x0 - 1920, mbx: 100 }, 'i']]);
+			whipL('#bar', 960);
+			whipL('#ans', 960);
+			whipL('#h3', 960);
 
-			/* ── chapter 4 · All in glass. ── */
-			card('#t4', [20.91, 21.17, 21.43], 22.2);
-			f.show('#ccimg', 22.2, 23.81);
-			/* Control Center, tilted, settles as the camera pulls back to the desktop */
-			f.tw('#ccimg', [[22.2, { ry: -7, rx: 3, s: 1.08, o: 0 }], [22.4, { o: 1 }, 'o'], [23.05, { ry: 0, rx: 0, s: 1 }, 'o']]);
-			/* (the view stays inside the screenshot: Control Center sits right of centre) */
-			f.cam([
-				[22.2, { cx: 1372, cy: 308, s: 1.75 }, 'step'],
-				[23.25, { cx: 960, cy: 540, s: 1 }, 'io5'],
-				[23.45, { s: 1.01 }, 'lin'],
+			/* ═══ Captions, live (16.25–18.75) ═══════════════════════════════ */
+			f.show('#vid', 16.2, 19.05);
+			f.tw('#vid', [[16.2, { x: 2900, y: 600, mbx: 90 }], [16.52, { x: 960, mbx: 0 }, 'o']]);
+			f.tw('#vidImg', [[16.2, { sc: 1.12 }], [19.0, { sc: 1.0 }, 'lin']]);
+			title('#h4', 16.42, 18.8, 150);
+			f.tw('#h4', [[18.7, { o: 1 }], [18.8, { o: 0 }, 'i']]);
+			/* the caption bar rides with the video, then becomes the dictation island */
+			f.show('#cap', 16.2, 21.76);
+			const CAPY = 600 + 371 - 70;
+			f.tw('#cap', [
+				[16.2, { x: 2900, y: CAPY, w: 1120, h: 92, br: 46, bg: '#000000', mbx: 90 }],
+				[16.52, { x: 960, mbx: 0 }, 'o'],
+				[18.75, { x: 960, y: CAPY, w: 1120, h: 92, br: 46 }],
+				[19.15, { y: 330, w: 640, h: 120, br: 60 }, 'io'],
 			]);
-			f.zoomAbout(23.45, 23.8, IX, IY, 80, 'expoIn');
+			const L1 = 'The tide comes in twice a day,'.split(' ');
+			const L2 = 'so the beach is never the same.'.split(' ');
+			f.fx((t) => {
+				let s = '';
+				if (t >= 17.9) s = L2.slice(0, Math.max(0, Math.min(L2.length, Math.floor((t - 17.9) / 0.12) + 1))).join(' ');
+				else if (t >= 16.75) s = L1.slice(0, Math.min(L1.length, Math.floor((t - 16.75) / 0.12) + 1)).join(' ');
+				if (f.$('#capText').textContent !== s) f.$('#capText').textContent = s;
+			});
+			f.tw('#capText', [[18.72, { o: 1 }], [18.8, { o: 0 }, 'lin']]);
+			f.tw('#vid', [[18.75, { s: 1, o: 1 }], [19.0, { s: 0.9, o: 0 }, 'i']]);
 
-			/* ── the end card: out of the pill, as at the start ── */
-			f.show('#wpill', 0, Infinity);
+			/* ═══ Just say it (18.75–21.50) ══════════════════════════════════ */
+			f.tw('#dict', [[19.1, { o: 0 }], [19.3, { o: 1 }, 'o']]);
+			const wave = f.$('#wave');
+			for (let i = 0; i < 9; i++) wave.append(document.createElement('i'));
+			f.fx((t) => {
+				[...wave.children].forEach((b, i) => {
+					const h = 14 + 44 * Math.abs(Math.sin(t * 7.3 + i * 0.9) * Math.sin(t * 3.1 + i * 1.7));
+					b.style.height = h.toFixed(1) + 'px';
+				});
+				f.$('#dot').style.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t * 3));
+			});
+			title('#h5', 19.2, 21.76, 150);
+			f.show('#note', 19.2, 21.76);
+			f.tw('#note', [[19.2, { x: 960, y: 700, o: 0, blur: 14 }], [19.55, { y: 660, o: 1, blur: 0 }, 'o'], [21.5, { s: 1.03 }, 'lin']]);
+			const NOTE = 'Pick up oat milk and call mum at six.'.split(' ');
+			f.fx((t) => {
+				const n = Math.max(0, Math.min(NOTE.length, Math.floor((t - 19.55) / 0.16) + 1));
+				const s = t < 19.55 ? '' : NOTE.slice(0, n).join(' ');
+				if (f.$('#noteText').textContent !== s) f.$('#noteText').textContent = s;
+			});
+
+			/* ═══ StandBy (21.50–24.40) ══════════════════════════════════════ */
+			f.show(['#clk', '#sbDate', '#sbw1', '#sbw2', '#sbCap'], 21.75, 24.65);
+			f.tw('#clk', [[21.75, { x: 640, y: 450, s: 1 }], [24.4, { s: 1.03 }, 'lin']]);
+			at('#sbDate', 640, 720);
+			at('#sbw1', 1500, 360);
+			at('#sbw2', 1500, 640);
+			at('#sbCap', 960, 950);
+			/* the minute turns over: two digits roll up */
+			['#d3', '#d4'].forEach((d, i) => {
+				f.$(d).style.width = '0.58em';
+				[...f.$(d).children].forEach((s) => f.tw(s, [[23.2 + i * 0.05, { dy: 0 }], [23.55 + i * 0.05, { dy: -380 }, 'io5']]));
+			});
+			f.tw(['#sbw1', '#sbw2'], [[21.75, { s: 1 }], [24.4, { s: 1.02 }, 'lin']]);
+
+			/* ═══ All in glass (24.40–27.40) ═════════════════════════════════ */
+			f.show('#ccimg', 24.65, 27.65);
+			f.show('#vig', 24.65, 27.65);
+			at('#vig', 960, 540);
+			f.tw('#ccimg', [[24.9, { ry: -7, rx: 3, s: 1.08 }], [25.55, { ry: 0, rx: 0, s: 1 }, 'o']]);
 			f.cam([
-				[23.801, { cx: IX, cy: IY, s: 80 }, 'step'],
-				[24.4, { cx: IX, cy: PILL_Y, s: 5 }, 'expo'],
-				[26.75, { cx: IX, cy: PILL_Y, s: 5 }],
-				[27.1, { cy: IY }, 'io'],
+				[24.65, { cx: 1372, cy: 308, s: 1.75 }, 'step'],
+				[24.9, { cx: 1372, cy: 308, s: 1.75 }],
+				[26.2, { cx: 960, cy: 540, s: 1 }, 'io5'],
+				[27.4, { s: 1.025 }, 'lin'],
 			]);
-			f.tw('#wname', [[24.2, { o: 0, blur: 2 }], [24.5, { o: 1, blur: 0 }, 'o'], [26.75, { o: 1 }], [26.87, { o: 0 }, 'i']]);
-			f.tw('#e1', [[0, { x: 960, y: 640 }]]);
-			f.tw('#e2', [[0, { x: 960, y: 724 }]]);
-			R.blurIn(f, '#e1', 24.55, { y: 640, rise: 10 });
-			R.blurIn(f, '#e2', 24.75, { y: 724, rise: 10 });
-			f.tw(['#e1', '#e2'], [[26.7, { o: 1 }], [26.87, { o: 0 }, 'i']]);
-			f.show(['#e1', '#e2'], 24.45, 26.9);
-			/* the island closes, then goes: frame 0 is black, so the loop has no seam */
-			f.tw('#wpill', [[26.8, { w: 236 }], [27.07, { w: 30 }, 'emph'], [27.09, { s: 1, o: 1 }], [27.2, { s: 0.3, o: 0 }, 'i']]);
+			f.tw('#vig', [[24.9, { o: 0 }], [25.6, { o: 1 }, 'o']]);
+			const h6 = split(f.$('#h6'), 'words');
+			h6.at(-1).classList.add('acc');
+			f.tw('#h6', [[0, { x: 520, y: 540 }]]);
+			h6.forEach((s, i) => f.tw(s, [[25.5 + i * 0.09, { o: 0, dy: 26, blur: 10 }], [25.5 + i * 0.09 + 0.3, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+			f.show('#h6', 25.5, 27.65);
+
+			/* ═══ the end (27.90–32.50): the chip, and where to get it ════════ */
+			f.tw('#e1', [[0, { x: 960, y: 790 }]]);
+			f.tw('#e2', [[0, { x: 960, y: 868 }]]);
+			R.blurIn(f, '#e1', 29.55, { y: 790, rise: 10 });
+			R.blurIn(f, '#e2', 29.75, { y: 868, rise: 10 });
+			f.tw(['#e1', '#e2'], [[31.75, { o: 1 }], [31.92, { o: 0, blur: 8 }, 'i']]);
+			f.show(['#e1', '#e2'], 29.5, 32.0);
 
 			f.start();
 		</script>
