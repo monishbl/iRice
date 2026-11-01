@@ -49,6 +49,55 @@ Singleton {
         }
     }
 
+    // Answers in plain words (assets/scripts/answers.py, kept running while
+    // Spotlight is used): "18% of 2450", "twelve times four", "days until
+    // christmas", "time in tokyo", "5 km in miles", "100 usd in inr"
+    property string ansQuery: ""
+    property var ansResult: null // { kind, title, subtitle, copy }; {} = none
+    property int ansId: 0
+    property bool ansWanted: false
+    readonly property var ansGlyphs: ({ math: "calculator", date: "calendar-blank", time: "globe-hemisphere-west", unit: "ruler", currency: "currency-circle-dollar" })
+    Timer {
+        id: ansDebounce
+        interval: 90
+        onTriggered: {
+            root.ansWanted = true;
+            ansIdle.restart();
+            if (answerer.running)
+                root.askAnswer();
+        }
+    }
+    Timer {
+        id: ansIdle
+        interval: 120000 // (unused for two minutes: it stops)
+        onTriggered: root.ansWanted = false
+    }
+    function askAnswer() {
+        ansId++;
+        answerer.write(JSON.stringify({ id: ansId, q: ansQuery }) + "\n");
+    }
+    KeptProcess {
+        id: answerer
+        wanted: root.ansWanted
+        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/answers.py", "--serve"]
+        stdinEnabled: true
+        onStarted: if (root.ansQuery !== "") root.askAnswer() // (a write before it starts is lost)
+        stdout: SplitParser {
+            onRead: line => {
+                let r = null;
+                try {
+                    r = JSON.parse(line);
+                } catch (e) {
+                    return;
+                }
+                if (r.id !== root.ansId)
+                    return;
+                root.ansResult = r;
+                root.revision++;
+            }
+        }
+    }
+
     // Definitions: "define word", "word meaning" (dictionaryapi.dev)
     property string defWord: ""
     property var definition: null // { word, phonetic, part, text }
@@ -237,7 +286,20 @@ Singleton {
         if (value !== null)
             out.push({ section: "Calculator", title: String(value), subtitle: raw + " =", glyph: "calculator", run: () => Quickshell.execDetached(["wl-copy", String(value)]) });
 
-        if (value === null && Tools.has("qalc") && looksLikeConversion(raw)) {
+        // (plain arithmetic is answered above, at once)
+        if (value === null && raw.trim().length >= 3) {
+            if (raw !== ansQuery) {
+                ansQuery = raw;
+                ansResult = null;
+                ansDebounce.restart();
+            } else if (ansResult?.title) {
+                const a = ansResult;
+                out.push({ section: "Answer", kind: a.kind, title: a.title, subtitle: a.subtitle, glyph: ansGlyphs[a.kind] ?? "sparkle", run: () => Quickshell.execDetached(["wl-copy", a.copy]) });
+            }
+        }
+
+        // (units and currency it didn't know: qalc, when installed)
+        if (value === null && ansResult !== null && !ansResult.title && Tools.has("qalc") && looksLikeConversion(raw)) {
             if (raw !== convQuery) {
                 convQuery = raw;
                 convResult = "";
@@ -316,7 +378,7 @@ Singleton {
             return intents.concat(out);
 
         // Best app or action becomes the top hit (answers stay on top)
-        const answers = ["Calculator", "Conversion", "Dictionary"];
+        const answers = ["Calculator", "Answer", "Conversion", "Dictionary"];
         // (the better match of the two: an app that only matches by its
         // generic name doesn't beat an action named for what was typed)
         let top = out.findIndex(r => answers.includes(r.section));

@@ -711,18 +711,18 @@ Singleton {
                 wifi: { kind: "network", icon: "wifi-high", title: "Home Wi-Fi", subtitle: "Wi-Fi connected", color: Theme.accents.blue },
                 vpn: { kind: "network", icon: "shield-check", title: "Work VPN", subtitle: "VPN connected", color: Theme.accents.green, ripple: true },
                 temperature: { kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU 94 °C · close heavy apps or let it cool", value: 0.9, color: Theme.accents.red },
-                notification: { kind: "notification", headline: "Here, I found the door code in your messages from Mac.", card: { name: "Mac Tyler", time: "Thursday", text: "There's a spare key on the hook by the coat rack! The front door code is #1997", initials: "MT", appIcon: "org.gnome.Polari" } },
+                notification: { kind: "notification", headline: "Your order is on its way.", card: { name: "Google Play", time: "now", text: "Pixel Buds Pro 2 ship today and arrive on Thursday.", initials: "GP", appIcon: "org.gnome.Software" } },
                 music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" },
                 download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} },
                 // (Fast Pair's card: Connect turns it into "Connecting…", and
                 // `demo connected` into the Bluetooth alert, in the same card)
-                connect: { kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
-                    onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
+                connect: { kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
+                    onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
                 // (connected before its battery is known: `demo connected` then brings it)
-                linked: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue },
-                parts: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue, batteries: [{ label: "L", value: 0.8 }, { label: "R", value: 0.76 }, { label: "Case", value: 0.18 }] },
-                lowbuds: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Battery low · 18%", color: Theme.color.danger, battery: 0.18 },
-                connected: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
+                linked: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Connected", color: Theme.accents.blue },
+                parts: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Connected", color: Theme.accents.blue, batteries: [{ label: "L", value: 0.8 }, { label: "R", value: 0.76 }, { label: "Case", value: 0.18 }] },
+                lowbuds: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Battery low · 18%", color: Theme.color.danger, battery: 0.18 },
+                connected: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Pixel Buds Pro 2"), title: "Pixel Buds Pro 2", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up
             const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" || kind === "connect" ? root.longMs : 5000;
@@ -734,7 +734,7 @@ Singleton {
                 return;
             }
             if (kind === "output") { // the volume row after switching to headphones
-                root.hud("volume", "Buds");
+                root.hud("volume", "Pixel Buds Pro 2");
                 started.elapsed = was;
                 return;
             }

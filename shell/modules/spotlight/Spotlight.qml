@@ -203,8 +203,22 @@ Variants {
                             required property int index
                             width: list.width
 
+                            // (an answer or a thing to do, on top: a big card, no heading)
+                            readonly property bool big: index === 0 && ["Calculator", "Answer", "Conversion", "Dictionary", "Do"].includes(modelData.section)
+                            AnswerCard {
+                                visible: parent.big
+                                width: parent.width
+                                result: parent.modelData
+                                selected: parent.index === win.selected
+                                onActivated: win.run(parent.index)
+                            }
+                            Item {
+                                visible: parent.big
+                                width: 1
+                                height: 6
+                            }
                             Text {
-                                visible: parent.index === 0 || win.results[parent.index - 1].section !== parent.modelData.section
+                                visible: !parent.big && (parent.index === 0 || win.results[parent.index - 1].section !== parent.modelData.section)
                                 leftPadding: 10
                                 topPadding: parent.index === 0 ? 2 : 10
                                 bottomPadding: 4
@@ -213,6 +227,7 @@ Variants {
                                 font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                             }
                             ResultRow {
+                                visible: !parent.big
                                 width: parent.width
                                 result: parent.modelData
                                 selected: parent.index === win.selected

@@ -22,6 +22,13 @@ Scope {
     readonly property int count: req?.files?.length ?? 0
     readonly property bool photos: count > 0 && (req?.files ?? []).every(f => String(f.mime ?? "").startsWith("image/") || /\.(jpe?g|png|heic|webp|gif)$/i.test(f.name ?? ""))
     readonly property string what: count === 0 ? (req?.what ?? "something") : count === 1 ? "“" + req.files[0].name + "”" : count + (photos ? " photos" : " files")
+    // How it's arriving, shown on the phone's screen in the avatar: the same
+    // Wi-Fi, a direct link (the phone's hotspot or ours) or Bluetooth
+    readonly property string linkIcon: {
+        const t = String(item?.transport ?? "").toLowerCase();
+        return t === "" ? "" : t.includes("bluetooth") ? "bluetooth" : t.includes("direct") || t.includes("hotspot") ? "broadcast" : "wifi-high";
+    }
+    readonly property bool handheld: req?.type === "phone" || req?.type === "mobile" || req?.type === "tablet"
     readonly property string kindIcon: (req?.type === "phone" || req?.type === "mobile") ? "device-mobile" : req?.type === "tablet" ? "device-tablet" : req?.type === "laptop" ? "laptop" : "desktop"
 
     // Done: it goes after a while (Open / Show in Files are there till then)
@@ -93,10 +100,39 @@ Scope {
                             }
                             Icon {
                                 anchors.centerIn: parent
+                                visible: !root.handheld
                                 name: root.kindIcon
                                 fill: true
                                 size: 32
                                 color: Theme.color.onAccent
+                            }
+                            // A phone (or tablet), its screen showing the link
+                            Rectangle {
+                                visible: root.handheld
+                                anchors.centerIn: parent
+                                width: root.req?.type === "tablet" ? 34 : 26
+                                height: 42
+                                radius: 7
+                                color: "transparent"
+                                border.width: 2.5
+                                border.color: Theme.color.onAccent
+                                Rectangle {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    y: 4
+                                    width: 8
+                                    height: 2.5
+                                    radius: 1.25
+                                    color: Theme.color.onAccent
+                                }
+                                Icon {
+                                    anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: 2
+                                    visible: root.linkIcon !== ""
+                                    name: root.linkIcon
+                                    fill: true
+                                    size: 14
+                                    color: Theme.color.onAccent
+                                }
                             }
                         }
                         Canvas {
@@ -161,12 +197,12 @@ Scope {
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.body }
                     }
-                    // How far, in bytes (and the link it came over)
+                    // How far, in bytes (the link: on the phone's screen above)
                     Text {
                         visible: root.state_ === "receiving" && !!root.item && !root.item.waiting
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
-                        text: root.item ? Transfers.size(root.item.done) + " of " + Transfers.size(root.item.total) + (root.item.transport ? " · " + root.item.transport : "") : ""
+                        text: root.item ? Transfers.size(root.item.done) + " of " + Transfers.size(root.item.total) : ""
                         color: Theme.color.tertiary
                         font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                     }

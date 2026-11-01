@@ -199,7 +199,7 @@ Singleton {
         target: "sharingdemo"
         enabled: Quickshell.env("IRICE_SANDBOX") === "1"
         function ask(): void {
-            root.addRequest({ id: "demo:1", via: "demo", session: "1", from: "Padma's phone", type: "phone", what: "2 photos",
+            root.addRequest({ id: "demo:1", via: "demo", session: "1", from: "Galaxy S25 Ultra", type: "phone", what: "2 photos",
                 files: [{ name: "IMG_2041.jpg", mime: "image/jpeg" }, { name: "IMG_2042.jpg", mime: "image/jpeg" }], total: 6200000, pin: "4821" });
         }
         function progress(pct: int): void {
@@ -209,7 +209,7 @@ Singleton {
             root.updateRequest("demo:1", { state: "done", paths: ["/tmp/IMG_2041.jpg", "/tmp/IMG_2042.jpg"] });
         }
         function fail(): void {
-            root.updateRequest("demo:1", { state: "failed", message: "Padma's phone stopped sending." });
+            root.updateRequest("demo:1", { state: "failed", message: "Galaxy S25 Ultra stopped sending." });
         }
     }
 }
