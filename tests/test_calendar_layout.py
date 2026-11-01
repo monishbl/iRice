@@ -39,6 +39,8 @@ Singleton {
     property var remote: []
     property int defaultAlert: 0
     function between(a, b) { return []; }
+    function seriesOf(e) { return ""; }
+    function dailyIn(list, a, b) { return {}; }
     function eventsOn(d) { return [{ title: 'Karaka Chaturthi', allDay: true, start: d, end: d, color: '#25cf91', calendar: 'Holidays in India', local: false }]; }
     function timeText(e) { return 'All day'; }
     function editable(e) { return !!e.local; }

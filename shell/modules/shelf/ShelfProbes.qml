@@ -7,7 +7,7 @@ import qs.services
 // What tells a real drag of files from a held button: only something being
 // dragged can enter a drop area, never a selection, a scrollbar or a window
 // edge; and only files open the shelf (not a web image or link, or text). While the button is held (Shelf.probing), each screen gets
-// a thin invisible strip at its left and right edges, and a square under
+// a thin invisible strip at its left, right and top edges, and a square under
 // the pointer just after a shake (Shelf.probe); a drag entering one is what
 // opens the shelf. They take no clicks: a held button keeps the pointer
 // with whatever it was pressed on, and they go when it comes up. Something
@@ -17,7 +17,7 @@ Scope {
 
     component Probe: PanelWindow {
         id: probe
-        property string where: "" // left | right | shake
+        property string where: "" // left | right | top | shake
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
@@ -70,6 +70,15 @@ Scope {
                     screen: perScreen.modelData
                     anchors { right: true; top: true; bottom: true }
                     implicitWidth: 3
+                }
+            }
+            LazyLoader {
+                active: perScreen.edges
+                Probe {
+                    where: "top"
+                    screen: perScreen.modelData
+                    anchors { left: true; right: true; top: true }
+                    implicitHeight: 3
                 }
             }
             // (just after a shake: under the pointer, where the drag is)

@@ -13,7 +13,7 @@ import "ShelfLogic.js" as Logic
 // removed or cleared.
 // It opens:
 //   - shaking the pointer while dragging something (shelf.shake)
-//   - holding a drag at the left or right edge of a screen (shelf.edge)
+//   - holding a drag at the left, right or top edge of a screen (shelf.edge)
 // and only for a real drag of files: a selection, a scrollbar, a slider, or
 // a browser's image or link dragged about never opens it
 // (modules/shelf/ShelfProbes). Text and links can still go onto it once open.
@@ -153,7 +153,8 @@ Singleton {
         onTriggered: {
             if (root.opened || !root.down)
                 return;
-            root.side = root.edgeAt;
+            // (from the top: the side nearer the pointer)
+            root.side = root.edgeAt === "top" ? (root.edgeScreen && root.last.x > root.edgeScreen.x + root.edgeScreen.width / 2 ? "right" : "left") : root.edgeAt;
             root.atY = root.last.y - (root.edgeScreen?.y ?? 0);
             root.show("edge", root.edgeScreen);
         }
@@ -177,9 +178,22 @@ Singleton {
             edgeHold.stop();
     }
 
+    // (each press is numbered: a follower still ending from the last one,
+    // whose release went missing, mustn't end this one)
+    property int press: 0
+    property int followed: 0
     function pointerDown() {
         if (!watching)
             return;
+        press++;
+        // A drag of files swallows the button's release; Hyprland hands it
+        // over at the next press instead. A press arriving while the last
+        // is still "down" ignores the release that follows it at once
+        staleUpUntil = down ? Date.now() + 150 : 0;
+        // (fresh drop areas for each press: ones left from a press whose
+        // release went missing don't hear a new drag arrive)
+        probing = false;
+        edgeHold.stop();
         down = true;
         downAt = Date.now();
         start = null;
@@ -190,7 +204,12 @@ Singleton {
         lastMove = Date.now();
         follow.restart();
     }
+    property real staleUpUntil: 0
     function pointerUp() {
+        if (Date.now() < staleUpUntil) {
+            staleUpUntil = 0;
+            return;
+        }
         if (!down)
             return;
         down = false;
@@ -224,6 +243,7 @@ Singleton {
         onTriggered: {
             if (root.down && !root.windowMove) {
                 root.probing = true;
+                root.followed = root.press;
                 if (!follower.running)
                     follower.running = true; // (one at a time: a second would be queued)
             }
@@ -242,7 +262,6 @@ Singleton {
     Process {
         id: follower
         command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/pointer-follow.py"]
-        onExited: if (root.down) root.pointerUp()
         stdout: SplitParser {
             onRead: line => {
                 const m = line.match(/^\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\s*$/);

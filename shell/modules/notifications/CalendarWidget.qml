@@ -48,7 +48,13 @@ Platter {
         const out = {};
         const key = d => d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
         const first = days[0], last = days[days.length - 1];
-        for (const e of Calendar.between(first, new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1))) {
+        const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+        const list = Calendar.between(first, to);
+        // (events on every day: listed once under the grid, not dotted)
+        const daily = Calendar.dailyIn(list, first, to);
+        for (const e of list) {
+            if (daily[Calendar.seriesOf(e)])
+                continue;
             const d = new Date(e.start.getFullYear(), e.start.getMonth(), e.start.getDate());
             let end = e.allDay ? new Date(e.end.getTime() - 1) : e.end;
             end = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -68,6 +74,14 @@ Platter {
             out[k].todos++;
         }
         return out;
+    }
+    // What repeats every day in the shown weeks ("Every day: …", under the grid)
+    readonly property var everyDay: {
+        Calendar.local;
+        Calendar.remote;
+        const first = days[0], last = days[days.length - 1];
+        const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+        return Object.values(Calendar.dailyIn(Calendar.between(first, to), first, to)).map(d => d.title);
     }
     // The selected day: events, then to-dos due that day
     readonly property var items: {
@@ -415,6 +429,25 @@ Platter {
                     id: agendaContent
                     width: parent.width
                     spacing: 8
+                    // What repeats every day (not dotted on every date above)
+                    Row {
+                        visible: !root.todoMode && root.everyDay.length > 0
+                        width: parent.width
+                        spacing: 6
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "repeat"
+                            size: 12
+                            color: Theme.color.tertiary
+                        }
+                        Text {
+                            width: parent.width - 18
+                            text: "Every day: " + root.everyDay.join(", ")
+                            elide: Text.ElideRight
+                            color: Theme.color.tertiary
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                        }
+                    }
                     // The selected day
                     Item {
                         id: dayTitle

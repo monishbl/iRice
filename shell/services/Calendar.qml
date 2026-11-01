@@ -67,10 +67,43 @@ Singleton {
     }
 
     // Days of a month view that have events, as "y-m-d" keys
+    // Events that repeat every day ("take a pill"): a month view doesn't dot
+    // every day for them, it lists them once ("Every day"). A series counts
+    // as daily when it's on at least 80% of a week or more of days.
+    function seriesOf(e) {
+        if (e.google)
+            return e.source?.series ? "g:" + e.source.series : "";
+        return e.key ? e.key.slice(0, e.key.lastIndexOf("|")) : "";
+    }
+    // series -> { title, color } for the events in `list` (between(from, to))
+    function dailyIn(list, from, to) {
+        const days = Math.round((to - from) / 86400000);
+        if (days < 7)
+            return {};
+        const seen = {};
+        for (const e of list) {
+            const s = seriesOf(e);
+            if (!s)
+                continue;
+            seen[s] = seen[s] ?? { title: e.title, color: e.color, days: {} };
+            seen[s].days[e.start.toDateString()] = true;
+        }
+        const out = {};
+        for (const s in seen)
+            if (Object.keys(seen[s].days).length >= days * 0.8)
+                out[s] = { title: seen[s].title, color: seen[s].color };
+        return out;
+    }
+
     function busyDays(first, last) {
         const set = {};
         const dayOf = t => new Date(t.getFullYear(), t.getMonth(), t.getDate());
-        for (const e of between(first, new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1))) {
+        const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+        const list = between(first, to);
+        const daily = dailyIn(list, first, to);
+        for (const e of list) {
+            if (daily[seriesOf(e)])
+                continue;
             const d = dayOf(e.start);
             let end = dayOf(e.allDay ? new Date(e.end.getTime() - 1) : e.end);
             if (end < d)
