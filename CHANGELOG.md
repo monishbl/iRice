@@ -1,5 +1,9 @@
 # iRice changelog
 
+## Smaller fixes · 2026-11-01
+
+- **A long song title no longer makes the island's scrolling text re-measure itself over and over** (a binding loop, logged each time it scrolled).
+
 ## Adding a fingerprint: a guided popup, 11 sections · 2026-11-01
 
 - **Adding a finger opens a popup that teaches you to cover the whole print.** The fingerprint is drawn like the familiar icon, a tilted loop with dashed ridges, and split into 11 sections: the centre, four around it, then six around the edges. The section to touch next is lit and named ("Again, a little higher up your finger", "Roll onto the upper right edge"…), so the reader records the whole finger rather than the same middle each time. Each touch it takes fills its section, with a small bump. When the reader wants another try, the print shakes, the section flashes red, and the reader's reason shows. Between the centre and the edges it says "Now the edges", as a phone does, and at the end every ridge turns green with a check: Done, or Add Another Finger. Escape or Cancel stops it. Dots underneath show all 11 sections, and nothing moves except on a touch.

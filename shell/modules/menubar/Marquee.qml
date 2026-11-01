@@ -25,7 +25,9 @@ Item {
     }
     Text {
         id: label
-        width: root.overflow && root.scroll ? implicitWidth : root.width
+        // (the probe's width, not its own: its own changes as the elide
+        // switches, which was a binding loop)
+        width: root.overflow && root.scroll ? probe.implicitWidth : root.width
         text: root.text
         color: root.color
         font: root.font
