@@ -185,6 +185,12 @@ Scope {
         if (back) {
             fingerTries = 0;
             faceTries = 0;
+            // (a reader that stayed busy gets another go too)
+            if (fingerBusy > 12) {
+                fingerBusy = 0;
+                fingerRetry.interval = 400;
+                fingerRetry.restart();
+            }
         }
     }
     onHeldChanged: {
@@ -197,6 +203,7 @@ Scope {
         faceBroken = false;
         faceTries = 0;
         fingerTries = 0;
+        fingerBusy = 0;
     }
     onPasswordChanged: if (password !== "") woke()
     readonly property bool standby: held && !leaving && canStandBy && idle && password === "" && !busy
@@ -295,6 +302,14 @@ Scope {
     property string fingerState: "" // "" | waiting | miss | match (the field's fingerprint)
     property int fingerTries: 0 // real misses
     property real fingerAskedAt: 0 // when the reader last asked for a finger
+    // A busy reader isn't a miss: a conversation that ends at once, before
+    // the reader asked for a finger, found it claimed (fprintd: "already
+    // claimed", by one still ending, say one left from before a sleep). It
+    // tries again after a pause that grows (0.5, 1, 2, then 4 s), for about
+    // 40 s, without counting a try.
+    property real fingerStartedAt: 0
+    property bool fingerAsked: false // (this conversation got as far as asking)
+    property int fingerBusy: 0
     readonly property int fingerQuickMs: 700
     readonly property bool fingerWanted: held && !leaving && Fingerprint.lockScreen && fingerTries < 5
     onFingerWantedChanged: {
@@ -311,11 +326,43 @@ Scope {
     Timer {
         id: fingerRetry
         interval: 400 // (a moment after the lock shows, or after a try)
-        onTriggered: if (root.fingerWanted && !finger.active) {
+        onTriggered: {
+            if (!root.fingerWanted)
+                return;
+            if (finger.active) {
+                restart(); // (an aborted one still ending: wait for it)
+                return;
+            }
             root.fingerText = "Touch the fingerprint reader to unlock";
             root.fingerState = "waiting";
             root.fingerAskedAt = Date.now();
+            root.fingerStartedAt = Date.now();
+            root.fingerAsked = false;
             finger.start();
+        }
+    }
+    // Waking from sleep: a conversation started before it (the lock goes
+    // up as the computer sleeps) is hours old to its own clock and may
+    // hold the reader. Noticed as a jump in the clock while locked, it's
+    // dropped and a fresh one starts, with every try back.
+    property real lockTick: 0
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.held
+        onRunningChanged: if (running) root.lockTick = Date.now()
+        onTriggered: {
+            const now = Date.now();
+            const slept = now - root.lockTick > 10000;
+            root.lockTick = now;
+            if (!slept || !Fingerprint.lockScreen)
+                return;
+            root.fingerTries = 0;
+            root.fingerBusy = 0;
+            if (finger.active)
+                finger.abort();
+            fingerRetry.interval = 1500;
+            fingerRetry.restart();
         }
     }
     // "Not recognised" stays long enough to read, then the reader asks again
@@ -344,6 +391,7 @@ Scope {
                     finger.abort();
             } else if (/place|swipe|touch|finger/i.test(m)) {
                 root.fingerAskedAt = Date.now();
+                root.fingerAsked = true;
                 if (!fingerMissShown.running) {
                     root.fingerText = "Touch the fingerprint reader to unlock";
                     root.fingerState = "waiting";
@@ -357,9 +405,23 @@ Scope {
                 root.error = "";
                 root.fails = 0;
                 root.fingerTries = 0;
+                root.fingerBusy = 0;
                 root.fingerText = "";
                 return;
             }
+            // over at once, before it asked: the reader was busy
+            if (!root.fingerAsked && Date.now() - root.fingerStartedAt < 2000) {
+                if (++root.fingerBusy > 12) {
+                    root.fingerText = "";
+                    root.fingerState = "";
+                    return;
+                }
+                fingerRetry.interval = Math.min(4000, 250 * Math.pow(2, root.fingerBusy));
+                fingerRetry.restart();
+                return;
+            }
+            root.fingerBusy = 0;
+            fingerRetry.interval = 400;
             // (a reader that errors counts as a miss; a 30 s wait without a
             // finger doesn't)
             if (result === PamResult.Error)

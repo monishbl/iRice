@@ -1,5 +1,9 @@
 # iRice changelog
 
+## The fingerprint works after sleep · 2026-11-02
+
+- **The lock screen keeps the fingerprint reader after the laptop sleeps.** The lock goes up as the laptop sleeps, and its fingerprint request started then. On waking, that request is hours old to its own clock and can still hold the reader, so the new requests were refused ("already claimed"). Each refusal counted as a missed finger, and five of them in about two seconds turned the finger off until you came back. Now a request that's refused before the reader asks for a finger means "busy": it doesn't count as a miss, and it tries again after a growing pause (0.5, 1, 2, then every 4 seconds, for about 40 seconds). Waking from sleep is noticed while locked (a jump in the clock), and the finger starts afresh with every try back. Coming back to the laptop also gives a reader that stayed busy another go.
+
 ## Smaller fixes · 2026-11-01
 
 - **A long song title no longer makes the island's scrolling text re-measure itself over and over** (a binding loop, logged each time it scrolled).
