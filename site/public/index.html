@@ -4,22 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iRice</title>
-<meta name="description" content="A macOS Tahoe–style desktop for Hyprland: Liquid Glass, a dynamic island, Spotlight and Control Center. Try it on its own console, next to your usual desktop.">
+<meta name="description" content="A macOS Tahoe–style desktop for Hyprland: Liquid Glass, a dynamic island, Quick Share and Fast Pair with Android, and updates you can undo. On Arch Linux, next to the desktop you already have.">
 <meta property="og:title" content="iRice: Tahoe, on Hyprland">
-<meta property="og:description" content="Liquid Glass, a dynamic island, Spotlight and Control Center for Hyprland on Arch Linux.">
-<meta property="og:image" content="https://irice.monishbl.in/media/film-3.jpg">
+<meta property="og:description" content="Liquid Glass, a dynamic island, Quick Share and Fast Pair for Hyprland on Arch Linux.">
+<meta property="og:image" content="https://irice.monishbl.in/media/shots/hero.webp">
 <meta name="theme-color" content="#111113">
+<script>
+// The theme before first paint: what you picked here last, else the system's
+try { const t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Blue accent to match the film's captions. */
 :root {
   --frame: #F4F4F5; --canvas: #FAFAFA; --surface: #FFFFFF; --muted: #F4F4F5; --pressed: #E4E4E7;
   --border: #E4E4E7; --border-strong: #D4D4D8;
   --text: #18181B; --body: #27272A; --secondary: #52525B; --tertiary: #6B6B74;
   --accent: #0066CC; --accent-hover: #0055AA; --accent-pressed: #004488; --on-accent: #FFFFFF; --link: #0066CC;
   --focus: #2997FF; --nav: rgba(250, 250, 250, 0.72);
+  --tag: #EFF6FF; --tag-text: #1D4ED8;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -28,7 +32,7 @@
     --border: #26262A; --border-strong: #36363C;
     --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
     --accent: #2997FF; --accent-hover: #5CB0FF; --accent-pressed: #8CC7FF; --on-accent: #06182B; --link: #5CB0FF;
-    --nav: rgba(17, 17, 19, 0.72);
+    --nav: rgba(17, 17, 19, 0.72); --tag: #172554; --tag-text: #93C5FD;
     color-scheme: dark;
   }
 }
@@ -37,14 +41,20 @@
   --border: #26262A; --border-strong: #36363C;
   --text: #EDEDEF; --body: #D4D4D8; --secondary: #A1A1AA; --tertiary: #94949D;
   --accent: #2997FF; --accent-hover: #5CB0FF; --accent-pressed: #8CC7FF; --on-accent: #06182B; --link: #5CB0FF;
-  --nav: rgba(17, 17, 19, 0.72);
+  --nav: rgba(17, 17, 19, 0.72); --tag: #172554; --tag-text: #93C5FD;
   color-scheme: dark;
 }
+/* Pictures made for one theme: shown in it only */
+:root[data-theme="dark"] .only-light, :root[data-theme="light"] .only-dark { display: none !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .only-light { display: none !important; } }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .only-dark { display: none !important; } }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 64px; }
 body {
   margin: 0; background: var(--canvas); color: var(--body);
   font: 400 16px/24px Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  transition: background-color 300ms ease-out, color 300ms ease-out;
 }
 a { color: var(--link); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
@@ -61,6 +71,15 @@ img, video { display: block; max-width: 100%; }
 .brand { font-weight: 600; font-size: 16px; color: var(--text); text-decoration: none; margin-right: auto; }
 .nav a.link { color: var(--secondary); text-decoration: none; font-size: 14px; }
 .nav a.link:hover { color: var(--text); }
+.theme {
+  width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-items: center;
+  background: transparent; color: var(--secondary); position: relative;
+  transition: background-color 150ms ease-out, color 150ms ease-out, transform 100ms ease-out;
+}
+.theme::before { content: ""; position: absolute; inset: -4px; } /* 44px target */
+.theme:hover { background: var(--muted); color: var(--text); }
+.theme:active { transform: scale(0.97); }
+.theme svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Buttons */
 .btn {
@@ -77,11 +96,12 @@ img, video { display: block; max-width: 100%; }
 .more:hover { text-decoration: underline; }
 .more::after { content: " ›"; }
 
-/* Type: 64 / 42 / 20 / 16 / 14 / 13 */
+/* Type: 64 / 42 / 32 / 20 / 16 / 14 */
 h1, h2 { margin: 0; color: var(--text); font-weight: 600; }
 h1 { font-size: 64px; line-height: 72px; letter-spacing: -0.035em; }
 h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
-.sub { margin: 16px auto 0; max-width: 40ch; font-size: 20px; line-height: 28px; color: var(--secondary); }
+.sub { margin: 16px auto 0; max-width: 44ch; font-size: 20px; line-height: 28px; color: var(--secondary); }
+.eyebrow { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--tertiary); margin: 0 0 12px; }
 
 /* Hero */
 .hero { padding-top: 96px; padding-bottom: 48px; text-align: center; }
@@ -91,6 +111,7 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 /* Media frames */
 .media { position: relative; border-radius: 20px; overflow: hidden; background: var(--frame); border: 1px solid var(--border); aspect-ratio: 16 / 9; }
 .media video, .media img { width: 100%; height: 100%; object-fit: cover; }
+.media video { cursor: pointer; }
 .play {
   position: absolute; right: 16px; bottom: 16px; width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
   background: rgba(24, 24, 27, 0.56); color: #FAFAFA; display: grid; place-items: center;
@@ -102,17 +123,58 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .play::before { content: ""; position: absolute; inset: -4px; } /* 44px target */
 .play svg { width: 16px; height: 16px; }
 
-/* Feature sections */
+/* Sections */
 .feature { padding-top: 128px; }
 .feature header { text-align: center; margin-bottom: 48px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
-.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+
+/* Only on iRice: a bento of tiles, each a shot and a few lines */
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 24px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+.tile.w6 { grid-column: span 6; } .tile.w4 { grid-column: span 4; } .tile.w3 { grid-column: span 3; } .tile.w2 { grid-column: span 2; }
 .tile .copy { padding: 32px 32px 24px; }
 .tile h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
-.tile p { margin: 8px 0 0; color: var(--secondary); }
-.tile .media { border-radius: 0; border: 0; border-top: 1px solid var(--border); }
+.tile p { margin: 8px 0 0; color: var(--secondary); max-width: 52ch; }
+.tile .shot { margin-top: auto; background: var(--frame); border-top: 1px solid var(--border); }
+.tile .shot img { width: 100%; height: 100%; object-fit: cover; }
+.tile .shot.tall { aspect-ratio: 4 / 5; } .tile .shot.wide { aspect-ratio: 2 / 1; } .tile .shot.std { aspect-ratio: 4 / 3; }
+.tag {
+  display: inline-block; vertical-align: 2px; margin-left: 8px; padding: 0 8px; border-radius: 999px;
+  background: var(--tag); color: var(--tag-text); font-size: 12px; line-height: 20px; font-weight: 500; letter-spacing: 0;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--muted); color: var(--body); font-size: 14px; line-height: 20px; }
+.chip .tag { margin-left: 0; }
+.first { margin-top: 24px; padding: 24px 32px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--secondary); font-size: 14px; line-height: 20px; text-align: center; }
 
-/* Segmented switch */
+/* Made to disappear: design principles */
+.principles { padding-top: 128px; }
+.principles .lead { max-width: 1120px; }
+.principles h2.big { font-size: 64px; line-height: 72px; letter-spacing: -0.035em; max-width: 12ch; }
+.principles .intro { margin: 24px 0 0; max-width: 52ch; color: var(--secondary); }
+.pcard { position: relative; border-radius: 28px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+.pcard .label { position: absolute; top: 32px; left: 32px; font-size: 13px; line-height: 18px; color: var(--secondary); z-index: 1; }
+.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+.material { margin-top: 48px; aspect-ratio: 16 / 9; }
+.material img { width: 100%; height: 100%; object-fit: cover; }
+.material .names { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: #fff; }
+.material .names strong { display: block; font-size: 32px; line-height: 40px; font-weight: 500; letter-spacing: -0.02em; }
+.material .names span { font: 500 13px/18px "JetBrains Mono", ui-monospace, monospace; opacity: 0.8; }
+.material .label { color: rgba(255, 255, 255, 0.85); }
+.type { aspect-ratio: 1 / 1; display: flex; align-items: flex-end; padding: 32px; }
+.type .ab { font-size: clamp(120px, 22vw, 240px); line-height: 0.8; font-weight: 600; letter-spacing: -0.04em; color: var(--text); }
+.type .meta { position: absolute; right: 32px; bottom: 32px; text-align: right; font-size: 13px; line-height: 18px; color: var(--secondary); }
+.shape { aspect-ratio: 1 / 1; display: grid; place-items: center;
+  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px; background-position: center; }
+.shape .devs { display: grid; grid-template-columns: repeat(3, 96px); gap: 24px; }
+.shape .devs img { width: 96px; height: 96px; }
+.comps { margin-top: 24px; padding: 88px 32px 48px; display: grid; grid-template-columns: 1.4fr 1fr 1.2fr; gap: 24px; align-items: center; }
+.comps .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.comps figure { position: relative; margin: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 16px 48px rgba(24, 24, 27, 0.18); }
+.comps figure img { display: block; width: 100%; height: auto; }
+.comps .label { color: rgba(255, 255, 255, 0.85); }
+
+/* Shots with a segmented switch */
 .seg { display: inline-flex; gap: 4px; padding: 4px; margin-top: 24px; background: var(--muted); border-radius: 999px; }
 .seg button {
   height: 36px; padding: 0 20px; border-radius: 999px; border: 0; cursor: pointer; background: transparent;
@@ -125,17 +187,16 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .swap img { position: absolute; inset: 0; opacity: 0; transition: opacity 300ms ease-out; }
 .swap img.on { opacity: 1; }
 
-/* Made to feel native: four pillars, then the full list */
-.pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
-.pillars .t { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; }
-.pillars svg { width: 32px; height: 32px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 24px; display: block; }
-.pillars h3 { margin: 0; font-size: 32px; line-height: 40px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
-.pillars p { margin: 12px 0 0; color: var(--secondary); max-width: 52ch; }
-.vis { width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; position: relative; border: 1px solid var(--border); margin-bottom: 32px; }
-.vis.glassvis { background: #111113 url(/media/glass.webp) 96% 8% / 230% auto no-repeat; }
-.vis.lockvis { background: #111113 url(/media/desktop-dark.webp) 72% 62% / 300% auto no-repeat; color: #fff; text-align: center; }
-.vis.lockvis .d { position: absolute; top: 20%; left: 0; right: 0; font-size: 14px; line-height: 20px; font-weight: 500; opacity: 0.85; }
-.vis.lockvis .c { position: absolute; top: 30%; left: 0; right: 0; font-size: 64px; line-height: 72px; font-weight: 400; letter-spacing: -0.03em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25); }
+.trio { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+@media (max-width: 640px) { .trio { grid-template-columns: 1fr; } }
+
+/* Brand gallery */
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.gallery .g { border-radius: 20px; overflow: hidden; border: 1px solid var(--border); aspect-ratio: 16 / 10; background: var(--frame); }
+.gallery .g img { width: 100%; height: 100%; object-fit: cover; }
+.gallery .media { grid-column: span 2; }
+
+/* Everything else */
 .flist-wrap { margin-top: 64px; }
 .flist-wrap h3 { margin: 0 0 24px; font-size: 24px; line-height: 32px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; text-align: center; }
 .flist { list-style: none; margin: 0; padding: 0; columns: 3; column-gap: 32px; }
@@ -189,25 +250,31 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 .no-js .reveal { opacity: 1; transform: none; }
 
 @media (max-width: 860px) {
-  .grid2, .pillars { grid-template-columns: 1fr; }
+  .bento, .pgrid, .gallery { grid-template-columns: 1fr; }
+  .tile.w6, .tile.w4, .tile.w3, .tile.w2, .gallery .media { grid-column: auto; }
   .flist { columns: 2; }
   ol.steps { grid-template-columns: 1fr; }
+  .principles h2.big { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 }
 @media (max-width: 640px) {
   .wrap, .film { padding: 0 16px; }
   .nav a.link.hide-sm { display: none; }
-  .nav .wrap { gap: 16px; }
+  .nav .wrap { gap: 12px; }
   .hero { padding-top: 64px; padding-bottom: 32px; }
   h1 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
   h2 { font-size: 32px; line-height: 40px; letter-spacing: -0.02em; }
   .sub { font-size: 16px; line-height: 24px; }
-  .feature { padding-top: 96px; }
+  .feature, .principles { padding-top: 96px; }
   .feature header { margin-bottom: 32px; }
-  .media { border-radius: 14px; }
-  .pillars .t { padding: 24px; }
-  .pillars h3 { font-size: 24px; line-height: 32px; }
-  .flist { columns: 1; }
+  .media, .tile, .gallery .g { border-radius: 14px; }
+  .pcard { border-radius: 20px; }
   .tile .copy { padding: 24px 20px 20px; }
+  .pcard .label { top: 20px; left: 20px; }
+  .shape .devs { grid-template-columns: repeat(3, 72px); gap: 16px; }
+  .shape .devs img { width: 72px; height: 72px; }
+  .comps { padding: 64px 16px 24px; grid-template-columns: 1fr; }
+  .comps figure img { width: 100%; height: auto; }
+  .flist { columns: 1; }
   .install { padding: 24px 16px; }
   .cmd { flex-direction: column; align-items: stretch; padding: 12px; }
   .cmd code { font-size: 14px; line-height: 20px; }
@@ -224,8 +291,13 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 <nav class="nav" aria-label="Main">
   <div class="wrap">
     <a class="brand" href="#top">iRice</a>
-    <a class="link hide-sm" href="#features">Features</a>
+    <a class="link hide-sm" href="#only">Only on iRice</a>
+    <a class="link hide-sm" href="#design">Design</a>
     <a class="link" href="https://github.com/monishbl/iRice">GitHub</a>
+    <button class="theme" type="button" id="theme" aria-label="Switch to dark appearance">
+      <svg class="only-light" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      <svg class="only-dark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
     <a class="btn sm" href="#install">Get iRice</a>
   </div>
 </nav>
@@ -233,151 +305,211 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 <main id="top">
   <section class="hero wrap">
     <h1>Tahoe, on Hyprland.</h1>
-    <p class="sub">Liquid Glass, a dynamic island, Spotlight and Control Center. On Arch Linux, next to the desktop you already have.</p>
+    <p class="sub">Liquid Glass, a dynamic island, and your Android phone and earbuds, as close as they are on a phone. On Arch Linux, next to the desktop you already have.</p>
     <div class="actions">
       <a class="btn" href="#install">Install iRice</a>
-      <a class="more" href="https://github.com/monishbl/iRice">View the source</a>
+      <a class="more" href="#only">What only iRice does</a>
     </div>
   </section>
   <div class="film reveal">
-    <div class="media">
-      <video src="/media/film-3.mp4" poster="/media/film-3.jpg" muted loop playsinline preload="metadata" data-auto aria-label="iRice in 30 seconds: the island, Spotlight, Control Center, glass materials, Notification Center, light and dark, App Library and emoji."></video>
-    </div>
+    <div class="media"><img src="/media/shots/hero.webp" alt="The iRice desktop over green leaves: Control Center open on the right, and the island at the top showing Pixel Buds Pro 2 connected with left, right and case batteries." fetchpriority="high"></div>
   </div>
 
+  <!-- ── Only on iRice ─────────────────────────────────────────────── -->
+  <section class="feature wrap" id="only">
+    <header class="reveal">
+      <p class="eyebrow">Only on iRice</p>
+      <h2>What a Linux desktop doesn't usually do.</h2>
+      <p class="sub">Things you won't find in other rices or desktops, as far as we know. Built in, not bolted on.</p>
+    </header>
+
+    <div class="bento">
+      <div class="tile w4 reveal">
+        <div class="copy">
+          <h3>Quick Share, both ways.</h3>
+          <p>Send photos and files to and from Android phones. Over Wi-Fi Direct at full speed, without dropping your Wi-Fi, or over Bluetooth when there's no network at all.</p>
+        </div>
+        <div class="shot std"><img src="/media/shots/quickshare-progress.webp" alt="A Quick Share card: receiving 2 photos from a Galaxy S25 Ultra, 46%, a hotspot icon on the phone showing it's a direct link." loading="lazy"></div>
+      </div>
+      <div class="tile w2 reveal">
+        <div class="copy">
+          <h3>Fast Pair.</h3>
+          <p>Open the case and your earbuds are there, with their picture. One click connects.</p>
+        </div>
+        <div class="shot" style="flex: 1; min-height: 240px"><img src="/media/shots/island-connect-tall.webp" alt="The island showing Pixel Buds Pro 2 nearby with a Connect button." loading="lazy" style="object-position: 50% 0"></div>
+      </div>
+
+      <div class="tile w3 reveal">
+        <div class="copy">
+          <h3>Left, right and case.</h3>
+          <p>Each earbud's battery and the case's, as the case opens, and a warning before they run out.</p>
+        </div>
+        <div class="shot wide"><img src="/media/shots/island-parts.webp" alt="The island showing earbuds connected, with rings for left 80, right 76 and case 18." loading="lazy" style="object-position: 50% 0"></div>
+      </div>
+      <div class="tile w3 reveal">
+        <div class="copy">
+          <h3>The sound, where you look.</h3>
+          <p>Drag the volume in the island, switch outputs, or set each app's level, without opening anything.</p>
+        </div>
+        <div class="shot wide"><img src="/media/shots/island-volume.webp" alt="The island's volume bar open, listing outputs, App volumes and Sound settings." loading="lazy" style="object-position: 50% 0"></div>
+      </div>
+
+      <div class="tile w2 reveal">
+        <div class="copy">
+          <h3>Real Liquid Glass.</h3>
+          <p>Refraction drawn by the compositor through a Hyprland plugin, not a blur. Panels bend what's behind them, even over your windows.</p>
+        </div>
+        <div class="shot tall"><img src="/media/shots/cc-leaves.webp" alt="Control Center in glass over green leaves: Wi-Fi, Bluetooth, music, toggles, brightness and volume." loading="lazy"></div>
+      </div>
+      <div class="tile w4 reveal">
+        <div class="copy">
+          <h3>Undo an update.<span class="tag">Preview</span></h3>
+          <p>Something broke after an update? Go back to the exact versions you had, from the package cache. If the desktop won't start, iRice offers it on its own, and boot-menu snapshots are a switch away. Updates never overwrite a setting you've changed.</p>
+        </div>
+        <div class="shot std"><img src="/media/shots/settings-update.webp" alt="Settings, Software Update: Go back to before the last update, listing the packages it changed." loading="lazy" style="object-position: 50% 0"></div>
+      </div>
+
+      <div class="tile w6 reveal">
+        <div class="copy">
+          <h3>Your devices and accounts.</h3>
+          <p>Ones marked Preview are built and working in testing, waiting to be checked with real hardware.</p>
+          <div class="chips">
+            <span class="chip">Phone screen on your desktop <span class="tag">Preview</span></span>
+            <span class="chip">Phone as a webcam <span class="tag">Preview</span></span>
+            <span class="chip">AirPlay speakers <span class="tag">Preview</span></span>
+            <span class="chip">Chromecast <span class="tag">Preview</span></span>
+            <span class="chip">Miracast mirroring <span class="tag">Preview</span></span>
+            <span class="chip">iCloud calendars <span class="tag">Preview</span></span>
+            <span class="chip">Microsoft 365 <span class="tag">Preview</span></span>
+            <span class="chip">Face unlock <span class="tag">Preview</span></span>
+            <span class="chip">Fingerprint <span class="tag">Preview</span></span>
+            <span class="chip">Offline dictation</span>
+            <span class="chip">Live captions over video</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Made to disappear: design principles ──────────────────────── -->
+  <section class="principles wrap" id="design">
+    <div class="lead reveal">
+      <h2 class="big">Made to disappear.</h2>
+      <p class="intro">A desktop you look through, not at. Neutral surfaces, colour only where it means something, one typeface, one shape, and motion that explains instead of decorates. It steps aside for your work and speaks up only when something needs you.</p>
+    </div>
+
+    <div class="pcard material reveal">
+      <img class="only-light" src="/media/art/material.webp" alt="" loading="lazy">
+      <img class="only-dark" src="/media/art/material-dark.webp" alt="" loading="lazy">
+      <span class="label">Soft and calm<br>Material</span>
+      <div class="names"><div><strong>Glass · Frost · Solid</strong><span>lens · frost · tint, mixed to taste</span></div></div>
+    </div>
+
+    <div class="pgrid">
+      <div class="pcard type reveal">
+        <span class="label">One typeface<br>Type</span>
+        <span class="ab" aria-hidden="true">Ab</span>
+        <span class="meta">Inter<br>Regular · Medium · Semibold</span>
+      </div>
+      <div class="pcard shape reveal">
+        <span class="label">Round shapes<br>Icons and devices</span>
+        <div class="devs">
+          <img src="/media/devices/earbuds.svg" alt="Earbuds" loading="lazy">
+          <img src="/media/devices/headphones.svg" alt="Headphones" loading="lazy">
+          <img src="/media/devices/phone.svg" alt="Phone" loading="lazy">
+          <img src="/media/devices/watch.svg" alt="Watch" loading="lazy">
+          <img src="/media/devices/speaker.svg" alt="Speaker" loading="lazy">
+          <img src="/media/devices/controller.svg" alt="Game controller" loading="lazy">
+        </div>
+      </div>
+    </div>
+
+    <div class="pcard comps reveal">
+      <img class="bg" src="/media/art/components-bg.webp" alt="" loading="lazy">
+      <span class="label">Round shapes<br>Components</span>
+      <figure><img src="/media/shots/island-parts.webp" alt="An island card: earbuds with left, right and case batteries." width="480" height="240" loading="lazy"></figure>
+      <figure><img src="/media/shots/quickshare-ask.webp" alt="A Quick Share request with Decline and Accept." width="320" height="240" loading="lazy"></figure>
+      <figure><img src="/media/shots/spotlight-time.webp" alt="Spotlight answering the time in Tokyo." width="410" height="300" loading="lazy"></figure>
+    </div>
+  </section>
+
+  <!-- ── The everyday ──────────────────────────────────────────────── -->
   <section class="feature wrap" id="features">
     <header class="reveal">
-      <h2>Live, at the top.</h2>
-      <p class="sub">Music, timers, calls and alerts open from the menu bar, with the controls right there.</p>
+      <h2>Ask it like you'd say it.</h2>
+      <p class="sub">"18% of 2450", "days until christmas", "time in Tokyo", "5 km in miles", "remind me to call mum at 6". The answer comes up big, and Enter copies it or does it.</p>
     </header>
-    <div class="media reveal"><video src="/media/island-a.mp4" poster="/media/island-a.jpg" muted loop playsinline preload="none" data-auto aria-label="The island opening over the menu bar to show what's playing."></video></div>
-  </section>
-
-  <section class="feature wrap">
-    <header class="reveal">
-      <h2>Find anything.</h2>
-      <p class="sub">Apps, files, sums, conversions and the web, from one field.</p>
-    </header>
-    <div class="media reveal"><video src="/media/spotlight-a.mp4" poster="/media/spotlight-a.jpg" muted loop playsinline preload="none" data-auto aria-label="Typing terminal into Spotlight and moving through the results."></video></div>
-  </section>
-  <section class="feature wrap">
-    <header class="reveal">
-      <h2>Control, at a glance.</h2>
-      <p class="sub">Wi-Fi, Bluetooth, sound, brightness and focus, a click from the menu bar.</p>
-    </header>
-    <div class="media reveal"><video src="/media/control-a.mp4" poster="/media/control-a.jpg" muted loop playsinline preload="none" data-auto aria-label="Control Center opening from the menu bar."></video></div>
-  </section>
-
-  <section class="feature wrap">
-    <header class="reveal">
-      <h2>Your glass, your way.</h2>
-      <p class="sub">Glass, Frost or Solid. Or mix your own.</p>
-      <div class="seg" role="group" aria-label="Material">
-        <button type="button" aria-pressed="true" data-show="glass">Glass</button>
-        <button type="button" aria-pressed="false" data-show="frost">Frost</button>
-        <button type="button" aria-pressed="false" data-show="solid">Solid</button>
-      </div>
-    </header>
-    <div class="media swap reveal" data-swap>
-      <img class="on" data-name="glass" src="/media/glass.webp" alt="Control Center in the Glass material.">
-      <img data-name="frost" src="/media/frost.webp" alt="Control Center in the Frost material." loading="lazy">
-      <img data-name="solid" src="/media/solid.webp" alt="Control Center in the Solid material." loading="lazy">
+    <div class="media reveal" style="aspect-ratio: 41 / 30"><img src="/media/shots/spotlight-flower.webp" alt="Spotlight over a white flower: 18% of 2450 answered as 441 in a large card." loading="lazy"></div>
+    <div class="trio reveal">
+      <div class="media" style="aspect-ratio: 41 / 30"><img src="/media/shots/spotlight-days.webp" alt="Spotlight: days until christmas, 54 days." loading="lazy"></div>
+      <div class="media" style="aspect-ratio: 41 / 30"><img src="/media/shots/spotlight-time.webp" alt="Spotlight: the time in Tokyo, and how far ahead it is." loading="lazy"></div>
     </div>
   </section>
 
   <section class="feature wrap">
     <header class="reveal">
       <h2>Everything in its place.</h2>
-      <p class="sub">Alerts, your calendar, to-dos and the day ahead in one sheet.</p>
+      <p class="sub">Alerts, your calendar, to-dos and focus in one sheet.</p>
     </header>
-    <div class="media reveal"><video src="/media/notifications-a.mp4" poster="/media/notifications-a.jpg" muted loop playsinline preload="none" data-auto aria-label="Notification Center opening with the calendar and today's events."></video></div>
+    <div class="media reveal" style="aspect-ratio: 25 / 24; max-width: 640px; margin: 0 auto"><img src="/media/shots/nc-petals.webp" alt="Notification Center over pastel petals: the month's calendar." loading="lazy"></div>
   </section>
 
   <section class="feature wrap">
     <header class="reveal">
       <h2>Light. Or dark.</h2>
-      <p class="sub">Everything retunes together, wallpaper included. Or let the time of day decide.</p>
+      <p class="sub">Everything retunes together. Or let the time of day decide.</p>
       <div class="seg" role="group" aria-label="Appearance">
         <button type="button" aria-pressed="true" data-show="light">Light</button>
         <button type="button" aria-pressed="false" data-show="dark">Dark</button>
       </div>
     </header>
     <div class="media swap reveal" data-swap>
-      <img class="on" data-name="light" src="/media/control-light.webp" alt="The desktop in light mode with Control Center open." loading="lazy">
-      <img data-name="dark" src="/media/control-dark.webp" alt="The desktop in dark mode with Control Center open." loading="lazy">
-    </div>
-  </section>
-
-  <section class="feature wrap">
-    <header class="reveal">
-      <h2>Every app, one keystroke away.</h2>
-      <p class="sub">The App Library sorts everything into folders on its own.</p>
-    </header>
-    <div class="media reveal"><video src="/media/library-a.mp4" poster="/media/library-a.jpg" muted loop playsinline preload="none" data-auto aria-label="App Library opening over the desktop."></video></div>
-  </section>
-  <section class="feature wrap" id="new">
-    <header class="reveal">
-      <h2>Made to feel native.</h2>
-      <p class="sub">The parts you notice every minute, built properly.</p>
-    </header>
-    <div class="pillars">
-      <div class="t reveal">
-        <div class="vis glassvis" aria-hidden="true"></div>
-        <h3>Real Liquid Glass.</h3>
-        <p>Refraction drawn by the compositor through a Hyprland plugin, not a blur. Panels bend what's behind them, even over your windows, and text stays readable on anything.</p>
-      </div>
-      <div class="t reveal">
-        <div class="vis lockvis" aria-hidden="true"><div class="d">Tuesday 27 October</div><div class="c">9:41</div></div>
-        <h3>macOS, with a bit of iPhone.</h3>
-        <p>A Mac menu bar, Dock, Control Center and Spotlight, joined by an iPhone lock screen, the Dynamic Island, StandBy and widgets.</p>
-      </div>
-      <div class="t reveal">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M1 19h22"/></svg>
-        <h3>Made for laptops.</h3>
-        <p>Glass synced from native code, unchanged frames skipped, and a cool-down mode when the laptop runs hot. Smooth on integrated graphics.</p>
-      </div>
-      <div class="t reveal">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
-        <h3>Next to what you have.</h3>
-        <p>It runs on its own console, away from your usual desktop and settings. Updates never change your shortcuts or settings without asking.</p>
-      </div>
+      <img class="on" data-name="light" src="/media/shots/desk-light.webp" alt="The desktop in light mode with Control Center open." loading="lazy">
+      <img data-name="dark" src="/media/shots/desk-dark.webp" alt="The desktop in dark mode with Control Center open." loading="lazy">
     </div>
 
     <div class="flist-wrap reveal">
       <h3>And everything you'd expect.</h3>
       <ul class="flist">
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Display arrangement, resolution, scale and rotation</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mouse and trackpad controls</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Editable trackpad gestures</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Editable keyboard shortcuts</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window tiling and snapping</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Stage Manager</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mission Control and Overview</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>App Library</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Spotlight with maths, files and actions</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Clipboard history</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Emoji picker with GIFs</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Screenshots with markup</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Screen recording</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Copy text from the screen</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Translate text on the screen</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Notes and reminders</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Calendar with subscriptions</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mouse and trackpad, with momentum scrolling</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Editable gestures and shortcuts</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window tiling, snapping and Stage Manager</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Mission Control and App Library</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Clipboard history and an emoji picker</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>A drop shelf: shake a file drag, keep it for later</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Screenshots with markup, screen recording</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Copy and translate text on the screen</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Notes, reminders and a calendar</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Focus modes</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Desktop widgets and Smart Stacks</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Dynamic and live wallpapers</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Matching login screen</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>A matching login and lock screen</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>AI sidebar</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Night light</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Caffeine</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Per-app volume</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Night light and caffeine</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Per-app volume, output and input pickers</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window rules</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Nearby sharing with LocalSend</span></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Updates that keep your settings</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Cool-down when the laptop runs hot</span></li>
       </ul>
     </div>
   </section>
 
+  <!-- ── The look, beyond the screen ───────────────────────────────── -->
+  <section class="feature wrap" id="brand">
+    <header class="reveal">
+      <h2>The look, beyond the screen.</h2>
+      <p class="sub">Soft fields of colour and glass that lets them through.</p>
+    </header>
+    <div class="gallery">
+      <div class="media reveal">
+        <video src="/media/brand-loop.mp4" poster="/media/brand-loop.jpg" muted loop playsinline preload="none" data-auto aria-label="A glass pill reading iRice over slowly drifting violet colour."></video>
+      </div>
+      <div class="g reveal"><img class="only-light" src="/media/art/brand-orange.webp" alt="A glass orb over warm orange and olive, an orange squircle at its centre." loading="lazy"><img class="only-dark" src="/media/art/brand-orange-dark.webp" alt="A glass orb over warm orange and olive, an orange squircle at its centre." loading="lazy"></div>
+      <div class="g reveal"><img class="only-light" src="/media/art/brand-aqua.webp" alt="Made to disappear, in white over aqua and lilac." loading="lazy"><img class="only-dark" src="/media/art/brand-aqua-dark.webp" alt="Made to disappear, in white over aqua and lilac." loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- ── Install ───────────────────────────────────────────────────── -->
   <section class="feature wrap" id="install">
     <header class="reveal">
       <h2>One line. Two minutes.</h2>
@@ -444,7 +576,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
 <footer>
   <div class="wrap">
-    <span>iRice by Monish. Not affiliated with Apple.</span>
+    <span>iRice by Monish. Not affiliated with Apple, Google or any device maker. Background photos from Unsplash.</span>
     <span><a href="https://github.com/monishbl/iRice">Source on GitHub</a> · <a href="/bugs/">Report a bug</a></span>
   </div>
 </footer>
@@ -455,22 +587,39 @@ const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const icon = { play: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
                pause: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>' };
 
-// Loops play while on screen; each has its own pause button. Reduced motion: they wait for a press.
+// Light or dark: the button flips it and remembers; until then the system decides
+const root = document.documentElement, themeBtn = document.getElementById("theme");
+const system = matchMedia("(prefers-color-scheme: dark)");
+const current = () => root.dataset.theme || (system.matches ? "dark" : "light");
+const label = () => themeBtn.setAttribute("aria-label", current() === "dark" ? "Switch to light appearance" : "Switch to dark appearance");
+themeBtn.addEventListener("click", () => {
+  const next = current() === "dark" ? "light" : "dark";
+  root.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) {}
+  label();
+});
+system.addEventListener("change", label); label();
+
+// Loops play while on screen. A click on the video, or its button, pauses or
+// plays it (and it stays paused). Reduced motion: they wait for a press.
 document.querySelectorAll("video[data-auto]").forEach(v => {
   const b = document.createElement("button");
   b.type = "button"; b.className = "play";
   v.after(b);
   let held = still;
   const draw = () => { b.innerHTML = v.paused ? icon.play : icon.pause; b.setAttribute("aria-label", v.paused ? "Play video" : "Pause video"); };
+  const toggle = () => { if (v.paused) { held = false; v.play().catch(() => {}); } else { held = true; v.pause(); } };
   v.addEventListener("play", draw); v.addEventListener("pause", draw); draw();
-  b.addEventListener("click", () => { if (v.paused) { held = false; v.play(); } else { held = true; v.pause(); } });
+  b.addEventListener("click", toggle);
+  v.addEventListener("click", toggle);
   new IntersectionObserver(([e]) => {
     if (e.isIntersecting && !held) v.play().catch(() => {});
     else if (!e.isIntersecting) v.pause();
   }, { threshold: 0.4 }).observe(v);
 });
 
-// Segmented switches swap the image under them.
+// Segmented switches swap the image under them (Light or dark starts on
+// the page's own)
 document.querySelectorAll(".seg").forEach(seg => {
   const swap = seg.closest("section").querySelector("[data-swap]");
   seg.addEventListener("click", e => {
@@ -479,6 +628,8 @@ document.querySelectorAll(".seg").forEach(seg => {
     swap.querySelectorAll("img").forEach(i => i.classList.toggle("on", i.dataset.name === b.dataset.show));
   });
 });
+
+if (current() === "dark") document.querySelector('.seg [data-show="dark"]')?.click?.();
 
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -10% 0px" });
 document.querySelectorAll(".reveal").forEach(el => io.observe(el));
