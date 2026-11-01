@@ -278,8 +278,12 @@ Item {
             id: trailing
             readonly property real pills: root.event?.action ? actionPill.width + (root.event?.action2 ? secondPill.width + 6 : 0) : 0
             anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-            width: (root.event?.battery !== undefined ? 34 + (pills > 0 ? 8 : 0) : 0) + pills
-            height: 34
+            // (earbuds: left, right and case rings instead of one)
+            readonly property var parts: root.event?.batteries ?? []
+            readonly property real rings: parts.length > 0 ? parts.length * 28 + (parts.length - 1) * 6 : root.event?.battery !== undefined ? 34 : 0
+            width: (rings > 0 ? rings + (pills > 0 ? 8 : 0) : 0) + pills
+            height: parts.length > 0 ? 42 : 34
+            Behavior on width { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
             opacity: root.ease(root.step(0.4))
             scale: 0.7 + 0.3 * root.ease(root.step(0.4))
 
@@ -287,10 +291,18 @@ Item {
                 id: batRing
                 width: 34
                 height: 34
-                visible: root.event?.battery !== undefined
+                visible: root.event?.battery !== undefined && trailing.parts.length === 0
+                anchors.verticalCenter: parent.verticalCenter
                 preferredRendererType: Shape.CurveRenderer
                 readonly property real level: Math.max(0, Math.min(1, root.event?.battery ?? 0))
                 readonly property color col: level <= 0.2 ? Theme.color.danger : Theme.color.success
+                // The level arriving after the card is up (headphones report
+                // it seconds after connecting): the ring draws itself round
+                // from empty and the number fades in
+                readonly property bool has: root.event?.battery !== undefined
+                property real traced: 1
+                onHasChanged: if (has && root.t >= 1) traceIn.restart()
+                NumberAnimation { id: traceIn; target: batRing; property: "traced"; from: 0; to: 1; duration: Math.round(600 * CoolDown.motionScale); easing.type: Easing.OutCubic }
                 ShapePath {
                     strokeColor: Qt.rgba(1, 1, 1, 0.16)
                     strokeWidth: 3
@@ -302,13 +314,64 @@ Item {
                     strokeWidth: 3
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
-                    PathAngleArc { centerX: 17; centerY: 17; radiusX: 15; radiusY: 15; startAngle: -90; sweepAngle: 360 * batRing.level * root.ease(root.step(0.4)) }
+                    PathAngleArc { centerX: 17; centerY: 17; radiusX: 15; radiusY: 15; startAngle: -90; sweepAngle: 360 * batRing.level * root.ease(root.step(0.4)) * batRing.traced }
                 }
                 Text {
                     anchors.centerIn: parent
                     text: Math.round(batRing.level * 100)
+                    opacity: Math.min(1, batRing.traced * 1.6)
                     color: root.ink
                     font { family: Theme.font.family; pixelSize: 11; weight: Font.DemiBold; features: { "tnum": 1 } }
+                }
+            }
+            Row {
+                id: partRings
+                visible: trailing.parts.length > 0
+                spacing: 6
+                // (they trace in as they arrive, like the single ring)
+                property real traced: 1
+                readonly property int count: trailing.parts.length
+                onCountChanged: if (count > 0 && root.t >= 1) partsIn.restart()
+                NumberAnimation { id: partsIn; target: partRings; property: "traced"; from: 0; to: 1; duration: Math.round(600 * CoolDown.motionScale); easing.type: Easing.OutCubic }
+                Repeater {
+                    model: trailing.parts
+                    Column {
+                        id: part
+                        required property var modelData
+                        spacing: 2
+                        readonly property color col: modelData.value <= 0.2 ? Theme.color.danger : Theme.color.success
+                        Shape {
+                            width: 28
+                            height: 28
+                            preferredRendererType: Shape.CurveRenderer
+                            ShapePath {
+                                strokeColor: Qt.rgba(1, 1, 1, 0.16)
+                                strokeWidth: 2.5
+                                fillColor: "transparent"
+                                PathAngleArc { centerX: 14; centerY: 14; radiusX: 12.5; radiusY: 12.5; startAngle: -90; sweepAngle: 360 }
+                            }
+                            ShapePath {
+                                strokeColor: part.col
+                                strokeWidth: 2.5
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc { centerX: 14; centerY: 14; radiusX: 12.5; radiusY: 12.5; startAngle: -90; sweepAngle: 360 * Math.max(0, Math.min(1, part.modelData.value)) * root.ease(root.step(0.4)) * partRings.traced }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                text: Math.round(part.modelData.value * 100)
+                                opacity: Math.min(1, partRings.traced * 1.6)
+                                color: root.ink
+                                font { family: Theme.font.family; pixelSize: 10; weight: Font.DemiBold; features: { "tnum": 1 } }
+                            }
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: part.modelData.label
+                            color: root.ink2
+                            font { family: Theme.font.family; pixelSize: 10; weight: Font.Medium }
+                        }
+                    }
                 }
             }
 

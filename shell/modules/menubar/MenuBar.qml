@@ -232,7 +232,7 @@ Variants {
                         readonly property var def: ({
                                 screenshot: { icon: "camera", act: () => Panels.toggle("screenTools", bar.screen) },
                                 colorPicker: { icon: "eyedropper", act: () => System.run(["hyprpicker", "-a"]) },
-                                mic: { icon: Audio.micMuted ? "microphone-slash" : "microphone", act: () => Audio.toggleMic() },
+                                mic: { icon: Audio.micMuted ? "microphone-slash" : "microphone", act: () => Audio.toggleMic(true) },
                                 keyboard: { icon: "keyboard", act: () => Panels.toggle("keyboard", bar.screen) },
                                 darkMode: { icon: "circle-half", act: () => System.toggleDarkMode() },
                                 powerProfile: { icon: PowerProfiles.profile === PowerProfile.PowerSaver ? "leaf" : PowerProfiles.profile === PowerProfile.Performance ? "lightning" : "scales", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : PowerProfiles.profile === PowerProfile.Balanced && PowerProfiles.hasPerformanceProfile ? "performance" : "power-saver") },

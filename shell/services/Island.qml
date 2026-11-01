@@ -332,6 +332,8 @@ Singleton {
             entry.battery = e.battery;
         if (e.key)
             entry.key = e.key;
+        if (e.picture)
+            entry.picture = e.picture;
         setHistory([entry].concat(history.filter(h => h.hid !== hid)).slice(0, historyMax));
         // Its button (Open a download or a drive, What's new), while it means something
         const a = Object.assign({}, historyActs);
@@ -695,7 +697,7 @@ Singleton {
             }
             return out.join("\n");
         }
-        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected|output|pictures|burst>
+        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected|linked|parts|lowbuds|output|pictures|burst>
         function demo(kind: string): void {
             const was = started.elapsed;
             started.elapsed = true;
@@ -716,6 +718,10 @@ Singleton {
                 // `demo connected` into the Bluetooth alert, in the same card)
                 connect: { kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
                     onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
+                // (connected before its battery is known: `demo connected` then brings it)
+                linked: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue },
+                parts: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue, batteries: [{ label: "L", value: 0.8 }, { label: "R", value: 0.76 }, { label: "Case", value: 0.18 }] },
+                lowbuds: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Battery low · 18%", color: Theme.color.danger, battery: 0.18 },
                 connected: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up

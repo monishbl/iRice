@@ -8,6 +8,7 @@ Squircle {
     id: root
 
     property string icon
+    property string picture: "" // a device's picture (Devices.pictureFor) in the badge's place
     property bool iconFill: false
     property bool highlighted: false
     property string title
@@ -60,9 +61,29 @@ Squircle {
         width: 28
         height: 28
         radius: 14
-        color: root.highlighted ? Theme.accent : Theme.color.toggleOff
+        color: root.picture !== "" ? "transparent" : root.highlighted ? Theme.accent : Theme.color.toggleOff
+        Image {
+            anchors.fill: parent
+            visible: root.picture !== ""
+            source: root.picture
+            sourceSize: Qt.size(56, 56)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+        }
+        // (with a picture, connected is an accent dot at its corner)
+        Rectangle {
+            visible: root.picture !== "" && root.highlighted
+            anchors { right: parent.right; bottom: parent.bottom; rightMargin: -2; bottomMargin: -2 }
+            width: 10
+            height: 10
+            radius: 5
+            color: Theme.accent
+            border.width: 2
+            border.color: Theme.glass.solid
+        }
         Icon {
             anchors.centerIn: parent
+            visible: root.picture === ""
             name: root.icon
             fill: root.iconFill || root.highlighted
             size: 15

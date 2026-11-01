@@ -203,9 +203,18 @@ Column {
                             width: 24
                             height: 24
                             radius: 12
-                            color: Qt.alpha(line.modelData.color, 0.22)
+                            color: line.modelData.picture ? "transparent" : Qt.alpha(line.modelData.color, 0.22)
+                            Image {
+                                anchors.fill: parent
+                                visible: !!line.modelData.picture
+                                source: line.modelData.picture ?? ""
+                                sourceSize: Qt.size(48, 48)
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                            }
                             Icon {
                                 anchors.centerIn: parent
+                                visible: !line.modelData.picture
                                 name: line.modelData.icon
                                 fill: true
                                 size: 14

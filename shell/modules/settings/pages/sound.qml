@@ -39,6 +39,7 @@ Column {
             accessibleName: level.mic ? "Input volume" : "Output volume"
             onMoved: v => {
                 if (level.node?.audio) {
+                    Audio.hush();
                     level.node.audio.muted = false;
                     level.node.audio.volume = v;
                 }

@@ -202,6 +202,7 @@ Column {
                     ListRow {
                         required property var modelData
                         icon: root.deviceIcon(modelData)
+                        picture: Devices.pictureOf(modelData)
                         highlighted: modelData.connected
                         title: modelData.name || modelData.address
                         status: root.statusOf(modelData)

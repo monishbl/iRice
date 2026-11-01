@@ -2,14 +2,16 @@ import QtQuick
 import QtQuick.Shapes
 import qs.common
 
-// A circular gauge: a faint track and an arc for `value` (0..1), with an icon
-// or text in the middle. Used by the Batteries and System widgets.
+// A circular gauge: a faint track and an arc for `value` (0..1), with a
+// device picture, an icon or text in the middle. Used by the Batteries and
+// System widgets.
 Item {
     id: root
 
     property real value: 0
     property color color: Theme.accent
     property string icon: ""
+    property string picture: "" // (Devices.pictureFor: takes the icon's place)
     property string text: ""
     property real thickness: Math.max(4, width * 0.09)
     implicitWidth: 56
@@ -32,9 +34,19 @@ Item {
             PathAngleArc { centerX: root.width / 2; centerY: root.height / 2; radiusX: (root.width - root.thickness) / 2; radiusY: radiusX; startAngle: -90; sweepAngle: 360 * Math.max(0, Math.min(1, root.value)) }
         }
     }
+    Image {
+        anchors.centerIn: parent
+        visible: root.picture !== ""
+        width: Math.round((root.width - 2 * root.thickness) * 0.78)
+        height: width
+        source: root.picture
+        sourceSize: Qt.size(width * 2, height * 2)
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+    }
     Icon {
         anchors.centerIn: parent
-        visible: root.icon !== ""
+        visible: root.icon !== "" && root.picture === ""
         name: root.icon
         fill: true
         size: Math.round(root.width * 0.36)
@@ -42,7 +54,7 @@ Item {
     }
     Text {
         anchors.centerIn: parent
-        visible: root.icon === "" && root.text !== ""
+        visible: root.icon === "" && root.picture === "" && root.text !== ""
         text: root.text
         color: Theme.color.label
         font { family: Theme.font.family; pixelSize: Math.round(root.width * 0.24); weight: Font.DemiBold; features: { "tnum": 1 } }

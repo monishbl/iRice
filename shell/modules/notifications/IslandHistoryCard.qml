@@ -29,9 +29,19 @@ Item {
         width: 36
         height: 36
         radius: 18
-        color: Qt.alpha(root.alert?.color ?? Theme.accent, 0.18)
+        color: root.alert?.picture ? "transparent" : Qt.alpha(root.alert?.color ?? Theme.accent, 0.18)
+        // (a device's picture in the badge's place)
+        Image {
+            anchors.fill: parent
+            visible: !!root.alert?.picture
+            source: root.alert?.picture ?? ""
+            sourceSize: Qt.size(72, 72)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+        }
         Icon {
             anchors.centerIn: parent
+            visible: !root.alert?.picture
             name: root.alert?.icon ?? "bell"
             fill: true
             size: 20

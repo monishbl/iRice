@@ -270,7 +270,9 @@ class Watcher:
         state = []
         for path, d in self.devices.items():
             out = {k: d.get(k) for k in ("address", "name", "model", "pairing", "rssi", "battery", "showUi")}
-            if d.get("pairing"):
+            # (which paired earbuds it is: for Connect, and for whose
+            # left / right / case levels these are)
+            if d.get("pairing") or d.get("battery"):
                 try:
                     out["known"] = self.known(path)
                 except Exception:  # noqa: BLE001

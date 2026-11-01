@@ -4,7 +4,8 @@ import qs.common
 import qs.services
 
 // Batteries: this computer and connected Bluetooth devices that report a
-// level. Small: up to four rings. Medium: rings with names.
+// level (earbuds with their case open: left, right and case). Small: up
+// to four rings. Medium: rings with names.
 Item {
     id: root
 
@@ -13,9 +14,18 @@ Item {
         const l = [];
         if (Island.hasBattery)
             l.push({ icon: Island.charging ? "lightning" : "laptop", value: Island.level, name: "This computer" });
-        for (const d of Bluetooth.devices.values)
-            if (d.connected && d.batteryAvailable)
-                l.push({ icon: Devices.btIcon(d), value: d.battery, name: d.name || d.deviceName });
+        for (const d of Bluetooth.devices.values) {
+            if (!d.connected)
+                continue;
+            // (earbuds with their case open: left, right and case apart)
+            const parts = FastPair.levelsFor(d.address);
+            if (parts.length > 0) {
+                for (const p of parts)
+                    l.push({ icon: Devices.btIcon(d), picture: Devices.pictureOf(d), value: p.value, name: ({ L: "Left", R: "Right", Case: "Case" })[p.label] ?? p.label });
+            } else if (d.batteryAvailable) {
+                l.push({ icon: Devices.btIcon(d), picture: Devices.pictureOf(d), value: d.battery, name: d.name || d.deviceName });
+            }
+        }
         return l.slice(0, 4);
     }
     function colorFor(it) {
@@ -41,6 +51,7 @@ Item {
             height: 76
             value: root.items[0]?.value ?? 0
             icon: root.items[0]?.icon ?? ""
+            picture: root.items[0]?.picture ?? ""
             color: root.items[0] ? root.colorFor(root.items[0]) : Theme.accents.green
         }
         Text {
@@ -65,6 +76,7 @@ Item {
                 height: 52
                 value: modelData.value
                 icon: modelData.icon
+                picture: modelData.picture ?? ""
                 color: root.colorFor(modelData)
             }
         }
@@ -88,6 +100,7 @@ Item {
                     height: 56
                     value: cell.modelData.value
                     icon: cell.modelData.icon
+                    picture: cell.modelData.picture ?? ""
                     color: root.colorFor(cell.modelData)
                 }
                 Text {

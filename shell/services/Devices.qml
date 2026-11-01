@@ -95,7 +95,9 @@ Singleton {
             title: d.name || d.deviceName || d.address,
             subtitle: d.connected ? "Connected" : "Disconnected",
             color: d.connected ? Theme.accents.blue : Qt.rgba(1, 1, 1, 0.55)
-        }, d.connected && d.batteryAvailable ? { battery: d.battery } : {}), 3500);
+        }, d.connected && d.batteryAvailable ? { battery: d.battery } : {},
+           // (earbuds whose case is open: left, right and case, from Fast Pair)
+           d.connected && FastPair.levelsFor(d.address).length > 0 ? { batteries: FastPair.levelsFor(d.address) } : {}), 3500);
     }
     property var awaitingBattery: ({}) // address -> when it connected without a battery reading
     function batteryArrived(d) {
@@ -108,6 +110,33 @@ Singleton {
         if (Date.now() - t < 20000 && live && Island.wants("bluetooth"))
             postBt(d, btIcon(d));
     }
+    // Running low: earbuds, a mouse or a controller at 20%, and again at 10%,
+    // on the device's own card (once each, until it's charged past 25%)
+    property var lowWarned: ({}) // address -> the lowest step warned (20 or 10)
+    function checkLow(d) {
+        if (!d.connected || !d.batteryAvailable)
+            return;
+        const pct = Math.round(d.battery * 100), was = lowWarned[d.address] ?? 100;
+        if (pct > 25) {
+            if (was !== 100) {
+                const next = Object.assign({}, lowWarned);
+                delete next[d.address];
+                lowWarned = next;
+            }
+            return;
+        }
+        const step = pct <= 10 ? 10 : pct <= 20 ? 20 : 100;
+        if (step >= was)
+            return;
+        lowWarned = Object.assign({}, lowWarned, { [d.address]: step });
+        if (live && Island.wants("bluetooth"))
+            Island.post({
+                kind: "device", key: "bt:" + d.address, icon: btIcon(d), picture: pictureOf(d),
+                title: d.name || d.deviceName || d.address, subtitle: "Battery low · " + pct + "%" + (step === 10 ? " · charge it soon" : ""),
+                color: Theme.color.danger, battery: d.battery
+            }, 8000);
+    }
+
     // Battery often arrives a moment after the connection; scan on any change
     Instantiator {
         model: Bluetooth.devices
@@ -115,8 +144,8 @@ Singleton {
             required property var modelData
             target: modelData
             function onConnectedChanged() { btScan.restart(); }
-            function onBatteryAvailableChanged() { root.batteryArrived(modelData); }
-            function onBatteryChanged() { root.batteryArrived(modelData); }
+            function onBatteryAvailableChanged() { root.batteryArrived(modelData); root.checkLow(modelData); }
+            function onBatteryChanged() { root.batteryArrived(modelData); root.checkLow(modelData); }
         }
     }
     Connections {

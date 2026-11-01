@@ -35,6 +35,16 @@ Singleton {
     // Said once per device for a while (a card that keeps coming back would nag)
     property var offered: ({}) // address (the paired one's, when known) -> time
     property var batteryShown: ({}) // address -> time last seen with batteries
+    // Left, right and case, from the adverts of earbuds paired here (an open
+    // case): their card and the Batteries widget show them separately
+    property var levels: ({}) // paired address -> { left, right, case: { level, charging }, at }
+    function levelsFor(address) {
+        const l = levels[address];
+        return l && Date.now() - l.at < 120000 ? parts(l) : [];
+    }
+    function parts(b) {
+        return [["L", b.left], ["R", b.right], ["Case", b.case]].filter(p => p[1]).map(p => ({ label: p[0], value: p[1].level / 100, charging: !!p[1].charging }));
+    }
     onDevicesChanged: {
         const now = Date.now();
         // (keyed by Bluetooth address, which earbuds change every ~15
@@ -58,6 +68,16 @@ Singleton {
                     subtitle: d.known ? "Paired with this computer, not connected" : "Ready to pair with this computer",
                     color: Theme.accent, action: "Connect", onAction: () => root.connect(d)
                 }, 15000);
+            } else if (d.battery && d.known) {
+                // (our own earbuds: their levels, and their own card)
+                const a = d.known.address;
+                levels = Object.assign({}, levels, { [a]: Object.assign({ at: now }, d.battery) });
+                if (d.showUi !== false && d.rssi > -60 && now - (batteryShown[a] ?? 0) > 60000)
+                    Island.post({
+                        kind: "device", key: "bt:" + a, icon: "headphones", picture: root.picture(d), title: d.known.name || "Earbuds",
+                        subtitle: d.known.connected ? "Connected" : "Case open nearby", color: Theme.accents.blue, batteries: parts(d.battery)
+                    }, 6000);
+                batteryShown[a] = now;
             } else if (d.battery && d.showUi !== false && d.rssi > -60 && ownAudioConnected) {
                 // the case was opened (heard again after a quiet spell). Only
                 // with your own earbuds connected, and these right here: the

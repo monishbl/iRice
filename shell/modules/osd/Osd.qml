@@ -34,6 +34,9 @@ Scope {
     function show(k, dev) {
         if (!armed)
             return;
+        // (set with iRice's own sliders: you're looking at the control)
+        if (!dev && Date.now() < (k === "brightness" ? Brightness.quietUntil : Audio.quietUntil))
+            return;
         device = dev ?? "";
         // A fullscreen window on the focused display: the thin top bar
         if (Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false) {

@@ -77,7 +77,7 @@ Item {
                 player.volume = savedVolume || 0.6;
             }
         } else {
-            Audio.toggleMute();
+            Audio.toggleMute(true);
         }
     }
     function nudgeVolume(d) {
@@ -88,9 +88,9 @@ Item {
         if (ownVolume) {
             player.volume = v;
         } else {
-            Audio.setVolume(v);
+            Audio.setVolume(v, true);
             if (Audio.muted && v > 0)
-                Audio.toggleMute();
+                Audio.toggleMute(true);
         }
     }
 

@@ -313,7 +313,7 @@ Scope {
                                 label: "Output"
                                 icon: Audio.icon
                                 value: Audio.muted ? 0 : Audio.volume
-                                onMoved: v => Audio.setVolume(v)
+                                onMoved: v => Audio.setVolume(v, true)
                             }
                             Repeater {
                                 model: mixerW.streams

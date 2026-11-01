@@ -30,7 +30,11 @@ Singleton {
     readonly property bool available: target !== null || backlightAvailable
     readonly property string displayName: target ? target.model : ""
 
-    function set(v) {
+    // (`quiet`: set with iRice's own slider, so no brightness bar: Audio.hush)
+    property real quietUntil: 0
+    function set(v, quiet) {
+        if (quiet)
+            quietUntil = Date.now() + 1000;
         if (target)
             return setDdc(target.output, v);
         if (!backlightAvailable)

@@ -211,7 +211,7 @@ Singleton {
             ];
         case "call":
             return [
-                { piece: "mute", icon: Audio.micMuted ? "microphone-slash" : "microphone", fill: true, act: () => Audio.toggleMic(), on: true },
+                { piece: "mute", icon: Audio.micMuted ? "microphone-slash" : "microphone", fill: true, act: () => Audio.toggleMic(true), on: true },
                 { piece: "open", icon: "arrow-square-out", fill: false, act: () => Calls.open(), on: !!Calls.call?.window },
                 ...(Calls.call?.leave ? [{ piece: "leave", icon: "phone-x", fill: true, act: () => Calls.leave(), on: true, danger: true }] : [])
             ];
