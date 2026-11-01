@@ -41,7 +41,7 @@ Item {
     readonly property var more: event?.more ?? []
     // (a device's picture is shown larger than an icon)
     readonly property int rowHeight: event?.picture && !event?.art ? 60 : 52
-    implicitHeight: isHud ? 34 : isRinging ? callCard.implicitHeight : isCard ? cardLayout.implicitHeight : rowHeight + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
+    implicitHeight: isHud ? 34 + (levelsOpen ? levels.implicitHeight + 6 : 0) : isRinging ? callCard.implicitHeight : isCard ? cardLayout.implicitHeight : rowHeight + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
 
     // Appear after `delay`, sliding down into place; then the text staggers.
     // A new event (a different uid) replays it; an update in place doesn't.
@@ -162,24 +162,49 @@ Item {
     }
 
     // ── HUD ─────────────────────────────────────────────────────────────
+    // The live level: click or drag along it, or scroll over it, to set it;
+    // the icon mutes; the button at the end opens the outputs, inputs or
+    // displays underneath (IslandLevels)
+    property bool levelsOpen: false
+    onIsHudChanged: if (!isHud) levelsOpen = false
+    readonly property string hudKind: event?.hud ?? "volume"
+    readonly property real hudValue: hudKind === "brightness" ? Brightness.value : hudKind === "mic" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
+    function setHud(v) {
+        v = Math.max(0, Math.min(1, v));
+        if (hudKind === "brightness")
+            Brightness.set(v, true);
+        else if (hudKind === "mic")
+            Audio.setMicVolume(v, true);
+        else
+            Audio.setVolume(v, true);
+    }
     Item {
+        id: hudRow
         visible: root.isHud
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: 34
         Icon {
             id: hudIcon
             anchors.verticalCenter: parent.verticalCenter
             x: 6
-            name: root.event?.icon ?? ""
+            name: root.hudKind === "brightness" ? "sun" : root.hudKind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon
             fill: true
             size: 18
             color: root.ink
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -6
+                enabled: root.hudKind !== "brightness"
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.hudKind === "mic" ? Audio.toggleMic(true) : Audio.toggleMute(true)
+            }
         }
         // (just after switching to another output or microphone: its name)
         Text {
             id: hudName
             visible: !!root.event?.device
             anchors { left: hudIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
-            width: visible ? Math.min(Math.ceil(nameWidth.advanceWidth), parent.width * 0.45) : 0
+            width: visible ? Math.min(Math.ceil(nameWidth.advanceWidth), parent.width * 0.4) : 0
             elide: Text.ElideRight
             text: root.event?.device ?? ""
             color: root.ink
@@ -187,18 +212,70 @@ Item {
             TextMetrics { id: nameWidth; font: hudName.font; text: hudName.text }
         }
         Rectangle {
-            anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+            id: hudBar
+            anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: levelsButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
             height: 8
             radius: 4
             color: Qt.rgba(1, 1, 1, 0.16)
             Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, root.event?.value ?? 0))
+                width: parent.width * Math.max(0, Math.min(1, root.hudValue))
                 height: parent.height
                 radius: 4
                 color: root.ink
-                Behavior on width { SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.5 } }
+                Behavior on width {
+                    enabled: !barMouse.pressed
+                    SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.5 }
+                }
+            }
+            MouseArea {
+                id: barMouse
+                anchors.fill: parent
+                anchors.margins: -10
+                cursorShape: Qt.PointingHandCursor
+                preventStealing: true
+                onPressed: e => root.setHud((e.x - 10) / hudBar.width)
+                onPositionChanged: e => {
+                    if (pressed)
+                        root.setHud((e.x - 10) / hudBar.width);
+                }
+            }
+            WheelHandler {
+                target: null
+                onWheel: e => root.setHud(root.hudValue + (e.angleDelta.y > 0 ? 0.05 : -0.05))
             }
         }
+        Rectangle {
+            id: levelsButton
+            anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
+            width: 28
+            height: 28
+            radius: 14
+            color: buttonMouse.pressed ? Qt.rgba(1, 1, 1, 0.2) : buttonMouse.containsMouse || root.levelsOpen ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+            Accessible.role: Accessible.Button
+            Accessible.name: root.hudKind === "brightness" ? "Displays" : root.hudKind === "mic" ? "Inputs" : "Outputs"
+            Icon {
+                anchors.centerIn: parent
+                name: root.levelsOpen ? "caret-up" : "caret-down"
+                bold: true
+                size: 13
+                color: root.ink
+            }
+            MouseArea {
+                id: buttonMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.levelsOpen = !root.levelsOpen
+            }
+        }
+    }
+    IslandLevels {
+        id: levels
+        visible: root.isHud && root.levelsOpen
+        anchors { left: parent.left; right: parent.right; top: hudRow.bottom; topMargin: 6 }
+        kind: root.hudKind
+        onVisibleChanged: if (!visible) page = "list"
     }
 
     // ── Alert ───────────────────────────────────────────────────────────

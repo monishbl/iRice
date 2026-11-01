@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.common
 import qs.glass
+import qs.modules.menubar
 import qs.services
 
 // Volume / brightness HUD: a small glass capsule under the menu bar, shown for
@@ -63,6 +64,22 @@ Scope {
     }
     Timer { interval: 2000; running: true; onTriggered: root.armed = true }
     Timer { id: hideTimer; interval: 1600; onTriggered: root.shown = false }
+    // The capsule takes the pointer: resting on it keeps it up; click, drag
+    // or scroll its level; its icon mutes; its button opens the outputs,
+    // inputs or displays underneath (IslandLevels, in the theme's colours)
+    property bool levelsOpen: false
+    property bool pointerOn: false
+    onPointerOnChanged: pointerOn ? hideTimer.stop() : hideTimer.restart()
+    onShownChanged: if (!shown) levelsOpen = false
+    function setLevel(v) {
+        v = Math.max(0, Math.min(1, v));
+        if (kind === "brightness")
+            Brightness.set(v, true);
+        else if (kind === "mic")
+            Audio.setMicVolume(v, true);
+        else
+            Audio.setVolume(v, true);
+    }
 
     // Another output or microphone (headphones connecting): its name and
     // level, once they've arrived (its level and mute arriving aren't changes
@@ -127,8 +144,17 @@ Scope {
             margins.top: 30 + 6 - m
             margins.right: 8 - m
             implicitWidth: 280 + 2 * m
-            implicitHeight: 52 + 2 * m
-            mask: Region {}
+            implicitHeight: 52 + (root.levelsOpen ? capLevels.implicitHeight + 8 : 0) + 2 * m
+            mask: Region { item: hit }
+
+            Item {
+                id: hit
+                anchors.fill: parent
+                anchors.margins: win.m
+            }
+            // (on the window itself: the button's and the level's own
+            // pointer areas would hide the pointer from a sibling)
+            HoverHandler { onHoveredChanged: root.pointerOn = hovered }
 
             Glass {
                 id: glass
@@ -142,7 +168,7 @@ Scope {
 
             Row {
                 x: win.m + 16
-                anchors.verticalCenter: parent.verticalCenter
+                y: win.m + (52 - height) / 2
                 spacing: 12
                 opacity: win.progress
 
@@ -151,19 +177,27 @@ Scope {
                     name: root.icon
                     fill: true
                     size: 20
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        enabled: root.kind !== "brightness"
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.kind === "mic" ? Audio.toggleMic(true) : Audio.toggleMute(true)
+                    }
                 }
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 5
                     Text {
-                        width: Math.min(implicitWidth, 216)
+                        width: Math.min(implicitWidth, 180)
                         elide: Text.ElideRight
                         text: root.label
                         color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                     }
                     Rectangle {
-                        width: 216
+                        id: capBar
+                        width: 180
                         height: 6
                         radius: 3
                         color: Theme.color.toggleOff
@@ -172,10 +206,63 @@ Scope {
                             height: parent.height
                             radius: 3
                             color: Theme.color.label
-                            Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
+                            Behavior on width {
+                                enabled: !capBarMouse.pressed
+                                NumberAnimation { duration: Theme.motion.hover }
+                            }
+                        }
+                        MouseArea {
+                            id: capBarMouse
+                            anchors.fill: parent
+                            anchors.margins: -10
+                            cursorShape: Qt.PointingHandCursor
+                            preventStealing: true
+                            onPressed: e => root.setLevel((e.x - 10) / capBar.width)
+                            onPositionChanged: e => {
+                                if (pressed)
+                                    root.setLevel((e.x - 10) / capBar.width);
+                            }
+                        }
+                        WheelHandler {
+                            target: null
+                            onWheel: e => root.setLevel(root.value + (e.angleDelta.y > 0 ? 0.05 : -0.05))
                         }
                     }
                 }
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: capButton.pressed ? Theme.color.fillPressed : capButton.containsMouse || root.levelsOpen ? Theme.color.fill : "transparent"
+                    Accessible.role: Accessible.Button
+                    Accessible.name: root.kind === "brightness" ? "Displays" : root.kind === "mic" ? "Inputs" : "Outputs"
+                    Icon {
+                        anchors.centerIn: parent
+                        name: root.levelsOpen ? "caret-up" : "caret-down"
+                        bold: true
+                        size: 13
+                        color: Theme.color.label
+                    }
+                    MouseArea {
+                        id: capButton
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.levelsOpen = !root.levelsOpen
+                    }
+                }
+            }
+            IslandLevels {
+                id: capLevels
+                visible: root.levelsOpen
+                x: win.m + 8
+                y: win.m + 52
+                width: 280 - 16
+                kind: root.kind
+                ink: Theme.color.label
+                opacity: win.progress
+                onVisibleChanged: if (!visible) page = "list"
             }
         }
     }

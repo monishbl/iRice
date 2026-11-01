@@ -30,6 +30,23 @@ Singleton {
     readonly property bool available: target !== null || backlightAvailable
     readonly property string displayName: target ? target.model : ""
 
+    // Every display that can be dimmed, for the brightness bar's list: the
+    // built-in panel ("backlight") and each external one on DDC
+    readonly property var displays: (backlightAvailable ? [{ id: "backlight", name: "Built-in display", value: backlightValue, builtIn: true }] : [])
+        .concat(ddcDisplays.map(d => ({ id: d.output, name: d.model || d.output, value: ddcValues[d.output] ?? 0.5, builtIn: false })))
+    function setFor(id, v, quiet) {
+        if (quiet)
+            quietUntil = Date.now() + 1000;
+        if (id !== "backlight")
+            return setDdc(id, v);
+        if (!backlightAvailable)
+            return;
+        backlightValue = Math.max(0.01, Math.min(1, v));
+        pending = backlightValue;
+        if (!writer.running)
+            flush();
+    }
+
     // (`quiet`: set with iRice's own slider, so no brightness bar: Audio.hush)
     property real quietUntil: 0
     function set(v, quiet) {

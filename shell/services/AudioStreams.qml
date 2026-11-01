@@ -48,6 +48,25 @@ Singleton {
         return outputName(node).toLowerCase().includes("headphone") ? "headphones" : "speaker-hifi";
     }
 
+    // Microphones and other inputs (not the outputs' monitors)
+    readonly property var inputs: Pipewire.nodes.values.filter(n => !n.isSink && !n.isStream && n.audio && !String(n.name ?? "").endsWith(".monitor"))
+    function inputIcon(node) {
+        const t = (outputName(node) + " " + (node?.name ?? "")).toLowerCase();
+        return t.includes("webcam") || t.includes("camera") || t.includes("video") ? "webcam" : t.includes("bluez") || t.includes("headset") ? "headphones" : "microphone";
+    }
+    // A device's picture (Devices.pictureFor) for an output or input:
+    // Bluetooth ones get theirs, the computer's own the laptop; HDMI,
+    // DisplayPort, USB and the rest keep their icon ("")
+    function picture(node) {
+        const p = node?.properties ?? {};
+        const name = outputName(node), t = (name + " " + (node?.name ?? "")).toLowerCase();
+        if (p["device.api"] === "bluez5" || t.includes("bluez"))
+            return Devices.pictureFor("audio-headset", name);
+        if (/hdmi|displayport|usb|webcam|camera/.test(t))
+            return "";
+        return Devices.pictureFor("computer", "");
+    }
+
     // The output device a stream is linked to (null while it isn't linked)
     function outputOf(stream) {
         for (const g of Pipewire.linkGroups.values)

@@ -14,6 +14,11 @@
 - **A battery level that arrives late traces in.** Headphones often report their level seconds after connecting: the ring now draws itself round from empty and the number fades in, rather than popping up drawn.
 - **Bluetooth devices warn when they run low,** at 20% and again at 10%, on the device's own card with its picture (once each, until it's charged past 25%).
 - **Earbuds show left, right and case.** When paired earbuds broadcast separate levels (case open), their card shows three small rings, and the Batteries widget a ring each.
+- **The volume, microphone and brightness bar works with the mouse.** Point at it and it stays up. Click, drag or scroll along it to set the level, and click its icon to mute. The button at its end opens a list underneath:
+  - **Volume:** the outputs, with their device pictures and a tick on the current one, plus App volumes › (each app playing, with its own level) and Sound settings.
+  - **Microphone:** the inputs.
+  - **Brightness:** each display with its own level, built-in and external (DDC).
+  It works the same in the island and in the separate capsule.
 - **The volume and brightness bar no longer pops up for iRice's own sliders** (Control Center, the Sound menu, the island's player, the overlay mixer, Settings) or its mute buttons. Keys, scrolling on the menu bar, Spotlight and other apps still show it.
 - **Bluetooth cards show a picture of the device.** Earbuds, over-ear headphones, a speaker, a soundbar, a phone, a watch, a game controller, a keyboard, a mouse or a laptop, chosen from the kind of device Bluetooth reports and its name (earbuds and over-ear headphones report the same kind, so "Buds" or "WH-" in the name decides). Anything else gets a Bluetooth tag. They show on connect and disconnect, batteries, and Fast Pair's card from Connect to Connected, in place of the coloured icon. The drawings are made by `tools/device-pictures.py`.
 - **Touchpad scrolling glides after your fingers lift,** as on macOS, everywhere that scrolls: Settings, Spotlight, Notification Center, Control Center, the clipboard, emoji and app lists, and the rest. A slow scroll or a pause before lifting stops where you left it, and a mouse wheel works as before. (Qt on Wayland stops dead when the fingers lift; libinput leaves the glide to the app.)
