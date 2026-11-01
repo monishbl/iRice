@@ -117,6 +117,7 @@ ShellRoot {
     TranslationCard {}
     ShelfWindow {}
     ShelfProbes {}
+    ShelfDropZone {}
     ScreenshotEditor {}
 
     // Compositor keybinds: bind = hl.dsp.global("irice:<name>")

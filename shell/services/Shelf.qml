@@ -106,7 +106,7 @@ Singleton {
     property bool fromDrag: false // opened mid-drag: it goes again if nothing lands
     function show(how, scr) {
         screen = scr ?? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
-        if (how !== "shake" && how !== "edge") {
+        if (how !== "shake" && how !== "edge" && how !== "drop") {
             side = "right";
             atY = -1;
         }
@@ -151,21 +151,55 @@ Singleton {
         id: edgeHold
         interval: 350
         onTriggered: {
-            if (root.opened || !root.down)
+            if (root.opened || root.zone || !root.down)
                 return;
             // (from the top: the side nearer the pointer)
             root.side = root.edgeAt === "top" ? (root.edgeScreen && root.last.x > root.edgeScreen.x + root.edgeScreen.width / 2 ? "right" : "left") : root.edgeAt;
             root.atY = root.last.y - (root.edgeScreen?.y ?? 0);
-            root.show("edge", root.edgeScreen);
+            root.offer(root.edgeScreen);
         }
     }
+    // ── The drop zone (modules/shelf/ShelfDropZone) ──────────────────────
+    // A drag of files that asks for the shelf (a shake, an edge) gets the
+    // island's big drop zone first: keep the files on the shelf, or send
+    // them to a phone. Dropped on Keep, it shrinks to the shelf's card.
+    property bool zone: false
+    property var zoneScreen: null
+    function offer(scr) {
+        zoneScreen = scr ?? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
+        zoneEnd.stop();
+        zone = true;
+    }
+    function keep(urls, text) {
+        const ok = drop(urls, text);
+        zone = false;
+        show("drop", zoneScreen);
+        return ok;
+    }
+    function sendOn(urls) {
+        const paths = [];
+        for (const u of urls ?? [])
+            if (String(u).startsWith("file://"))
+                paths.push(decodeURIComponent(String(u).slice(7)));
+        zone = false;
+        if (paths.length > 0)
+            Panels.share(paths, zoneScreen);
+        return paths.length > 0;
+    }
+    // (the drag ended elsewhere: the zone goes)
+    Timer {
+        id: zoneEnd
+        interval: 500
+        onTriggered: root.zone = false
+    }
+
     function dragArrived(where, scr, y) {
-        if (opened)
+        if (opened || zone)
             return;
         if (where === "shake") {
             side = probe && scr && probe.x > scr.x + scr.width / 2 ? "right" : "left";
             atY = probe && scr ? probe.y - scr.y : -1;
-            show("shake", scr);
+            offer(scr);
             probe = null;
         } else {
             edgeAt = where;
@@ -214,6 +248,8 @@ Singleton {
             return;
         down = false;
         probing = false;
+        if (zone)
+            zoneEnd.restart();
         probe = null;
         edgeHold.stop();
         follow.stop();

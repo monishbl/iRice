@@ -40,9 +40,10 @@ Scope {
                 Shelf.dragArrived(probe.where, probe.screen, d.y);
             }
             onExited: Shelf.dragLeft(probe.where)
+            // (let go right on one: onto the shelf)
             onDropped: d => {
-                Shelf.show(probe.where === "shake" ? "shake" : "edge", probe.screen);
-                if (Shelf.drop(d.urls, d.text))
+                Shelf.offer(probe.screen);
+                if (Shelf.keep(d.urls, d.text))
                     d.accept(Qt.CopyAction);
             }
         }
