@@ -9,7 +9,7 @@ parts need the real laptop:
   Check: the Broadcom ControlVault 3 (0a5c:5843) shows up in fprintd; the lock
   screen takes a finger and a password at once; password prompts and sudo wait
   ~10 s for a finger then ask for the password; the login screen (ly).
-- **Dictation**: Settings -> Dictation -> Install (whisper-cpp), then Download
+- **Dictation** (confirmed working by you, 1 Nov): Settings -> Dictation -> Install (whisper-cpp), then Download
   Base (142 MB). Check Super+H tap and hold with the real microphone
   (the hold's release bind was only checked as registered, not pressed: wtype
   can't press compositor binds in the sandbox), and typing into a browser and a
@@ -37,7 +37,7 @@ All pushed, tested in the sandbox; these parts need the real laptop:
   pointer growing (hyprctl setcursor 44 -> 80 -> 24) can't be seen in a
   nested Hyprland. Check it grows and comes back, with the mouse and the
   touchpad, and that drawing/dragging doesn't set it off.
-- **Live captions**: install whisper.cpp and the Tiny model from Settings ->
+- **Live captions** (confirmed working by you, 1 Nov): install whisper.cpp and the Tiny model from Settings ->
   Accessibility, then play a video. Checked in the sandbox with a speech
   sample played into a silent test output; check it with the real speakers,
   Bluetooth headphones (the default output's monitor), and Super+Ctrl+L.
@@ -68,7 +68,7 @@ Still to check with the real things:
   password: v4l2loopback).
 - **Mirroring**: Screen Mirroring tile with a Miracast TV (this laptop's Wi-Fi reports Wi-Fi Direct (iw), so it should work)
   and with a Chromecast.
-- **Fast Pair**: the WH-CH720N or realme Buds T100 in pairing mode -> the
+- **Fast Pair** (connecting confirmed with the realme Buds T100, 1 Nov; still to see: left/right/case levels and the 20%/10% warnings): the WH-CH720N or realme Buds T100 in pairing mode -> the
   island's Connect; open the case while connected -> batteries.
 - **Face unlock**: Settings -> Lock Screen -> Face -> Install (AUR,
   howdy-next, compiles), Set Up, Add Face, lock and look. Check that
