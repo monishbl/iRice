@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Fingerprint reader set-up, a quieter shelf icon · 2026-11-01
+
+- **The fingerprint reader can finish setting itself up.** On Dell's Broadcom ControlVault 3, the driver updates the reader's firmware the first time fprintd starts, which takes about a minute. CachyOS stops a service that hasn't started within 15 seconds, so the update was cut off at every start and "Restart" never helped. Settings → Lock Screen → Fingerprint now notices this and offers **Set Up Reader**, which gives fprintd five minutes to start and waits while the firmware updates. Until then, the page no longer starts fprintd just to look, which would cut the update off once more. The reader is named on every ID it uses (5841 while its firmware is still to be updated, through 5845).
+- **The shelf's menu bar icon no longer pops up whenever a button is held and moved** (selecting text, dragging a slider). It shows while the shelf holds something, or during a real drag of files.
+- **The session watchdog looks every 30 seconds, not 10.** Each look starts two small programs; a frozen shell is still restarted within a minute.
+
 ## Island fixes, captions over the video, tucked-away app icons · 2026-11-01
 
 - **Buttons on island alerts:**

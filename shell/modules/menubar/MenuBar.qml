@@ -279,10 +279,11 @@ Variants {
                     Timer { running: ScreenTools.recording; interval: 1000; repeat: true; triggeredOnStart: true; onTriggered: parent.now = Date.now() }
                 }
 
-                // The drop shelf: while it holds something, and during a drag
-                // (drop files on it); click to show or hide it
+                // The drop shelf: while it holds something, and during a real
+                // drag of files (Shelf.zone: not any held button that moves);
+                // click to show or hide it
                 MenuBarItem {
-                    visible: Config.options.shelf.menubar && (Shelf.count > 0 || Shelf.dragging && Shelf.down)
+                    visible: Config.options.shelf.menubar && (Shelf.count > 0 || Shelf.zone)
                     icon: "tray"
                     fill: Shelf.opened || shelfDrop.containsDrag
                     color: shelfDrop.containsDrag ? Theme.accent : bar.fg

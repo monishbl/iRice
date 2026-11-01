@@ -116,6 +116,10 @@ class Arguments(unittest.TestCase):
     def test_fixes_are_a_fixed_list(self):
         self.assertEqual(R.fix_command("avahi"), ["systemctl", "enable", "--now", "avahi-daemon"])
         self.assertEqual(R.fix_command("firewall")[:2], ["/bin/sh", "-c"])
+        fprintd = R.fix_command("fprintd")[2]
+        self.assertIn("TimeoutStartSec=5min", fprintd)
+        self.assertIn("/etc/systemd/system/fprintd.service.d/irice-timeout.conf", fprintd)
+        self.assertTrue(fprintd.rstrip().endswith("systemctl start fprintd"))
         for bad in ("rm -rf /", "", "../avahi", "pairing"):
             with self.assertRaises(R.Refused):
                 R.fix_command(bad)

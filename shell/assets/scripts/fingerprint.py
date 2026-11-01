@@ -6,12 +6,16 @@ fingers enrolled, and where a finger is accepted.
       {"reader": {"id": "0a5c:5843", "name"} | null,
        "fprintd": bool (installed), "device": bool (fprintd has the reader),
        "packages": [repo packages to install], "aur": [AUR packages],
-       "enrolled": [finger names], "pam": {"polkit", "sudo", "login": bool}}
+       "enrolled": [finger names], "pam": {"polkit", "sudo", "login": bool},
+       "slowStart": bool (systemd stopped fprintd while it was starting)}
   fingerprint.py enroll FINGER   enrolls one finger: JSON lines
       {"stage": "claimed", "stages": n} then {"result": "enroll-stage-passed"|
       "enroll-retry-scan"|…, "done": bool, "count": stages passed}, ending
       with {"ok", "error"}
   fingerprint.py delete FINGER   removes one ("all": every one): {"ok", "error"}
+  fingerprint.py fix             fprintd gets longer to start (slowStart), then
+                                 starts: {"ok", "error"}; it waits for the
+                                 reader's firmware update (about a minute)
 
 The reader: any listed in systemd's fingerprint hwdb (the readers libfprint
 drives), and readers that need a vendor driver (DRIVERS: Dell's Broadcom
@@ -25,13 +29,15 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 HWDB = "/usr/lib/udev/hwdb.d/60-autosuspend-fingerprint-reader.hwdb"
 # Readers whose driver isn't in libfprint itself: (name, AUR packages)
-DRIVERS = {
-    "0a5c:5843": ("Broadcom ControlVault 3", ["libfprint-tod", "libfprint-2-tod1-broadcom"]),
-}
+# (Broadcom's ControlVault 3 shows as 5841 while its firmware is still to be
+# updated, which its driver does on fprintd's first start)
+DRIVERS = {f"0a5c:{p}": ("Broadcom ControlVault 3", ["libfprint-tod", "libfprint-2-tod1-broadcom"])
+           for p in ("5841", "5842", "5843", "5844", "5845")}
 FINGERS = ["right-index-finger", "left-index-finger", "right-thumb", "left-thumb", "right-middle-finger",
            "left-middle-finger", "right-ring-finger", "left-ring-finger", "right-little-finger", "left-little-finger"]
 MARK = "# iRice fingerprint"
@@ -159,12 +165,29 @@ def enrolled():
         return dbus_error(e) == "NoEnrolledPrints", []
 
 
+def slow_start(run=subprocess.run):
+    """systemd stopped fprintd before it finished starting: Broadcom's driver
+    updates the reader's firmware then (about a minute), and some systems
+    (CachyOS) give a service 15 s. irice-root.py's "fprintd" fix gives it
+    longer."""
+    try:
+        out = run(["systemctl", "show", "fprintd", "-p", "Result", "--value"], capture_output=True, text=True,
+                  timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.strip() == "timeout"
+
+
 def status():
     reader = find_reader()
     repo, aur = needs(reader)
     fprintd = installed("fprintd") or bool(shutil.which("fprintd-list"))
-    device, fingers = enrolled() if fprintd else (False, [])
+    # (asking fprintd starts it: not while it can't finish starting, which
+    # would break off the reader's firmware update once more)
+    slow = fprintd and slow_start()
+    device, fingers = enrolled() if fprintd and not slow else (False, [])
     return {"reader": reader, "fprintd": fprintd, "device": device, "packages": repo, "aur": aur,
+            "slowStart": slow,
             "enrolled": fingers, "pam": pam_state(), "gdm": os.path.exists(path("/usr/lib/pam.d/gdm-fingerprint")) or os.path.exists(path("/etc/pam.d/gdm-fingerprint"))}
 
 
@@ -242,6 +265,36 @@ def delete(finger):
     return {"ok": True, "error": ""}
 
 
+def fix():
+    """irice-root.py's "fprintd" fix: through the installed helper (no
+    password), or, while that's older than this folder's, its script with
+    the password."""
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location("irice_root", os.path.join(here, "irice-root.py"))
+    root = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(root)
+    helper = path("/usr/lib/irice/irice-root")
+    try:
+        p = None
+        if os.access(helper, os.X_OK):
+            p = subprocess.run(["pkexec", helper, "fix", "fprintd"], capture_output=True, text=True, timeout=400)
+            if p.returncode == root.REFUSED_EXIT:  # (an older helper without this fix)
+                p = None
+        if p is None:
+            p = subprocess.run(["pkexec", "/bin/sh", "-c", root.FPRINTD_SCRIPT], capture_output=True, text=True,
+                               timeout=400)
+    except FileNotFoundError:
+        return {"ok": False, "error": "pkexec (from polkit) is needed to ask for your password."}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "The reader took too long to start. Restart, then open this page again."}
+    if p.returncode in (126, 127):
+        return {"ok": False, "error": "Cancelled: no password was given."}
+    if p.returncode != 0:
+        return {"ok": False, "error": (p.stderr or p.stdout).strip()[:200] or "fprintd didn't start."}
+    return {"ok": True, "error": ""}
+
+
 def main(argv):
     if argv[:1] == ["status"]:
         print(json.dumps(status()))
@@ -252,7 +305,11 @@ def main(argv):
         r = delete(argv[1])
         print(json.dumps(r))
         return 0 if r["ok"] else 1
-    print(json.dumps({"ok": False, "error": "usage: fingerprint.py status | enroll FINGER | delete FINGER|all"}))
+    if argv == ["fix"]:
+        r = fix()
+        print(json.dumps(r))
+        return 0 if r["ok"] else 1
+    print(json.dumps({"ok": False, "error": "usage: fingerprint.py status | enroll FINGER | delete FINGER|all | fix"}))
     return 2
 
 

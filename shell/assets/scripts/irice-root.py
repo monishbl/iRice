@@ -222,6 +222,18 @@ systemctl enable --now NetworkManager
 '''
 NETWORK_SHOWN = "systemctl enable --now NetworkManager"
 
+# fprintd stopped while Broadcom's driver updates the reader's firmware (about
+# a minute, on its first start): longer to start, then started (this waits
+# for it)
+FPRINTD_SCRIPT = r'''set -e
+mkdir -p /etc/systemd/system/fprintd.service.d
+printf '%s\n' '# iRice: a fingerprint reader may update its firmware as fprintd starts' \
+    '[Service]' 'TimeoutStartSec=5min' 'TimeoutStopSec=2min' > /etc/systemd/system/fprintd.service.d/irice-timeout.conf
+systemctl daemon-reload
+systemctl reset-failed fprintd || true
+systemctl start fprintd
+'''
+
 FIXES = {
     "networkmanager": ["/bin/sh", "-c", NETWORK_SCRIPT],
     "bluetooth": ["systemctl", "enable", "--now", "bluetooth"],
@@ -230,6 +242,7 @@ FIXES = {
     "profiles": ["systemctl", "enable", "--now", "power-profiles-daemon"],
     "firewall": ["/bin/sh", "-c", FIREWALL_SCRIPT],
     "btpairing": ["/bin/sh", "-c", PAIRING_SCRIPT],
+    "fprintd": ["/bin/sh", "-c", FPRINTD_SCRIPT],
 }
 
 

@@ -68,6 +68,34 @@ Singleton {
     }
     property string installError: ""
 
+    // ── fprintd stopped while it starts (fingerprint.py fix) ────────────
+    // Broadcom's driver updates the reader's firmware as fprintd first
+    // starts, about a minute; some systems stop a service after 15 s
+    readonly property bool slowStart: info.slowStart ?? false
+    readonly property bool fixing: fixProc.running
+    property string fixError: ""
+    function fix() {
+        if (fixProc.running)
+            return;
+        fixError = "";
+        fixProc.running = true;
+    }
+    Process {
+        id: fixProc
+        command: ["python3", "-I", root.script, "fix"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const r = JSON.parse(text);
+                    root.fixError = r.ok ? "" : r.error;
+                } catch (e) {
+                    root.fixError = "fprintd didn't start.";
+                }
+                root.refresh();
+            }
+        }
+    }
+
     // ── Adding a finger ─────────────────────────────────────────────────
     // stage: "" | waiting (claimed: touch it) | done | error
     property string enrollStage: ""

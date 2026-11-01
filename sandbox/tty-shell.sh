@@ -115,7 +115,9 @@ case "${1:-start}" in
         reap
         sleep 20 # let it start
         misses=0 gone=0
-        while sleep 10; do
+        # (every 30 s: each look starts hyprctl and a qs client, a cost
+        # paid all day, and a frozen shell is still back within a minute)
+        while sleep 30; do
             # The session ended: don't outlive it. One slow answer isn't an
             # ending (a busy compositor can take over 3 s): only a missing
             # socket, or three missed checks in a row

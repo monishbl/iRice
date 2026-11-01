@@ -53,6 +53,30 @@ class Reader(Root):
         self.usb("1-2", "0a5c", "5843")
         self.assertEqual(fp.find_reader()["name"], "Broadcom ControlVault 3")
 
+    def test_controlvault_before_its_firmware_update(self):
+        # (it shows as 5841 until its driver has updated the firmware)
+        self.usb("3-8", "0a5c", "5841")
+        r = fp.find_reader()
+        self.assertEqual(r["name"], "Broadcom ControlVault 3")
+        self.assertEqual(fp.needs(r), ([], ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"]))
+
+
+class SlowStart(unittest.TestCase):
+    def run_with(self, out):
+        return lambda argv, **kw: type("P", (), {"stdout": out})()
+
+    def test_stopped_while_starting(self):
+        self.assertTrue(fp.slow_start(self.run_with("timeout\n")))
+
+    def test_started_or_never_run(self):
+        for out in ("success\n", "", "exit-code\n"):
+            self.assertFalse(fp.slow_start(self.run_with(out)), out)
+
+    def test_without_systemctl(self):
+        def missing(argv, **kw):
+            raise FileNotFoundError(argv[0])
+        self.assertFalse(fp.slow_start(missing))
+
 
 class Unsupported(Root):
     def test_maker_without_a_driver(self):

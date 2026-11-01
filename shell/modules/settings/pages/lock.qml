@@ -166,8 +166,19 @@ Column {
             detail: Fingerprint.installError !== "" ? Fingerprint.installError
                 : Fingerprint.reader?.unsupported ? "Found, but it has no Linux driver yet (libfprint). Your password works as always; fprint.freedesktop.org lists the readers that do."
                 : Fingerprint.missing.length > 0 ? "Found. To use it, install " + Fingerprint.missing.join(", ") + ((Fingerprint.info.aur ?? []).length > 0 ? " (from the AUR: iRice sets up an AUR helper first if there's none)" : "") + ". It asks for your password once."
+                : Fingerprint.fixing ? "Setting up the reader. Its firmware is updating; this takes about a minute."
+                : Fingerprint.fixError !== "" ? Fingerprint.fixError
+                : Fingerprint.slowStart ? "Found. Its driver updates the reader's firmware the first time, which takes about a minute, and the system stops it after 15 seconds. Set Up gives it the time it needs."
                 : "Found, but fprintd can't use it yet. Restart, then open this page again."
-            labelColor: Fingerprint.installError !== "" ? Theme.color.danger : Theme.color.label
+            labelColor: Fingerprint.installError !== "" || Fingerprint.fixError !== "" ? Theme.color.danger : Theme.color.label
+            SettingsButton {
+                visible: Fingerprint.slowStart && Fingerprint.missing.length === 0
+                text: Fingerprint.fixing ? "Setting up…" : "Set Up Reader"
+                icon: "fingerprint"
+                primary: true
+                busy: Fingerprint.fixing
+                onClicked: Fingerprint.fix()
+            }
             SettingsButton {
                 visible: Fingerprint.missing.length > 0
                 text: Fingerprint.installing ? "Installing…" : "Install"
