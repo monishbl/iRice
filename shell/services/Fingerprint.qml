@@ -106,7 +106,7 @@ Singleton {
     property string enrollError: ""
     // Each touch while adding a finger: "enroll-stage-passed", a retry
     // ("enroll-retry-scan", "enroll-finger-not-centered"…), or the end
-    // (FingerprintEnroll animates it)
+    // (FingerprintSheet animates it)
     signal scanned(string result)
     readonly property bool enrolling: enrollProc.running
     function enroll(finger) {

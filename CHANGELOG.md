@@ -1,5 +1,9 @@
 # iRice changelog
 
+## Adding a fingerprint: a guided popup, 11 sections · 2026-11-01
+
+- **Adding a finger opens a popup that teaches you to cover the whole print.** The fingerprint is drawn like the familiar icon, a tilted loop with dashed ridges, and split into 11 sections: the centre, four around it, then six around the edges. The section to touch next is lit and named ("Again, a little higher up your finger", "Roll onto the upper right edge"…), so the reader records the whole finger rather than the same middle each time. Each touch it takes fills its section, with a small bump. When the reader wants another try, the print shakes, the section flashes red, and the reader's reason shows. Between the centre and the edges it says "Now the edges", as a phone does, and at the end every ridge turns green with a check: Done, or Add Another Finger. Escape or Cancel stops it. Dots underneath show all 11 sections, and nothing moves except on a touch.
+
 ## A signature sound for logging in, with its own volume · 2026-11-01
 
 - **Logging in has one signature sound, in every style.** A quick glint runs up a D-flat major chord and opens into the chord itself, warm and wide, with an added ninth on top. Then a shimmer blooms out of it and lifts a little, in a long room. It's built to sound full on laptop speakers: the depth is in overtones rather than sub-bass that small speakers can't play. It's much louder than the other sounds (about −15 dB on average, against −30 to −36 dB for unlock and notifications in the Minimal style).
@@ -7,7 +11,7 @@
 
 ## Fingerprint: an animated set-up, no false "Not recognised", the reader in every password prompt · 2026-11-01
 
-- **Adding a finger is animated.** A large fingerprint fills ridge by ridge from the bottom as each touch is taken. Each touch that counts sends out a ring; when the reader wants another try (off-centre, too quick), it shakes red; when it's done, it turns into a green check. The finger being added and how far along it is show underneath, and each added finger has a fingerprint beside its name.
+- **Each added finger has a fingerprint beside its name** (adding one: see the guided popup above).
 - **No more false "Not recognised".** Dell's Broadcom reader can answer "no match" within a fraction of a second, for a finger still resting on it after waking the laptop. The lock screen and password prompts showed that as a failed finger, and it used up tries. A "no match" faster than a touch is now ignored, only real misses count (five on the lock screen), and "Not recognised" stays long enough to read. Password prompts and sudo now allow 5 tries instead of 2; turn their switches in Settings → Lock Screen → Fingerprint off and on once to take this up. A password prompt says "Incorrect password" only after you've typed one.
 - **The reader shows wherever your password is asked.** On the lock screen, a fingerprint sits in the empty password field ("Fingerprint or Password"): it pulses when the reader is ready, shakes red on a miss and turns into a green check on a match; typing brings the arrow back. Password prompts show the same fingerprint while they wait for a finger. Nothing loops, so an open prompt draws no frames.
 

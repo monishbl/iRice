@@ -222,18 +222,6 @@ Column {
                 }
             }
         }
-        // The finger being added, touch by touch (and a moment after it's done)
-        FingerprintEnroll {
-            visible: Fingerprint.ready && (adding.busy || enrollDone.running)
-            Connections {
-                target: Fingerprint
-                function onEnrollStageChanged() {
-                    if (Fingerprint.enrollStage === "done")
-                        enrollDone.restart();
-                }
-            }
-            Timer { id: enrollDone; interval: 4000 }
-        }
         Row {
             id: adding
             visible: Fingerprint.ready
@@ -242,28 +230,23 @@ Column {
             property string pick: ""
             // (the one picked, while it's still free: once added, the next)
             readonly property string chosen: free.includes(pick) ? pick : (free[0] ?? "")
-            // (while adding, the animation above says what to do)
-            label: busy ? "Adding " + (Fingerprint.fingerNames[Fingerprint.enrollFinger] ?? "a finger").toLowerCase() : Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
-            detail: busy ? "Keep touching the reader until the fingerprint is full"
-                : Fingerprint.enrollStage === "done" ? "Added. It works on the lock screen now."
-                : Fingerprint.enrollStage === "error" ? Fingerprint.enrollError
-                : "Touch the reader a few times with the same finger"
-            labelColor: !busy && Fingerprint.enrollStage === "error" ? Theme.color.danger : Theme.color.label
+            // (adding happens in the sheet: FingerprintSheet)
+            label: Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
+            detail: "The reader is read 11 times, a different part of your finger each time"
             QQ.Row {
                 spacing: 8
                 Dropdown {
-                    visible: !adding.busy
                     width: 190
                     options: adding.free.map(f => ({ value: f, label: Fingerprint.fingerNames[f] }))
                     value: adding.chosen
                     onChosen: v => adding.pick = v
                 }
                 SettingsButton {
-                    text: adding.busy ? "Cancel" : "Add"
-                    icon: adding.busy ? "" : "fingerprint"
-                    primary: !adding.busy
-                    enabled: adding.busy || adding.chosen !== ""
-                    onClicked: adding.busy ? Fingerprint.cancelEnroll() : Fingerprint.enroll(adding.chosen)
+                    text: "Add"
+                    icon: "fingerprint"
+                    primary: true
+                    enabled: !adding.busy && adding.chosen !== ""
+                    onClicked: enrollSheet.open(adding.chosen)
                 }
             }
         }
@@ -291,6 +274,16 @@ Column {
                     onToggled: Fingerprint.setPam(parent.parent.modelData.key, !checked)
                 }
             }
+        }
+    }
+
+    // Adding a finger: a sheet over the whole Settings window
+    FingerprintSheet {
+        id: enrollSheet
+        onAddAnother: {
+            const next = adding.free.find(f => f !== finger) ?? "";
+            if (next !== "")
+                open(next);
         }
     }
 
