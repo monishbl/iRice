@@ -13,3 +13,4 @@ shell/native/build/
 __pycache__/
 # Built by site/build.sh
 site/public/config/
+.wrangler/
