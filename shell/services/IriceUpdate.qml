@@ -114,7 +114,7 @@ Singleton {
     // The menu icon (as the menu bar draws it: MenuBar.qml's system menu)
     function look() {
         const c = Config.options.appearance.menuIcon;
-        const names = { irice: "drop", linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", steam: "steam-logo", github: "github-logo", circle: "circle-wavy" };
+        const names = { irice: "drop", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" };
         const image = c === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : "";
         return { glyph: Phosphor.glyphs[names[c] ?? "drop"] ?? "", image: image.replace("file://", "") };
     }

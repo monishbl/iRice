@@ -75,7 +75,7 @@ Singleton {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
-                property string menuIcon: "irice" // leftmost menu: irice | distro | linux | windows | apple | android | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | steam | github | circle
+                property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)
                 property string iconTheme: "" // app icon theme; empty = automatic (KDE / GNOME setting, else Papirus, Breeze, Adwaita)
                 property string keySymbols: "auto" // auto (follows menuIcon) | mac | windows | linux
                 // Custom material (Settings → Appearance → Advanced), each 0..1

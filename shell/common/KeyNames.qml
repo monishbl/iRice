@@ -16,7 +16,7 @@ Singleton {
         if (s !== "auto")
             return s;
         const icon = Config.options.appearance.menuIcon;
-        return icon === "apple" || icon === "command" ? "mac" : icon === "windows" ? "windows" : "linux";
+        return icon === "command" ? "mac" : "linux";
     }
 
     readonly property var mods: ["CTRL", "ALT", "SHIFT", "SUPER"] // macOS order

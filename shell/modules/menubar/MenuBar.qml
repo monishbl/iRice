@@ -148,12 +148,13 @@ Variants {
                 anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
-                // The system menu: iRice's drop, your distro's logo, or a
-                // brand mark (Settings → Appearance → Menu icon)
+                // The system menu: iRice's drop, your distro's logo, Tux or a
+                // symbol (Settings → Appearance → Menu icon). No company
+                // marks: an old choice of one shows the drop.
                 MenuBarItem {
                     readonly property string choice: Config.options.appearance.menuIcon
                     readonly property string distroIcon: choice === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
-                    icon: distroIcon !== "" ? "" : ({ irice: "drop", linux: "linux-logo", windows: "windows-logo", apple: "apple-logo", android: "android-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", steam: "steam-logo", github: "github-logo", circle: "circle-wavy" })[choice] ?? "drop"
+                    icon: distroIcon !== "" ? "" : ({ irice: "drop", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" })[choice] ?? "drop"
                     image: distroIcon
                     tintImage: true
                     fill: true

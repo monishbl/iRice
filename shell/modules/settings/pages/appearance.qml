@@ -122,14 +122,14 @@ Column {
     Group {
         width: parent.width
         title: "Menu bar and shortcuts"
-        footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Apple and Command use ⌘ ⌃ ⌥ ⇧, Windows uses Win Ctrl Alt, others Super Ctrl Alt." : ".")
+        footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Command uses ⌘ ⌃ ⌥ ⇧, others Super Ctrl Alt." : ".")
         Row {
             label: "Menu icon"
             Flow { // (Row here is the settings row)
                 spacing: 4
                 width: 8 * 40 + 7 * 4
                 Repeater {
-                    model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["windows", "windows-logo", "Windows"], ["apple", "apple-logo", "Apple"], ["android", "android-logo", "Android"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["steam", "steam-logo", "Steam"], ["github", "github-logo", "GitHub"], ["circle", "circle-wavy", "Badge"]]
+                    model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["circle", "circle-wavy", "Badge"]]
                     Squircle {
                         id: choice
                         required property var modelData
