@@ -19,6 +19,8 @@ DEFS = """<defs>
   <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A4260"/><stop offset="0.55" stop-color="#1D2030"/><stop offset="1" stop-color="#121318"/></linearGradient>
   <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
   <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+  <linearGradient id="bud" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.7" stop-color="#F4F4F6"/><stop offset="1" stop-color="#D7D7DD"/></linearGradient>
+  <linearGradient id="case" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F0F0F3"/><stop offset="0.6" stop-color="#DCDCE1"/><stop offset="1" stop-color="#BDBDC5"/></linearGradient>
   <linearGradient id="well" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8E8E97"/><stop offset="1" stop-color="#B9B9C1"/></linearGradient>
   <radialGradient id="cavity" cx="0.5" cy="0.35" r="0.65"><stop offset="0" stop-color="#2E2E34"/><stop offset="1" stop-color="#18181B"/></radialGradient>
   <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000000" stop-opacity="0.38"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
@@ -50,37 +52,40 @@ def dots(x0, x1, y0, y1, step, r, inside=lambda x, y: True, fill="#000000", opac
 
 
 def earbuds():
-    # An open case, the lid tipped back, the buds resting in it, ear tips
-    # down (only their backs show)
-    bud = """<path d="M-13 3 C-13 -8 -5 -13 3 -12 C11 -11 14 -3 12 5 C10 11 3 14 -4 13 C-10 12 -13 8 -13 3 Z" fill="url(#shell)"/>
-      <path d="M-8 -5 C-6 -9 -1 -10 3 -9.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" fill="none"/>
-      <ellipse cx="3" cy="6" rx="5" ry="2.4" fill="#000000" opacity="0.08"/>"""
+    # The buds standing over their closed case, stems down, ear tips turned
+    # in; the case a shade greyer than the buds, so they stand out
+    bud = """<rect x="-5" y="4" width="10" height="28" rx="5" fill="url(#shellH)"/>
+      <ellipse cx="0" cy="12" rx="6" ry="2.2" fill="#000000" opacity="0.14"/>
+      <ellipse cx="0" cy="0" rx="15" ry="14" fill="url(#bud)"/>
+      <ellipse cx="13" cy="3" rx="5.2" ry="6.4" fill="url(#graphite)"/>
+      <path d="M-10 -5 C-8 -10 -2 -12 3 -11" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" fill="none"/>"""
     svg("earbuds", f"""
-{shadow(64, 114, 46)}
-<path d="M22 60 C22 32 34 18 64 18 C94 18 106 32 106 60 Z" fill="url(#lid)"/>
-<path d="M29 58 C30 38 40 27 64 27 C88 27 98 38 99 58 Z" fill="#000000" opacity="0.06"/>
-<rect x="16" y="56" width="96" height="56" rx="28" fill="url(#shell)"/>
-<ellipse cx="64" cy="61" rx="41" ry="9.5" fill="url(#well)"/>
-<g transform="translate(45 57) rotate(-8)">{bud}</g>
-<g transform="translate(83 57) scale(-1 1) rotate(-8)">{bud}</g>
-<rect x="28" y="76" width="72" height="12" rx="6" fill="url(#top)" opacity="0.6"/>
-<circle cx="64" cy="100" r="1.6" fill="#9A9AA3"/>
+{shadow(64, 116, 44)}
+<rect x="22" y="68" width="84" height="46" rx="23" fill="url(#case)"/>
+<path d="M24 83 H104" stroke="#000000" stroke-opacity="0.13" stroke-width="1.2"/>
+<rect x="34" y="71" width="60" height="9" rx="4.5" fill="url(#top)" opacity="0.8"/>
+<circle cx="64" cy="100" r="1.8" fill="#8E8E96"/>
+<ellipse cx="42" cy="71" rx="9" ry="2.6" fill="#000000" opacity="0.12"/>
+<ellipse cx="86" cy="71" rx="9" ry="2.6" fill="#000000" opacity="0.12"/>
+<g transform="translate(46 36) rotate(20)">{bud}</g>
+<g transform="translate(82 36) scale(-1 1) rotate(20)">{bud}</g>
 """)
 
 
 def headphones():
+    # A tall headband over slim, upright ear cups
     svg("headphones", f"""
-{shadow(64, 116, 48)}
-<path d="M27 72 C25 26 103 26 101 72" fill="none" stroke="url(#shellH)" stroke-width="8" stroke-linecap="round"/>
-<path d="M34 58 C36 34 92 34 94 58" fill="none" stroke="url(#graphite)" stroke-width="7" stroke-linecap="round"/>
-<rect x="24.5" y="60" width="5" height="16" rx="2.5" fill="#B3B3BB"/>
-<rect x="98.5" y="60" width="5" height="16" rx="2.5" fill="#B3B3BB"/>
-<rect x="10" y="66" width="34" height="50" rx="17" fill="url(#shell)"/>
-<rect x="34" y="70" width="14" height="42" rx="7" fill="url(#graphite)"/>
-<rect x="84" y="66" width="34" height="50" rx="17" fill="url(#shell)"/>
-<rect x="80" y="70" width="14" height="42" rx="7" fill="url(#graphite)"/>
-<rect x="15" y="70" width="8" height="26" rx="4" fill="url(#top)"/>
-<rect x="89" y="70" width="8" height="26" rx="4" fill="url(#top)"/>
+{shadow(64, 118, 42)}
+<path d="M28 76 C24 4 104 4 100 76" fill="none" stroke="url(#shellH)" stroke-width="7" stroke-linecap="round"/>
+<path d="M34 52 C38 18 90 18 94 52" fill="none" stroke="url(#graphite)" stroke-width="6" stroke-linecap="round"/>
+<rect x="25" y="58" width="6" height="14" rx="3" fill="#B3B3BB"/>
+<rect x="97" y="58" width="6" height="14" rx="3" fill="#B3B3BB"/>
+<rect x="14" y="66" width="26" height="48" rx="13" fill="url(#shell)"/>
+<rect x="34" y="71" width="10" height="38" rx="5" fill="url(#graphite)"/>
+<rect x="88" y="66" width="26" height="48" rx="13" fill="url(#shell)"/>
+<rect x="84" y="71" width="10" height="38" rx="5" fill="url(#graphite)"/>
+<rect x="18" y="70" width="6" height="24" rx="3" fill="url(#top)"/>
+<rect x="92" y="70" width="6" height="24" rx="3" fill="url(#top)"/>
 """)
 
 
