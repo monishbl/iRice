@@ -8,14 +8,23 @@ Item {
     property string label
     property string detail
     property color labelColor: Theme.color.label // (a status line: secondary, or danger for an error)
+    property string icon: "" // (optional, before the label: a fingerprint per finger, say)
     default property alias control: slot.data
 
     width: parent?.width ?? 0
     implicitHeight: Math.max(44, labels.implicitHeight + 20, slot.childrenRect.height + 16)
 
+    Icon {
+        id: leading
+        visible: root.icon !== ""
+        anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+        name: root.icon
+        size: 20
+        color: Theme.color.tertiary
+    }
     Column {
         id: labels
-        anchors { left: parent.left; leftMargin: 14; right: slot.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: root.icon !== "" ? 14 + 20 + 12 : 14; right: slot.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 2
         Text {
             width: parent.width

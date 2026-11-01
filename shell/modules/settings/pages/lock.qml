@@ -197,6 +197,7 @@ Column {
                 id: fingerRow
                 required property string modelData
                 readonly property bool asking: page.confirming === modelData
+                icon: "fingerprint"
                 label: Fingerprint.fingerNames[modelData] ?? modelData
                 detail: asking ? "It's deleted from the reader: you'd add it again to use it." : ""
                 QQ.Row {
@@ -221,6 +222,18 @@ Column {
                 }
             }
         }
+        // The finger being added, touch by touch (and a moment after it's done)
+        FingerprintEnroll {
+            visible: Fingerprint.ready && (adding.busy || enrollDone.running)
+            Connections {
+                target: Fingerprint
+                function onEnrollStageChanged() {
+                    if (Fingerprint.enrollStage === "done")
+                        enrollDone.restart();
+                }
+            }
+            Timer { id: enrollDone; interval: 4000 }
+        }
         Row {
             id: adding
             visible: Fingerprint.ready
@@ -229,8 +242,9 @@ Column {
             property string pick: ""
             // (the one picked, while it's still free: once added, the next)
             readonly property string chosen: free.includes(pick) ? pick : (free[0] ?? "")
-            label: busy ? Fingerprint.enrollHint || "Touch the fingerprint reader" : Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
-            detail: busy ? (Fingerprint.enrollStages > 0 ? Fingerprint.enrollCount + " of " + Fingerprint.enrollStages + " · " : "") + (Fingerprint.fingerNames[Fingerprint.enrollFinger] ?? "")
+            // (while adding, the animation above says what to do)
+            label: busy ? "Adding " + (Fingerprint.fingerNames[Fingerprint.enrollFinger] ?? "a finger").toLowerCase() : Fingerprint.enrolled.length === 0 ? "Add a fingerprint" : "Add another"
+            detail: busy ? "Keep touching the reader until the fingerprint is full"
                 : Fingerprint.enrollStage === "done" ? "Added. It works on the lock screen now."
                 : Fingerprint.enrollStage === "error" ? Fingerprint.enrollError
                 : "Touch the reader a few times with the same finger"

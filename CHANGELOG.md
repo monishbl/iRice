@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Fingerprint: an animated set-up, no false "Not recognised", the reader in every password prompt · 2026-11-01
+
+- **Adding a finger is animated.** A large fingerprint fills ridge by ridge from the bottom as each touch is taken. Each touch that counts sends out a ring; when the reader wants another try (off-centre, too quick), it shakes red; when it's done, it turns into a green check. The finger being added and how far along it is show underneath, and each added finger has a fingerprint beside its name.
+- **No more false "Not recognised".** Dell's Broadcom reader can answer "no match" within a fraction of a second, for a finger still resting on it after waking the laptop. The lock screen and password prompts showed that as a failed finger, and it used up tries. A "no match" faster than a touch is now ignored, only real misses count (five on the lock screen), and "Not recognised" stays long enough to read. Password prompts and sudo now allow 5 tries instead of 2; turn their switches in Settings → Lock Screen → Fingerprint off and on once to take this up. A password prompt says "Incorrect password" only after you've typed one.
+- **The reader shows wherever your password is asked.** On the lock screen, a fingerprint sits in the empty password field ("Fingerprint or Password"): it pulses when the reader is ready, shakes red on a miss and turns into a green check on a match; typing brings the arrow back. Password prompts show the same fingerprint while they wait for a finger. Nothing loops, so an open prompt draws no frames.
+
 ## Fingerprint reader set-up, a quieter shelf icon · 2026-11-01
 
 - **The fingerprint reader can finish setting itself up.** On Dell's Broadcom ControlVault 3, the driver updates the reader's firmware the first time fprintd starts, which takes about a minute. CachyOS stops a service that hasn't started within 15 seconds, so the update was cut off at every start and "Restart" never helped. Settings → Lock Screen → Fingerprint now notices this and offers **Set Up Reader**, which gives fprintd five minutes to start and waits while the firmware updates. Until then, the page no longer starts fprintd just to look, which would cut the update off once more. The reader is named on every ID it uses (5841 while its firmware is still to be updated, through 5845).

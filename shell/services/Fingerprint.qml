@@ -104,6 +104,10 @@ Singleton {
     property int enrollCount: 0
     property string enrollHint: ""
     property string enrollError: ""
+    // Each touch while adding a finger: "enroll-stage-passed", a retry
+    // ("enroll-retry-scan", "enroll-finger-not-centered"…), or the end
+    // (FingerprintEnroll animates it)
+    signal scanned(string result)
     readonly property bool enrolling: enrollProc.running
     function enroll(finger) {
         if (enrollProc.running)
@@ -147,6 +151,7 @@ Singleton {
                 } else if (m.result !== undefined) {
                     root.enrollCount = m.count ?? root.enrollCount;
                     root.enrollHint = root.hints[m.result] ?? root.enrollHint;
+                    root.scanned(m.result);
                 } else if (m.ok !== undefined) {
                     root.enrollStage = m.ok ? "done" : "error";
                     root.enrollError = m.ok ? "" : (m.error || "That didn't work. Try again.");

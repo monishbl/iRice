@@ -450,17 +450,31 @@ WlSessionLockSurface {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: input.text === ""
-                            text: "Enter Password"
+                            // (a finger works too: the fingerprint in the field says so)
+                            text: surface.lockScope.fingerState !== "" ? "Fingerprint or Password" : "Enter Password"
                             color: surface.ink2
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                         }
+                    }
+                    // The reader, in the field while it's empty (as on a Mac);
+                    // typing brings the arrow back
+                    readonly property bool fingerInField: surface.lockScope.fingerState !== "" && input.text === "" && !surface.lockScope.busy
+                    FingerGlyph {
+                        x: parent.width - 30
+                        y: 6
+                        width: 24
+                        height: 24
+                        visible: parent.fingerInField
+                        phase: surface.lockScope.fingerState
+                        size: 22
+                        color: surface.ink
                     }
                     Icon {
                         x: parent.width - 30
                         y: 6
                         width: 24
                         height: 24
-                        visible: !surface.lockScope.busy
+                        visible: !surface.lockScope.busy && !parent.fingerInField
                         name: "arrow-circle-right"
                         fill: true
                         size: 22

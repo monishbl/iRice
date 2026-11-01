@@ -287,11 +287,15 @@ Scope {
     // A second PAM conversation, from the shell's own PAM file (only
     // pam_fprintd: the system's files aren't touched), running while the
     // lock is up. Each waits up to 30 s; then another (a wait that ran out
-    // isn't a try), up to five fingers in a row that didn't match (coming
-    // back gives them back).
+    // isn't a try). Five fingers in a row that didn't match end it (coming
+    // back gives them back). A "no match" sooner than a finger could touch
+    // the reader isn't one: some readers (Broadcom's) answer at once for a
+    // finger still resting there from waking the computer.
     property string fingerText: "" // what the reader wants, under the field
-    property int fingerTries: 0
-    property bool fingerNoMatch: false // (this conversation was told no)
+    property string fingerState: "" // "" | waiting | miss | match (the field's fingerprint)
+    property int fingerTries: 0 // real misses
+    property real fingerAskedAt: 0 // when the reader last asked for a finger
+    readonly property int fingerQuickMs: 700
     readonly property bool fingerWanted: held && !leaving && Fingerprint.lockScreen && fingerTries < 5
     onFingerWantedChanged: {
         if (fingerWanted) {
@@ -301,6 +305,7 @@ Scope {
             if (finger.active)
                 finger.abort();
             fingerText = "";
+            fingerState = "";
         }
     }
     Timer {
@@ -308,8 +313,18 @@ Scope {
         interval: 400 // (a moment after the lock shows, or after a try)
         onTriggered: if (root.fingerWanted && !finger.active) {
             root.fingerText = "Touch the fingerprint reader to unlock";
-            root.fingerNoMatch = false;
+            root.fingerState = "waiting";
+            root.fingerAskedAt = Date.now();
             finger.start();
+        }
+    }
+    // "Not recognised" stays long enough to read, then the reader asks again
+    Timer {
+        id: fingerMissShown
+        interval: 1600
+        onTriggered: if (root.fingerWanted && finger.active) {
+            root.fingerText = "Touch the fingerprint reader to unlock";
+            root.fingerState = "waiting";
         }
     }
     PamContext {
@@ -319,14 +334,25 @@ Scope {
         onMessageChanged: {
             const m = message ?? "";
             if (/fail|no match|not match|not recogni/i.test(m)) {
+                if (Date.now() - root.fingerAskedAt < root.fingerQuickMs)
+                    return; // (not a touch: pam_fprintd asks again by itself)
+                root.fingerTries++;
                 root.fingerText = "Not recognised. Try again";
-                root.fingerNoMatch = true;
+                root.fingerState = "miss";
+                fingerMissShown.restart();
+                if (root.fingerTries >= 5)
+                    finger.abort();
+            } else if (/place|swipe|touch|finger/i.test(m)) {
+                root.fingerAskedAt = Date.now();
+                if (!fingerMissShown.running) {
+                    root.fingerText = "Touch the fingerprint reader to unlock";
+                    root.fingerState = "waiting";
+                }
             }
-            else if (/place|swipe|touch|finger/i.test(m))
-                root.fingerText = "Touch the fingerprint reader to unlock";
         }
         onCompleted: result => {
             if (result === PamResult.Success) {
+                root.fingerState = "match";
                 System.locked = false;
                 root.error = "";
                 root.fails = 0;
@@ -334,9 +360,9 @@ Scope {
                 root.fingerText = "";
                 return;
             }
-            // (a reader that errors counts; a 30 s wait without a finger doesn't.
-            // An error comes here too, after onError: counted once)
-            if (root.fingerNoMatch || result === PamResult.Error)
+            // (a reader that errors counts as a miss; a 30 s wait without a
+            // finger doesn't)
+            if (result === PamResult.Error)
                 root.fingerTries++;
             if (root.fingerWanted)
                 fingerRetry.restart();

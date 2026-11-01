@@ -323,10 +323,12 @@ def write_root(dest, data, mode):
 # ── fingerprint (Settings → Lock Screen → Fingerprint) ─────────────────
 FP_MARK = "# iRice fingerprint"
 # max-tries / timeout: a finger, or the password after a few seconds (PAM
-# asks one thing at a time; the login screen waits longest)
-FP_LINES = {"polkit": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
-            "sudo": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10   " + FP_MARK,
-            "login": "auth       sufficient   pam_fprintd.so max-tries=2 timeout=15   " + FP_MARK}
+# asks one thing at a time; the login screen waits longest). Five tries: some
+# readers (Broadcom's) answer "no match" at once for a finger still resting
+# on them, which used up two tries before a real touch
+FP_LINES = {"polkit": "auth       sufficient   pam_fprintd.so max-tries=5 timeout=10   " + FP_MARK,
+            "sudo": "auth       sufficient   pam_fprintd.so max-tries=5 timeout=10   " + FP_MARK,
+            "login": "auth       sufficient   pam_fprintd.so max-tries=5 timeout=15   " + FP_MARK}
 # (GDM isn't here: it asks for a finger by itself, gdm-fingerprint, once one is added)
 FP_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm", "lightdm", "lxdm"]}
 PAM_ETC, PAM_VENDOR = "/etc/pam.d", "/usr/lib/pam.d"

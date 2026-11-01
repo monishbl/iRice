@@ -71,11 +71,37 @@ Scope {
         component: PolkitAgent {}
     }
 
+    // The finger (fingerWait): a pulse each time the reader asks, a shake
+    // and "Not recognised" for a real miss, a check when it matched. A "no
+    // match" sooner than a touch could be isn't one (some readers answer at
+    // once for a finger still resting on them)
+    property real fingerAskedAt: 0
+    property bool fingerMissed: false
+    readonly property string fingerPhase: previewFinger ? "waiting" : !fingerWait ? "" : fingerMissed ? "miss" : "waiting"
+    Timer {
+        id: fingerMissShown
+        interval: 1600
+        onTriggered: root.fingerMissed = false
+    }
     Connections {
         target: root.flow
+        function onSupplementaryMessageChanged() {
+            const m = root.flow?.supplementaryMessage ?? "";
+            if (/fail|no match|not match/i.test(m)) {
+                if (Date.now() - root.fingerAskedAt >= 700) {
+                    root.fingerMissed = true;
+                    fingerMissShown.restart();
+                }
+            } else if (/place|swipe|finger/i.test(m)) {
+                root.fingerAskedAt = Date.now();
+            }
+        }
         function onAuthenticationFailed() {
+            // (only a typed password is "incorrect": a finger that didn't
+            // match isn't, and PAM asks for the password next anyway)
+            const typed = root.waiting;
             root.waiting = false;
-            root.error = "Incorrect password. Try again.";
+            root.error = typed ? "Incorrect password. Try again." : "";
         }
         function onIsCompletedChanged() {
             root.waiting = false;
@@ -175,7 +201,8 @@ Scope {
                         height: 56
                         radius: 16
                         color: Theme.color.toggleOff
-                        Icon { anchors.centerIn: parent; name: root.fingerWait ? "fingerprint" : "lock-key"; fill: !root.fingerWait; size: 28 }
+                        Icon { anchors.centerIn: parent; visible: !root.fingerWait; name: "lock-key"; fill: true; size: 28 }
+                        FingerGlyph { anchors.centerIn: parent; visible: root.fingerWait; phase: root.fingerPhase; size: 30; color: Theme.accent }
                     }
                     Text {
                         width: parent.width
@@ -189,7 +216,8 @@ Scope {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.Wrap
-                        text: root.fingerWait ? "Touch the fingerprint reader to allow this. The password field comes back in a few seconds."
+                        text: root.fingerWait && root.fingerMissed ? "Not recognised. Try again, or wait for the password field."
+                            : root.fingerWait ? "Touch the fingerprint reader to allow this. The password field comes back in a few seconds."
                             : "Enter the password for " + (Quickshell.env("USER") ?? "your account") + " to allow this."
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
