@@ -14,3 +14,5 @@ __pycache__/
 # Built by site/build.sh
 site/public/config/
 .wrangler/
+# Backgrounds for site screenshots (site/tools/render-art.py, downloaded photos)
+site/tools/wallpapers/
