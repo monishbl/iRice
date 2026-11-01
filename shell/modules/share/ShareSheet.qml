@@ -174,6 +174,7 @@ Variants {
                     // ── Nearby (iOS's AirDrop row: round avatars, names under) ──
                     Flickable {
                         id: people
+                        Momentum {}
                         width: parent.width
                         height: 118
                         visible: win.devices.length > 0

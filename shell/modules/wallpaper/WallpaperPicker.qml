@@ -136,6 +136,8 @@ Variants {
 
                     ListView {
                         id: list
+
+                        Momentum {}
                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                         height: win.thumbH + 8
                         orientation: ListView.Horizontal

@@ -143,6 +143,8 @@ Item {
 
     GridView {
         id: grid
+
+        Momentum {}
         anchors { top: controls.bottom; topMargin: 10; left: parent.left; right: parent.right; bottom: parent.bottom }
         clip: true
         cellWidth: width / 2

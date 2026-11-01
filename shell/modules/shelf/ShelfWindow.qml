@@ -161,6 +161,8 @@ LazyLoader {
 
                 ListView {
                     id: list
+
+                    Momentum {}
                     visible: Shelf.count > 0
                     width: parent.width
                     height: Math.min(Shelf.count, 6) * win.rowH

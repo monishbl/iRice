@@ -106,6 +106,8 @@ Item {
 
             Flickable {
                 id: flick
+
+                Momentum {}
                 anchors { fill: parent; margins: 5 }
                 contentHeight: list.implicitHeight
                 clip: true // long lists scroll inside the menu, not past it

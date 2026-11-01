@@ -35,6 +35,8 @@ Item {
     }
 
     Flickable {
+
+        Momentum {}
         anchors { left: parent.left; right: parent.right; top: header.bottom; topMargin: 10; bottom: parent.bottom }
         contentHeight: edit.implicitHeight
         clip: true

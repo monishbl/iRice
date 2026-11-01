@@ -63,6 +63,7 @@ Column {
         color: Theme.dark ? "#0E0E10" : "#18181B"
         Flickable {
             id: flick
+            Momentum {}
             anchors { fill: parent; margins: 10 }
             clip: true
             contentHeight: previewText.implicitHeight

@@ -209,6 +209,7 @@ Column {
         visible: root.form === null && !root.sharing && !Backends.wifiUnmanaged
         Flickable {
             id: listFlick
+            Momentum {}
             anchors.fill: parent
             contentHeight: listCol.implicitHeight
             interactive: contentHeight > height + 1

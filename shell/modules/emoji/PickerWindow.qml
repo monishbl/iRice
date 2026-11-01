@@ -610,6 +610,7 @@ GlassWindow {
             // ---- Emoji, kaomoji, symbols, search results ----
             ListView {
                 id: list
+                Momentum {}
                 visible: root.mode !== "gif" && EmojiStore.loaded && root.view.flat.length + root.view.rows.length > 0 && !(root.searching && root.view.flat.length === 0)
                 anchors { top: tabRow.bottom; topMargin: 4; left: parent.left; right: parent.right }
                 height: root.gridH
@@ -773,6 +774,7 @@ GlassWindow {
             // ---- GIFs ----
             GridView {
                 id: gifGrid
+                Momentum {}
                 visible: root.mode === "gif" && Klipy.hasKey && (Klipy.status === "ready" || Klipy.status === "loading") && Klipy.count > 0
                 anchors { top: tabRow.bottom; topMargin: 8; left: parent.left; right: parent.right }
                 height: root.gridH - 4

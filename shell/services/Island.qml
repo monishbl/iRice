@@ -649,10 +649,11 @@ Singleton {
         }
     }
 
-    // Volume, brightness and mic, when the HUD lives in the island
-    function hud(kind) {
-        const v = kind === "brightness" ? Brightness.value : kind === "mic" ? (Audio.micMuted ? 0 : 1) : (Audio.muted ? 0 : Audio.volume);
-        post({ kind: "hud", hud: kind, icon: kind === "brightness" ? "sun" : kind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon, title: kind === "brightness" ? "Display" : kind === "mic" ? (Audio.micMuted ? "Microphone off" : "Microphone on") : "Sound", value: v, color: Theme.color.label }, 1600);
+    // Volume, brightness and mic, when the HUD lives in the island (`device`:
+    // the output or microphone just switched to, named over its level)
+    function hud(kind, device) {
+        const v = kind === "brightness" ? Brightness.value : kind === "mic" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume);
+        post({ kind: "hud", hud: kind, icon: kind === "brightness" ? "sun" : kind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon, title: device || (kind === "brightness" ? "Display" : kind === "mic" ? (Audio.micMuted ? "Microphone off" : "Microphone on") : "Sound"), value: v, device: device ?? "", color: Theme.color.label }, device ? 2500 : 1600);
     }
 
     // qs ipc call island post <icon> <title> <subtitle>  (for scripts)
@@ -694,7 +695,7 @@ Singleton {
             }
             return out.join("\n");
         }
-        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected>
+        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected|output|burst>
         function demo(kind: string): void {
             const was = started.elapsed;
             started.elapsed = true;
@@ -719,6 +720,11 @@ Singleton {
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up
             const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" || kind === "connect" ? root.longMs : 5000;
+            if (kind === "output") { // the volume row after switching to headphones
+                root.hud("volume", "realme TechLife Buds T100");
+                started.elapsed = was;
+                return;
+            }
             if (kind === "burst") { // several at once, as when headphones connect while charging
                 for (const k of ["device", "charging", "audio"])
                     demo(k);

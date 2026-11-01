@@ -143,6 +143,8 @@ Item {
 
     ListView {
         id: list
+
+        Momentum {}
         anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: attachmentChip.visible ? attachmentChip.top : composerBox.top; bottomMargin: 10 }
         clip: true
         spacing: 14
@@ -207,6 +209,8 @@ Item {
 
         Flickable {
             id: scroller
+
+            Momentum {}
             anchors { left: parent.left; right: sendButton.left; top: parent.top; bottom: parent.bottom; leftMargin: 14; rightMargin: 6; topMargin: 11; bottomMargin: 11 }
             contentHeight: composer.contentHeight
             clip: true
@@ -274,6 +278,8 @@ Item {
         z: 10
 
         Flickable {
+
+            Momentum {}
             anchors { fill: parent; margins: 5 }
             clip: true
             contentHeight: menuColumn.implicitHeight

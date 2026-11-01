@@ -44,6 +44,7 @@ Variants {
 
             // Shortcuts, flowed into columns
             Flickable {
+                Momentum {}
                 visible: dialog.tab === 0
                 anchors { top: tabs.bottom; topMargin: 18; left: parent.left; right: parent.right; bottom: parent.bottom }
                 contentHeight: flow.implicitHeight

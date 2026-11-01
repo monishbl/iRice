@@ -97,6 +97,8 @@ Variants {
 
                 Flickable {
                     id: flick
+
+                    Momentum {}
                     visible: nc.anything
                     onContentYChanged: if (nc.bare) nc.glassChanged() // cards' glass follows the scroll
                     // Clipped 8 px further out, so cards' close buttons

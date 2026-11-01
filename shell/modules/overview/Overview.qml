@@ -470,6 +470,7 @@ Variants {
                     MouseArea { anchors.fill: parent; anchors.margins: 20 }
                     ListView {
                         id: resultList
+                        Momentum {}
                         x: 28
                         y: 28
                         width: 560 - 16

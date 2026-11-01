@@ -19,9 +19,11 @@ Scope {
     property bool shown: false
     property bool armed: false // ignore the initial values at startup
 
-    readonly property real value: kind === "brightness" ? Brightness.value : kind === "mic" ? (Audio.micMuted ? 0 : 1) : (Audio.muted ? 0 : Audio.volume)
+    readonly property real value: kind === "brightness" ? Brightness.value : kind === "mic" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
     readonly property string icon: kind === "brightness" ? "sun" : kind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon
-    readonly property string label: kind === "brightness" ? "Display" : kind === "mic" ? (Audio.micMuted ? "Microphone off" : "Microphone on") : "Sound"
+    // (just after switching to another output or microphone: its name)
+    property string device: ""
+    readonly property string label: device || (kind === "brightness" ? "Display" : kind === "mic" ? (Audio.micMuted ? "Microphone off" : "Microphone on") : "Sound")
 
     Binding {
         target: Panels
@@ -29,9 +31,10 @@ Scope {
         value: root.shown
     }
 
-    function show(k) {
+    function show(k, dev) {
         if (!armed)
             return;
+        device = dev ?? "";
         // A fullscreen window on the focused display: the thin top bar
         if (Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false) {
             barKind = k;
@@ -40,19 +43,27 @@ Scope {
             return;
         }
         if (Config.options.island.enabled && Config.options.island.hud) {
-            Island.hud(k);
+            Island.hud(k, dev);
             return;
         }
         kind = k;
         shown = true;
+        hideTimer.interval = device ? 2500 : 1600;
         hideTimer.restart();
     }
 
+    Timer {
+        id: switchShow
+        property string kind: "volume"
+        interval: 700
+        onTriggered: root.show(kind, Audio.nameOf(kind === "mic" ? Audio.source : Audio.sink))
+    }
     Timer { interval: 2000; running: true; onTriggered: root.armed = true }
     Timer { id: hideTimer; interval: 1600; onTriggered: root.shown = false }
 
-    // Another output or microphone (headphones connecting) isn't a change of
-    // volume: its own level and mute arriving, just after, say nothing new
+    // Another output or microphone (headphones connecting): its name and
+    // level, once they've arrived (its level and mute arriving aren't changes
+    // of their own; with both switching, the output's is shown)
     property var sinkSeen: null
     property var sourceSeen: null
     property real switchedAt: 0
@@ -66,8 +77,18 @@ Scope {
     }
     Connections {
         target: Audio
-        function onSinkChanged() { root.switched(); }
-        function onSourceChanged() { root.switched(); }
+        function onSinkChanged() {
+            if (root.switched() && Audio.sink) {
+                switchShow.kind = "volume";
+                switchShow.restart();
+            }
+        }
+        function onSourceChanged() {
+            if (root.switched() && Audio.source && !(switchShow.running && switchShow.kind === "volume")) {
+                switchShow.kind = "mic";
+                switchShow.restart();
+            }
+        }
         function onVolumeChanged() { if (!root.switched()) root.show("volume"); }
         function onMutedChanged() { if (!root.switched()) root.show("volume"); }
         function onMicMutedChanged() { if (!root.switched()) root.show("mic"); }
@@ -132,12 +153,13 @@ Scope {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 5
                     Text {
+                        width: Math.min(implicitWidth, 216)
+                        elide: Text.ElideRight
                         text: root.label
                         color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                     }
                     Rectangle {
-                        visible: root.kind !== "mic"
                         width: 216
                         height: 6
                         radius: 3
@@ -161,7 +183,7 @@ Scope {
     property string barKind: "volume"
     property bool barShown: false
     Timer { id: barHide; interval: 1200; onTriggered: root.barShown = false }
-    readonly property real barValue: barKind === "brightness" ? Brightness.value : barKind === "mic" ? (Audio.micMuted ? 0 : 1) : (Audio.muted ? 0 : Audio.volume)
+    readonly property real barValue: barKind === "brightness" ? Brightness.value : barKind === "mic" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
     readonly property string barIcon: barKind === "brightness" ? "sun" : barKind === "mic" ? (Audio.micMuted ? "microphone-slash" : "microphone") : Audio.icon
     property bool barAlive: false
     onBarShownChanged: barShown ? (barAlive = true, barUnload.stop()) : barUnload.restart()

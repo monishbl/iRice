@@ -222,6 +222,7 @@ Platter {
     // agenda height must never push the footer outside the glass frame.
     Flickable {
         id: viewport
+        Momentum {}
         objectName: "calendarViewport"
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding; topMargin: root.padding + headRow.height + 8 }
         height: root.fitHeight ? Math.max(0, root.height - 2 * root.padding - headRow.height - 8) : column.implicitHeight

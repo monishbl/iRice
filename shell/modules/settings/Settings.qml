@@ -278,6 +278,7 @@ Scope {
                     contentHeight: list.implicitHeight + 16
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    Momentum {}
 
                     Column {
                         id: list
@@ -541,6 +542,7 @@ Scope {
                     contentHeight: page.implicitHeight + 64
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    Momentum {}
 
                     Column {
                         id: page

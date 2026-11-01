@@ -60,6 +60,7 @@ Variants {
                 // Kinds
                 ListView {
                     id: kinds
+                    Momentum {}
                     x: 12
                     y: 12
                     width: 200

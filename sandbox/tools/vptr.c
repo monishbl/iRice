@@ -3,7 +3,7 @@
 // output (default IRICE-TEST, the headless test screen).
 //
 //   vptr [-o OUTPUT] move X Y | click [left|right|middle] | down [btn] | up [btn]
-//        | scroll DY | glide X Y MS | sleep MS   (any number of commands in a row)
+//        | scroll DY | swipe DY MS | glide X Y MS | sleep MS   (any number of commands in a row)
 //
 // Built by sandbox/tools/build.sh inside the container; run via ./dev.sh pointer.
 #define _POSIX_C_SOURCE 200809L
@@ -148,6 +148,22 @@ int main(int argc, char **argv) {
             zwlr_virtual_pointer_v1_frame(ptr);
             wl_display_flush(dpy);
             i++;
+        } else if (!strcmp(c, "swipe") && i + 2 < argc) {
+            // A two-finger touchpad scroll of DY pixels over MS milliseconds
+            // (~120 Hz), then the fingers lift (axis stop)
+            double dy = atof(argv[++i]);
+            int ms = atoi(argv[++i]), steps = ms / 8 > 0 ? ms / 8 : 1;
+            for (int s = 0; s < steps; s++) {
+                zwlr_virtual_pointer_v1_axis_source(ptr, WL_POINTER_AXIS_SOURCE_FINGER);
+                zwlr_virtual_pointer_v1_axis(ptr, now_ms(), WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_double(dy / steps));
+                zwlr_virtual_pointer_v1_frame(ptr);
+                wl_display_flush(dpy);
+                sleep_ms(8);
+            }
+            zwlr_virtual_pointer_v1_axis_source(ptr, WL_POINTER_AXIS_SOURCE_FINGER);
+            zwlr_virtual_pointer_v1_axis_stop(ptr, now_ms(), WL_POINTER_AXIS_VERTICAL_SCROLL);
+            zwlr_virtual_pointer_v1_frame(ptr);
+            wl_display_flush(dpy);
         } else if (!strcmp(c, "sleep") && i + 1 < argc) {
             wl_display_flush(dpy);
             sleep_ms(atoi(argv[++i]));

@@ -353,6 +353,7 @@ Scope {
                         showDirsFirst: true
                     }
                     ListView {
+                        Momentum {}
                         anchors.fill: parent
                         visible: win.kind === "folder" && folder.count > 0
                         model: folder

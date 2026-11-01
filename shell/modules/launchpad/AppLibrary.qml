@@ -180,6 +180,8 @@ Variants {
 
             GridView {
                 id: grid
+
+                Momentum {}
                 anchors { top: header.bottom; topMargin: 24; left: parent.left; right: parent.right; bottom: parent.bottom }
                 readonly property int columns: Math.max(1, Math.floor(width / (dialog.showingApps ? 120 : 210)))
                 cellWidth: Math.floor(width / columns)

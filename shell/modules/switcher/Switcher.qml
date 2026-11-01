@@ -313,6 +313,8 @@ Scope {
 
                 GridView {
                     id: grid
+
+                    Momentum {}
                     x: win.pad
                     y: win.pad
                     width: win.perRow * cellWidth

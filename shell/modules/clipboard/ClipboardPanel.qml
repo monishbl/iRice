@@ -197,6 +197,7 @@ Variants {
             // All and Text: a list, a heading wherever the section changes
             ListView {
                 id: list
+                Momentum {}
                 visible: !dialog.grid
                 anchors { top: search.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: footer.top; bottomMargin: 8 }
                 clip: true
@@ -302,6 +303,7 @@ Variants {
             // Images: a two-column grid per section
             Flickable {
                 id: gridView
+                Momentum {}
                 visible: dialog.grid
                 anchors { top: search.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: footer.top; bottomMargin: 8 }
                 clip: true

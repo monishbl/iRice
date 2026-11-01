@@ -187,6 +187,8 @@ Variants {
 
                     ListView {
                         id: list
+
+                        Momentum {}
                         x: win.m + 8
                         y: win.m + 8
                         width: win.panelWidth - 16
@@ -265,6 +267,8 @@ Variants {
                         }
 
                         Flickable {
+
+                            Momentum {}
                             width: parent.width
                             height: Math.min(answerText.implicitHeight, 360)
                             contentHeight: answerText.implicitHeight

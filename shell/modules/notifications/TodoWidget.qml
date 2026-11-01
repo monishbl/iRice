@@ -78,6 +78,7 @@ Platter {
 
         // (fitHeight: scrolls in what's left)
         Flickable {
+            Momentum {}
             visible: root.todos.length > 0
             width: parent.width
             height: root.fitHeight ? Math.max(30, Math.min(contentHeight, root.height - 2 * root.padding - addRow.height - column.spacing - (undoRow.visible ? undoRow.height + column.spacing : 0))) : contentHeight

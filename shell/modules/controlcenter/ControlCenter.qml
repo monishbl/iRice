@@ -242,6 +242,7 @@ Variants {
                         font { family: Theme.font.family; pixelSize: Theme.font.caption }
                     }
                     Flickable {
+                        Momentum {}
                         width: parent.width
                         height: Math.min(contentHeight, 440)
                         contentHeight: gallery.implicitHeight

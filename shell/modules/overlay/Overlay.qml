@@ -300,6 +300,7 @@ Scope {
                     readonly property var streams: Pipewire.nodes.values.filter(n => n.isSink && n.isStream && n.audio)
                     PwObjectTracker { objects: mixerW.streams }
                     Flickable {
+                        Momentum {}
                         anchors.fill: parent
                         contentHeight: mixCol.implicitHeight
                         clip: true

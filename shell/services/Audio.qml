@@ -12,6 +12,11 @@ Singleton {
     readonly property real volume: sink?.audio?.volume ?? 0
     readonly property bool muted: sink?.audio?.muted ?? false
     readonly property bool micMuted: source?.audio?.muted ?? false
+    readonly property real micVolume: source?.audio?.volume ?? 0
+    // What a device is called ("realme TechLife Buds T100", "Built-in Audio Analog Stereo")
+    function nameOf(node) {
+        return node?.nickname || node?.description || node?.name || "";
+    }
     readonly property string icon: muted || volume === 0 ? "speaker-x" : volume < 0.34 ? "speaker-none" : volume < 0.67 ? "speaker-low" : "speaker-high"
 
     function setVolume(v) {

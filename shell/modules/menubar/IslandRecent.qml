@@ -121,6 +121,7 @@ Column {
     // The lines; more than fit scroll
     Flickable {
         id: flick
+        Momentum {}
         visible: root.listShown
         width: root.width
         height: Math.max(0, Math.min(lines.implicitHeight, root.maxHeight - 28))

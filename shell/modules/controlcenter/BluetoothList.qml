@@ -170,6 +170,7 @@ Column {
         height: Math.min(listCol.implicitHeight, root.maxListHeight)
         Flickable {
             id: listFlick
+            Momentum {}
             anchors.fill: parent
             contentHeight: listCol.implicitHeight
             interactive: contentHeight > height + 1

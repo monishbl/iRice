@@ -172,8 +172,20 @@ Item {
             size: 18
             color: root.ink
         }
+        // (just after switching to another output or microphone: its name)
+        Text {
+            id: hudName
+            visible: !!root.event?.device
+            anchors { left: hudIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
+            width: visible ? Math.min(Math.ceil(nameWidth.advanceWidth), parent.width * 0.45) : 0
+            elide: Text.ElideRight
+            text: root.event?.device ?? ""
+            color: root.ink
+            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+            TextMetrics { id: nameWidth; font: hudName.font; text: hudName.text }
+        }
         Rectangle {
-            anchors { left: hudIcon.right; leftMargin: 12; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+            anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
             height: 8
             radius: 4
             color: Qt.rgba(1, 1, 1, 0.16)

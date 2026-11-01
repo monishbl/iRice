@@ -433,6 +433,7 @@ Column {
                 color: Theme.dark ? "#0E0E10" : "#18181B"
                 Flickable {
                     id: logView
+                    Momentum {}
                     anchors { fill: parent; margins: 10 }
                     clip: true
                     contentHeight: logText.implicitHeight

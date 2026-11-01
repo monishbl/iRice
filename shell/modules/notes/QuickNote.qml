@@ -87,6 +87,7 @@ Variants {
                     border.color: Theme.accent
                     Flickable {
                         id: flick
+                        Momentum {}
                         anchors.fill: parent
                         anchors.margins: 10
                         contentHeight: editor.height
