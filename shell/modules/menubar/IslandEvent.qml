@@ -39,7 +39,9 @@ Item {
     // More buttons than the two beside the title (a notification's own,
     // added to the alert): further rows under it
     readonly property var more: event?.more ?? []
-    implicitHeight: isHud ? 34 : isRinging ? callCard.implicitHeight : isCard ? cardLayout.implicitHeight : 52 + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
+    // (a device's picture is shown larger than an icon)
+    readonly property int rowHeight: event?.picture && !event?.art ? 60 : 52
+    implicitHeight: isHud ? 34 : isRinging ? callCard.implicitHeight : isCard ? cardLayout.implicitHeight : rowHeight + (more.length > 0 ? moreRow.implicitHeight + 8 : 0)
 
     // Appear after `delay`, sliding down into place; then the text staggers.
     // A new event (a different uid) replays it; an update in place doesn't.
@@ -238,10 +240,11 @@ Item {
     Item {
         visible: !root.isHud && !root.isCard && !root.isRinging
         anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: 52
+        height: root.rowHeight
 
         IslandGlyph {
             id: glyph
+            size: root.rowHeight - 8
             anchors.verticalCenter: parent.verticalCenter
             event: !root.isHud && !root.isCard && !root.isRinging ? root.event : null
         }

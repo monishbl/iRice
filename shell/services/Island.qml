@@ -695,12 +695,12 @@ Singleton {
             }
             return out.join("\n");
         }
-        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected|output|burst>
+        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect|connected|output|pictures|burst>
         function demo(kind: string): void {
             const was = started.elapsed;
             started.elapsed = true;
             const d = {
-                device: { kind: "device", icon: "headphones", title: "AirPods Pro", subtitle: "Connected", color: Theme.accents.blue, battery: 0.85 },
+                device: { kind: "device", icon: "headphones", picture: Devices.pictureFor("audio-headset", "AirPods Pro"), title: "AirPods Pro", subtitle: "Connected", color: Theme.accents.blue, battery: 0.85 },
                 usb: { kind: "usb", icon: "hard-drive", title: "SanDisk Ultra", subtitle: "Drive connected", color: Theme.accents.orange, action: "Open" },
                 display: { kind: "display", icon: "monitor", title: "Dell U2723QE", subtitle: "Display connected · DP-1", color: Theme.accents.green },
                 audio: { kind: "audio", icon: "headphones", title: "Headphones", subtitle: "Built-in Audio", color: Theme.accents.purple },
@@ -714,12 +714,19 @@ Singleton {
                 download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} },
                 // (Fast Pair's card: Connect turns it into "Connecting…", and
                 // `demo connected` into the Bluetooth alert, in the same card)
-                connect: { kind: "custom", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
-                    onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
-                connected: { kind: "device", key: "bt:demo", icon: "headphones", title: "Buds", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
+                connect: { kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
+                    onAction: () => root.post({ kind: "custom", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 20000) },
+                connected: { kind: "device", key: "bt:demo", icon: "headphones", picture: Devices.pictureFor("audio-headset", "Buds"), title: "Buds", subtitle: "Connected", color: Theme.accents.blue, battery: 0.8 }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up
             const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" || kind === "connect" ? root.longMs : 5000;
+            if (kind === "pictures") { // every device drawing, one after another
+                const names = [["audio-headset", "WH-CH720N"], ["audio-card", "Speaker"], ["", "Samsung Soundbar"], ["input-gaming", "Wireless Controller"], ["input-keyboard", "Keyboard"], ["input-mouse", "MX Master"], ["phone", "Pixel"], ["", "Galaxy Watch"], ["computer", "Laptop"], ["", "Tag"]];
+                for (const [i, n] of names)
+                    root.post({ kind: "device", icon: "bluetooth", picture: Devices.pictureFor(i, n), title: n, subtitle: "Connected", color: Theme.accents.blue }, 8000);
+                started.elapsed = was;
+                return;
+            }
             if (kind === "output") { // the volume row after switching to headphones
                 root.hud("volume", "realme TechLife Buds T100");
                 started.elapsed = was;

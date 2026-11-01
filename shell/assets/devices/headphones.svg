@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<defs>
+  <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#ECECEF"/><stop offset="1" stop-color="#C9C9D0"/></linearGradient>
+  <linearGradient id="side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D4D4DA"/><stop offset="0.5" stop-color="#FAFAFA"/><stop offset="1" stop-color="#C4C4CB"/></linearGradient>
+  <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A4A52"/><stop offset="1" stop-color="#242428"/></linearGradient>
+  <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34343B"/><stop offset="0.5" stop-color="#1D1D21"/><stop offset="1" stop-color="#121214"/></linearGradient>
+  <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000000" stop-opacity="0.32"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
+</defs>
+<ellipse cx="64" cy="112" rx="46" ry="5" fill="url(#shadow)"/>
+<path d="M31 74 C29 30 99 30 97 74" fill="none" stroke="#B4B4BB" stroke-width="11" stroke-linecap="round"/>
+<path d="M31 74 C29 30 99 30 97 74" fill="none" stroke="url(#body)" stroke-width="9" stroke-linecap="round"/>
+<path d="M37 60 C40 40 88 40 91 60" fill="none" stroke="url(#dark)" stroke-width="5" stroke-linecap="round"/>
+<rect x="27" y="58" width="9" height="16" rx="3" fill="url(#side)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="92" y="58" width="9" height="16" rx="3" fill="url(#side)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="16" y="66" width="28" height="42" rx="14" fill="url(#body)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="36" y="70" width="12" height="34" rx="6" fill="url(#dark)"/>
+<rect x="84" y="66" width="28" height="42" rx="14" fill="url(#body)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="80" y="70" width="12" height="34" rx="6" fill="url(#dark)"/>
+<rect x="20" y="70" width="6" height="22" rx="3" fill="#FFFFFF" opacity="0.75"/>
+<rect x="88" y="70" width="6" height="22" rx="3" fill="#FFFFFF" opacity="0.75"/>
+</svg>

@@ -22,6 +22,8 @@ Item {
     readonly property string kind: event?.kind ?? ""
     readonly property color tint: event?.color ?? Theme.accent
     readonly property bool hasArt: !!event?.art
+    // A drawing of the device (Devices.pictureFor), in place of the disc
+    readonly property bool hasPicture: !hasArt && !!event?.picture
     readonly property bool ringed: (kind === "charging" || kind === "battery" || kind === "timer" || kind === "temperature") && event?.value !== undefined
     property int size: 44
 
@@ -94,7 +96,7 @@ Item {
             id: disc
             anchors.fill: parent
             radius: root.hasArt ? 12 : width / 2
-            color: root.hasArt ? Qt.rgba(1, 1, 1, 0.1) : Qt.alpha(root.tint, 0.24)
+            color: root.hasArt ? Qt.rgba(1, 1, 1, 0.1) : root.hasPicture ? "transparent" : Qt.alpha(root.tint, 0.24)
             clip: true
             Image {
                 anchors.fill: parent
@@ -119,11 +121,19 @@ Item {
                 }
             }
         }
+        Image {
+            anchors.fill: parent
+            visible: root.hasPicture
+            source: root.event?.picture ?? ""
+            fillMode: Image.PreserveAspectFit
+            sourceSize: Qt.size(root.size * 2, root.size * 2)
+            smooth: true
+        }
         Icon {
             id: glyph
             anchors.centerIn: parent
             anchors.verticalCenterOffset: glyphDrop.y
-            visible: !root.hasArt
+            visible: !root.hasArt && !root.hasPicture
             name: root.wifiStep >= 0 ? ["wifi-none", "wifi-low", "wifi-medium", "wifi-high"][root.wifiStep] : (root.event?.icon ?? "")
             fill: true
             size: Math.round(root.size * (root.ringed ? 0.42 : 0.48))

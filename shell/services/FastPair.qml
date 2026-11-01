@@ -54,7 +54,7 @@ Singleton {
                 // (`known`: paired with this computer before, from another
                 // address: they're connected, not paired again)
                 Island.post({
-                    kind: "custom", key: "bt:" + id, icon: "headphones", title: d.known?.name || d.name || "Earbuds nearby",
+                    kind: "custom", key: "bt:" + id, icon: "headphones", picture: root.picture(d), title: d.known?.name || d.name || "Earbuds nearby",
                     subtitle: d.known ? "Paired with this computer, not connected" : "Ready to pair with this computer",
                     color: Theme.accent, action: "Connect", onAction: () => root.connect(d)
                 }, 15000);
@@ -64,7 +64,7 @@ Singleton {
                 // advert can't say whose they are (that needs Fast Pair's
                 // account keys, which come with Google's pairing)
                 if (now - (batteryShown[d.address] ?? 0) > 60000)
-                    Island.post({ kind: "custom", icon: "headphones", title: d.name || "Earbuds", subtitle: batteryText(d.battery), color: Theme.accent }, 6000);
+                    Island.post({ kind: "custom", icon: "headphones", picture: root.picture(d), title: d.name || "Earbuds", subtitle: batteryText(d.battery), color: Theme.accent }, 6000);
                 batteryShown[d.address] = now;
             }
         }
@@ -72,6 +72,10 @@ Singleton {
     readonly property bool ownAudioConnected: (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && /audio|headset|headphone|earbud/i.test(String(b.icon ?? "") + " " + String(b.deviceName ?? b.name ?? "")))
     function paired(d) {
         return (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && (b.address === d.known?.address || (b.name && b.name === d.name)));
+    }
+    // (earbuds, unless the name says otherwise: most Fast Pair devices are)
+    function picture(d) {
+        return Devices.pictureFor("audio-headset", d.known?.name || d.name || "", "earbuds");
     }
     function batteryText(b) {
         const part = (label, x) => x ? label + " " + x.level + "%" + (x.charging ? " ⚡" : "") : "";
@@ -100,7 +104,7 @@ Singleton {
         connectingDevice = d;
         connector.command = ["python3", "-I", script].concat(args);
         connector.running = true;
-        connectingUid = Island.post({ kind: "custom", key: "bt:" + (d.known?.address || d.address), icon: "headphones", title: connecting, subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 120000) || 0;
+        connectingUid = Island.post({ kind: "custom", key: "bt:" + (d.known?.address || d.address), icon: "headphones", picture: picture(d), title: connecting, subtitle: "Connecting… keep the case open nearby", color: Theme.accent }, 120000) || 0;
     }
     Process {
         id: connector
@@ -119,9 +123,9 @@ Singleton {
                 if (r.ok) {
                     // (unless the Bluetooth alert has said it, with the battery)
                     if (Island.byUid[card]?.kind !== "device")
-                        Island.post({ kind: "device", key: key, icon: "headphones", title: root.connecting, subtitle: "Connected", color: Theme.accents.blue }, 3500);
+                        Island.post({ kind: "device", key: key, icon: "headphones", picture: d ? root.picture(d) : "", title: root.connecting, subtitle: "Connected", color: Theme.accents.blue }, 3500);
                 } else {
-                    Island.post(Object.assign({ kind: "custom", key: key, icon: "headphones", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger },
+                    Island.post(Object.assign({ kind: "custom", key: key, icon: "headphones", picture: d ? root.picture(d) : "", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger },
                         r.known && d ? { action: "Pair again", onAction: () => root.repair(d, r.known) } : {}), r.known ? 15000 : 6000);
                 }
                 root.connecting = "";

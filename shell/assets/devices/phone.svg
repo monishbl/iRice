@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<defs>
+  <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#ECECEF"/><stop offset="1" stop-color="#C9C9D0"/></linearGradient>
+  <linearGradient id="side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D4D4DA"/><stop offset="0.5" stop-color="#FAFAFA"/><stop offset="1" stop-color="#C4C4CB"/></linearGradient>
+  <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A4A52"/><stop offset="1" stop-color="#242428"/></linearGradient>
+  <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34343B"/><stop offset="0.5" stop-color="#1D1D21"/><stop offset="1" stop-color="#121214"/></linearGradient>
+  <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#000000" stop-opacity="0.32"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
+</defs>
+<ellipse cx="64" cy="116" rx="28" ry="4" fill="url(#shadow)"/>
+<rect x="38" y="10" width="52" height="102" rx="13" fill="url(#side)" stroke="#8E8E96" stroke-opacity="0.55" stroke-width="1"/>
+<rect x="41" y="13" width="46" height="96" rx="10.5" fill="url(#screen)"/>
+<rect x="56" y="18" width="16" height="5" rx="2.5" fill="#000000"/>
+<path d="M44 16 L84 16 L44 72 Z" fill="#FFFFFF" opacity="0.05"/>
+<rect x="36.5" y="34" width="2" height="10" rx="1" fill="#B4B4BB"/>
+<rect x="89.5" y="40" width="2" height="16" rx="1" fill="#B4B4BB"/>
+</svg>

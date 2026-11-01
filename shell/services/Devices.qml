@@ -32,6 +32,30 @@ Singleton {
             : i.includes("computer") ? "desktop"
             : "bluetooth";
     }
+    // A drawing of the device (assets/devices) for its island card, from
+    // the kind Bluetooth reports and its name: earbuds and over-ear
+    // headphones report the same kind, so the name tells them apart, else
+    // `audio` (Fast Pair's are mostly earbuds)
+    function pictureFor(icon, name, audio) {
+        const i = String(icon ?? "").toLowerCase(), n = String(name ?? "").toLowerCase();
+        const kind = /soundbar|sound bar/.test(n) ? "soundbar"
+            : /buds|pods|earbud|earphone|\btws\b|\bwf-|\bear ?\(|liberty|\bfreeclip/.test(n) ? "earbuds"
+            : /headphone|\bwh-|\bmax\b|\bqc ?\d/.test(n) ? "headphones"
+            : i.includes("headset") || i.includes("headphone") ? (audio || "headphones")
+            : i.includes("audio") || i.includes("speaker") || /speaker/.test(n) ? "speaker"
+            : i.includes("mouse") || /mouse|\bmx (master|anywhere)/.test(n) ? "mouse"
+            : i.includes("keyboard") || /keyboard/.test(n) ? "keyboard"
+            : i.includes("gaming") || i.includes("joystick") || /controller|gamepad|dualsense|dualshock|xbox/.test(n) ? "controller"
+            : i.includes("watch") || /watch/.test(n) ? "watch"
+            : i.includes("phone") ? "phone"
+            : i.includes("computer") ? "laptop"
+            : "bluetooth";
+        return Quickshell.shellDir + "/assets/devices/" + kind + ".svg";
+    }
+    function pictureOf(d) {
+        return pictureFor(d.icon, d.name || d.deviceName || "");
+    }
+
     property var btState: ({}) // address -> connected
     property real lastBtAudio: 0 // when a Bluetooth audio device connected (the output switch that follows stays quiet)
     function scanBluetooth() {
@@ -67,6 +91,7 @@ Singleton {
             kind: "device",
             key: "bt:" + d.address,
             icon: icon,
+            picture: pictureOf(d),
             title: d.name || d.deviceName || d.address,
             subtitle: d.connected ? "Connected" : "Disconnected",
             color: d.connected ? Theme.accents.blue : Qt.rgba(1, 1, 1, 0.55)
