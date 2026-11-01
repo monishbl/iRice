@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEV="$ROOT/dev.sh"
 SECS="${1:-8}"
 shift || true
-PHASES=("${@:-idle controlCenter overview missionControl launchpad island hot music}")
+PHASES=("${@:-idle controlCenter overview missionControl launchpad island hot music load}")
 read -ra PHASES <<<"${PHASES[*]}"
 HZ=$(getconf CLK_TCK)
 
@@ -42,12 +42,20 @@ start_phase() {
             DBUS_SESSION_BUS_ADDRESS="$(cat /tmp/irice-rt/session-bus)" python3 "$ROOT/sandbox/tools/fakeplayer.py" >/dev/null 2>&1 &
             FAKE=$!
             ;;
+        # an app redrawing every frame under the bar, the island and the dock
+        # (a video, a scrolling page): what the glass costs under load
+        load)
+            "$DEV" hyprctl dispatch 'hl.dsp.focus({monitor = "IRICE-TEST"})' >/dev/null 2>&1
+            "$DEV" run python3 "$ROOT/sandbox/tools/redraw.py" >/dev/null 2>&1 &
+            sleep 2.5
+            ;;
     esac
 }
 end_phase() {
     case "$1" in
         hot) ipc island hot false ;;
         music) kill "${FAKE:-}" 2>/dev/null ;;
+        load) P=$(pgrep -f "[p]ython3 $ROOT/sandbox/tools/redraw.py" | head -1); [[ -n "$P" ]] && kill "$P" ;;
         idle | island) ;;
         *) ipc panels close ;;
     esac
