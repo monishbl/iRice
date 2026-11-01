@@ -16,7 +16,7 @@ Singleton {
     readonly property string script: Quickshell.shellDir + "/assets/scripts/fastpair.py"
     readonly property bool wanted: Config.options.fastPair.enabled && (Bluetooth.defaultAdapter?.enabled ?? false)
 
-    property var devices: [] // [{ address, name, model, pairing, rssi, battery }]
+    property var devices: [] // [{ address, name, model, pairing, rssi, battery, known: { address, name, connected } }]
     KeptProcess {
         id: watcher
         wanted: root.wanted
@@ -48,8 +48,11 @@ Singleton {
         for (const d of devices) {
             if (d.pairing && d.rssi > -70 && now - (offered[d.address] ?? 0) > 600000 && !paired(d)) {
                 offered[d.address] = now;
+                // (`known`: paired with this computer before, from another
+                // address: they're connected, not paired again)
                 Island.post({
-                    kind: "custom", icon: "headphones", title: d.name || "Earbuds nearby", subtitle: "Ready to pair with this computer",
+                    kind: "custom", icon: "headphones", title: d.known?.name || d.name || "Earbuds nearby",
+                    subtitle: d.known ? "Paired with this computer, not connected" : "Ready to pair with this computer",
                     color: Theme.accent, action: "Connect", onAction: () => root.connect(d)
                 }, 15000);
             } else if (d.battery && d.showUi !== false && d.rssi > -60 && ownAudioConnected) {
@@ -65,22 +68,34 @@ Singleton {
     }
     readonly property bool ownAudioConnected: (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && /audio|headset|headphone|earbud/i.test(String(b.icon ?? "") + " " + String(b.deviceName ?? b.name ?? "")))
     function paired(d) {
-        return (Bluetooth.devices?.values ?? []).some(b => b.paired && b.name && b.name === d.name);
+        return d.known?.connected || (Bluetooth.devices?.values ?? []).some(b => b.paired && b.connected && b.name && (b.name === d.name || b.name === d.known?.name));
     }
     function batteryText(b) {
         const part = (label, x) => x ? label + " " + x.level + "%" + (x.charging ? " ⚡" : "") : "";
         return [part("L", b.left), part("R", b.right), part("Case", b.case)].filter(x => x).join(" · ");
     }
 
-    // Pair, trust, connect (one at a time)
+    // Pair, trust, connect (one at a time). "Connecting…" stays up until it's
+    // done (pairing can take a minute): then the result takes its place
     property string connecting: ""
+    property int connectingUid: 0
+    property var connectingDevice: null
     function connect(d) {
+        run(d, ["connect", d.address, d.known?.name || d.name || ""]);
+    }
+    // Paired before, but they won't take the old pairing (reset earbuds):
+    // forget it and pair afresh
+    function repair(d, known) {
+        run(d, ["repair", d.address, known, d.known?.name || d.name || ""]);
+    }
+    function run(d, args) {
         if (connector.running)
             return;
-        connecting = d.name || "the earbuds";
-        connector.command = ["python3", "-I", script, "connect", d.address, d.name || ""];
+        connecting = d.known?.name || d.name || "the earbuds";
+        connectingDevice = d;
+        connector.command = ["python3", "-I", script].concat(args);
         connector.running = true;
-        Island.post({ kind: "custom", icon: "headphones", title: "Connecting " + connecting + "…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 8000);
+        connectingUid = Island.post({ kind: "custom", icon: "headphones", title: "Connecting " + connecting + "…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 120000) || 0;
     }
     Process {
         id: connector
@@ -90,9 +105,15 @@ Singleton {
                 try {
                     r = JSON.parse(text);
                 } catch (e) {}
+                if (root.connectingUid)
+                    Island.remove(root.connectingUid);
+                const d = root.connectingDevice;
                 Island.post(r.ok ? { kind: "custom", icon: "headphones", title: root.connecting + " connected", subtitle: "Sound plays there now", color: Theme.accents.green }
-                    : { kind: "custom", icon: "headphones", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger }, 6000);
+                    : Object.assign({ kind: "custom", icon: "headphones", title: "Couldn't connect " + root.connecting, subtitle: r.error || "Try again from Bluetooth settings.", color: Theme.color.danger },
+                        r.known && d ? { action: "Pair again", onAction: () => root.repair(d, r.known) } : {}), r.known ? 15000 : 6000);
                 root.connecting = "";
+                root.connectingUid = 0;
+                root.connectingDevice = null;
             }
         }
     }

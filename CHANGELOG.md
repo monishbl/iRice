@@ -2,6 +2,11 @@
 
 ## Island fixes, captions over the video, tucked-away app icons · 2026-11-01
 
+- **Buttons on island alerts:**
+  - **A button's own follow-up stays on screen.** Pressing Connect on earbuds used to close every alert, including the "Connecting…" it had just shown, so the island fell back to its usual view until "Couldn't connect" appeared. Alerts a button posts now stay up. In the card under an open island, the button now closes the alert it belongs to rather than the newest one.
+- **Fast Pair connects earbuds that are already paired.** Earbuds in pairing mode advertise from a nameless address of their own, so ones paired before (the realme Buds T100 here) weren't recognised and the pairing failed. They're now matched by the company the advert names, or by name or address, and simply connected. The card says "Paired with this computer, not connected", and nothing is offered when they're connected already.
+  - **"Connecting…" stays until it's done** (pairing can take a minute), then the result replaces it.
+  - **If earbuds that were reset won't take the old pairing, the card offers Pair again,** which forgets the old pairing and pairs them afresh.
 - **Leaks and stray processes, found by checking a running session:**
   - **Clipboard pictures no longer pile up in memory.** Previews of copied images were kept in RAM (62 MB after a few days here) even after the entries left the clipboard history. They're now removed with their entries, and with Remove and Clear.
   - **No leftover process after the shell restarts.** Each restart left one finished-but-not-collected process behind.

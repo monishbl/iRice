@@ -20,7 +20,14 @@ Item {
     readonly property bool isHud: kind === "hud"
     readonly property bool isRinging: kind === "ringing"
     property bool unseen: false // nobody can see the island (its animations hold)
-    signal acted
+    // One of its buttons ran (`uid`: this alert's). Alerts the button itself
+    // posted ("Connecting…") have uids from `mark` on: they stay up.
+    signal acted(int uid, int mark)
+    function act(f) {
+        const uid = event?.uid ?? 0, mark = Island.nextUid;
+        f?.();
+        acted(uid, mark);
+    }
     signal dismissRequested // swiped up, the close button, or Esc (IslandView removes it)
     // A wheel or two-finger swipe up over it dismisses it too (off while the
     // alert list scrolls instead)
@@ -209,8 +216,8 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        parent.modelData.act?.();
-                        root.acted();
+                        const m = parent.modelData;
+                        root.act(() => m.act?.());
                     }
                 }
             }
@@ -313,8 +320,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        root.event?.onAction2?.();
-                        root.acted();
+                        root.act(root.event?.onAction2);
                     }
                 }
             }
@@ -340,8 +346,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        root.event?.onAction?.();
-                        root.acted();
+                        root.act(root.event?.onAction);
                     }
                 }
             }
@@ -504,8 +509,8 @@ Item {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        parent.modelData.invoke?.();
-                                        root.acted();
+                                        const m = parent.modelData;
+                                        root.act(() => m.invoke?.());
                                     }
                                 }
                             }
@@ -520,8 +525,7 @@ Item {
                 anchors.fill: parent
                 cursorShape: root.event?.onAction ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
-                    root.event?.onAction?.();
-                    root.acted();
+                    root.act(root.event?.onAction);
                 }
             }
         }

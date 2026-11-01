@@ -269,11 +269,14 @@ Singleton {
             newestUid = alerts.get(alerts.count - 1).uid;
     }
     // Close everything (an alert's action ran, or the island was clicked),
-    // except a ringing call (sticky: only Answer or Decline end it)
-    function dismiss() {
-        for (let i = alerts.count - 1; i >= 0; i--)
-            if (!byUid[alerts.get(i).uid]?.sticky)
+    // except a ringing call (sticky: only Answer or Decline end it) and,
+    // given `before`, alerts from that uid on (the action's own "Connecting…")
+    function dismiss(before) {
+        for (let i = alerts.count - 1; i >= 0; i--) {
+            const u = alerts.get(i).uid;
+            if (!byUid[u]?.sticky && !(before && u >= before))
                 removeAt(i);
+        }
     }
     // ── History ─────────────────────────────────────────────────────────
     // Every alert that isn't a notification (those are in Notification Center
@@ -663,7 +666,7 @@ Singleton {
             }
             return out.join("\n");
         }
-        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music>
+        // qs ipc call island demo <device|usb|display|audio|charging|battery|notification|music|download|connect>
         function demo(kind: string): void {
             const was = started.elapsed;
             started.elapsed = true;
@@ -679,10 +682,13 @@ Singleton {
                 temperature: { kind: "temperature", icon: "thermometer-hot", title: "Running hot", subtitle: "CPU 94 °C · close heavy apps or let it cool", value: 0.9, color: Theme.accents.red },
                 notification: { kind: "notification", headline: "Here, I found the door code in your messages from Mac.", card: { name: "Mac Tyler", time: "Thursday", text: "There's a spare key on the hook by the coat rack! The front door code is #1997", initials: "MT", appIcon: "org.gnome.Polari" } },
                 music: { kind: "music", icon: "music-notes", title: "Midnight City", subtitle: "M83", color: Theme.accent, art: "" },
-                download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} }
+                download: { kind: "transfer", icon: "download-simple", title: "Downloaded report.pdf", subtitle: "In ~/Downloads", color: Theme.accents.green, action: "Open", onAction: () => {}, action2: "Show in Folder", onAction2: () => {} },
+                // (a button that posts its own "Connecting…", as Fast Pair's does)
+                connect: { kind: "custom", icon: "headphones", title: "Buds nearby", subtitle: "Paired with this computer, not connected", color: Theme.accent, action: "Connect",
+                    onAction: () => root.post({ kind: "custom", icon: "headphones", title: "Connecting Buds…", subtitle: "Keep the case open near the computer", color: Theme.accent }, 20000) }
             }[kind] ?? { kind: "custom", icon: "bell", title: "Hello", subtitle: "A custom alert", color: Theme.accent };
             // As long as the real ones stay up
-            const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" ? root.longMs : 5000;
+            const ms = kind === "battery" || kind === "temperature" ? root.untilOver : kind === "usb" || kind === "download" || kind === "connect" ? root.longMs : 5000;
             if (kind === "burst") { // several at once, as when headphones connect while charging
                 for (const k of ["device", "charging", "audio"])
                     demo(k);

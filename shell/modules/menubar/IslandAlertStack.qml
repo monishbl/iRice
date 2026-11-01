@@ -66,7 +66,7 @@ Scope {
                 // (slides down 8px as it appears)
                 y: root.top + 10 - (1 - win.shown) * 8
                 width: 392
-                height: front.height + 7 * Math.min(2, root.newest.length - 1)
+                height: front.height + 7 * Math.max(0, Math.min(2, root.newest.length - 1))
                 opacity: win.shown
                 onYChanged: glass.updatePosition()
                 onHeightChanged: glass.updatePosition()
@@ -75,7 +75,7 @@ Scope {
                 // rounded lower edges, 7px each (the front card is partly
                 // see-through, so they mustn't reach behind it)
                 Repeater {
-                    model: Math.min(2, root.newest.length - 1)
+                    model: Math.max(0, Math.min(2, root.newest.length - 1))
                     Item {
                         required property int index
                         readonly property int depth: index + 1
@@ -128,7 +128,7 @@ Scope {
                         width: parent.width - 36
                         event: Island.byUid[root.newest[0]] ?? null
                         unseen: root.unseen
-                        onActed: Island.remove(root.newest[0])
+                        onActed: uid => Island.remove(uid)
                         onDismissRequested: Island.remove(root.newest[0])
                     }
                     // How many are waiting behind it

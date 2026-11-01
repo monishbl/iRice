@@ -109,6 +109,42 @@ class ClassicTwin(unittest.TestCase):
         self.assertIsNone(fp.pick_twin(two, "", "98:34:8C:03:82:DC", fallback=True))  # (which? don't guess)
 
 
+class AlreadyPaired(unittest.TestCase):
+    """The realme Buds T100 in pairing mode: a nameless advert from an
+    address of its own that names realme's company ID; the buds paired
+    before are 98:34:8C:78:20:94 (as seen on 1 Nov)."""
+    BASE = "-0000-1000-8000-00805f9b34fb"
+    ADVERT = {"Address": "04:29:8C:03:82:DC", "Alias": "04-29-8C-03-82-DC", "Paired": False,
+              "UUIDs": ["000005d6" + BASE, "0000fe2c" + BASE]}
+    BUDS = {"Address": "98:34:8C:78:20:94", "Alias": "realme TechLife Buds T100", "Paired": True,
+            "Modalias": "bluetooth:v05D6p000Ad0240", "UUIDs": ["0000110b" + BASE]}
+    SONY = {"Address": "A8:E6:E8:0B:C3:55", "Alias": "WH-CH720N", "Paired": True,
+            "Modalias": "usb:v054Cp0EAFd0114", "UUIDs": ["0000110b" + BASE, "0000fe2c" + BASE]}
+
+    def devices(self, *extra):
+        return [("/d/advert", self.ADVERT), ("/d/buds", self.BUDS), ("/d/sony", self.SONY)] + list(extra)
+
+    def test_by_the_company_it_names(self):
+        self.assertEqual(fp.advert_vendors(self.ADVERT), {0x05D6})
+        self.assertEqual(fp.device_vendor(self.BUDS), 0x05D6)
+        self.assertIsNone(fp.device_vendor(self.SONY))  # (a USB vendor ID, another numbering)
+        self.assertEqual(fp.pick_known(self.devices(), self.ADVERT), "/d/buds")
+
+    def test_two_of_that_company_is_no_answer(self):
+        other = dict(self.BUDS, Address="11:22:33:44:55:66", Alias="realme Buds Air")
+        self.assertIsNone(fp.pick_known(self.devices(("/d/other", other)), self.ADVERT))
+
+    def test_the_advert_itself_paired(self):
+        self.assertEqual(fp.pick_known(self.devices(), self.SONY), "/d/sony")
+
+    def test_by_the_front_of_the_address(self):
+        advert = dict(self.ADVERT, Address="98:34:8C:03:82:DC", UUIDs=["0000fe2c" + self.BASE])
+        self.assertEqual(fp.pick_known(self.devices(), advert), "/d/buds")
+
+    def test_unpaired_earbuds_are_not_known(self):
+        self.assertIsNone(fp.pick_known(self.devices(), dict(self.ADVERT, Address="11:11:11:11:11:11", UUIDs=[])))
+
+
 class Forgetting(unittest.TestCase):
     """Devices BlueZ removes are forgotten (addresses rotate: `other` grew
     by every phone and watch that ever passed)."""

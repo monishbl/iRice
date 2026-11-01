@@ -12,8 +12,12 @@ BlueZ:
   fastpair.py watch     JSON lines: {"devices": [{"address", "name", "model",
                         "pairing", "rssi", "battery": {"left", "right",
                         "case": {"level", "charging"}}}]}
-  fastpair.py connect ADDRESS
-                        pairs, trusts and connects them: {"ok", "error"}
+  fastpair.py connect ADDRESS [NAME]
+                        connects them (pairs and trusts them first, unless
+                        they're paired already): {"ok", "error", "known"}
+  fastpair.py repair ADDRESS KNOWN [NAME]
+                        forgets KNOWN, their old pairing (earbuds that were
+                        reset no longer take it), and pairs them afresh
 
 Scanning is light: only while Bluetooth is on; continuous on the charger,
 else 4 seconds every 30. Devices not heard from for 20 seconds are dropped.
@@ -70,6 +74,59 @@ def real_name(name):
     return "" if ADDRESS_LIKE.match(name) else name
 
 
+BASE_UUID = "-0000-1000-8000-00805f9b34fb"
+
+
+def is_audio(d):
+    return bool(AUDIO_UUIDS & set(d.get("UUIDs", [])) or (d.get("Class", 0) >> 8) & 0x1F == 0x04)
+
+
+def advert_vendors(d):
+    """Company IDs an advert names as 16-bit service UUIDs: realme's buds
+    put theirs (0x05D6) next to Fast Pair's in their nameless advert."""
+    out = set()
+    for u in d.get("UUIDs", []):
+        u = str(u).lower()
+        if u.startswith("0000") and u.endswith(BASE_UUID) and u[4:8] != "fe2c":
+            out.add(int(u[4:8], 16))
+    return out
+
+
+def device_vendor(d):
+    """The company ID in a classic device's Device ID ("bluetooth:v05D6p…";
+    a "usb:" one counts USB vendors, another numbering)."""
+    m = re.match(r"bluetooth:v([0-9A-F]{4})", str(d.get("Modalias", "")), re.I)
+    return int(m.group(1), 16) if m else None
+
+
+def pick_known(devices, advert):
+    """Earbuds paired with this computer already, among devices [(path,
+    Device1 props)], that the Fast Pair advert `advert` (Device1 props) comes
+    from: the advert's own device, or a paired audio device with its name,
+    the last three bytes of its address, the company it names (the one
+    such), or the front three (the one such). Earbuds in pairing mode
+    advertise from a nameless address of their own, so "already paired"
+    can't be told by name."""
+    address = str(advert.get("Address", "")).upper()
+    name = real_name(advert.get("Alias") or advert.get("Name"))
+    paired = [(p, d) for p, d in devices if d.get("Paired") and is_audio(d)]
+    for p, d in devices:
+        if d.get("Paired") and str(d.get("Address", "")).upper() == address:
+            return p
+    for p, d in paired:
+        if name and name in (d.get("Alias"), d.get("Name")):
+            return p
+    for p, d in paired:
+        if address and str(d.get("Address", "")).upper()[-8:] == address[-8:]:
+            return p
+    vendors = advert_vendors(advert)
+    by_vendor = [p for p, d in paired if device_vendor(d) in vendors]
+    if len(by_vendor) == 1:
+        return by_vendor[0]
+    by_front = [p for p, d in paired if address and str(d.get("Address", "")).upper()[:8] == address[:8]]
+    return by_front[0] if len(by_front) == 1 else None
+
+
 def pick_twin(devices, name, address, fallback=False):
     """The earbuds' classic (BR/EDR) side among devices [(path, Device1
     props)] found by a classic scan, for the Fast Pair advert at `address`
@@ -84,7 +141,7 @@ def pick_twin(devices, name, address, fallback=False):
     for path, d in devices:
         if d.get("Paired") or not str(d.get("Address", "")).strip():
             continue
-        if not (AUDIO_UUIDS & set(d.get("UUIDs", [])) or (d.get("Class", 0) >> 8) & 0x1F == 0x04):
+        if not is_audio(d):
             continue
         if name and name in (d.get("Alias"), d.get("Name")):
             return path
@@ -110,6 +167,7 @@ class Watcher:
         self.last = None
         self.adapter = None
         self.scanning = False
+        self.cached = (0, {})
 
     def call(self, path, iface, method, args=None, sig=None, timeout=10000):
         params = self.GLib.Variant(sig, args) if sig else None
@@ -118,6 +176,29 @@ class Watcher:
 
     def objects(self):
         return self.call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects")[0]
+
+    def recent_objects(self):
+        """objects(), at most 5 s old (asked only while earbuds are in pairing
+        mode nearby)"""
+        at, objs = self.cached
+        if time.monotonic() - at > 5:
+            objs = self.objects()
+            self.cached = (time.monotonic(), objs)
+        return objs
+
+    def known(self, path):
+        """The paired earbuds the advert at `path` comes from: {"address",
+        "name", "connected"}, or None."""
+        objs = self.recent_objects()
+        advert = objs.get(path, {}).get("org.bluez.Device1")
+        if not advert:
+            return None
+        devices = [(p, i["org.bluez.Device1"]) for p, i in objs.items() if "org.bluez.Device1" in i]
+        twin = pick_known(devices, advert)
+        if not twin:
+            return None
+        d = objs[twin]["org.bluez.Device1"]
+        return {"address": d.get("Address", ""), "name": d.get("Alias") or d.get("Name") or "", "connected": bool(d.get("Connected"))}
 
     def find_adapter(self):
         for path, ifaces in self.objects().items():
@@ -184,7 +265,15 @@ class Watcher:
     def report(self):
         now = time.monotonic()
         self.devices = {p: d for p, d in self.devices.items() if now - d["at"] < 20}
-        state = [{k: d.get(k) for k in ("address", "name", "model", "pairing", "rssi", "battery", "showUi")} for d in self.devices.values()]
+        state = []
+        for path, d in self.devices.items():
+            out = {k: d.get(k) for k in ("address", "name", "model", "pairing", "rssi", "battery", "showUi")}
+            if d.get("pairing"):
+                try:
+                    out["known"] = self.known(path)
+                except Exception:  # noqa: BLE001
+                    out["known"] = None
+            state.append(out)
         state.sort(key=lambda d: d["address"])
         if state != self.last:
             emit({"devices": state})
@@ -236,6 +325,12 @@ class Watcher:
                      if "org.bluez.Device1" in i and i["org.bluez.Device1"].get("Address") == address]
             path = found[0][0] if found else None
             name = real_name(hint) or (real_name(found[0][1].get("Alias") or found[0][1].get("Name")) if found else "")
+            dev = "org.bluez.Device1"
+            # Paired already (an advert in pairing mode says nothing about
+            # whom they've met): just connect them
+            known = pick_known([(p, i[dev]) for p, i in self.objects().items() if dev in i], found[0][1]) if found else None
+            if known:
+                return self.connect_known(known)
             # (Earbuds pair over classic Bluetooth: pairing with the LE
             # advert itself is refused, "failed to pair". Without the classic
             # side there's nothing to pair with.)
@@ -243,7 +338,64 @@ class Watcher:
             if not target:
                 raise RuntimeError("Couldn't find the earbuds. Hold the button on the case until the light flashes, then try again." if path
                                    else "The earbuds went out of range. Open the case near the computer and try again.")
-            dev = "org.bluez.Device1"
+            try:
+                self.call(target, dev, "Pair", timeout=60000)
+            except Exception as e:  # noqa: BLE001
+                if "AlreadyExists" not in str(e):
+                    raise
+            self.call(target, "org.freedesktop.DBus.Properties", "Set", (dev, "Trusted", self.GLib.Variant("b", True)), "(ssv)")
+            self.call(target, dev, "Connect", timeout=30000)
+            return {"ok": True, "error": ""}
+        except Exception as e:  # noqa: BLE001
+            msg = getattr(e, "message", str(e))
+            return {"ok": False, "error": "Pairing didn't finish. Put the earbuds in pairing mode and try again."
+                    if "Failed" in msg or "Timeout" in msg else msg.split(":")[-1].strip()}
+
+    def connect_known(self, path):
+        """Connects earbuds paired before (a second try when BlueZ is busy
+        with them: "Device or resource busy" when they reconnect at the same
+        moment)."""
+        dev = "org.bluez.Device1"
+        known = {}
+        try:
+            known = self.call(path, "org.freedesktop.DBus.Properties", "GetAll", (dev,), "(s)")[0]
+            address = known.get("Address", "")
+            self.call(path, "org.freedesktop.DBus.Properties", "Set", (dev, "Trusted", self.GLib.Variant("b", True)), "(ssv)")
+            for attempt in range(2):
+                try:
+                    self.call(path, dev, "Connect", timeout=30000)
+                    return {"ok": True, "error": "", "known": address}
+                except Exception as e:  # noqa: BLE001
+                    msg = getattr(e, "message", str(e))
+                    if attempt or not re.search(r"busy|InProgress|AlreadyConnected", msg, re.I):
+                        raise
+                    time.sleep(2)
+        except Exception as e:  # noqa: BLE001
+            msg = getattr(e, "message", str(e))
+            if "AlreadyConnected" in msg:
+                return {"ok": True, "error": "", "known": known.get("Address", "")}
+        # (in pairing mode and paired, yet they won't connect: they were reset,
+        # or they're busy with a phone; the card offers to pair them again)
+        return {"ok": False, "known": known.get("Address", ""),
+                "error": "They didn't connect. If they were reset, pair them again."}
+
+    def repair(self, address, known, hint=""):
+        """Forgets the old pairing `known` (an address), then pairs the
+        earbuds afresh (connect)."""
+        self.adapter, _ = self.find_adapter()
+        dev = "org.bluez.Device1"
+        objs = self.objects()
+        old = next((p for p, i in objs.items() if dev in i and i[dev].get("Address") == known), None)
+        name = real_name(hint) or (real_name(objs[old][dev].get("Alias") or objs[old][dev].get("Name")) if old else "")
+        if old and self.adapter:
+            try:
+                self.call(self.adapter, "org.bluez.Adapter1", "RemoveDevice", (old,), "(o)")
+            except Exception:  # noqa: BLE001
+                pass
+        target = self.classic_twin(name, address)
+        if not target:
+            return {"ok": False, "error": "Couldn't find the earbuds. Hold the button on the case until the light flashes, then pair them in Bluetooth settings."}
+        try:
             try:
                 self.call(target, dev, "Pair", timeout=60000)
             except Exception as e:  # noqa: BLE001
@@ -322,7 +474,14 @@ def main(argv):
             r = {"ok": False, "error": str(e)}
         print(json.dumps(r))
         return 0 if r["ok"] else 1
-    print(json.dumps({"error": "usage: fastpair.py watch | connect ADDRESS [NAME]"}))
+    if len(argv) in (3, 4) and argv[0] == "repair":
+        try:
+            r = Watcher().repair(argv[1], argv[2], argv[3] if len(argv) == 4 else "")
+        except Exception as e:  # noqa: BLE001
+            r = {"ok": False, "error": str(e)}
+        print(json.dumps(r))
+        return 0 if r["ok"] else 1
+    print(json.dumps({"error": "usage: fastpair.py watch | connect ADDRESS [NAME] | repair ADDRESS KNOWN [NAME]"}))
     return 2
 
 
