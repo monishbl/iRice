@@ -107,6 +107,7 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .hero { padding-top: 96px; padding-bottom: 48px; text-align: center; }
 .hero .actions { display: flex; gap: 24px; align-items: center; justify-content: center; margin-top: 32px; flex-wrap: wrap; }
 .film { margin: 48px auto 0; max-width: 1280px; padding: 0 24px; }
+.film.still { margin-top: 128px; }
 
 /* Media frames */
 .media { position: relative; border-radius: 20px; overflow: hidden; background: var(--frame); border: 1px solid var(--border); aspect-ratio: 16 / 9; }
@@ -137,6 +138,11 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .tile .shot { margin-top: auto; background: var(--frame); border-top: 1px solid var(--border); }
 .tile .shot img { width: 100%; height: 100%; object-fit: cover; }
 .tile .shot.tall { aspect-ratio: 4 / 5; } .tile .shot.wide { aspect-ratio: 2 / 1; } .tile .shot.std { aspect-ratio: 4 / 3; }
+/* two island shots, one above the other: the strip across the top of
+   each, where the card is */
+.tile .shot.pair { display: grid; gap: 1px; background: var(--border); }
+.tile .shot.pair > div { aspect-ratio: 4 / 1; overflow: hidden; background: var(--frame); }
+.tile .shot.pair img { object-position: 50% 0; }
 .tag {
   display: inline-block; vertical-align: 2px; margin-left: 8px; padding: 0 8px; border-radius: 999px;
   background: var(--tag); color: var(--tag-text); font-size: 12px; line-height: 20px; font-weight: 500; letter-spacing: 0;
@@ -189,12 +195,6 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 
 .trio { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
 @media (max-width: 640px) { .trio { grid-template-columns: 1fr; } }
-
-/* Brand gallery */
-.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.gallery .g { border-radius: 20px; overflow: hidden; border: 1px solid var(--border); aspect-ratio: 16 / 10; background: var(--frame); }
-.gallery .g img { width: 100%; height: 100%; object-fit: cover; }
-.gallery .media { grid-column: span 2; }
 
 /* Everything else */
 .flist-wrap { margin-top: 64px; }
@@ -250,8 +250,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 .no-js .reveal { opacity: 1; transform: none; }
 
 @media (max-width: 860px) {
-  .bento, .pgrid, .gallery { grid-template-columns: 1fr; }
-  .tile.w6, .tile.w4, .tile.w3, .tile.w2, .gallery .media { grid-column: auto; }
+  .bento, .pgrid { grid-template-columns: 1fr; }
+  .tile.w6, .tile.w4, .tile.w3, .tile.w2 { grid-column: auto; }
   .flist { columns: 2; }
   ol.steps { grid-template-columns: 1fr; }
   .principles h2.big { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
@@ -266,7 +266,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
   .sub { font-size: 16px; line-height: 24px; }
   .feature, .principles { padding-top: 96px; }
   .feature header { margin-bottom: 32px; }
-  .media, .tile, .gallery .g { border-radius: 14px; }
+  .media, .tile { border-radius: 14px; }
   .pcard { border-radius: 20px; }
   .tile .copy { padding: 24px 20px 20px; }
   .pcard .label { top: 20px; left: 20px; }
@@ -312,7 +312,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
     </div>
   </section>
   <div class="film reveal">
-    <div class="media"><img src="/media/shots/hero.webp" alt="The iRice desktop over green leaves: Control Center open on the right, and the island at the top showing Pixel Buds Pro 2 connected with left, right and case batteries." fetchpriority="high"></div>
+    <div class="media"><video src="/media/hero.mp4" poster="/media/hero.jpg" muted loop playsinline autoplay preload="auto" data-auto aria-label="The iRice desktop over green leaves: Pixel Buds Pro 2 found nearby and connected with one click, their left, right and case batteries tracing in on the island; Control Center opening in glass; Spotlight answering 18% of 2450 with 441."></video></div>
   </div>
 
   <!-- ── Only on iRice ─────────────────────────────────────────────── -->
@@ -333,40 +333,28 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       </div>
       <div class="tile w2 reveal">
         <div class="copy">
-          <h3>Fast Pair.</h3>
-          <p>Open the case and your earbuds are there, with their picture. One click connects.</p>
+          <h3>Everything in its place.</h3>
+          <p>Alerts, your calendar, to-dos and focus in one sheet.</p>
         </div>
-        <div class="shot" style="flex: 1; min-height: 240px"><img src="/media/shots/island-connect-tall.webp" alt="The island showing Pixel Buds Pro 2 nearby with a Connect button." loading="lazy" style="object-position: 50% 0"></div>
+        <div class="shot" style="flex: 1; min-height: 240px"><img src="/media/shots/nc-petals.webp" alt="Notification Center over pastel petals: the month's calendar." loading="lazy" style="object-position: 50% 0"></div>
       </div>
 
-      <div class="tile w3 reveal">
-        <div class="copy">
-          <h3>Left, right and case.</h3>
-          <p>Each earbud's battery and the case's, as the case opens, and a warning before they run out.</p>
-        </div>
-        <div class="shot wide"><img src="/media/shots/island-parts.webp" alt="The island showing earbuds connected, with rings for left 80, right 76 and case 18." loading="lazy" style="object-position: 50% 0"></div>
-      </div>
-      <div class="tile w3 reveal">
-        <div class="copy">
-          <h3>The sound, where you look.</h3>
-          <p>Drag the volume in the island, switch outputs, or set each app's level, without opening anything.</p>
-        </div>
-        <div class="shot wide"><img src="/media/shots/island-volume.webp" alt="The island's volume bar open, listing outputs, App volumes and Sound settings." loading="lazy" style="object-position: 50% 0"></div>
-      </div>
-
-      <div class="tile w2 reveal">
-        <div class="copy">
-          <h3>Real Liquid Glass.</h3>
-          <p>Refraction drawn by the compositor through a Hyprland plugin, not a blur. Panels bend what's behind them, even over your windows.</p>
-        </div>
-        <div class="shot tall"><img src="/media/shots/cc-leaves.webp" alt="Control Center in glass over green leaves: Wi-Fi, Bluetooth, music, toggles, brightness and volume." loading="lazy"></div>
-      </div>
       <div class="tile w4 reveal">
         <div class="copy">
-          <h3>Undo an update.<span class="tag">Preview</span></h3>
-          <p>Something broke after an update? Go back to the exact versions you had, from the package cache. If the desktop won't start, iRice offers it on its own, and boot-menu snapshots are a switch away. Updates never overwrite a setting you've changed.</p>
+          <h3>Fast Pair, with every battery.</h3>
+          <p>Open the case and your earbuds are there, with their picture. One click connects them, then each earbud's battery and the case's trace in, with a warning before they run out.</p>
         </div>
-        <div class="shot std"><img src="/media/shots/settings-update.webp" alt="Settings, Software Update: Go back to before the last update, listing the packages it changed." loading="lazy" style="object-position: 50% 0"></div>
+        <div class="shot pair">
+          <div><img src="/media/shots/island-connect.webp" alt="The island showing Pixel Buds Pro 2 nearby with a Connect button." loading="lazy"></div>
+          <div><img src="/media/shots/island-parts.webp" alt="The island showing the earbuds connected, with rings for left 80, right 76 and case 18." loading="lazy"></div>
+        </div>
+      </div>
+      <div class="tile w2 reveal">
+        <div class="copy">
+          <h3>Undo an update.<span class="tag">Preview</span></h3>
+          <p>Something broke after an update? Go back to the exact versions you had, from the package cache. Updates never overwrite a setting you've changed.</p>
+        </div>
+        <div class="shot" style="flex: 1; min-height: 200px"><img src="/media/shots/settings-update.webp" alt="Settings, Software Update: Go back to before the last update, listing the packages it changed." loading="lazy" style="object-position: 0 0"></div>
       </div>
 
       <div class="tile w6 reveal">
@@ -448,14 +436,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
   <section class="feature wrap">
     <header class="reveal">
-      <h2>Everything in its place.</h2>
-      <p class="sub">Alerts, your calendar, to-dos and focus in one sheet.</p>
-    </header>
-    <div class="media reveal" style="aspect-ratio: 25 / 24; max-width: 640px; margin: 0 auto"><img src="/media/shots/nc-petals.webp" alt="Notification Center over pastel petals: the month's calendar." loading="lazy"></div>
-  </section>
-
-  <section class="feature wrap">
-    <header class="reveal">
       <h2>Light. Or dark.</h2>
       <p class="sub">Everything retunes together. Or let the time of day decide.</p>
       <div class="seg" role="group" aria-label="Appearance">
@@ -494,20 +474,10 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
     </div>
   </section>
 
-  <!-- ── The look, beyond the screen ───────────────────────────────── -->
-  <section class="feature wrap" id="brand">
-    <header class="reveal">
-      <h2>The look, beyond the screen.</h2>
-      <p class="sub">Soft fields of colour and glass that lets them through.</p>
-    </header>
-    <div class="gallery">
-      <div class="media reveal">
-        <video src="/media/brand-loop.mp4" poster="/media/brand-loop.jpg" muted loop playsinline preload="none" data-auto aria-label="A glass pill reading iRice over slowly drifting violet colour."></video>
-      </div>
-      <div class="g reveal"><img class="only-light" src="/media/art/brand-orange.webp" alt="A glass orb over warm orange and olive, an orange squircle at its centre." loading="lazy"><img class="only-dark" src="/media/art/brand-orange-dark.webp" alt="A glass orb over warm orange and olive, an orange squircle at its centre." loading="lazy"></div>
-      <div class="g reveal"><img class="only-light" src="/media/art/brand-aqua.webp" alt="Made to disappear, in white over aqua and lilac." loading="lazy"><img class="only-dark" src="/media/art/brand-aqua-dark.webp" alt="Made to disappear, in white over aqua and lilac." loading="lazy"></div>
-    </div>
-  </section>
+  <!-- ── The whole desktop, still ──────────────────────────────────── -->
+  <div class="film still reveal">
+    <div class="media"><img src="/media/shots/hero.webp" alt="The iRice desktop over green leaves: Control Center open on the right, and the island at the top showing Pixel Buds Pro 2 connected with left, right and case batteries." loading="lazy"></div>
+  </div>
 
   <!-- ── Install ───────────────────────────────────────────────────── -->
   <section class="feature wrap" id="install">
