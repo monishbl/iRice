@@ -86,7 +86,9 @@ Singleton {
                 property bool materialSounds: true
                 property bool materialCursor: true
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
-                property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
+                // (frosted by default: light on the GPU; liquid, the full glass that
+                // bends what's behind, needs the irice-glass plugin, else it's frosted)
+                property string glass: "frosted" // frosted | liquid | solid | custom
                 property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)
                 property string iconTheme: "" // app icon theme; empty = automatic (KDE / GNOME setting, else Papirus, Breeze, Adwaita)
                 property string keySymbols: "auto" // auto (follows menuIcon) | mac | windows | linux
@@ -115,7 +117,7 @@ Singleton {
                 property string windowOpacity: "subtle" // app windows see-through: off | subtle | more | custom (fullscreen, video and games stay opaque)
                 property real windowOpacityActive: 0.97 // custom: the focused window
                 property real windowOpacityInactive: 0.93 // custom: the other windows
-                property string motion: "subtle" // subtle (macOS) | expressive (iOS 26: more pull and bounce)
+                property string motion: "subtle" // subtle (macOS) | snappy (quick springs that settle at once, little pull) | expressive (iOS 26: more pull and bounce)
                 property bool reduceMotion: false // fades instead of travel (display connect effect and window moves, Today screen)
                 // Accessibility (like macOS): solid surfaces instead of glass;
                 // stronger text, separators and outlines

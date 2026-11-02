@@ -15,7 +15,7 @@ Column {
     Group {
         width: parent.width
         title: "Glass"
-        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges, like Tahoe." : Theme.glass.material === "frosted" ? "Frost blurs what's behind, with a thin lens at the edges." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
+        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges, like Tahoe." : Theme.glass.material === "frosted" ? "Frost (the default) blurs what's behind, with a thin lens at the edges: light on the GPU. Glass is the full engine, bending what's behind it live." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
         Row {
             label: "Material"
             Flow { // (Row here is the settings row)
@@ -293,11 +293,11 @@ Column {
         }
         Row {
             label: "Motion"
-            detail: Config.options.appearance.motion === "expressive" ? "More pull toward the pointer and bouncier springs, like iOS 26" : "Springs with a touch of overshoot, like macOS"
+            detail: Config.options.appearance.motion === "expressive" ? "More pull toward the pointer and bouncier springs, like iOS 26" : Config.options.appearance.motion === "snappy" ? "Quick springs that settle at once, with little pull: the quickest feel" : "Springs with a touch of overshoot, like macOS"
             Segmented {
-                width: 220
-                readonly property var values: ["subtle", "expressive"]
-                options: ["Subtle", "Expressive"]
+                width: 300
+                readonly property var values: ["subtle", "snappy", "expressive"]
+                options: ["Subtle", "Snappy", "Expressive"]
                 current: Math.max(0, values.indexOf(Config.options.appearance.motion))
                 onSelected: i => Config.options.appearance.motion = values[i]
             }

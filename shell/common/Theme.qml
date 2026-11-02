@@ -101,7 +101,7 @@ Singleton {
         // presets; Custom uses your own (Settings → Appearance → Advanced).
         // [lens, frost, solid, tint]
         readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
-        readonly property string chosen: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        readonly property string chosen: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "frosted" : Config.options.appearance.glass
         // Cool-down swaps in a cheaper material (never a heavier one)
         readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
@@ -196,17 +196,21 @@ Singleton {
 
     readonly property QtObject motion: QtObject {
         readonly property bool expressive: Config.options.appearance.motion === "expressive"
+        // Snappy: the Material look's spring (stiffness 380, damping ratio 0.8:
+        // quicker, settles without a wobble), little pull, quicker fades
+        readonly property bool snappy: Config.options.appearance.motion === "snappy"
         // Springs (SpringAnimation): open/expand, settle back, and elastic pull
-        readonly property real spring: expressive ? 3.0 : 3.8
-        readonly property real damping: expressive ? 0.22 : 0.32
-        readonly property real pull: expressive ? 14 : 6 // how far a panel gives when pressed and dragged
-        readonly property real controlPull: expressive ? 5 : 2.5 // same for small controls
-        readonly property real squish: expressive ? 0.9 : 0.95 // press scale
-        readonly property int press: Math.round(100 * CoolDown.motionScale)
-        readonly property int hover: Math.round(150 * CoolDown.motionScale)
-        readonly property int popover: Math.round(220 * CoolDown.motionScale)
-        readonly property int panel: Math.round(320 * CoolDown.motionScale)
-        readonly property int large: Math.round(450 * CoolDown.motionScale)
+        readonly property real spring: snappy ? 6.08 : expressive ? 3.0 : 3.8
+        readonly property real damping: snappy ? 0.5 : expressive ? 0.22 : 0.32
+        readonly property real pull: snappy ? 3 : expressive ? 14 : 6 // how far a panel gives when pressed and dragged (never 0: ElasticPull divides by it)
+        readonly property real controlPull: snappy ? 1.5 : expressive ? 5 : 2.5 // same for small controls
+        readonly property real squish: snappy ? 0.97 : expressive ? 0.9 : 0.95 // press scale
+        readonly property real pace: (snappy ? 0.85 : 1) * CoolDown.motionScale
+        readonly property int press: Math.round(100 * pace)
+        readonly property int hover: Math.round(150 * pace)
+        readonly property int popover: Math.round(220 * pace)
+        readonly property int panel: Math.round(320 * pace)
+        readonly property int large: Math.round(450 * pace)
         // Apple-like decelerate; QML BezierSpline control points.
         readonly property var emphasized: [0.2, 0.9, 0.1, 1.0, 1, 1]
         readonly property var standard: [0.3, 0.0, 0.2, 1.0, 1, 1]
