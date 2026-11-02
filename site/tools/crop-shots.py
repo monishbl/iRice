@@ -32,6 +32,15 @@ CROPS = {
     "spotlight-time": ((1100, 300, 2740, 1500), 1640),
     "spotlight-days": ((1100, 300, 2740, 1500), 1640),
     "settings-update": ((900, 380, 2940, 1820), 2040),
+    # Two looks: the same desktop (violet-dark), Glass with Control Center,
+    # Material with Quick Settings; then Material's own (Android 17) parts
+    "look-glass": ((0, 0, 3840, 2160), 2400, "g-cc"),
+    "look-material": ((0, 0, 3840, 2160), 2400, "m-qs"),
+    "m-clock-stacked": ((1300, 40, 2540, 980), 720, "m-lock-stacked"),
+    "m-clock-analog": ((1300, 40, 2540, 980), 720, "m-lock-analog"),
+    "m-clock-overlap": ((1300, 40, 2540, 980), 720, "m-lock-overlap"),
+    "m-settings-clock": ((880, 408, 2960, 1808), 1560, "m-settings-clock"),
+    "appstore": ((0, 0, 3840, 2160), 2400, "g-appstore"),
 }
 
 
