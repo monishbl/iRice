@@ -344,10 +344,11 @@ Scope {
     // Sleep: the reader is let go as the computer goes to sleep (logind's
     // PrepareForSleep; the lock often goes up just then), so nothing from
     // before holds it on waking, and asked for again as it wakes, with
-    // every try back. (Watched while the lock may use the reader.)
+    // every try back; the face camera starts looking then too. (Watched while
+    // the lock may use either.)
     property bool sleeping: false
     Process {
-        running: Fingerprint.lockScreen
+        running: Fingerprint.lockScreen || Face.lockScreen
         command: [Tools.watcher, "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"]
         stdinEnabled: true
         stdout: SplitParser {
@@ -370,6 +371,14 @@ Scope {
         fingerRetry.interval = 300;
         if (fingerWanted)
             fingerRetry.restart();
+        // Waking is someone opening the lid or pressing a key: the camera
+        // starts looking now, not at the first touch after (the camera is
+        // the slow part, so it's started as early as possible)
+        if (held) {
+            faceArmed = true;
+            faceTries = 0;
+            faceBroken = false;
+        }
     }
     // In case that's missed: a jump in the clock while locked. Only a
     // conversation from before the jump is dropped for a fresh one.
@@ -462,15 +471,16 @@ Scope {
 
     // ── Your face, next to the password (Settings → Lock Screen → Face) ──
     // A third PAM conversation, from the shell's own PAM file (pam_howdy:
-    // Howdy with the infrared camera). It looks at the first touch after the
-    // lock shows and each time someone's back (woke), three tries each time;
-    // never in StandBy.
+    // Howdy with the infrared camera). It looks as the computer wakes, at the
+    // first touch after the lock shows and each time someone's back (woke),
+    // three tries each time; never in StandBy. The first look starts at once.
     property string faceText: ""
     property int faceTries: 0
     property bool faceBroken: false // (Howdy or the camera failed: not again until the next lock)
     readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceArmed && !faceBroken && faceTries < 3
     onFaceWantedChanged: {
         if (faceWanted) {
+            faceRetry.interval = 0;
             faceRetry.restart();
         } else {
             faceRetry.stop();
@@ -502,6 +512,7 @@ Scope {
             }
             root.faceTries++;
             root.faceText = root.faceTries < 3 ? "Face not recognised" : "";
+            faceRetry.interval = 300;
             if (root.faceWanted)
                 faceRetry.restart();
         }
