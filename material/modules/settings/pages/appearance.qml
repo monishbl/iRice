@@ -216,6 +216,16 @@ Column {
             }
         }
         Row {
+            visible: Theme.material
+            label: "Blur"
+            detail: Config.options.appearance.reduceTransparency ? "Off while Reduce transparency is on" : "Panels, the volume panel, the power menu, the app drawer and menus show the desktop behind them, blurred and tinted. Off: solid"
+            enabled: !Config.options.appearance.reduceTransparency
+            Switch {
+                checked: Config.options.appearance.materialBlur
+                onToggled: Config.options.appearance.materialBlur = !checked
+            }
+        }
+        Row {
             visible: !Theme.material
             label: "Accent colour"
             detail: Config.options.appearance.accent === "wallpaper" ? "Following the wallpaper" : ""

@@ -181,7 +181,7 @@ Variants {
                 x: Math.round((win.width - width) / 2)
                 y: Math.round((win.height - height) / 2)
                 radius: 28
-                color: Theme.m3.surface
+                color: Theme.veil(Theme.m3.surface)
                 opacity: Math.max(0, Math.min(1, win.progress * 1.6))
                 // Rises from the dock and grows, on a spring, as the app
                 // drawer swipes up

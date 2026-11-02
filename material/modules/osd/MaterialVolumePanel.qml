@@ -104,8 +104,10 @@ PanelWindow {
         height: win.panelHeight
         opacity: Math.max(0, Math.min(1, win.progress * 2))
 
-        // Elevation 2: it floats over windows
+        // Elevation 2: it floats over windows (blurred, it's see-through:
+        // no shadow under it, as Android 17's)
         RectangularShadow {
+            visible: !Theme.blur
             anchors.fill: parent
             radius: width / 2
             offset.y: 2
@@ -115,7 +117,7 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: Theme.m3.surfaceContainer
+            color: Theme.veil(Theme.m3.surfaceContainer)
         }
 
         Column {

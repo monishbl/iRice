@@ -85,6 +85,7 @@ Singleton {
                 // In the Material look: its own sound set, and the Bibata pointer
                 property bool materialSounds: true
                 property bool materialCursor: true
+                property bool materialBlur: true // Material: Android 17's tinted blur behind panels and menus (off: opaque)
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 // (frosted by default: light on the GPU; liquid, the full glass that
                 // bends what's behind, needs the irice-glass plugin, else it's frosted)
