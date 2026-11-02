@@ -19,6 +19,10 @@ Singleton {
     property var contents: [] // [path] of documents containing fileQuery
     property string fileQuery: ""
     property int revision: 0 // bumped when async results arrive
+    Connections {
+        target: AppStore
+        function onQuickRevisionChanged() { root.revision++; }
+    }
 
     // Conversions: "10 km to mi", "$20 in eur", "72 f to c"
     property string convQuery: ""
@@ -205,6 +209,7 @@ Singleton {
         { title: "Check for Updates", glyph: "arrow-circle-up", keywords: "update upgrade pacman packages", run: () => Updates.count > 0 ? Updates.install() : Quickshell.execDetached(["notify-send", "-a", "Software Update", "Your system is up to date"]) },
         { title: "Change Wallpaper", glyph: "image", keywords: "wallpaper background desktop picture", run: () => Panels.show("wallpaper") },
         { title: "Stage Manager", glyph: "squares-four", keywords: "stage manager windows group strip", run: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
+        { title: "App Store", glyph: "storefront", keywords: "app store install apps software get download flathub aur packages", run: () => Panels.openAppStore() },
         { title: "App Library", glyph: "squares-four", keywords: "apps launchpad library all applications grid", run: () => Panels.show("launchpad") },
         { title: "Mission Control", glyph: "squares-four", keywords: "overview workspaces windows expose", run: () => Panels.show("missionControl") }
     ]
@@ -339,6 +344,15 @@ Singleton {
         })).filter(x => x.s >= 30).sort((a, b) => b.s - a.s).slice(0, 8);
         for (const x of apps)
             out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry), score: x.s });
+
+        // An app you don't have (a name, or a word no installed app is
+        // called): installable ones from the App Store, which opens on it
+        if (q.length >= 3 && raw.split(/\s+/).length <= 4 && value === null && AppStore.available && !apps.some(x => x.entry.name.toLowerCase() === q)) {
+            AppStore.lookUp(raw);
+            if (AppStore.quickQuery === raw)
+                for (const a of AppStore.quick)
+                    out.push({ section: "App Store", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) });
+        }
 
         const acts = actions.concat(castActions).map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
         for (const x of acts)

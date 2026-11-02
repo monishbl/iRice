@@ -61,6 +61,26 @@ Singleton {
     }
 
     // name and fallback may each be a name or a list of names to try in turn
+    // The theme's icon for one of these names (and their usual variants), or
+    // "" when the theme has none: no generic fallback (the App Store then
+    // shows the app's own logo)
+    function exact(name) {
+        const names = [].concat(name ?? []).map(n => String(n)).filter(n => n !== "" && !n.includes("/"));
+        for (const n of names) {
+            const parts = n.split(".");
+            const last = parts[parts.length - 1];
+            for (const v of [n, n.toLowerCase(), last, last.toLowerCase(), n.replace(/\s+/g, "-").toLowerCase()]) {
+                const f = root.index[v];
+                if (f)
+                    return "file://" + f.split("/").map(encodeURIComponent).join("/");
+                const p = Quickshell.iconPath(v, true);
+                if (p !== "")
+                    return p;
+            }
+        }
+        return "";
+    }
+
     function path(name, fallback) {
         const names = [].concat(name ?? []).map(n => String(n)).filter(n => n !== "");
         for (const n of names) {

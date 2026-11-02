@@ -43,6 +43,9 @@ Singleton {
     signal addWidget(string kind, string size) // from the gallery to the desktop of Panels.screen
     property bool settingsOpen: false
     property string settingsPage: "appearance"
+    // The App Store window (modules/appstore), and an app it opens on (from Spotlight)
+    property bool appStoreOpen: false
+    property var appStoreApp: null
     property bool osdVisible: false // banners move down while the HUD shows
     property int sidebarTab: 0
     property int ncTab: 0 // Notification Center widgets: 0 calendar, 1 to-do, 2 focus // 0 AI, 1 Translate, 2 Anime
@@ -98,6 +101,12 @@ Singleton {
             close();
         else
             show(name, scr, x);
+    }
+
+    function openAppStore(app) {
+        close();
+        appStoreApp = app ?? null;
+        appStoreOpen = true;
     }
 
     function openSettings(page) {

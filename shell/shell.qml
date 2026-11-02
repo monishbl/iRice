@@ -9,6 +9,7 @@ import Quickshell.Io
 import qs.common
 import qs.modules.cheatsheet
 import qs.modules.clipboard
+import qs.modules.appstore
 import qs.services
 import qs.dev
 import qs.modules.background
@@ -106,6 +107,7 @@ ShellRoot {
     Polkit {}
     WallpaperPicker {}
     Settings {}
+    AppStoreWindow {}
     Cheatsheet {}
     ClipboardPanel {}
     Overlay {}
@@ -274,6 +276,10 @@ ShellRoot {
         }
         function settings(page: string): void {
             Panels.openSettings(page);
+        }
+        // qs ipc call panels appStore
+        function appStore(): void {
+            Panels.openAppStore();
         }
         // qs ipc call panels widgets true|false  (Edit Widgets on the first screen)
         function widgets(on: bool): void {
