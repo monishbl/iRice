@@ -920,8 +920,13 @@ Variants {
                                                     Drag.source: thumb
                                                     // the pointer is what's dropped (a big miniature over an
                                                     // edge zone would otherwise miss it)
-                                                    Drag.hotSpot.x: thumbDrag.active ? thumbDrag.centroid.pressPosition.x : width / 2
-                                                    Drag.hotSpot.y: thumbDrag.active ? thumbDrag.centroid.pressPosition.y : height / 2
+                                                    // The drop goes where the pointer is, also once the
+                                                    // miniature has stopped at the screen's edge (a zone
+                                                    // or chip out at the edge is under the pointer, not
+                                                    // under the miniature)
+                                                    property point pointerAt: Qt.point(width / 2, height / 2)
+                                                    Drag.hotSpot.x: thumbDrag.active ? pointerAt.x : width / 2
+                                                    Drag.hotSpot.y: thumbDrag.active ? pointerAt.y : height / 2
                                                     z: thumbDrag.active ? 5000 : stack
                                                     // A new place (a refresh after a move, the space's other
                                                     // windows re-tiling) glides there instead of jumping
@@ -971,6 +976,7 @@ Variants {
                                                         onCentroidChanged: {
                                                             if (active) {
                                                                 const p = centroid.scenePosition;
+                                                                thumb.pointerAt = thumb.mapFromItem(null, p.x, p.y);
                                                                 win.edgeZone = win.edgeAt(p.x, p.y);
                                                             }
                                                         }
