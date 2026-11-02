@@ -436,6 +436,14 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(wifi.hotspot_possible({"driver": "iwlwifi", "frequency": 2437}))
         self.assertFalse(wifi.hotspot_possible({"driver": "iwlwifi", "frequency": 5180}))
 
+    def test_networkmanager_names_its_wifi_backend(self):
+        # (iwd can run beside a NetworkManager that uses wpa_supplicant: that iwd runs nothing)
+        from nearby import wifi
+        self.assertEqual(wifi.nm_wifi_backend("[main]\n# backend=journal\n[device]\n# wifi.backend=wpa_supplicant\n"), "wpa_supplicant")
+        self.assertEqual(wifi.nm_wifi_backend("[device]\nwifi.backend=iwd\n"), "iwd")
+        self.assertEqual(wifi.nm_wifi_backend("[main]\nwifi.backend=iwd\n"), "wpa_supplicant")  # (another section)
+        self.assertEqual(wifi.nm_wifi_backend(""), "wpa_supplicant")
+
     async def test_password_refused_stays_on_bluetooth(self):
         self.helper.fail = True
         data = os.urandom(5000)

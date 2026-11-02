@@ -138,6 +138,19 @@ def nm_manages(nmcli_out, station):
     return False
 
 
+def nm_wifi_backend(print_config):
+    """`NetworkManager --print-config` → the Wi-Fi backend it uses:
+    "wpa_supplicant" (its default) or "iwd" ([device] wifi.backend=…)."""
+    section = ""
+    for line in print_config.splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            section = line
+        elif section == "[device]" and line.replace(" ", "").startswith("wifi.backend="):
+            return line.split("=", 1)[1].strip()
+    return "wpa_supplicant"
+
+
 def wifi_driver(station):
     try:
         return os.path.basename(os.readlink(f"/sys/class/net/{station}/device/driver"))
@@ -149,14 +162,19 @@ async def network():
     """{"addresses": [(ifname, IPv4Interface)], "station": ifname or None,
     "frequency": MHz or None, "5ghz", "p2p_go", "nm": NetworkManager runs
     the Wi-Fi, "driver", "iwd": iwd is the Wi-Fi daemon (on its own, or
-    under NetworkManager)}."""
+    as NetworkManager's backend; merely running beside wpa_supplicant
+    doesn't count)}."""
     addresses = parse_ip_addr(await _run("ip", "-j", "-4", "addr", "show"))
     stations = wifi_interfaces()
     station = stations[0] if stations else None
     freq = parse_iw_link(await _run("iw", "dev", station, "link")) if station else None
     caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False, "client_beside": False}
     nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
+    # iwd running isn't iwd running the Wi-Fi: NetworkManager may use
+    # wpa_supplicant (its default) while something has started iwd beside it
     iwd = bool(await _run("busctl", "--system", "status", "net.connman.iwd"))
+    if iwd and nm:
+        iwd = nm_wifi_backend(await _run("NetworkManager", "--print-config")) == "iwd"
     return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm, "iwd": iwd,
             "shield": nm and helper_shields(), "driver": wifi_driver(station) if station else "", **caps}
 
