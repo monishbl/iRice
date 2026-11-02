@@ -172,15 +172,22 @@ Scope {
     property real heldAt: 0
     property real lastTouch: 0
     property bool faceArmed: false
+    property real faceStoppedAt: 0 // when its tries ran out
     function woke() {
         const now = Date.now();
         const back = idle || now - lastTouch > 30000;
         lastTouch = now;
         idle = false;
         idleTimer.restart();
-        if (!faceArmed && now - heldAt > 2000) {
+        if (!faceArmed && now - heldAt > 1000) {
             faceArmed = true;
             faceTries = 0;
+        }
+        // its tries ran out a moment ago, and someone's still (or again)
+        // here: another round, without waiting to be away
+        if (faceTries >= 3 && now - faceStoppedAt > 3000) {
+            faceTries = 0;
+            faceBroken = false;
         }
         if (back) {
             fingerTries = 0;
@@ -207,6 +214,16 @@ Scope {
     }
     onPasswordChanged: if (password !== "") woke()
     readonly property bool standby: held && !leaving && canStandBy && idle && password === "" && !busy
+    // Any input at all while locked (a key, the pointer, the touchpad, even
+    // with the screen off: the compositor's idle notification sees it, the
+    // lock surface may not) is someone there: the camera looks at once. In
+    // StandBy, StandBy's own rules decide what wakes it.
+    IdleMonitor {
+        enabled: root.held && !root.leaving && (Face.lockScreen || Fingerprint.lockScreen)
+        respectInhibitors: false
+        timeout: 0.5
+        onIsIdleChanged: if (!isIdle && enabled && !root.standby) root.woke()
+    }
 
     // Burn-in protection (lock.standbyShift): every minute the content moves
     // up or down to a new spot (always centred across) (`drifts` counts the moves; fx, fy are the spot as a
@@ -471,9 +488,11 @@ Scope {
 
     // ── Your face, next to the password (Settings → Lock Screen → Face) ──
     // A third PAM conversation, from the shell's own PAM file (pam_howdy:
-    // Howdy with the infrared camera). It looks as the computer wakes, at the
-    // first touch after the lock shows and each time someone's back (woke),
-    // three tries each time; never in StandBy. The first look starts at once.
+    // Howdy with the infrared camera). It looks as the computer wakes, at any
+    // input after the lock shows (a second in: locking by hand isn't undone at
+    // once) and each time someone's back (woke), three tries each time, and
+    // another three on input a few seconds after they run out; never in
+    // StandBy. The first look starts at once.
     property string faceText: ""
     property int faceTries: 0
     property bool faceBroken: false // (Howdy or the camera failed: not again until the next lock)
@@ -512,6 +531,8 @@ Scope {
             }
             root.faceTries++;
             root.faceText = root.faceTries < 3 ? "Face not recognised" : "";
+            if (root.faceTries >= 3)
+                root.faceStoppedAt = Date.now();
             faceRetry.interval = 300;
             if (root.faceWanted)
                 faceRetry.restart();
