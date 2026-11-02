@@ -6,44 +6,47 @@
 		<link rel="icon" href="data:," />
 		<title>iRice hero film</title>
 		<!--
-		The site's hero: a 32.5 s muted loop, cut on a 0.5 s beat.
+		The site's hero: a 56 s muted loop.
 
-		It opens on glass: liquid gathers on a photo into a chip, the photos
-		change beneath it in liquid wipes, "iRice" rises in the glass with its
-		colours splitting, and the chip hits the screen. The ring of that
-		impact opens the real desktop (the leaves line up to the pixel), whose
-		widgets pop in. Then six features, each a title and the UI proving it,
-		joined by match cuts (the earbuds in the battery widget become the
-		island card; the card folds into the Quick Share disc; the caption bar
-		becomes the dictation island), jump cuts (Quick Share 18 → 62 → 100%,
-		four Spotlight answers on four beats), motion cuts (whips up and left,
-		with motion blur) and liquid glass warps (glass.js). It ends where it
-		began: the chip forms on the petals, says where to get it, and melts.
+		It opens on glass: liquid gathers on a photo into one drop, the photos
+		change beneath it in liquid wipes, and the drop leaps to the top of the
+		frame and lands as the island, going black from the top as iRice's does.
+		From there it's real iRice, recorded (clips.sh): the island opens for
+		charging, a notification, Wi-Fi and the volume, a cut on each. The camera
+		pulls back and the island is on a laptop's screen. The frame splits:
+		earbuds open their case on the right, and the laptop offers to connect
+		them, then shows their batteries. The laptop moves right and a phone
+		sends it two photos (the laptop's card is the real one). Pulled back,
+		another laptop joins: phones and laptops. Then Spotlight (whip up),
+		captions (whip left) whose bar becomes the dictation island, StandBy
+		and Control Center (liquid glass warps between them, glass.js), and the
+		end: the drop forms on the petals again, "iRice" over it, and it melts.
 
 		The warps bend images, so the scenes on either side of each one are
 		stills of this film: render once with ?nowarp=1, capture the frames at
 		WARPS' edges into assets/snap/, then render normally.
 
-		  Preview: node tools/serve.mjs .      (from site/film)
+		  Footage: ./clips.sh                     (unpacks clips/ into frames/)
+		  Preview: node tools/serve.mjs .         (from site/film)
 		           http://localhost:4173/hero/film.html?player=1
 		  Render:  PLAYWRIGHT_FROM=<kit>/package.json CHROME=<chromium> \
 		           node tools/render.mjs hero/film.html --root . --fps 30 --shutter 2
 
-		  t (s)        shot                                        cut out
-		  0.00–1.60    petals; droplets gather into a glass chip   liquid wipe
-		  1.50–2.60    the photos change under the chip (2 wipes)  —
-		  2.50–3.45    "iRice" rises in the glass; colours split    impact
-		  3.50–4.30    the impact ring opens the desktop           (seamless)
-		  4.30–6.25    the desktop; widgets pop in; creep          punch-in on the earbuds
-		  6.25–6.80    zoom to the earbuds in the battery widget   match cut
-		  6.80–9.55    Your earbuds, found: Connect → rings         fold to the disc
-		  9.55–12.25   Your phone, shared: 18% | 62% | saved       whip up
-		  12.25–16.00  Just ask: four answers, a beat each         whip left
-		  16.00–18.75  Captions, live: words over a video          match cut (bar → island)
-		  18.75–21.50  Just say it: the island listens, words land  liquid warp
-		  21.50–24.40  StandBy: the clock turns 10:10               liquid warp
-		  24.40–27.40  All in glass: Control Center settles        liquid warp
-		  27.40–32.50  the chip on the petals; install; it melts   (loops to 0)
+		  t (s)        shot                                          cut out
+		  0.00–4.60    petals; a drop gathers; photos change; it      (the island
+		               leaps up and lands as the island                 matches)
+		  4.60–10.60   the island: charging | notification | Wi-Fi    cuts
+		               | volume | music
+		  10.60–12.20  pull back: the island is on a laptop           (continuous)
+		  12.20–20.20  split: the case opens | Fast Pair, batteries   devices swap
+		  20.20–28.70  a phone sends two photos; the laptop accepts   pull back
+		  28.70–32.60  Phones and laptops, shared: another laptop     whip up
+		  32.60–38.20  Just ask: four answers                         whip left
+		  38.20–41.20  Captions, live                                 bar → island
+		  41.20–44.00  Just say it                                    liquid warp
+		  45.00–47.60  StandBy                                        liquid warp
+		  48.60–51.30  All in glass: Control Center                   liquid warp
+		  52.30–56.00  the drop on the petals; "iRice"; it melts      (loops to 0)
 		-->
 		<style>
 			@font-face {
@@ -67,7 +70,6 @@
 				--green: #30d158;
 				--red: #ff453a;
 				--blue: #0a84ff;
-				--orange: #ff9f0a;
 			}
 			html,
 			body {
@@ -103,6 +105,9 @@
 				top: 0;
 				white-space: nowrap;
 			}
+			.abs {
+				position: absolute;
+			}
 			.ph {
 				font-family: 'Phosphor';
 				font-style: normal;
@@ -133,6 +138,9 @@
 				line-height: 1;
 				text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25);
 			}
+			.title.sm {
+				font-size: 84px;
+			}
 			.acc {
 				color: var(--accent);
 			}
@@ -158,266 +166,443 @@
 				position: absolute;
 				inset: 0;
 			}
-			/* desktop widgets (world px, at 1x) */
-			.wd {
-				border-radius: 30px;
-				background: rgba(30, 30, 34, 0.42);
-				box-shadow:
-					inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-					inset 0 1px 0 rgba(255, 255, 255, 0.2),
-					0 16px 40px rgba(0, 0, 0, 0.18);
-				backdrop-filter: blur(22px) saturate(1.5);
-				box-sizing: border-box;
+
+			/* ── the devices (laid out in #dev, a full frame that whips away) ── */
+			#dev {
+				width: 1920px;
+				height: 1080px;
+			}
+			#stage {
+				position: absolute;
+				inset: 0;
+				background: radial-gradient(ellipse 1100px 700px at 50% 55%, #1a1a1e, #08080a 75%);
+			}
+			.panel {
+				position: absolute;
 				overflow: hidden;
-			}
-			#wCal {
-				width: 350px;
-				height: 200px;
-				padding: 22px 26px;
-				display: flex;
-				gap: 26px;
-			}
-			#wCal .day {
-				font-size: 19px;
-				font-weight: 650;
-				color: var(--red);
-				letter-spacing: 0.04em;
-			}
-			#wCal .num {
-				font-size: 84px;
-				font-weight: 300;
-				line-height: 1;
-				margin-top: 4px;
-			}
-			#wCal .ev {
-				border-left: 4px solid var(--blue);
-				padding-left: 12px;
-				margin-top: 8px;
-			}
-			#wCal .ev b {
-				display: block;
-				font-size: 21px;
-				font-weight: 600;
-			}
-			#wCal .ev span {
-				font-size: 18px;
-				color: var(--ink2);
-			}
-			#wBat {
-				width: 350px;
-				height: 170px;
-				padding: 0 22px;
-				display: flex;
-				align-items: center;
-				gap: 18px;
-			}
-			#wBat img {
-				width: 92px;
-				height: 92px;
-			}
-			.mring {
-				width: 74px;
-				text-align: center;
-				position: relative;
-			}
-			.mring svg {
-				width: 74px;
-				height: 74px;
-				display: block;
-			}
-			.mring b {
-				position: absolute;
-				left: 0;
-				top: 0;
-				width: 74px;
-				line-height: 74px;
-				font-size: 24px;
-				font-weight: 600;
-				font-variant-numeric: tabular-nums;
-			}
-			.mring i {
-				font-style: normal;
-				font-size: 16px;
-				color: var(--ink2);
-			}
-			#wWx,
-			#wPh {
-				width: 170px;
-				height: 170px;
-			}
-			#wWx {
-				padding: 20px 22px;
-			}
-			#wWx .phf {
-				font-size: 46px;
-				color: #ffd60a;
-			}
-			#wWx b {
-				display: block;
-				font-size: 46px;
-				font-weight: 500;
-				margin-top: 10px;
-			}
-			#wWx span {
-				font-size: 18px;
-				color: var(--ink2);
-			}
-			#wPh {
-				background: url('assets/photo-a.jpg') center / cover;
-			}
-			/* the island card */
-			#bud .in {
-				display: flex;
-				align-items: center;
-				padding: 0 64px 0 54px;
-				gap: 40px;
-			}
-			#bud img {
-				width: 168px;
-				height: 168px;
-				flex: none;
-			}
-			.name {
-				font-size: 66px;
-				font-weight: 600;
-				letter-spacing: -0.02em;
-			}
-			.sub {
-				font-size: 42px;
-				color: var(--ink2);
-				margin-top: 6px;
-			}
-			#budText {
-				flex: 1;
-				min-width: 0;
-			}
-			#btn {
-				position: relative;
-				flex: none;
-				height: 104px;
-				padding: 0 46px;
-				border-radius: 999px;
-				background: rgba(255, 255, 255, 0.16);
-				font-size: 46px;
-				font-weight: 600;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				min-width: 236px;
 				box-sizing: border-box;
 			}
-			#btnRing {
-				position: absolute;
-				inset: -9px;
-				border-radius: 999px;
-				box-shadow: 0 0 0 4px var(--accent);
-				opacity: 0;
+			#pL {
+				background: #161618;
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 			}
-			#spin {
-				width: 44px;
-				height: 44px;
-				border-radius: 50%;
-				border: 5px solid rgba(255, 255, 255, 0.25);
-				border-top-color: #fff;
-				box-sizing: border-box;
-				position: absolute;
+			#pR,
+			#pP {
+				background: #ececef;
 			}
-			#rings {
-				display: flex;
-				gap: 30px;
-				position: absolute;
-				right: 64px;
-				top: 50%;
-				transform: translateY(-50%);
-			}
-			.ring {
-				width: 132px;
-				text-align: center;
-				position: relative;
-			}
-			.ring svg {
-				width: 132px;
-				height: 132px;
-				display: block;
-			}
-			.ring b {
-				position: absolute;
-				left: 0;
-				top: 0;
-				width: 132px;
-				line-height: 132px;
-				font-size: 46px;
-				font-weight: 600;
-				font-variant-numeric: tabular-nums;
-			}
-			.ring i {
-				font-style: normal;
-				font-size: 36px;
-				color: var(--ink2);
-				display: block;
-				margin-top: 8px;
-			}
-			/* Quick Share */
-			#qs .in {
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				padding-top: 64px;
-			}
-			#disc {
-				position: relative;
-				width: 280px;
-				height: 280px;
-			}
-			#disc svg {
+			#lapBox {
 				position: absolute;
 				inset: 0;
 			}
-			#discFill {
+			/* a thin aluminium laptop: a black glass lid with a silver edge, the base's lip below */
+			.laptop {
+				width: 1440px;
+				height: 826px;
+			}
+			.laptop .lid {
 				position: absolute;
-				left: 40px;
-				top: 40px;
-				width: 200px;
-				height: 200px;
+				left: 98px;
+				top: 0;
+				width: 1244px;
+				height: 796px;
+				border-radius: 38px 38px 12px 12px;
+				background: #050506;
+				box-shadow:
+					0 0 0 2.5px #a7a9b0,
+					0 0 0 4px #55575e;
+			}
+			.laptop .cam {
+				position: absolute;
+				left: 618px;
+				top: 8px;
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #1b1d24;
+				box-shadow: inset 0 0 0 1.5px #2c2f3a;
+			}
+			.laptop .scr {
+				position: absolute;
+				left: 22px;
+				top: 22px;
+				width: 1200px;
+				height: 750px;
+				overflow: hidden;
+				border-radius: 10px 10px 3px 3px;
+				background: #000;
+			}
+			.scr img {
+				position: absolute;
+				display: block;
+			}
+			.laptop .glare {
+				position: absolute;
+				inset: 0;
+				border-radius: inherit;
+				background: linear-gradient(118deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 36%);
+			}
+			.laptop .base {
+				position: absolute;
+				left: 0;
+				top: 793px;
+				width: 1440px;
+				height: 31px;
+				border-radius: 3px 3px 34px 34px / 3px 3px 28px 28px;
+				background: linear-gradient(#f1f2f5, #c9cbd1 30%, #9fa1a8 78%, #74767d);
+			}
+			.laptop .notch {
+				position: absolute;
+				left: 605px;
+				top: 793px;
+				width: 230px;
+				height: 11px;
+				border-radius: 0 0 14px 14px;
+				background: linear-gradient(#9a9ca3, #cfd1d6);
+			}
+			.laptop.dk .lid {
+				box-shadow:
+					0 0 0 2.5px #4a4b51,
+					0 0 0 4px #26272b;
+			}
+			.laptop.dk .base {
+				background: linear-gradient(#6d6e74, #3d3e43 35%, #26272b 80%, #18181b);
+			}
+			.laptop.dk .notch {
+				background: linear-gradient(#1c1c1f, #3a3b40);
+			}
+			/* the other laptop's screen: its own wallpaper, and what arrived */
+			#lap2 .scr {
+				background: url('assets/p-ocean.jpg') center / cover;
+			}
+			#toast {
+				position: absolute;
+				right: 36px;
+				top: 36px;
+				width: 470px;
+				height: 128px;
+				border-radius: 22px;
+				background: rgba(250, 250, 252, 0.92);
+				box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+				display: flex;
+				align-items: center;
+				gap: 20px;
+				padding: 0 24px;
+				box-sizing: border-box;
+				color: #18181b;
+			}
+			#toast i {
+				width: 80px;
+				height: 80px;
+				border-radius: 14px;
+				background: url('assets/photo-a.jpg') center / cover;
+				flex: none;
+			}
+			#toast b {
+				display: block;
+				font-size: 28px;
+				font-weight: 600;
+			}
+			#toast span {
+				font-size: 23px;
+				color: #52525b;
+			}
+
+			/* the phone: a black slab with a thin frame, a punch-hole camera */
+			.phone {
+				width: 380px;
+				height: 800px;
+				border-radius: 64px;
+				background: #0b0b0d;
+				box-shadow:
+					0 0 0 3px #4a4b52,
+					0 0 0 5px #222328,
+					0 40px 80px rgba(0, 0, 0, 0.22);
+			}
+			.pscr {
+				position: absolute;
+				inset: 12px;
+				border-radius: 52px;
+				overflow: hidden;
+				background: #0e0e10;
+				color: #f4f4f5;
+			}
+			.pcam {
+				position: absolute;
+				left: 169px;
+				top: 18px;
+				width: 18px;
+				height: 18px;
+				border-radius: 50%;
+				background: #030303;
+				box-shadow: inset 0 0 0 2px #17171c;
+			}
+			.pbar {
+				position: absolute;
+				left: 34px;
+				right: 30px;
+				top: 18px;
+				display: flex;
+				justify-content: space-between;
+				font-size: 17px;
+				font-weight: 600;
+			}
+			.pbar .ph {
+				font-size: 18px;
+				margin-left: 6px;
+			}
+			#pHead {
+				position: absolute;
+				left: 26px;
+				top: 64px;
+				font-size: 24px;
+				font-weight: 600;
+			}
+			#pBig {
+				position: absolute;
+				left: 0;
+				top: 110px;
+				width: 356px;
+				height: 240px;
+				background: url('assets/photo-a.jpg') center / cover;
+			}
+			.pgrid {
+				position: absolute;
+				left: 6px;
+				top: 356px;
+				display: grid;
+				grid-template-columns: repeat(3, 112px);
+				gap: 4px;
+			}
+			.pgrid i {
+				height: 112px;
+				background-size: cover;
+				background-position: center;
+				position: relative;
+			}
+			.pgrid i.sel::after {
+				content: '';
+				position: absolute;
+				right: 8px;
+				top: 8px;
+				width: 22px;
+				height: 22px;
 				border-radius: 50%;
 				background: var(--blue);
+				box-shadow: 0 0 0 2.5px #fff;
+			}
+			#psheet {
+				position: absolute;
+				left: 0;
+				bottom: 0;
+				width: 356px;
+				height: 440px;
+				border-radius: 32px 32px 0 0;
+				background: #202124;
+				box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4);
+			}
+			#psheet .hd {
+				position: absolute;
+				left: 158px;
+				top: 12px;
+				width: 40px;
+				height: 5px;
+				border-radius: 3px;
+				background: #5f6066;
+			}
+			#psheet .t1 {
+				position: absolute;
+				left: 28px;
+				top: 38px;
+				font-size: 23px;
+				font-weight: 600;
+			}
+			#psheet .t2 {
+				position: absolute;
+				left: 28px;
+				top: 72px;
+				font-size: 16px;
+				color: #a1a1aa;
+			}
+			#psheet .thumbs {
+				position: absolute;
+				right: 26px;
+				top: 38px;
+				display: flex;
+				gap: 6px;
+			}
+			#psheet .thumbs i {
+				width: 52px;
+				height: 52px;
+				border-radius: 12px;
+				background-size: cover;
+				background-position: center;
+			}
+			.av {
+				position: absolute;
+				top: 132px;
+				width: 100px;
+				text-align: center;
+			}
+			.av .disc {
+				position: relative;
+				width: 84px;
+				height: 84px;
+				margin: 0 auto;
+				border-radius: 50%;
 				display: flex;
 				align-items: center;
 				justify-content: center;
+				font-size: 42px;
 			}
-			#discFill .ph {
+			.av b {
+				display: block;
+				font-size: 15px;
+				font-weight: 600;
+				margin-top: 12px;
+			}
+			.av span {
+				display: block;
+				font-size: 13px;
+				color: #a1a1aa;
+				margin-top: 4px;
+				font-variant-numeric: tabular-nums;
+			}
+			#avRing {
 				position: absolute;
-				font-size: 104px;
+				left: -10px;
+				top: -10px;
+				width: 104px;
+				height: 104px;
+			}
+			#avCheck {
+				position: absolute;
+				right: -4px;
+				bottom: -4px;
+				width: 32px;
+				height: 32px;
+				border-radius: 50%;
+				background: var(--green);
+				box-shadow: 0 0 0 3px #202124;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 18px;
 				color: #fff;
 			}
-			#qsName {
-				font-size: 58px;
-				font-weight: 600;
-				letter-spacing: -0.02em;
-				margin-top: 30px;
+			#tap {
+				position: absolute;
+				width: 84px;
+				height: 84px;
+				border-radius: 50%;
+				background: rgba(255, 255, 255, 0.35);
 			}
-			#qsLine {
-				font-size: 42px;
-				color: var(--ink2);
-				margin-top: 10px;
-				font-variant-numeric: tabular-nums;
-			}
-			#qsSize {
-				font-size: 36px;
-				color: var(--ink3);
-				margin-top: 8px;
-				font-variant-numeric: tabular-nums;
-			}
-			.photo {
-				width: 340px;
-				height: 250px;
-				border-radius: 30px;
+			.fly {
+				width: 150px;
+				height: 112px;
+				border-radius: 16px;
 				background-size: cover;
 				background-position: center;
 				box-shadow:
-					0 24px 60px rgba(0, 0, 0, 0.45),
-					inset 0 0 0 1.5px rgba(255, 255, 255, 0.2);
+					0 18px 40px rgba(0, 0, 0, 0.35),
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.25);
 			}
+			#arc {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+				overflow: visible;
+			}
+
+			/* the earbuds, in their case (like the phone's Fast Pair sheet: a scalloped disc behind) */
+			#case {
+				width: 340px;
+				height: 330px;
+			}
+			#case > div,
+			#case > svg {
+				position: absolute;
+			}
+			#lidBox {
+				left: 20px;
+				top: 70px;
+				width: 300px;
+				height: 104px;
+				perspective: 700px;
+			}
+			#lid {
+				position: absolute;
+				inset: 0;
+				border-radius: 120px 120px 18px 18px / 90px 90px 18px 18px;
+				background: linear-gradient(#ffffff, #eeeef1 60%, #dcdce1);
+				box-shadow:
+					inset 0 2px 0 rgba(255, 255, 255, 0.9),
+					inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+				transform-origin: 50% 100%;
+			}
+			#body {
+				left: 20px;
+				top: 172px;
+				width: 300px;
+				height: 150px;
+				border-radius: 18px 18px 150px 150px / 18px 18px 110px 110px;
+				background: linear-gradient(#f9f9fb, #e7e7eb 45%, #c9cad0);
+				box-shadow:
+					inset 0 2px 0 rgba(0, 0, 0, 0.08),
+					0 26px 40px rgba(0, 0, 0, 0.12);
+			}
+			#body::after {
+				content: '';
+				position: absolute;
+				left: 146px;
+				top: 92px;
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #9b9ca4;
+			}
+			#well {
+				left: 38px;
+				top: 160px;
+				width: 264px;
+				height: 30px;
+				border-radius: 50%;
+				background: radial-gradient(ellipse at 50% 40%, #3a3a40, #1c1c20);
+			}
+			.bud {
+				width: 92px;
+				height: 140px;
+			}
+			#ripple1,
+			#ripple2 {
+				left: 20px;
+				top: 50px;
+				width: 300px;
+				height: 300px;
+				border-radius: 50%;
+				box-shadow: 0 0 0 3px var(--blue);
+			}
+			#chip {
+				height: 64px;
+				padding: 0 28px;
+				border-radius: 999px;
+				background: #fff;
+				box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				font-size: 26px;
+				font-weight: 500;
+				color: #18181b;
+			}
+			#chipDot {
+				width: 14px;
+				height: 14px;
+				border-radius: 50%;
+				background: #a1a1aa;
+			}
+
 			/* Spotlight */
 			#bar .in {
 				display: flex;
@@ -627,19 +812,16 @@
 				height: 1080px;
 				background: radial-gradient(ellipse 900px 700px at 22% 50%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 70%);
 			}
-			/* end */
-			.end {
-				font-size: 60px;
-				font-weight: 600;
-				letter-spacing: -0.01em;
-				color: #1d1d1f;
-				/* (a light halo lifts it off the petals' darker reds) */
+			/* the end: the name, written on the glass */
+			#word {
+				font-size: 212px;
+				font-weight: 650;
+				letter-spacing: -0.035em;
+				line-height: 1;
+				color: #fff;
 				text-shadow:
-					0 0 18px rgba(255, 255, 255, 0.95),
-					0 0 42px rgba(255, 255, 255, 0.8);
-			}
-			#e2 {
-				color: #0066cc;
+					0 2px 4px rgba(0, 0, 0, 0.12),
+					0 6px 40px rgba(0, 0, 0, 0.28);
 			}
 			#player {
 				position: fixed;
@@ -663,57 +845,99 @@
 	<body>
 		<div id="art">
 			<div id="world">
-				<img id="desk" class="a" src="assets/desk.webp" style="width: 1920px; height: 1080px" alt="" />
 				<img id="ccimg" class="a" src="assets/cc.webp" style="width: 1920px; height: 1080px" data-persp="2400" alt="" />
-				<div id="wCal" class="a wd">
-					<div><div class="day">SUNDAY</div><div class="num">1</div></div>
-					<div style="flex: 1">
-						<div class="ev"><b>Design review</b><span>10:30 – 11:15</span></div>
-						<div class="ev" style="border-color: var(--green)"><b>Gym</b><span>18:00</span></div>
-					</div>
-				</div>
-				<div id="wBat" class="a wd">
-					<img id="wBud" src="assets/earbuds.svg" alt="" />
-					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#30d158" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="39" transform="rotate(-90 37 37)" /></svg><b>80</b><i>Left</i></div>
-					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#30d158" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="46.8" transform="rotate(-90 37 37)" /></svg><b>76</b><i>Right</i></div>
-					<div class="mring"><svg viewBox="0 0 74 74"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="6" /><circle cx="37" cy="37" r="31" fill="none" stroke="#ff453a" stroke-width="6" stroke-linecap="round" stroke-dasharray="194.8" stroke-dashoffset="159.7" transform="rotate(-90 37 37)" /></svg><b>18</b><i>Case</i></div>
-				</div>
-				<div id="wWx" class="a wd"><span class="phf">&#xe540;</span><b>24°</b><span>Sunny</span></div>
-				<div id="wPh" class="a wd"></div>
 			</div>
 
 			<div id="bg" class="a"></div>
 			<div id="vig" class="a"></div>
 
-			<div id="bud" class="a pill card" style="width: 1340px; height: 276px">
-				<div class="in">
-					<img src="assets/earbuds.svg" alt="" />
-					<div id="budText">
-						<div class="name">Pixel Buds Pro 2</div>
-						<div class="sub"><span id="budSub1">Nearby · Fast Pair</span><span id="budSub2">Connecting…</span><span id="budSub3">Connected</span></div>
+			<!-- the devices -->
+			<div id="dev" class="a">
+				<div id="stage"></div>
+				<div id="pL" class="panel"></div>
+				<div id="pR" class="panel">
+					<svg class="abs" id="cookie" width="600" height="600" viewBox="-300 -300 600 600" style="left: 162px; top: 92px"><path id="cookiePath" fill="#dcdce1" /></svg>
+					<div id="case" class="abs" style="left: 292px; top: 220px">
+						<div id="ripple1"></div>
+						<div id="ripple2"></div>
+						<div id="lidBox"><div id="lid"></div></div>
+						<div id="well"></div>
+						<svg id="budL" class="bud" viewBox="-46 -40 92 140" style="left: 66px; top: 96px"><use href="#budArt" /></svg>
+						<svg id="budR" class="bud" viewBox="-46 -40 92 140" style="left: 182px; top: 96px"><use href="#budArt" transform="scale(-1 1)" /></svg>
+						<div id="body"></div>
 					</div>
-					<div id="btn"><div id="btnRing"></div><span id="btnLabel">Connect</span><div id="spin"></div></div>
-					<div id="rings">
-						<div class="ring" id="rL"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="56" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="10" /><circle class="arc" cx="66" cy="66" r="56" fill="none" stroke="#30d158" stroke-width="10" stroke-linecap="round" transform="rotate(-90 66 66)" /></svg><b>0</b><i>L</i></div>
-						<div class="ring" id="rR"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="56" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="10" /><circle class="arc" cx="66" cy="66" r="56" fill="none" stroke="#30d158" stroke-width="10" stroke-linecap="round" transform="rotate(-90 66 66)" /></svg><b>0</b><i>R</i></div>
-						<div class="ring" id="rC"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="56" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="10" /><circle class="arc" cx="66" cy="66" r="56" fill="none" stroke="#ff453a" stroke-width="10" stroke-linecap="round" transform="rotate(-90 66 66)" /></svg><b>0</b><i>Case</i></div>
+					<div id="chip" class="a"><div id="chipDot"></div><span id="chipText">Pairing mode</span></div>
+				</div>
+				<div id="pP" class="panel"></div>
+				<div id="lapBox">
+					<div id="lap" class="a laptop">
+						<div class="lid">
+							<div class="cam"></div>
+							<div class="scr">
+								<img src="assets/screen.jpg" style="left: 0; top: 0; width: 1200px; height: 750px" alt="" />
+								<img id="ovTop" class="clip" style="left: 400px; top: 0; width: 400px; height: 225px" alt="" />
+								<img id="ovCard" class="clip" style="left: 400px; top: 250px; width: 400px; height: 250px" alt="" />
+								<div class="glare"></div>
+							</div>
+						</div>
+						<div class="base"></div>
+						<div class="notch"></div>
 					</div>
 				</div>
-			</div>
-
-			<div id="qs" class="a card glass" style="width: 780px; height: 700px; border-radius: 64px">
-				<div class="in">
-					<div id="disc">
-						<svg viewBox="0 0 280 280"><circle cx="140" cy="140" r="128" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="12" /><circle id="qsArc" cx="140" cy="140" r="128" fill="none" stroke="#64d2ff" stroke-width="12" stroke-linecap="round" transform="rotate(-90 140 140)" /></svg>
-						<div id="discFill"><span class="ph" id="phoneGlyph">&#xe1e4;</span><span class="ph" id="checkGlyph" style="font-weight: 700">&#xe182;</span></div>
+				<div id="phone" class="a phone">
+					<div class="pscr">
+						<div class="pbar"><span>10:10</span><span><span class="phf">&#xe4ea;</span><span class="phf">&#xe142;</span><span class="phf">&#xe0c0;</span></span></div>
+						<div class="pcam"></div>
+						<div id="pHead">2 selected</div>
+						<div id="pBig"></div>
+						<div class="pgrid">
+							<i class="sel" style="background-image: url('assets/photo-a.jpg')"></i>
+							<i class="sel" style="background-image: url('assets/photo-b.jpg')"></i>
+							<i style="background-image: url('assets/p-leaves.jpg')"></i>
+							<i style="background-image: url('assets/p-petals.jpg')"></i>
+							<i style="background-image: url('assets/p-ocean.jpg')"></i>
+							<i style="background-image: url('assets/leaves.jpg')"></i>
+						</div>
+						<div id="psheet">
+							<div class="hd"></div>
+							<div class="t1">Quick Share</div>
+							<div class="t2">Nearby devices</div>
+							<div class="thumbs"><i style="background-image: url('assets/photo-a.jpg')"></i><i style="background-image: url('assets/photo-b.jpg')"></i></div>
+							<div class="av" style="left: 20px">
+								<div id="avDisc" class="disc" style="background: #0a84ff">
+									<span class="ph" style="color: #fff">&#xe586;</span>
+									<svg id="avRing" viewBox="0 0 104 104"><circle cx="52" cy="52" r="49" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="4" /><circle id="avArc" cx="52" cy="52" r="49" fill="none" stroke="#64d2ff" stroke-width="4" stroke-linecap="round" transform="rotate(-90 52 52)" /></svg>
+									<div id="avCheck"><span class="ph" style="font-weight: 700">&#xe182;</span></div>
+								</div>
+								<b>iRice laptop</b><span id="avState">Laptop</span>
+							</div>
+							<div class="av" style="left: 128px">
+								<div class="disc" style="background: #3a3b40"><span class="ph">&#xe1e6;</span></div>
+								<b>Pixel Tablet</b><span>Tablet</span>
+							</div>
+							<div class="av" style="left: 236px">
+								<div class="disc" style="background: #3a3b40"><span class="ph">&#xe1e0;</span></div>
+								<b>Pixel 9</b><span>Phone</span>
+							</div>
+							<div id="tap" class="abs" style="left: 28px; top: 132px"></div>
+						</div>
 					</div>
-					<div id="qsName">Galaxy S25 Ultra</div>
-					<div id="qsLine">Receiving 2 photos… 0%</div>
-					<div id="qsSize">0.0 MB of 6.2 MB</div>
 				</div>
+				<div id="lap2" class="a laptop dk">
+					<div class="lid">
+						<div class="cam"></div>
+						<div class="scr"><div id="toast"><i></i><div><b>2 photos received</b><span>From iRice laptop</span></div></div></div>
+					</div>
+					<div class="base"></div>
+					<div class="notch"></div>
+				</div>
+				<svg id="arc"><path id="arcPath" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 16" /></svg>
+				<div id="fly1" class="a fly" style="background-image: url('assets/photo-a.jpg')"></div>
+				<div id="fly2" class="a fly" style="background-image: url('assets/photo-b.jpg')"></div>
+				<div id="fly3" class="a fly" style="background-image: url('assets/photo-a.jpg')"></div>
+				<div id="h1" class="a title sm">Earbuds, found.</div>
+				<div id="h7" class="a title">Phones and laptops, shared.</div>
 			</div>
-			<div id="photoA" class="a photo" style="background-image: url('assets/photo-a.jpg')"></div>
-			<div id="photoB" class="a photo" style="background-image: url('assets/photo-b.jpg')"></div>
 
 			<div id="bar" class="a pill card glass" style="width: 1300px; height: 136px">
 				<div class="in"><span class="ph">&#xe30c;</span><span id="query"></span><span id="caret"></span></div>
@@ -740,100 +964,164 @@
 			<div id="sbw2" class="a sbw"><div class="k" style="color: #ffd60a">WEATHER</div><b>24° Sunny</b><span>High 29° · Low 19°</span></div>
 			<div id="sbCap" class="a">StandBy, while it charges.</div>
 
-			<div id="spill" class="a pill" style="width: 54px; height: 54px"></div>
-
-			<div id="h1" class="a title">Your earbuds, found.</div>
-			<div id="h2" class="a title">Your phone, shared.</div>
+			<div id="hM" class="a title">Everything, at a glance.</div>
 			<div id="h3" class="a title">Just ask.</div>
 			<div id="h4" class="a title">Captions, live.</div>
 			<div id="h5" class="a title">Just say it.</div>
 			<div id="h6" class="a title">All in glass.</div>
 
-			<!-- the glass: above everything but the end card's words -->
+			<!-- the glass: above everything but the name written on it -->
 			<canvas id="gl"></canvas>
-			<div id="e1" class="a end">Install in one line.</div>
-			<div id="e2" class="a end">irice.monishbl.in</div>
+			<div id="word" class="a">iRice</div>
+
+			<svg width="0" height="0" style="position: absolute">
+				<defs>
+					<linearGradient id="budG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" /><stop offset="0.7" stop-color="#f2f2f5" /><stop offset="1" stop-color="#d3d3d9" /></linearGradient>
+					<linearGradient id="stemG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c9c9d0" /><stop offset="0.35" stop-color="#f7f7f9" /><stop offset="1" stop-color="#bdbdc5" /></linearGradient>
+					<!-- one bud, head up and stem down, at 4.6x the battery widget's picture -->
+					<g id="budArt">
+						<rect x="-14" y="10" width="28" height="86" rx="14" fill="url(#stemG)" />
+						<ellipse cx="0" cy="0" rx="42" ry="38" fill="url(#budG)" />
+						<ellipse cx="30" cy="12" rx="9" ry="12" fill="#d4d4da" />
+						<path d="M-28 -14 C-22 -28 -6 -33 8 -30" stroke="#fff" stroke-width="7" stroke-linecap="round" fill="none" />
+					</g>
+				</defs>
+			</svg>
 		</div>
 		<div id="player" hidden><button type="button">Play</button><input type="range" min="0" value="0" /><span data-time></span></div>
 
 		<script type="module">
-			import { createFilm, split, counter, ramp, lerp, EASE } from '../engine/film.js';
+			import { createFilm, split, counter, ramp, lerp, clamp, EASE } from '../engine/film.js';
 			import * as R from '../engine/recipes.js';
 			import { createGlass } from './glass.js';
 
 			const NOWARP = new URLSearchParams(location.search).has('nowarp');
 			/* the liquid warps: [t0, t1, still before, still after (or a photo), direction] */
 			const WARPS = [
-				[21.5, 22.0, 'snapD', 'snapS1', [0, -1]],
-				[24.4, 24.9, 'snapS2', 'snapC1', [1, 0]],
-				[27.4, 27.9, 'snapC2', 'petals', [-1, 0]],
+				[44.0, 45.0, 'snapD', 'snapS1', [0, -1]],
+				[47.6, 48.6, 'snapS2', 'snapC1', [1, 0]],
+				[51.3, 52.3, 'snapC2', 'petals', [-1, 0]],
 			];
-			const images = { petals: 'assets/p-petals.jpg', ocean: 'assets/p-ocean.jpg', leaves: 'assets/p-leaves.jpg', desk: 'assets/desk.webp' };
+			const images = { petals: 'assets/p-petals.jpg', ocean: 'assets/p-ocean.jpg', isl: 'frames/charge/0001.jpg' };
 			if (!NOWARP) Object.assign(images, { snapD: 'assets/snap/d.jpg', snapS1: 'assets/snap/s1.jpg', snapS2: 'assets/snap/s2.jpg', snapC1: 'assets/snap/c1.jpg', snapC2: 'assets/snap/c2.jpg' });
 
 			await document.fonts.load('650 250px Geist');
 			await document.fonts.ready;
 			await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => (i.onload = i.onerror = r)))));
-			const G = await createGlass(document.getElementById('gl'), {
-				images,
-				text: { word: 'iRice', font: '650 250px Geist', x: 960, y: 548, blur: 14 },
-			});
-			const f = createFilm({ duration: 32.5 });
+			const G = await createGlass(document.getElementById('gl'), { images });
+			const f = createFilm({ duration: 56.0 });
 			const E = EASE;
 			const at = (sel, x, y) => f.tw(sel, [[0, { x, y }]]);
+			const $ = f.$;
+
+			/* ═══ footage: real iRice, a frame at a time (clips.sh) ═══════════ */
+			const CLIPN = { charge: 90, note: 90, wifi: 90, vol: 78, music: 165, fastpair: 462, card: 444 };
+			const frame = (c, local) => `frames/${c}/${String(clamp(Math.floor(local * 30 + 1e-4) + 1, 1, CLIPN[c])).padStart(4, '0')}.jpg`;
+			const setSrc = (el, src) => el.getAttribute('src') !== src && el.setAttribute('src', src);
+
+			/* keyframes of plain numbers ([t, {k: v}, ease]); scale `s` interpolates
+			   geometrically, so a zoom feels even all the way */
+			const keys = (K) => {
+				const full = [];
+				for (const [t, v, e] of K) full.push([t, { ...(full.at(-1)?.[1] ?? {}), ...v }, E[e ?? 'io']]);
+				return (t) => {
+					if (t <= full[0][0]) return full[0][1];
+					for (let i = 0; i < full.length - 1; i++) {
+						const [t0, a] = full[i], [t1, b, e] = full[i + 1];
+						if (t < t1) {
+							const p = e(ramp(t, t0, t1)), o = {};
+							for (const k in b) o[k] = k === 's' ? a[k] * Math.pow(b[k] / a[k], p) : lerp(a[k] ?? b[k], b[k], p);
+							return o;
+						}
+					}
+					return full.at(-1)[1];
+				};
+			};
+			const place = (el, x, y, s = 1, extra = '') => {
+				const v = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px) translate(-50%,-50%) scale(${s.toFixed(5)})${extra}`;
+				if (el.style.transform !== v) el.style.transform = v;
+			};
+			const rect = (el, r) => {
+				const st = el.style;
+				st.left = r.l.toFixed(1) + 'px';
+				st.top = r.t.toFixed(1) + 'px';
+				st.width = (r.r - r.l).toFixed(1) + 'px';
+				st.height = (r.b - r.t).toFixed(1) + 'px';
+				st.borderRadius = r.br.toFixed(1) + 'px';
+			};
 
 			/* ═══ the glass: a function of t ══════════════════════════════════ */
-			const CX = 960, CY = 540, HW = 330, HH = 130;
-			/* droplets gathering (t0 → t1), the chip forming (t1 → t2) */
+			const CX = 960, CY = 540;
+			/* the island, as the first recorded frame shows it settled (film px) */
+			const ISL = { x: 958, y: 140, hw: 592, hh: 124, r: 92 };
+			/* droplets gathering (t0 → t1), the body forming (t1 → t2) */
 			const gather = (t, t0, t1, t2) => {
 				const starts = [[790, 470, 74], [1110, 600, 92], [985, 400, 58], [860, 640, 50]];
 				const balls = starts.map(([x, y, r], i) => {
-					const a = E.back(ramp(t, t0 + i * 0.12, t0 + i * 0.12 + 0.32));
-					const m = E.io(ramp(t, t0 + 0.3, t2));
+					const a = E.back(ramp(t, t0 + i * 0.14, t0 + i * 0.14 + 0.4));
+					const m = E.io(ramp(t, t0 + 0.35, t2));
 					const shrink = 1 - E.i(ramp(t, t1, t2));
 					return [lerp(x, CX, m), lerp(y, CY, m), r * a * shrink];
 				});
 				return { balls, rectOn: E.emph(ramp(t, t1, t2)) };
 			};
 			const glassAt = (t) => {
-				/* a liquid warp between two scenes */
 				for (const [t0, t1, a, b, dir] of WARPS)
-					if (t >= t0 && t < t1) return NOWARP ? null : { t, a, b, wipe: E.io(ramp(t, t0, t1)), wipeDir: dir, kB: 1 };
-				/* the opener */
-				if (t < 4.3) {
-					const s = { t, glass: 1, wob: 1 - 0.75 * ramp(t, 1.6, 2.6), rect: [CX, CY, HW, HH], rectR: 130, kA: lerp(1.08, 1.0, E.io(ramp(t, 0, 3.4))) };
-					Object.assign(s, gather(t, 0.3, 1.0, 1.6));
-					/* the photos change beneath it */
-					if (t < 1.5) s.a = 'petals';
-					else if (t < 2.0) Object.assign(s, { a: 'petals', b: 'ocean', wipe: E.io(ramp(t, 1.5, 2.0)), wipeDir: [1, 0] });
-					else if (t < 2.1) s.a = 'ocean';
-					else if (t < 2.6) Object.assign(s, { a: 'ocean', b: 'leaves', wipe: E.io(ramp(t, 2.1, 2.6)), wipeDir: [0, 1] });
-					else s.a = 'leaves';
-					/* the word rises; the colours split */
-					s.text = E.o(ramp(t, 2.55, 3.15));
-					s.disp = 0.2 + 0.8 * E.i(ramp(t, 2.4, 3.4));
-					/* it gathers itself, then hits */
-					const squeeze = 1 - 0.07 * E.o(ramp(t, 3.15, 3.45));
-					const burst = 1 + 0.9 * E.expoIn(ramp(t, 3.45, 3.62));
-					s.rect = [CX, CY, HW * squeeze * burst, HH * squeeze * burst];
-					s.glass = 1 - ramp(t, 3.5, 3.62);
-					if (t >= 3.5) Object.assign(s, { a: 'leaves', b: 'desk', shock: [CX, CY, 2300 * E.o(ramp(t, 3.5, 4.25)), 1 - 0.8 * ramp(t, 3.5, 4.28)] });
+					if (t >= t0 && t < t1) return NOWARP ? null : { t, a, b, wipe: E.io(ramp(t, t0, t1)), wipeDir: dir, kA: 1 + 0.02 * ramp(t, t0, t1), kB: 1.02 - 0.02 * ramp(t, t0, t1) };
+				/* the opener: one drop */
+				if (t < 4.6) {
+					const s = { t, glass: 1, wob: (1 - 0.7 * ramp(t, 1.7, 2.8)) * (1 - ramp(t, 4.1, 4.45)), rectR: 150, kA: lerp(1.08, 1.0, E.io(ramp(t, 0, 3.4))) };
+					Object.assign(s, gather(t, 0.3, 1.1, 1.7));
+					/* the photos change beneath it, the last into the desktop the island is on */
+					if (t < 1.7) s.a = 'petals';
+					else if (t < 2.5) Object.assign(s, { a: 'petals', b: 'ocean', wipe: E.io(ramp(t, 1.7, 2.5)), wipeDir: [1, 0] });
+					else if (t < 2.6) s.a = 'ocean';
+					else if (t < 3.4) Object.assign(s, { a: 'ocean', b: 'isl', wipe: E.io(ramp(t, 2.6, 3.4)), wipeDir: [0, 1] });
+					else Object.assign(s, { a: 'isl', kA: 1 });
+					s.disp = 0.2 + 0.8 * E.io(ramp(t, 1.6, 3.4));
+					/* the leap: crouch, rise (stretched), land at the top and spread into the island */
+					let x = CX, y = CY, hw = 150, hh = 150, r = 150;
+					const crouch = E.o(ramp(t, 3.45, 3.65)) * (1 - ramp(t, 3.65, 3.75));
+					hw += 30 * crouch;
+					hh -= 26 * crouch;
+					y += 22 * crouch;
+					const up = ramp(t, 3.65, 4.02);
+					if (up > 0) {
+						const p = E.o2(up);
+						y = lerp(CY, ISL.y + 40, p);
+						const stretch = Math.sin(Math.PI * Math.min(1, up * 1.1));
+						hw = 150 - 34 * stretch;
+						hh = 150 + 48 * stretch;
+					}
+					const land = ramp(t, 4.02, 4.42);
+					if (land > 0) {
+						const p = E.back(land);
+						x = lerp(CX, ISL.x, p);
+						y = lerp(ISL.y + 40, ISL.y, E.o(land));
+						hw = lerp(116, ISL.hw, p);
+						hh = lerp(150, ISL.hh, E.o(land));
+						r = lerp(150, ISL.r, E.o(land));
+					}
+					s.rect = [x, y, hw, hh];
+					s.rectR = r;
+					s.ink = E.io(ramp(t, 4.12, 4.5));
+					s.disp *= 1 - 0.7 * s.ink;
+					/* the landing ripples the desktop under it, and settles before the cut */
+					if (t >= 4.02) Object.assign(s, { b: 'isl', shock: [ISL.x, ISL.y, 1500 * E.o(ramp(t, 4.02, 4.55)), 0.55 * (1 - ramp(t, 4.05, 4.55))] });
 					return s;
 				}
-				/* the end: the chip on the petals, then it melts */
-				if (t >= 27.9) {
-					const s = { t, a: 'petals', glass: 1, wob: 1 - 0.7 * ramp(t, 28.9, 29.6), rect: [CX, CY, HW, HH], rectR: 130, kA: lerp(1.0, 1.08, ramp(t, 27.4, 32.5)) };
-					Object.assign(s, gather(t, 28.0, 28.55, 29.1));
-					s.text = E.o(ramp(t, 29.0, 29.6)) * (1 - E.i(ramp(t, 31.85, 32.05)));
-					s.disp = 0.2 + 0.6 * E.io(ramp(t, 28.9, 29.6));
-					/* melting: the chip lets go, droplets part and dry */
-					const melt = E.i(ramp(t, 31.9, 32.35));
+				/* the end: the drop on the petals, the name on it, then it melts */
+				if (t >= 52.3) {
+					const s = { t, a: 'petals', glass: 1, wob: 1 - 0.7 * ramp(t, 53.2, 54.0), rect: [CX, CY, 330, 130], rectR: 130, kA: lerp(1.0, 1.08, ramp(t, 51.3, 56.0)) };
+					Object.assign(s, gather(t, 52.2, 52.8, 53.4));
+					s.disp = 0.2 + 0.6 * E.io(ramp(t, 53.1, 53.9));
+					const melt = E.i(ramp(t, 55.35, 55.85));
 					if (melt > 0) {
 						s.rectOn = 1 - melt;
 						s.wob = 0.3 + melt;
 						s.balls = [[CX - 150 * melt, CY - 20 * melt, 80 * Math.sin(Math.PI * melt)], [CX + 170 * melt, CY + 30 * melt, 70 * Math.sin(Math.PI * melt)], [CX + 20, CY - 60 * melt, 50 * Math.sin(Math.PI * melt)]];
 					}
-					s.glass = 1 - ramp(t, 32.3, 32.48);
+					s.glass = 1 - ramp(t, 55.8, 55.98);
 					return s;
 				}
 				return null;
@@ -843,248 +1131,336 @@
 				const s = glassAt(t);
 				glEl.style.display = s ? '' : 'none';
 				if (s) G.draw(s);
-				/* the impact shakes the frame a little, and settles */
-				const k = t >= 3.5 && t < 4.1 ? Math.exp(-(t - 3.5) * 9) : 0;
-				const dx = k * 14 * Math.sin((t - 3.5) * 70), dy = k * 9 * Math.cos((t - 3.5) * 83);
-				const v = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+				/* the landing jolts the frame a little, and settles */
+				const k = t >= 4.02 && t < 4.5 ? Math.exp(-(t - 4.02) * 10) : 0;
+				const dy = k * 12 * Math.sin((t - 4.02) * 75);
+				const v = `translate(0px, ${dy.toFixed(2)}px)`;
 				if (glEl.style.transform !== v) glEl.style.transform = v;
 			});
+			/* the name, on top of the glass */
+			f.tw('#word', [[0, { x: 960, y: 548 }]]);
+			R.blurIn(f, '#word', 53.15, { y: 548, rise: 12, dur: 0.6 });
+			f.tw('#word', [[55.2, { o: 1, blur: 0, s: 1 }], [55.55, { o: 0, blur: 12, s: 1.04 }, 'i']]);
+			f.show('#word', 53.1, 55.6);
 
-			/* ═══ the desktop comes to life (4.30–6.80) ══════════════════════ */
-			const worldOn = [[4.29, 6.8], [24.65, 27.65]];
-			f.fx((t) => (f.W.style.display = worldOn.some(([a, b]) => t >= a && t < b) ? '' : 'none'));
-			at(['#desk', '#ccimg'], 960, 540);
-			f.show(['#desk', '#wCal', '#wBat', '#wWx', '#wPh'], 4.29, 6.8);
-			at('#wCal', 245, 160);
-			at('#wBat', 245, 355);
-			at('#wWx', 155, 532);
-			at('#wPh', 335, 532);
-			[['#wCal', 4.4], ['#wBat', 4.52], ['#wWx', 4.64], ['#wPh', 4.76]].forEach(([id, t]) => {
-				f.tw(id, [[t, { s: 0.55, o: 0, blur: 6 }], [t + 0.16, { o: 1, blur: 0 }, 'o'], [t + 0.38, { s: 1 }, 'back']]);
+			/* ═══ the devices (4.60–32.90) ═══════════════════════════════════ */
+			f.show('#dev', 4.6, 33.15);
+			f.tw('#dev', [[0, { x: 960, y: 540 }]]);
+			const lapEl = $('#lap'), phoneEl = $('#phone'), lap2El = $('#lap2');
+			const ovTop = $('#ovTop'), ovCard = $('#ovCard');
+
+			/* the montage: real island footage on the laptop's screen, seen up close.
+			   [from, clip, its local time then]: each shot starts a moment before
+			   the island opens, so every cut springs it open again */
+			const SHOTS = [[4.6, 'charge', 0.333], [6.05, 'note', 0.03], [7.55, 'wifi', 0.07], [9.0, 'vol', 0.03], [10.3, 'music', 1.0]];
+			const shotAt = (t) => [...SHOTS].reverse().find((s) => t >= s[0]) ?? SHOTS[0];
+			/* Fast Pair's clip, trimmed in time: the card, the pointer to Connect
+			   (sped up), Connecting…, then the batteries */
+			const fpLocal = (t) => (t < 14.2 ? 0 : t < 15.6 ? t - 14.2 : t < 17.7 ? 1.4 + (t - 15.6) * 2 : t < 18.7 ? 5.6 + (t - 17.7) : 8.7 + (t - 18.7));
+			/* the share card's: it asks, the pointer to Accept (sped up), receiving, saved */
+			const cardLocal = (t) => (t < 22.5 ? 0 : t < 23.6 ? t - 22.5 : t < 25.95 ? 1.1 + (t - 23.6) * 2 : t < 26.45 ? 5.8 + (t - 25.95) : 9.7 + (t - 26.45) * 1.5);
+			f.fx((t) => {
+				if (t < 11.4) {
+					const [, c, l0] = shotAt(t);
+					setSrc(ovTop, frame(c, l0 + t - shotAt(t)[0]));
+				} else setSrc(ovTop, frame('fastpair', fpLocal(t)));
+				setSrc(ovCard, frame('card', cardLocal(t)));
 			});
-			f.cam([
-				[4.29, { cx: 960, cy: 540, s: 1 }],
-				[6.25, { s: 1.05 }, 'lin'],
-			]);
-			/* punch in on the earbuds in the battery widget: they become the island card.
-			   (they sit near the left edge: the camera stops where the desktop ends,
-			   so the earbuds land left of centre, and the card starts from there) */
-			const ZS = 3.4, BUD = { x: 70 + 22 + 46, y: 355 }; /* the widget's left + padding + half the picture */
-			const CAMX = 960 / ZS; /* the leftmost the view can go */
-			f.cam([[6.25, { cx: 960, cy: 540, s: 1.05 }], [6.8, { cx: CAMX, cy: BUD.y, s: ZS }, 'io5']]);
-			const BUDX = (BUD.x - CAMX) * ZS + 960; /* where the earbuds are on screen at the cut */
 
-			/* ═══ the stage ══════════════════════════════════════════════════ */
-			at('#bg', 960, 540);
-			f.show('#bg', 6.8, 21.75);
-			f.tw('#bg', [[6.8, { s: 1.04 }], [21.75, { s: 1.0 }, 'lin']]);
-			const title = (sel, t, out, y = 190) => {
-				const w = split(f.$(sel), 'words');
+			/* the laptop: where a point of it (L, laptop px) is on screen (F), and its scale.
+			   The island is at (720, 51) on it, the share card at (720, 397) */
+			const LAP = keys([
+				[0, { lx: 720, ly: 51.2, fx: ISL.x, fy: ISL.y, s: 4.8 }],
+				[10.6, {}],
+				[12.2, { fx: 960, fy: 257, s: 0.92 }, 'io'],
+				[13.0, { lx: 720, ly: 413, fx: 486, fy: 640, s: 0.6 }, 'io'],
+				[14.4, {}],
+				[15.2, { lx: 720, ly: 51.2, fx: 486, fy: 330, s: 2.6 }, 'io'],
+				[20.2, {}],
+				[21.0, { lx: 720, ly: 413, fx: 1434, fy: 640, s: 0.6 }, 'io'],
+				[22.7, {}],
+				[23.5, { lx: 720, ly: 397, fx: 1434, fy: 610, s: 2.4 }, 'io'],
+				[28.7, {}],
+				[29.4, { lx: 720, ly: 413, fx: 1434, fy: 640, s: 0.6 }, 'io'],
+				[30.1, { fx: 880, fy: 633, s: 0.55 }, 'io'],
+			]);
+			/* each montage shot creeps in a little, about the island */
+			const push = (t) => (t >= 4.6 && t < 10.6 ? 1 + 0.035 * ramp(t, shotAt(t)[0], shotAt(t)[0] + 1.5) : 1);
+			/* the panels: the laptop's (it clips the laptop), the earbuds', the phone's */
+			const FULL = { l: 0, t: 0, r: 1920, b: 1080, br: 0 };
+			const SL = { l: 24, t: 200, r: 948, b: 1056, br: 40 }, SR = { l: 972, t: 200, r: 1896, b: 1056, br: 40 };
+			const PL = keys([[0, FULL], [12.2, {}], [13.0, SL, 'io'], [20.2, {}], [21.0, SR, 'io'], [29.4, {}], [30.0, FULL, 'io']]);
+			const PR = keys([[0, { ...SR, l: 1940, r: 2864 }], [12.4, {}], [13.2, SR, 'o'], [20.1, {}], [20.6, { l: 2900, r: 3824 }, 'i']]);
+			const PP = keys([[0, { ...SL, l: -950, r: -26 }], [20.3, {}], [21.1, SL, 'o']]);
+			const PHONE = keys([[0, { x: -480, y: 628, s: 1 }], [20.3, {}], [21.1, { x: 486 }, 'o'], [29.4, {}], [30.1, { x: 290, y: 560, s: 0.75 }, 'io']]);
+			const LAP2 = keys([[0, { x: 2500, y: 695, s: 0.4 }], [29.6, {}], [30.4, { x: 1580 }, 'o']]);
+			f.fx((t) => {
+				const l = LAP(t), s = l.s * push(t);
+				const fx = l.fx, fy = l.fy;
+				place(lapEl, fx - (l.lx - 720) * s, fy - (l.ly - 413) * s, s);
+				const pl = PL(t);
+				rect($('#pL'), pl);
+				$('#lapBox').style.clipPath = `inset(${pl.t.toFixed(1)}px ${(1920 - pl.r).toFixed(1)}px ${(1080 - pl.b).toFixed(1)}px ${pl.l.toFixed(1)}px round ${pl.br.toFixed(1)}px)`;
+				rect($('#pR'), PR(t));
+				rect($('#pP'), PP(t));
+				const p = PHONE(t);
+				place(phoneEl, p.x, p.y, p.s);
+				const q = LAP2(t);
+				place(lap2El, q.x, q.y, q.s);
+			});
+			f.tw(['#pL', '#pP'], [[29.4, { o: 1 }], [29.95, { o: 0 }, 'io']]);
+			f.show('#pR', 12.3, 20.7);
+			f.show('#phone', 20.2, 33.2);
+			f.show('#lap2', 29.5, 33.2);
+
+			/* ═══ the island, everywhere (4.60–10.60) ════════════════════════ */
+			const hM = split($('#hM'), 'words');
+			hM.at(-1).classList.add('acc');
+			at('#hM', 960, 640);
+			hM.forEach((s, i) => f.tw(s, [[5.0 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [5.0 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+			f.tw('#hM', [[10.1, { o: 1, blur: 0 }], [10.5, { o: 0, blur: 10 }, 'i']]);
+			f.show('#hM', 4.9, 10.55);
+
+			/* ═══ Earbuds, found (12.20–20.20) ═══════════════════════════════ */
+			const title = (sel, t, out, x, y, step = 0.1) => {
+				const w = split($(sel), 'words');
 				w.at(-1).classList.add('acc');
-				f.tw(sel, [[0, { x: 960, y }]]);
-				w.forEach((s, i) => f.tw(s, [[t + i * 0.07, { o: 0, dy: 26, blur: 10 }], [t + i * 0.07 + 0.3, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+				f.tw(sel, [[0, { x, y }]]);
+				w.forEach((s, i) => f.tw(s, [[t + i * step, { o: 0, dy: 30, blur: 12 }], [t + i * step + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
 				f.show(sel, t, out);
 			};
-
-			/* ═══ Your earbuds, found (6.80–9.55) ════════════════════════════ */
-			/* the card picks up where the widget's earbuds are: same place, same size */
-			const s0 = (92 * ZS) / 168;
-			f.show('#bud', 6.8, 9.6);
-			f.tw('#bud', [
-				[6.8, { x: BUDX + 532 * s0, y: 540, s: s0 }],
-				[7.3, { x: 960, y: 620, s: 1 }, 'o'],
-				[9.5, { s: 1.03 }, 'lin'],
-			]);
-			title('#h1', 7.0, 9.6);
-			f.tw('#btnRing', [[7.72, { o: 0 }], [7.82, { o: 1 }, 'o'], [8.05, { o: 1 }], [8.2, { o: 0 }, 'i']]);
-			f.tw('#btn', [[7.82, { sc: 1 }], [7.9, { sc: 0.94 }, 'o'], [8.06, { sc: 1 }, 'o'], [8.38, { sc: 1, o: 1 }], [8.52, { sc: 0.6, o: 0 }, 'i']]);
-			f.tw('#btnLabel', [[7.92, { o: 1 }], [7.98, { o: 0 }, 'lin']]);
-			f.tw('#spin', [[7.94, { o: 0 }], [8.0, { o: 1 }, 'lin']]);
-			f.fx((t) => (f.$('#spin').style.transform = `rotate(${Math.round(t * 420) % 360}deg)`));
-			f.show('#budSub1', 0, 7.98);
-			f.show('#budSub2', 7.98, 8.42);
-			f.show('#budSub3', 8.42);
-			const RING = 2 * Math.PI * 56;
-			[['#rL', 80, 8.48], ['#rR', 76, 8.58], ['#rC', 18, 8.68]].forEach(([id, v, t]) => {
-				f.tw(id, [[t - 0.02, { o: 0, sc: 0.7 }], [t + 0.22, { o: 1, sc: 1 }, 'back']]);
-				const arc = f.$(id + ' .arc'), num = f.$(id + ' b');
-				arc.setAttribute('stroke-dasharray', RING.toFixed(2));
-				f.fx(counter(num, 0, v, t, t + 0.6));
-				f.fx((tt) => arc.setAttribute('stroke-dashoffset', (RING * (1 - (v / 100) * E.o(ramp(tt, t, t + 0.6)))).toFixed(2)));
-			});
-			f.tw('#h1', [[9.45, { o: 1 }], [9.58, { o: 0 }, 'i']]);
-
-			/* ═══ Your phone, shared (9.55–12.25) ════════════════════════════ */
-			/* the card folds into a dot, which becomes the Quick Share disc */
-			f.tw('#bud', [[9.55, { o: 1 }], [9.6, { o: 0 }, 'lin']]);
-			f.tw('#spill', [
-				[9.55, { x: 960, y: 620, w: 1340, h: 276, br: 138, bg: '#000000', o: 0, s: 1.03 }],
-				[9.551, { o: 1 }, 'step'],
-				[9.82, { w: 54, h: 54, br: 27, s: 1 }, 'emph'],
-				[10.05, { y: 454, w: 200, h: 200, br: 100, bg: '#0a84ff' }, 'io'],
-				[10.08, { o: 1 }],
-				[10.1, { o: 0 }, 'lin'],
-			]);
-			f.show('#spill', 9.54, 10.12);
-			f.show('#qs', 9.95, 12.55);
-			f.tw('#qs', [[9.95, { x: 960, y: 600, o: 0, s: 0.96 }], [10.2, { o: 1, s: 1 }, 'o']]);
-			title('#h2', 10.1, 12.55);
-			/* jump cuts on the beat: the same shot, later, framed a little closer */
-			f.tw('#qs', [[10.749, { s: 1 }], [10.75, { s: 1.1 }, 'step'], [11.249, { s: 1.1 }], [11.25, { s: 1 }, 'step']]);
-			const QR = 2 * Math.PI * 128, arcQ = f.$('#qsArc');
-			arcQ.setAttribute('stroke-dasharray', QR.toFixed(2));
-			const prog = (t) => (t < 10.75 ? 0.18 * E.o(ramp(t, 10.2, 10.7)) : t < 11.25 ? 0.62 + 0.05 * ramp(t, 10.75, 11.2) : 1);
+			title('#h1', 12.7, 20.3, 960, 104);
+			f.tw('#h1', [[19.95, { o: 1 }], [20.25, { o: 0 }, 'i']]);
+			/* the scalloped disc behind the case */
+			{
+				let d = '';
+				for (let i = 0; i <= 360; i += 2) {
+					const a = (i * Math.PI) / 180, r = 262 + 16 * Math.cos(12 * a);
+					d += `${i ? 'L' : 'M'}${(r * Math.cos(a)).toFixed(1)} ${(r * Math.sin(a)).toFixed(1)}`;
+				}
+				$('#cookiePath').setAttribute('d', d + 'Z');
+			}
+			f.tw('#cookie', [[12.9, { sc: 0.85, o: 0 }], [13.5, { sc: 1, o: 1 }, 'o'], [20.2, { sc: 1.03 }, 'lin']]);
+			f.fx((t) => ($('#cookie').style.rotate = `${(t * 4).toFixed(2)}deg`));
+			/* the lid swings back; the buds pop up and settle */
 			f.fx((t) => {
-				const p = prog(t);
-				arcQ.setAttribute('stroke-dashoffset', (QR * (1 - p)).toFixed(2));
-				arcQ.style.opacity = t < 11.25 ? 1 : 0;
-				const line = t < 11.25 ? `Receiving 2 photos… ${Math.round(p * 100)}%` : 'Saved to Pictures';
-				if (f.$('#qsLine').textContent !== line) f.$('#qsLine').textContent = line;
-				const size = `${(6.2 * p).toFixed(1)} MB of 6.2 MB`;
-				if (f.$('#qsSize').textContent !== size) f.$('#qsSize').textContent = size;
-				f.$('#qsSize').style.opacity = t < 11.25 ? 1 : 0;
-				f.$('#discFill').style.background = t < 11.25 ? '#0a84ff' : '#30d158';
-				f.$('#phoneGlyph').style.opacity = t < 11.25 ? 1 : 0;
+				const p = E.o(ramp(t, 13.35, 13.95));
+				$('#lid').style.transform = `translateY(${(-58 * p).toFixed(2)}px) rotateX(${(46 * p).toFixed(2)}deg)`;
+				$('#lid').style.filter = `brightness(${(1 - 0.1 * p).toFixed(3)})`;
+				$('#lidBox').style.zIndex = p > 0.35 ? 0 : 3;
 			});
-			f.tw('#checkGlyph', [[11.25, { o: 0, sc: 0.5 }], [11.45, { o: 1, sc: 1 }, 'back']]);
-			/* the photos come out of the card */
-			f.show(['#photoA', '#photoB'], 11.35, 12.55);
-			f.tw('#photoA', [[11.35, { x: 960, y: 560, o: 0, s: 0.5, r: 0 }], [11.7, { x: 470, y: 520, o: 1, s: 1, r: -7 }, 'o'], [12.25, { x: 455, y: 512, r: -6 }, 'lin']]);
-			f.tw('#photoB', [[11.47, { x: 960, y: 600, o: 0, s: 0.5, r: 0 }], [11.82, { x: 1450, y: 680, o: 1, s: 1, r: 6 }, 'o'], [12.25, { x: 1464, y: 688, r: 5 }, 'lin']]);
-			/* whip up: everything leaves upward, blurred, and Spotlight rises into its place */
-			const whipUp = (sel, y0) => f.tw(sel, [[12.25, { y: y0, mby: 0 }], [12.5, { y: y0 - 1300, mby: 90 }, 'i']]);
-			whipUp('#qs', 600);
-			whipUp('#photoA', 512);
-			whipUp('#photoB', 688);
-			whipUp('#h2', 190);
+			[['#budL', -1, 13.75], ['#budR', 1, 13.85]].forEach(([id, d, t]) => f.tw(id, [[t, { dy: 40, sc: 1 }], [t + 0.45, { dy: -34 }, 'back'], [t + 1.2, { dy: -22 }, 'io']]));
+			f.fx((t) => {
+				[['#budL', -1, 13.75], ['#budR', 1, 13.85]].forEach(([id, d, t0]) => ($(id).style.rotate = `${(d * 9 * E.back(ramp(t, t0, t0 + 0.45))).toFixed(2)}deg`));
+			});
+			/* it says it's here: rings spread from the case until the laptop connects */
+			[['#ripple1', 0], ['#ripple2', 0.7]].forEach(([id, o]) =>
+				f.fx((t) => {
+					const on = t >= 14.1 && t < 18.8;
+					const p = on ? ((t - 14.1 + o) % 1.4) / 1.4 : 0;
+					$(id).style.opacity = on ? (0.55 * (1 - p)).toFixed(3) : 0;
+					$(id).style.transform = `scale(${(0.7 + 0.9 * p).toFixed(4)})`;
+				}),
+			);
+			at('#chip', 462, 690);
+			f.tw('#chip', [[13.6, { o: 0, dy: 10 }], [14.0, { o: 1, dy: 0 }, 'o']]);
+			f.fx((t) => {
+				const [text, c] = t < 17.7 ? ['Pairing mode', '#a1a1aa'] : t < 18.82 ? ['Connecting…', '#0a84ff'] : ['Connected · 80%', '#30d158'];
+				if ($('#chipText').textContent !== text) $('#chipText').textContent = text;
+				$('#chipDot').style.background = c;
+			});
+			f.tw('#chip', [[18.82, { sc: 1 }], [18.9, { sc: 1.06 }, 'o'], [19.1, { sc: 1 }, 'o']]);
 
-			/* ═══ Just ask (12.50–16.00) ═════════════════════════════════════ */
-			f.show(['#bar', '#h3'], 12.5, 16.26);
-			f.tw('#bar', [[12.5, { x: 960, y: 1500, mby: 70 }], [12.82, { y: 470, mby: 0 }, 'o']]);
-			title('#h3', 12.62, 16.26);
+			/* ═══ the phone sends two photos (20.20–28.80) ═══════════════════ */
+			f.fx((t) => ($('#psheet').style.transform = `translateY(${(440 * (1 - E.emph(ramp(t, 21.45, 21.95)))).toFixed(2)}px)`));
+			/* the tap on the laptop */
+			f.tw('#tap', [[22.35, { sc: 0.3, o: 0 }], [22.4, { o: 1 }, 'lin'], [22.8, { sc: 1.5, o: 0 }, 'o']]);
+			f.tw('#avDisc', [[22.35, { sc: 1 }], [22.45, { sc: 0.92 }, 'o'], [22.65, { sc: 1 }, 'o']]);
+			const AV = 2 * Math.PI * 49, avArc = $('#avArc');
+			avArc.setAttribute('stroke-dasharray', AV.toFixed(2));
+			f.fx((t) => {
+				let state = 'Laptop', p = 0, spin = 0;
+				if (t >= 28.18) (state = 'Sent'), (p = 1);
+				else if (t >= 26.5) (p = ramp(t, 26.5, 28.15)), (state = `Sending… ${Math.round(p * 100)}%`);
+				else if (t >= 22.4) (state = 'Waiting…'), (p = 0.22), (spin = t * 300);
+				if ($('#avState').textContent !== state) $('#avState').textContent = state;
+				avArc.setAttribute('stroke-dashoffset', (AV * (1 - p)).toFixed(2));
+				$('#avRing').style.opacity = t >= 22.4 && t < 28.6 ? 1 : 0;
+				$('#avRing').style.transform = `rotate(${spin % 360}deg)`;
+			});
+			f.tw('#avCheck', [[28.18, { o: 0, sc: 0.4 }], [28.45, { o: 1, sc: 1 }, 'back']]);
+			/* the photos cross from the phone to the laptop */
+			const arcPos = (p, a, b, lift) => [lerp(a[0], b[0], p), lerp(a[1], b[1], p) - lift * Math.sin(Math.PI * p)];
+			const flyAcross = (sel, t0, t1, a, b, lift, spin) => {
+				f.show(sel, t0, t1);
+				f.fx((t) => {
+					const p = E.io(ramp(t, t0, t1));
+					const [x, y] = arcPos(p, a(t), b(t), lift);
+					place($(sel), x, y, lerp(0.9, 0.45, p), ` rotate(${(spin * Math.sin(Math.PI * p)).toFixed(2)}deg)`);
+					$(sel).style.opacity = (Math.min(1, ramp(t, t0, t0 + 0.15)) * (1 - ramp(t, t1 - 0.15, t1))).toFixed(3);
+				});
+			};
+			const phoneAv = () => [380, 760];
+			const lapCard = () => [1434, 610];
+			flyAcross('#fly1', 26.55, 27.55, phoneAv, lapCard, 260, -8);
+			flyAcross('#fly2', 26.8, 27.8, phoneAv, lapCard, 300, 7);
+
+			/* ═══ Phones and laptops, shared (28.80–32.40) ═══════════════════ */
+			title('#h7', 29.85, 33.2, 960, 150);
+			/* the laptop sends on to the other one */
+			const lapScr = () => [880, 633 - 413 * 0.55 + 22 * 0.55 + 375 * 0.55];
+			const lap2Scr = () => [1580, 695 - 413 * 0.4 + 22 * 0.4 + 375 * 0.4];
+			flyAcross('#fly3', 30.7, 31.6, lapScr, lap2Scr, 220, 6);
+			f.fx((t) => {
+				const a = lapScr(), b = lap2Scr(), n = 24;
+				let d = '';
+				for (let i = 0; i <= n; i++) {
+					const [x, y] = arcPos(i / n, a, b, 220);
+					d += `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+				}
+				const path = $('#arcPath');
+				if (path.getAttribute('d') !== d) path.setAttribute('d', d);
+				path.style.strokeDashoffset = (-t * 60).toFixed(1);
+				path.style.opacity = (0.8 * ramp(t, 30.45, 30.75) * (1 - ramp(t, 31.9, 32.3))).toFixed(3);
+			});
+			f.tw('#toast', [[31.5, { o: 0, sc: 0.9 }], [31.85, { o: 1, sc: 1 }, 'back']]);
+
+			/* whip up: the devices leave upward, blurred, and Spotlight rises into their place */
+			const B = 32.6;
+			f.tw('#dev', [[B, { y: 540, mby: 0 }], [B + 0.5, { y: -800, mby: 90 }, 'i']]);
+
+			/* ═══ Just ask (32.40–38.00) ═════════════════════════════════════ */
+			at('#bg', 960, 540);
+			f.show('#bg', B, 44.55);
+			f.tw('#bg', [[B, { s: 1.04 }], [44.5, { s: 1.0 }, 'lin']]);
+			f.show(['#bar', '#h3'], B + 0.2, B + 5.65);
+			f.tw('#bar', [[B + 0.2, { x: 960, y: 1500, mby: 70 }], [B + 0.75, { y: 470, mby: 0 }, 'o']]);
+			title('#h3', B + 0.45, B + 5.65, 960, 190);
 			/* the questions: the first typed, then a new one on each beat */
 			const QS = [
-				[12.9, '18% of 2450', 441, '18% of 2450 · Enter copies it', '#ff9f0a', ''],
-				[14.6, '5 km in miles', '3.1069 miles', '5 km · Enter copies it', '#30d158', ''],
-				[15.1, 'time in Tokyo', '6:30 PM', 'Monday in Tokyo · 3 h 30 min ahead', '#0a84ff', ''],
-				[15.6, 'days until christmas', '54 days', 'Friday 25 December 2026', '#ff453a', ''],
+				[B + 1.0, '18% of 2450', 441, '18% of 2450 · Enter copies it', '#ff9f0a', ''],
+				[B + 3.2, '5 km in miles', '3.1069 miles', '5 km · Enter copies it', '#30d158', ''],
+				[B + 3.8, 'time in Tokyo', '6:30 PM', 'Monday in Tokyo · 3 h 30 min ahead', '#0a84ff', ''],
+				[B + 4.4, 'days until christmas', '54 days', 'Friday 25 December 2026', '#ff453a', ''],
 			];
 			const qAt = (t) => [...QS].reverse().find((q) => t >= q[0]) ?? QS[0];
 			f.fx((t) => {
 				const q = qAt(t);
 				const first = q === QS[0];
-				const n = first ? Math.max(0, Math.min(q[1].length, Math.floor((t - 13.0) * 13))) : q[1].length;
+				const n = first ? Math.max(0, Math.min(q[1].length, Math.floor((t - B - 1.0) * 13))) : q[1].length;
 				const s = q[1].slice(0, n);
-				if (f.$('#query').textContent !== s) f.$('#query').textContent = s;
-				f.$('#caret').style.opacity = first && n < q[1].length ? 1 : Math.floor(t * 2.4) % 2 ? 0 : 1;
-				const big = typeof q[2] === 'number' ? Math.round(q[2] * E.o(ramp(t, 13.95, 14.4))).toString() : q[2];
-				if (f.$('#ansBig').textContent !== big) f.$('#ansBig').textContent = big;
-				if (f.$('#ansSub').textContent !== q[3]) f.$('#ansSub').textContent = q[3];
-				f.$('#tile').style.background = q[4];
-				if (f.$('#tileGlyph').textContent !== q[5]) f.$('#tileGlyph').textContent = q[5];
+				if ($('#query').textContent !== s) $('#query').textContent = s;
+				$('#caret').style.opacity = first && n < q[1].length ? 1 : Math.floor(t * 2.4) % 2 ? 0 : 1;
+				const big = typeof q[2] === 'number' ? Math.round(q[2] * E.o(ramp(t, B + 2.05, B + 2.5))).toString() : q[2];
+				if ($('#ansBig').textContent !== big) $('#ansBig').textContent = big;
+				if ($('#ansSub').textContent !== q[3]) $('#ansSub').textContent = q[3];
+				$('#tile').style.background = q[4];
+				if ($('#tileGlyph').textContent !== q[5]) $('#tileGlyph').textContent = q[5];
 				const tint = { '#ff9f0a': '255,159,10', '#30d158': '48,209,88', '#0a84ff': '10,132,255', '#ff453a': '255,69,58' }[q[4]];
-				f.$('#ans').style.background = `rgba(${tint},0.24)`;
-				f.$('#ans').style.boxShadow = `inset 0 0 0 2px rgba(${tint},0.55), 0 30px 80px rgba(0,0,0,0.3)`;
+				$('#ans').style.background = `rgba(${tint},0.24)`;
+				$('#ans').style.boxShadow = `inset 0 0 0 2px rgba(${tint},0.55), 0 30px 80px rgba(0,0,0,0.3)`;
 			});
-			f.show('#ans', 13.85, 16.26);
-			f.tw('#ans', [[13.85, { x: 960, y: 700, o: 0, s: 0.96 }], [14.15, { y: 670, o: 1, s: 1 }, 'o']]);
-			f.tw('#tile', [[13.9, { sc: 0.5, o: 0 }], [14.15, { sc: 1, o: 1 }, 'back']]);
+			f.show('#ans', B + 1.9, B + 5.65);
+			f.tw('#ans', [[B + 1.9, { x: 960, y: 700, o: 0, s: 0.96 }], [B + 2.3, { y: 670, o: 1, s: 1 }, 'o']]);
+			f.tw('#tile', [[B + 1.95, { sc: 0.5, o: 0 }], [B + 2.3, { sc: 1, o: 1 }, 'back']]);
 			/* each new answer is a jump cut: a hard reframe on the beat */
-			f.tw(['#bar', '#ans'], [[14.599, { s: 1 }], [14.6, { s: 1.05 }, 'step'], [15.099, { s: 1.05 }], [15.1, { s: 1 }, 'step'], [15.599, { s: 1 }], [15.6, { s: 1.05 }, 'step']]);
+			f.tw(['#bar', '#ans'], [[B + 3.199, { s: 1 }], [B + 3.2, { s: 1.05 }, 'step'], [B + 3.799, { s: 1.05 }], [B + 3.8, { s: 1 }, 'step'], [B + 4.399, { s: 1 }], [B + 4.4, { s: 1.05 }, 'step']]);
 			/* whip left into the captions */
-			const whipL = (sel, x0) => f.tw(sel, [[16.0, { x: x0, mbx: 0 }], [16.25, { x: x0 - 1920, mbx: 100 }, 'i']]);
+			const whipL = (sel, x0) => f.tw(sel, [[B + 5.1, { x: x0, mbx: 0 }], [B + 5.6, { x: x0 - 1920, mbx: 100 }, 'i']]);
 			whipL('#bar', 960);
 			whipL('#ans', 960);
 			whipL('#h3', 960);
 
-			/* ═══ Captions, live (16.25–18.75) ═══════════════════════════════ */
-			f.show('#vid', 16.2, 19.05);
-			f.tw('#vid', [[16.2, { x: 2900, y: 600, mbx: 90 }], [16.52, { x: 960, mbx: 0 }, 'o']]);
-			f.tw('#vidImg', [[16.2, { sc: 1.12 }], [19.0, { sc: 1.0 }, 'lin']]);
-			title('#h4', 16.42, 18.8, 150);
-			f.tw('#h4', [[18.7, { o: 1 }], [18.8, { o: 0 }, 'i']]);
+			/* ═══ Captions, live (38.00–41.00) ═══════════════════════════════ */
+			const C = B + 5.6;
+			f.show('#vid', C - 0.3, C + 3.4);
+			f.tw('#vid', [[C - 0.3, { x: 2900, y: 600, mbx: 90 }], [C + 0.3, { x: 960, mbx: 0 }, 'o']]);
+			f.tw('#vidImg', [[C - 0.3, { sc: 1.12 }], [C + 3.4, { sc: 1.0 }, 'lin']]);
+			title('#h4', C + 0.2, C + 3.1, 960, 150);
+			f.tw('#h4', [[C + 2.9, { o: 1 }], [C + 3.1, { o: 0 }, 'i']]);
 			/* the caption bar rides with the video, then becomes the dictation island */
-			f.show('#cap', 16.2, 21.76);
+			f.show('#cap', C - 0.3, 44.55);
 			const CAPY = 600 + 371 - 70;
 			f.tw('#cap', [
-				[16.2, { x: 2900, y: CAPY, w: 1120, h: 92, br: 46, bg: '#000000', mbx: 90 }],
-				[16.52, { x: 960, mbx: 0 }, 'o'],
-				[18.75, { x: 960, y: CAPY, w: 1120, h: 92, br: 46 }],
-				[19.15, { y: 330, w: 640, h: 120, br: 60 }, 'io'],
+				[C - 0.3, { x: 2900, y: CAPY, w: 1120, h: 92, br: 46, bg: '#000000', mbx: 90 }],
+				[C + 0.3, { x: 960, mbx: 0 }, 'o'],
+				[C + 3.0, { x: 960, y: CAPY, w: 1120, h: 92, br: 46 }],
+				[C + 3.7, { y: 330, w: 640, h: 120, br: 60 }, 'io'],
 			]);
 			const L1 = 'The tide comes in twice a day,'.split(' ');
 			const L2 = 'so the beach is never the same.'.split(' ');
 			f.fx((t) => {
 				let s = '';
-				if (t >= 17.9) s = L2.slice(0, Math.max(0, Math.min(L2.length, Math.floor((t - 17.9) / 0.12) + 1))).join(' ');
-				else if (t >= 16.75) s = L1.slice(0, Math.min(L1.length, Math.floor((t - 16.75) / 0.12) + 1)).join(' ');
-				if (f.$('#capText').textContent !== s) f.$('#capText').textContent = s;
+				if (t >= C + 1.9) s = L2.slice(0, Math.max(0, Math.min(L2.length, Math.floor((t - C - 1.9) / 0.14) + 1))).join(' ');
+				else if (t >= C + 0.5) s = L1.slice(0, Math.min(L1.length, Math.floor((t - C - 0.5) / 0.14) + 1)).join(' ');
+				if ($('#capText').textContent !== s) $('#capText').textContent = s;
 			});
-			f.tw('#capText', [[18.72, { o: 1 }], [18.8, { o: 0 }, 'lin']]);
-			f.tw('#vid', [[18.75, { s: 1, o: 1 }], [19.0, { s: 0.9, o: 0 }, 'i']]);
+			f.tw('#capText', [[C + 2.95, { o: 1 }], [C + 3.1, { o: 0 }, 'lin']]);
+			f.tw('#vid', [[C + 3.0, { s: 1, o: 1 }], [C + 3.4, { s: 0.9, o: 0 }, 'i']]);
 
-			/* ═══ Just say it (18.75–21.50) ══════════════════════════════════ */
-			f.tw('#dict', [[19.1, { o: 0 }], [19.3, { o: 1 }, 'o']]);
-			const wave = f.$('#wave');
+			/* ═══ Just say it (41.00–44.00) ══════════════════════════════════ */
+			const D = C + 3.0;
+			f.tw('#dict', [[D + 0.45, { o: 0 }], [D + 0.75, { o: 1 }, 'o']]);
+			const wave = $('#wave');
 			for (let i = 0; i < 9; i++) wave.append(document.createElement('i'));
 			f.fx((t) => {
 				[...wave.children].forEach((b, i) => {
 					const h = 14 + 44 * Math.abs(Math.sin(t * 7.3 + i * 0.9) * Math.sin(t * 3.1 + i * 1.7));
 					b.style.height = h.toFixed(1) + 'px';
 				});
-				f.$('#dot').style.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t * 3));
+				$('#dot').style.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t * 3));
 			});
-			title('#h5', 19.2, 21.76, 150);
-			f.show('#note', 19.2, 21.76);
-			f.tw('#note', [[19.2, { x: 960, y: 700, o: 0, blur: 14 }], [19.55, { y: 660, o: 1, blur: 0 }, 'o'], [21.5, { s: 1.03 }, 'lin']]);
+			title('#h5', D + 0.55, 44.55, 960, 150);
+			f.show('#note', D + 0.55, 44.55);
+			f.tw('#note', [[D + 0.55, { x: 960, y: 700, o: 0, blur: 14 }], [D + 1.0, { y: 660, o: 1, blur: 0 }, 'o'], [44.0, { s: 1.03 }, 'lin']]);
 			const NOTE = 'Pick up oat milk and call mum at six.'.split(' ');
 			f.fx((t) => {
-				const n = Math.max(0, Math.min(NOTE.length, Math.floor((t - 19.55) / 0.16) + 1));
-				const s = t < 19.55 ? '' : NOTE.slice(0, n).join(' ');
-				if (f.$('#noteText').textContent !== s) f.$('#noteText').textContent = s;
+				const n = Math.max(0, Math.min(NOTE.length, Math.floor((t - D - 1.0) / 0.17) + 1));
+				const s = t < D + 1.0 ? '' : NOTE.slice(0, n).join(' ');
+				if ($('#noteText').textContent !== s) $('#noteText').textContent = s;
 			});
 
-			/* ═══ StandBy (21.50–24.40) ══════════════════════════════════════ */
-			f.show(['#clk', '#sbDate', '#sbw1', '#sbw2', '#sbCap'], 21.75, 24.65);
-			f.tw('#clk', [[21.75, { x: 640, y: 450, s: 1 }], [24.4, { s: 1.03 }, 'lin']]);
+			/* ═══ StandBy (45.00–47.60) ══════════════════════════════════════ */
+			f.show(['#clk', '#sbDate', '#sbw1', '#sbw2', '#sbCap'], 44.5, 47.85);
+			f.tw('#clk', [[44.5, { x: 640, y: 450, s: 1 }], [47.6, { s: 1.03 }, 'lin']]);
 			at('#sbDate', 640, 720);
 			at('#sbw1', 1500, 360);
 			at('#sbw2', 1500, 640);
 			at('#sbCap', 960, 950);
 			/* the minute turns over: two digits roll up */
 			['#d3', '#d4'].forEach((d, i) => {
-				f.$(d).style.width = '0.58em';
-				[...f.$(d).children].forEach((s) => f.tw(s, [[23.2 + i * 0.05, { dy: 0 }], [23.55 + i * 0.05, { dy: -380 }, 'io5']]));
+				$(d).style.width = '0.58em';
+				[...$(d).children].forEach((s) => f.tw(s, [[46.2 + i * 0.06, { dy: 0 }], [46.65 + i * 0.06, { dy: -380 }, 'io5']]));
 			});
-			f.tw(['#sbw1', '#sbw2'], [[21.75, { s: 1 }], [24.4, { s: 1.02 }, 'lin']]);
+			f.tw(['#sbw1', '#sbw2'], [[44.5, { s: 1 }], [47.6, { s: 1.02 }, 'lin']]);
 
-			/* ═══ All in glass (24.40–27.40) ═════════════════════════════════ */
-			f.show('#ccimg', 24.65, 27.65);
-			f.show('#vig', 24.65, 27.65);
+			/* ═══ All in glass (48.60–51.30) ═════════════════════════════════ */
+			f.fx((t) => (f.W.style.display = t >= 48.1 && t < 51.55 ? '' : 'none'));
+			at('#ccimg', 960, 540);
+			f.show('#ccimg', 48.1, 51.55);
+			f.show('#vig', 48.1, 51.55);
 			at('#vig', 960, 540);
-			f.tw('#ccimg', [[24.9, { ry: -7, rx: 3, s: 1.08 }], [25.55, { ry: 0, rx: 0, s: 1 }, 'o']]);
+			f.tw('#ccimg', [[48.6, { ry: -7, rx: 3, s: 1.08 }], [49.4, { ry: 0, rx: 0, s: 1 }, 'o']]);
 			f.cam([
-				[24.65, { cx: 1372, cy: 308, s: 1.75 }, 'step'],
-				[24.9, { cx: 1372, cy: 308, s: 1.75 }],
-				[26.2, { cx: 960, cy: 540, s: 1 }, 'io5'],
-				[27.4, { s: 1.025 }, 'lin'],
+				[48.1, { cx: 1372, cy: 308, s: 1.75 }, 'step'],
+				[48.6, { cx: 1372, cy: 308, s: 1.75 }],
+				[49.9, { cx: 960, cy: 540, s: 1 }, 'io5'],
+				[51.3, { s: 1.025 }, 'lin'],
 			]);
-			f.tw('#vig', [[24.9, { o: 0 }], [25.6, { o: 1 }, 'o']]);
-			const h6 = split(f.$('#h6'), 'words');
+			f.tw('#vig', [[48.6, { o: 0 }], [49.4, { o: 1 }, 'o']]);
+			const h6 = split($('#h6'), 'words');
 			h6.at(-1).classList.add('acc');
 			f.tw('#h6', [[0, { x: 520, y: 540 }]]);
-			h6.forEach((s, i) => f.tw(s, [[25.5 + i * 0.09, { o: 0, dy: 26, blur: 10 }], [25.5 + i * 0.09 + 0.3, { o: 1, dy: 0, blur: 0 }, 'expo']]));
-			f.show('#h6', 25.5, 27.65);
-
-			/* ═══ the end (27.90–32.50): the chip, and where to get it ════════ */
-			f.tw('#e1', [[0, { x: 960, y: 790 }]]);
-			f.tw('#e2', [[0, { x: 960, y: 868 }]]);
-			R.blurIn(f, '#e1', 29.55, { y: 790, rise: 10 });
-			R.blurIn(f, '#e2', 29.75, { y: 868, rise: 10 });
-			f.tw(['#e1', '#e2'], [[31.75, { o: 1 }], [31.92, { o: 0, blur: 8 }, 'i']]);
-			f.show(['#e1', '#e2'], 29.5, 32.0);
+			h6.forEach((s, i) => f.tw(s, [[49.3 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [49.3 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+			f.show('#h6', 49.3, 51.55);
 
 			f.start();
+			/* a seek isn't drawn until the footage frames it asked for are decoded */
+			const seek0 = window.__film.seek;
+			window.__film.seek = async (v) => {
+				seek0(v);
+				await Promise.all([...document.querySelectorAll('img.clip')].map((i) => i.decode().catch(() => {})));
+			};
 		</script>
 	</body>
 </html>

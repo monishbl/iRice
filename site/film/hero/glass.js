@@ -10,7 +10,10 @@
  *     dispersion (each colour bent by a different amount), a soft frost,
  *     a rim of light and a shadow;
  *   - letters inside the chip, raised in the glass (a blurred text mask
- *     used as height), so the word appears as refraction before it's light.
+ *     used as height), so the word appears as refraction before it's light
+ *     (optional: pass `text` to createGlass);
+ *   - ink: the glass going black from the top down, leaving glass at its
+ *     lower rim, the way iRice's island looks (so a drop can become it).
  *
  *   const g = await createGlass(canvas, { images: { petals: 'assets/p1.jpg', … } });
  *   g.draw({ a: 'petals', b: 'ocean', wipe: 0.4, … });
@@ -31,7 +34,7 @@ uniform vec2 uWipeDir;    // the direction the front travels
 uniform vec4 uShock;      // centre x, y (px), radius (px), strength
 uniform vec4 uBall0, uBall1, uBall2, uBall3; // x, y, r, on
 uniform vec4 uRect;       // centre x, y, half w, half h (px)
-uniform float uRectR, uRectOn, uGlass, uDisp, uText1, uWob, uBright, uKA, uKB;
+uniform float uRectR, uRectOn, uGlass, uDisp, uText1, uWob, uBright, uKA, uKB, uInk;
 uniform vec2 uPanA, uPanB;
 
 float sdBox(vec2 p, vec2 b, float r) {
@@ -143,6 +146,13 @@ void main() {
 			float t = texture2D(uText, px / uRes).g; // the sharp letters
 			gl = mix(gl, gl * 0.55 + 0.45, t * uText1 * 0.85);
 		}
+		// ink: black over the top, thinning to glass toward the bottom edge
+		if (uInk > 0.001) {
+			float top = uRect.y - uRect.w * uRectOn, bottom = uRect.y + uRect.w * uRectOn;
+			float k = 1.0 - smoothstep(mix(top, bottom, 0.45), bottom + 6.0, px.y) * 0.8;
+			gl = mix(gl, vec3(0.035, 0.036, 0.04) + gl * 0.12, clamp(uInk * k, 0.0, 1.0));
+			gl += rim * lit * 0.25 * uInk;
+		}
 		float inside = smoothstep(1.0, -1.0, d);
 		// its shadow on the image
 		float sh = smoothstep(46.0, 0.0, d) * (1.0 - inside) * 0.22;
@@ -153,7 +163,7 @@ void main() {
 }
 `;
 
-export async function createGlass(canvas, { images, text }) {
+export async function createGlass(canvas, { images, text = null }) {
 	canvas.width = 1920;
 	canvas.height = 1080;
 	const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false, premultipliedAlpha: false });
@@ -198,6 +208,7 @@ export async function createGlass(canvas, { images, text }) {
 	for (const [k, url] of Object.entries(images)) T[k] = tex(await load(url));
 	// the letters: red = blurred (height), green = sharp (light)
 	const tc = document.createElement('canvas');
+	text ??= { word: '', font: '10px sans-serif', x: 0, y: 0, blur: 0 };
 	tc.width = 1920;
 	tc.height = 1080;
 	const c2 = tc.getContext('2d');
@@ -248,6 +259,7 @@ export async function createGlass(canvas, { images, text }) {
 			gl.uniform1f(U('uText1'), s.text ?? 0);
 			gl.uniform1f(U('uWob'), s.wob ?? 0);
 			gl.uniform1f(U('uBright'), s.bright ?? 0);
+			gl.uniform1f(U('uInk'), s.ink ?? 0);
 			gl.uniform1f(U('uKA'), s.kA ?? 1);
 			gl.uniform1f(U('uKB'), s.kB ?? 1);
 			const pa = s.panA ?? [0, 0], pb = s.panB ?? [0, 0];
