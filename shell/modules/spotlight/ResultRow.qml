@@ -33,6 +33,7 @@ Squircle {
         font { family: EmojiFont.family; pixelSize: 20 }
     }
     Icon {
+        id: glyph
         visible: !root.result.icon && !root.result.emoji
         x: 10
         width: 26
@@ -40,6 +41,15 @@ Squircle {
         name: root.result.glyph ?? "circle"
         size: 18
         color: root.selected ? Theme.color.onAccent : Theme.color.secondary
+        // (a row still loading: its glyph turns, steadily)
+        RotationAnimator on rotation {
+            running: !!root.result.loading && glyph.visible
+            from: 0
+            to: 360
+            duration: 900
+            loops: Animation.Infinite
+            onRunningChanged: if (!running) glyph.rotation = 0
+        }
     }
 
     Row {

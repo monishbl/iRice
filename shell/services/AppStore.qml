@@ -66,7 +66,8 @@ Singleton {
                     return;
                 }
                 const cb = root.waiting[r.id];
-                delete root.waiting[r.id];
+                if (!r.partial) // (a search's local matches come first, then all)
+                    delete root.waiting[r.id];
                 if (cb)
                     cb(r);
             }
@@ -80,25 +81,43 @@ Singleton {
     }
 
     // ── Spotlight: a few installable matches for what's typed ───────────
+    // Asked only when nothing installed matches (Search.qml decides), once
+    // typing pauses; the repos' matches come at once (they're on this
+    // computer), Flathub's after; a search done in the last ten minutes
+    // comes from memory, and searches typed past are dropped unanswered.
     property string quickQuery: ""
     property var quick: [] // apps, for quickQuery
+    property bool quickLoading: false // (Spotlight shows "Looking for apps…" meanwhile)
     property int quickRevision: 0
     function lookUp(q) {
         if (q === quickQuery)
             return;
         quickQuery = q;
         quick = [];
+        quickLoading = true;
+        quickRevision++;
         quickDebounce.restart();
+    }
+    // Nothing to look up (an installed app matches): stop showing it
+    function forget() {
+        if (quickQuery === "" && !quickLoading)
+            return;
+        quickDebounce.stop();
+        quickQuery = "";
+        quick = [];
+        quickLoading = false;
     }
     Timer {
         id: quickDebounce
         interval: 350
         onTriggered: {
             const q = root.quickQuery;
-            root.ask("search", { q: q, limit: 4 }, r => {
-                if (q !== root.quickQuery)
+            root.ask("search", { q: q, limit: 4, stream: true }, r => {
+                if (q !== root.quickQuery || r.stale)
                     return;
                 root.quick = (r.apps ?? []).filter(a => !a.installed).slice(0, 3);
+                if (!r.partial)
+                    root.quickLoading = false;
                 root.quickRevision++;
             });
         }

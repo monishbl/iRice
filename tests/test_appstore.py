@@ -147,6 +147,28 @@ class AppStore(unittest.TestCase):
         self.assertEqual([(a["source"], a["pkg"]) for a in aur], [("aur", "spotify")])
         self.assertEqual(aur[0]["icon"], "https://x/s.png")  # (Flathub's logo, the same app)
 
+    def test_repo_matches_first_then_all_and_a_repeat_from_memory(self):
+        m = self.m
+        calls = []
+
+        def fetch(url, data=None, timeout=None):
+            calls.append(url)
+            return {"hits": [{"app_id": "md.obsidian.Obsidian", "name": "Obsidian", "type": "desktop-application", "icon": "https://x/o.png"}]}
+        store = m.Store(fetch=fetch)
+        early = []
+        apps = store.search("obsidian", partial=early.append)
+        self.assertEqual([a["source"] for a in early[0]], ["repo"])  # (before the network)
+        self.assertEqual([a["source"] for a in apps], ["repo", "flathub"])
+        n = len(calls)
+        store.search("Obsidian ")  # (the same search)
+        self.assertEqual(len(calls), n)
+
+    def test_only_the_newest_search_is_done(self):
+        reqs = [{"id": 1, "op": "search", "q": "ob"}, {"id": 2, "op": "status"}, {"id": 3, "op": "search", "q": "obsi"}]
+        todo, stale = self.m.latest_only(reqs)
+        self.assertEqual([r["id"] for r in todo], [2, 3])
+        self.assertEqual([r["id"] for r in stale], [1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -38,9 +38,11 @@ import hashlib
 import json
 import os
 import re
+import select
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -381,6 +383,7 @@ class Store:
         self.pkgs = installed_packages()
         self.flatpaks = installed_flatpaks()
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        self.cache = {}  # (query, sources, limit) -> (when, apps)
 
     def refresh(self):
         self.pkgs = installed_packages()
@@ -402,15 +405,31 @@ class Store:
         except Exception:  # noqa: BLE001 (offline, or a source down: the others still answer)
             return default
 
-    def search(self, q, limit=30, sources=None):
+    def search(self, q, limit=30, sources=None, partial=None):
         """The repos and Flathub; the AUR only when asked for ("aur: name",
-        or sources=["aur"]: community packages aren't offered unasked)"""
+        or sources=["aur"]: community packages aren't offered unasked).
+        partial(apps): the repos' matches at once (they're on this computer),
+        before the network answers. The same search again within ten
+        minutes comes from memory."""
         q = " ".join(q.split())[:80]
         if q.lower().startswith("aur:"):
             q, sources = q[4:].strip(), ["aur"]
         sources = set(sources or ["repo", "flathub"])
         if len(q) < 2:
             return []
+        key = (q.lower(), tuple(sorted(sources)), limit)
+        hit = self.cache.get(key)
+        if hit and time.monotonic() - hit[0] < 600:
+            return self.finish([dict(a) for a in hit[1]])
+        if partial and "repo" in sources:
+            partial(self.finish(rank([dict(a) for a in self.repo if match_score(a, q) > 0], q)[:limit]))
+        apps = self.search_all(q, limit, sources)
+        self.cache[key] = (time.monotonic(), [dict(a) for a in apps])
+        if len(self.cache) > 200:
+            self.cache.pop(next(iter(self.cache)))
+        return apps
+
+    def search_all(self, q, limit, sources):
         aur = self.pool.submit(self.remote, lambda: self.fetch(f"{AUR}/search/{urllib.parse.quote(q)}?by=name-desc").get("results", []), []) if "aur" in sources else None
         flat = self.pool.submit(self.remote, lambda: self.fetch(f"{FLATHUB}/search", {"query": q}).get("hits", []), [])
         repo = [dict(a) for a in self.repo if match_score(a, q) > 0]
@@ -471,24 +490,75 @@ class Store:
                 "helper": shutil.which("yay") and "yay" or shutil.which("paru") and "paru" or ""}
 
 
+class Requests:
+    """Lines from stdin, all that are waiting at once (the first one waited
+    for). Read raw: Python's own buffering would hide waiting lines from
+    select."""
+    def __init__(self, fd=0):
+        self.fd, self.buf, self.ended = fd, b"", False
+
+    def take(self):
+        while b"\n" not in self.buf and not self.ended:
+            chunk = os.read(self.fd, 65536)
+            self.buf += chunk
+            self.ended = not chunk
+        while not self.ended and select.select([self.fd], [], [], 0)[0]:
+            chunk = os.read(self.fd, 65536)
+            self.buf += chunk
+            self.ended = not chunk
+        *lines, self.buf = self.buf.split(b"\n")
+        if self.ended and self.buf:
+            lines, self.buf = lines + [self.buf], b""
+        return [l.decode(errors="replace") for l in lines if l.strip()], self.ended
+
+
+def latest_only(reqs):
+    """Searches typed past while one was being answered: only the newest is
+    worth doing (the others are answered as stale, so nothing waits on them)"""
+    searches = [r for r in reqs if isinstance(r, dict) and r.get("op") == "search"]
+    stale = searches[:-1]
+    return [r for r in reqs if r not in stale], stale
+
+
 def serve():
     store = Store()
+
+    def say(out):
+        print(json.dumps(out), flush=True)
+
+    def search(r):
+        stream = r.get("stream")
+        return {"apps": store.search(r.get("q", ""), int(r.get("limit", 30)), r.get("sources"),
+                                     (lambda apps: say({"id": r.get("id"), "partial": True, "apps": apps})) if stream else None)}
     ops = {
-        "search": lambda r: {"apps": store.search(r.get("q", ""), int(r.get("limit", 30)), r.get("sources"))},
+        "search": search,
         "discover": lambda r: {"sections": store.discover()},
         "category": lambda r: {"apps": store.category(r.get("category", ""))},
         "installed": lambda r: {"apps": store.installed()},
         "status": lambda r: {"status": store.status()},
         "refresh": lambda r: (store.refresh(), {"ok": True})[1],
     }
-    for line in sys.stdin:
-        try:
-            req = json.loads(line)
-            out = ops[req.get("op", "")](req)
-        except Exception as e:  # noqa: BLE001
-            out = {"error": str(e)}
-        out["id"] = req.get("id") if isinstance(req, dict) else None
-        print(json.dumps(out), flush=True)
+    requests = Requests()
+    while True:
+        lines, ended = requests.take()
+        reqs = []
+        for line in lines:
+            try:
+                reqs.append(json.loads(line))
+            except ValueError:
+                pass
+        todo, stale = latest_only(reqs)
+        for r in stale:
+            say({"id": r.get("id"), "stale": True})
+        for req in todo:
+            try:
+                out = ops[req.get("op", "")](req)
+            except Exception as e:  # noqa: BLE001
+                out = {"error": str(e)}
+            out["id"] = req.get("id") if isinstance(req, dict) else None
+            say(out)
+        if ended:
+            return
 
 
 if __name__ == "__main__":

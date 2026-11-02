@@ -345,18 +345,29 @@ Singleton {
         for (const x of apps)
             out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry), score: x.s });
 
-        // An app you don't have (a name, or a word no installed app is
-        // called): installable ones from the App Store, which opens on it
-        if (q.length >= 3 && raw.split(/\s+/).length <= 4 && value === null && AppStore.available && !apps.some(x => x.entry.name.toLowerCase() === q)) {
-            AppStore.lookUp(raw);
-            if (AppStore.quickQuery === raw)
-                for (const a of AppStore.quick)
-                    out.push({ section: "App Store", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) });
-        }
 
         const acts = actions.concat(castActions).map(a => ({ a: a, s: Math.max(score(a.title, q), score(a.keywords, q) * 0.9) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
         for (const x of acts)
             out.push({ section: "Actions", title: x.a.title, subtitle: "", glyph: x.a.glyph, run: x.a.run, score: x.s });
+
+        // An app you don't have: installable ones from the App Store (which
+        // opens on it). Asked only when nothing here answers it: no installed
+        // app or action starting with it (or a word of it), no sum, answer
+        // or plain-language request, a name of a few words. "aur: name" asks
+        // the AUR. Everyday searches never reach the network.
+        const intents = Intents.rows(raw);
+        const aur = /^aur:/i.test(raw);
+        const wantStore = AppStore.available && q.length >= 3 && raw.split(/\s+/).length <= 4 && value === null && !ansResult?.title && intents.length === 0
+            && (aur || ((apps[0]?.s ?? 0) < 80 && (acts[0]?.s ?? 0) < 80));
+        if (wantStore) {
+            AppStore.lookUp(raw);
+            for (const a of AppStore.quick)
+                out.push({ section: "App Store", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) });
+            if (AppStore.quickLoading)
+                out.push({ section: "App Store", title: AppStore.quick.length > 0 ? "Looking on Flathub…" : "Looking for apps…", subtitle: "", glyph: "circle-notch", loading: true, run: () => Panels.openAppStore() });
+        } else {
+            AppStore.forget();
+        }
 
         if (q.length >= 3)
             for (const e of Calendar.search(raw, 3))
@@ -387,7 +398,6 @@ Singleton {
 
         // Plain-language actions ("remind me…", "timer 5 min", "wifi off")
         // come first; otherwise the best app or action becomes the top hit
-        const intents = Intents.rows(raw);
         if (intents.length > 0)
             return intents.concat(out);
 
@@ -396,10 +406,15 @@ Singleton {
         // (the better match of the two: an app that only matches by its
         // generic name doesn't beat an action named for what was typed)
         let top = out.findIndex(r => answers.includes(r.section));
+        // (letters merely in order, "krita" in On-Screen Keyboard's keywords,
+        // don't make a top hit: it has to contain what was typed)
         if (top < 0)
             for (let i = 0; i < out.length; i++)
-                if ((out[i].section === "Applications" || out[i].section === "Actions") && (top < 0 || out[i].score > out[top].score))
+                if ((out[i].section === "Applications" || out[i].section === "Actions") && out[i].score >= 50 && (top < 0 || out[i].score > out[top].score))
                     top = i;
+        // (nothing here matches, but the App Store has it: that's the top hit)
+        if (top < 0)
+            top = out.findIndex(r => r.section === "App Store" && !r.loading);
         if (top > 0 || (top === 0 && !answers.includes(out[0].section))) {
             const hit = Object.assign({}, out[top], { section: "Top Hit" });
             out.splice(top, 1);
