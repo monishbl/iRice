@@ -169,6 +169,12 @@ Popover {
         // (clipped only while it changes height or pages slide, so badges
         // and focus rings at the edges show at rest)
         clip: Math.abs(height - target) > 0.5 || (qs.pageT > 0.01 && qs.pageT < 0.99) || home.height > qs.maxHeight
+        // Clicks on the panel's empty parts, its padding included (and Edit
+        // controls' slider rows), stay here: past it, they're a click
+        // outside, which closes it
+        MouseArea {
+            anchors { fill: parent; margins: -qs.padding }
+        }
 
         // Home: sliders, tiles, media, footer (or the editor)
         Column {

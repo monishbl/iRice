@@ -42,7 +42,7 @@ Item {
     readonly property color ink2: darkInk ? m3.onSecondaryFixedVariant : m3.secondaryFixedDim
 
     // The clock, as the owner's lock → StandBy morph needs it
-    readonly property int clockSize: Math.round(split ? Math.min(height * 0.27, width * 0.16) : Math.min(height * (ios ? 0.24 : 0.22), width * 0.3))
+    readonly property int clockSize: Math.round(split ? Math.min(height * 0.2, width * 0.12) : Math.min(height * (ios ? 0.17 : 0.15), width * 0.2))
     readonly property real clockWeight: 640
     readonly property real clockWidth: 112
     readonly property rect clockRect: Qt.rect(header.x + clock.x, header.y + clock.y, clock.width, clock.height)
@@ -154,7 +154,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDate(wallClock.date, "dddd d MMMM")
                         color: root.ink
-                        font { family: Theme.font.family; pixelSize: 20; weight: Font.Medium }
+                        font { family: Theme.font.family; pixelSize: 18; weight: Font.Medium }
                     }
                     Row {
                         visible: root.ios && Weather.ready
@@ -171,7 +171,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Weather.temp + "°"
                             color: root.ink
-                            font { family: Theme.font.family; pixelSize: 20; weight: Font.Medium; features: { "tnum": 1 } }
+                            font { family: Theme.font.family; pixelSize: 18; weight: Font.Medium; features: { "tnum": 1 } }
                         }
                     }
                 }
@@ -225,7 +225,7 @@ Item {
         // ── Now Playing and notifications ───────────────────────────────
         Column {
             id: cards
-            width: root.split ? Math.min(420, root.width * 0.3) : 420
+            width: root.split ? Math.min(380, root.width * 0.3) : 380
             x: root.split ? Math.round(root.width * 0.72 - width / 2) : Math.round((root.width - width) / 2)
             // (moving with the clock, or in macos with the field, on unlock)
             y: root.split ? header.y : root.ios ? header.y + header.height + 32 : unlock.y - height - 32
@@ -240,7 +240,7 @@ Item {
                 readonly property bool timeline: (p?.lengthSupported ?? false) && (p?.length ?? 0) > 0
                 visible: !!p && (p.trackTitle ?? "") !== ""
                 width: parent.width
-                height: 112
+                height: 80
                 radius: Theme.radius.tile
                 color: root.m3.surfaceContainerHigh
 
@@ -254,17 +254,17 @@ Item {
                 // The art in a cookie while it plays, a circle when paused
                 Item {
                     id: art
-                    x: 16
+                    x: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 80
-                    height: 80
+                    width: 56
+                    height: 56
                     Image {
                         id: artImage
                         anchors.fill: parent
                         source: Media.artUrl(media.p)
                         retainWhileLoading: true
                         fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(160, 160)
+                        sourceSize: Qt.size(112, 112)
                         asynchronous: true
                     }
                     MaterialShape {
@@ -283,21 +283,21 @@ Item {
                     }
                 }
                 Column {
-                    anchors { left: art.right; leftMargin: 16; right: controls.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                    anchors { left: art.right; leftMargin: 12; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                     spacing: 2
                     Text {
                         width: parent.width
                         text: media.p?.trackTitle ?? ""
                         elide: Text.ElideRight
                         color: root.m3.onSurface
-                        font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
+                        font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
                     }
                     Text {
                         width: parent.width
                         text: media.p?.trackArtist ?? ""
                         elide: Text.ElideRight
                         color: root.m3.onSurfaceVariant
-                        font { family: Theme.font.family; pixelSize: 14 }
+                        font { family: Theme.font.family; pixelSize: 13 }
                     }
                     // The timeline: wavy while it plays, flat when paused (so
                     // a paused track on the lock screen draws nothing)
@@ -335,11 +335,11 @@ Item {
                     spacing: 2
                     IconButton {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 40
-                        height: 40
+                        width: 36
+                        height: 36
                         icon: "skip-back"
                         fill: true
-                        iconSize: 22
+                        iconSize: 20
                         iconColor: root.m3.onSurfaceVariant
                         tooltip: "Previous track"
                         onClicked: media.p?.previous()
@@ -347,8 +347,8 @@ Item {
                     Item {
                         id: play
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 56
-                        height: 56
+                        width: 44
+                        height: 44
                         scale: playMouse.pressed ? 0.92 : 1
                         Behavior on scale { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.005 } }
                         activeFocusOnTab: true
@@ -371,7 +371,7 @@ Item {
                             anchors.centerIn: parent
                             name: Island.musicPlaying ? "pause" : "play"
                             fill: true
-                            size: 26
+                            size: 22
                             color: root.m3.onPrimary
                         }
                         FocusRing {
@@ -387,11 +387,11 @@ Item {
                     }
                     IconButton {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 40
-                        height: 40
+                        width: 36
+                        height: 36
                         icon: "skip-forward"
                         fill: true
-                        iconSize: 22
+                        iconSize: 20
                         iconColor: root.m3.onSurfaceVariant
                         tooltip: "Next track"
                         onClicked: media.p?.next()
@@ -553,7 +553,7 @@ Item {
                 Item {
                     id: avatar
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: root.ios ? 64 : 96
+                    width: root.ios ? 48 : 64
                     height: width
                     Image {
                         id: avatarImage
@@ -586,7 +586,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Quickshell.env("USER") ?? ""
                     color: root.ink
-                    font { family: Theme.font.family; pixelSize: 22; weight: Font.Medium }
+                    font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
                 }
             }
 
@@ -626,8 +626,8 @@ Item {
             Item {
                 id: fieldBox
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 340
-                height: 56
+                width: 320
+                height: 52
 
                 property real shake: 0
                 // (a loose spring, ζ 0.15, k 1500: a quick decaying shake)
@@ -674,8 +674,8 @@ Item {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: input.text === ""
-                            // (a finger works too: the target under the field says so)
-                            text: root.lockScope.fingerState !== "" ? "Fingerprint or password" : "Enter password"
+                            // (the fingerprint target under the field says a finger works)
+                            text: "Enter password"
                             color: root.m3.onSurfaceVariant
                             font { family: Theme.font.family; pixelSize: 16 }
                         }
@@ -720,13 +720,14 @@ Item {
 
             // What the fingerprint reader or the face camera wants (Lock.qml),
             // under a wrong-password message too: the finger still works then
-            // (its line kept while either is set up, so the field doesn't jump)
+            // (its line kept while either is set up, so the field doesn't jump;
+            // blank while the reader just listens: the target says that)
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
                 height: 20
                 readonly property bool isFace: root.lockScope.faceText !== "" && root.lockScope.fingerText === ""
-                readonly property bool hasText: root.lockScope.fingerText !== "" || root.lockScope.faceText !== ""
+                readonly property bool hasText: (root.lockScope.fingerText !== "" && root.lockScope.fingerState !== "waiting") || root.lockScope.faceText !== ""
                 visible: hasText || Fingerprint.lockScreen || Face.lockScreen
                 opacity: hasText ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -748,8 +749,8 @@ Item {
             Item {
                 id: finger
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 72
-                height: 72
+                width: 56
+                height: 56
                 // (its place kept while the reader is set up; it shows while
                 // the reader listens)
                 visible: Fingerprint.lockScreen || matched
@@ -805,7 +806,7 @@ Item {
                     id: rippleRing
                     anchors.centerIn: parent
                     property real grow: 0
-                    width: 72 + grow * 360
+                    width: 56 + grow * 320
                     height: width
                     radius: width / 2
                     color: "transparent"
@@ -834,7 +835,7 @@ Item {
                 Icon {
                     anchors.centerIn: fingerShape
                     name: finger.phase === "match" ? "check" : "fingerprint"
-                    size: 32
+                    size: 26
                     color: finger.phase === "match" ? root.m3.onPrimaryContainer : finger.phase === "miss" ? root.m3.onErrorContainer : root.m3.primary
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }

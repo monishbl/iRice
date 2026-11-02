@@ -1,5 +1,10 @@
 # iRice changelog
 
+## A calmer Material lock screen; Edit controls stays open · 2026-11-02
+
+- **The Material look's lock screen is quieter.** The clock is about a third smaller, and Now Playing, your picture, the name, the field and the fingerprint button are all more compact. The fingerprint is offered once, by its button: the field says "Enter password", and the line under it only appears when there's news (a finger that didn't match, the face camera looking).
+- **Quick Settings' Edit controls no longer closes when you click the brightness or volume row** (or any empty part of the panel). Those clicks went through the panel and counted as a click outside it.
+
 ## Smooth while apps are busy · 2026-11-02
 
 - **The shell no longer stutters while other apps work hard.** CachyOS's process tuner (ananicy-cpp) files every program named "qs" as a background service and lowers its priority below apps like VS Code, so panels and animations stuttered whenever anything else was busy. The shell now runs as "irice-shell", which that rule doesn't match. Software Update's system step also installs iRice's own rule (where ananicy-cpp is installed), which gives it the same interactive priority as GNOME Shell and KWin. That step runs before the new version arrives, so the rule comes with the update after this one. This takes effect the next time the shell starts after the update (log in again, or press Super+Ctrl+Escape).
