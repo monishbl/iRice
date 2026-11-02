@@ -11,14 +11,23 @@ import "SpaceMap.js" as Map
 // ids (SpaceMap.js: the built-in panel 1..99, the first external 101..199 …),
 // kept per display identity in state.json. Everything that shows or picks a
 // space goes through here: the menu bar's chips, Overview, Mission Control,
-// the switcher; the keybinds map Super+number in Lua (keybinds.lua) from the
-// blocks pushed to Hyprland (IRICE_SPACES).
+// the switcher; the keybinds map Super+number in Lua (keybinds.lua).
 //
-// A display that's unplugged keeps its spaces: Hyprland moves them onto
-// another display as they are (separate spaces, windows grouped as they
-// were), listed there after that display's own, marked with where they
-// belong. When it's back (DisplayFx calls arrive as its connect effect hands
-// over) they return to it, and it shows the space it showed before.
+// Hyprland itself keeps spaces on their displays: the blocks go to it as
+// workspace rules (spaces.lua in your iRice folder, which keybinds.lua loads
+// at startup, and live: IRICE_SPACE_RULES), by the display's identity, so a
+// space opens on its own display from anywhere, a display starts on its
+// first space (docked at login too), and its spaces come back when it's
+// plugged in again. A display that's unplugged keeps its spaces meanwhile:
+// Hyprland moves them onto another one as they are, listed there after that
+// display's own, marked with where they belong. The shell moves nothing
+// after the fact; it only renumbers the first space of a display it hasn't
+// met yet (Hyprland gave it a plain number), and a display that's back shows
+// the space it showed before.
+//
+// What the views show comes from Quickshell's Hyprland objects, refreshed
+// from Hyprland's own lists after every change that can leave them behind
+// (a space or window moving between displays, a display coming or going).
 //
 // Reordering (Overview, Mission Control: drag a space): see move().
 Singleton {
@@ -236,23 +245,20 @@ Singleton {
         Qt.callLater(Hyprland.refreshToplevels);
     }
 
-    // ── Keeping spaces on their displays ────────────────────────────────
+    // ── Keeping track of displays ───────────────────────────────────────
     // A display came (back), as its connect effect hands over (DisplayFx):
-    // its spaces return, and it shows the one it showed before
+    // it shows the space it showed before (its spaces are back already:
+    // Hyprland's rules)
     function arrive(name) {
-        wantReturns = true;
         if (!showOn.includes(name))
             showOn = showOn.concat([name]);
         reconcileSoon.interval = 0;
         reconcileSoon.restart();
     }
-    function reconcile(returns) {
-        if (returns)
-            wantReturns = true;
+    function reconcile() {
         reconcileSoon.interval = 250;
         reconcileSoon.restart();
     }
-    property bool wantReturns: false
     property var showOn: [] // displays that should show their last space again
     property var known: [] // space ids seen last time (new ones are Hyprland's)
     property bool started: false
@@ -306,21 +312,20 @@ Singleton {
         const nextLabels = {};
         for (const k in displays)
             nextLabels[displays[k].base] = displays[k].label;
-        const changedBases = JSON.stringify(nextBases) !== JSON.stringify(bases);
+        const changedBases = JSON.stringify(nextBases) !== JSON.stringify(bases) || JSON.stringify(displays) !== JSON.stringify(store.displays ?? {});
         bases = nextBases;
         keys = nextKeys;
         labels = nextLabels;
         if (changedBases || !pushed)
-            push();
+            push(displays);
 
         // What should move
         const ws = allWs.filter(w => w.id > 0).map(w => ({ id: w.id, monitor: w.monitor, windows: w.windows }));
         const activeOf = {};
         for (const m of mons)
             activeOf[m.name] = m.active;
-        const returns = wantReturns;
-        wantReturns = false;
-        const ops = Map.plan({ bases: nextBases, workspaces: ws, active: activeOf, known: started ? known : ws.map(w => w.id), migrated: store.migrated === true, returns: returns });
+        // (returning spaces to their displays is Hyprland's, by the rules)
+        const ops = Map.plan({ bases: nextBases, workspaces: ws, active: activeOf, known: started ? known : ws.map(w => w.id), migrated: store.migrated === true, returns: false });
         const shownBefore = store.shown ?? {};
         const show = showOn.filter(n => nextBases[n] !== undefined);
         showOn = [];
@@ -363,14 +368,31 @@ Singleton {
         noteShown();
     }
 
-    // The keybinds' map: { connector = base } in Hyprland's Lua
+    // The blocks to Hyprland: every display we know, by identity, as its
+    // workspace rules (now, and in spaces.lua for the next login), and the
+    // connected ones by connector for the keybinds
     property bool pushed: false
-    function push() {
+    readonly property string rulesFile: Config.dir + "/spaces.lua"
+    function push(displays) {
+        const known = displays ?? store.displays ?? {};
+        let b = "IRICE_SPACE_BASES = {";
+        for (const k in known)
+            b += " [" + q(k) + "] = " + known[k].base + ",";
+        b += " }\n";
         let t = "IRICE_SPACES = {";
         for (const n in bases)
             t += " [" + q(n) + "] = " + bases[n] + ",";
-        Quickshell.execDetached(["hyprctl", "eval", t + " }"]);
+        t += " }\n";
+        Quickshell.execDetached(["hyprctl", "eval", b + t + "if IRICE_SPACE_RULES then IRICE_SPACE_RULES(IRICE_SPACE_BASES) end\n"]);
+        if (!sandbox || Object.keys(known).length > 0) {
+            rulesWriter.command = ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && printf '%s' \"$2\" > \"$1.tmp\" && mv -f \"$1.tmp\" \"$1\"", "sh", rulesFile,
+                "-- Generated by iRice (shell/services/Spaces.qml): which display each block of spaces\n-- belongs to. Loaded by hypr/irice/keybinds.lua; changes here are overwritten.\n" + b];
+            rulesWriter.running = true;
+        }
         pushed = true;
+    }
+    Process {
+        id: rulesWriter
     }
 
     // The space each display shows (its own ones only), kept for when it's
@@ -401,16 +423,21 @@ Singleton {
             case "workspacev2":
             case "focusedmonv2":
                 shownLater.restart();
+                freshen.restart();
                 break;
             case "monitoraddedv2":
             case "monitorremovedv2":
             case "createworkspacev2":
-                root.reconcile(false);
-                break;
             case "moveworkspacev2":
-                // a space moved by hand to a display it isn't from goes back
-                // (not while a display comes or goes: that waits for arrive)
-                root.reconcile(!DisplayFx.settling());
+                root.reconcile();
+                freshen.restart();
+                break;
+            case "destroyworkspacev2":
+            case "renameworkspace":
+            case "movewindowv2":
+            case "openwindow":
+            case "closewindow":
+                freshen.restart();
                 break;
             }
         }
@@ -420,12 +447,24 @@ Singleton {
         interval: 150
         onTriggered: root.noteShown()
     }
+    // Quickshell's monitors, workspaces and windows from Hyprland's own lists
+    // (which space a display shows, which display a space is on, where a
+    // window is): its event-by-event updates can miss a move between displays
+    Timer {
+        id: freshen
+        interval: 60
+        onTriggered: {
+            Hyprland.refreshMonitors();
+            Hyprland.refreshWorkspaces();
+            Hyprland.refreshToplevels();
+        }
+    }
     Connections {
         target: UiState
         function onLoadedChanged() {
             if (UiState.loaded)
-                root.reconcile(true);
+                root.reconcile();
         }
     }
-    Component.onCompleted: if (UiState.loaded) reconcile(true)
+    Component.onCompleted: if (UiState.loaded) reconcile()
 }

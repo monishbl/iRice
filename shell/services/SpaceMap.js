@@ -124,31 +124,40 @@ function groups(ctx) {
     var connected = {};
     for (var n in ctx.bases)
         connected[ctx.bases[n]] = n;
-    var own = {}, guests = {}, others = {};
+    // Spaces are listed where they are: one of this display's that sits on
+    // another connected display is that one's guest, not an empty slot here
+    // (a monitor not named, or not connected, counts as home: stale data)
+    var own = {}, guests = {}, others = {}, away = {};
     var i, id, b;
-    for (i = 1; i <= (ctx.count || 0); i++)
-        own[base + i] = true;
-    var act = ctx.active[ctx.name];
-    if (act > 0 && baseOfId(act) === base)
-        own[act] = true;
     for (i = 0; i < ctx.workspaces.length; i++) {
         var w = ctx.workspaces[i];
         id = w.id;
         if (!(id > 0))
             continue;
         b = baseOfId(id);
-        if (b === base)
-            own[id] = true;
-        else if (w.monitor === ctx.name && connected[b] === undefined)
+        var elsewhere = !!w.monitor && w.monitor !== ctx.name && ctx.bases[w.monitor] !== undefined;
+        if (b === base) {
+            if (elsewhere)
+                away[id] = true;
+            else
+                own[id] = true;
+        } else if (w.monitor === ctx.name)
             (guests[b] = guests[b] || {})[id] = true;
         else if (ctx.others && connected[b] !== undefined)
             (others[b] = others[b] || {})[id] = true;
     }
+    for (i = 1; i <= (ctx.count || 0); i++)
+        if (!away[base + i])
+            own[base + i] = true;
+    var act = ctx.active[ctx.name];
+    if (act > 0 && baseOfId(act) === base)
+        own[act] = true;
     // no gaps: an empty space between two in use stays reachable
     var ownIds = Object.keys(own).map(Number);
     var top = Math.max.apply(null, ownIds.concat([base + 1]));
     for (id = base + 1; id < top; id++)
-        own[id] = true;
+        if (!away[id])
+            own[id] = true;
     var sorted = function (set) {
         return Object.keys(set).map(Number).sort(function (p, q) { return p - q; });
     };

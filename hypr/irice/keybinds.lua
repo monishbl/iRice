@@ -32,14 +32,40 @@ local function zoom(step)
 end
 -- Spaces: every display numbers its own from 1. Hyprland's ids are global, so
 -- each display owns a block of 100 (the built-in panel 1..99, the first
--- external 101..199 …; shell/services/SpaceMap.js). The shell keeps the
--- connected displays' blocks in IRICE_SPACES ({ connector = base }); until
--- it has, every display counts from 0 (plain ids, as before).
+-- external 101..199 …; shell/services/SpaceMap.js), kept by the display's
+-- identity in spaces.lua in your iRice folder (written by the shell's
+-- Spaces.qml): IRICE_SPACE_BASES = { ["desc:<description>" or "name:<connector>"] = base }.
+-- The shell also pushes the connected ones as IRICE_SPACES ({ connector = base });
+-- with neither, every display counts from 0 (plain ids).
 local SPACE_STRIDE = 100
+pcall(dofile, userDir .. "/spaces.lua")
 local function spaceBase(m)
+    if not m then return 0 end
+    local b = rawget(_G, "IRICE_SPACE_BASES") or {}
     local t = rawget(_G, "IRICE_SPACES")
-    return (type(t) == "table" and m and tonumber(t[m.name])) or 0
+    return tonumber(m.description and m.description ~= "" and b["desc:" .. m.description])
+        or tonumber(b["name:" .. m.name]) or (type(t) == "table" and tonumber(t[m.name])) or 0
 end
+-- Each display's spaces belong to it as Hyprland's own rules, so Hyprland
+-- keeps them there: base+1 … base+SPACE_RULES open on that display from
+-- anywhere (Super+3 on another display, a window sent there), come back to
+-- it when it's plugged in again, and it starts on base+1 (also at login,
+-- docked). Nothing moves spaces around after the fact.
+local SPACE_RULES = 30
+function IRICE_SPACE_RULES(bases)
+    for _, r in ipairs(rawget(_G, "IRICE_SPACE_RULE_LIST") or {}) do
+        pcall(function() r:set_enabled(false) end)
+    end
+    IRICE_SPACE_RULE_LIST = {}
+    for key, base in pairs(bases or {}) do
+        local mon = key:match("^desc:") and key or (key:gsub("^name:", ""))
+        for i = 1, SPACE_RULES do
+            local ok, r = pcall(hl.workspace_rule, { workspace = tostring(base + i), monitor = mon, default = i == 1 })
+            if ok and r then table.insert(IRICE_SPACE_RULE_LIST, r) end
+        end
+    end
+end
+IRICE_SPACE_RULES(rawget(_G, "IRICE_SPACE_BASES"))
 -- Go to (focus), or take the active window to (send: you stay; move: you
 -- follow), space n on the display you're on, or the next/previous one (step).
 -- Global so `hyprctl eval 'IRICE_SPACE("focus", 2)'` does what Super+2 does.

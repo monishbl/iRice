@@ -81,6 +81,21 @@ test("the external display's spaces are listed even when Hyprland's monitor obje
     assert.deepStrictEqual(g[0].ids, [101, 102, 103, 104, 105]);
 });
 
+test("a space on another connected display is listed there, as its guest, not as an empty slot at home", () => {
+    // (the bug: VS Code's spaces 1 and 2 showed on the Dell, while the laptop
+    // listed them as its own, empty, and the Dell didn't list them at all)
+    const ctx = {
+        bases: { "eDP-1": 0, "DP-1": 100 },
+        workspaces: [{ id: 1, monitor: "DP-1" }, { id: 2, monitor: "DP-1" }, { id: 3, monitor: "eDP-1" }, { id: 101, monitor: "DP-1" }],
+        active: { "eDP-1": 3, "DP-1": 2 }, count: 3, others: false, labels: { 0: "Built-in", 100: "DELL" }
+    };
+    const laptop = plain(M.groups(Object.assign({ name: "eDP-1" }, ctx)));
+    assert.deepStrictEqual(laptop.map(x => [x.kind, x.ids]), [["own", [3]]]);
+    const dell = plain(M.groups(Object.assign({ name: "DP-1" }, ctx)));
+    assert.deepStrictEqual(dell.map(x => [x.kind, x.ids]), [["own", [101, 102, 103]], ["guest", [1, 2]]]);
+    assert.strictEqual(dell[1].label, "Built-in");
+});
+
 test("first run: spaces on an external display are renumbered into its block, windows and all", () => {
     const ops = plain(M.plan({
         bases: { "eDP-1": 0, "DP-1": 100 },
