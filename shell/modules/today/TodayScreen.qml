@@ -202,8 +202,7 @@ Scope {
                 }
                 Rectangle {
                     anchors.fill: parent
-                    // (Material: the wallpaper under a tonal veil of the surface)
-                    color: Theme.material ? Qt.alpha(Theme.m3.surface, Theme.dark ? 0.5 : 0.4) : Theme.dark ? Qt.rgba(0, 0, 0, 0.42) : Qt.rgba(1, 1, 1, 0.3)
+                    color: Theme.dark ? Qt.rgba(0, 0, 0, 0.42) : Qt.rgba(1, 1, 1, 0.3)
                 }
                 // Clicks outside the panel do nothing (Esc or Close put it away)
                 MouseArea {
@@ -224,7 +223,7 @@ Scope {
                 radius: d / 2
                 color: "transparent"
                 border.width: 1.5 + 10 * (1 - win.ripple)
-                border.color: Theme.material ? Qt.alpha(Theme.m3.primaryContainer, 0.5 * (1 - win.ripple)) : Qt.rgba(1, 1, 1, 0.22 * (1 - win.ripple))
+                border.color: Qt.rgba(1, 1, 1, 0.22 * (1 - win.ripple))
                 layer.enabled: true
                 layer.effect: MultiEffect { blurEnabled: true; blur: 0.6; blurMax: 24 }
             }
@@ -248,9 +247,7 @@ Scope {
                 }
                 // Glass over an already-frosted backdrop reads as nothing: a
                 // soft surface and a hairline make the panel its own layer
-                // (Material's surface is opaque already)
                 Squircle {
-                    visible: !Theme.material
                     anchors.fill: parent
                     radius: win.pr
                     color: Theme.dark ? Qt.rgba(0.07, 0.07, 0.08, 0.42) : Qt.rgba(1, 1, 1, 0.45)
@@ -262,30 +259,15 @@ Scope {
                     id: contentClip
                     anchors.fill: parent
                     clip: true
-                    // Laid out at the final size, so nothing reflows as the panel
-                    // grows (Material: Material You widgets, MaterialTodayContent)
-                    Component {
-                        id: glassContent
-                        TodayContent {
-                            rows: win.rows
-                            focus: true
-                        }
-                    }
-                    Component {
-                        id: materialContent
-                        MaterialTodayContent {
-                            rows: win.rows
-                            focus: true
-                        }
-                    }
-                    Loader {
+                    // Laid out at the final size, so nothing reflows as the panel grows
+                    TodayContent {
                         id: content
                         x: (parent.width - win.tw) / 2
                         y: (parent.height - win.th) / 2
                         width: win.tw
                         height: win.th
+                        rows: win.rows
                         focus: true
-                        sourceComponent: Theme.material ? materialContent : glassContent
                         layer.enabled: win.contentBlur > 0.01
                         layer.effect: MultiEffect {
                             blurEnabled: true

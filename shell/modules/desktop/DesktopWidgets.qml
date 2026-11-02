@@ -148,10 +148,9 @@ Item {
                 width: defs.cell
                 height: defs.cell
                 radius: Theme.radius.tile
-                // (Material: faint primary container slots)
-                color: Theme.material ? Qt.alpha(Theme.m3.primaryContainer, 0.16) : Qt.rgba(1, 1, 1, 0.03)
+                color: Qt.rgba(1, 1, 1, 0.03)
                 border.width: 1
-                border.color: Theme.material ? Qt.alpha(Theme.m3.primaryContainer, 0.6) : Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.12)
             }
         }
         // Where the dragged widget will snap
@@ -163,12 +162,11 @@ Item {
             width: px.width
             height: px.height
             radius: Theme.radius.tile
-            // (Material: the drop target in primary)
-            color: Theme.material ? Qt.alpha(Theme.m3.primaryContainer, 0.45) : Qt.rgba(1, 1, 1, 0.1)
-            border.width: Theme.material ? 3 : 2
-            border.color: Theme.material ? Theme.m3.primary : Qt.rgba(1, 1, 1, 0.55)
-            Behavior on x { SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.4; epsilon: 0.3 } }
-            Behavior on y { SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.4; epsilon: 0.3 } }
+            color: Qt.rgba(1, 1, 1, 0.1)
+            border.width: 2
+            border.color: Qt.rgba(1, 1, 1, 0.55)
+            Behavior on x { SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
+            Behavior on y { SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
         }
     }
 

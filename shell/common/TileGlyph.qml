@@ -13,7 +13,7 @@ Rectangle {
     radius: 5
     color: "transparent"
     border.width: 1.5
-    border.color: hot ? Theme.color.onHighlight : Theme.color.secondary
+    border.color: hot ? Theme.color.onAccent : Theme.color.secondary
 
     Rectangle {
         x: 3 + (root.width - 6) * root.frac[0]
@@ -21,6 +21,6 @@ Rectangle {
         width: Math.max(2, (root.width - 6) * root.frac[2] - 1)
         height: Math.max(2, (root.height - 6) * root.frac[3] - 1)
         radius: 2
-        color: root.hot ? Theme.color.onHighlight : Theme.color.label
+        color: root.hot ? Theme.color.onAccent : Theme.color.label
     }
 }

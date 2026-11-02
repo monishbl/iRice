@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -28,7 +27,7 @@ LazyLoader {
         id: win
         readonly property int m: 24 // (room for the shadow)
         readonly property int cardWidth: 240
-        readonly property int rowH: Theme.material ? 52 : 44
+        readonly property int rowH: 44
 
         name: "shelf"
         screen: Shelf.screen ?? Quickshell.screens[0]
@@ -45,7 +44,7 @@ LazyLoader {
 
         Glass {
             anchors.fill: parent
-            radius: Theme.material ? 24 : 20
+            radius: 20
             bevel: 16
             shadowMargin: win.m
             opacity: card.opacity
@@ -80,7 +79,7 @@ LazyLoader {
                         anchors { left: parent.left; leftMargin: 2; verticalCenter: parent.verticalCenter }
                         text: "Shelf"
                         color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.title : Theme.font.body; weight: Theme.material ? Font.Medium : Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                     }
                     Text {
                         anchors { left: title.right; leftMargin: 6; verticalCenter: parent.verticalCenter }
@@ -114,66 +113,22 @@ LazyLoader {
 
                 // Empty: where to drop
                 Rectangle {
-                    id: emptyZone
                     visible: Shelf.count === 0
                     width: parent.width
-                    height: Theme.material ? 160 : 132
-                    radius: Theme.material ? 16 : 14
-                    // (Material: a dashed outline, primary under a drag; drawn below)
+                    height: 132
+                    radius: 14
                     color: drop.containsDrag ? Qt.alpha(Theme.accent, 0.12) : "transparent"
-                    border.width: Theme.material ? 0 : 1
+                    border.width: 1
                     border.color: drop.containsDrag ? Theme.accent : Theme.color.separator
-                    Loader {
-                        anchors.fill: parent
-                        active: Theme.material && emptyZone.visible
-                        sourceComponent: Shape {
-                            preferredRendererType: Shape.CurveRenderer
-                            ShapePath {
-                                strokeColor: drop.containsDrag ? Theme.m3.primary : Theme.m3.outline
-                                strokeWidth: drop.containsDrag ? 2 : 1.5
-                                strokeStyle: ShapePath.DashLine
-                                dashPattern: [4, 3]
-                                fillColor: "transparent"
-                                PathRectangle {
-                                    x: 1
-                                    y: 1
-                                    width: emptyZone.width - 2
-                                    height: emptyZone.height - 2
-                                    radius: emptyZone.radius - 1
-                                }
-                            }
-                        }
-                    }
                     Column {
                         anchors.centerIn: parent
                         width: parent.width - 24
-                        spacing: Theme.material ? 8 : 6
+                        spacing: 6
                         Icon {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            visible: !Theme.material
                             name: "tray"
                             size: 24
                             color: drop.containsDrag ? Theme.accent : Theme.color.tertiary
-                        }
-                        // (Material: the empty state's icon on a shape that
-                        // blooms when something's over it)
-                        Loader {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            active: Theme.material
-                            visible: active
-                            sourceComponent: MaterialShape {
-                                width: 56
-                                height: 56
-                                shape: drop.containsDrag ? "clover8" : "cookie9"
-                                color: drop.containsDrag ? Theme.m3.primaryContainer : Theme.m3.secondaryContainer
-                                Icon {
-                                    anchors.centerIn: parent
-                                    name: "tray"
-                                    fill: drop.containsDrag
-                                    size: 24
-                                    color: drop.containsDrag ? Theme.m3.onPrimaryContainer : Theme.m3.onSecondaryContainer
-                                }
-                            }
                         }
                         Text {
                             width: parent.width
@@ -202,8 +157,6 @@ LazyLoader {
                     label: "All " + Shelf.count + " items"
                     detail: "Drag to take them together"
                     glyph: "stack"
-                    first: true
-                    last: true
                 }
 
                 ListView {
@@ -229,8 +182,6 @@ LazyLoader {
                         glyph: modelData.kind === "text" ? "text-t" : modelData.kind === "folder" ? "folder" : /\.pdf$/i.test(modelData.path ?? "") ? "file-pdf" : /\.(zip|tar|gz|xz|zst|7z|rar)$/i.test(modelData.path ?? "") ? "file-zip" : /\.(mp3|flac|ogg|wav|m4a|opus)$/i.test(modelData.path ?? "") ? "file-audio" : /\.(mp4|mkv|webm|mov|avi)$/i.test(modelData.path ?? "") ? "file-video" : /\.(txt|md|csv|log|json)$/i.test(modelData.path ?? "") ? "file-text" : "file"
                         image: modelData.kind === "image" ? modelData.uri : ""
                         removable: true
-                        first: index === 0
-                        last: index === list.count - 1
                         onRemove: Shelf.removeAt(index)
                     }
                 }
@@ -257,7 +208,7 @@ LazyLoader {
             Rectangle {
                 anchors.fill: parent
                 visible: drop.containsDrag && Shelf.count > 0
-                radius: Theme.material ? 24 : 20
+                radius: 20
                 color: Qt.alpha(Theme.accent, 0.08)
                 border.width: 2
                 border.color: Theme.accent

@@ -38,15 +38,10 @@ Platter {
                     id: ring
                     anchors.fill: parent
                     readonly property real p: Timers.progress
-                    // (Material: a circular progress indicator, the track
-                    // secondaryContainer with a gap either side of the arc;
-                    // a break in tertiary)
-                    readonly property bool m: Theme.material
-                    readonly property color track: m ? Theme.m3.secondaryContainer : Theme.color.toggleOff
-                    readonly property color fillColor: Timers.phase === "focus" ? Theme.accent : m ? Theme.m3.tertiary : Theme.color.success
+                    readonly property color track: Theme.color.toggleOff
+                    readonly property color fillColor: Timers.phase === "focus" ? Theme.accent : Theme.color.success
                     onPChanged: requestPaint()
                     onFillColorChanged: requestPaint()
-                    onTrackChanged: requestPaint()
                     onPaint: {
                         const ctx = getContext("2d");
                         ctx.reset();
@@ -55,14 +50,7 @@ Platter {
                         ctx.lineCap = "round";
                         ctx.strokeStyle = track;
                         ctx.beginPath();
-                        if (m && p > 0 && p < 1) {
-                            const gap = 16 / r; // the cap's width and 8 px of space
-                            const end = -Math.PI / 2 + 2 * Math.PI * p;
-                            if (2 * Math.PI * (1 - p) > 2 * gap)
-                                ctx.arc(width / 2, height / 2, r, end + gap, 3 * Math.PI / 2 - gap);
-                        } else {
-                            ctx.arc(width / 2, height / 2, r, 0, 2 * Math.PI);
-                        }
+                        ctx.arc(width / 2, height / 2, r, 0, 2 * Math.PI);
                         ctx.stroke();
                         if (p > 0) {
                             ctx.strokeStyle = fillColor;

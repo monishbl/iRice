@@ -10,7 +10,6 @@ DetailPage {
     id: root
 
     title: "Sharing"
-    switchLabel: "Visible to nearby devices"
     hasSwitch: true
     switchOn: Sharing.on
     onSwitchToggled: Sharing.setLevel(Sharing.on ? "off" : "10min")
@@ -38,7 +37,7 @@ DetailPage {
     Caption { text: "LocalSend" }
     Segmented {
         width: parent.width
-        height: Theme.material ? 36 : 30
+        height: 30
         readonly property var values: ["off", "10min", "everyone"]
         options: ["No one", "10 minutes", "Everyone"]
         current: Math.max(0, values.indexOf(Config.options.sharing.receiving))
@@ -49,7 +48,7 @@ DetailPage {
     Caption { text: "Quick Share" }
     Segmented {
         width: parent.width
-        height: Theme.material ? 36 : 30
+        height: 30
         readonly property var values: ["off", "10min", "everyone"]
         options: ["No one", "10 minutes", "Everyone"]
         current: Math.max(0, values.indexOf(Config.options.sharing.quickShare))
@@ -67,7 +66,7 @@ DetailPage {
     Caption { text: "Your name" }
     TextField {
         width: parent.width
-        height: Theme.material ? 40 : 30
+        height: 30
         placeholder: (Quickshell.env("USER") ?? "iRice") + "'s computer"
         text: Config.options.sharing.name
         onCommitted: t => Config.options.sharing.name = t.trim()
@@ -108,12 +107,10 @@ DetailPage {
     }
 
     component Caption: Text {
-        topPadding: Theme.material ? 12 : 6
+        topPadding: 6
         leftPadding: 6
-        bottomPadding: Theme.material ? 4 : 0
-        // (Material: a list's section heading, in primary)
-        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
-        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
+        color: Theme.color.tertiary
+        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
     }
     component Hint: Text {
         width: parent?.width ?? 0

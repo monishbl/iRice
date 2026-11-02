@@ -73,14 +73,6 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
-                // The look: glass (macOS Tahoe, Liquid Glass) | material (Material 3
-                // Expressive: tonal surfaces, the shape library, springs); the
-                // same features either way
-                property string look: "glass"
-                // Material: the palette's seed, "wallpaper" (Material You) or a colour
-                // (#rrggbb); its style: tonalSpot | vibrant | expressive | neutral | content | fidelity | monochrome
-                property string materialSeed: "wallpaper"
-                property string materialStyle: "tonalSpot"
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
                 property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)
@@ -285,10 +277,6 @@ Singleton {
             }
 
             property int defaultsVersion: 0 // one-time changes to saved settings (onLoaded)
-            // 1: the default sound set and pointer (marimba, macos) became "auto",
-            // following the look (marimba / macOS in Glass, material / Bibata in
-            // Material); set once by services/AppTheme.qml
-            property int lookDefaults: 0
             // Overlay (Super+G): the floating image, crosshair and FPS limit
             // widgets are only offered when this is on
             property JsonObject overlays: JsonObject {

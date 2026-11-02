@@ -10,8 +10,6 @@ import qs.services
 //         avatar, a name, a time and a message (notifications)
 // Volume and brightness use a slim HUD row; a ringing call its own card
 // (IslandCall), which only Answer, Decline or Esc put away.
-// Material: the island's colours (IslandInk, `inverse` on an alert), tonal
-// and filled pill buttons, a tall slider for the HUD, avatars in a cookie.
 Item {
     id: root
 
@@ -35,17 +33,8 @@ Item {
     // alert list scrolls instead)
     property bool wheelDismiss: true
 
-    property bool inverse: false // (Material: shown on inverseSurface)
-    readonly property color ink: IslandInk.ink(inverse)
-    readonly property color ink2: IslandInk.dim(0.6, inverse)
-    // Material's pill buttons: filled (the action), tonal (the others),
-    // with their state layers
-    function filledColor(m) {
-        return Qt.tint(IslandInk.accent(inverse), Qt.alpha(IslandInk.onAccent(inverse), m.pressed ? 0.1 : m.containsMouse ? 0.08 : 0));
-    }
-    function tonalColor(m) {
-        return Qt.tint(IslandInk.tonal(inverse), Qt.alpha(IslandInk.onTonal(inverse), m.pressed ? 0.1 : m.containsMouse ? 0.08 : 0));
-    }
+    readonly property color ink: "#F5F5F7"
+    readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
 
     // More buttons than the two beside the title (a notification's own,
     // added to the alert): further rows under it
@@ -227,7 +216,6 @@ Item {
             anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: levelsButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
             height: 8
             radius: 4
-            visible: !Theme.material // (Material: a Slider, below)
             color: Qt.rgba(1, 1, 1, 0.16)
             Rectangle {
                 width: parent.width * Math.max(0, Math.min(1, root.hudValue))
@@ -256,27 +244,13 @@ Item {
                 onWheel: e => root.setHud(root.hudValue + (e.angleDelta.y > 0 ? 0.05 : -0.05))
             }
         }
-        // Material: the level on Material's tall slider
-        Loader {
-            active: Theme.material && root.isHud
-            anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: levelsButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            sourceComponent: Slider {
-                value: Math.max(0, Math.min(1, root.hudValue))
-                accessibleName: root.hudKind === "brightness" ? "Brightness" : root.hudKind === "mic" ? "Microphone volume" : "Volume"
-                onMoved: v => root.setHud(v)
-                WheelHandler {
-                    target: null
-                    onWheel: e => root.setHud(root.hudValue + (e.angleDelta.y > 0 ? 0.05 : -0.05))
-                }
-            }
-        }
         Rectangle {
             id: levelsButton
             anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
             width: 28
             height: 28
             radius: 14
-            color: buttonMouse.pressed ? IslandInk.dim(0.2, root.inverse) : buttonMouse.containsMouse || root.levelsOpen ? IslandInk.dim(0.12, root.inverse) : "transparent"
+            color: buttonMouse.pressed ? Qt.rgba(1, 1, 1, 0.2) : buttonMouse.containsMouse || root.levelsOpen ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             Accessible.role: Accessible.Button
             Accessible.name: root.hudKind === "brightness" ? "Displays" : root.hudKind === "mic" ? "Inputs" : "Outputs"
@@ -301,7 +275,6 @@ Item {
         visible: root.isHud && root.levelsOpen
         anchors { left: parent.left; right: parent.right; top: hudRow.bottom; topMargin: 6 }
         kind: root.hudKind
-        ink: root.ink
         onVisibleChanged: if (!visible) page = "list"
     }
 
@@ -318,14 +291,14 @@ Item {
             Rectangle {
                 required property var modelData
                 width: moreText.implicitWidth + 24
-                height: Theme.material ? 32 : 28
-                radius: height / 2
-                color: Theme.material ? root.tonalColor(moreMouse) : moreMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : moreMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
+                height: 28
+                radius: 14
+                color: moreMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : moreMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
                 Text {
                     id: moreText
                     anchors.centerIn: parent
                     text: parent.modelData.text
-                    color: Theme.material ? IslandInk.onTonal(root.inverse) : root.ink
+                    color: root.ink
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                 }
                 MouseArea {
@@ -348,7 +321,6 @@ Item {
 
         IslandGlyph {
             id: glyph
-            inverse: root.inverse
             size: root.rowHeight - 8
             anchors.verticalCenter: parent.verticalCenter
             event: !root.isHud && !root.isCard && !root.isRinging ? root.event : null
@@ -400,7 +372,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 preferredRendererType: Shape.CurveRenderer
                 readonly property real level: Math.max(0, Math.min(1, root.event?.battery ?? 0))
-                readonly property color col: level <= 0.2 ? Theme.color.danger : Theme.material ? IslandInk.accent(root.inverse) : Theme.color.success
+                readonly property color col: level <= 0.2 ? Theme.color.danger : Theme.color.success
                 // The level arriving after the card is up (headphones report
                 // it seconds after connecting): the ring draws itself round
                 // from empty and the number fades in
@@ -409,7 +381,7 @@ Item {
                 onHasChanged: if (has && root.t >= 1) traceIn.restart()
                 NumberAnimation { id: traceIn; target: batRing; property: "traced"; from: 0; to: 1; duration: Math.round(600 * CoolDown.motionScale); easing.type: Easing.OutCubic }
                 ShapePath {
-                    strokeColor: IslandInk.dim(0.16, root.inverse)
+                    strokeColor: Qt.rgba(1, 1, 1, 0.16)
                     strokeWidth: 3
                     fillColor: "transparent"
                     PathAngleArc { centerX: 17; centerY: 17; radiusX: 15; radiusY: 15; startAngle: -90; sweepAngle: 360 }
@@ -444,13 +416,13 @@ Item {
                         id: part
                         required property var modelData
                         spacing: 2
-                        readonly property color col: modelData.value <= 0.2 ? Theme.color.danger : Theme.material ? IslandInk.accent(root.inverse) : Theme.color.success
+                        readonly property color col: modelData.value <= 0.2 ? Theme.color.danger : Theme.color.success
                         Shape {
                             width: 28
                             height: 28
                             preferredRendererType: Shape.CurveRenderer
                             ShapePath {
-                                strokeColor: IslandInk.dim(0.16, root.inverse)
+                                strokeColor: Qt.rgba(1, 1, 1, 0.16)
                                 strokeWidth: 2.5
                                 fillColor: "transparent"
                                 PathAngleArc { centerX: 14; centerY: 14; radiusX: 12.5; radiusY: 12.5; startAngle: -90; sweepAngle: 360 }
@@ -485,11 +457,11 @@ Item {
                 visible: !!root.event?.action2
                 anchors.verticalCenter: parent.verticalCenter
                 width: secondText.implicitWidth + 24
-                height: Theme.material ? 32 : 28
-                radius: height / 2
-                color: Theme.material ? IslandInk.dim(secondMouse.pressed ? 0.1 : secondMouse.containsMouse ? 0.08 : 0, root.inverse) : secondMouse.pressed ? Qt.rgba(1, 1, 1, 0.16) : secondMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+                height: 28
+                radius: 14
+                color: secondMouse.pressed ? Qt.rgba(1, 1, 1, 0.16) : secondMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
                 border.width: 1
-                border.color: Theme.material ? IslandInk.dim(0.38, root.inverse) : Qt.rgba(1, 1, 1, 0.2)
+                border.color: Qt.rgba(1, 1, 1, 0.2)
                 Text {
                     id: secondText
                     anchors.centerIn: parent
@@ -513,14 +485,14 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: actionText.implicitWidth + 24
-                height: Theme.material ? 32 : 28
-                radius: height / 2
-                color: Theme.material ? root.filledColor(actionMouse) : actionMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : actionMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
+                height: 28
+                radius: 14
+                color: actionMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : actionMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
                 Text {
                     id: actionText
                     anchors.centerIn: parent
                     text: root.event?.action ?? ""
-                    color: Theme.material ? IslandInk.onAccent(root.inverse) : root.ink
+                    color: root.ink
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                 }
                 MouseArea {
@@ -542,7 +514,6 @@ Item {
         visible: root.isRinging
         width: parent.width
         event: root.isRinging ? root.event : null
-        inverse: root.inverse
         t: root.t
         still: root.unseen
     }
@@ -569,20 +540,18 @@ Item {
         }
 
         // The glass card: lighter than the island, with a soft rim
-        // (Material: a tonal layer, no rim)
         Squircle {
             id: card
             width: parent.width
             height: cardRow.implicitHeight + 24
             radius: 20
-            color: Theme.material ? IslandInk.dim(0.1, root.inverse) : Qt.rgba(1, 1, 1, 0.14)
-            border.width: Theme.material ? 0 : 1
+            color: Qt.rgba(1, 1, 1, 0.14)
+            border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.22)
             opacity: root.ease(root.step(0.2))
             transform: Translate { y: (1 - root.ease(root.step(0.2))) * 18 }
             // Top highlight, like light catching the glass edge
             Rectangle {
-                visible: !Theme.material
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
                 height: parent.height / 2
                 radius: parent.radius - 1
@@ -605,37 +574,7 @@ Item {
                     width: 46
                     height: 46
                     scale: 0.6 + 0.4 * root.ease(root.step(0.3))
-                    // Material: the picture (or initials) in a cookie
-                    Loader {
-                        anchors.fill: parent
-                        active: Theme.material
-                        sourceComponent: Item {
-                            Image {
-                                id: mAvatar
-                                anchors.fill: parent
-                                source: root.event?.card?.avatar ?? ""
-                                fillMode: Image.PreserveAspectCrop
-                                sourceSize: Qt.size(92, 92)
-                                asynchronous: true
-                            }
-                            MaterialShape {
-                                anchors.fill: parent
-                                shape: "cookie9"
-                                animated: false
-                                color: Theme.m3.tertiaryContainer
-                                source: root.event?.card?.avatar ? mAvatar : null
-                            }
-                            Text {
-                                anchors.centerIn: parent
-                                visible: !root.event?.card?.avatar
-                                text: root.event?.card?.initials ?? ""
-                                color: Theme.m3.onTertiaryContainer
-                                font { family: Theme.font.family; pixelSize: 17; weight: Font.Medium }
-                            }
-                        }
-                    }
                     Rectangle {
-                        visible: !Theme.material
                         anchors.fill: parent
                         radius: width / 2
                         color: "#8E8E93"
@@ -693,7 +632,7 @@ Item {
                         wrapMode: Text.Wrap
                         maximumLineCount: 3
                         elide: Text.ElideRight
-                        color: IslandInk.dim(0.85, root.inverse)
+                        color: Qt.rgba(1, 1, 1, 0.85)
                         font { family: Theme.font.family; pixelSize: 14 }
                         opacity: root.ease(root.step(0.35))
                     }
@@ -709,14 +648,14 @@ Item {
                             Rectangle {
                                 required property var modelData
                                 width: buttonText.implicitWidth + 24
-                                height: Theme.material ? 32 : 28
-                                radius: height / 2
-                                color: Theme.material ? root.tonalColor(buttonMouse) : buttonMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : buttonMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
+                                height: 28
+                                radius: 14
+                                color: buttonMouse.pressed ? Qt.rgba(1, 1, 1, 0.3) : buttonMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.16)
                                 Text {
                                     id: buttonText
                                     anchors.centerIn: parent
                                     text: parent.modelData.text
-                                    color: Theme.material ? IslandInk.onTonal(root.inverse) : root.ink
+                                    color: root.ink
                                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
                                 }
                                 MouseArea {
@@ -760,15 +699,15 @@ Item {
         visible: opacity > 0.01
         opacity: !root.isHud && !root.isRinging && !root.leaving && (hover.hovered || closeMouse.activeFocus) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
-        color: Theme.material ? root.tonalColor(closeMouse) : closeMouse.pressed ? "#5A5A5E" : closeMouse.containsMouse ? "#48484A" : "#3A3A3C"
-        border.width: Theme.material ? 0 : 1
+        color: closeMouse.pressed ? "#5A5A5E" : closeMouse.containsMouse ? "#48484A" : "#3A3A3C"
+        border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.2)
         Icon {
             anchors.centerIn: parent
             name: "x"
             bold: true
             size: 10
-            color: Theme.material ? IslandInk.onTonal(root.inverse) : root.ink
+            color: root.ink
         }
         MouseArea {
             id: closeMouse

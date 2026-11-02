@@ -29,13 +29,12 @@ Item {
         }
         Text {
             text: Qt.formatTime(clock.date, "h:mm")
-            // (Material: on its primary container card)
-            color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.label
+            color: Theme.color.label
             font { family: Theme.font.family; pixelSize: 64; weight: Font.DemiBold; letterSpacing: -2; features: { "tnum": 1 } }
         }
         Text {
             text: Qt.formatDate(clock.date, "d MMMM yyyy")
-            color: Theme.material ? Qt.alpha(Theme.m3.onPrimaryContainer, 0.8) : Theme.color.secondary
+            color: Theme.color.secondary
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
         }
     }

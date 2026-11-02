@@ -57,10 +57,7 @@ Variants {
             Behavior on opacity { NumberAnimation { duration: win.active ? 150 : 100 } }
             Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
-            // (Material: no glass; a tonal primary container outlined in
-            // primary, as Android's desktop windowing previews a snap)
             Glass {
-                visible: !Theme.material
                 anchors.fill: parent
                 anchors.margins: -shadowMargin
                 shadowMargin: 16
@@ -69,9 +66,9 @@ Variants {
             Squircle {
                 anchors.fill: parent
                 radius: Config.options.appearance.windowRadius
-                color: Theme.material ? Qt.alpha(Theme.m3.primaryContainer, 0.5) : Theme.accentAlpha(0.12)
-                border.width: Theme.material ? 2 : 1
-                border.color: Theme.material ? Theme.m3.primary : Qt.alpha("white", 0.35)
+                color: Theme.accentAlpha(0.12)
+                border.width: 1
+                border.color: Qt.alpha("white", 0.35)
             }
         }
     }

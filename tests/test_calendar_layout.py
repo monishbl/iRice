@@ -20,8 +20,6 @@ import QtQuick
 import Quickshell
 Singleton {
     property bool dark: true
-    property bool material: false
-    property var m3: ({})
     property color accent: '#ffa500'
     property color accentInk: '#ffb844'
     property var accents: ({ orange: '#ffa500' })
@@ -180,11 +178,9 @@ class CalendarLayoutTests(unittest.TestCase):
 
         shutil.copy(ROOT / 'shell/modules/notifications/CalendarWidget.qml', p / 'CalendarWidget.qml')
         shutil.copy(ROOT / 'shell/modules/notifications/TodoWidget.qml', p / 'TodoWidget.qml')
-        shutil.copy(ROOT / 'shell/modules/notifications/MaterialCheck.qml', p / 'MaterialCheck.qml')
         for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml', 'FocusRing.qml', 'Momentum.qml']:
             shutil.copy(ROOT / 'shell/common' / f, p / 'common' / f)
         put('common/Squircle.qml', 'import QtQuick\nRectangle { id: s; property alias borderWidth: s.border.width; property alias borderColor: s.border.color }')
-        put('common/MaterialShape.qml', 'import QtQuick\nRectangle { property string shape; property bool animated: true; property real spin; property real borderWidth; property color borderColor; property Item source }')
         put('modules/controlcenter/Platter.qml','import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')
         put('common/Theme.qml', THEME)
         put('common/Icon.qml', 'import QtQuick\nText { property string name; property bool fill; property bool bold; property int size: 14; text: name === "arrow-up" ? "↑" : name === "caret-left" ? "‹" : name === "caret-right" ? "›" : "+"; font.pixelSize: size }')

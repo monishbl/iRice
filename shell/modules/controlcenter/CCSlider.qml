@@ -2,8 +2,7 @@ import QtQuick
 import qs.common
 
 // Tahoe-style slider: a thick rounded track that fills with the label colour,
-// icon inside at the left. Drag, click or scroll to change. Material: the
-// Expressive slider at its medium size (QSSlider), the icon in its track.
+// icon inside at the left. Drag, click or scroll to change.
 Item {
     id: root
 
@@ -14,7 +13,7 @@ Item {
     signal moved(real value)
     signal more
 
-    implicitHeight: (label !== "" ? title.implicitHeight + 8 : 0) + (Theme.material ? 48 : track.height)
+    implicitHeight: (label !== "" ? title.implicitHeight + 8 : 0) + track.height
 
     Icon {
         visible: root.hasMore
@@ -38,24 +37,8 @@ Item {
         font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
     }
 
-    Loader {
-        active: Theme.material
-        visible: active
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: 48
-        sourceComponent: QSSlider {
-            trackHeight: 40
-            icon: root.icon
-            accessibleName: root.label !== "" ? root.label : root.icon
-            value: root.value
-            onMoved: v => root.moved(v)
-        }
-    }
-
     Rectangle {
         id: track
-        visible: !Theme.material
         anchors.bottom: parent.bottom
         width: parent.width
         height: 26

@@ -10,26 +10,9 @@ import qs.services
 Column {
     width: parent?.width ?? 0
     spacing: 22
-    readonly property string pageTitle: Theme.material ? "Match apps" : "Glass"
-
-    // Material has no glass (its surfaces are solid tonal colours), so in
-    // that look this page keeps only Match apps, and says why
-    Group {
-        visible: Theme.material
-        width: parent.width
-        Row {
-            icon: "info"
-            label: "Glass belongs to the Glass look"
-            detail: "Material's surfaces are solid colours from your wallpaper, so there's no glass to tune. Your glass settings are kept for when you switch back."
-            SettingsButton {
-                text: "Show looks"
-                onClicked: Panels.settingsPage = "appearance"
-            }
-        }
-    }
+    readonly property string pageTitle: "Glass"
 
     Group {
-        visible: !Theme.material
         width: parent.width
         title: "Glass"
         footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges, like Tahoe." : Theme.glass.material === "frosted" ? "Frost blurs what's behind, with a thin lens at the edges." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."

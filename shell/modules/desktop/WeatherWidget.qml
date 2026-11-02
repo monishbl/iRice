@@ -9,69 +9,9 @@ Item {
 
     property string size: "m"
 
-    // Material, small: a Material You weather widget, a circle in the
-    // tertiary container (no card behind it) with the temperature large
-    readonly property bool materialSmall: Theme.material && size === "s"
-    Loader {
-        anchors.fill: parent
-        active: root.materialSmall
-        sourceComponent: Item {
-            MaterialShape {
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height)
-                height: width
-                shape: "circle"
-                color: Theme.m3.tertiaryContainer
-            }
-            Column {
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * 0.72
-                spacing: 0
-                visible: Weather.ready
-                Icon {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    name: Weather.icon
-                    fill: true
-                    size: 22
-                    color: Theme.m3.tertiary
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: Weather.temp + "°"
-                    color: Theme.m3.onTertiaryContainer
-                    font { family: Theme.font.family; pixelSize: 46; weight: Font.Medium; features: { "tnum": 1 } }
-                }
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: Weather.place
-                    color: Theme.m3.onTertiaryContainer
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "H:" + Weather.high + "°  L:" + Weather.low + "°"
-                    color: Qt.alpha(Theme.m3.onTertiaryContainer, 0.75)
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
-                }
-            }
-            Text {
-                anchors.centerIn: parent
-                visible: !Weather.ready
-                width: Math.min(parent.width, parent.height) * 0.7
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                text: Weather.error || "Loading weather…"
-                color: Theme.m3.onTertiaryContainer
-                font { family: Theme.font.family; pixelSize: Theme.font.small }
-            }
-        }
-    }
-
     Text {
         anchors.centerIn: parent
-        visible: !Weather.ready && !root.materialSmall
+        visible: !Weather.ready
         width: parent.width
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
@@ -82,7 +22,7 @@ Item {
 
     Item {
         anchors.fill: parent
-        visible: Weather.ready && !root.materialSmall
+        visible: Weather.ready
 
         Column {
             spacing: 0
@@ -96,9 +36,8 @@ Item {
             }
             Text {
                 text: Weather.temp + Weather.unit
-                // (Material: emphasized, on its secondary container pill)
-                color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.material ? 44 : 42; weight: Theme.material ? Font.Medium : Font.Normal; features: { "tnum": 1 } }
+                color: Theme.color.label
+                font { family: Theme.font.family; pixelSize: 42; weight: Font.Normal; features: { "tnum": 1 } }
             }
         }
 

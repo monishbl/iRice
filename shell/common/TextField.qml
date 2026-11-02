@@ -1,8 +1,6 @@
 import QtQuick
 
 // Single-line text field with placeholder. Commits on Enter or focus loss.
-// Material: a filled field (4 px top corners, an underline that turns primary
-// and thicker while typing).
 Squircle {
     id: root
 
@@ -24,37 +22,19 @@ Squircle {
     }
 
     implicitWidth: 220
-    implicitHeight: Theme.material ? 36 : 28
+    implicitHeight: 28
     radius: Theme.radius.control - 2
-    color: Theme.material ? "transparent" : Theme.color.fill
-    border.width: Theme.material ? 0 : 1
+    color: Theme.color.fill
+    border.width: 1
     border.color: input.activeFocus ? Theme.accent : Theme.color.separator
-
-    Loader {
-        anchors.fill: parent
-        active: Theme.material
-        sourceComponent: Rectangle {
-            topLeftRadius: 4
-            topRightRadius: 4
-            color: hover.hovered ? Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, 0.08)) : Theme.m3.surfaceContainerHighest
-            HoverHandler {
-                id: hover
-            }
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: input.activeFocus ? 2 : 1
-                color: input.activeFocus ? Theme.m3.primary : Theme.m3.onSurfaceVariant
-            }
-        }
-    }
 
     TextInput {
         id: input
-        anchors { fill: parent; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
+        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
         verticalAlignment: TextInput.AlignVCenter
         echoMode: root.secret ? TextInput.Password : TextInput.Normal
         color: Theme.color.label
-        selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
+        selectionColor: Theme.accentAlpha(0.4)
         selectByMouse: true
         activeFocusOnTab: true // Tab moves on to the next control
         clip: true

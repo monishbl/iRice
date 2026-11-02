@@ -101,10 +101,8 @@ Variants {
                 forceLiquid: true
                 opacity: win.progress
             }
-            // (Material: the glass is an opaque surface already, nothing to dim)
             Rectangle {
                 anchors.fill: parent
-                visible: !Theme.material
                 color: Qt.rgba(0, 0, 0, 0.18 * win.progress)
             }
 
@@ -134,12 +132,12 @@ Variants {
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: win.exposeEntry?.name ?? win.exposeFor
-                        color: Theme.material ? Theme.m3.onSurface : "white"
+                        color: "white"
                         font { family: Theme.font.family; pixelSize: 20; weight: Font.DemiBold }
                     }
                     Text {
                         text: win.windows.length + (win.windows.length === 1 ? " window" : " windows")
-                        color: Theme.material ? Theme.m3.onSurfaceVariant : Qt.rgba(1, 1, 1, 0.7)
+                        color: Qt.rgba(1, 1, 1, 0.7)
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
                 }
@@ -186,20 +184,16 @@ Variants {
                         transform: Translate { x: space.dragged ? spacesBar.dragDx : 0 }
 
                         Rectangle {
-                            id: spaceCard
                             width: 150
                             height: Math.round((win.screen?.height ?? 1080) * space.s)
-                            radius: Theme.material ? 16 : 8
+                            radius: 8
                             // A plain container, like Overview; the wallpaper
                             // behind its windows with overview.wallpapers
-                            // (Material: a card in surfaceContainerHighest, the
-                            // current space in secondaryContainer)
-                            color: Theme.material ? (space.current ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHighest) : Theme.dark ? "#1A1A1D" : "#F4F4F5"
-                            readonly property bool marked: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged)
+                            color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
                             ClippingRectangle {
-                                anchors { fill: parent; margins: Theme.material ? 0 : 1 }
+                                anchors { fill: parent; margins: 1 }
                                 visible: Config.options.overview.wallpapers
-                                radius: Theme.material ? parent.radius : 7
+                                radius: 7
                                 color: "transparent"
                                 Image {
                                     anchors.fill: parent
@@ -209,7 +203,7 @@ Variants {
                                     asynchronous: true
                                 }
                             }
-                            border.width: Theme.material ? 0 : space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? 2 : 1
+                            border.width: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? 2 : 1
                             border.color: space.current || (spacesBar.dropOn === space.modelData.id && spacesBar.dragSpace > 0 && !space.dragged) ? Theme.accent : (Theme.dark ? "#36363C" : "#D4D4D8")
                             clip: true
 
@@ -223,27 +217,16 @@ Variants {
                                     y: (ipc.at[1] - (win.monitor?.y ?? 0)) * space.s
                                     width: ipc.size[0] * space.s
                                     height: ipc.size[1] * space.s
-                                    radius: Theme.material ? 4 : 3
-                                    color: Theme.material ? Theme.m3.surfaceContainerLow : Theme.dark ? "#2C2C31" : "#FFFFFF"
+                                    radius: 3
+                                    color: Theme.dark ? "#2C2C31" : "#FFFFFF"
                                     border.width: 1
-                                    border.color: Theme.material ? Theme.m3.outlineVariant : Theme.dark ? "#36363C" : "#E4E4E7"
+                                    border.color: Theme.dark ? "#36363C" : "#E4E4E7"
                                     IconImage {
                                         anchors.centerIn: parent
                                         implicitSize: Math.min(20, parent.height * 0.6)
                                         source: Apps.iconFor(parent.ipc.class)
                                     }
                                 }
-                            }
-
-                            // Material: the current space (or where a drag lands)
-                            // outlined in primary, over its wallpaper and windows
-                            Rectangle {
-                                visible: Theme.material && spaceCard.marked
-                                anchors.fill: parent
-                                radius: parent.radius
-                                color: "transparent"
-                                border.width: 3
-                                border.color: Theme.m3.primary ?? "transparent"
                             }
 
                             MouseArea {
@@ -279,7 +262,7 @@ Variants {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Spaces.title(space.modelData.id, win.screen?.name ?? "", "Desktop")
-                            color: Theme.material ? (space.current ? Theme.m3.onSurface : Theme.m3.onSurfaceVariant) : space.current ? "white" : Qt.rgba(1, 1, 1, 0.7)
+                            color: space.current ? "white" : Qt.rgba(1, 1, 1, 0.7)
                             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: space.current ? Font.DemiBold : Font.Medium }
                         }
                     }
@@ -317,7 +300,7 @@ Variants {
                     anchors.centerIn: parent
                     visible: win.windows.length === 0
                     text: win.exposeFor !== "" ? "No open windows" : "No windows on this desktop"
-                    color: Theme.material ? Theme.m3.onSurfaceVariant : Qt.rgba(1, 1, 1, 0.7)
+                    color: Qt.rgba(1, 1, 1, 0.7)
                     font { family: Theme.font.family; pixelSize: Theme.font.title }
                 }
 
@@ -342,12 +325,10 @@ Variants {
                         x: rowOffset + col * (cellW + stage.gap) + (cellW - width) / 2
                         y: row * (cellH + stage.gap) + (cellH - 28 - height) / 2
 
-                        // (Material: a recents card, extra-large corners, outlined
-                        // in primary when hovered)
                         ClippingRectangle {
                             anchors.fill: parent
-                            radius: Theme.material ? Theme.radius.tile : 12
-                            color: Theme.material ? Theme.m3.surfaceContainerHighest : Qt.rgba(0.1, 0.1, 0.12, 1)
+                            radius: 12
+                            color: Qt.rgba(0.1, 0.1, 0.12, 1)
                             scale: hover.containsMouse ? 1.02 : 1
                             Behavior on scale { ScaleAnimator { duration: Theme.motion.hover } }
                             border.width: hover.containsMouse ? 3 : 0
@@ -371,14 +352,13 @@ Variants {
                         }
 
                         IconImage {
-                            visible: !Theme.material
                             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: -16 }
                             implicitSize: 40
-                            source: visible ? Apps.iconFor(tile.ipc.class) : ""
+                            source: Apps.iconFor(tile.ipc.class)
                         }
 
                         Rectangle {
-                            visible: hover.containsMouse && !Theme.material
+                            visible: hover.containsMouse
                             anchors { horizontalCenter: parent.horizontalCenter; top: parent.bottom; topMargin: 30 }
                             width: Math.min(titleText.implicitWidth + 20, parent.width + 40)
                             height: 24
@@ -392,38 +372,6 @@ Variants {
                                 text: tile.modelData.title || tile.ipc.class
                                 color: "white"
                                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                            }
-                        }
-
-                        // Material: Android's recents chip under the card, the app
-                        // icon and the window's title, secondaryContainer when hovered
-                        Loader {
-                            active: Theme.material
-                            anchors { horizontalCenter: parent.horizontalCenter; top: parent.bottom; topMargin: 10 }
-                            sourceComponent: Rectangle {
-                                width: Math.min(chipRow.implicitWidth + 24, tile.width + 40)
-                                height: 32
-                                radius: height / 2
-                                color: hover.containsMouse ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHigh
-                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                                Row {
-                                    id: chipRow
-                                    anchors.centerIn: parent
-                                    spacing: 8
-                                    IconImage {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        implicitSize: 20
-                                        source: Apps.iconFor(tile.ipc.class)
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.min(implicitWidth, tile.width + 40 - 24 - 28)
-                                        elide: Text.ElideRight
-                                        text: tile.modelData.title || tile.ipc.class
-                                        color: hover.containsMouse ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
-                                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                                    }
-                                }
                             }
                         }
 

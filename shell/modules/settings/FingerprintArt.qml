@@ -216,7 +216,7 @@ Item {
         radius: 22
         color: Theme.color.success
         border.width: 3
-        border.color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.dark ? "#232327" : "white" // (the sheet's colour)
+        border.color: Theme.dark ? "#232327" : "white"
         Icon {
             anchors.centerIn: parent
             name: "check"

@@ -19,7 +19,6 @@
 // hyprctl irice-glass pointer-policy <0..2> <corner px>
 // hyprctl irice-glass pointer-confine <monitor|-> (1.5-second lease)
 // hyprctl irice-glass controls on|off [dark|light]   (see controls.cpp)
-// hyprctl irice-glass controls-style glass | material <container rrggbb> <icon rrggbb>
 // hyprctl irice-glass window-frost <0..1>  extra frost where glass covers windows
 //
 // Shape floats (layer-local logical px): x y w h radius mode refraction depth
@@ -64,7 +63,6 @@ std::string pointerCommand(const std::string&, std::istringstream&);
 void        controlsInit(HANDLE);
 void        controlsExit();
 std::string controlsCommand(const std::string& state, const std::string& theme);
-std::string controlsStyleCommand(std::istringstream&);
 
 static HANDLE        g_handle = nullptr;
 static CFunctionHook* g_hook  = nullptr;
@@ -633,8 +631,6 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
         in >> state >> theme;
         return controlsCommand(state, theme);
     }
-    if (verb == "controls-style")
-        return controlsStyleCommand(in);
     // Window tabs: every group's windows in order and which one is in front
     // (Hyprland's own IPC doesn't say), for the shell's tab strip:
     // [{"current":"0x..","windows":["0x..",...],"locked":false}]
@@ -731,7 +727,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             g_shapes[key] = std::move(shapes);
         return "ok";
     }
-    return "error: unknown verb (set, clear, ping, stats, controls, controls-style, groups, window-frost, frametimes)";
+    return "error: unknown verb (set, clear, ping, stats, controls, groups, window-frost, frametimes)";
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {

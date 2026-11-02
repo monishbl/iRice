@@ -124,12 +124,11 @@ Scope {
             Squircle {
                 id: card
                 anchors.centerIn: parent
-                // (Material: a dialog, surfaceContainerHigh with 28 px corners)
                 width: 420
                 height: body.implicitHeight + 48
-                radius: Theme.material ? 28 : 20
-                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.dark ? "#232327" : "white"
-                border.width: Theme.material ? 0 : 1
+                radius: 20
+                color: Theme.dark ? "#232327" : "white"
+                border.width: 1
                 border.color: Theme.color.separator
                 opacity: win.progress
                 scale: 0.96 + 0.04 * win.progress
@@ -149,7 +148,7 @@ Scope {
                             : root.edges ? "Now the edges"
                             : "Add your " + root.fingerName
                         color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.material ? 24 : 20; weight: Theme.material ? Font.Normal : Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: 20; weight: Font.DemiBold }
                     }
                     Text {
                         width: parent.width

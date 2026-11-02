@@ -37,7 +37,7 @@ Item {
     Glass {
         id: glass
         anchors.fill: parent
-        radius: Theme.material ? Theme.radius.module : 20
+        radius: 20
         bevel: 16
         shadowMargin: root.m
     }
@@ -70,7 +70,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.title
             color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
+            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
         }
         Row {
             anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -87,14 +87,8 @@ Item {
                     visible: modelData.show
                     width: 24
                     height: 24
-                    // (Material: a toggled icon button squares off when on;
-                    // the hover is a state layer)
-                    radius: Theme.material && modelData.on ? 8 : 12
-                    Behavior on radius {
-                        enabled: Theme.material
-                        SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
-                    }
-                    color: modelData.on ? Theme.accent : barMouse.containsMouse ? (Theme.material ? Qt.alpha(Theme.m3.onSurfaceVariant, 0.08) : Theme.color.fillHover) : "transparent"
+                    radius: 12
+                    color: modelData.on ? Theme.accent : barMouse.containsMouse ? Theme.color.fillHover : "transparent"
                     Icon {
                         anchors.centerIn: parent
                         name: parent.modelData.icon

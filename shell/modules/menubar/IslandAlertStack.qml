@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -14,8 +13,6 @@ import qs.services
 // their time; swipe one up, or its close button, to put it away.
 // (MenuBar shows it while IslandView.alertsBelow; `top` is the island's
 // bottom edge, in the bar window's coordinates, which are the screen's.)
-// Material: Material cards (corners 28, elevation 2's shadow) in the
-// island's alert colours, inverseSurface (a volume HUD stays tonal).
 Scope {
     id: root
 
@@ -93,9 +90,8 @@ Scope {
                             width: parent.width
                             height: 44
                             radius: Theme.radius.tile
-                            // (Material: tonal steps down from the card)
-                            color: Theme.material ? (parent.depth === 1 ? Theme.m3.surfaceContainerHighest : Theme.m3.surfaceContainerHigh) : Qt.rgba(0.1, 0.1, 0.11, 0.92 - parent.depth * 0.18)
-                            border.width: Theme.material ? 0 : 1
+                            color: Qt.rgba(0.1, 0.1, 0.11, 0.92 - parent.depth * 0.18)
+                            border.width: 1
                             border.color: Qt.rgba(1, 1, 1, 0.1)
                         }
                     }
@@ -108,37 +104,14 @@ Scope {
                     height: alert.implicitHeight + 32
                     Behavior on height { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
 
-                    readonly property bool inverse: Theme.material && alert.kind !== "hud"
                     Glass {
                         id: glass
-                        visible: !Theme.material
                         anchors.fill: parent
                         anchors.margins: -shadowMargin
                         shadowMargin: 16
                         radius: Theme.radius.tile
                     }
-                    // Material: the card
-                    Loader {
-                        anchors.fill: parent
-                        active: Theme.material
-                        sourceComponent: Item {
-                            RectangularShadow {
-                                anchors.fill: parent
-                                radius: Theme.radius.tile
-                                offset.y: 2
-                                blur: 12
-                                color: Qt.alpha(Theme.m3.shadow, Theme.dark ? 0.4 : 0.16)
-                            }
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: Theme.radius.tile
-                                color: IslandInk.surface(front.inverse)
-                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                            }
-                        }
-                    }
                     Rectangle {
-                        visible: !Theme.material
                         anchors.fill: parent
                         radius: Theme.radius.tile
                         gradient: Gradient {
@@ -154,7 +127,6 @@ Scope {
                         y: 16
                         width: parent.width - 36
                         event: Island.byUid[root.newest[0]] ?? null
-                        inverse: front.inverse
                         unseen: root.unseen
                         onActed: (uid, since) => Island.remove(uid, since)
                         onDismissRequested: Island.remove(root.newest[0])
@@ -164,7 +136,7 @@ Scope {
                         visible: Island.alerts.count > 1
                         anchors { right: parent.right; bottom: parent.bottom; rightMargin: 14; bottomMargin: 6 }
                         text: "+" + (Island.alerts.count - 1)
-                        color: IslandInk.dim(0.5, front.inverse)
+                        color: Qt.rgba(1, 1, 1, 0.5)
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
                     }
                 }

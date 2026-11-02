@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
-import Quickshell.Widgets
 import qs.common
 import qs.modules.captions
 import qs.services
@@ -15,18 +14,14 @@ import qs.services
 //   recording  how long, and stop
 //   transfer   the file, how far and how fast, open Downloads / cancel a copy
 //   call       the app, how long, mute / open / leave
-// Material: a Material card on the island's surface: the art behind the
-// controls under a tonal wash (or beside them, cut into a cookie while it
-// plays), wavy progress, a play button that morphs, each activity's icon on
-// a cookie in primary (error when urgent).
 Item {
     id: root
 
     property var activity: null
     readonly property string kind: activity?.kind ?? ""
     readonly property var player: Island.player
-    readonly property color ink: IslandInk.ink()
-    readonly property color ink2: IslandInk.dim(0.6)
+    readonly property color ink: "#F5F5F7"
+    readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
 
     readonly property bool overlay: Config.options.island.playerLayout !== "side"
     // Hundredths shown: ask for the fast stopwatch tick while visible
@@ -99,23 +94,6 @@ Item {
         }
     }
 
-    // Material's seek bar: wavy progress; a click (or a drag) seeks
-    component SeekWave: WavyProgress {
-        property real frac: 0
-        value: frac
-        paused: !(root.player?.isPlaying ?? false)
-        MouseArea {
-            anchors { fill: parent; topMargin: -6; bottomMargin: -6 }
-            enabled: root.player?.canSeek ?? false
-            cursorShape: Qt.PointingHandCursor
-            preventStealing: true
-            onClicked: m => {
-                root.player.position = Math.max(0, Math.min(1, m.x / width)) * root.player.length;
-                root.player.positionChanged();
-            }
-        }
-    }
-
     component Ctl: IconButton {
         width: 36
         height: 36
@@ -139,7 +117,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: IslandInk.dim(vol.open ? 0.12 : 0)
+            color: Qt.rgba(1, 1, 1, vol.open ? 0.12 : 0)
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         }
         Ctl {
@@ -158,14 +136,14 @@ Item {
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width
-                height: Theme.material ? 6 : 4
-                radius: height / 2
-                color: Theme.material ? Theme.m3.secondaryContainer : Qt.rgba(1, 1, 1, 0.25)
+                height: 4
+                radius: 2
+                color: Qt.rgba(1, 1, 1, 0.25)
                 Rectangle {
                     width: parent.width * (root.muted ? 0 : root.volume)
                     height: parent.height
-                    radius: height / 2
-                    color: Theme.material ? Theme.m3.primary : root.ink
+                    radius: 2
+                    color: root.ink
                 }
             }
             MouseArea {
@@ -196,7 +174,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: IslandInk.dim(oaTap.pressed ? 0.2 : oaHover.hovered ? 0.12 : 0)
+            color: Qt.rgba(1, 1, 1, oaTap.pressed ? 0.2 : oaHover.hovered ? 0.12 : 0)
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         }
         Text {
@@ -240,18 +218,7 @@ Item {
             anchors.centerIn: parent
             spacing: 10
             Ctl { icon: "skip-back"; enabled: root.player?.canGoPrevious ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.previous() }
-            Ctl { visible: !Theme.material; icon: Island.musicPlaying ? "pause" : "play"; iconSize: parent.parent.playIcon; width: 44; onClicked: root.player?.togglePlaying() }
-            // Material: the play button morphs (round paused, square playing)
-            Loader {
-                active: Theme.material
-                visible: active
-                anchors.verticalCenter: parent.verticalCenter
-                sourceComponent: PlayButton {
-                    size: 44
-                    playing: Island.musicPlaying
-                    onClicked: root.player?.togglePlaying()
-                }
-            }
+            Ctl { icon: Island.musicPlaying ? "pause" : "play"; iconSize: parent.parent.playIcon; width: 44; onClicked: root.player?.togglePlaying() }
             Ctl { icon: "skip-forward"; enabled: root.player?.canGoNext ?? false; opacity: enabled ? 1 : 0.4; onClicked: root.player?.next() }
         }
         Row {
@@ -273,31 +240,9 @@ Item {
     Item {
         visible: root.kind === "music" && root.overlay
         anchors.fill: parent
-        // Material: the art fills the card under a wash of the island's
-        // surface (either art style), so its text stays readable
-        Loader {
-            anchors.fill: parent
-            active: Theme.material && root.kind === "music" && root.overlay && Media.artUrl(root.player) !== ""
-            sourceComponent: ClippingRectangle {
-                radius: Theme.radius.tile - 12
-                color: Theme.m3.surfaceContainerHighest
-                Image {
-                    anchors.fill: parent
-                    source: Media.artUrl(root.player)
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize: Qt.size(640, 640)
-                    asynchronous: true
-                    retainWhileLoading: true
-                }
-                Rectangle {
-                    anchors.fill: parent
-                    color: Qt.alpha(Theme.m3.surfaceContainerHigh, 0.72)
-                }
-            }
-        }
         Item {
             anchors.fill: parent
-            visible: root.artStyle === "faded" && !Theme.material
+            visible: root.artStyle === "faded"
             Image {
                 anchors.fill: parent
                 source: Media.artUrl(root.player) // (kept loaded, at a fixed size: no reload and flicker on every open)
@@ -338,12 +283,11 @@ Item {
                     width: parent.width
                     text: [root.player?.trackArtist, root.player?.trackAlbum].filter(x => !!x).join(" · ")
                     elide: Text.ElideRight
-                    color: IslandInk.dim(0.75)
+                    color: Qt.rgba(1, 1, 1, 0.75)
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
             }
             Item {
-                id: oSeekRow
                 visible: (root.player?.lengthSupported ?? false) && (root.player?.length ?? 0) > 0
                 width: parent.width
                 height: 14
@@ -352,24 +296,17 @@ Item {
                     id: oPos
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.fmt(root.player?.position)
-                    color: IslandInk.dim(0.75)
+                    color: Qt.rgba(1, 1, 1, 0.75)
                     font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                 }
                 Text {
                     id: oLen
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     text: "-" + root.fmt((root.player?.length ?? 0) - (root.player?.position ?? 0))
-                    color: IslandInk.dim(0.75)
+                    color: Qt.rgba(1, 1, 1, 0.75)
                     font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                 }
-                // Material: wavy progress, a click seeks
-                Loader {
-                    active: Theme.material
-                    anchors { left: oPos.right; leftMargin: 8; right: oLen.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    sourceComponent: SeekWave { frac: oSeekRow.frac }
-                }
                 Rectangle {
-                    visible: !Theme.material
                     anchors { left: oPos.right; leftMargin: 8; right: oLen.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                     height: oSeek.containsMouse ? 6 : 4
                     radius: height / 2
@@ -411,36 +348,12 @@ Item {
             width: 72
             height: 72
             readonly property real radius: Theme.radius.tile - 12
-            // Material: a cookie while it plays, a square when paused
-            Loader {
-                anchors.fill: parent
-                active: Theme.material
-                sourceComponent: Item {
-                    Image {
-                        id: mArt
-                        anchors.fill: parent
-                        source: Media.artUrl(root.player)
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(144, 144)
-                        asynchronous: true
-                        retainWhileLoading: true
-                    }
-                    MaterialShape {
-                        anchors.fill: parent
-                        shape: Island.musicPlaying ? "cookie9" : "square"
-                        color: Theme.m3.surfaceContainerHighest
-                        source: Media.artUrl(root.player) !== "" ? mArt : null
-                    }
-                }
-            }
             Squircle {
-                visible: !Theme.material
                 anchors.fill: parent
                 radius: art.radius
                 color: Qt.rgba(1, 1, 1, 0.1)
             }
             Image {
-                visible: !Theme.material
                 anchors.fill: parent
                 source: Media.artUrl(root.player)
                 fillMode: Image.PreserveAspectCrop
@@ -492,7 +405,7 @@ Item {
                 width: parent.width
                 text: root.player?.identity ?? ""
                 elide: Text.ElideRight
-                color: IslandInk.dim(0.4)
+                color: Qt.rgba(1, 1, 1, 0.4)
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
         }
@@ -518,14 +431,8 @@ Item {
                 color: root.ink2
                 font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
             }
-            Loader {
-                active: Theme.material
-                anchors { left: posText.right; leftMargin: 8; right: lenText.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                sourceComponent: SeekWave { frac: seek.frac }
-            }
             Rectangle {
                 id: track
-                visible: !Theme.material
                 anchors { left: posText.right; leftMargin: 8; right: lenText.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                 height: seekMouse.containsMouse ? 6 : 4
                 radius: height / 2
@@ -597,16 +504,7 @@ Item {
             width: 44
             height: 44
             radius: 22
-            color: Theme.material ? "transparent" : Qt.alpha(root.activity?.color ?? root.ink, 0.22)
-            // Material: on a cookie
-            Loader {
-                anchors.fill: parent
-                active: Theme.material
-                sourceComponent: MaterialShape {
-                    shape: "cookie9"
-                    color: IslandInk.tint(root.activity?.color)
-                }
-            }
+            color: Qt.alpha(root.activity?.color ?? root.ink, 0.22)
             // A call answered in the island: its app's icon
             AppIcon {
                 id: badgeApp
@@ -620,8 +518,8 @@ Item {
                 visible: !badgeApp.visible
                 name: LiveInfo.icon(root.kind)
                 fill: true
-                size: Theme.material ? 20 : 22
-                color: Theme.material ? IslandInk.onTint(root.activity?.color) : root.activity?.color ?? root.ink
+                size: 22
+                color: root.activity?.color ?? root.ink
             }
         }
         // Timer, stopwatch, recording: a small caption over a big number.
@@ -641,8 +539,8 @@ Item {
                 width: parent.width
                 elide: Text.ElideRight
                 text: parent.parent.wordy ? LiveInfo.detail(root.kind) : root.kind === "stopwatch" ? Timers.formatMs(Timers.swElapsed) : LiveInfo.time(root.kind)
-                color: root.kind === "recording" ? (Recorder.paused ? root.ink2 : Theme.material ? Theme.m3.error : Theme.accents.red) : parent.parent.wordy ? root.ink2 : root.ink
-                font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.small : 24; weight: parent.parent.wordy ? Font.Normal : Theme.material ? Font.Medium : Font.DemiBold; features: { "tnum": 1 } }
+                color: root.kind === "recording" ? (Recorder.paused ? root.ink2 : Theme.accents.red) : parent.parent.wordy ? root.ink2 : root.ink
+                font { family: Theme.font.family; pixelSize: parent.parent.wordy ? Theme.font.small : 24; weight: parent.parent.wordy ? Font.Normal : Font.DemiBold; features: { "tnum": 1 } }
             }
         }
         Row {
@@ -654,7 +552,7 @@ Item {
                 Ctl {
                     required property var modelData
                     icon: modelData.icon
-                    iconColor: modelData.danger ? (Theme.material ? Theme.m3.error : Theme.accents.red) : root.ink
+                    iconColor: modelData.danger ? Theme.accents.red : root.ink
                     enabled: modelData.on
                     opacity: enabled ? 1 : 0.4
                     onClicked: modelData.act()
@@ -673,27 +571,19 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: 2
-                color: Theme.material ? Theme.m3.secondaryContainer : Qt.rgba(1, 1, 1, 0.16)
+                color: Qt.rgba(1, 1, 1, 0.16)
             }
             Rectangle {
                 width: parent.width * (Recorder.micMuted ? 0 : Math.min(1, Math.sqrt(Recorder.micLevel)))
                 height: parent.height
                 radius: 2
-                color: Theme.material ? Theme.m3.primary : Theme.accents.green
+                color: Theme.accents.green
                 Behavior on width { NumberAnimation { duration: 80 } }
             }
         }
-        // Timer and transfer progress (Material: wavy)
-        Loader {
-            active: Theme.material && LiveInfo.progress(root.kind) >= 0
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 5 }
-            sourceComponent: WavyProgress {
-                value: Math.max(0, LiveInfo.progress(root.kind))
-                color: IslandInk.tint(root.activity?.color)
-            }
-        }
+        // Timer and transfer progress
         Rectangle {
-            visible: LiveInfo.progress(root.kind) >= 0 && !Theme.material
+            visible: LiveInfo.progress(root.kind) >= 0
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 8 }
             height: 4
             radius: 2

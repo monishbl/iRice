@@ -181,13 +181,13 @@ Platter {
     Item {
         id: headRow
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding }
-        height: Theme.material ? 32 : 26
+        height: 26
         z: 5
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: root.todoMode ? "To-do" : root.week ? Qt.formatDate(root.days[0], "d MMM") + " – " + Qt.formatDate(root.days[6], "d MMM") : Qt.formatDate(root.shown, root.todoTab ? "MMM yyyy" : "MMMM yyyy") // (shorter beside three tabs)
             color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; weight: Font.DemiBold }
+            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
         Row {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
@@ -197,16 +197,16 @@ Platter {
             IconButton {
                 objectName: "calendarScrollUp"
                 visible: root.fitHeight && viewport.contentY > 24
-                width: Theme.material ? 32 : 24
-                height: width
+                width: 24
+                height: 24
                 icon: "arrow-up"
-                iconSize: Theme.material ? 18 : 12
+                iconSize: 12
                 tooltip: "Back to calendar"
                 onClicked: root.scrollToCalendar()
             }
             Segmented {
-                width: Theme.material ? (root.todoTab ? 172 : 124) : root.todoTab ? 150 : 104
-                height: Theme.material ? 32 : 24
+                width: root.todoTab ? 150 : 104
+                height: 24
                 options: root.todoTab ? ["Month", "Week", "To-do"] : ["Month", "Week"]
                 current: root.todoMode ? 2 : root.week ? 1 : 0
                 onSelected: i => {
@@ -222,10 +222,10 @@ Platter {
                 model: root.todoMode ? [] : [{ icon: "caret-left", step: -1 }, { icon: "caret-right", step: 1 }]
                 IconButton {
                     required property var modelData
-                    width: Theme.material ? 32 : 24
-                    height: width
+                    width: 24
+                    height: 24
                     icon: modelData.icon
-                    iconSize: Theme.material ? 18 : 12
+                    iconSize: 12
                     onClicked: root.step(modelData.step)
                 }
             }
@@ -329,11 +329,8 @@ Platter {
                             readonly property int more: allEvs.length + allTds.length - evs.length - tds.length
                             width: weekList.width
                             height: Math.max(40, weekCol.implicitHeight + 10)
-                            radius: Theme.material ? 12 : 8
-                            // (Material: the chosen day on secondaryContainer, hover a state layer)
-                            color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25)
-                                : Theme.material ? (isSelected ? Theme.m3.secondaryContainer : wdayMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
-                                : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
+                            radius: 8
+                            color: root.dropDay && root.sameDay(root.dropDay, modelData) ? Theme.accentAlpha(0.25) : isSelected ? Theme.color.fill : wdayMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.5) : "transparent"
                             Column {
                                 x: 8
                                 width: 44
@@ -392,7 +389,7 @@ Platter {
                                     Row {
                                         required property var modelData
                                         spacing: 6
-                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 1.5; color: Theme.material ? Theme.m3.tertiary : Theme.accents.orange }
+                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 1.5; color: Theme.accents.orange }
                                         Text {
                                             width: weekCol.width - 12
                                             text: parent.modelData.text
@@ -457,19 +454,19 @@ Platter {
                         objectName: "calendarDayTitle"
                         visible: !root.todoMode
                         width: parent.width
-                        height: Theme.material ? 32 : 22
+                        height: 22
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.dayTitle(root.selected)
                             color: Theme.color.secondary
-                            font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                         }
                         IconButton {
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                            width: Theme.material ? 32 : 22
-                            height: width
+                            width: 22
+                            height: 22
                             icon: "plus"
-                            iconSize: Theme.material ? 18 : 12
+                            iconSize: 12
                             tooltip: "Add to this day"
                             onClicked: editor.create(root.selected)
                         }
@@ -492,19 +489,18 @@ Platter {
                             id: itemsCol
                             objectName: "calendarItems"
                             width: parent.width
-                            spacing: Theme.material ? 4 : 8
+                            spacing: 8
                             Repeater {
                                 model: root.fitHeight ? root.items : root.items.slice(0, 8)
                                 Squircle {
                                     id: row
                                     required property var modelData
                                     readonly property bool isEvent: modelData.kind === "event"
-                                    readonly property bool movable: !isEvent || !!Calendar.editable(modelData.e)
+                                    readonly property bool movable: !isEvent || Calendar.editable(modelData.e)
                                     width: column.width
-                                    // (Material: a tonal chip, surfaceContainerHighest)
-                                    height: Theme.material ? 44 : 36
-                                    radius: Theme.material ? 12 : 8
-                                    color: Theme.material ? (rowMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill) : rowMouse.containsMouse ? Theme.color.fill : "transparent"
+                                    height: 36
+                                    radius: 8
+                                    color: rowMouse.containsMouse ? Theme.color.fill : "transparent"
                                     z: rowDrag.active ? 10 : 0
                                     opacity: rowDrag.active ? 0.5 : 1
 
@@ -512,15 +508,15 @@ Platter {
                                     Rectangle {
                                         id: lead
                                         visible: row.isEvent
-                                        x: Theme.material ? 10 : 6
-                                        y: Theme.material ? 10 : 5
-                                        width: Theme.material ? 4 : 3
-                                        height: parent.height - 2 * y
+                                        x: 6
+                                        y: 5
+                                        width: 3
+                                        height: parent.height - 10
                                         radius: 2
                                         color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
                                     }
                                     Rectangle {
-                                        visible: !row.isEvent && !Theme.material
+                                        visible: !row.isEvent
                                         x: 4
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 16
@@ -535,19 +531,8 @@ Platter {
                                             onClicked: Todos.update(row.modelData.t, { done: !row.modelData.t.done })
                                         }
                                     }
-                                    // Material: its checkbox
-                                    Loader {
-                                        active: !row.isEvent && Theme.material
-                                        x: 10
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        sourceComponent: MaterialCheck {
-                                            checked: !!row.modelData.t.done
-                                            accessibleName: row.modelData.t.text
-                                            onToggled: Todos.update(row.modelData.t, { done: !row.modelData.t.done })
-                                        }
-                                    }
                                     Column {
-                                        anchors { left: parent.left; leftMargin: Theme.material ? (row.isEvent ? 22 : 38) : row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                        anchors { left: parent.left; leftMargin: row.isEvent ? 16 : 28; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                         Text {
                                             width: parent.width
                                             text: row.isEvent ? row.modelData.e.title : row.modelData.t.text
@@ -565,7 +550,7 @@ Platter {
                                     }
                                     MouseArea {
                                         id: rowMouse
-                                        anchors { fill: parent; leftMargin: row.isEvent ? 0 : Theme.material ? 34 : 24 }
+                                        anchors { fill: parent; leftMargin: row.isEvent ? 0 : 24 }
                                         hoverEnabled: true
                                         cursorShape: row.movable ? Qt.OpenHandCursor : Qt.PointingHandCursor
                                         onClicked: editor.edit(row.modelData)
@@ -596,11 +581,11 @@ Platter {
                                         x: at.x - 20
                                         y: at.y - 18
                                         width: 180
-                                        height: Theme.material ? 36 : 30
-                                        radius: Theme.material ? 12 : 8
+                                        height: 30
+                                        radius: 8
                                         z: 50
-                                        color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#2C2C31" : "#FFFFFF"
-                                        border.width: Theme.material ? 2 : 1
+                                        color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                                        border.width: 1
                                         border.color: Theme.accent
                                         Text {
                                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
@@ -678,39 +663,22 @@ Platter {
         readonly property bool inMonth: modelData.getMonth() === root.shown.getMonth()
         readonly property bool isSelected: root.sameDay(modelData, root.selected)
         readonly property var mark: root.marks[root.dayKey(modelData)] ?? null
-        readonly property bool target: !!root.dropDay && root.sameDay(root.dropDay, modelData)
-        // (Material: just hover and a drop target, as a round state layer;
-        // today and the chosen day are shapes, below)
         Rectangle {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -Math.min(3, (root.cellHeight - 20) / 2)
-            width: Math.min(Theme.material ? 28 : 26, root.cellHeight)
+            width: Math.min(26, root.cellHeight)
             height: width
             radius: width / 2
-            visible: Theme.material ? !cell.isToday && !cell.isSelected && (dayMouse.containsMouse || cell.target) : cell.isToday || cell.isSelected || dayMouse.containsMouse || cell.target
-            color: Theme.material ? (cell.target ? Theme.accentAlpha(0.3) : Qt.alpha(Theme.m3.onSurface, 0.08))
-                : cell.isToday ? Theme.accent : cell.target ? Theme.accentAlpha(0.35) : cell.isSelected ? Theme.color.fillPressed : Theme.color.fill
-        }
-        // Material: today in a primary circle, the chosen day on a
-        // secondaryContainer square (today and chosen: the circle morphs
-        // into a cookie)
-        Loader {
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: -Math.min(3, (root.cellHeight - 20) / 2)
-            width: Math.min(28, root.cellHeight)
-            height: width
-            active: Theme.material && (cell.isToday || cell.isSelected)
-            sourceComponent: MaterialShape {
-                shape: cell.isToday ? (cell.isSelected ? "cookie9" : "circle") : "square"
-                color: cell.isToday ? Theme.m3.primary : Theme.m3.secondaryContainer
-            }
+            readonly property bool target: !!root.dropDay && root.sameDay(root.dropDay, cell.modelData)
+            visible: cell.isToday || cell.isSelected || dayMouse.containsMouse || target
+            color: cell.isToday ? Theme.accent : target ? Theme.accentAlpha(0.35) : cell.isSelected ? Theme.color.fillPressed : Theme.color.fill
         }
         Text {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -Math.min(3, (root.cellHeight - 20) / 2)
             text: cell.modelData.getDate()
-            color: cell.isToday ? Theme.color.onAccent : Theme.material && cell.isSelected ? Theme.m3.onSecondaryContainer : cell.inMonth ? Theme.color.label : Theme.color.tertiary
-            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: cell.isToday ? Font.Bold : Theme.material && cell.isSelected ? Font.DemiBold : Font.Normal; features: { "tnum": 1 } }
+            color: cell.isToday ? Theme.color.onAccent : cell.inMonth ? Theme.color.label : Theme.color.tertiary
+            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: cell.isToday ? Font.Bold : Font.Normal; features: { "tnum": 1 } }
         }
         // Up to three event colours, then an orange square for to-dos
         Row {
@@ -721,7 +689,7 @@ Platter {
                 model: (cell.mark?.colors ?? []).slice(0, 3)
                 Rectangle { required property string modelData; width: 4; height: 4; radius: 2; color: modelData }
             }
-            Rectangle { visible: (cell.mark?.todos ?? 0) > 0; width: 4; height: 4; radius: 1; color: Theme.material ? Theme.m3.tertiary : Theme.accents.orange }
+            Rectangle { visible: (cell.mark?.todos ?? 0) > 0; width: 4; height: 4; radius: 1; color: Theme.accents.orange }
         }
         MouseArea {
             id: dayMouse
@@ -737,7 +705,7 @@ Platter {
         id: editor
         anchors.fill: parent
         radius: root.shapeRadius
-        color: Theme.material ? Qt.alpha(Theme.m3.scrim, 0.32) : Qt.rgba(0, 0, 0, 0.35)
+        color: Qt.rgba(0, 0, 0, 0.35)
         visible: opacity > 0.01
         opacity: open ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -906,11 +874,10 @@ Platter {
             anchors.centerIn: parent
             width: parent.width - 24
             height: form.implicitHeight + 28
-            // (Material: a dialog, surfaceContainerHigh with 28 px corners)
-            radius: Theme.material ? 28 : 16
+            radius: 16
             // (frosted glass: Notification Center's layer is blurred)
-            color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.glass.tier === "solid" ? Theme.glass.solid : Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.78) : Qt.rgba(0.97, 0.97, 0.99, 0.82)
-            border.width: Theme.material ? 0 : 1
+            color: Theme.glass.tier === "solid" ? Theme.glass.solid : Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.78) : Qt.rgba(0.97, 0.97, 0.99, 0.82)
+            border.width: 1
             border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
             MouseArea { anchors.fill: parent } // clicks inside stay inside
             Keys.onEscapePressed: editor.close()
@@ -925,8 +892,7 @@ Platter {
                 Text {
                     text: editor.readOnly ? "Event" : editor.editing ? (editor.isTodo ? "Edit To-do" : "Edit Event") : "New on " + Qt.formatDate(editor.day, "ddd d MMM")
                     color: Theme.color.label
-                    // (Material: a dialog's headline)
-                    font { family: Theme.font.family; pixelSize: Theme.material ? 22 : Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold }
+                    font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
                 }
                 Segmented {
                     visible: !editor.editing
@@ -948,7 +914,7 @@ Platter {
                 TextField {
                     id: title
                     width: parent.width
-                    height: Theme.material ? 40 : 32
+                    height: 32
                     enabled: !editor.readOnly
                     placeholder: editor.isTodo ? "What to do" : "Title"
                     commitOnBlur: false
@@ -977,7 +943,7 @@ Platter {
                     TextField {
                         id: startField
                         width: editor.isTodo ? parent.width : (parent.width - 24) / 2
-                        height: Theme.material ? 40 : 32
+                        height: 32
                         enabled: !editor.readOnly
                         placeholder: editor.isTodo ? "Time (optional), e.g. 5pm" : "Starts"
                         commitOnBlur: false
@@ -994,7 +960,7 @@ Platter {
                         id: endField
                         visible: !editor.isTodo
                         width: (parent.width - 24) / 2
-                        height: Theme.material ? 40 : 32
+                        height: 32
                         enabled: !editor.readOnly
                         placeholder: "Ends"
                         commitOnBlur: false
@@ -1005,7 +971,7 @@ Platter {
                     id: locationField
                     visible: editor.google && !editor.readOnly
                     width: parent.width
-                    height: Theme.material ? 40 : 32
+                    height: 32
                     placeholder: "Location"
                     commitOnBlur: false
                     onCommitted: editor.save()
@@ -1014,7 +980,7 @@ Platter {
                     id: notesField
                     visible: !editor.isTodo && !editor.readOnly
                     width: parent.width
-                    height: Theme.material ? 40 : 32
+                    height: 32
                     placeholder: "Notes"
                     commitOnBlur: false
                     onCommitted: editor.save()
@@ -1082,12 +1048,10 @@ Platter {
                             id: choice
                             required property var modelData
                             width: choiceText.implicitWidth + 24
-                            height: Theme.material ? 40 : 32
-                            // (Material: a dialog's text buttons, round)
-                            radius: Theme.material ? height / 2 : Theme.radius.control
-                            color: Theme.material ? (choiceMouse.pressed ? Qt.alpha(Theme.m3.primary, 0.1) : choiceMouse.containsMouse ? Qt.alpha(Theme.m3.primary, 0.08) : "transparent")
-                                : choiceMouse.pressed ? Theme.color.fillPressed : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                            Text { id: choiceText; anchors.centerIn: parent; text: choice.modelData.label; color: Theme.material ? Theme.m3.primary : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
+                            height: 32
+                            radius: Theme.radius.control
+                            color: choiceMouse.pressed ? Theme.color.fillPressed : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                            Text { id: choiceText; anchors.centerIn: parent; text: choice.modelData.label; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
                             MouseArea {
                                 id: choiceMouse
                                 anchors.fill: parent
@@ -1108,14 +1072,14 @@ Platter {
                 Item {
                     visible: editor.asking === null
                     width: parent.width
-                    height: Theme.material ? 40 : 32
+                    height: 32
                     Squircle {
                         visible: !!editor.editing && !editor.readOnly
                         width: delText.implicitWidth + 24
-                        height: parent.height
-                        radius: Theme.material ? height / 2 : Theme.radius.control
-                        color: delMouse.containsMouse ? Qt.alpha(Theme.color.danger, Theme.material ? 0.08 : 0.15) : "transparent"
-                        Text { id: delText; anchors.centerIn: parent; text: editor.isTodo ? "Delete To-do" : "Delete Event"; color: Theme.color.danger; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
+                        height: 32
+                        radius: Theme.radius.control
+                        color: delMouse.containsMouse ? Qt.alpha(Theme.color.danger, 0.15) : "transparent"
+                        Text { id: delText; anchors.centerIn: parent; text: editor.isTodo ? "Delete To-do" : "Delete Event"; color: Theme.color.danger; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
                         MouseArea { id: delMouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.remove(editor.editing) }
                     }
                     Row {
@@ -1123,22 +1087,19 @@ Platter {
                         spacing: 8
                         Squircle {
                             width: cancelText.implicitWidth + 24
-                            height: parent.parent.height
-                            radius: Theme.material ? height / 2 : Theme.radius.control
-                            color: Theme.material ? (cancelMouse.pressed ? Qt.alpha(Theme.m3.primary, 0.1) : cancelMouse.containsMouse ? Qt.alpha(Theme.m3.primary, 0.08) : "transparent")
-                                : cancelMouse.pressed ? Theme.color.fillPressed : cancelMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                            Text { id: cancelText; anchors.centerIn: parent; text: editor.readOnly ? "Close" : "Cancel"; color: Theme.material ? Theme.m3.primary : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
+                            height: 32
+                            radius: Theme.radius.control
+                            color: cancelMouse.pressed ? Theme.color.fillPressed : cancelMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                            Text { id: cancelText; anchors.centerIn: parent; text: editor.readOnly ? "Close" : "Cancel"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
                             MouseArea { id: cancelMouse; anchors.fill: parent; hoverEnabled: true; onClicked: editor.close() }
                         }
                         Squircle {
                             visible: !editor.readOnly
-                            width: saveText.implicitWidth + (Theme.material ? 32 : 24)
-                            height: parent.parent.height
-                            radius: Theme.material ? height / 2 : Theme.radius.control
-                            // (Material: a filled button, state layers in onPrimary)
-                            color: Theme.material ? (saveMouse.pressed ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, 0.1)) : saveMouse.containsMouse ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, 0.08)) : Theme.m3.primary)
-                                : saveMouse.pressed ? Qt.darker(Theme.accent, 1.2) : saveMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
-                            Text { id: saveText; anchors.centerIn: parent; text: editor.editing ? "Save Changes" : editor.isTodo ? "Add To-do" : "Add Event"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
+                            width: saveText.implicitWidth + 24
+                            height: 32
+                            radius: Theme.radius.control
+                            color: saveMouse.pressed ? Qt.darker(Theme.accent, 1.2) : saveMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
+                            Text { id: saveText; anchors.centerIn: parent; text: editor.editing ? "Save Changes" : editor.isTodo ? "Add To-do" : "Add Event"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
                             MouseArea { id: saveMouse; anchors.fill: parent; hoverEnabled: true; onClicked: editor.save() }
                         }
                     }

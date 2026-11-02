@@ -6,8 +6,6 @@ import qs.services
 
 // One live activity in the expanded island, with its controls. Fades and
 // slides in after `delay` ms, so rows stagger as the island opens.
-// Material: the icon in a primary circle (error when urgent), the island's
-// colours (IslandInk), wavy progress.
 Item {
     id: root
 
@@ -45,7 +43,7 @@ Item {
         height: width
         anchors.verticalCenter: parent.verticalCenter
         radius: root.kind === "music" ? 10 : width / 2
-        color: root.kind === "music" ? IslandInk.dim(0.12) : Theme.material ? IslandInk.tint(root.activity.color) : Qt.alpha(root.activity.color, 0.22)
+        color: root.kind === "music" ? Qt.rgba(1, 1, 1, 0.12) : Qt.alpha(root.activity.color, 0.22)
         clip: true
         Image {
             anchors.fill: parent
@@ -62,7 +60,7 @@ Item {
             name: root.activity.icon
             fill: true
             size: 15
-            color: Theme.material ? (root.kind === "music" ? IslandInk.ink() : IslandInk.onTint(root.activity.color)) : root.activity.color
+            color: root.activity.color
         }
     }
 
@@ -74,15 +72,15 @@ Item {
             width: parent.width
             text: root.kind === "captions" ? "Live captions" : LiveInfo.title(root.kind)
             elide: Text.ElideRight
-            color: IslandInk.ink()
-            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Theme.material ? Font.Medium : Font.DemiBold }
+            color: "#F5F5F7"
+            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
         // Captions: the last words, a few lines of them
         CaptionLines {
             visible: root.kind === "captions"
             width: parent.width
             height: visible ? implicitHeight : 0
-            ink: IslandInk.ink()
+            ink: "#F5F5F7"
             size: Theme.font.small
             lines: 3
         }
@@ -91,32 +89,13 @@ Item {
             width: parent.width
             text: LiveInfo.detail(root.kind)
             elide: Text.ElideRight
-            color: IslandInk.dim(0.6)
+            color: Qt.rgba(1, 1, 1, 0.6)
             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
         }
         // Where the song is (click to seek)
         Item { visible: root.hasTimeline; width: 1; height: 5 }
-        // (Material: wavy, a click seeks)
-        Loader {
-            active: Theme.material && root.hasTimeline
-            visible: active
-            width: parent.width
-            sourceComponent: WavyProgress {
-                value: Math.max(0, Math.min(1, (root.player?.position ?? 0) / Math.max(1, root.player?.length ?? 1)))
-                paused: !(root.player?.isPlaying ?? false)
-                MouseArea {
-                    anchors { fill: parent; topMargin: -4; bottomMargin: -4 }
-                    enabled: root.player?.canSeek ?? false
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: m => {
-                        root.player.position = Math.max(0, Math.min(1, m.x / width)) * root.player.length;
-                        root.player.positionChanged();
-                    }
-                }
-            }
-        }
         Rectangle {
-            visible: root.hasTimeline && !Theme.material
+            visible: root.hasTimeline
             width: parent.width
             height: seek.containsMouse ? 5 : 3
             radius: height / 2
@@ -141,18 +120,9 @@ Item {
             }
         }
         // Timer and transfer progress
-        Loader {
-            active: Theme.material && LiveInfo.progress(root.kind) >= 0 && root.kind !== "music"
-            visible: active
-            width: parent.width
-            sourceComponent: WavyProgress {
-                value: Math.max(0, LiveInfo.progress(root.kind))
-                color: IslandInk.tint(root.activity.color)
-            }
-        }
         Rectangle {
             readonly property real p: LiveInfo.progress(root.kind)
-            visible: p >= 0 && root.kind !== "music" && !Theme.material
+            visible: p >= 0 && root.kind !== "music"
             width: parent.width
             height: 3
             radius: 1.5
@@ -180,7 +150,7 @@ Item {
                 icon: modelData.icon
                 fill: modelData.fill
                 iconSize: 16
-                iconColor: modelData.danger ? (Theme.material ? Theme.m3.error : Theme.accents.red) : IslandInk.ink()
+                iconColor: modelData.danger ? Theme.accents.red : "#F5F5F7"
                 enabled: modelData.on
                 opacity: enabled ? 1 : 0.4
                 onClicked: modelData.act()

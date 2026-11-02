@@ -96,14 +96,4 @@ export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.svg.draw.warn
 # the shell, which doesn't wait for children it didn't start, kept it as a
 # zombie for its whole life)
 setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/dev/null 2>&1
-# Its own process name. CachyOS's ananicy-cpp files every "qs" as a
-# background service (nice 10), so the shell stuttered whenever an app was
-# busy; started through a symlink called irice-shell, the process takes that
-# name, which only iRice's own rule (assets/ananicy/irice.rules: interactive,
-# like GNOME Shell and KWin) matches
-QSPATH="$(command -v "$QS" 2>/dev/null || true)"
-LINKS="${XDG_RUNTIME_DIR:-/tmp}/irice-bin"
-if [[ -n "$QSPATH" ]] && mkdir -p -m 700 "$LINKS" 2>/dev/null && ln -sfn "$QSPATH" "$LINKS/irice-shell" 2>/dev/null; then
-    QS="$LINKS/irice-shell"
-fi
 exec "$QS" "$@"

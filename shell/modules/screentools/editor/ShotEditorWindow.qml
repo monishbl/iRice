@@ -25,7 +25,7 @@ GlassWindow {
 
     readonly property int m: 24 // shadow room
     readonly property int pad: 12
-    readonly property int bar: Theme.material ? 48 : 36 // (Material: room for a 48 high toolbar)
+    readonly property int bar: 36
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
 
     function fileUrl(p) {
@@ -407,52 +407,32 @@ GlassWindow {
             height: win.bar
 
             Row {
-                anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 EditorButton {
-                    anchors.verticalCenter: parent.verticalCenter
                     icon: "x"
                     tooltip: "Close editor"
                     shortcut: "Esc"
                     onClicked: win.requestClose()
                 }
                 Rectangle { width: 1; height: 20; anchors.verticalCenter: parent.verticalCenter; color: Theme.color.separator }
-                // The tools. Material: a vibrant toolbar, a primaryContainer
-                // pill, the chosen tool filled in primary
-                Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: toolRow.width + 2 * toolRow.x
-                    height: toolRow.height + 2 * toolRow.y
-                    Rectangle {
-                        visible: Theme.material
-                        anchors.fill: parent
-                        radius: height / 2
-                        color: Theme.m3.primaryContainer ?? "transparent"
-                    }
-                    Row {
-                        id: toolRow
-                        x: Theme.material ? 4 : 0
-                        y: Theme.material ? 4 : 0
-                        spacing: Theme.material ? 2 : 4
-                        Repeater {
-                            model: win.tools
-                            EditorButton {
-                                required property var modelData
-                                icon: modelData.icon
-                                tooltip: modelData.label
-                                shortcut: modelData.key
-                                selected: win.s.tool === modelData.id
-                                vibrant: true
-                                enabled: win.ready && win.busy === ""
-                                onClicked: win.setTool(modelData.id)
-                            }
+                Row {
+                    spacing: 4
+                    Repeater {
+                        model: win.tools
+                        EditorButton {
+                            required property var modelData
+                            icon: modelData.icon
+                            tooltip: modelData.label
+                            shortcut: modelData.key
+                            selected: win.s.tool === modelData.id
+                            enabled: win.ready && win.busy === ""
+                            onClicked: win.setTool(modelData.id)
                         }
                     }
                 }
             }
             Row {
                 anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
                 EditorButton {
                     icon: "arrow-counter-clockwise"
@@ -575,8 +555,8 @@ GlassWindow {
                         width: cropFrame.r.width
                         height: cropFrame.r.height
                         color: "transparent"
-                        border.width: Theme.material ? 2 : 1
-                        border.color: Theme.material ? Theme.m3.primary : "white"
+                        border.width: 1
+                        border.color: "white"
                         // Thirds while adjusting
                         Repeater {
                             model: input.pressed ? 4 : 0
@@ -602,11 +582,10 @@ GlassWindow {
                             y: (atBottom ? cropFrame.r.y + cropFrame.r.height : cropFrame.r.y) - 6
                             width: 12
                             height: 12
-                            // (Material: round handles in primary)
-                            radius: Theme.material ? 6 : 3
-                            color: Theme.material ? Theme.m3.primary : "white"
-                            border.width: Theme.material ? 2 : 1
-                            border.color: Theme.material ? Theme.m3.onPrimary : Qt.rgba(0, 0, 0, 0.3)
+                            radius: 3
+                            color: "white"
+                            border.width: 1
+                            border.color: Qt.rgba(0, 0, 0, 0.3)
                         }
                     }
                 }
@@ -777,17 +756,10 @@ GlassWindow {
                 spacing: 8
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    visible: !Theme.material
                     name: "circle-notch"
                     size: 24
                     color: Theme.color.tertiary
                     RotationAnimator on rotation { running: parent.visible; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
-                }
-                // (Material: its loading indicator)
-                Spinner {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    visible: Theme.material
-                    size: 48
                 }
                 Text {
                     text: "Opening screenshot…"
@@ -802,20 +774,7 @@ GlassWindow {
                 visible: base.status === Image.Error
                 width: Math.min(360, parent.width - 48)
                 spacing: 8
-                Icon { anchors.horizontalCenter: parent.horizontalCenter; visible: !Theme.material; name: "image"; size: 32; color: Theme.color.tertiary }
-                // (Material: the empty state's icon on a shape)
-                Loader {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    active: Theme.material
-                    visible: active
-                    sourceComponent: MaterialShape {
-                        width: 72
-                        height: 72
-                        shape: "cookie9"
-                        color: Theme.m3.secondaryContainer
-                        Icon { anchors.centerIn: parent; name: "image"; size: 32; color: Theme.m3.onSecondaryContainer }
-                    }
-                }
+                Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "image"; size: 32; color: Theme.color.tertiary }
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
@@ -848,9 +807,8 @@ GlassWindow {
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                 height: bannerRow.implicitHeight + 24
                 radius: Theme.radius.menu
-                // (Material: errorContainer, or a raised surfaceContainerHigh card, no border)
-                color: Theme.material ? (error ? Theme.m3.errorContainer : Theme.m3.surfaceContainerHigh) : error ? (Theme.dark ? "#3A1F1E" : "#FDECEA") : (Theme.dark ? "#2C2C31" : "#FFFFFF")
-                border.width: Theme.material ? 0 : 1
+                color: error ? (Theme.dark ? "#3A1F1E" : "#FDECEA") : (Theme.dark ? "#2C2C31" : "#FFFFFF")
+                border.width: 1
                 border.color: error ? Qt.alpha(Theme.color.danger, 0.4) : Theme.color.separator
                 MouseArea { anchors.fill: parent } // keep clicks off the canvas
 
@@ -863,7 +821,7 @@ GlassWindow {
                     Icon {
                         name: bannerBox.error ? "warning-circle" : "floppy-disk"
                         size: 20
-                        color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : bannerBox.error ? Theme.color.danger : Theme.color.secondary
+                        color: bannerBox.error ? Theme.color.danger : Theme.color.secondary
                     }
                     Column {
                         width: parent.width - 32 - bannerActions.width - 12
@@ -873,14 +831,14 @@ GlassWindow {
                             width: parent.width
                             wrapMode: Text.Wrap
                             text: win.banner?.title ?? ""
-                            color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : Theme.color.label
+                            color: Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                         }
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
                             text: win.banner?.body ?? ""
-                            color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : Theme.color.secondary
+                            color: Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
                         }
                     }
@@ -934,10 +892,9 @@ GlassWindow {
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 16 }
                 width: toastLabel.implicitWidth + 32
-                // (Material: a snackbar, inverseSurface, corner 4)
-                height: Theme.material ? 48 : 32
-                radius: Theme.material ? 4 : 16
-                color: Theme.material ? Theme.m3.inverseSurface : Theme.dark ? "#3A3A3F" : "#1C1C1E"
+                height: 32
+                radius: 16
+                color: Theme.dark ? "#3A3A3F" : "#1C1C1E"
                 opacity: win.toast !== "" ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: win.toast !== "" ? 200 : 140 } }
@@ -945,11 +902,11 @@ GlassWindow {
                     id: toastLabel
                     anchors.centerIn: parent
                     spacing: 8
-                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "check"; bold: true; size: 14; color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5" }
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "check"; bold: true; size: 14; color: "#F2F2F5" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: win.toast
-                        color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5"
+                        color: "#F2F2F5"
                         font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                     }
                 }
@@ -1013,7 +970,7 @@ GlassWindow {
                             required property string modelData
                             required property int index
                             readonly property bool current: win.s.colorIndex === index
-                            width: Theme.material ? 24 : 26 // (Material's buttons are wider: room for them)
+                            width: 26
                             height: 36
                             Rectangle {
                                 anchors.centerIn: parent

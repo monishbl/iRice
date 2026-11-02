@@ -4,7 +4,6 @@
 # side the display is on. Connecting arrives from that side and settles near
 # the centre; disconnecting leaves toward it. Equal-power panning, so it's as
 # loud wherever it is. Needs ffmpeg (with libvorbis); run after make-sounds.py.
-#   tools/make-directional-sounds.sh [pack…]   (every pack when none is named)
 #   display-connect-left.ogg  display-connect-right.ogg
 #   display-disconnect-left.ogg  display-disconnect-right.ogg
 set -euo pipefail
@@ -19,12 +18,7 @@ pan() {
     echo "aeval=$m*cos(($p+1)*PI/4)|$m*sin(($p+1)*PI/4):c=stereo"
 }
 
-dirs=("$SOUNDS"/*/)
-if (($#)); then
-    dirs=()
-    for p in "$@"; do dirs+=("$SOUNDS/$p/"); done
-fi
-for dir in "${dirs[@]}"; do
+for dir in "$SOUNDS"/*/; do
     for kind in connect disconnect; do
         src="$dir/display-$kind.ogg"
         [[ -f "$src" ]] || continue

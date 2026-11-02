@@ -46,9 +46,6 @@ Singleton {
         property string todayPinned: "" // the day Today was pinned to the desktop for
         property string todayEnsured: "" // the day the daily Today widget was last put back (Widget / Both)
         property var conflictsMuted: [] // Conflicts: ids of things also running that you said not to mention again
-        // The first-login welcome (choose a look): "" not yet shown, "done".
-        // An install that already had a state file counts as welcomed.
-        property string welcome: ""
 
         onOverlayChanged: root.scheduleSave()
         onCrosshairChanged: root.scheduleSave()
@@ -70,12 +67,11 @@ Singleton {
         onTodayEnsuredChanged: root.scheduleSave()
         onSpacesChanged: root.scheduleSave()
         onConflictsMutedChanged: root.scheduleSave()
-        onWelcomeChanged: root.scheduleSave()
     }
 
     property bool loaded: false
     property bool initialized: false
-    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "spaces", "conflictsMuted", "welcome"]
+    readonly property var keys: ["overlay", "crosshair", "floatingImage", "todos", "alarms", "clipPins", "recentApps", "desktopNote", "desktopNotes", "screenTime", "stacks", "shortcutButtons", "appThemeOn", "coolDown", "caffeine", "todayShown", "todayPinned", "todayEnsured", "spaces", "conflictsMuted"]
     readonly property string journalId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
     readonly property string merger: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/state-merge.py").toString().replace("file://", ""))
     property int sequence: 0
@@ -209,7 +205,6 @@ Singleton {
                 if (typeof j.todayEnsured === "string")
                     store.todayEnsured = j.todayEnsured;
                 store.spaces = j.spaces && typeof j.spaces === "object" ? j.spaces : {};
-                store.welcome = typeof j.welcome === "string" ? j.welcome : "done";
             } catch (e) {}
             root.observed = root.snapshot();
             root.loaded = true;

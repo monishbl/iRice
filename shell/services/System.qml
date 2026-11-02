@@ -239,19 +239,15 @@ Singleton {
     // Window corners follow Settings → Appearance (continuous curve)
     readonly property int windowRadius: Config.ready ? Config.options.appearance.windowRadius : -1
     onWindowRadiusChanged: applyRadius()
-    readonly property bool materialCorners: Theme.material
-    onMaterialCornersChanged: applyRadius()
     function applyRadius() {
         if (windowRadius >= 0 && !gameMode)
-            // (Glass: continuous corners; Material: round ones)
-            hyprEval("hl.config({ decoration = { rounding = " + windowRadius + ", rounding_power = " + (Theme.material ? "2.0" : "4.0") + " } })");
+            hyprEval("hl.config({ decoration = { rounding = " + windowRadius + ", rounding_power = 4.0 } })");
     }
     // Pointer theme follows Settings → Appearance (cursor.lua sets it at login)
-    // (the theme itself: AppTheme.cursorTheme, which also follows the look for "auto")
-    readonly property string cursor: Config.ready ? AppTheme.cursorTheme : ""
+    readonly property string cursor: Config.ready ? Config.options.appearance.cursor : ""
     onCursorChanged: if (cursor !== "") {
         // (Hyprland draws macOS-hypr, the sharper hyprcursor build, when it's installed)
-        const t = cursor;
+        const t = cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS";
         Quickshell.execDetached(["sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; hyprctl setcursor \"$h\" 24 >/dev/null; gsettings set org.gnome.desktop.interface cursor-theme \"$1\" 2>/dev/null", "sh", t]);
     }
 

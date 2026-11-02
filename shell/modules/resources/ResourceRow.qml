@@ -18,11 +18,8 @@ Item {
 
     readonly property var main: Resources.stat(({ processor: "cpu", graphics: "gpu", memory: "memory", network: "netDown" })[group] ?? "cpu")
     readonly property var second: group === "processor" ? Resources.stats.find(s => s.key === "temperature") : group === "memory" ? Resources.stat("swap") : group === "network" ? Resources.stat("netUp") : null
-    // (Material: the stat's tone as a colour role, with its container for
-    // the badge)
-    readonly property string role: Theme.material ? ResourceTones.role(main.tone) : ""
-    readonly property color tone: Theme.material ? Theme.m3[role] : Theme.accents[main.tone] ?? Theme.accent
-    readonly property color tone2: second ? (Theme.material ? Theme.m3[ResourceTones.role(second.tone)] : Theme.accents[second.tone] ?? Theme.accent) : tone
+    readonly property color tone: Theme.accents[main.tone] ?? Theme.accent
+    readonly property color tone2: second ? (Theme.accents[second.tone] ?? Theme.accent) : tone
 
     readonly property string title: ({ processor: "Processor", graphics: "Graphics", memory: "Memory", network: "Network" })[group] ?? ""
     readonly property string icon: ({ processor: "cpu", graphics: "graphics-card", memory: "memory", network: "arrows-down-up" })[group] ?? "cpu"
@@ -46,28 +43,25 @@ Item {
     implicitWidth: 280
     implicitHeight: 48
 
-    // (Material: the row pointed at in the highest container, at a
-    // segmented list's corner; the badge a tonal circle in the stat's
-    // container colour)
     Squircle {
         anchors.fill: parent
-        radius: Theme.material ? 16 : 10
-        color: !root.highlighted ? "transparent" : Theme.material ? Theme.m3.surfaceContainerHighest : Qt.rgba(1, 1, 1, Theme.dark ? 0.08 : 0.35)
+        radius: 10
+        color: root.highlighted ? Qt.rgba(1, 1, 1, Theme.dark ? 0.08 : 0.35) : "transparent"
     }
     Rectangle {
         id: badge
         x: 8
         anchors.verticalCenter: parent.verticalCenter
-        width: Theme.material ? 32 : 28
-        height: width
-        radius: width / 2
-        color: Theme.material ? Theme.m3[root.role + "Container"] : Qt.alpha(root.tone, 0.18)
+        width: 28
+        height: 28
+        radius: 14
+        color: Qt.alpha(root.tone, 0.18)
         Icon {
             anchors.centerIn: parent
             name: root.icon
             fill: true
-            size: Theme.material ? 16 : 15
-            color: Theme.material ? Theme.m3["on" + root.role.charAt(0).toUpperCase() + root.role.slice(1) + "Container"] : root.tone
+            size: 15
+            color: root.tone
         }
     }
     Column {
@@ -78,7 +72,7 @@ Item {
             elide: Text.ElideRight
             text: root.title
             color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
+            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
         }
         Text {
             width: parent.width

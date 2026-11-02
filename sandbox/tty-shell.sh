@@ -52,7 +52,7 @@ is_tty_shell() {
 # This session's shells, oldest first
 shell_pids() {
     local p
-    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" && [[ "$(sig_of "$p")" == "$SIG" ]] && echo "$p"
     done | sort -n
     return 0
@@ -72,7 +72,7 @@ gone() {
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
-    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
         [[ -z "$s" || "$s" == "$SIG" ]] && continue

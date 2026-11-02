@@ -369,12 +369,12 @@ Column {
         Row {
             label: "Preview"
             detail: "Locks the screen now"
-            Squircle { // (Material: a 40 px tonal button)
-                width: lockText.implicitWidth + (Theme.material ? 32 : 28)
-                height: Theme.material ? 40 : 28
-                radius: Theme.material ? height / 2 : Theme.radius.control
-                color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, lockMouse.containsMouse ? 0.08 : 0)) : lockMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                Text { id: lockText; anchors.centerIn: parent; text: "Lock Screen"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
+            Squircle {
+                width: lockText.implicitWidth + 28
+                height: 28
+                radius: Theme.radius.control
+                color: lockMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                Text { id: lockText; anchors.centerIn: parent; text: "Lock Screen"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
                 MouseArea { id: lockMouse; anchors.fill: parent; hoverEnabled: true; onClicked: System.power("lock") }
             }
         }

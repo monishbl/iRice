@@ -23,10 +23,9 @@ DetailPage {
     Text {
         text: "Output"
         leftPadding: 6
-        bottomPadding: Theme.material ? 6 : 2
-        // (Material: a list's section heading, in primary)
-        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
-        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
+        bottomPadding: 2
+        color: Theme.color.tertiary
+        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
     }
 
     Repeater {
@@ -59,10 +58,10 @@ DetailPage {
         visible: root.streams.length > 0
         text: "Applications"
         leftPadding: 6
-        topPadding: Theme.material ? 12 : 8
-        bottomPadding: Theme.material ? 6 : 4
-        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
-        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
+        topPadding: 8
+        bottomPadding: 4
+        color: Theme.color.tertiary
+        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
     }
 
     Repeater {

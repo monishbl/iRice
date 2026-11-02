@@ -38,7 +38,7 @@ Item {
     ClippingRectangle {
         anchors.fill: parent
         radius: root.radius
-        color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#2C2C31" : "#FFFFFF"
+        color: Theme.dark ? "#2C2C31" : "#FFFFFF"
 
         ScreencopyView {
             id: view
@@ -76,37 +76,26 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             text: Apps.entryFor(root.cls)?.name || root.cls
             elide: Text.ElideRight
-            color: Theme.material ? Theme.m3.onSurface : Theme.dark ? "#EDEDEF" : "#18181B"
+            color: Theme.dark ? "#EDEDEF" : "#18181B"
             font { family: Theme.font.family; pixelSize: 12; weight: Font.Medium }
         }
     }
 
-    // Loaded: the icon as a badge in the corner (Material: on a round chip,
-    // like Android's recents)
-    Rectangle {
-        visible: Theme.material && badge.visible
-        anchors.centerIn: badge
-        width: badge.size + 8
-        height: width
-        radius: width / 2
-        color: Theme.m3.surfaceContainerHigh ?? "transparent"
-    }
+    // Loaded: the icon as a badge in the corner
     AppIcon {
-        id: badge
         readonly property bool fits: root.width >= 40 && root.height >= 32
         visible: root.loaded && fits
-        anchors { right: parent.right; bottom: parent.bottom; margins: Theme.material ? 8 : 4 }
+        anchors { right: parent.right; bottom: parent.bottom; margins: 4 }
         size: Math.round(Math.max(12, Math.min(20, root.height * 0.22)))
         source: Apps.iconFor(root.cls)
     }
 
-    // Outline; the accent shows which window a click focuses (Material: no
-    // hairline at rest, tone separates it; primary, 3 px, when hovered)
+    // Outline; the accent shows which window a click focuses
     Rectangle {
         anchors.fill: parent
         radius: root.radius
         color: "transparent"
-        border.width: Theme.material ? (root.hovered ? 3 : 0) : root.hovered ? 2 : 1
-        border.color: root.hovered ? Theme.accent : Theme.material ? "transparent" : (Theme.dark ? "#36363C" : "#E4E4E7")
+        border.width: root.hovered ? 2 : 1
+        border.color: root.hovered ? Theme.accent : (Theme.dark ? "#36363C" : "#E4E4E7")
     }
 }

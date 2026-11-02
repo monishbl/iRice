@@ -37,7 +37,7 @@ Item {
         onTriggered: read.running = true
     }
 
-    WidgetHeader { id: header; icon: root.charging ? "battery-charging" : "battery-high"; title: "Battery"; tint: root.level < 0.2 && !root.charging ? Theme.accents.red : Theme.accents.green; alert: root.level < 0.2 && !root.charging }
+    WidgetHeader { id: header; icon: root.charging ? "battery-charging" : "battery-high"; title: "Battery"; tint: root.level < 0.2 && !root.charging ? Theme.accents.red : Theme.accents.green }
     Text {
         anchors { right: parent.right; top: parent.top }
         text: Math.round(root.level * 100) + "%"
@@ -75,8 +75,7 @@ Item {
                 while (j < s.length - 1 && s[j + 1][2] === s[i][2])
                     j++;
                 const end = Math.min(j + 1, s.length - 1);
-                // (Material: charging in primary, on battery in the outline colour)
-                const c = Theme.material ? (s[i][2] ? Theme.m3.primary : Theme.m3.outline) : s[i][2] ? Theme.accents.green : Theme.dark ? "#A1A1AA" : "#71717A";
+                const c = s[i][2] ? Theme.accents.green : Theme.dark ? "#A1A1AA" : "#71717A";
                 ctx.beginPath();
                 ctx.moveTo(X(s[i][0]), h);
                 for (let k = i; k <= end; k++)
@@ -97,7 +96,6 @@ Item {
         Connections {
             target: Theme
             function onDarkChanged() { chart.requestPaint(); }
-            function onM3Changed() { chart.requestPaint(); }
         }
     }
     Item {

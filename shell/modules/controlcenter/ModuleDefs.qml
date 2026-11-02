@@ -73,44 +73,6 @@ QtObject {
 
     readonly property var defaultLayout: ["wifi:2x1", "nowPlaying:2x2", "bluetooth:1x1", "nightLight:1x1", "focus:2x1", "stageManager:1x1", "darkMode:1x1", "display:4x1", "sound:4x1", "screenshot:1x1", "record:1x1", "keepAwake:1x1", "clipboard:1x1", "mirroring:2x1"]
 
-    // ── The saved layout, shared by both looks' editors ─────────────────
-    // ("id:WxH"), modules whose tool is missing left out
-    readonly property var layout: (Config.options.controlCenter.layout.length > 0 ? Config.options.controlCenter.layout : defaultLayout).map(e => parse(e)).filter(e => usable(e.id))
-    function saveLayout(entries) {
-        // Keep modules that are only unavailable right now (no display
-        // brightness while undocked, a tool not installed yet)
-        const saved = Config.options.controlCenter.layout.length > 0 ? Config.options.controlCenter.layout : defaultLayout;
-        const resting = saved.filter(e => !usable(parse(e).id));
-        Config.options.controlCenter.layout = entries.map(e => e.id + ":" + e.w + "x" + e.h).concat(resting);
-    }
-    function removeModule(id) {
-        saveLayout(layout.filter(e => e.id !== id));
-    }
-    function setSize(id, size) {
-        const [w, h] = size.split("x").map(Number);
-        saveLayout(layout.map(e => e.id !== id ? e : { id: id, w: w, h: h }));
-    }
-    function cycleSize(id) {
-        const e = layout.find(e => e.id === id);
-        if (!e)
-            return;
-        const sizes = all[id].sizes;
-        setSize(id, sizes[(sizes.indexOf(e.w + "x" + e.h) + 1) % sizes.length]);
-    }
-    function addModule(id) {
-        const [w, h] = all[id].sizes[0].split("x").map(Number);
-        saveLayout(layout.concat([{ id: id, w: w, h: h }]));
-    }
-    function moveModule(id, toIndex) {
-        const list = layout.slice();
-        const from = list.findIndex(e => e.id === id);
-        if (from < 0 || from === toIndex)
-            return;
-        const [e] = list.splice(from, 1);
-        list.splice(Math.max(0, Math.min(list.length, toIndex)), 0, e);
-        saveLayout(list);
-    }
-
     function usable(id) {
         const d = all[id];
         return !!d && d.available !== false && (!d.needs || Tools.has(d.needs));

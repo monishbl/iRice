@@ -16,38 +16,23 @@ Item {
     property string image // a thumbnail's URL, if any
     property bool removable: false
     property int elide: Text.ElideMiddle // (file names keep their extension)
-    // (Material: rows are a segmented list, 2 apart, the group's outer
-    // corners 16 and inner ones 4)
-    property bool first: true
-    property bool last: true
     signal remove
 
     HoverHandler { id: hover }
     Rectangle {
-        visible: !Theme.material
         anchors.fill: parent
         radius: 10
         color: grab.pressed ? Theme.color.fillPressed : grab.containsMouse ? Theme.color.fill : "transparent"
     }
-    Rectangle {
-        visible: Theme.material
-        anchors { fill: parent; topMargin: root.first ? 0 : 1; bottomMargin: root.last ? 0 : 1 }
-        topLeftRadius: root.first ? 16 : 4
-        topRightRadius: root.first ? 16 : 4
-        bottomLeftRadius: root.last ? 16 : 4
-        bottomRightRadius: root.last ? 16 : 4
-        color: Theme.material ? Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, grab.pressed ? 0.1 : grab.containsMouse ? 0.08 : 0)) : "transparent"
-    }
 
     Rectangle {
         id: thumb
-        x: Theme.material ? 8 : 6
+        x: 6
         anchors.verticalCenter: parent.verticalCenter
-        width: Theme.material ? 36 : 32
-        height: width
-        // (Material: a picture with corner 8, a glyph on a tonal circle)
-        radius: Theme.material ? (root.image !== "" ? 8 : width / 2) : 6
-        color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+        width: 32
+        height: 32
+        radius: 6
+        color: Theme.color.fill
         clip: true
         Image {
             anchors.fill: parent
@@ -62,18 +47,18 @@ Item {
             visible: root.image === ""
             name: root.glyph
             size: 18
-            color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary
+            color: Theme.color.secondary
         }
     }
 
     Column {
-        anchors { left: thumb.right; leftMargin: Theme.material ? 12 : 10; right: close.visible ? close.left : parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+        anchors { left: thumb.right; leftMargin: 10; right: close.visible ? close.left : parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
         Text {
             width: parent.width
             text: root.label
             elide: root.elide
             color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body }
+            font { family: Theme.font.family; pixelSize: Theme.font.body }
         }
         Text {
             width: parent.width

@@ -204,8 +204,8 @@ Item {
                 xScale: icon.fxScale
                 yScale: icon.fxScale
             }
-            Behavior on x { enabled: !drag.active; SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.4; epsilon: 0.3 } }
-            Behavior on y { enabled: !drag.active; SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.4; epsilon: 0.3 } }
+            Behavior on x { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
+            Behavior on y { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.3 } }
 
             // Selection: a soft tile behind the picture, the name highlighted
             Squircle {
@@ -213,9 +213,8 @@ Item {
                 y: 0
                 width: 54
                 height: 54
-                // (Material: the secondary container, medium-large corners)
-                radius: Theme.material ? 16 : 10
-                color: Theme.material ? Theme.m3.secondaryContainer : Qt.rgba(0, 0, 0, 0.22)
+                radius: 10
+                color: Qt.rgba(0, 0, 0, 0.22)
                 visible: icon.isSelected
             }
             Item {
@@ -260,10 +259,9 @@ Item {
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; top: picture.bottom; topMargin: 3 }
                 width: Math.min(parent.width, label.implicitWidth + 8)
-                height: label.implicitHeight + (Theme.material ? 4 : 2)
-                // (Material: the name on a secondary container pill)
-                radius: Theme.material ? Math.min(height / 2, 10) : 4
-                color: icon.isSelected ? (Theme.material ? Theme.m3.secondaryContainer : Theme.accent) : "transparent"
+                height: label.implicitHeight + 2
+                radius: 4
+                color: icon.isSelected ? Theme.accent : "transparent"
                 Text {
                     id: label
                     anchors.centerIn: parent
@@ -273,7 +271,7 @@ Item {
                     elide: Text.ElideMiddle
                     maximumLineCount: 2
                     wrapMode: Text.WrapAnywhere
-                    color: Theme.material && icon.isSelected ? Theme.m3.onSecondaryContainer : "white" // (on the wallpaper)
+                    color: "white"
                     style: icon.isSelected ? Text.Normal : Text.Raised
                     styleColor: Qt.rgba(0, 0, 0, 0.55)
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
@@ -327,7 +325,7 @@ Item {
         Glass {
             id: glass
             anchors.fill: parent
-            radius: Theme.material ? Theme.radius.popover : 18
+            radius: 18
             shadowMargin: 20
             forceLiquid: true
         }
@@ -353,9 +351,8 @@ Item {
                     Squircle {
                         anchors.fill: parent
                         anchors.margins: 2
-                        // (Material: a state layer)
-                        radius: Theme.material ? 16 : 10
-                        color: cellMouse.containsMouse ? (Theme.material ? Qt.alpha(Theme.m3.onSurface, cellMouse.pressed ? 0.1 : 0.08) : Theme.color.fill) : "transparent"
+                        radius: 10
+                        color: cellMouse.containsMouse ? Theme.color.fill : "transparent"
                     }
                     AppIcon {
                         anchors.horizontalCenter: parent.horizontalCenter

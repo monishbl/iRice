@@ -32,19 +32,16 @@ Platter {
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.padding }
         spacing: 6
 
-        // (Material: a pill field, the outline primary while typing)
         Squircle {
             id: addRow
             width: parent.width
-            height: Theme.material ? 40 : 32
-            radius: Theme.material ? height / 2 : Theme.radius.control
+            height: 32
+            radius: Theme.radius.control
             color: Theme.color.fill
-            borderWidth: Theme.material && input.activeFocus ? 2 : 0
-            borderColor: Theme.accent
-            Icon { x: Theme.material ? 14 : 10; anchors.verticalCenter: parent.verticalCenter; name: "plus"; bold: !Theme.material; size: Theme.material ? 18 : 12; color: Theme.color.secondary }
+            Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "plus"; bold: true; size: 12; color: Theme.color.secondary }
             TextInput {
                 id: input
-                anchors { fill: parent; leftMargin: Theme.material ? 42 : 30; rightMargin: Theme.material ? 16 : 10 }
+                anchors { fill: parent; leftMargin: 30; rightMargin: 10 }
                 verticalAlignment: TextInput.AlignVCenter
                 color: Theme.color.label
                 clip: true
@@ -101,36 +98,25 @@ Platter {
                         required property int index
                         property bool renaming: false
                         width: todoList.width
-                        height: Todos.dueLabel(modelData) ? (Theme.material ? 48 : 40) : Theme.material ? 40 : 30
+                        height: Todos.dueLabel(modelData) ? 40 : 30
 
-                        // (Material: its rounded-square checkbox, loaded in)
                         Rectangle {
                             id: box
                             anchors.verticalCenter: parent.verticalCenter
                             width: 18
                             height: 18
-                            radius: Theme.material ? 4 : 9
-                            color: Theme.material || !item.modelData.done ? "transparent" : Theme.accent
-                            border.width: Theme.material || item.modelData.done ? 0 : 1.5
+                            radius: 9
+                            color: item.modelData.done ? Theme.accent : "transparent"
+                            border.width: item.modelData.done ? 0 : 1.5
                             border.color: Theme.color.tertiary
-                            Icon { anchors.centerIn: parent; visible: item.modelData.done && !Theme.material; name: "check"; bold: true; size: 10; color: Theme.color.onAccent }
+                            Icon { anchors.centerIn: parent; visible: item.modelData.done; name: "check"; bold: true; size: 10; color: Theme.color.onAccent }
                             MouseArea {
                                 anchors { fill: parent; margins: -6 }
-                                enabled: !Theme.material
                                 onClicked: Todos.update(item.modelData, { done: !item.modelData.done })
-                            }
-                            Loader {
-                                anchors.fill: parent
-                                active: Theme.material
-                                sourceComponent: MaterialCheck {
-                                    checked: !!item.modelData.done
-                                    accessibleName: item.modelData.text
-                                    onToggled: Todos.update(item.modelData, { done: !item.modelData.done })
-                                }
                             }
                         }
                         Column {
-                            anchors { left: box.right; leftMargin: Theme.material ? 14 : 10; right: del.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                            anchors { left: box.right; leftMargin: 10; right: del.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
                             Item {
                                 width: parent.width
                                 height: label.implicitHeight
@@ -141,7 +127,7 @@ Platter {
                                     text: item.modelData.text
                                     elide: Text.ElideRight
                                     color: item.modelData.done ? Theme.color.tertiary : Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; strikeout: item.modelData.done }
+                                    font { family: Theme.font.family; pixelSize: Theme.font.body; strikeout: item.modelData.done }
                                     MouseArea {
                                         anchors.fill: parent
                                         onDoubleClicked: {
@@ -187,8 +173,8 @@ Platter {
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                             visible: rowHover.hovered && !item.renaming
                             name: "x"
-                            bold: !Theme.material
-                            size: Theme.material ? 18 : 12
+                            bold: true
+                            size: 12
                             color: Theme.color.tertiary
                             MouseArea {
                                 anchors { fill: parent; margins: -6 }

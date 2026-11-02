@@ -74,7 +74,7 @@ Singleton {
         command: ["sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; "
             + "trap 'hyprctl setcursor \"$h\" 24 >/dev/null' EXIT; "
             + "hyprctl setcursor \"$h\" 72 >/dev/null; sleep 1.1", "sh",
-            AppTheme.cursorTheme]
+            Config.options.appearance.cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS"]
     }
 
     // The ring, on the display the pointer is on (clicks go through)

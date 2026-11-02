@@ -21,8 +21,7 @@ Item {
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
-            // (Material: a progress indicator's track, the secondary container)
-            strokeColor: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+            strokeColor: Theme.color.fill
             strokeWidth: root.thickness
             fillColor: "transparent"
             PathAngleArc { centerX: root.width / 2; centerY: root.height / 2; radiusX: (root.width - root.thickness) / 2; radiusY: radiusX; startAngle: -90; sweepAngle: 360 }

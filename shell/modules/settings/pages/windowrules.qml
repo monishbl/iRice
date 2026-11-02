@@ -53,26 +53,18 @@ Column {
         property bool danger: false
         property bool primary: false
         signal clicked
-        // Material: SettingsButton's 40 px pills (filled, tonal, error)
-        readonly property color m3Container: !Theme.material ? "transparent" : primary ? Theme.m3.primary : danger ? Theme.m3.errorContainer : Theme.m3.secondaryContainer
-        readonly property color m3Content: !Theme.material ? "transparent" : primary ? Theme.m3.onPrimary : danger ? Theme.m3.onErrorContainer : Theme.m3.onSecondaryContainer
-        width: tbRow.implicitWidth + (Theme.material ? 32 : 24)
-        height: Theme.material ? 40 : 28
-        radius: Theme.material ? (tbMouse.pressed ? 8 : height / 2) : Theme.radius.control
-        Behavior on radius {
-            enabled: Theme.material
-            SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping }
-        }
-        color: Theme.material ? Qt.tint(m3Container, Qt.alpha(m3Content, tbMouse.pressed ? 0.1 : tbMouse.containsMouse ? 0.08 : 0))
-            : primary ? (tbMouse.pressed ? Qt.darker(Theme.accent, 1.2) : tbMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent) : tbMouse.pressed ? Theme.color.fillPressed : tbMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-        scale: tbMouse.pressed && !Theme.material ? 0.97 : 1
+        width: tbRow.implicitWidth + 24
+        height: 28
+        radius: Theme.radius.control
+        color: primary ? (tbMouse.pressed ? Qt.darker(Theme.accent, 1.2) : tbMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent) : tbMouse.pressed ? Theme.color.fillPressed : tbMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+        scale: tbMouse.pressed ? 0.97 : 1
         Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         // (not a Row: in Settings pages Row is the settings row)
         Item {
             id: tbRow
             anchors.centerIn: parent
-            implicitWidth: (tbIcon.visible ? tbIcon.implicitWidth + (Theme.material ? 8 : 6) : 0) + tbLabel.implicitWidth
+            implicitWidth: (tbIcon.visible ? tbIcon.implicitWidth + 6 : 0) + tbLabel.implicitWidth
             implicitHeight: tbLabel.implicitHeight
             width: implicitWidth
             height: implicitHeight
@@ -81,16 +73,16 @@ Column {
                 visible: tb.icon !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 name: tb.icon
-                bold: !Theme.material
-                size: Theme.material ? 18 : 12
+                bold: true
+                size: 12
                 color: tbLabel.color
             }
             Text {
                 id: tbLabel
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 text: tb.text
-                color: Theme.material ? tb.m3Content : tb.primary ? Theme.color.onAccent : tb.danger ? Theme.color.danger : Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : tb.primary ? Font.DemiBold : Font.Medium }
+                color: tb.primary ? Theme.color.onAccent : tb.danger ? Theme.color.danger : Theme.color.label
+                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: tb.primary ? Font.DemiBold : Font.Medium }
             }
         }
         MouseArea {
@@ -111,25 +103,24 @@ Column {
         property bool chevron: true
         signal clicked
         width: parent?.width ?? 0
-        height: Theme.material ? 64 : 48
-        // (Material: the Group's tile shows the hover)
-        color: Theme.material ? "transparent" : arMouse.pressed ? Theme.color.fillPressed : arMouse.containsMouse ? Theme.color.fill : "transparent"
+        height: 48
+        color: arMouse.pressed ? Theme.color.fillPressed : arMouse.containsMouse ? Theme.color.fill : "transparent"
         AppIcon {
             id: arIcon
-            x: Theme.material ? 20 : 14
+            x: 14
             anchors.verticalCenter: parent.verticalCenter
-            size: Theme.material ? 40 : 28
+            size: 28
             source: ar.iconSource
         }
         Column {
-            anchors { left: arIcon.right; leftMargin: Theme.material ? 16 : 12; right: arChevron.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: arIcon.right; leftMargin: 12; right: arChevron.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             Text {
                 width: parent.width
                 text: ar.name
                 elide: Text.ElideRight
                 color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
+                font { family: Theme.font.family; pixelSize: Theme.font.body }
             }
             Text {
                 width: parent.width
@@ -137,16 +128,16 @@ Column {
                 text: ar.detail
                 elide: Text.ElideRight
                 color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption }
+                font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
         }
         Icon {
             id: arChevron
-            anchors { right: parent.right; rightMargin: Theme.material ? 16 : 14; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
             visible: ar.chevron
             name: "caret-right"
-            bold: !Theme.material
-            size: Theme.material ? 24 : 12
+            bold: true
+            size: 12
             color: Theme.color.tertiary
         }
         MouseArea {

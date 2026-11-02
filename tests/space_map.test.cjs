@@ -59,7 +59,6 @@ test("a display lists its own spaces from 1, no gaps, then guests, then others",
     }));
     assert.deepStrictEqual(g.map(x => [x.kind, x.ids]), [["own", [101, 102, 103, 104]], ["guest", [201]]]);
     assert.strictEqual(g[1].label, "LG");
-    assert.strictEqual(g[1].unplugged, true); // (the LG isn't connected: the menu bar shows its spaces unnamed)
     const o = plain(M.groups({
         name: "eDP-1",
         bases: { "eDP-1": 0, "DP-1": 100 },

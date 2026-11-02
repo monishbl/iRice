@@ -718,14 +718,7 @@ login() {
         # The greeter user can't read your home, so it gets its own copy
         local wall
         wall=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); w=c.get("wallpaper",{}); print(w.get("darkPath") or w.get("path") or "")' "$CONFIG/irice/config.json" 2>/dev/null || true)
-        # (no picture chosen: the look's own default)
-        if [[ ! -f "$wall" ]]; then
-            if python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1])).get("appearance",{}).get("look") != "material")' "$CONFIG/irice/config.json" 2>/dev/null; then
-                wall="$ROOT/shell/assets/wallpapers/material-dark.jpg"
-            else
-                wall="$ROOT/shell/assets/wallpapers/tahoe-dusk.jpg"
-            fi
-        fi
+        [[ -f "$wall" ]] || wall="$ROOT/shell/assets/wallpapers/tahoe-dusk.jpg"
         run sudo mkdir -p /usr/share/irice
         run sudo rm -rf /usr/share/irice/shell
         run sudo cp -r "$ROOT/shell" /usr/share/irice/shell

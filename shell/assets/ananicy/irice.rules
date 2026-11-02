@@ -1,5 +1,0 @@
-# iRice's shell (Quickshell, started as "irice-shell" by launch-shell.sh):
-# interactive, like GNOME Shell and KWin, so panels and animations stay
-# smooth while apps are busy. Installed to /etc/ananicy.d by iRice's root
-# helper when ananicy-cpp is there.
-{ "name": "irice-shell", "type": "LowLatency_RT" }

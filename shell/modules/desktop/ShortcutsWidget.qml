@@ -45,16 +45,9 @@ Item {
                 readonly property var tints: [Theme.accents.blue, Theme.accents.purple, Theme.accents.orange, Theme.accents.green, Theme.accents.red, Theme.accents.pink, Theme.accents.yellow, Theme.accents.graphite]
                 width: (parent.width - (parent.columns - 1) * parent.spacing) / parent.columns
                 height: (parent.height - parent.spacing) / 2
-                // Material: tonal buttons in turn in the primary, secondary
-                // and tertiary containers, with state layers, their corners
-                // tightening while pressed
-                readonly property var m3Role: [["primaryContainer", "onPrimaryContainer"], ["secondaryContainer", "onSecondaryContainer"], ["tertiaryContainer", "onTertiaryContainer"]][index % 3]
-                readonly property color m3Ink: Theme.material ? Theme.m3[m3Role[1]] : "transparent"
-                radius: Theme.material ? (mouse.pressed ? 12 : 20) : 12
-                Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
-                color: Theme.material ? Qt.tint(Theme.m3[m3Role[0]], Qt.alpha(m3Ink, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
-                    : mouse.pressed ? Qt.alpha(tints[index % 8], 0.32) : mouse.containsMouse ? Qt.alpha(tints[index % 8], 0.26) : Qt.alpha(tints[index % 8], 0.18)
-                scale: mouse.pressed && !Theme.material ? 0.95 : 1
+                radius: 12
+                color: mouse.pressed ? Qt.alpha(tints[index % 8], 0.32) : mouse.containsMouse ? Qt.alpha(tints[index % 8], 0.26) : Qt.alpha(tints[index % 8], 0.18)
+                scale: mouse.pressed ? 0.95 : 1
                 Behavior on scale { ScaleAnimator { duration: 100 } }
                 Column {
                     anchors { left: parent.left; leftMargin: 8; right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
@@ -63,7 +56,7 @@ Item {
                         name: btn.modelData.glyph
                         fill: true
                         size: 20
-                        color: Theme.material ? btn.m3Ink : btn.tints[btn.index % 8]
+                        color: btn.tints[btn.index % 8]
                     }
                     Text {
                         width: parent.width
@@ -72,7 +65,7 @@ Item {
                         maximumLineCount: 2
                         elide: Text.ElideRight
                         lineHeight: 0.95
-                        color: Theme.material ? btn.m3Ink : Theme.color.label
+                        color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
                     }
                 }

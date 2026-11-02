@@ -109,12 +109,12 @@ Column {
                 readonly property var entry: Apps.byId(modelData)
                 label: entry?.name ?? modelData
                 detail: entry ? "" : "Not installed"
-                Rectangle { // (Material: a 40 px tonal icon button)
-                    width: Theme.material ? 40 : 26
-                    height: width
-                    radius: width / 2
-                    color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, removeMouse.containsMouse ? 0.08 : 0)) : removeMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                    Icon { anchors.centerIn: parent; name: "minus"; bold: !Theme.material; size: Theme.material ? 20 : 12; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label }
+                Rectangle {
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: removeMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                    Icon { anchors.centerIn: parent; name: "minus"; bold: true; size: 12 }
                     MouseArea {
                         id: removeMouse
                         anchors.fill: parent
@@ -145,12 +145,12 @@ Column {
                 id: addRow
                 required property var modelData
                 label: modelData.name
-                Rectangle { // (Material: a 40 px filled button)
-                    width: addLabel.implicitWidth + (Theme.material ? 32 : 20)
-                    height: Theme.material ? 40 : 26
-                    radius: height / 2
+                Rectangle {
+                    width: addLabel.implicitWidth + 20
+                    height: 26
+                    radius: 13
                     color: Theme.accent
-                    Text { id: addLabel; anchors.centerIn: parent; text: "Add"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
+                    Text { id: addLabel; anchors.centerIn: parent; text: "Add"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
                     MouseArea {
                         anchors.fill: parent
                         onClicked: Config.options.dock.pinned = Config.options.dock.pinned.concat([addRow.modelData.id])

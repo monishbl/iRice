@@ -30,7 +30,6 @@ layout(std140, binding = 0) uniform buf {
     vec4 solidColor;
     float gloss;       // 3D lighting amount: 1 glass, ~0 frost (even hairline)
     float bandScale;   // the rim's width × this (Settings → Glass → Advanced → Refraction)
-    float circular;    // 1: ordinary round corners (the Material look)
 };
 layout(binding = 1) uniform sampler2D backdrop;
 
@@ -42,7 +41,7 @@ float sdRoundBox(vec2 p, vec2 b, float r) {
     // capsules and circles stay round. Same function in shell/glass/glass.frag
     // and the irice-glass plugin, so both draw the same shape.
     float hm = min(b.x, b.y);
-    float k = max(circular, smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0)));
+    float k = smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0));
     float n = mix(4.0, 2.0, k);
     float re = min(r * mix(1.28, 1.0, k), hm);
     vec2 q = abs(p) - b + re;
@@ -55,7 +54,7 @@ float sdRoundBox(vec2 p, vec2 b, float r) {
 // superellipse's gradient there, the sides' normals elsewhere).
 vec2 roundBoxNormal(vec2 p, vec2 b, float r) {
     float hm = min(b.x, b.y);
-    float k = max(circular, smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0)));
+    float k = smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0));
     float n = mix(4.0, 2.0, k);
     float re = min(r * mix(1.28, 1.0, k), hm);
     vec2 q = abs(p) - b + re;

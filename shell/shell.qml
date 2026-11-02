@@ -10,7 +10,6 @@ import qs.common
 import qs.modules.cheatsheet
 import qs.modules.clipboard
 import qs.modules.appstore
-import qs.modules.lookswitch
 import qs.services
 import qs.dev
 import qs.modules.background
@@ -69,18 +68,6 @@ ShellRoot {
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Bold.ttf") }
-    // The Material look's type and icons: loaded the first time they're
-    // needed (the look, a switch to it, the welcome), then kept
-    property bool materialFonts: false
-    readonly property bool materialFontsNeeded: Theme.material || LookSwitch.running || (UiState.loaded && UiState.data.welcome === "")
-    onMaterialFontsNeededChanged: if (materialFontsNeeded) materialFonts = true
-    Loader {
-        active: root.materialFonts || root.materialFontsNeeded
-        sourceComponent: Item {
-            property FontLoader sans: FontLoader { source: Qt.resolvedUrl("assets/fonts/GoogleSansFlex.ttf") }
-            property FontLoader symbols: FontLoader { source: Qt.resolvedUrl("assets/fonts/MaterialSymbolsRounded.ttf") }
-        }
-    }
 
     Background {}
     ScreenCorners {}
@@ -121,8 +108,6 @@ ShellRoot {
     WallpaperPicker {}
     Settings {}
     AppStoreWindow {}
-    LookSwitchScreen {}
-    Welcome {}
     Cheatsheet {}
     ClipboardPanel {}
     Overlay {}

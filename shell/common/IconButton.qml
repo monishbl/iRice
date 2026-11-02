@@ -1,7 +1,6 @@
 import QtQuick
 
-// Ghost icon button: transparent, fill on hover, darker on press. Material:
-// round, its state layer the icon's colour, squaring off while pressed.
+// Ghost icon button: transparent, fill on hover, darker on press.
 Squircle {
     id: root
 
@@ -15,10 +14,8 @@ Squircle {
 
     implicitWidth: 28
     implicitHeight: 28
-    radius: Theme.material ? (mouse.pressed ? Math.min(8, height / 2) : height / 2) : Theme.radius.control - 2
-    Behavior on radius { enabled: Theme.material; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-    color: Theme.material ? (mouse.pressed ? Qt.alpha(Theme.m3.onSurfaceVariant, 0.1) : mouse.containsMouse ? Qt.alpha(Theme.m3.onSurfaceVariant, 0.08) : "transparent")
-        : mouse.pressed ? Theme.color.fillPressed : mouse.containsMouse ? Theme.color.fill : "transparent"
+    radius: Theme.radius.control - 2
+    color: mouse.pressed ? Theme.color.fillPressed : mouse.containsMouse ? Theme.color.fill : "transparent"
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     transform: elastic.effects
     activeFocusOnTab: visible && enabled

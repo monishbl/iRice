@@ -62,38 +62,29 @@ Column {
         Rectangle {
             id: action
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            // Material: an extra-small button, filled primary to start, tonal
-            // to cancel, with state layers; its corners tighten while pressed
-            readonly property color mBase: !Theme.material ? "transparent" : root.running ? Theme.m3.secondaryContainer : Theme.m3.primary
-            readonly property color mInk: !Theme.material ? "transparent" : root.running ? Theme.m3.onSecondaryContainer : Theme.m3.onPrimary
-            width: actionText.implicitWidth + (Theme.material ? 32 : 24)
-            height: Theme.material ? 32 : 28
-            radius: Theme.material ? (actionMouse.pressed ? 8 : height / 2) : 14
-            Behavior on radius {
-                enabled: Theme.material
-                SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
-            }
+            width: actionText.implicitWidth + 24
+            height: 28
+            radius: 14
             activeFocusOnTab: true
-            color: Theme.material ? Qt.tint(mBase, Qt.alpha(mInk, actionMouse.pressed ? 0.1 : actionMouse.containsMouse ? 0.08 : 0))
-                : root.running ? (actionMouse.pressed ? Theme.color.fillPressed : actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill)
+            color: root.running ? (actionMouse.pressed ? Theme.color.fillPressed : actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill)
                 : (actionMouse.pressed ? Qt.darker(Theme.accent, 1.2) : actionMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent)
-            scale: actionMouse.pressed && !Theme.material ? 0.97 : 1
+            scale: actionMouse.pressed ? 0.97 : 1
             Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             Text {
                 id: actionText
                 anchors.centerIn: parent
                 text: root.running ? "Cancel" : SpeedTest.stage === "done" || SpeedTest.stage === "error" ? "Test again" : "Test speed"
-                color: Theme.material ? action.mInk : root.running ? Theme.color.label : Theme.color.onAccent
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
+                color: root.running ? Theme.color.label : Theme.color.onAccent
+                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
             }
-            Rectangle { // focus ring (Material: 3 px in secondary, 2 px out)
-                anchors { fill: parent; margins: Theme.material ? -5 : -3 }
+            Rectangle { // focus ring
+                anchors { fill: parent; margins: -3 }
                 visible: action.activeFocus
                 radius: height / 2
                 color: "transparent"
-                border.width: Theme.material ? 3 : 2
-                border.color: Theme.material ? Theme.m3.secondary : Theme.accent
+                border.width: 2
+                border.color: Theme.accent
             }
             function press() {
                 if (root.running)
@@ -123,17 +114,7 @@ Column {
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.display; weight: Font.DemiBold; features: { "tnum": 1 } }
         }
-        // (Material: its wavy progress bar)
-        Loader {
-            active: Theme.material
-            visible: active
-            width: parent.width
-            sourceComponent: WavyProgress {
-                value: Math.max(0.02, Math.min(1, SpeedTest.progress))
-            }
-        }
         Rectangle {
-            visible: !Theme.material
             width: parent.width
             height: 4
             radius: 2

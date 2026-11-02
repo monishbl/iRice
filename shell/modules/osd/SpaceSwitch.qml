@@ -122,7 +122,7 @@ Scope {
                     Rectangle {
                         anchors.fill: parent
                         visible: root.shownMode === "dim"
-                        color: Theme.material ? Theme.m3.scrim : "black"
+                        color: "black"
                         opacity: 0.18 * root.dim
                     }
                     // The display you moved to: the accent along its edges,
@@ -137,8 +137,7 @@ Scope {
                         readonly property real depth: 72
                         // (a light shade of the accent: the glow reads as light
                         // coming in from the edge, not a coloured border)
-                        // (Material: primary's light fixed tone, the same in light and dark)
-                        readonly property color tone: Theme.material ? Theme.m3.primaryFixedDim : (Theme.accentRamp[3] ?? Theme.accent)
+                        readonly property color tone: Theme.accentRamp[3] ?? Theme.accent
                         readonly property color strong: Qt.alpha(tone, 0.45)
                         readonly property color soft: Qt.alpha(tone, 0.22)
                         readonly property color faint: Qt.alpha(tone, 0.08)

@@ -12,8 +12,7 @@ import qs.common
 // a pop for the volume keys, a knock for a wrong password, the shutter for
 // screenshots, paper for emptying the Trash.
 // iRice's own sounds are in assets/sounds/<style> (made by
-// tools/make-sounds.py; the style is Settings → Notifications → Style, and
-// "auto" follows the look: marimba in Glass, material in Material); the
+// tools/make-sounds.py; the style is Settings → Notifications → Style); the
 // shutter and paper come from the freedesktop sound theme. Each can be
 // switched off, and some replaced by your own file (Settings → Notifications
 // → Sound effects).
@@ -22,10 +21,8 @@ Singleton {
 
     readonly property var cfg: Config.options.sounds
     readonly property string dir: "/usr/share/sounds/freedesktop/stereo/"
-    readonly property var packs: ["marimba", "taps", "soft", "keys", "minimal", "glass", "material"]
-    // The set playing now: the chosen one, or the look's ("auto")
-    readonly property string pack: cfg.pack === "auto" ? (Theme.material ? "material" : "marimba") : packs.includes(cfg.pack) ? cfg.pack : "marimba"
-    readonly property string own: Quickshell.shellDir + "/assets/sounds/" + pack + "/"
+    readonly property var packs: ["marimba", "taps", "soft", "keys", "minimal", "glass"]
+    readonly property string own: Quickshell.shellDir + "/assets/sounds/" + (packs.includes(cfg.pack) ? cfg.pack : "marimba") + "/"
     readonly property var files: ({
             startup: own + "startup.ogg",
             charging: own + "charging.ogg",

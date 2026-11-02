@@ -150,7 +150,7 @@ Scope {
             // Modal scrim: blocks the desktop, does not dismiss
             Rectangle {
                 anchors.fill: parent
-                color: Theme.material ? Qt.alpha(Theme.m3.scrim, 0.32 * win.progress) : Qt.rgba(0, 0, 0, 0.3 * win.progress)
+                color: Qt.rgba(0, 0, 0, 0.3 * win.progress)
                 MouseArea { anchors.fill: parent }
             }
 
@@ -159,10 +159,8 @@ Scope {
                 // (Escape while the field is away, waiting for a finger)
                 focus: true
                 Keys.onEscapePressed: root.cancel()
-                // (Material: a basic dialog, 24 padding)
-                readonly property int pad: Theme.material ? 24 : 20
                 width: 340 + 2 * win.m
-                height: content.implicitHeight + 2 * pad + 2 * win.m
+                height: content.implicitHeight + 40 + 2 * win.m
                 x: (parent.width - width) / 2 + shake
                 y: (parent.height - height) / 2 - 40
                 opacity: win.progress
@@ -189,55 +187,22 @@ Scope {
                     bevel: 22
                     shadowMargin: win.m
                 }
-                // Material: a dialog is surfaceContainerHigh, a step above
-                // the surfaces it covers
-                Rectangle {
-                    anchors.fill: glass.shape
-                    visible: Theme.material
-                    radius: 28
-                    color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
-                }
 
                 Column {
                     id: content
-                    x: win.m + body.pad
-                    y: win.m + body.pad
-                    width: 340 - 2 * body.pad
-                    spacing: Theme.material ? 12 : 10
+                    x: win.m + 20
+                    y: win.m + 20
+                    width: 340 - 40
+                    spacing: 10
 
                     Squircle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Theme.material ? 64 : 56
-                        height: width
+                        width: 56
+                        height: 56
                         radius: 16
-                        color: Theme.material ? "transparent" : Theme.color.toggleOff
-                        // Material: the hero icon on a shape, a cookie for the
-                        // password, a softer one while waiting for a finger,
-                        // and a burst in the error colours for a miss
-                        Loader {
-                            anchors.fill: parent
-                            active: Theme.material
-                            sourceComponent: MaterialShape {
-                                shape: root.fingerWait ? (root.fingerMissed ? "softBurst" : "clover8") : root.error !== "" ? "softBurst" : "cookie9"
-                                color: (root.fingerWait && root.fingerMissed) || root.error !== "" ? Theme.m3.errorContainer : Theme.m3.secondaryContainer
-                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                            }
-                        }
-                        Icon {
-                            anchors.centerIn: parent
-                            visible: !root.fingerWait
-                            name: "lock-key"
-                            fill: true
-                            size: 28
-                            color: !Theme.material ? Theme.color.label : root.error !== "" ? Theme.m3.onErrorContainer : Theme.m3.onSecondaryContainer
-                        }
-                        FingerGlyph {
-                            anchors.centerIn: parent
-                            visible: root.fingerWait
-                            phase: root.fingerPhase
-                            size: 30
-                            color: !Theme.material ? Theme.accent : root.fingerMissed ? Theme.m3.onErrorContainer : Theme.m3.onSecondaryContainer
-                        }
+                        color: Theme.color.toggleOff
+                        Icon { anchors.centerIn: parent; visible: !root.fingerWait; name: "lock-key"; fill: true; size: 28 }
+                        FingerGlyph { anchors.centerIn: parent; visible: root.fingerWait; phase: root.fingerPhase; size: 30; color: Theme.accent }
                     }
                     Text {
                         width: parent.width
@@ -245,8 +210,7 @@ Scope {
                         wrapMode: Text.Wrap
                         text: root.message
                         color: Theme.color.label
-                        // (Material: the dialog's headline, headline small)
-                        font { family: Theme.font.family; pixelSize: Theme.material ? 24 : Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
                     }
                     Text {
                         width: parent.width
@@ -256,48 +220,28 @@ Scope {
                             : root.fingerWait ? "Touch the fingerprint reader to allow this. The password field comes back in a few seconds."
                             : "Enter the password for " + (Quickshell.env("USER") ?? "your account") + " to allow this."
                         color: Theme.color.secondary
-                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small }
+                        font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
 
                     Squircle {
                         width: parent.width
-                        height: Theme.material ? 52 : 36
+                        height: 36
                         visible: !root.fingerWait
                         onVisibleChanged: visible ? password.forceActiveFocus() : body.forceActiveFocus() // (back after the finger timed out)
                         radius: Theme.radius.control
-                        color: Theme.material ? "transparent" : Theme.color.fill
-                        border.width: Theme.material ? 0 : 1
+                        color: Theme.color.fill
+                        border.width: 1
                         border.color: root.error !== "" ? Theme.color.danger : password.activeFocus ? Theme.accent : Theme.color.separator
-                        // Material: a filled text field (top corners 4, an
-                        // indicator line that thickens in primary, error red)
-                        Loader {
-                            anchors.fill: parent
-                            active: Theme.material
-                            sourceComponent: Rectangle {
-                                topLeftRadius: 4
-                                topRightRadius: 4
-                                color: fieldHover.hovered ? Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, 0.08)) : Theme.m3.surfaceContainerHighest
-                                HoverHandler {
-                                    id: fieldHover
-                                    cursorShape: Qt.IBeamCursor
-                                }
-                                Rectangle {
-                                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                    height: password.activeFocus || root.error !== "" ? 2 : 1
-                                    color: root.error !== "" ? Theme.m3.error : password.activeFocus ? Theme.m3.primary : Theme.m3.onSurfaceVariant
-                                }
-                            }
-                        }
                         TextInput {
                             id: password
-                            anchors { fill: parent; leftMargin: Theme.material ? 16 : 12; rightMargin: Theme.material ? 16 : 12 }
+                            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
                             verticalAlignment: TextInput.AlignVCenter
                             echoMode: root.secret ? TextInput.Password : TextInput.Normal
                             passwordCharacter: "●"
                             enabled: !root.waiting
                             color: Theme.color.label
                             clip: true
-                            font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
+                            font { family: Theme.font.family; pixelSize: Theme.font.body }
                             onAccepted: root.submit(text)
                             Keys.onEscapePressed: root.cancel()
                             Text {
@@ -320,38 +264,23 @@ Scope {
 
                     Row {
                         width: parent.width
-                        spacing: Theme.material ? 8 : 10
-                        topPadding: Theme.material ? 12 : 6
+                        spacing: 10
+                        topPadding: 6
                         Repeater {
                             model: root.fingerWait ? [{ text: "Cancel", primary: false }]
                                 : [{ text: "Cancel", primary: false }, { text: root.waiting ? "Checking…" : "Allow", primary: true }]
                             Rectangle {
-                                id: btn
                                 required property var modelData
-                                // Material: a filled primary pill for Allow, a
-                                // tonal one for Cancel; state layers, and the
-                                // corners tighten while pressed. Allow is
-                                // greyed (12% / 38% of onSurface) until there's
-                                // a password, rather than faded.
-                                readonly property bool off: modelData.primary && password.text === ""
-                                readonly property color ink: !Theme.material ? (modelData.primary ? Theme.color.onAccent : Theme.color.label)
-                                    : off ? Qt.alpha(Theme.m3.onSurface, 0.38) : modelData.primary ? Theme.m3.onPrimary : Theme.m3.onSecondaryContainer
-                                readonly property color base: !Theme.material ? "transparent" : off ? Qt.alpha(Theme.m3.onSurface, 0.12) : modelData.primary ? Theme.m3.primary : Theme.m3.secondaryContainer
-                                width: root.fingerWait ? parent.width : (parent.width - parent.spacing) / 2
-                                height: Theme.material ? 40 : 34
-                                radius: Theme.material ? (btnMouse.pressed && !off ? 8 : height / 2) : 17
-                                Behavior on radius {
-                                    enabled: Theme.material
-                                    SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
-                                }
-                                color: Theme.material ? (off ? base : Qt.tint(base, Qt.alpha(ink, btnMouse.pressed ? 0.1 : btnMouse.containsMouse ? 0.08 : 0)))
-                                    : modelData.primary ? Theme.accent : btnMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                                opacity: !Theme.material && off ? 0.5 : 1
+                                width: root.fingerWait ? parent.width : (parent.width - 10) / 2
+                                height: 34
+                                radius: 17
+                                color: modelData.primary ? Theme.accent : btnMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                                opacity: modelData.primary && password.text === "" ? 0.5 : 1
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.modelData.text
-                                    color: btn.ink
-                                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; weight: Theme.material ? Font.Medium : Font.DemiBold }
+                                    color: parent.modelData.primary ? Theme.color.onAccent : Theme.color.label
+                                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                                 }
                                 MouseArea {
                                     id: btnMouse

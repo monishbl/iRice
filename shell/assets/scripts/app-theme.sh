@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # Colours apps to match iRice (Settings → Appearance → Match apps), with
 # matugen: from the accent colour or the wallpaper, light or dark.
-#   app-theme.sh <dark|light|off> <accent #rrggbb> <source: accent|wallpaper> <wallpaper path> <targets: gtk,qt,terminals,browsers> [desktop dark|light] [Material roles JSON]
-# In the Material look the shell passes its own colour roles (Theme.m3) and
-# the templates are filled with those (app-theme-render.py), not matugen's:
-# matugen's scheme is the 2021 spec, the shell's the 2025 one, and only the
-# shell's own colours match it exactly. matugen isn't needed then.
+#   app-theme.sh <dark|light|off> <accent #rrggbb> <source: accent|wallpaper> <wallpaper path> <targets: gtk,qt,terminals,browsers> [desktop dark|light]
 # Writes its own colour files and adds one include line (once) to each app's
 # config so they're used; "off" empties those files again. Desktop light/dark
 # preferences and Dolphin's palette are synced independently of accent matching.
@@ -19,11 +15,9 @@ T="$(cd "$(dirname "${BASH_SOURCE[0]}")/../theming" && pwd)"
 DESKTOP="$(dirname "${BASH_SOURCE[0]}")/desktop-theme.py"
 want() { [[ "$targets" == *",$1,"* ]]; }
 desktop_mode="${6:-$mode}"
-roles="${7:-}" # the Material look's colour roles (empty in Glass)
-RENDER="$(dirname "${BASH_SOURCE[0]}")/app-theme-render.py"
 [[ "$desktop_mode" == light ]] || desktop_mode=dark
 # Light/dark is a desktop preference, independent of optional accent matching.
-if [[ "$mode" != off ]] && want qt && { [[ -n "$roles" ]] || command -v matugen >/dev/null; }; then
+if [[ "$mode" != off ]] && want qt && command -v matugen >/dev/null; then
     python3 -I "$DESKTOP" "$desktop_mode" --keep-kde
 else
     python3 -I "$DESKTOP" "$desktop_mode"
@@ -61,31 +55,21 @@ accent_rgb="$((16#${a:0:2})),$((16#${a:2:2})),$((16#${a:4:2}))"
 extra=$(printf '{"irice":{"accent":"#%s","accent_stripped":"%s","accent_rgb":"%s","wallpaper":"%s","red":"%s","green":"%s","yellow":"%s","blue":"%s","magenta":"%s","cyan":"%s"}}' \
     "$a" "$a" "$accent_rgb" "${wall//\"/}" "$red" "$green" "$yellow" "$blue" "$magenta" "$cyan")
 
-if [[ -n "$roles" ]]; then
-    # Material: the shell's own roles, filled in here
-    pairs=()
-    for k in "${!out[@]}"; do
-        IFS='|' read -r f tpl grp <<<"${out[$k]}"
-        want "$grp" && pairs+=("$T/$tpl=$f")
-    done
-    python3 -I "$RENDER" "$roles" "$extra" "${pairs[@]}" || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
-else
-    # Glass: matugen, from the accent or the wallpaper
-    conf=$(mktemp --suffix=.toml)
-    trap 'rm -f "$conf"' EXIT
-    echo "[config]" >"$conf"
-    for k in "${!out[@]}"; do
-        IFS='|' read -r f tpl grp <<<"${out[$k]}"
-        want "$grp" || continue
-        mkdir -p "$(dirname "$f")"
-        printf '\n[templates.%s]\ninput_path = "%s/%s"\noutput_path = "%s"\n' "$k" "$T" "$tpl" "$f" >>"$conf"
-    done
-    if [[ "$source" == wallpaper && -f "$wall" && "$wall" != *.mp4 && "$wall" != *.webm && "$wall" != *.mkv ]]; then
-        matugen image "$wall" -m "$mode" -c "$conf" --import-json-string "$extra" -q --prefer saturation 2>/dev/null ||
-            matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
-    else
+# A matugen config with just the wanted targets
+conf=$(mktemp --suffix=.toml)
+trap 'rm -f "$conf"' EXIT
+echo "[config]" >"$conf"
+for k in "${!out[@]}"; do
+    IFS='|' read -r f tpl grp <<<"${out[$k]}"
+    want "$grp" || continue
+    mkdir -p "$(dirname "$f")"
+    printf '\n[templates.%s]\ninput_path = "%s/%s"\noutput_path = "%s"\n' "$k" "$T" "$tpl" "$f" >>"$conf"
+done
+if [[ "$source" == wallpaper && -f "$wall" && "$wall" != *.mp4 && "$wall" != *.webm && "$wall" != *.mkv ]]; then
+    matugen image "$wall" -m "$mode" -c "$conf" --import-json-string "$extra" -q --prefer saturation 2>/dev/null ||
         matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
-    fi
+else
+    matugen color hex "#$a" -m "$mode" -c "$conf" --import-json-string "$extra" -q || { python3 -I "$DESKTOP" "$desktop_mode"; exit 1; }
 fi
 
 # Include the colours (once) in each app's own config
@@ -105,13 +89,6 @@ if want gtk; then
         gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" 2>/dev/null
         v=$([[ $mode == dark ]] && echo Dark || echo Light)
         t=$(ls -d /usr/share/themes/MacTahoe-"$v"* "$DATA"/themes/MacTahoe-"$v"* "$HOME"/.themes/MacTahoe-"$v"* 2>/dev/null | head -1)
-        # Material: libadwaita's look for GTK 3 apps (adw-gtk3), when installed
-        if [[ -n "$roles" ]]; then
-            a3=$([[ $mode == dark ]] && echo adw-gtk3-dark || echo adw-gtk3)
-            for d in /usr/share/themes "$DATA"/themes "$HOME"/.themes; do
-                [[ -d "$d/$a3" ]] && t="$d/$a3" && break
-            done
-        fi
         [[ -n "$t" ]] && gsettings set org.gnome.desktop.interface gtk-theme "$(basename "$t")" 2>/dev/null
     fi
 fi

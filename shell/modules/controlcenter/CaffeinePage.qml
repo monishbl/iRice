@@ -8,7 +8,6 @@ DetailPage {
     id: root
 
     title: "Caffeine"
-    switchLabel: "Keep the screen awake"
     hasSwitch: true
     switchOn: System.keepAwake
     onSwitchToggled: System.setKeepAwake(!System.keepAwake, 0)

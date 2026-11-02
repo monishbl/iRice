@@ -27,11 +27,11 @@ Column {
         }
         Row {
             label: "Pointer"
-            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : Config.options.appearance.cursor === "auto" ? "Follows the look: the macOS pointer in Glass, Bibata in Material" : "The macOS pointer"
+            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
             Segmented {
                 width: 300
-                readonly property var values: ["auto", "macos", "bibata"]
-                options: ["Automatic", "macOS", "Bibata"]
+                readonly property var values: ["macos", "bibata"]
+                options: ["macOS", "Bibata"]
                 current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
                 onSelected: i => Config.options.appearance.cursor = values[i]
             }
@@ -80,12 +80,12 @@ Column {
             visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
             label: "hyprbars plugin"
             detail: "Builds the official plugin with hyprpm in a terminal."
-            Rectangle { // (Material: a 40 px filled button)
-                width: instLabel.implicitWidth + (Theme.material ? 32 : 24)
-                height: Theme.material ? 40 : 28
-                radius: height / 2
+            Rectangle {
+                width: instLabel.implicitWidth + 24
+                height: 28
+                radius: 14
                 color: Theme.accent
-                Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
+                Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
                 MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
             }
         }

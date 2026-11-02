@@ -39,18 +39,6 @@ Canvas {
     onFillColorChanged: requestPaint()
     onWidthChanged: requestPaint()
     onHeightChanged: requestPaint()
-    // The number's font follows the look; a look's font loads a moment
-    // after the switch, so paint again once it's there
-    readonly property string family: Theme.font.family
-    onFamilyChanged: {
-        requestPaint();
-        fontSettle.restart();
-    }
-    Timer {
-        id: fontSettle
-        interval: 600
-        onTriggered: root.requestPaint()
-    }
 
     onPaint: {
         const ctx = getContext("2d");
@@ -80,19 +68,10 @@ Canvas {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         if (showPercent) {
-            // (as large as fits: some fonts' digits are wider than others')
-            const text = String(Math.round(level * 100));
-            let px = Math.round(h * 0.82);
-            ctx.font = "bold " + px + "px '" + family + "'";
-            const room = w - 3;
-            const tw = ctx.measureText(text).width;
-            if (tw > room) {
-                px = Math.max(6, Math.floor(px * room / tw));
-                ctx.font = "bold " + px + "px '" + family + "'";
-            }
+            ctx.font = "bold " + Math.round(h * 0.82) + "px '" + Theme.font.family + "'";
             ctx.globalCompositeOperation = "destination-out";
             ctx.fillStyle = "black";
-            ctx.fillText(text, cx, cy + 0.5);
+            ctx.fillText(String(Math.round(level * 100)), cx, cy + 0.5);
             ctx.globalCompositeOperation = "source-over";
             if (markBeside) {
                 ctx.font = besideSize + "px 'Phosphor-Fill'";

@@ -5,14 +5,6 @@
 //
 // hyprctl irice-glass controls on [dark|light]
 // hyprctl irice-glass controls off
-// hyprctl irice-glass controls-style glass
-// hyprctl irice-glass controls-style material <container rrggbb> <icon rrggbb>
-//
-// Two styles: Glass (macOS traffic lights) and Material (the Material look:
-// round icon buttons, minimize, maximize and close, in the icon colour on
-// a tonal pill, with a state layer under the hovered one, as ChromeOS and
-// Android draw them). The shell sends the palette's surfaceContainerHigh
-// and onSurfaceVariant.
 //
 // Resting on the zoom button for half a second posts the IPC event
 // `irice-controls>>tile,<address>,<x>,<y>` so the shell can show its tile grid.
@@ -43,9 +35,7 @@
 #include <hyprland/src/state/MonitorState.hpp>
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <format>
-#include <sstream>
 #include <vector>
 
 using namespace Render;
@@ -55,12 +45,9 @@ using namespace Render::GL;
 constexpr float kTop = 6, kHandleW = 36, kHandleH = 5, kPillW = 68, kPillH = 20, kDot = 12, kGap = 8;
 constexpr float kZoneW = 110, kZoneH = 34; // where hovering expands the pill
 constexpr float kAnimMs = 150;
-// Material: round icon buttons on a taller pill
-constexpr float kMPillW = 3 * 24 + 2 * 2 + 2 * 4, kMPillH = 28, kMButton = 24, kMGap = 2, kMGlyph = 10, kMStroke = 1.5;
 
-static HANDLE     g_ctlHandle = nullptr;
-static bool       g_enabled = false, g_dark = true, g_material = false;
-static CHyprColor g_mContainer{0.11, 0.11, 0.13, 1}, g_mIcon{0.78, 0.78, 0.82, 1};
+static HANDLE g_ctlHandle = nullptr;
+static bool   g_enabled = false, g_dark = true;
 
 class CIriceControls;
 static std::vector<CIriceControls*> g_decos;
@@ -139,15 +126,9 @@ class CIriceControls : public IHyprWindowDecoration {
         return {box.x + box.w / 2 - kZoneW / 2, box.y, kZoneW, kZoneH};
     }
 
-    // Button i (0 close, 1 minimize, 2 zoom) in global logical px. Glass
-    // puts them in that order (macOS); Material minimize, maximize, close
+    // Button i (0 close, 1 minimize, 2 zoom) in global logical px
     CBox button(int i) {
-        auto z = zone();
-        if (g_material) {
-            const int slot = i == 0 ? 2 : i - 1;
-            auto      x0   = z.x + z.w / 2 - kMPillW / 2 + (kMPillW - 3 * kMButton - 2 * kMGap) / 2;
-            return {x0 + slot * (kMButton + kMGap), z.y + kTop + (kMPillH - kMButton) / 2, kMButton, kMButton};
-        }
+        auto z  = zone();
         auto x0 = z.x + z.w / 2 - kPillW / 2 + (kPillW - 3 * kDot - 2 * kGap) / 2;
         return {x0 + i * (kDot + kGap), z.y + kTop + (kPillH - kDot) / 2, kDot, kDot};
     }
@@ -169,11 +150,6 @@ class CIriceControls : public IHyprWindowDecoration {
             damageEntire(); // keep animating
         }
         const float e = 1 - (1 - m_t) * (1 - m_t) * (1 - m_t); // ease-out cubic
-
-        if (g_material) {
-            renderMaterial(mon, e, a);
-            return;
-        }
 
         const float s  = mon->m_scale;
         auto        z  = zone();
@@ -198,52 +174,6 @@ class CIriceControls : public IHyprWindowDecoration {
                 col = CHyprColor{col.r * 0.85, col.g * 0.85, col.b * 0.85, 1};
             col.a *= da;
             g_pHyprOpenGL->renderRect(b, col, {.round = (int)(b.w / 2), .roundingPower = 2.f});
-        }
-    }
-
-    // Material: the handle grows into a tonal pill; each button is a round
-    // icon button (a state layer of the icon colour, 8%, under the hovered one)
-    void renderMaterial(PHLMONITOR mon, float e, float a) {
-        const float s = mon->m_scale;
-        auto        z = zone();
-        const float pw = kHandleW + (kMPillW - kHandleW) * e, ph = kHandleH + (kMPillH - kHandleH) * e;
-        CBox        pill{z.x + z.w / 2 - pw / 2, z.y + kTop + (kMPillH - ph) / 2, pw, ph};
-        pill.translate(-mon->m_position).scale(s).round();
-        const CHyprColor handle{g_mIcon.r, g_mIcon.g, g_mIcon.b, 0.5};
-        const CHyprColor bg = g_mContainer;
-        CHyprColor       c{handle.r + (bg.r - handle.r) * e, handle.g + (bg.g - handle.g) * e, handle.b + (bg.b - handle.b) * e, (handle.a + (bg.a - handle.a) * e) * a};
-        g_pHyprOpenGL->renderRect(pill, c, {.round = (int)(pill.h / 2), .roundingPower = 2.f});
-
-        if (e < 0.35f)
-            return;
-        const float da = (e - 0.35f) / 0.65f * a;
-        auto        ink = [&](float alpha) { return CHyprColor{g_mIcon.r, g_mIcon.g, g_mIcon.b, alpha * da}; };
-        // A stroke of the glyph: centre (cx, cy) in global logical px, size, angle
-        auto stroke = [&](double cx, double cy, double w, double h, double rot) {
-            CBox r{cx - w / 2, cy - h / 2, w, h};
-            r.translate(-mon->m_position).scale(s);
-            r.rot = rot;
-            g_pHyprOpenGL->renderRect(r, ink(1), {.round = 0});
-        };
-        for (int i = 0; i < 3; i++) {
-            CBox        b  = button(i);
-            const double cx = b.x + b.w / 2, cy = b.y + b.h / 2, g = kMGlyph, t = kMStroke;
-            if (m_hot == i) {
-                CBox l = b;
-                l.translate(-mon->m_position).scale(s).round();
-                g_pHyprOpenGL->renderRect(l, ink(0.08), {.round = (int)(l.w / 2), .roundingPower = 2.f});
-            }
-            if (i == 0) { // close: an x
-                stroke(cx, cy, g * 1.2, t, M_PI / 4);
-                stroke(cx, cy, g * 1.2, t, -M_PI / 4);
-            } else if (i == 1) { // minimize: a bar
-                stroke(cx, cy, g, t, 0);
-            } else { // maximize: a square
-                stroke(cx, cy - g / 2 + t / 2, g, t, 0);
-                stroke(cx, cy + g / 2 - t / 2, g, t, 0);
-                stroke(cx - g / 2 + t / 2, cy, t, g - 2 * t, 0);
-                stroke(cx + g / 2 - t / 2, cy, t, g - 2 * t, 0);
-            }
         }
     }
 
@@ -287,7 +217,7 @@ class CIriceControls : public IHyprWindowDecoration {
 
     int buttonAt(const Vector2D& p) {
         for (int i = 0; i < 3; i++)
-            if (button(i).expand(g_material ? 0 : 4).containsPoint(p))
+            if (button(i).expand(4).containsPoint(p))
                 return i;
         return -1;
     }
@@ -439,31 +369,4 @@ std::string controlsCommand(const std::string& state, const std::string& theme) 
         return "ok";
     }
     return g_enabled ? "on" : "off";
-}
-
-// "controls-style glass" / "controls-style material <container> <icon>"
-std::string controlsStyleCommand(std::istringstream& in) {
-    std::string style, container, icon;
-    in >> style >> container >> icon;
-    auto hex = [](const std::string& h, CHyprColor& out) {
-        if (h.size() != 6 || h.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
-            return false;
-        const auto v = std::stoul(h, nullptr, 16);
-        out          = CHyprColor{((v >> 16) & 255) / 255.0, ((v >> 8) & 255) / 255.0, (v & 255) / 255.0, 1};
-        return true;
-    };
-    if (style == "glass")
-        g_material = false;
-    else if (style == "material") {
-        CHyprColor c, i;
-        if (!hex(container, c) || !hex(icon, i))
-            return "error: usage: controls-style material <container rrggbb> <icon rrggbb>";
-        g_mContainer = c;
-        g_mIcon      = i;
-        g_material   = true;
-    } else
-        return g_material ? "material" : "glass";
-    for (auto* d : g_decos)
-        d->damageEntire();
-    return "ok";
 }

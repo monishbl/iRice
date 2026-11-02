@@ -406,18 +406,17 @@ GlassWindow {
             height: root.panelH - root.pad - 4
 
             // Search
-            // (Material: a search bar, a pill in surface container high)
             Squircle {
                 id: search
                 width: parent.width
                 height: 36
-                radius: Theme.material ? height / 2 : Theme.radius.control
-                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
-                border.width: Theme.material ? 0 : 1
+                radius: Theme.radius.control
+                color: Theme.color.fill
+                border.width: 1
                 border.color: field.activeFocus ? Theme.accent : "transparent"
 
                 Icon {
-                    x: Theme.material ? 14 : 10
+                    x: 10
                     anchors.verticalCenter: parent.verticalCenter
                     name: "magnifying-glass"
                     size: 16
@@ -425,10 +424,10 @@ GlassWindow {
                 }
                 TextInput {
                     id: field
-                    anchors { fill: parent; leftMargin: Theme.material ? 40 : 34; rightMargin: clearButton.visible ? 36 : Theme.material ? 16 : 10 }
+                    anchors { fill: parent; leftMargin: 34; rightMargin: clearButton.visible ? 36 : 10 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
-                    selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
+                    selectionColor: Theme.accentAlpha(0.4)
                     selectByMouse: true
                     clip: true
                     focus: true
@@ -542,29 +541,11 @@ GlassWindow {
 
                         Squircle {
                             anchors.centerIn: parent
-                            visible: !Theme.material
                             width: 30
                             height: 30
                             radius: Theme.radius.control - 2
                             color: tabMouse.pressed ? Theme.color.fillPressed : tabItem.active ? Theme.color.fill : tabMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.6) : "transparent"
                             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                        }
-                        // Material: Android's navigation indicator, a pill in
-                        // secondary container that grows out from the
-                        // middle of the chosen tab; hovered tabs get a state layer
-                        Loader {
-                            anchors.centerIn: parent
-                            active: Theme.material
-                            sourceComponent: Rectangle {
-                                readonly property real full: Math.min(tabRow.tabW - 4, 48)
-                                width: tabItem.active || tabMouse.containsMouse ? full : full * 0.5
-                                height: 32
-                                radius: height / 2
-                                color: tabItem.active ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, tabMouse.pressed ? 0.1 : tabMouse.containsMouse ? 0.08 : 0))
-                                    : Qt.alpha(Theme.m3.onSurfaceVariant, tabMouse.pressed ? 0.1 : tabMouse.containsMouse ? 0.08 : 0)
-                                Behavior on width { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 } }
-                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                            }
                         }
                         Icon {
                             anchors.centerIn: parent
@@ -572,18 +553,17 @@ GlassWindow {
                             name: tabItem.modelData.icon ?? ""
                             fill: tabItem.active
                             size: 18
-                            color: Theme.material ? (tabItem.active ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : tabItem.active ? Theme.color.label : Theme.color.tertiary
+                            color: tabItem.active ? Theme.color.label : Theme.color.tertiary
                         }
                         Text {
                             anchors.centerIn: parent
                             visible: !!tabItem.modelData.text
                             text: tabItem.modelData.text ?? ""
-                            color: Theme.material ? (tabItem.active ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : tabItem.active ? Theme.color.label : Theme.color.tertiary
+                            color: tabItem.active ? Theme.color.label : Theme.color.tertiary
                             font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                         }
                         // Active marker under the tab
                         Rectangle {
-                            visible: !Theme.material
                             anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
                             width: tabItem.active ? 14 : 0
                             height: 2
@@ -608,14 +588,13 @@ GlassWindow {
                             anchors { top: parent.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
                             width: tipText.implicitWidth + 16
                             height: 24
-                            // (Material: a plain tooltip, inverse surface, 4 px corners)
-                            radius: Theme.material ? 4 : Theme.radius.item
-                            color: Theme.material ? Theme.m3.inverseSurface : Theme.dark ? "#3A3A3F" : "#1C1C1E" // (same as the editor's tooltips)
+                            radius: Theme.radius.item
+                            color: Theme.dark ? "#3A3A3F" : "#1C1C1E" // (same as the editor's tooltips)
                             Text {
                                 id: tipText
                                 anchors.centerIn: parent
                                 text: tabItem.modelData.label
-                                color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5"
+                                color: "#F2F2F5"
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                             }
                             Timer {
@@ -690,11 +669,8 @@ GlassWindow {
                         y: 1
                         width: rowItem.cellW - 2
                         height: rowItem.height - 2
-                        // (Material: secondary container, rounder while pressed)
-                        radius: Theme.material && rowMouse.pressed && rowMouse.pressCol === col ? height / 2 : Theme.radius.control
-                        Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
-                        color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, rowMouse.pressed && rowMouse.pressCol === col ? 0.1 : 0))
-                            : rowMouse.pressed && rowMouse.pressCol === col ? Theme.color.fillPressed : Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16)
+                        radius: Theme.radius.control
+                        color: rowMouse.pressed && rowMouse.pressCol === col ? Theme.color.fillPressed : Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16)
                     }
                     readonly property real cellW: list.width / (modelData.cols || 1)
                     Row {
@@ -716,7 +692,7 @@ GlassWindow {
                                     text: cellItem.isEmoji ? EmojiStore.display(cellItem.modelData.e) : cellItem.modelData.e.c
                                     elide: cellItem.isEmoji ? Text.ElideNone : Text.ElideRight
                                     maximumLineCount: 1
-                                    color: Theme.material && root.sel === rowItem.modelData.start + cellItem.index ? Theme.m3.onSecondaryContainer : Theme.color.label
+                                    color: Theme.color.label
                                     font.family: cellItem.isEmoji ? EmojiFont.family : Theme.font.family
                                     font.pixelSize: cellItem.isEmoji ? 28 : cellItem.modelData.kind === "kaomoji" ? Theme.font.body : 20
                                     scale: rowMouse.pressed && rowMouse.pressCol === cellItem.index ? 0.9 : 1
@@ -825,8 +801,8 @@ GlassWindow {
                     Squircle {
                         id: frame
                         anchors.fill: parent
-                        anchors.margins: Theme.material ? 2 : 3
-                        radius: Theme.material ? 16 : Theme.radius.control
+                        anchors.margins: 3
+                        radius: Theme.radius.control
                         color: Theme.color.fill
                         clip: true
                         // Still frame for every cell; only the selected one animates
@@ -851,7 +827,7 @@ GlassWindow {
                         anchors.fill: frame
                         radius: frame.radius
                         color: "transparent"
-                        border.width: Theme.material ? 3 : 2
+                        border.width: 2
                         border.color: Theme.accent
                         visible: gifCell.isCurrent
                     }
@@ -866,8 +842,8 @@ GlassWindow {
 
                 footer: Item {
                     width: gifGrid.width
-                    height: Klipy.loadingMore ? (Theme.material ? 56 : 40) : 0
-                    Busy {
+                    height: Klipy.loadingMore ? 40 : 0
+                    Spinner {
                         anchors.centerIn: parent
                         visible: Klipy.loadingMore
                     }
@@ -932,40 +908,16 @@ GlassWindow {
                     anchors.centerIn: parent
                     width: parent.width - 48
                     spacing: 8
-                    Busy {
+                    Spinner {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: !!stateArea.c.spin
                     }
                     Icon {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        visible: !!stateArea.c.icon && !Theme.material
+                        visible: !!stateArea.c.icon
                         name: stateArea.c.icon ?? ""
                         size: 32
                         color: Theme.color.tertiary
-                    }
-                    // Material: the state's icon on a shape, as Android's empty states
-                    Loader {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        visible: Theme.material && !!stateArea.c.icon
-                        active: visible
-                        sourceComponent: Item {
-                            // (something went wrong: error container; otherwise secondary)
-                            readonly property bool problem: ["offline", "error", "badKey", "dataError"].indexOf(stateArea.kind) >= 0
-                            implicitWidth: 64
-                            implicitHeight: 72
-                            MaterialShape {
-                                width: 64
-                                height: 64
-                                shape: stateArea.kind === "noResults" || stateArea.kind === "noGifs" ? "clover4" : stateArea.kind === "noKey" ? "cookie9" : "softBurst"
-                                color: parent.problem ? Theme.m3.errorContainer : Theme.m3.secondaryContainer
-                                Icon {
-                                    anchors.centerIn: parent
-                                    name: stateArea.c.icon ?? ""
-                                    size: 28
-                                    color: parent.parent.problem ? Theme.m3.onErrorContainer : Theme.m3.onSecondaryContainer
-                                }
-                            }
-                        }
                     }
                     Text {
                         width: parent.width
@@ -975,7 +927,7 @@ GlassWindow {
                         maximumLineCount: 2
                         elide: Text.ElideRight
                         color: stateArea.c.spin ? Theme.color.secondary : Theme.color.label
-                        font { family: Theme.font.family; pixelSize: stateArea.c.spin ? Theme.font.body : Theme.font.title; weight: stateArea.c.spin ? Font.Normal : Theme.material ? Font.Medium : Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: stateArea.c.spin ? Theme.font.body : Theme.font.title; weight: stateArea.c.spin ? Font.Normal : Font.DemiBold }
                     }
                     Text {
                         width: parent.width
@@ -1106,10 +1058,9 @@ GlassWindow {
                 z: 20
                 width: 6 * 40 + 8
                 height: 48
-                // (Material: a floating toolbar, a pill a tone above the panel)
-                radius: Theme.material ? height / 2 : Theme.radius.menu
-                color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.glass.solid
-                border.width: Theme.material ? 0 : 1
+                radius: Theme.radius.menu
+                color: Theme.glass.solid
+                border.width: 1
                 border.color: Theme.color.separator
                 property var entry: null
                 property int choice: 0
@@ -1177,9 +1128,8 @@ GlassWindow {
                             height: 40
                             Squircle {
                                 anchors.fill: parent
-                                radius: Theme.material ? height / 2 : Theme.radius.control
-                                color: Theme.material ? (toneItem.index === tonePopup.choice ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, toneMouse.pressed ? 0.1 : 0)) : "transparent")
-                                    : toneMouse.pressed ? Theme.color.fillPressed : toneItem.index === tonePopup.choice ? Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16) : toneMouse.containsMouse ? Theme.color.fill : "transparent"
+                                radius: Theme.radius.control
+                                color: toneMouse.pressed ? Theme.color.fillPressed : toneItem.index === tonePopup.choice ? Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16) : toneMouse.containsMouse ? Theme.color.fill : "transparent"
                             }
                             Text {
                                 anchors.centerIn: parent
@@ -1201,30 +1151,18 @@ GlassWindow {
         }
     }
 
-    // Small spinning ring for loading states (Material: its loading indicator)
-    component Busy: Item {
-        implicitWidth: Theme.material ? 40 : ring.implicitWidth
-        implicitHeight: Theme.material ? 40 : ring.implicitHeight
-        Icon {
-            id: ring
-            visible: !Theme.material
-            name: "circle-notch"
-            size: 24
-            color: Theme.color.tertiary
-            RotationAnimator on rotation {
-                running: ring.visible && ring.parent.visible
-                from: 0
-                to: 360
-                duration: 900
-                loops: Animation.Infinite
-            }
-        }
-        Loader {
-            anchors.centerIn: parent
-            active: Theme.material
-            sourceComponent: Spinner {
-                size: 40
-            }
+    // Small spinning ring for loading states
+    component Spinner: Icon {
+        id: spinner
+        name: "circle-notch"
+        size: 24
+        color: Theme.color.tertiary
+        RotationAnimator on rotation {
+            running: spinner.visible
+            from: 0
+            to: 360
+            duration: 900
+            loops: Animation.Infinite
         }
     }
 }

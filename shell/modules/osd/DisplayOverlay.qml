@@ -11,8 +11,6 @@ import qs.services
 // and name in its corner, and after a change that could leave a screen dark,
 // every screen asks "Keep these display settings?" with the countdown, so
 // it can be answered from whichever screen still shows a picture.
-// The Material look shows its own card and dialog (MaterialDisplayIdentify,
-// MaterialDisplayConfirm).
 Scope {
     Variants {
         model: Displays.identifying || Displays.confirming ? Quickshell.screens.filter(s => !/^(HEADLESS|IRICE-)/.test(s.name)) : []
@@ -23,7 +21,7 @@ Scope {
 
             // Number and name, top left
             LazyLoader {
-                active: Displays.identifying && !Theme.material
+                active: Displays.identifying
 
                 GlassWindow {
                     readonly property int m: 24
@@ -72,7 +70,7 @@ Scope {
 
             // Keep or go back, centred
             LazyLoader {
-                active: Displays.confirming && !Theme.material
+                active: Displays.confirming
 
                 GlassWindow {
                     readonly property int m: 24
@@ -112,21 +110,6 @@ Scope {
                         SettingsButton { text: "Go back"; onClicked: Displays.revert() }
                         SettingsButton { text: "Keep settings"; primary: true; onClicked: Displays.keep() }
                     }
-                }
-            }
-
-            LazyLoader {
-                active: Displays.identifying && Theme.material
-
-                MaterialDisplayIdentify {
-                    target: perScreen.modelData
-                }
-            }
-            LazyLoader {
-                active: Displays.confirming && Theme.material
-
-                MaterialDisplayConfirm {
-                    target: perScreen.modelData
                 }
             }
         }
