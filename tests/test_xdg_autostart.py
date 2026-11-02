@@ -2,6 +2,7 @@
 home and system folder and a fake setsid on PATH that only notes what it
 was asked to start. Nothing real starts."""
 import json
+import re
 import os
 import subprocess
 import sys
@@ -56,7 +57,10 @@ class Autostart(unittest.TestCase):
         return p
 
     def started(self):
-        return self.log.read_text().splitlines() if self.log.exists() else []
+        # (each app is started through app-scope.sh, which puts it in a scope of
+        # its own: what matters here is the app's own command after it)
+        lines = self.log.read_text().splitlines() if self.log.exists() else []
+        return [re.sub(r"\|\S*/app-scope\.sh -- ", "|", l) for l in lines]
 
     def test_what_starts_and_what_doesnt(self):
         self.entry(self.system, "syncthing", Exec="syncthing serve --no-browser %U")
