@@ -149,6 +149,15 @@ Singleton {
                 property string standbyTransition: "morph" // lock → StandBy: morph (the clock moves and thins) | fade | none
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
+                // The Material look's lock clock (Android 17's clock styles):
+                // stacked | wide | overlap | analog | weather
+                property string clockFace: "stacked"
+                // dynamic: large while the lock screen is empty, small once
+                // notifications or Now Playing are there | large | small
+                property string clockSize: "dynamic"
+                property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
+                property int clockWidth: 112 // wdth, 25 .. 151
+                property bool clockRound: true // rounded digits (else sharp)
             }
 
             property JsonObject notificationCenter: JsonObject {

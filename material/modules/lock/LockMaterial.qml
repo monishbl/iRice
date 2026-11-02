@@ -43,9 +43,24 @@ Item {
 
     // The clock, as the owner's lock → StandBy morph needs it
     readonly property int clockSize: Math.round(split ? Math.min(height * 0.2, width * 0.12) : Math.min(height * (ios ? 0.17 : 0.15), width * 0.2))
-    readonly property real clockWeight: 640
-    readonly property real clockWidth: 112
+    readonly property real clockWeight: cfg.clockWeight ?? 640
+    readonly property real clockWidth: cfg.clockWidth ?? 112
     readonly property rect clockRect: Qt.rect(header.x + clock.x, header.y + clock.y, clock.width, clock.height)
+    // Only the large stacked clock flies into StandBy (LockSurface fades
+    // the rest)
+    readonly property bool morphable: clock.face === "stacked" && smallT === 0
+
+    // The dynamic clock (lock.clockSize): large while the lock screen is
+    // empty, small in the top corner once notifications or Now Playing are
+    // there, as Android 17's
+    readonly property bool hasContent: media.visible || cards.recent.length > 0
+    readonly property bool compact: cfg.clockSize === "small" || (cfg.clockSize !== "large" && hasContent)
+    property real smallT: compact ? 1 : 0
+    Behavior on smallT {
+        SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.002 }
+    }
+    // (the small clock and what's under it keep to the left edge)
+    readonly property bool leftAligned: split || smallT > 0.5
     readonly property date now: wallClock.date
 
     function focusField() {
@@ -119,36 +134,45 @@ Item {
         // ── Clock, date and smartspace ──────────────────────────────────
         Column {
             id: header
-            x: root.split ? Math.round(root.width * 0.08) : Math.round((root.width - width) / 2)
-            y: Math.round(root.height * (root.split ? 0.14 : root.ios ? 0.09 : 0.11)) + root.rise - root.part
-            spacing: 20
+            // (large: centred, or on the left of a wide screen; small: the
+            // top left corner)
+            readonly property real largeX: root.split ? Math.round(root.width * 0.08) : Math.round((root.width - width) / 2)
+            readonly property real largeY: Math.round(root.height * (root.split ? 0.14 : root.ios ? 0.09 : 0.11))
+            x: largeX + (Math.max(48, Math.round(root.width * 0.04)) - largeX) * root.smallT
+            y: largeY + (72 - largeY) * root.smallT + root.rise - root.part
+            spacing: 20 - 8 * root.smallT
             opacity: root.reveal
 
-            MaterialClock {
+            LockClock {
                 id: clock
-                anchors.horizontalCenter: root.split ? undefined : parent.horizontalCenter
+                anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                 width: implicitWidth
                 height: implicitHeight
+                face: root.cfg.clockFace ?? "stacked"
                 time: wallClock.date
                 size: root.clockSize
+                smallSize: Math.round(Math.min(72, root.height * 0.07))
+                small: root.smallT
                 // (the light reveal: thin, as if waking from always-on)
                 weight: root.zoomIn ? 160 + (root.clockWeight - 160) * root.reveal : root.clockWeight
                 widthAxis: root.clockWidth
+                round: root.cfg.clockRound ?? true
                 color: root.clockInk
                 color2: root.clockInk2
-                align: root.split ? Text.AlignLeft : Text.AlignHCenter
+                color3: root.darkInk ? root.m3.onTertiaryFixed : root.m3.tertiaryFixed
+                align: root.leftAligned ? Text.AlignLeft : Text.AlignHCenter
                 ticks: !root.host.standby
                 // The morph to StandBy flies a copy of it (LockSurface)
                 opacity: root.host.morphOn && root.host.sb > 0 ? 0 : 1
             }
 
             Column {
-                anchors.horizontalCenter: root.split ? undefined : parent.horizontalCenter
-                x: root.split ? 4 : 0
+                anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
+                x: root.leftAligned ? 4 : 0
                 spacing: 8
                 // Date and weather
                 Row {
-                    anchors.horizontalCenter: root.split ? undefined : parent.horizontalCenter
+                    anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 12
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -179,7 +203,7 @@ Item {
                 Row {
                     id: smartspace
                     visible: root.ios && (next !== null || todo > 0)
-                    anchors.horizontalCenter: root.split ? undefined : parent.horizontalCenter
+                    anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 16
                     readonly property var next: Calendar.upcoming(1)[0] ?? null
                     readonly property int todo: Todos.list.filter(t => !t.done).length
