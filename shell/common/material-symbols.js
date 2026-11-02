@@ -94,7 +94,6 @@ var glyphs = {
     "circle": "\uef4a",
     "circle-half": "\ueb37",
     "circle-notch": "\ue9d0",
-    "circle-wavy": "\ue3ac",
     "clipboard": "\ue14f",
     "clipboard-text": "\ue85d",
     "clock": "\uefd6",

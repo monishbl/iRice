@@ -26,7 +26,7 @@ stop_sandbox_apps() {
     for pid in $(pgrep -u "$(id -u)"); do
         [[ $pid == "$$" || $pid == "$PPID" ]] && continue
         case "$(cat "/proc/$pid/comm" 2>/dev/null)" in
-            Hyprland | start-hyprland | qs | quickshell | "") continue ;;
+            Hyprland | start-hyprland | irice-shell | qs | quickshell | "") continue ;;
         esac
         grep -qzx "XDG_RUNTIME_DIR=$IRICE_RT" "/proc/$pid/environ" 2>/dev/null && pids+=" $pid"
     done
@@ -43,7 +43,7 @@ stop_sandbox_apps() {
 # Stops every sandbox Quickshell and waits for them to exit.
 stop_sandbox_shells() {
     local pids
-    pids="$(sandbox_pids qs; sandbox_pids quickshell)"
+    pids="$(sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell)"
     [[ -z "$pids" ]] && return 0
     kill $pids 2>/dev/null || true
     for _ in $(seq 30); do

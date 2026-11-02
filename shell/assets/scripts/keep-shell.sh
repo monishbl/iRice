@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 running() {
     local p
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$SIG" || continue
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qi irice && return 0
     done

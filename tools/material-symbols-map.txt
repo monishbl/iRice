@@ -93,7 +93,6 @@ cigarette smoking_rooms
 circle circle
 circle-half contrast
 circle-notch progress_activity
-circle-wavy brightness_7
 clipboard content_paste
 clipboard-text assignment
 clock schedule

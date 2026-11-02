@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Smooth when apps are busy; menu bar fixes · 2026-11-02
+
+- **The shell no longer stutters while apps are busy.** CachyOS's process tuner (ananicy-cpp) files every program named "qs" as a background service and lowers its priority, below apps like VS Code, so panels and animations stuttered (and could take a while to open) whenever anything else worked hard. The shell now runs as "irice-shell", which that rule doesn't match, and iRice installs its own rule giving it the same interactive priority as GNOME Shell and KWin (with the next update's system step, where ananicy-cpp is installed). Restart the shell once (Super+Ctrl+Escape) to take this up.
+- **The battery's percentage fits inside it in the Material look**, in the right font from the moment you switch.
+- **The "Badge" menu icon is the wavy badge again in the Material look** (it showed a sun-like cog).
+
 ## A second look: Material (Material 3 Expressive) · 2026-11-02
 
 - **Settings → Appearance → Look: Glass or Material.** Glass is the look you know (Liquid Glass). Material is Material 3 Expressive, as on Android 16: colours from your wallpaper (Material You), opaque tonal surfaces, Google Sans Flex, Material Symbols, Material's shape library (cookies, clovers, bursts…) and springy motion. Every feature works the same in both. Pick a look from two live previews of your own desktop at the top of Appearance.

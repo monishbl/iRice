@@ -17,7 +17,7 @@ HZ=$(getconf CLK_TCK)
 hypr_pid() { pgrep -P "$("$DEV" status | grep -o '[0-9]\+')" -x Hyprland | head -1; }
 shell_pid() {
     local p
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -- "-p $ROOT/shell" &&
             tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=/tmp/irice-rt" && { echo "$p"; return; }
     done
