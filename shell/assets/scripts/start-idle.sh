@@ -22,8 +22,9 @@ if ! flock -n 9; then
     # (it and its hypridle hold the lock), else leave it be
     old=$(cat "$idle_dir/lock-command" 2>/dev/null || true)
     [[ -n $old && $old != *shell-ipc.sh* ]] && command -v fuser >/dev/null || exit 0
+    # (set -e: a holder already gone, like the $(…) below, mustn't end this)
     for p in $(fuser "$idle_dir/lock" 2>/dev/null); do
-        [[ $p != "$$" ]] && kill "$p" 2>/dev/null
+        if [[ $p != "$$" ]]; then kill "$p" 2>/dev/null || true; fi
     done
     flock -w 3 9 || exit 0
 fi

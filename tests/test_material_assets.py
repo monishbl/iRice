@@ -138,5 +138,41 @@ class Launch(unittest.TestCase):
         self.assertEqual(Path(self.env["QS_CALL"]).read_text().split("\n")[:5], ["-p", str(self.root), "ipc", "call", "lock"])
 
 
+
+class IdleListener(unittest.TestCase):
+    """start-idle.sh replaces a listener from before shell-ipc.sh (its lock
+    command named one shell folder, so it couldn't lock the Material look)."""
+
+    def test_old_listener_is_replaced(self):
+        import subprocess
+        import time
+        with tempfile.TemporaryDirectory(dir="/tmp") as t:
+            t = Path(t)
+            (t / "bin").mkdir()
+            (t / "bin/hypridle").write_text("#!/bin/sh\nexec sleep 30\n")
+            (t / "bin/hypridle").chmod(0o755)
+            d = t / "irice-idle-sig"
+            d.mkdir()
+            old = subprocess.Popen(["bash", "-c", 'exec 9>"$1/lock"; flock 9; echo "qs -p /old/shell ipc call lock lock" > "$1/lock-command"; exec sleep 30', "_", str(d)])
+            try:
+                time.sleep(0.4)
+                env = {"PATH": f"{t / 'bin'}:/usr/bin:/bin", "HOME": str(t), "XDG_RUNTIME_DIR": str(t),
+                       "HYPRLAND_INSTANCE_SIGNATURE": "sig", "XDG_CONFIG_HOME": str(t / "cfg")}
+                subprocess.run(["setsid", "-f", "bash", str(SHELL / "assets/scripts/start-idle.sh"), "/usr/bin/qs"], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                for _ in range(40):
+                    if old.poll() is not None and "shell-ipc.sh" in (d / "lock-command").read_text() and (d / "hypridle.pid").exists():
+                        break
+                    time.sleep(0.1)
+                self.assertIsNotNone(old.poll(), "the old listener still runs")
+                self.assertIn("shell-ipc.sh call lock lock", (d / "lock-command").read_text())
+                self.assertTrue((d / "hypridle.pid").exists(), "no new hypridle")
+            finally:
+                old.kill()
+                r = subprocess.run(["fuser", str(d / "lock")], capture_output=True, text=True)
+                for pid in r.stdout.split():
+                    subprocess.run(["kill", pid], capture_output=True)
+
+
 if __name__ == "__main__":
     unittest.main()
