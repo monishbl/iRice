@@ -1,0 +1,145 @@
+import QtQuick
+import Quickshell
+import Quickshell.Hyprland
+import Quickshell.Wayland
+import Quickshell.Widgets
+import qs.common
+import qs.services
+
+// Stage Manager's strip: the waiting stages of the space on this screen, as
+// window thumbnails on the left edge. Click one to bring it forward; Shift+click
+// to add its windows to the stage in front. It reserves its width, so tiled
+// windows never cover it.
+Variants {
+    model: StageManager.enabled && Config.options.stageManager.strip ? Quickshell.screens : []
+
+    PanelWindow {
+        id: win
+        required property var modelData
+        screen: modelData
+
+        readonly property var monitor: Hyprland.monitorFor(screen)
+        readonly property int wsId: monitor?.activeWorkspace?.id ?? -1
+        readonly property var waiting: StageManager.waiting(wsId).slice(0, 6)
+        readonly property bool covered: Desktop.covered(screen, Qt.rect(0, 0, implicitWidth, screen?.height ?? 0))
+
+        WlrLayershell.namespace: "irice:stagestrip"
+        WlrLayershell.layer: WlrLayer.Bottom
+        anchors { top: true; bottom: true; left: true }
+        implicitWidth: 176
+        exclusiveZone: implicitWidth
+        color: "transparent"
+
+        Column {
+            anchors.verticalCenter: parent.verticalCenter
+            x: 20
+            spacing: 24
+
+            Repeater {
+                model: win.waiting
+
+                Item {
+                    id: stage
+                    required property var modelData
+                    readonly property var tops: modelData.wins.slice(-3).map(a => StageManager.toplevel(a)).filter(t => !!t)
+                    width: 140
+                    height: 104
+                    scale: mouse.pressed ? 0.96 : mouse.containsMouse ? 1.04 : 1
+                    Behavior on scale { ScaleAnimator { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
+
+                    // Up to three windows, stacked back to front
+                    Repeater {
+                        model: stage.tops
+                        Squircle {
+                            id: card
+                            required property var modelData
+                            required property int index
+                            readonly property int depth: stage.tops.length - 1 - index
+                            x: 12 - depth * 6
+                            y: depth * 6
+                            width: 120
+                            height: 80
+                            // (Material: a recents card, large corners, its tone
+                            // instead of a hairline)
+                            radius: Theme.material ? 16 : 8
+                            color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#1A1A1D" : "#FFFFFF"
+                            border.width: Theme.material ? 0 : 1
+                            border.color: Theme.dark ? "#36363C" : "#D4D4D8"
+                            opacity: 1 - depth * 0.2
+                            clip: true
+                            // The picture; Material clips it to the card's round
+                            // corners (Glass's are small enough to leave square)
+                            Loader {
+                                anchors { fill: parent; margins: Theme.material ? 0 : 1 }
+                                sourceComponent: Theme.material ? roundShot : plainShot
+                            }
+                            Component {
+                                id: plainShot
+                                ScreencopyView {
+                                    id: stageShot
+                                    captureSource: card.modelData.wayland ?? null
+                                    live: false
+                                    constraintSize: Qt.size(240, 160)
+                                    // Live previews (Settings → Overview): the strip's
+                                    // windows keep updating too, but at most 5 times a
+                                    // second (it's on screen all the time), and not
+                                    // while a window is over the strip (full screen,
+                                    // floating) or the screen is locked
+                                    LiveCapture {
+                                        target: stageShot
+                                        interval: 200
+                                        live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
+                                    }
+                                }
+                            }
+                            Component {
+                                id: roundShot
+                                ClippingRectangle {
+                                    radius: card.radius
+                                    color: "transparent"
+                                    ScreencopyView {
+                                        id: roundStageShot
+                                        anchors.fill: parent
+                                        captureSource: card.modelData.wayland ?? null
+                                        live: false
+                                        constraintSize: Qt.size(240, 160)
+                                    }
+                                    LiveCapture {
+                                        target: roundStageShot
+                                        interval: 200
+                                        live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Material: the app icon on a round chip
+                    Rectangle {
+                        visible: Theme.material
+                        x: -4
+                        y: 60
+                        width: 44
+                        height: 44
+                        radius: 22
+                        color: Theme.m3.surfaceContainerHigh ?? "transparent"
+                    }
+                    AppIcon {
+                        x: 0
+                        y: 64
+                        size: 36
+                        source: Apps.iconFor(StageManager.classOf(stage.tops[stage.tops.length - 1]))
+                    }
+
+                    MouseArea {
+                        id: mouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: e => (e.modifiers & Qt.ShiftModifier) ? StageManager.merge(win.wsId, stage.modelData.id) : StageManager.show(win.wsId, stage.modelData.id)
+                    }
+                }
+            }
+        }
+    }
+}

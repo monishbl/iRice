@@ -88,7 +88,7 @@ case "${1:-help}" in
     shot)    nested timeout 15 grim -o IRICE-TEST "${2:-/tmp/irice-rt/shot.png}" && echo "${2:-/tmp/irice-rt/shot.png}" ;;
     hyprctl) shift; nested hyprctl "$@" ;;
     run)     shift; nested "$@" ;;
-    ipc)     shift; nested qs -p "$ROOT/shell" ipc call "$@" ;;
+    ipc)     shift; nested env QS=qs "$ROOT/shell/assets/scripts/shell-ipc.sh" call "$@" ;; # (either look's root)
     pointer) shift; nested "$ROOT/.sandbox/bin/vptr" "$@" ;;
     enter)   box ;;
     # CPU / memory / frames per scripted phase: ./dev.sh perf [secs] [phase...]

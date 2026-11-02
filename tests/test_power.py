@@ -137,7 +137,7 @@ class IdleConfig(unittest.TestCase):
         self.assertIn("battery sleep", conf)
         self.assertNotIn("nonsense", conf)
         self.assertNotIn("ac lock x", conf)
-        self.assertIn("before_sleep_cmd = qs -p", conf)  # no grace: locked before sleeping
+        self.assertIn("before_sleep_cmd = QS=qs " + str(SCRIPTS / "shell-ipc.sh") + " call lock lock", conf)  # no grace: locked before sleeping
         self.assertEqual(grace, "0")
 
     def test_a_grace_moves_the_lock_to_the_wake(self):

@@ -305,7 +305,7 @@ class PersistenceAndIdentity(unittest.TestCase):
             data=(p/'captured').read_text()
             self.assertIn('timeout = 1234',data)
             self.assertIn('inhibit_sleep = 3',data)
-            self.assertIn('before_sleep_cmd = /some\\ path/qs -p ',data)
+            self.assertIn('before_sleep_cmd = QS=/some\\ path/qs ',data)
             self.assertIn(str(ROOT/'shell'),data)
             (p/'captured').unlink(); env['IRICE_TTY']='0'
             subprocess.run(['bash',str(SCRIPTS/'start-idle.sh')],env=env,check=True,timeout=3)
@@ -322,7 +322,7 @@ class PersistenceAndIdentity(unittest.TestCase):
             def run():
                 subprocess.run(['bash',str(SCRIPTS/'start-idle.sh'),'qs'],env=env,check=True,timeout=3)
                 return (p/'captured').read_text()
-            lock='qs -p %s ipc call lock lock' % (ROOT/'shell')
+            lock='QS=qs %s call lock lock' % (SCRIPTS/'shell-ipc.sh')
             data=run()
             self.assertIn('timeout = 300\n    on-timeout = '+lock,data)
             self.assertIn('lock_cmd = '+lock,data)

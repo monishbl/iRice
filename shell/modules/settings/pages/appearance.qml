@@ -12,6 +12,35 @@ Column {
 
     Group {
         width: parent.width
+        // The look (Material is experimental): switching restarts the shell
+        // in the other look behind the switching screen (switch-look.sh).
+        // Shown when the Material look's files (material/, beside the shell)
+        // are there.
+        Row {
+            id: lookRow
+            property bool available: false
+            visible: available
+            label: "Look"
+            detail: "Material (experimental): Material 3 Expressive. Switching restarts the shell; apps keep running."
+            Process {
+                running: true
+                command: ["sh", "-c", "[ -f \"$(dirname \"$(readlink -f \"$1\")\")/material/shell.qml\" ]", "sh", Quickshell.shellDir]
+                onExited: code => lookRow.available = code === 0
+            }
+            Segmented {
+                width: 260
+                readonly property var values: ["glass", "material"]
+                options: ["Glass", "Material"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.look))
+                onSelected: i => {
+                    const look = values[i];
+                    if (look === Config.options.appearance.look)
+                        return;
+                    Config.options.appearance.look = look;
+                    Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/switch-look.sh", look]);
+                }
+            }
+        }
         Row {
             label: "Appearance"
             detail: Config.options.appearance.mode === "auto" ? "Light from sunrise (" + Focus.fmt(Math.floor(Daylight.sunrise / 60) + ":" + Daylight.sunrise % 60) + ") to sunset (" + Focus.fmt(Math.floor(Daylight.sunset / 60) + ":" + Daylight.sunset % 60) + ")" : ""

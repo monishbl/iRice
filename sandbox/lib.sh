@@ -43,7 +43,10 @@ stop_sandbox_apps() {
 # Stops every sandbox Quickshell and waits for them to exit.
 stop_sandbox_shells() {
     local pids
-    pids="$(sandbox_pids qs; sandbox_pids quickshell)"
+    # (not the look-switching or update screens: they cover the restart)
+    pids="$(for p in $(sandbox_pids qs; sandbox_pids quickshell); do
+        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/irice-look\.' -e '/irice-update\.' || echo "$p"
+    done)"
     [[ -z "$pids" ]] && return 0
     kill $pids 2>/dev/null || true
     for _ in $(seq 30); do

@@ -39,6 +39,8 @@ is_irice() {
     [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+irice([[:space:]]|$) ]] && return 0
     [[ "$c" == *" -p $SHELL_DIR "* || "$c" == *" --path $SHELL_DIR "* ]] && return 0
     [[ "$c" =~ -p[[:space:]]+[^[:space:]]*/[Ii][Rr]ice/shell([[:space:]]|$) ]] && return 0
+    # (started by launch-shell.sh: the Material look runs from its own root)
+    env_of "$1" | grep -qx "IRICE_SHELL=1" && return 0
     env_of "$1" | grep -qx "IRICE_TTY=1"
 }
 
@@ -131,7 +133,9 @@ sleep 2 # let it register, then let keep-shell.sh look again
 exec 7>&-
 echo "started a fresh shell; removed $removed stale and $extra duplicate"
 
-# Tell the user once the new shell can show it
+# Tell the user once the new shell can show it (not when switching looks:
+# IRICE_REPAIR_QUIET=1, switch-look.sh)
+[[ ${IRICE_REPAIR_QUIET:-0} == 1 ]] && exit 0
 sleep 4
 msg="Your windows and apps weren't touched."
 (( removed + extra > 0 )) && msg="Removed $((removed + extra)) extra $( (( removed + extra == 1 )) && echo shell || echo shells). $msg"

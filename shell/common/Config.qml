@@ -73,6 +73,18 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
+                // The look: glass (this shell) | material (experimental: Material 3
+                // Expressive, the material/ folder; switching restarts the shell,
+                // assets/scripts/switch-look.sh)
+                property string look: "glass"
+                // Material's palette: from the wallpaper ("wallpaper", Material You)
+                // or a #rrggbb seed, in a style: tonalSpot | vibrant | expressive |
+                // neutral | content | fidelity | monochrome
+                property string materialSeed: "wallpaper"
+                property string materialStyle: "tonalSpot"
+                // In the Material look: its own sound set, and the Bibata pointer
+                property bool materialSounds: true
+                property bool materialCursor: true
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
                 property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)

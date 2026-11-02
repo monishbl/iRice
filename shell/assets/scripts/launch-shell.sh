@@ -96,4 +96,75 @@ export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.svg.draw.warn
 # the shell, which doesn't wait for children it didn't start, kept it as a
 # zombie for its whole life)
 setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/dev/null 2>&1
-exec "$QS" "$@"
+
+# The look (Settings → Appearance → Look). Glass is this shell folder.
+# Material (experimental) is the material/ folder beside it, run as a root of
+# links over this one (material-root.py): only its own files differ. Whatever
+# the arguments name (-c irice, this folder, or the Material root, as a
+# restart passes them on), the shell starts from the root of the look chosen;
+# without the material/ folder (a copied install), Glass.
+SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
+MATERIAL_DIR="$(dirname "$SELF_DIR")/material"
+MATERIAL_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/irice/material-shell"
+look=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look", "glass"))' \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json" 2>/dev/null || echo glass)
+target=""
+if [[ "$look" == material && -f "$MATERIAL_DIR/shell.qml" ]] &&
+    python3 -I "$SELF_DIR/assets/scripts/material-root.py" "$SELF_DIR" "$MATERIAL_DIR" "$MATERIAL_ROOT" >/dev/null; then
+    target="$MATERIAL_ROOT"
+else
+    look=glass
+fi
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c | --config)
+            if [[ "${2:-}" == irice && -n "$target" ]]; then args+=(-p "$target"); else args+=("$1" "${2:-}"); fi
+            shift 2 || shift
+            ;;
+        -p | --path)
+            p="${2:-}"
+            if [[ "$p" == "$MATERIAL_ROOT" || "$(readlink -f "$p" 2>/dev/null)" == "$SELF_DIR" ]]; then
+                args+=(-p "${target:-$SELF_DIR}")
+            else
+                args+=("$1" "$p")
+            fi
+            shift 2 || shift
+            ;;
+        *)
+            args+=("$1")
+            shift
+            ;;
+    esac
+done
+# (how the session's scripts tell an iRice shell, whichever root it runs)
+export IRICE_SHELL=1 IRICE_LOOK="$look"
+# The Material look is experimental: if it doesn't come up (its lock screen
+# isn't answering within 20 s, or it quits first, as Quickshell does when its
+# files don't load), back to Glass, so a broken Material never leaves you
+# without a shell. This process becomes the shell (same PID).
+if [[ $look == material ]]; then
+    (
+        me=$$
+        sig="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+        for _ in $(seq 40); do
+            sleep 0.5
+            kill -0 "$me" 2>/dev/null || break
+            "$QS" -p "$MATERIAL_ROOT" ipc show 2>/dev/null | grep -q "^target lock$" && exit 0
+        done
+        kill "$me" 2>/dev/null && sleep 0.5
+        kill -0 "$me" 2>/dev/null && kill -9 "$me" 2>/dev/null
+        python3 -I -c 'import json, sys; p = sys.argv[1]; j = json.load(open(p)); j.setdefault("appearance", {})["look"] = "glass"; open(p, "w").write(json.dumps(j, indent=4))' \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json" || exit 0
+        notify-send -a iRice "Back to the Glass look" "The Material look (experimental) didn't start, so iRice went back to Glass." 2>/dev/null
+        # (unless another shell was started for this session meanwhile)
+        for p in $(pgrep -x qs; pgrep -x quickshell); do
+            [[ $p == "$me" ]] && continue
+            e=$( { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null)
+            grep -qx "IRICE_SHELL=1" <<<"$e" && grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$sig" <<<"$e" && exit 0
+        done
+        setsid -f "$SELF_DIR/assets/scripts/launch-shell.sh" -p "$SELF_DIR" </dev/null >/dev/null 2>&1
+    ) </dev/null >/dev/null 2>&1 &
+    disown
+fi
+exec "$QS" "${args[@]}"

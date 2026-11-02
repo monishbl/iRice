@@ -38,6 +38,8 @@ is_irice() {
     [[ "$c" == *"/irice-update."* || "$c" == *" -p $T/ui"* ]] && return 1
     [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+irice([[:space:]]|$) ]] && return 0
     [[ "$c" == *" -p $SHELL_DIR"* || "$c" == *" --path $SHELL_DIR"* ]] && return 0
+    # (started by launch-shell.sh: the Material look runs from its own root)
+    env_of "$1" | grep -qx "IRICE_SHELL=1" && return 0
     env_of "$1" | grep -qx "IRICE_TTY=1"
 }
 # This session's iRice shells

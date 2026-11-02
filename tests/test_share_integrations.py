@@ -28,8 +28,9 @@ class Home:
         self.bin.mkdir()
         for m in managers:
             self.stub(m, "#!/bin/sh\nexit 0\n")
-        # qs: write each argument, NUL-separated, so newlines inside survive
-        self.stub("qs", '#!/bin/sh\nfor a in "$@"; do printf "%s\\0" "$a"; done > "$QS_CALL"\n')
+        # qs: answers "ipc show" as a running shell does (shell-ipc.sh asks
+        # first), then writes each argument, NUL-separated, so newlines inside survive
+        self.stub("qs", '#!/bin/sh\n[ "$3" = ipc ] && [ "$4" = show ] && { echo "target panels"; exit 0; }\nfor a in "$@"; do printf "%s\\0" "$a"; done > "$QS_CALL"\n')
         self.env = dict(os.environ, HOME=str(self.root), XDG_DATA_HOME=str(self.root / "data"),
                         XDG_CONFIG_HOME=str(self.root / "config"), QS_CALL=str(self.root / "qs-call"),
                         PATH=f"{self.bin}:/usr/bin:/bin")

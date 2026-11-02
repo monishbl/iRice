@@ -16,10 +16,21 @@ idle_dir="$runtime/irice-idle-$instance"
 umask 077
 mkdir -p "$idle_dir"
 exec 9>"$idle_dir/lock"
-flock -n 9 || exit 0
+if ! flock -n 9; then
+    # One runs already. One from before shell-ipc.sh locks through a single
+    # shell folder, so it couldn't reach the Material look's root: replace it
+    # (it and its hypridle hold the lock), else leave it be
+    old=$(cat "$idle_dir/lock-command" 2>/dev/null || true)
+    [[ -n $old && $old != *shell-ipc.sh* ]] && command -v fuser >/dev/null || exit 0
+    for p in $(fuser "$idle_dir/lock" 2>/dev/null); do
+        [[ $p != "$$" ]] && kill "$p" 2>/dev/null
+    done
+    flock -w 3 9 || exit 0
+fi
 shell_dir=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 action="$shell_dir/assets/scripts/idle-action.sh"
-printf -v lock_command '%q -p %q ipc call lock lock' "${1:-qs}" "$shell_dir"
+# (through shell-ipc.sh: the shell may run either look's root)
+printf -v lock_command 'QS=%q %q call lock lock' "${1:-qs}" "$shell_dir/assets/scripts/shell-ipc.sh"
 printf '%s\n' "$lock_command" >"$idle_dir/lock-command"
 export IRICE_IDLE_DIR="$idle_dir"
 user_config="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hypridle.conf"

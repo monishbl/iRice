@@ -30,4 +30,5 @@ for a in sys.argv[1:]:
         out.append("file://" + urllib.parse.quote(os.path.abspath(a)))
 print("\n".join(out))' "$@") || exit 1
 
-exec "$QS" -p "$SHELL_DIR" ipc call panels shareFiles "$uris"
+# (through shell-ipc.sh: the shell may run either look's root)
+QS="$QS" exec "$SHELL_DIR/assets/scripts/shell-ipc.sh" call panels shareFiles "$uris"

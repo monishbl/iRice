@@ -1,0 +1,305 @@
+.pragma library
+// Each display has its own spaces, numbered from 1 (like macOS). Hyprland's
+// workspace ids are global, so every display owns a block of 100 ids: its
+// "base" (the built-in panel 0 → ids 1..99, the first external 100 →
+// 101..199, the next 200 → 201..299 …). Space n on a display is id base + n,
+// and an id's display is the block it falls in. Blocks of 100 rather than 10
+// keep Super+0 (space 10) and any number of spaces per display apart from the
+// next display's, and the id still reads as display + number (103 = the
+// first external's space 3). Bases are kept per display identity (its
+// description: make, model, serial), not the connector, so a monitor gets its
+// spaces back whichever port it's plugged into.
+// Pure logic, tested in Node (tests/space_map.test.cjs); Spaces.qml applies it.
+
+var STRIDE = 100;
+
+// The laptop's own panel (in the nested sandbox, its test output plays it)
+function isBuiltin(name, sandbox) {
+    return /^(eDP|LVDS|DSI)-/.test(name || "") || (!!sandbox && name === "IRICE-TEST");
+}
+
+// A display's identity: its description (make, model, serial), else its
+// connector (virtual and headless outputs have no description)
+function keyOf(m) {
+    var d = String((m && m.description) || "").trim();
+    return d !== "" ? "desc:" + d : "name:" + String((m && m.name) || "");
+}
+
+// A short name for marks and rows: "Built-in", else the model ("U2720Q"),
+// else the first words of the description, else the connector
+function labelOf(m, sandbox) {
+    if (!m)
+        return "";
+    if (isBuiltin(m.name, sandbox))
+        return "Built-in";
+    var model = String(m.model || "").trim();
+    if (model !== "" && !/^0x/i.test(model))
+        return model.length > 18 ? model.slice(0, 18) : model;
+    var d = String(m.description || "").trim();
+    if (d !== "")
+        return d.split(/\s+/).slice(0, 2).join(" ");
+    return String(m.name || "");
+}
+
+function baseOfId(id) {
+    return Math.floor(id / STRIDE) * STRIDE;
+}
+function numberOf(id) {
+    return id - baseOfId(id);
+}
+
+// displays: { key: { base, label, name } } as kept; monitors: the connected
+// ones ({ name, description, model, x, y }), any order. Returns a new map
+// with a base for each (the built-in gets 0; with no built-in connected and 0
+// unused, the first display in the arrangement does; others the next free
+// block), labels and connector names brought up to date.
+function assign(displays, monitors, sandbox) {
+    var next = {};
+    var k;
+    for (k in displays)
+        next[k] = { base: displays[k].base, label: displays[k].label, name: displays[k].name };
+    var list = monitors.slice().sort(function (a, b) {
+        var ba = isBuiltin(a.name, sandbox) ? 0 : 1, bb = isBuiltin(b.name, sandbox) ? 0 : 1;
+        return ba - bb || (a.x || 0) - (b.x || 0) || (a.y || 0) - (b.y || 0);
+    });
+    var builtinHere = list.some(function (m) { return isBuiltin(m.name, sandbox); });
+    function used(base) {
+        for (var key in next)
+            if (next[key].base === base)
+                return true;
+        return false;
+    }
+    for (var i = 0; i < list.length; i++) {
+        var m = list[i];
+        k = keyOf(m);
+        if (!next[k]) {
+            var base;
+            if (!used(0) && (isBuiltin(m.name, sandbox) || !builtinHere))
+                base = 0;
+            else {
+                base = STRIDE;
+                while (used(base))
+                    base += STRIDE;
+            }
+            next[k] = { base: base };
+        }
+        next[k].label = labelOf(m, sandbox);
+        next[k].name = m.name;
+    }
+    return next;
+}
+
+// The connected displays' bases by connector: { name: base }
+function basesByName(displays, monitors) {
+    var out = {};
+    for (var i = 0; i < monitors.length; i++) {
+        var d = displays[keyOf(monitors[i])];
+        if (d)
+            out[monitors[i].name] = d.base;
+    }
+    return out;
+}
+
+// The first free number on a display (base), given every id in use
+function nextFree(base, ids) {
+    var n = 1;
+    while (n < STRIDE - 1 && ids.indexOf(base + n) >= 0)
+        n++;
+    return base + n;
+}
+
+// What one display lists, in groups:
+//   own    its spaces (1..count always, every one in use, no gaps)
+//   guest  spaces of a display that isn't connected, living here for now
+//          (one group per display they belong to)
+//   other  (with others) the spaces of the other connected displays
+// ctx: { name, bases: { name: base }, workspaces: [{ id, monitor }],
+//        active: { name: id }, occupied: [ids], count, others,
+//        labels: { base: label } }
+// Returns [{ kind, base, label, ids }]
+function groups(ctx) {
+    var base = ctx.bases[ctx.name];
+    if (base === undefined)
+        base = 0;
+    var connected = {};
+    for (var n in ctx.bases)
+        connected[ctx.bases[n]] = n;
+    // Spaces are listed where they are: one of this display's that sits on
+    // another connected display is that one's guest, not an empty slot here
+    // (a monitor not named, or not connected, counts as home: stale data)
+    var own = {}, guests = {}, others = {}, away = {};
+    var i, id, b;
+    for (i = 0; i < ctx.workspaces.length; i++) {
+        var w = ctx.workspaces[i];
+        id = w.id;
+        if (!(id > 0))
+            continue;
+        b = baseOfId(id);
+        var elsewhere = !!w.monitor && w.monitor !== ctx.name && ctx.bases[w.monitor] !== undefined;
+        if (b === base) {
+            if (elsewhere)
+                away[id] = true;
+            else
+                own[id] = true;
+        } else if (w.monitor === ctx.name)
+            (guests[b] = guests[b] || {})[id] = true;
+        else if (ctx.others && connected[b] !== undefined)
+            (others[b] = others[b] || {})[id] = true;
+    }
+    for (i = 1; i <= (ctx.count || 0); i++)
+        if (!away[base + i])
+            own[base + i] = true;
+    var act = ctx.active[ctx.name];
+    if (act > 0 && baseOfId(act) === base)
+        own[act] = true;
+    // no gaps: an empty space between two in use stays reachable
+    var ownIds = Object.keys(own).map(Number);
+    var top = Math.max.apply(null, ownIds.concat([base + 1]));
+    for (id = base + 1; id < top; id++)
+        if (!away[id])
+            own[id] = true;
+    var sorted = function (set) {
+        return Object.keys(set).map(Number).sort(function (p, q) { return p - q; });
+    };
+    var labels = ctx.labels || {};
+    var out = [{ kind: "own", base: base, label: labels[base] || "", ids: sorted(own) }];
+    var keys = Object.keys(guests).map(Number).sort(function (p, q) { return p - q; });
+    for (i = 0; i < keys.length; i++)
+        out.push({ kind: "guest", base: keys[i], label: labels[keys[i]] || "Display " + (keys[i] / STRIDE + 1), unplugged: connected[keys[i]] === undefined, ids: sorted(guests[keys[i]]) });
+    keys = Object.keys(others).map(Number).sort(function (p, q) { return p - q; });
+    for (i = 0; i < keys.length; i++)
+        out.push({ kind: "other", base: keys[i], label: labels[keys[i]] || "", ids: sorted(others[keys[i]]) });
+    return out;
+}
+
+// What to change so every space sits on the display it belongs to.
+// ctx: { bases: { name: base } (connected displays), workspaces: [{ id,
+//        monitor, windows }], active: { name: id }, known: [ids seen
+//        before], migrated, returns (move spaces home now) }
+// Returns [{ op: "renumber", from, to } | { op: "move", id, monitor }]:
+//   - first run (not migrated): spaces on an external display that aren't
+//     in its block are renumbered into it, windows and all (setups from
+//     before per-display spaces keep their spaces where they are)
+//   - a space whose display is connected but which is elsewhere goes home
+//     (a display came back: its spaces return) when returns is set
+//   - a new, empty space a display shows that isn't from its block (what
+//     Hyprland gives a display that just connected) is renumbered into it
+//   - spaces of a display that isn't connected stay where they are (guests)
+function plan(ctx) {
+    var ops = [];
+    var connected = {};
+    var name;
+    for (name in ctx.bases)
+        connected[ctx.bases[name]] = name;
+    var ids = ctx.workspaces.map(function (w) { return w.id; }).filter(function (id) { return id > 0; });
+    var known = ctx.known || [];
+    for (var i = 0; i < ctx.workspaces.length; i++) {
+        var w = ctx.workspaces[i];
+        if (!(w.id > 0) || ctx.bases[w.monitor] === undefined)
+            continue;
+        var here = ctx.bases[w.monitor];
+        var b = baseOfId(w.id);
+        if (b === here)
+            continue;
+        var to;
+        if (!ctx.migrated && here !== 0) {
+            to = nextFree(here, ids);
+            ids.push(to);
+            ops.push({ op: "renumber", from: w.id, to: to });
+            continue;
+        }
+        if (connected[b] === undefined)
+            continue; // a guest
+        var fresh = known.indexOf(w.id) < 0;
+        if (fresh && !(w.windows > 0) && ctx.active[w.monitor] === w.id) {
+            to = nextFree(here, ids);
+            ids.push(to);
+            ops.push({ op: "renumber", from: w.id, to: to });
+        } else if (ctx.returns) {
+            ops.push({ op: "move", id: w.id, monitor: connected[b] });
+        }
+    }
+    return ops;
+}
+
+// Which edge of display `a` faces display `b` ({ x, y, w, h } each, in the
+// arrangement): "left" | "right" | "top" | "bottom". Side by side (their
+// heights overlap) is left/right, stacked is top/bottom; a diagonal
+// neighbour goes by the larger gap between their centres (relative to size).
+function sideOf(a, b) {
+    var dx = (b.x + b.w / 2) - (a.x + a.w / 2);
+    var dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+    var hOver = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    var vOver = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    var horiz;
+    if (vOver > 0 && hOver <= 0)
+        horiz = true;
+    else if (hOver > 0 && vOver <= 0)
+        horiz = false;
+    else
+        horiz = Math.abs(dx) / Math.max(1, (a.w + b.w) / 2) >= Math.abs(dy) / Math.max(1, (a.h + b.h) / 2);
+    return horiz ? (dx < 0 ? "left" : "right") : (dy < 0 ? "top" : "bottom");
+}
+
+// The drop zones a display's Overview shows: one per other display, on the
+// edge that faces it, several on one edge in their order along it.
+// here: { x, y, w, h }; others: [{ name, x, y, w, h }]
+// Returns [{ name, side, index, count }]
+function edgeZones(here, others) {
+    var bySide = { left: [], right: [], top: [], bottom: [] };
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i];
+        bySide[sideOf(here, o)].push(o);
+    }
+    var out = [];
+    var sides = ["left", "right", "top", "bottom"];
+    for (var s = 0; s < sides.length; s++) {
+        var side = sides[s];
+        var list = bySide[side].slice().sort(function (p, q) {
+            return side === "left" || side === "right" ? (p.y + p.h / 2) - (q.y + q.h / 2) || p.x - q.x : (p.x + p.w / 2) - (q.x + q.w / 2) || p.y - q.y;
+        });
+        for (var j = 0; j < list.length; j++)
+            out.push({ name: list[j].name, side: side, index: j, count: list.length });
+    }
+    return out;
+}
+
+// The display a drag is pushed against: the pointer (px, py, in this
+// display's own coordinates; a drag holds the pointer, so it can be past the
+// edge) at or beyond an edge that faces another display, and the one along
+// that edge where the pointer is (else the nearest). "" when none.
+//   here { x, y, w, h }, others [{ name, x, y, w, h }]
+function edgeTarget(here, others, px, py, margin) {
+    var m = margin === undefined ? 3 : margin;
+    var past = {
+        left: -px + m,
+        right: px - (here.w - 1) + m,
+        top: -py + m,
+        bottom: py - (here.h - 1) + m
+    };
+    var side = "", most = 0;
+    var sides = ["left", "right", "top", "bottom"];
+    for (var s = 0; s < sides.length; s++)
+        if (past[sides[s]] > most) {
+            most = past[sides[s]];
+            side = sides[s];
+        }
+    if (side === "")
+        return "";
+    var gx = here.x + px, gy = here.y + py;
+    var best = "", dist = 1e12;
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i];
+        if (sideOf(here, o) !== side)
+            continue;
+        var along = side === "left" || side === "right" ? gy : gx;
+        var lo = side === "left" || side === "right" ? o.y : o.x;
+        var len = side === "left" || side === "right" ? o.h : o.w;
+        var d = along < lo ? lo - along : along >= lo + len ? along - (lo + len) + 1 : 0;
+        if (d < dist) {
+            dist = d;
+            best = o.name;
+        }
+    }
+    return best;
+}
