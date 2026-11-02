@@ -99,6 +99,13 @@ hl.config({
         }
     },
     animations = { enabled = true },
+    render = {
+        -- Triple-buffer only when a frame would be missed (a busy GPU), so a
+        -- heavy moment costs a frame of latency instead of a stutter
+        new_render_scheduling = true,
+        -- A fullscreen game goes to the screen as it is, with no compositing
+        direct_scanout = 2
+    },
     dwindle = { preserve_split = true },
     misc = {
         disable_hyprland_logo = true,
