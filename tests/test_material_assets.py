@@ -52,10 +52,10 @@ class Root(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root = Path(self.mr.build(str(SHELL), str(MATERIAL), os.path.join(t, "material-shell")))
             # its own Theme, shell.qml and control
-            for rel in ("common/Theme.qml", "shell.qml", "common/Switch.qml", "common/MaterialShape.qml"):
+            for rel in ("common/Theme.qml", "shell.qml", "common/Switch.qml", "common/ElasticPull.qml"):
                 self.assertEqual(os.path.realpath(root / rel), str((MATERIAL / rel).resolve()), rel)
             # shared: the services and settings data, unchanged
-            for rel in ("services/Audio.qml", "common/Config.qml", "common/Panels.qml", "assets/scripts/launch-shell.sh"):
+            for rel in ("services/Audio.qml", "common/Config.qml", "common/Panels.qml", "assets/scripts/launch-shell.sh", "common/LookPreview.qml", "common/MaterialShape.qml"):
                 self.assertEqual(os.path.realpath(root / rel), str((SHELL / rel).resolve()), rel)
             # every file of both is there, nothing else
             want = {str(p.relative_to(SHELL)) for p in SHELL.rglob("*") if p.is_file() and "build" not in p.relative_to(SHELL).parts and "__pycache__" not in p.parts and p.suffix != ".pyc"}

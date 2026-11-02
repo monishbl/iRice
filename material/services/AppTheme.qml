@@ -57,9 +57,10 @@ Singleton {
 
     // ── Windows follow the look ─────────────────────────────────────────
     // Material: round corners (a circular arc, rounding_power 2, not Glass's
-    // squircle), a 1 px border in primary on the focused window and a faint
-    // outlineVariant on the rest, and a lower, softer shadow. Glass's values
-    // are hypr/irice/look.lua's, put back only if this shell changed them.
+    // squircle), a 1 px border, a faint tint of primary on the focused window
+    // (20%) and fainter outlineVariant (15%) on the rest, and a lower, softer
+    // shadow. Glass's values are hypr/irice/look.lua's, put back only if
+    // this shell changed them.
     // look.lua sets Material's corners and shadow at login and after a config
     // reload; System re-applies the corner radius then (with Glass's power),
     // so this follows a moment later. Never touches what game mode turns off.
@@ -94,7 +95,7 @@ Singleton {
             System.hyprEval('hl.config({ general = { col = { active_border = "rgba(ffffff38)", inactive_border = "rgba(ffffff10)" } }, decoration = { rounding_power = 4.0, shadow = { range = 24, render_power = 3, offset = { 0, 6 }, color = "rgba(00000045)" } } })');
         } else {
             const hex = c => String(c).slice(1, 7);
-            System.hyprEval('hl.config({ general = { col = { active_border = "rgb(' + hex(Theme.m3.primary) + ')", inactive_border = "rgba(' + hex(Theme.m3.outlineVariant) + '80)" } }, decoration = { rounding_power = 2.0, shadow = { range = 18, render_power = 3, offset = { 0, 4 }, color = "rgba(000000' + (Theme.dark ? "59" : "2e") + ')" } } })');
+            System.hyprEval('hl.config({ general = { col = { active_border = "rgba(' + hex(Theme.m3.primary) + '33)", inactive_border = "rgba(' + hex(Theme.m3.outlineVariant) + '26)" } }, decoration = { rounding_power = 2.0, shadow = { range = 18, render_power = 3, offset = { 0, 4 }, color = "rgba(000000' + (Theme.dark ? "59" : "2e") + ')" } } })');
         }
         windowApplied = windowLook;
     }

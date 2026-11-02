@@ -38,7 +38,7 @@ done
 saved || { echo "the setting wasn't saved"; exit 1; }
 
 # The screen, from a copy (it must outlive the shell, and a Glass install has
-# the shape shader only in material/)
+# the Material fonts only in material/)
 QS=qs
 for d in "${XDG_DATA_HOME:-}" "$HOME/.local/share"; do
     if [[ -n "$d" && -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]]; then
@@ -52,7 +52,7 @@ trap 'rm -rf "$T"' EXIT
 mkdir "$T/ui"
 cp "$SHELL_DIR/assets/lookswitch/shell.qml" "$T/ui/"
 cp "$SHELL_DIR/assets/fonts/Phosphor-Fill.ttf" "$T/ui/"
-cp "$MATERIAL_DIR/common/materialshape.frag.qsb" "$T/ui/" 2>/dev/null
+cp "$SHELL_DIR/common/materialshape.frag.qsb" "$T/ui/" 2>/dev/null
 cp "$MATERIAL_DIR/assets/fonts/GoogleSansFlex.ttf" "$T/ui/" 2>/dev/null
 echo run >"$T/status"
 python3 -I - "$T/look.json" "$TO" "$CACHE" "$CONFIG" <<'PY'

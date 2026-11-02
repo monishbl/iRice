@@ -11,7 +11,7 @@ ShaderEffect {
     id: root
 
     property string shape: "circle"
-    property color color: Theme.m3.primary ?? Theme.accent
+    property color color: Theme.m3?.primary ?? Theme.accent // (Theme.m3: the Material look's)
     property real borderWidth: 0
     property color borderColor: "transparent"
     property real spin: 0 // degrees, the whole shape

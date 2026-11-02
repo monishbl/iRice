@@ -5,7 +5,7 @@
 #    tools/material-symbols-map.txt
 #  - material/common/material-symbols.js: Phosphor name -> Material Symbols glyph
 #  - material/assets/fonts/GoogleSansFlex.ttf (variable), unchanged
-#  - material/common/MaterialColor.js: Google's material-color-utilities bundled
+#  - shell/common/MaterialColor.js (shared: the look previews use it too): Google's material-color-utilities bundled
 #    for QML (colour schemes from a seed colour, 2025 spec)
 # Needs curl, uv and npx (network).
 set -euo pipefail
@@ -84,5 +84,5 @@ npx -y esbuild@0.24.0 entry.js --bundle --format=iife --global-name=MCU --target
     echo "// bundled. Do not edit. MCU.scheme(seedHex, dark, variant, contrast) -> roles."
     echo ".pragma library"
     cat mcu.js
-} > "$ROOT/material/common/MaterialColor.js"
+} > "$ROOT/shell/common/MaterialColor.js"
 echo "Wrote fonts, material-symbols.js and MaterialColor.js"

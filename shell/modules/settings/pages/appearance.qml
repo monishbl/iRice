@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import QtQuick.Controls as QQC
 import Quickshell
 import Quickshell.Io
@@ -21,23 +22,48 @@ Column {
             property bool available: false
             visible: available
             label: "Look"
-            detail: "Material (experimental): Material 3 Expressive. Switching restarts the shell; apps keep running."
+            detail: Config.options.appearance.look === "material" ? "Material (experimental): Material 3 Expressive. Switching restarts the shell; apps keep running." : "Liquid Glass. Material (experimental) is Material 3 Expressive; switching restarts the shell, apps keep running."
+            function choose(look) {
+                if (look === Config.options.appearance.look)
+                    return;
+                Config.options.appearance.look = look;
+                Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/switch-look.sh", look]);
+            }
             Process {
                 running: true
                 command: ["sh", "-c", "[ -f \"$(dirname \"$(readlink -f \"$1\")\")/material/shell.qml\" ]", "sh", Quickshell.shellDir]
                 onExited: code => lookRow.available = code === 0
             }
-            Segmented {
-                width: 260
-                readonly property var values: ["glass", "material"]
-                options: ["Glass", "Material"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.look))
-                onSelected: i => {
-                    const look = values[i];
-                    if (look === Config.options.appearance.look)
-                        return;
-                    Config.options.appearance.look = look;
-                    Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/switch-look.sh", look]);
+            // A picture of the desktop in each, like macOS's appearance choices
+            QQ.Row {
+                spacing: 14
+                Repeater {
+                    model: ["glass", "material"]
+                    Column {
+                        id: thumb
+                        required property string modelData
+                        topPadding: 6
+                        bottomPadding: 2
+                        spacing: 6
+                        LookPreview {
+                            width: 128
+                            height: 80
+                            look: thumb.modelData
+                            selected: Config.options.appearance.look === thumb.modelData
+                            onChosen: lookRow.choose(thumb.modelData)
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: thumb.modelData === "material" ? "Material" : "Glass"
+                            color: Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Config.options.appearance.look === thumb.modelData ? Font.DemiBold : Font.Normal }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: lookRow.choose(thumb.modelData)
+                            }
+                        }
+                    }
                 }
             }
         }

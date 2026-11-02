@@ -114,7 +114,7 @@ class Command(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "node not installed")
     def test_shell_scheme_has_every_role_the_templates_use(self):
         # The roles Theme.m3 really has (common/MaterialColor.js) cover the templates
-        src = (ROOT / "material/common/MaterialColor.js").read_text().replace(".pragma library", "")
+        src = (ROOT / "shell/common/MaterialColor.js").read_text().replace(".pragma library", "")
         js = "const MCU = new Function(require('fs').readFileSync(0, 'utf8') + ';return MCU;')();" \
              "console.log(JSON.stringify(MCU.scheme('#6750A4', false, 'tonalSpot', 0)))"
         r = subprocess.run(["node", "-e", js], input=src, capture_output=True, text=True)

@@ -16,7 +16,10 @@ Item {
 
     readonly property bool mat: look === "material"
     // Material's palette, whichever look is shown now
-    readonly property var m: mat ? (Theme.material ? Theme.m3 : MaterialColor.MCU.scheme(Theme.materialSeed, Theme.dark, Config.options.appearance.materialStyle, 0)) : ({})
+    // (the Material look's seed: its Theme has it; from Glass, the setting,
+    // else the wallpaper's tone)
+    readonly property string seed: Theme.materialSeed ?? (/^#[0-9a-fA-F]{6}$/.test(Config.options.appearance.materialSeed) ? Config.options.appearance.materialSeed : String(Wallpaper.tone).slice(0, 7))
+    readonly property var m: mat ? (Theme.material ? Theme.m3 : MaterialColor.MCU.scheme(seed, Theme.dark, Config.options.appearance.materialStyle, 0)) : ({})
     readonly property real u: width / 100 // one hundredth of the width
 
     implicitWidth: 320
