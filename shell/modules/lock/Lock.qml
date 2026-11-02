@@ -186,7 +186,7 @@ Scope {
             fingerTries = 0;
             faceTries = 0;
             // (a reader that stayed busy gets another go too)
-            if (fingerBusy > 12) {
+            if (fingerBusy > 50) {
                 fingerBusy = 0;
                 fingerRetry.interval = 400;
                 fingerRetry.restart();
@@ -304,14 +304,14 @@ Scope {
     property real fingerAskedAt: 0 // when the reader last asked for a finger
     // A busy reader isn't a miss: a conversation that ends at once, before
     // the reader asked for a finger, found it claimed (fprintd: "already
-    // claimed", by one still ending, say one left from before a sleep). It
-    // tries again after a pause that grows (0.5, 1, 2, then 4 s), for about
-    // 40 s, without counting a try.
+    // claimed", by one still letting go). It tries again every 0.3 s for
+    // about 15 s, without counting a try, so the reader is back the moment
+    // it's free.
     property real fingerStartedAt: 0
     property bool fingerAsked: false // (this conversation got as far as asking)
     property int fingerBusy: 0
     readonly property int fingerQuickMs: 700
-    readonly property bool fingerWanted: held && !leaving && Fingerprint.lockScreen && fingerTries < 5
+    readonly property bool fingerWanted: held && !leaving && !sleeping && Fingerprint.lockScreen && fingerTries < 5
     onFingerWantedChanged: {
         if (fingerWanted) {
             fingerRetry.restart();
@@ -341,10 +341,38 @@ Scope {
             finger.start();
         }
     }
-    // Waking from sleep: a conversation started before it (the lock goes
-    // up as the computer sleeps) is hours old to its own clock and may
-    // hold the reader. Noticed as a jump in the clock while locked, it's
-    // dropped and a fresh one starts, with every try back.
+    // Sleep: the reader is let go as the computer goes to sleep (logind's
+    // PrepareForSleep; the lock often goes up just then), so nothing from
+    // before holds it on waking, and asked for again as it wakes, with
+    // every try back. (Watched while the lock may use the reader.)
+    property bool sleeping: false
+    Process {
+        running: Fingerprint.lockScreen
+        command: [Tools.watcher, "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"]
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => {
+                const m = line.match(/PrepareForSleep \((true|false),\)/);
+                if (m)
+                    root.prepareForSleep(m[1] === "true");
+            }
+        }
+    }
+    function prepareForSleep(going) {
+        if (going) {
+            sleeping = true; // (fingerWanted turns false: the conversation is dropped)
+            return;
+        }
+        sleeping = false;
+        fingerTries = 0;
+        fingerBusy = 0;
+        lockTick = Date.now();
+        fingerRetry.interval = 300;
+        if (fingerWanted)
+            fingerRetry.restart();
+    }
+    // In case that's missed: a jump in the clock while locked. Only a
+    // conversation from before the jump is dropped for a fresh one.
     property real lockTick: 0
     Timer {
         interval: 2000
@@ -352,16 +380,17 @@ Scope {
         running: root.held
         onRunningChanged: if (running) root.lockTick = Date.now()
         onTriggered: {
-            const now = Date.now();
-            const slept = now - root.lockTick > 10000;
+            const now = Date.now(), before = root.lockTick;
             root.lockTick = now;
-            if (!slept || !Fingerprint.lockScreen)
+            if (now - before <= 10000 || !Fingerprint.lockScreen)
                 return;
             root.fingerTries = 0;
             root.fingerBusy = 0;
+            if (finger.active && root.fingerStartedAt > before)
+                return; // (already a fresh one: the wake was seen)
             if (finger.active)
                 finger.abort();
-            fingerRetry.interval = 1500;
+            fingerRetry.interval = 300;
             fingerRetry.restart();
         }
     }
@@ -411,12 +440,12 @@ Scope {
             }
             // over at once, before it asked: the reader was busy
             if (!root.fingerAsked && Date.now() - root.fingerStartedAt < 2000) {
-                if (++root.fingerBusy > 12) {
+                if (++root.fingerBusy > 50) {
                     root.fingerText = "";
                     root.fingerState = "";
                     return;
                 }
-                fingerRetry.interval = Math.min(4000, 250 * Math.pow(2, root.fingerBusy));
+                fingerRetry.interval = 300;
                 fingerRetry.restart();
                 return;
             }
