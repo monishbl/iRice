@@ -3,6 +3,7 @@
 ## A calmer Material lock screen; Edit controls stays open · 2026-11-02
 
 - **The Material look's lock screen is quieter.** The clock is about a third smaller, and Now Playing, your picture, the name, the field and the fingerprint button are all more compact. The fingerprint is offered once, by its button: the field says "Enter password", and the line under it only appears when there's news (a finger that didn't match, the face camera looking).
+- **The island stays dark in dark mode (Material look).** An alert in it (a notification, the charger, Wi-Fi) turned it the inverse colour, like an Android snackbar: a white island under a dark menu bar. It now goes a shade lighter instead, in the same colours.
 - **Software Update works in the Material look.** It said "The installation source is missing": the Material look runs from a folder of links in your cache, and Software Update looked for iRice beside that folder. It (and the system part of the update, and the health check) now follows the links back to your iRice folder.
 - **Quick Settings' Edit controls no longer closes when you click the brightness or volume row** (or any empty part of the panel). Those clicks went through the panel and counted as a click outside it.
 

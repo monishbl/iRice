@@ -35,7 +35,7 @@ Item {
     // alert list scrolls instead)
     property bool wheelDismiss: true
 
-    property bool inverse: false // (Material: shown on inverseSurface)
+    property bool inverse: false // (Material: shown on the alert surface, IslandInk)
     readonly property color ink: IslandInk.ink(inverse)
     readonly property color ink2: IslandInk.dim(0.6, inverse)
     // Material's pill buttons: filled (the action), tonal (the others),

@@ -19,7 +19,7 @@ Item {
     property bool still: false // nobody can see it: the pulse holds
     readonly property var call: event?.call ?? null
     readonly property bool reduce: Config.options.appearance.reduceMotion === true
-    property bool inverse: false // (Material: on inverseSurface)
+    property bool inverse: false // (Material: on the alert surface, IslandInk)
     readonly property color ink: IslandInk.ink(inverse)
     readonly property color ink2: IslandInk.dim(0.6, inverse)
     readonly property color pulse: Theme.material ? IslandInk.accent(inverse) : Theme.color.success

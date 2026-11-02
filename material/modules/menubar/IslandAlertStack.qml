@@ -15,7 +15,7 @@ import qs.services
 // (MenuBar shows it while IslandView.alertsBelow; `top` is the island's
 // bottom edge, in the bar window's coordinates, which are the screen's.)
 // Material: Material cards (corners 28, elevation 2's shadow) in the
-// island's alert colours, inverseSurface (a volume HUD stays tonal).
+// island's alert colours, a tonal step up (a volume HUD stays as it is).
 Scope {
     id: root
 

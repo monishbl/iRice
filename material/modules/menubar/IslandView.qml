@@ -15,7 +15,7 @@ import qs.services
 // springs open for an event (Island.event: an animated alert, or an iOS-style
 // card) or while hovered (the dots on top, live activities below).
 // Material: Android 16's Live Updates chip and floating toolbar instead. A
-// tonal pill (surfaceContainerHigh; inverseSurface while it shows an alert)
+// tonal pill (surfaceContainerHigh; a step up while it shows an alert)
 // holds the spaces' indicator; a live activity turns it into a chip with its
 // icon in a primary circle; open, it's a Material card (corners 28, elevation
 // 2's shadow). Same sizes, springs, gestures and contents (IslandInk).
@@ -151,8 +151,8 @@ Item {
     // On the black island when open; collapsed it's just the dots on the bar
     // (Material: always on its own surface)
     readonly property color ink: Theme.material ? IslandInk.ink(inverse) : filled || Island.showHot ? "#F5F5F7" : fg
-    // Material: an alert in it turns it inverseSurface (not the volume and
-    // brightness HUD, which stays a tonal surface like Android's)
+    // Material: an alert in it raises it a tonal step (not the volume and
+    // brightness HUD, which stays as it is, like Android's)
     readonly property bool inverse: Theme.material && eventInside && (Island.event?.kind ?? "") !== "hud"
 
     // ── Size, on springs ────────────────────────────────────────────────

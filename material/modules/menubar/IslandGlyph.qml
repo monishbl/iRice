@@ -21,7 +21,7 @@ Item {
     id: root
 
     property var event: null
-    property bool inverse: false // (Material: on inverseSurface)
+    property bool inverse: false // (Material: on the alert surface, IslandInk)
     readonly property string kind: event?.kind ?? ""
     readonly property color tint: Theme.material ? IslandInk.tint(event?.color, inverse) : event?.color ?? Theme.accent
     readonly property bool hasArt: !!event?.art
