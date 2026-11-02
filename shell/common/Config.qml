@@ -73,6 +73,14 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
+                // The look: glass (macOS Tahoe, Liquid Glass) | material (Material 3
+                // Expressive: tonal surfaces, the shape library, springs); the
+                // same features either way
+                property string look: "glass"
+                // Material: the palette's seed, "wallpaper" (Material You) or a colour
+                // (#rrggbb); its style: tonalSpot | vibrant | expressive | neutral | content | fidelity | monochrome
+                property string materialSeed: "wallpaper"
+                property string materialStyle: "tonalSpot"
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 property string glass: "liquid" // liquid | frosted | solid | custom (liquid needs the irice-glass plugin; without it, frosted)
                 property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)

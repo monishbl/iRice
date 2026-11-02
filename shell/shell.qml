@@ -68,6 +68,9 @@ ShellRoot {
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Bold.ttf") }
+    // The Material look's type and icons (loaded once it's chosen)
+    FontLoader { source: Theme.material ? Qt.resolvedUrl("assets/fonts/GoogleSansFlex.ttf") : "" }
+    FontLoader { source: Theme.material ? Qt.resolvedUrl("assets/fonts/MaterialSymbolsRounded.ttf") : "" }
 
     Background {}
     ScreenCorners {}

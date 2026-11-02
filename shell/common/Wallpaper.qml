@@ -213,6 +213,29 @@ Singleton {
         command: ["mkdir", "-p", root.cacheDir]
     }
 
+    // The Material look's seed: the colour Android picks from the picture
+    // (matugen ranks it as Material You does), else the tone above. Read only
+    // while the Material look follows the wallpaper.
+    property string seedFromPicture: ""
+    readonly property string seed: seedFromPicture !== "" ? seedFromPicture : String(tone).slice(0, 7)
+    Process {
+        id: seedProc
+        readonly property string picture: root.path // (a live wallpaper: its poster)
+        running: Config.ready && Config.options.appearance.look === "material" && Config.options.appearance.materialSeed === "wallpaper" && picture !== "" // (no matugen: the tone)
+        command: ["matugen", "image", picture, "--json", "hex", "--dry-run", "--source-color-index", "0"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const c = JSON.parse(text).colors.source_color;
+                    root.seedFromPicture = c.default?.color ?? c.dark?.color ?? "";
+                } catch (e) {
+                    root.seedFromPicture = "";
+                }
+            }
+        }
+        onPictureChanged: root.seedFromPicture = ""
+    }
+
     ColorQuantizer {
         id: palette
         source: root.source

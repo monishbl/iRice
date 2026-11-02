@@ -2,10 +2,19 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import "AccentRamp.js" as AccentRamp
+import "MaterialColor.js" as MaterialColor
 
 // Design tokens. Everything visual reads from here; nothing hardcodes colours.
+// Two looks share them (Settings → Appearance → Look): Glass (macOS Tahoe)
+// and Material (Material 3 Expressive, docs/material-look.md). In the
+// Material look the same tokens answer with Material's colour roles, type,
+// shape scale and motion, so a component that only reads tokens follows
+// either look; `m3` has every colour role for components that draw Material's
+// own parts.
 Singleton {
     id: root
+
+    readonly property bool material: Config.options.appearance.look === "material"
 
     // "auto" follows the sun: light from sunrise to sunset
     readonly property bool dark: Config.options.appearance.mode === "auto" ? !Daylight.day : Config.options.appearance.mode !== "light"
@@ -24,7 +33,17 @@ Singleton {
             "indigo": dark ? "#5E5CE6" : "#5856D6",
             "graphite": dark ? "#98989D" : "#8E8E93"
         })
-    readonly property color accent: Config.options.appearance.accent === "wallpaper" ? Wallpaper.accent : (accents[Config.options.appearance.accent] ?? accents.blue)
+    readonly property color accent: material && m3.primary ? m3.primary : Config.options.appearance.accent === "wallpaper" ? Wallpaper.accent : (accents[Config.options.appearance.accent] ?? accents.blue)
+
+    // The Material look's colour scheme: every Material 3 colour role
+    // (primary, onPrimary, primaryContainer, surfaceContainerHigh, outline, …;
+    // see tools/gen-material.sh), from the wallpaper (Material You) or a chosen
+    // seed, in the chosen style, at the chosen contrast. Empty in the Glass look.
+    readonly property string materialSeed: {
+        const s = Config.options.appearance.materialSeed;
+        return /^#[0-9a-fA-F]{6}$/.test(s) ? s : Wallpaper.seed;
+    }
+    readonly property var m3: material ? MaterialColor.MCU.scheme(materialSeed, dark, Config.options.appearance.materialStyle, [0, 0.5, 1][contrastLevel]) : ({})
     // A light accent (yellow, cyan, a pale wallpaper colour) can't carry white
     // text: text and glyphs on accent fills are dark then (color.onAccent)
     readonly property bool lightAccent: AccentRamp.contrast(accent, "white") < 3 // (measured as real contrast: white on green #30D158 is only ~2:1)
@@ -40,16 +59,16 @@ Singleton {
     // circle with the glyph in the accent (≥ 3:1 on white), or near-black
     // for an accent that doesn't read on white (yellow): the white circle
     // already says it's on
-    readonly property color accentOnFill: "white"
-    readonly property color accentOnGlyph: accentFor("white", 3)
+    readonly property color accentOnFill: material ? m3.primary : "white"
+    readonly property color accentOnGlyph: material ? m3.onPrimary : accentFor("white", 3)
     // Accent text and small glyphs on the window background (≥ 4.5:1)
-    readonly property color accentInk: accentFor(dark ? "#1E1E21" : "#F5F5F7", 4.5)
+    readonly property color accentInk: material ? m3.primary : accentFor(dark ? "#1E1E21" : "#F5F5F7", 4.5)
     // Selected rows, chips and soft highlights: a pale shade in light mode,
     // the accent faintly in dark mode
-    readonly property color accentTint: dark ? Qt.alpha(accent, 0.26) : Qt.alpha(accentRamp[1], 0.9)
+    readonly property color accentTint: material ? m3.secondaryContainer : dark ? Qt.alpha(accent, 0.26) : Qt.alpha(accentRamp[1], 0.9)
 
     readonly property QtObject font: QtObject {
-        readonly property string family: "Inter"
+        readonly property string family: root.material ? "Google Sans Flex" : "Inter"
         readonly property string mono: "JetBrains Mono"
         readonly property int caption: 11
         readonly property int small: 12
@@ -75,19 +94,20 @@ Singleton {
     }
 
     readonly property QtObject color: QtObject {
-        readonly property color label: root.dark ? Qt.rgba(1, 1, 1, root.level(0.92, 1, 1)) : Qt.rgba(0, 0, 0, root.level(0.85, 0.9, 0.95))
-        readonly property color secondary: root.dark ? Qt.rgba(1, 1, 1, root.level(0.58, 0.72, 0.85)) : Qt.rgba(0, 0, 0, root.level(0.52, 0.68, 0.8))
-        readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, root.level(0.34, 0.56, 0.7)) : Qt.rgba(0, 0, 0, root.level(0.3, 0.6, 0.7))
-        readonly property color separator: root.dark ? Qt.rgba(1, 1, 1, root.level(0.12, 0.14, 0.16)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.12, 0.14))
-        readonly property color outline: root.dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.38)
-        readonly property color fill: root.dark ? Qt.rgba(1, 1, 1, root.level(0.1, 0.14, 0.18)) : Qt.rgba(0, 0, 0, root.level(0.06, 0.09, 0.12))
-        readonly property color fillHover: root.dark ? Qt.rgba(1, 1, 1, root.level(0.16, 0.2, 0.24)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.13, 0.16))
-        readonly property color fillPressed: root.dark ? Qt.rgba(1, 1, 1, root.level(0.22, 0.26, 0.3)) : Qt.rgba(0, 0, 0, root.level(0.15, 0.18, 0.21))
-        readonly property color platter: root.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.45)
+        readonly property color label: root.material ? root.m3.onSurface : root.dark ? Qt.rgba(1, 1, 1, root.level(0.92, 1, 1)) : Qt.rgba(0, 0, 0, root.level(0.85, 0.9, 0.95))
+        readonly property color secondary: root.material ? root.m3.onSurfaceVariant : root.dark ? Qt.rgba(1, 1, 1, root.level(0.58, 0.72, 0.85)) : Qt.rgba(0, 0, 0, root.level(0.52, 0.68, 0.8))
+        readonly property color tertiary: root.material ? Qt.alpha(root.m3.onSurfaceVariant, root.level(0.72, 0.85, 1)) : root.dark ? Qt.rgba(1, 1, 1, root.level(0.34, 0.56, 0.7)) : Qt.rgba(0, 0, 0, root.level(0.3, 0.6, 0.7))
+        readonly property color separator: root.material ? root.m3.outlineVariant : root.dark ? Qt.rgba(1, 1, 1, root.level(0.12, 0.14, 0.16)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.12, 0.14))
+        readonly property color outline: root.material ? root.m3.outline : root.dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.38)
+        // Material: containers, with state layers (8% hover, 10% pressed of the content colour)
+        readonly property color fill: root.material ? root.m3.surfaceContainerHighest : root.dark ? Qt.rgba(1, 1, 1, root.level(0.1, 0.14, 0.18)) : Qt.rgba(0, 0, 0, root.level(0.06, 0.09, 0.12))
+        readonly property color fillHover: root.material ? Qt.tint(root.m3.surfaceContainerHighest, Qt.alpha(root.m3.onSurface, 0.08)) : root.dark ? Qt.rgba(1, 1, 1, root.level(0.16, 0.2, 0.24)) : Qt.rgba(0, 0, 0, root.level(0.1, 0.13, 0.16))
+        readonly property color fillPressed: root.material ? Qt.tint(root.m3.surfaceContainerHighest, Qt.alpha(root.m3.onSurface, 0.1)) : root.dark ? Qt.rgba(1, 1, 1, root.level(0.22, 0.26, 0.3)) : Qt.rgba(0, 0, 0, root.level(0.15, 0.18, 0.21))
+        readonly property color platter: root.material ? root.m3.surfaceContainerHigh : root.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.45)
         // Unchecked toggles, slider and segmented tracks
-        readonly property color toggleOff: root.dark ? Qt.rgba(1, 1, 1, root.level(0.14, 0.24, 0.32)) : Qt.rgba(0, 0, 0, root.level(0.08, 0.16, 0.24))
-        readonly property color onAccent: root.lightAccent ? "#1C1C1E" : "white" // text and glyphs on accent fills: near-black on light accents (yellow), else white
-        readonly property color danger: root.dark ? "#FF453A" : "#FF3B30"
+        readonly property color toggleOff: root.material ? root.m3.surfaceContainerHighest : root.dark ? Qt.rgba(1, 1, 1, root.level(0.14, 0.24, 0.32)) : Qt.rgba(0, 0, 0, root.level(0.08, 0.16, 0.24))
+        readonly property color onAccent: root.material ? root.m3.onPrimary : root.lightAccent ? "#1C1C1E" : "white" // text and glyphs on accent fills: near-black on light accents (yellow), else white
+        readonly property color danger: root.material ? root.m3.error : root.dark ? "#FF453A" : "#FF3B30"
         readonly property color success: root.dark ? "#30D158" : "#34C759"
         readonly property color warning: root.dark ? "#FF9F0A" : "#FF9500"
     }
@@ -101,7 +121,8 @@ Singleton {
         // presets; Custom uses your own (Settings → Appearance → Advanced).
         // [lens, frost, solid, tint]
         readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
-        readonly property string chosen: root.reduceTransparency ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        // (the Material look: opaque tonal surfaces)
+        readonly property string chosen: root.reduceTransparency || root.material ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
         // Cool-down swaps in a cheaper material (never a heavier one)
         readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
@@ -126,7 +147,7 @@ Singleton {
         readonly property string depth: Config.options.appearance.glassDepth
         readonly property color base: root.dark ? Qt.rgba(0.08, 0.08, 0.1, 0.16) : Qt.rgba(0.98, 0.98, 1.0, 0.3)
         readonly property color tint: Config.options.appearance.wallpaperTint ? Qt.tint(base, Qt.alpha(Wallpaper.tone, root.dark ? 0.1 : 0.08)) : base
-        readonly property color solid: root.dark ? "#26262A" : "#F2F2F5"
+        readonly property color solid: root.material ? root.m3.surfaceContainer : root.dark ? "#26262A" : "#F2F2F5"
         // Frosted sits over compositor-blurred windows, so it needs more body
         readonly property color frost: root.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.62) : Qt.rgba(0.97, 0.97, 0.98, 0.66)
         readonly property real saturation: 1.35
@@ -142,7 +163,7 @@ Singleton {
         readonly property real dispersion: Math.max(0, Math.min(1, Config.options.appearance.glassDispersion ?? 0.35)) / 0.35
         readonly property real refraction: 36 * bend
         readonly property real chroma: 0.12 * dispersion
-        readonly property real shadow: root.dark ? 0.32 : 0.14
+        readonly property real shadow: root.material ? (root.dark ? 0.24 : 0.1) : root.dark ? 0.32 : 0.14
 
         function smooth(a, b, x) {
             const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -182,20 +203,23 @@ Singleton {
     }
 
     readonly property QtObject radius: QtObject {
-        readonly property int item: 6
-        readonly property int control: 10
-        readonly property int menu: 12
-        readonly property int popover: 18
-        readonly property int module: 20
+        // Material: its shape scale (small 8, medium 12, large 16,
+        // extra-large 28); buttons and chips are pills where they're drawn
+        readonly property int item: root.material ? 8 : 6
+        readonly property int control: root.material ? 12 : 10
+        readonly property int menu: root.material ? 16 : 12
+        readonly property int popover: root.material ? 28 : 18
+        readonly property int module: root.material ? 24 : 20
         // iOS tiles and widgets: half a 1×1 Control Center button (a 320 px grid
         // of four, 10 px apart), with continuous corners, so every card's curve
         // matches the round buttons'
-        readonly property int tile: Math.round((320 - 3 * 10) / 8)
-        readonly property int panel: 26
+        readonly property int tile: root.material ? 28 : Math.round((320 - 3 * 10) / 8)
+        readonly property int panel: root.material ? 28 : 26
     }
 
     readonly property QtObject motion: QtObject {
-        readonly property bool expressive: Config.options.appearance.motion === "expressive"
+        // (the Material look moves on Material's expressive springs)
+        readonly property bool expressive: root.material || Config.options.appearance.motion === "expressive"
         // Springs (SpringAnimation): open/expand, settle back, and elastic pull
         readonly property real spring: expressive ? 3.0 : 3.8
         readonly property real damping: expressive ? 0.22 : 0.32
@@ -207,9 +231,10 @@ Singleton {
         readonly property int popover: Math.round(220 * CoolDown.motionScale)
         readonly property int panel: Math.round(320 * CoolDown.motionScale)
         readonly property int large: Math.round(450 * CoolDown.motionScale)
-        // Apple-like decelerate; QML BezierSpline control points.
-        readonly property var emphasized: [0.2, 0.9, 0.1, 1.0, 1, 1]
-        readonly property var standard: [0.3, 0.0, 0.2, 1.0, 1, 1]
-        readonly property var exit: [0.4, 0.0, 1.0, 1.0, 1, 1]
+        // Apple-like decelerate (Material: emphasized decelerate, standard,
+        // emphasized accelerate); QML BezierSpline control points.
+        readonly property var emphasized: root.material ? [0.05, 0.7, 0.1, 1.0, 1, 1] : [0.2, 0.9, 0.1, 1.0, 1, 1]
+        readonly property var standard: root.material ? [0.2, 0.0, 0.0, 1.0, 1, 1] : [0.3, 0.0, 0.2, 1.0, 1, 1]
+        readonly property var exit: root.material ? [0.3, 0.0, 0.8, 0.15, 1, 1] : [0.4, 0.0, 1.0, 1.0, 1, 1]
     }
 }

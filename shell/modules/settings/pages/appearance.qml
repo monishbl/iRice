@@ -13,6 +13,17 @@ Column {
     Group {
         width: parent.width
         Row {
+            label: "Look"
+            detail: Theme.material ? "Material 3 Expressive: tonal colour from your wallpaper, bold shapes, springy motion" : "Liquid Glass: translucent glass, continuous corners"
+            Segmented {
+                width: 260
+                readonly property var values: ["glass", "material"]
+                options: ["Glass", "Material"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.look))
+                onSelected: i => Config.options.appearance.look = values[i]
+            }
+        }
+        Row {
             label: "Appearance"
             detail: Config.options.appearance.mode === "auto" ? "Light from sunrise (" + Focus.fmt(Math.floor(Daylight.sunrise / 60) + ":" + Daylight.sunrise % 60) + ") to sunset (" + Focus.fmt(Math.floor(Daylight.sunset / 60) + ":" + Daylight.sunset % 60) + ")" : ""
             Segmented {
@@ -47,6 +58,56 @@ Column {
             }
         }
         Row {
+            visible: Theme.material
+            label: "Colours from"
+            detail: Config.options.appearance.materialSeed === "wallpaper" ? "Your wallpaper, like Material You" : "This colour"
+            Flow {
+                width: 9 * 22 + 8 * 8
+                spacing: 8
+                layoutDirection: Qt.RightToLeft
+                Repeater {
+                    // (seeds: Material's baseline purple and a hue wheel)
+                    model: ["wallpaper", "#6750A4", "#B3261E", "#C26A00", "#8A7D00", "#386A20", "#006A6A", "#0061A4", "#7D5260"]
+                    Rectangle {
+                        required property string modelData
+                        readonly property bool current: Config.options.appearance.materialSeed === modelData
+                        width: 22
+                        height: 22
+                        radius: 11
+                        color: modelData === "wallpaper" ? Wallpaper.seed : modelData
+                        border.width: current ? 3 : 0
+                        border.color: Theme.color.label
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: parent.modelData === "wallpaper"
+                            name: "image"
+                            fill: true
+                            size: 11
+                            color: "white"
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Config.options.appearance.materialSeed = parent.modelData
+                        }
+                    }
+                }
+            }
+        }
+        Row {
+            visible: Theme.material
+            label: "Colour style"
+            detail: ({ tonalSpot: "Calm: one colour with soft companions", vibrant: "Saturated colours throughout", expressive: "Playful: contrasting companion colours", neutral: "Nearly grey, a hint of colour" })[Config.options.appearance.materialStyle] ?? ""
+            Segmented {
+                width: 340
+                readonly property var values: ["tonalSpot", "vibrant", "expressive", "neutral"]
+                options: ["Tonal", "Vibrant", "Expressive", "Neutral"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.materialStyle))
+                onSelected: i => Config.options.appearance.materialStyle = values[i]
+            }
+        }
+        Row {
+            visible: !Theme.material
             label: "Accent colour"
             detail: Config.options.appearance.accent === "wallpaper" ? "Following the wallpaper" : ""
             Flow {
