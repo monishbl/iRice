@@ -320,7 +320,7 @@ def check_notifications(opts):
     except OSError:
         pass
     # (the shell itself, or, asked from somewhere else, a Quickshell)
-    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("qs", "quickshell"):
+    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("irice-shell", "qs", "quickshell"):
         return result("notifications", "Notifications", "Desktop", "ok", "iRice shows them")
     return result("notifications", "Notifications", "Desktop", "warn",
                   f"Another program ({owner or 'unknown'}) is showing notifications instead of iRice",

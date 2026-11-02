@@ -26,7 +26,7 @@ stop_sandbox_apps() {
     for pid in $(pgrep -u "$(id -u)"); do
         [[ $pid == "$$" || $pid == "$PPID" ]] && continue
         case "$(cat "/proc/$pid/comm" 2>/dev/null)" in
-            Hyprland | start-hyprland | qs | quickshell | "") continue ;;
+            Hyprland | start-hyprland | irice-shell | qs | quickshell | "") continue ;;
         esac
         grep -qzx "XDG_RUNTIME_DIR=$IRICE_RT" "/proc/$pid/environ" 2>/dev/null && pids+=" $pid"
     done
@@ -44,7 +44,7 @@ stop_sandbox_apps() {
 stop_sandbox_shells() {
     local pids
     # (not the look-switching or update screens: they cover the restart)
-    pids="$(for p in $(sandbox_pids qs; sandbox_pids quickshell); do
+    pids="$(for p in $(sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell); do
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/irice-look\.' -e '/irice-update\.' || echo "$p"
     done)"
     [[ -z "$pids" ]] && return 0

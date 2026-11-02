@@ -158,7 +158,7 @@ if [[ $look == material ]]; then
             "${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json" || exit 0
         notify-send -a iRice "Back to the Glass look" "The Material look (experimental) didn't start, so iRice went back to Glass." 2>/dev/null
         # (unless another shell was started for this session meanwhile)
-        for p in $(pgrep -x qs; pgrep -x quickshell); do
+        for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
             [[ $p == "$me" ]] && continue
             e=$( { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null)
             grep -qx "IRICE_SHELL=1" <<<"$e" && grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$sig" <<<"$e" && exit 0
@@ -166,5 +166,32 @@ if [[ $look == material ]]; then
         setsid -f "$SELF_DIR/assets/scripts/launch-shell.sh" -p "$SELF_DIR" </dev/null >/dev/null 2>&1
     ) </dev/null >/dev/null 2>&1 &
     disown
+fi
+# Its own process name. CachyOS's ananicy-cpp files every "qs" as a
+# background service (nice 10), so the shell stuttered whenever an app was
+# busy; started through a link called irice-shell, the process takes that
+# name, which only iRice's own rule (assets/ananicy/irice.rules: interactive,
+# like GNOME Shell and KWin) matches. Not while something from before the
+# name still watches the shell: an update installing this version (its
+# script is a copy of the old one) or a tty session's watchdog started
+# before it (tty-shell.sh notes the ones that know). They look for "qs": the
+# update screen would say the shell didn't start, the watchdog would start
+# another. The next start takes the name.
+old_watcher() {
+    local p f
+    for p in $(pgrep -f '/irice-update\.[^/]*/run\.sh'); do
+        f=$( { tr '\0' '\n' <"/proc/$p/cmdline"; } 2>/dev/null | sed -n 2p)
+        [[ -f $f ]] && ! grep -q 'pgrep -x irice-shell' "$f" && return 0
+    done
+    for p in $(pgrep -f 'tty-shell\.sh watchdog'); do
+        { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=${HYPRLAND_INSTANCE_SIGNATURE:-}" || continue
+        [[ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/irice-watchdog.names" 2>/dev/null)" == "$p" ]] || return 0
+    done
+    return 1
+}
+QSPATH="$(command -v "$QS" 2>/dev/null || true)"
+LINKS="${XDG_RUNTIME_DIR:-/tmp}/irice-bin"
+if [[ -n "$QSPATH" ]] && ! old_watcher && mkdir -p -m 700 "$LINKS" 2>/dev/null && ln -sfn "$QSPATH" "$LINKS/irice-shell" 2>/dev/null; then
+    QS="$LINKS/irice-shell"
 fi
 exec "$QS" "${args[@]}"

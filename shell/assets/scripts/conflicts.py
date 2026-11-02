@@ -96,7 +96,7 @@ def notifications(found):
     if pid == SHELL_PID or cmdline(pid) == cmdline(SHELL_PID):
         return
     name = comm(pid) or "another app"
-    if name in ("qs", "quickshell"):
+    if name in ("irice-shell", "qs", "quickshell"):
         name = "quickshell"  # (another Quickshell config)
     found.append({"id": "notifications:" + name, "name": NOTIFIERS.get(name, name),
                   "short": "Shows notifications instead of iRice",

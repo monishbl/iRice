@@ -852,7 +852,7 @@ verify() {
     # Inside a running iRice session: the live parts
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
         hyprctl irice-glass ping 2>/dev/null | grep -q irice-glass && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "irice rebuild --load"
-        if pgrep -af '(^|/)(qs|quickshell) ' | grep -q irice; then
+        if pgrep -af '(^|/)(irice-shell|qs|quickshell) ' | grep -q irice; then
             ok "The iRice shell is running"
         else
             bad "The iRice shell isn't running" "irice repair"

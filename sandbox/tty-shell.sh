@@ -52,7 +52,7 @@ is_tty_shell() {
 # This session's shells, oldest first
 shell_pids() {
     local p
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" && [[ "$(sig_of "$p")" == "$SIG" ]] && echo "$p"
     done | sort -n
     return 0
@@ -72,7 +72,7 @@ gone() {
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
         [[ -z "$s" || "$s" == "$SIG" ]] && continue
@@ -112,6 +112,9 @@ case "${1:-start}" in
     watchdog)
         exec 8>"$LOCKDIR/irice-watchdog.lock"
         flock -n 8 || exit 0 # this session already has one
+        # (this one finds the shell as "irice-shell" too: launch-shell.sh
+        # uses that name only once the session's watchdog does)
+        echo $$ >"$LOCKDIR/irice-watchdog.names"
         reap
         sleep 20 # let it start
         misses=0 gone=0

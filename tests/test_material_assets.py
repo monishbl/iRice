@@ -3,6 +3,7 @@ root of links the shell runs it from (shell/assets/scripts/material-root.py)."""
 import importlib.util
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -83,6 +84,7 @@ if [ "$3" = ipc ] && [ "$4" = show ]; then
     exit 0
 fi
 printf '%s\n' "$@" > "$QS_CALL"
+basename "$0" > "$QS_CALL.name"
 """
 
 
@@ -125,6 +127,40 @@ class Launch(unittest.TestCase):
         self.assertEqual(self.launch("material", "-c", "irice"), ["-p", str(self.root)])
         self.assertEqual(self.launch("material", "-p", str(SHELL)), ["-p", str(self.root)])
         self.assertTrue((self.root / "common/Theme.qml").is_symlink())
+
+    def test_runs_under_its_own_name(self):
+        # (CachyOS's ananicy rule for "qs" lowers its priority; irice-shell has iRice's own)
+        self.launch("glass", "-c", "irice")
+        self.assertEqual(Path(self.env["QS_CALL"] + ".name").read_text().strip(), "irice-shell")
+        self.assertEqual(os.readlink(Path(self.tmp.name) / "irice-bin/irice-shell"), str(Path(self.tmp.name) / "bin/qs"))
+
+    def name_while(self, script, args, text, env=None):
+        import subprocess
+        f = Path(self.tmp.name) / script
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text + "\nsleep 30\n")
+        w = subprocess.Popen(["bash", str(f), *args], env=dict(self.env, **(env or {})))
+        try:
+            time.sleep(0.3)
+            self.launch("glass", "-c", "irice")
+            return Path(self.env["QS_CALL"] + ".name").read_text().strip()
+        finally:
+            w.kill()
+            w.wait()
+
+    def test_keeps_the_old_name_for_an_update_from_before_it(self):
+        # (the update script runs from a copy made by the old version: it looks for "qs")
+        self.assertEqual(self.name_while("irice-update.ab12/run.sh", ["x"], "pgrep -x qs"), "qs")
+        self.assertEqual(self.name_while("irice-update.cd34/run.sh", ["x"], "pgrep -x irice-shell"), "irice-shell")
+
+    def test_keeps_the_old_name_for_an_older_tty_watchdog(self):
+        self.env["HYPRLAND_INSTANCE_SIGNATURE"] = "sig1"
+        self.assertEqual(self.name_while("old/tty-shell.sh", ["watchdog"], ""), "qs")
+        # (a new watchdog notes itself; one of another session doesn't count)
+        marker = Path(self.tmp.name) / "hypr/sig1/irice-watchdog.names"
+        marker.parent.mkdir(parents=True)
+        self.assertEqual(self.name_while("new/tty-shell.sh", ["watchdog"], f'echo $$ > "{marker}"'), "irice-shell")
+        self.assertEqual(self.name_while("other/tty-shell.sh", ["watchdog"], "", {"HYPRLAND_INSTANCE_SIGNATURE": "sig2"}), "irice-shell")
 
     def test_ipc_reaches_the_running_root(self):
         import subprocess

@@ -96,6 +96,12 @@ FILES = [
     ("assets/polkit/org.irice.root.policy", "/usr/share/polkit-1/actions/org.irice.root.policy", 0o644),
     ("assets/polkit/49-irice.rules", "/etc/polkit-1/rules.d/49-irice.rules", 0o644),
 ]
+# Installed only where their folder already exists: ananicy-cpp's rule that
+# keeps the shell ("irice-shell") interactive (CachyOS files "qs" as a
+# background service otherwise)
+OPTIONAL_FILES = [
+    ("assets/ananicy/irice.rules", "/etc/ananicy.d/irice.rules", 0o644),
+]
 
 
 class Refused(Exception):
@@ -590,13 +596,17 @@ def check_folder(src):
     return src
 
 
-def setup(src, uid, prefix=None):
-    """Installs FILES from the shell's folder, only the ones that changed.
-    Returns the destinations written."""
+def setup(src, uid, prefix=None, run=subprocess.run):
+    """Installs FILES (and OPTIONAL_FILES where their folder exists) from the
+    shell's folder, only the ones that changed. Returns the destinations
+    written."""
     src = check_folder(src)
     prefix = PREFIX if prefix is None else prefix
     written = []
-    for rel, dest, mode in FILES:
+    wanted = list(FILES) + [f for f in OPTIONAL_FILES if os.path.isdir(os.path.join(prefix, os.path.dirname(f[1]).lstrip("/")))]
+    for rel, dest, mode in wanted:
+        if (rel, dest, mode) in OPTIONAL_FILES and not os.path.exists(os.path.join(src, rel)):
+            continue  # (an older shell folder without it)
         data = read_as(uid, os.path.join(src, rel), MAX_SOURCE)
         dest = os.path.join(prefix, dest.lstrip("/"))
         try:
@@ -607,6 +617,10 @@ def setup(src, uid, prefix=None):
         if not same:
             write_root(dest, data, mode)
             written.append(dest)
+    # ananicy-cpp reads its rules as it starts
+    if prefix == "/" and any(d.startswith("/etc/ananicy.d/") for d in written):
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            run(["systemctl", "try-restart", "ananicy-cpp.service"], timeout=20, check=False)
     return written
 
 

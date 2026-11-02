@@ -168,3 +168,17 @@ class HelperCurrent(unittest.TestCase):
                 self.assertFalse(su.helper_current())
             finally:
                 rules.chmod(0o755)
+
+    def test_the_ananicy_rule_counts_where_ananicy_is(self):
+        su = load(SCRIPTS / "sysupdate.py", "sysupdate_ananicy")
+        with tempfile.TemporaryDirectory() as d:
+            su.SYSTEM = d
+            for rel, dest, mode in su.root_helper().FILES:
+                p = Path(d, dest.lstrip("/"))
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes((SCRIPTS.parent.parent / rel).read_bytes())
+            self.assertTrue(su.helper_current())  # (no ananicy-cpp)
+            Path(d, "etc/ananicy.d").mkdir()
+            self.assertFalse(su.helper_current())  # (its rule is missing)
+            Path(d, "etc/ananicy.d/irice.rules").write_bytes((SCRIPTS.parent / "ananicy/irice.rules").read_bytes())
+            self.assertTrue(su.helper_current())

@@ -46,7 +46,7 @@ is_irice() {
 
 shells() {
     local p
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_irice "$p" && echo "$p"
     done | sort -n
 }

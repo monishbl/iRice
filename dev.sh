@@ -113,7 +113,7 @@ case "${1:-help}" in
             case "$comm" in
                 Hyprland|start-hyprland|dbus-run-sessio*)
                     tr '\0' ' ' <"$d/cmdline" 2>/dev/null | grep -q "sandbox/hypr/tty.lua" && pids="$pids $p" ;;
-                qs|quickshell|bash|sh|wl-paste)
+                irice-shell|qs|quickshell|bash|sh|wl-paste)
                     # The marker, or the session's own tty-shell.sh (a script's
                     # exports don't show in its own /proc environ)
                     { { tr '\0' '\n' <"$d/environ"; } 2>/dev/null | grep -qx "IRICE_TTY=1" ||

@@ -175,6 +175,17 @@ class Wallpaper(unittest.TestCase):
 
 
 class Setup(unittest.TestCase):
+    def test_ananicy_rule_only_where_ananicy_is(self):
+        with tempfile.TemporaryDirectory() as t:
+            R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
+            self.assertFalse((Path(t) / "etc/ananicy.d/irice.rules").exists())
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "etc/ananicy.d").mkdir(parents=True)
+            written = R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
+            rule = Path(t) / "etc/ananicy.d/irice.rules"
+            self.assertIn(str(rule), written)
+            self.assertIn('"irice-shell"', rule.read_text())
+
     def test_installs_what_changed(self):
         with tempfile.TemporaryDirectory() as t:
             written = R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)

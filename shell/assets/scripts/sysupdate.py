@@ -631,12 +631,16 @@ def stage_incoming(ref):
     repo = os.path.dirname(SHELL)
     out = os.path.join(DIR, "incoming")
     shutil.rmtree(out, ignore_errors=True)
-    for rel, _dest, _mode in root_helper().FILES:
+    helper = root_helper()
+    optional = getattr(helper, "OPTIONAL_FILES", [])
+    for rel, _dest, _mode in helper.FILES + optional:
         try:
             r = subprocess.run(["git", "-C", repo, "show", f"{ref}:shell/{rel}"], capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             return None
         if r.returncode != 0:
+            if (rel, _dest, _mode) in optional:
+                continue  # (a version without it)
             return None
         path = os.path.join(out, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -657,8 +661,12 @@ def helper_current(folder=None):
     same as in this folder, or `folder` (the incoming version's: else the
     update's root part installs it). An installed file only root may read
     (/etc/polkit-1/rules.d is 0700) can't be compared: it counts as current,
-    or the update would offer the helper again every time, for nothing."""
-    for rel, dest, mode in root_helper().FILES:
+    or the update would offer the helper again every time, for nothing.
+    Its optional files count where their folder is (ananicy-cpp's rules)."""
+    helper = root_helper()
+    wanted = helper.FILES + [f for f in getattr(helper, "OPTIONAL_FILES", [])
+                             if os.path.isdir(os.path.join(SYSTEM, os.path.dirname(f[1]).lstrip("/")))]
+    for rel, dest, mode in wanted:
         try:
             with open(os.path.join(folder or SHELL, rel), "rb") as a:
                 mine = a.read()

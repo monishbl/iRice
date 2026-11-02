@@ -45,7 +45,7 @@ is_irice() {
 # This session's iRice shells
 shells() {
     local p
-    for p in $(pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_irice "$p" && [[ "$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)" == "$SIG" ]] && echo "$p"
     done | sort -n
 }
