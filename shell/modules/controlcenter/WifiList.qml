@@ -407,8 +407,10 @@ Column {
         active: root.sharing
         visible: active
         width: parent.width
+        // (closed after the click that asked: destroying the card from inside its
+        // own button's handler crashed the shell)
         sourceComponent: WifiShareCard {
-            onDone: root.stopSharing()
+            onDone: Qt.callLater(root.stopSharing)
         }
     }
 
@@ -420,10 +422,12 @@ Column {
             ssid: root.form?.ssid ?? ""
             hidden: root.form?.hidden ?? false
             security: root.form?.security ?? "enterprise"
-            onDone: {
+            // (closed after the click that asked: Cancel destroying the form from
+            // inside its own button's handler crashed the shell)
+            onDone: Qt.callLater(() => {
                 root.form = null;
                 root.refresh(true);
-            }
+            })
         }
     }
 }
