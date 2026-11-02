@@ -123,7 +123,7 @@ Scope {
 
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(0, 0, 0, 0.3 * win.progress)
+                color: Theme.material ? Qt.alpha(Theme.m3.scrim, 0.32 * win.progress) : Qt.rgba(0, 0, 0, 0.3 * win.progress)
                 MouseArea {
                     anchors.fill: parent
                     onClicked: win.close()
@@ -160,7 +160,7 @@ Scope {
                 Glass {
                     anchors.fill: parent
                     anchors.margins: -shadowMargin
-                    radius: 20
+                    radius: Theme.material ? Theme.radius.panel : 20
                 }
                 MouseArea { anchors.fill: parent } // clicks on the card don't close it
 
@@ -204,19 +204,26 @@ Scope {
                             Panels.share([p]);
                         }
                     }
+                    // (Material: a filled primary pill with state layers, its
+                    // corners tightening while pressed)
                     Squircle {
                         id: openBtn
-                        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                        width: openText.implicitWidth + 28
-                        height: 28
-                        radius: Theme.radius.control
-                        color: openMouse.pressed ? Qt.darker(Theme.accent, 1.2) : openMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
+                        anchors { right: parent.right; rightMargin: Theme.material ? 16 : 12; verticalCenter: parent.verticalCenter }
+                        width: openText.implicitWidth + (Theme.material ? 32 : 28)
+                        height: Theme.material ? 36 : 28
+                        radius: Theme.material ? (openMouse.pressed ? 8 : height / 2) : Theme.radius.control
+                        Behavior on radius {
+                            enabled: Theme.material
+                            SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
+                        }
+                        color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, openMouse.pressed ? 0.1 : openMouse.containsMouse ? 0.08 : 0))
+                            : openMouse.pressed ? Qt.darker(Theme.accent, 1.2) : openMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
                         Text {
                             id: openText
                             anchors.centerIn: parent
-                            text: win.kind === "folder" ? "Open Folder" : "Open File"
+                            text: win.kind === "folder" ? (Theme.material ? "Open folder" : "Open Folder") : (Theme.material ? "Open file" : "Open File")
                             color: Theme.color.onAccent
-                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium }
                         }
                         MouseArea {
                             id: openMouse
@@ -281,14 +288,28 @@ Scope {
                         visible: win.kind === "audio" || win.kind === "other" || win.kind === "folder" && folder.count === 0
                         anchors.centerIn: parent
                         spacing: 16
-                        AppIcon {
+                        // (Material: the file's icon on a shape)
+                        Item {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            size: 96
-                            styled: false
-                            source: IconLookup.path(win.kind === "folder" ? "folder" : Search.iconForFile(win.path), "text-x-generic")
+                            width: Theme.material ? 144 : 96
+                            height: width
+                            Loader {
+                                anchors.fill: parent
+                                active: Theme.material
+                                sourceComponent: MaterialShape {
+                                    shape: win.kind === "audio" ? "sunny" : "cookie12"
+                                    color: Theme.m3.surfaceContainerHighest
+                                }
+                            }
+                            AppIcon {
+                                anchors.centerIn: parent
+                                size: 96
+                                styled: false
+                                source: IconLookup.path(win.kind === "folder" ? "folder" : Search.iconForFile(win.path), "text-x-generic")
+                            }
                         }
                         IconButton {
-                            visible: win.kind === "audio"
+                            visible: win.kind === "audio" && !Theme.material
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 44
                             height: 44
@@ -297,6 +318,46 @@ Scope {
                             iconSize: 22
                             iconColor: Theme.color.label
                             onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
+                        }
+                        // Material: play on a big primary-container shape
+                        // that morphs, a rounded square while paused and a
+                        // circle while it plays, as Android's media controls
+                        Loader {
+                            active: Theme.material && win.kind === "audio"
+                            visible: active
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            sourceComponent: Item {
+                                id: playBtn
+                                readonly property bool playing: player.playbackState === MediaPlayer.PlayingState
+                                width: 64
+                                height: 64
+                                activeFocusOnTab: true
+                                Accessible.role: Accessible.Button
+                                Accessible.name: playing ? "Pause" : "Play"
+                                Keys.onSpacePressed: toggle()
+                                function toggle() {
+                                    playing ? player.pause() : player.play();
+                                }
+                                MaterialShape {
+                                    anchors.fill: parent
+                                    shape: playMouse.pressed ? "cookie9" : playBtn.playing ? "circle" : "square"
+                                    color: Qt.tint(Theme.m3.primaryContainer, Qt.alpha(Theme.m3.onPrimaryContainer, playMouse.pressed ? 0.1 : playMouse.containsMouse ? 0.08 : 0))
+                                }
+                                Icon {
+                                    anchors.centerIn: parent
+                                    name: playBtn.playing ? "pause" : "play"
+                                    fill: true
+                                    size: 28
+                                    color: Theme.m3.onPrimaryContainer
+                                }
+                                MouseArea {
+                                    id: playMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: playBtn.toggle()
+                                }
+                            }
                         }
                         Text {
                             visible: win.kind !== "audio"
@@ -312,8 +373,18 @@ Scope {
                         visible: win.kind === "video"
                         onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
                     }
+                    // (Material: its wavy progress)
+                    Loader {
+                        active: Theme.material && (win.kind === "video" || win.kind === "audio")
+                        visible: active
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        sourceComponent: WavyProgress {
+                            value: player.duration > 0 ? player.position / player.duration : 0
+                            paused: player.playbackState !== MediaPlayer.PlayingState
+                        }
+                    }
                     Rectangle {
-                        visible: win.kind === "video" || win.kind === "audio"
+                        visible: !Theme.material && (win.kind === "video" || win.kind === "audio")
                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                         height: 3
                         radius: 1.5

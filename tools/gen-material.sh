@@ -68,6 +68,12 @@ export function scheme(seedHex, dark, variant, contrast) {
         if (c)
             out[c.name.replace(/_([a-z])/g, (_, x) => x.toUpperCase())] = hexFromArgb(c.getArgb(s));
     }
+    // (the 2025 spec dropped these; Material defines scrim and shadow as
+    // black, surface variant as the highest container, the tint as primary)
+    out.scrim = out.scrim || "#000000";
+    out.shadow = out.shadow || "#000000";
+    out.surfaceVariant = out.surfaceVariant || out.surfaceContainerHighest;
+    out.surfaceTint = out.surfaceTint || out.primary;
     return out;
 }
 JS

@@ -78,7 +78,7 @@ Variants {
                 Glass {
                     id: glass
                     anchors.fill: parent
-                    radius: 26
+                    radius: Theme.material ? Theme.radius.panel : 26
                     bevel: 20
                     shadowMargin: win.m
                 }

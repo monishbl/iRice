@@ -60,9 +60,12 @@ Item {
                 required property string modelData
                 readonly property var q: root.quotes[modelData] ?? null
                 readonly property real change: q && q.pc ? (q.p - q.pc) / q.pc : 0
-                readonly property color tone: change >= 0 ? Theme.accents.green : Theme.accents.red
+                // (Material: down is the scheme's error; up stays green, nudged
+                // toward the primary's hue so it sits in the palette)
+                readonly property color upTone: Theme.material ? Qt.tint(Theme.dark ? "#4ADE80" : "#15803D", Qt.alpha(Theme.m3.primary, 0.2)) : Theme.accents.green
+                readonly property color tone: change >= 0 ? upTone : Theme.material ? Theme.m3.error : Theme.accents.red
                 // Readable on its own tint (semantic text-on-tint colours)
-                readonly property color toneText: change >= 0 ? (Theme.dark ? "#4ADE80" : "#15803D") : (Theme.dark ? "#F87171" : "#B91C1C")
+                readonly property color toneText: Theme.material ? (change >= 0 ? upTone : Theme.m3.onErrorContainer) : change >= 0 ? (Theme.dark ? "#4ADE80" : "#15803D") : (Theme.dark ? "#F87171" : "#B91C1C")
                 width: parent.width
                 height: root.size === "s" ? 30 : 32
                 Column {
@@ -117,8 +120,8 @@ Item {
                         anchors.right: parent.right
                         width: chg.implicitWidth + 10
                         height: 16
-                        radius: 5
-                        color: row.q ? Qt.alpha(row.tone, Theme.dark ? 0.22 : 0.16) : Theme.color.fill
+                        radius: Theme.material ? height / 2 : 5
+                        color: row.q ? (Theme.material && row.change < 0 ? Theme.m3.errorContainer : Qt.alpha(row.tone, Theme.dark ? 0.22 : 0.16)) : Theme.color.fill
                         Text {
                             id: chg
                             anchors.centerIn: parent

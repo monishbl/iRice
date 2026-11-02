@@ -94,7 +94,10 @@ Variants {
             }
         }
 
-        readonly property bool opaque: cfg.background || autoHide || Theme.glass.tier === "solid"
+        // (Material is always the solid material, but its bar is clear over
+        // the wallpaper unless Menu Bar → Background asks for one, like
+        // Android's status bar)
+        readonly property bool opaque: Theme.material ? cfg.background || autoHide : cfg.background || autoHide || Theme.glass.tier === "solid"
         readonly property color fg: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
 
         IdleInhibitor {
@@ -119,7 +122,7 @@ Variants {
             Rectangle {
                 anchors.fill: parent
                 visible: bar.opaque && bar.chromeShown
-                color: Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
+                color: Theme.material ? Theme.m3.surfaceContainer : Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
             }
 
             // Top rounded screen corners (bottom ones: ScreenCorners)
@@ -443,6 +446,25 @@ Variants {
                     }
                 }
 
+                // Material: the clock leads the status icons, as on Android
+                // (the same item as Glass's, at the end of the bar)
+                MenuBarItem {
+                    visible: bar.cfg.clock && Theme.material
+                    color: bar.fg
+                    active: Panels.isOpen("notificationCenter", bar.screen)
+                    menu: "notificationCenter"
+                    onClicked: Panels.toggle("notificationCenter", bar.screen)
+                    indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
+                    unread: Notifications.unread
+                    text: clockItem.text
+                    HoverTip {
+                        target: parent
+                        hovered: parent.hovered && !parent.active
+                        screen: bar.screen
+                        text: clockItem.tip
+                    }
+                }
+
                 // Battery
                 MenuBarItem {
                     id: batteryItem
@@ -618,7 +640,9 @@ Variants {
                     }
                 }
                 MenuBarItem {
-                    visible: bar.cfg.clock
+                    id: clockItem
+                    readonly property string tip: Qt.formatDate(clock.date, "dddd d MMMM yyyy") + (Notifications.unread > 0 ? " · " + Notifications.unread + (Notifications.unread === 1 ? " notification" : " notifications") : "")
+                    visible: bar.cfg.clock && !Theme.material
                     color: bar.fg
                     active: Panels.isOpen("notificationCenter", bar.screen)
                     menu: "notificationCenter"
@@ -630,7 +654,7 @@ Variants {
                         target: parent
                         hovered: parent.hovered && !parent.active
                         screen: bar.screen
-                        text: Qt.formatDate(clock.date, "dddd d MMMM yyyy") + (Notifications.unread > 0 ? " · " + Notifications.unread + (Notifications.unread === 1 ? " notification" : " notifications") : "")
+                        text: clockItem.tip
                     }
 
                     SystemClock {

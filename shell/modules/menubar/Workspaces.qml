@@ -14,6 +14,9 @@ Item {
 
     required property var screen
     property color fg: "white"
+    // Marks and arrows. Material: Android's page indicator on its own tonal
+    // pill (or the island's), so its colours are Material's, not the bar's
+    readonly property color ink: Theme.material ? Theme.m3.onSurfaceVariant : fg
     property bool plain: false // no capsule of its own (inside the island)
     property bool hot: false // CPU running hot: the active chip turns red
     property real activeCenter: width / 2 // x of the active chip's centre (the island's heat ripples start there)
@@ -52,11 +55,13 @@ Item {
                 out.push(id);
         return out;
     }
-    // id -> the label shown before it (first of a group after the first)
+    // id -> the label shown before it (first of a group after the first).
+    // An unplugged display's spaces staying here carry on after this
+    // display's own, unnamed: one screen shouldn't show another's name
     readonly property var groupLabel: {
         const m = {};
         for (let i = 1; i < groups.length; i++)
-            if (groups[i].ids.length > 0)
+            if (groups[i].ids.length > 0 && !groups[i].unplugged)
                 m[groups[i].ids[0]] = groups[i].label;
         return m;
     }
@@ -120,7 +125,7 @@ Item {
         anchors.fill: parent
         visible: !root.plain
         radius: height / 2
-        color: Qt.alpha(root.fg, 0.1)
+        color: Theme.material ? Theme.m3.surfaceContainerHigh : Qt.alpha(root.fg, 0.1)
     }
 
     Row {
@@ -166,7 +171,7 @@ Item {
                 readonly property real markW: mark !== "" && ws.fall === 1 ? markText.implicitWidth + 10 : 0
                 width: markW + ws.width
                 height: 18
-                visible: ws.fall > 0 || widthAnim.running
+                visible: ws.fall > 0 || widthAnim.running || ws.springing
                 onXChanged: ws.report()
                 Text {
                     id: markText
@@ -174,7 +179,7 @@ Item {
                     x: 6
                     anchors.verticalCenter: parent.verticalCenter
                     text: slot.mark
-                    color: root.fg
+                    color: root.ink
                     opacity: 0.6
                     font { family: Theme.font.family; pixelSize: 10; weight: Font.Medium }
                 }
@@ -199,9 +204,17 @@ Item {
                 readonly property var apps: [...new Set(root.occupied[wsId] ?? [])].slice(0, 3)
                 readonly property bool showIcons: root.style === "icons" && apps.length > 0
                 height: 18
-                width: (showIcons ? apps.length * 14 + 10 : (active || shownThere ? 26 : 18)) * fall
+                // Material: the widths spring (Material's fast spatial spring)
+                readonly property real mTarget: showIcons ? apps.length * 14 + 10 : active ? 30 : shownThere ? 22 : 14
+                property real mw: mTarget
+                Behavior on mw { enabled: Theme.material; SpringAnimation { id: mwSpring; spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 } }
+                readonly property bool springing: mwSpring.running
+                width: Theme.material ? mw * fall : (showIcons ? apps.length * 14 + 10 : (active || shownThere ? 26 : 18)) * fall
                 radius: 9
-                color: active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : shownThere ? Qt.alpha(root.fg, 0.22) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
+                // (Material: with icons, the current space is a primary pill
+                // around them; dots draw their own indicator below)
+                color: Theme.material ? (showIcons && active ? (root.hot ? Theme.m3.error : Theme.m3.primary) : showIcons && shownThere ? Theme.m3.secondaryContainer : wsMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
+                    : active ? (root.hot ? Qt.tint(Qt.alpha(root.fg, 0.28), Qt.alpha(Theme.accents.red, 0.45)) : Qt.alpha(root.fg, 0.28)) : shownThere ? Qt.alpha(root.fg, 0.22) : wsMouse.containsMouse ? Qt.alpha(root.fg, 0.14) : "transparent"
                 function report() {
                     // (may run late, after the chip list was rebuilt)
                     if (active && ws.parent && root)
@@ -210,7 +223,7 @@ Item {
                 onActiveChanged: Qt.callLater(report)
                 onXChanged: report()
                 onWidthChanged: report()
-                Behavior on width { NumberAnimation { id: widthAnim; duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: !Theme.material; NumberAnimation { id: widthAnim; duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
 
                 Row {
@@ -227,15 +240,22 @@ Item {
                     }
                 }
                 Rectangle {
+                    id: dotMark
                     anchors.centerIn: parent
                     visible: !ws.showIcons
                     // empty: a faint dot; with windows: a short pill; current: longer
-                    width: ws.active || ws.shownThere ? 14 : root.occupied[ws.wsId] ? 10 : 5
-                    height: 5
-                    radius: 2.5
-                    color: root.fg
-                    opacity: ws.active || ws.shownThere ? 1 : (root.occupied[ws.wsId] ? 0.85 : 0.35)
-                    Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
+                    // (Material: dots in onSurfaceVariant, the current space
+                    // a wider primary pill that springs to its width)
+                    readonly property real mTarget: ws.active ? 22 : ws.shownThere ? 14 : 8
+                    property real mw: mTarget
+                    Behavior on mw { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 } }
+                    width: Theme.material ? mw : ws.active || ws.shownThere ? 14 : root.occupied[ws.wsId] ? 10 : 5
+                    height: Theme.material ? 8 : 5
+                    radius: height / 2
+                    color: !Theme.material ? root.fg : ws.active ? (root.hot ? Theme.m3.error : Theme.m3.primary) : ws.shownThere ? Theme.m3.secondary : Theme.m3.onSurfaceVariant
+                    opacity: ws.active || ws.shownThere ? 1 : (root.occupied[ws.wsId] ? (Theme.material ? 1 : 0.85) : (Theme.material ? 0.38 : 0.35))
+                    Behavior on width { enabled: !Theme.material; NumberAnimation { duration: Theme.motion.hover } }
+                    Behavior on color { enabled: Theme.material; ColorAnimation { duration: Theme.motion.hover } }
                 }
                 // On another display: a small bar under it (brighter while
                 // it's that display's current space)
@@ -245,7 +265,7 @@ Item {
                     width: 8
                     height: 1.5
                     radius: 1
-                    color: root.fg
+                    color: root.ink
                     opacity: ws.shownThere ? 0.9 : 0.5
                 }
                 MouseArea {
@@ -278,7 +298,7 @@ Item {
             name: arrow.side < 0 ? "caret-left" : "caret-right"
             bold: true
             size: 10
-            color: root.fg
+            color: root.ink
             opacity: arrowMouse.containsMouse && arrow.more ? 1 : 0.7
         }
         // Something on that side has windows
@@ -288,7 +308,7 @@ Item {
             width: 3
             height: 3
             radius: 1.5
-            color: root.fg
+            color: root.ink
         }
         MouseArea {
             id: arrowMouse

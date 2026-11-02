@@ -50,7 +50,7 @@ Item {
                 required property string modelData
                 readonly property bool isStat: modelData !== "battery"
                 readonly property bool hot: modelData === "temperature" && Island.hot
-                readonly property color tint: hot ? Qt.rgba(1, 0.55, 0.5, 0.85) : Qt.rgba(1, 1, 1, 0.6)
+                readonly property color tint: hot ? (Theme.material ? Theme.m3.error : Qt.rgba(1, 0.55, 0.5, 0.85)) : IslandInk.dim(0.6)
                 spacing: 4
                 HoverHandler {
                     id: figureHover

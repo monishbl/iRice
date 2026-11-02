@@ -24,10 +24,11 @@ Column {
     Squircle {
         visible: Displays.confirming
         width: parent.width
-        height: visible ? confirmRow.implicitHeight + 24 : 0
-        radius: 12
-        color: Theme.dark ? Qt.rgba(1, 1, 1, 0.05) : "white"
-        border.width: 1
+        height: visible ? confirmRow.implicitHeight + (Theme.material ? 32 : 24) : 0
+        // (Material: a bold primary-container card)
+        radius: Theme.material ? 24 : 12
+        color: Theme.material ? Theme.m3.primaryContainer : Theme.dark ? Qt.rgba(1, 1, 1, 0.05) : "white"
+        border.width: Theme.material ? 0 : 1
         border.color: Theme.accent
 
         QQ.Row {
@@ -40,15 +41,15 @@ Column {
                 spacing: 2
                 Text {
                     text: "Keep these display settings?"
-                    color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                    color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body; weight: Font.DemiBold }
                 }
                 Text {
                     width: parent.width
                     wrapMode: Text.Wrap
                     text: "Going back to the previous settings in " + Displays.confirmLeft + (Displays.confirmLeft === 1 ? " second." : " seconds.")
-                    color: Theme.color.secondary
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; features: ({ "tnum": 1 }) }
+                    color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; features: ({ "tnum": 1 }) }
                 }
             }
             QQ.Row {
@@ -171,10 +172,11 @@ Column {
                     Component.onCompleted: home()
                     width: size.w * canvas.k
                     height: size.h * canvas.k
-                    radius: 6
+                    radius: Theme.material ? 12 : 6
                     z: dragArea.drag.active ? 2 : 1
-                    color: Theme.dark ? Qt.rgba(1, 1, 1, chosen ? 0.16 : 0.08) : Qt.rgba(0, 0, 0, chosen ? 0.1 : 0.05)
-                    border.width: chosen ? 2 : 1
+                    // (Material: tonal tiles, the chosen one in the primary container)
+                    color: Theme.material ? (chosen ? Theme.m3.primaryContainer : Theme.m3.surfaceContainerHighest) : Theme.dark ? Qt.rgba(1, 1, 1, chosen ? 0.16 : 0.08) : Qt.rgba(0, 0, 0, chosen ? 0.1 : 0.05)
+                    border.width: Theme.material ? (chosen ? 2 : 0) : chosen ? 2 : 1
                     border.color: chosen ? Theme.accent : Theme.color.separator
 
                     // Menu bar strip on the one with the focused workspace

@@ -14,8 +14,8 @@ arrow-circle-up arrow_circle_up
 arrow-clockwise refresh
 arrow-counter-clockwise undo
 arrow-down arrow_downward
-arrow-left arrow_left
-arrow-right arrow_right
+arrow-left arrow_back
+arrow-right arrow_forward
 arrow-square-out open_in_new
 arrow-up arrow_upward
 arrow-up-right north_east
@@ -128,6 +128,7 @@ detective person_search
 device-mobile smartphone
 device-tablet tablet
 devices devices
+diamond diamond
 divide percent
 dna genetics
 dog pets
@@ -167,8 +168,10 @@ flag flag
 flame local_fire_department
 flashlight flashlight_on
 floppy-disk save
+flower local_florist
 folder folder
 folder-open folder_open
+folders folder_copy
 footprints steps
 function function
 game-controller sports_esports
@@ -250,6 +253,7 @@ notification circle_notifications
 orange nutrition
 package package
 paint-brush brush
+palette palette
 paper-plane-tilt send
 paperclip attach_file
 parachute paragliding
@@ -259,6 +263,7 @@ paw-print pets
 pen edit
 pencil edit
 pencil-simple edit
+pentagon pentagon
 person person
 person-arms-spread accessibility_new
 phone phone
@@ -275,6 +280,7 @@ plus-circle add_circle
 popcorn theaters
 power power_settings_new
 printer print
+pulse ecg
 push-pin push_pin
 push-pin-slash keep_off
 qr-code qr_code
@@ -347,6 +353,7 @@ synagogue synagogue
 syringe syringe
 t-shirt apparel
 tabs tabs
+tag sell
 taxi local_taxi
 television tv
 television-simple tv
@@ -372,6 +379,7 @@ translate translate
 trash delete
 tray inbox
 tray-arrow-down move_to_inbox
+triangle change_history
 trophy trophy
 umbrella umbrella
 upload upload

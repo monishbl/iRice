@@ -17,6 +17,22 @@ same in both; only how it looks and moves changes. Decided with the user
 - **Names:** "Google" is a trademark (and Google Sans Flex's licence says so):
   the looks are called Glass and Material in the UI.
 
+Second round of decisions (same day):
+
+- **Settings** in Material: Android two-pane (a list with tonal circle icons
+  and a pill on the current page; a headline, a search pill, Expressive
+  segmented lists).
+- **Switching** looks shows a screen: the iRice mark morphs from a glass
+  squircle through Material's shapes into a cookie (or back) over the
+  blurred wallpaper while the shell restyles out of sight.
+- **Pickers:** live preview cards (`common/LookPreview.qml`) at the top of
+  Appearance, and a first-login welcome (`modules/lookswitch/Welcome.qml`,
+  once, on fresh installs).
+- **Different, not restyled, in Material:** Quick Settings, the notification
+  shade, the lock screen (Android 16), search (Google style) and the app
+  drawer, the taskbar, plus its own sound set and an original default
+  wallpaper.
+
 ## How it's built
 
 - `appearance.look` (glass | material), `appearance.materialSeed`
@@ -44,7 +60,16 @@ same in both; only how it looks and moves changes. Decided with the user
   draws its Phosphor glyph. `fill: true` fills the symbol (Material's
   selected state).
 
+- **Switching:** `common/LookSwitch.qml` keeps `shown` on the old look until
+  the switching screen covers the desktop, restyles (`Theme.material`
+  follows `shown`), then reveals. Restyling takes the main thread for a
+  second or so, so the screen's fades and the mark's turn are Animators
+  (render thread), the restyle waits for the cover, and the reveal waits for
+  a timer to fire (the main thread is free again).
+
 ## Phases
+
+All five phases were built on 2 Nov 2026.
 
 1. **Foundation** (done): look switch, tokens, colour, fonts, icons, opaque
    surfaces, Settings rows.

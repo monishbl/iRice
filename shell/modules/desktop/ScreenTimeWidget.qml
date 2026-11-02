@@ -43,8 +43,8 @@ Item {
                             anchors.bottom: parent.bottom
                             width: parent.width
                             height: Math.max(2, parent.height * bar.modelData.seconds / bar.parent.maxSecs)
-                            radius: 3
-                            color: bar.index === 6 ? Theme.accent : Theme.color.fill
+                            radius: Theme.material ? 6 : 3
+                            color: bar.index === 6 ? Theme.accent : Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
                         }
                     }
                     Text {
@@ -108,7 +108,7 @@ Item {
                         height: 3
                         radius: 1.5
                         color: Theme.accent
-                        opacity: 0.8
+                        opacity: Theme.material ? 1 : 0.8
                     }
                 }
             }

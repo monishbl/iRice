@@ -174,6 +174,27 @@ class Wallpaper(unittest.TestCase):
             R.MAX_IMAGE = old
 
 
+class GreeterLook(unittest.TestCase):
+    def test_writes_the_look(self):
+        with tempfile.TemporaryDirectory() as t:
+            dest = Path(t) / "look.json"
+            R.greeter_look("material", "#6750a4", "tonalSpot", "dark", dest=str(dest))
+            self.assertEqual(json.loads(dest.read_text()), {"look": "material", "seed": "#6750A4", "style": "tonalSpot", "dark": True})
+            self.assertEqual(stat.S_IMODE(dest.stat().st_mode), 0o644)
+
+    def test_refuses_anything_else(self):
+        with tempfile.TemporaryDirectory() as t:
+            dest = Path(t) / "look.json"
+            for bad in (("other", "#6750A4", "tonalSpot", "dark"), ("glass", "6750A4", "tonalSpot", "dark"),
+                        ("glass", "#67504", "tonalSpot", "dark"), ("glass", "#6750G4", "tonalSpot", "dark"),
+                        ("glass", "#6750A4", "../x", "dark"), ("glass", "#6750A4", "tonalSpot", "dim")):
+                with self.assertRaises(R.Refused, msg=bad):
+                    R.greeter_look(*bad, dest=str(dest))
+            self.assertFalse(dest.exists())
+            with self.assertRaises(R.Refused):  # (no login screen installed)
+                R.greeter_look("glass", "#6750A4", "tonalSpot", "dark", dest=str(Path(t) / "nowhere/look.json"))
+
+
 class Setup(unittest.TestCase):
     def test_installs_what_changed(self):
         with tempfile.TemporaryDirectory() as t:

@@ -217,7 +217,9 @@ Scope {
             readonly property int gap: 8
             readonly property int cellW: 208
             readonly property int thumbH: 120
-            readonly property int cellH: 8 + thumbH + 8 + 20 + 10
+            // (Material: Android's recents, the app chip above its card)
+            readonly property int chipH: Theme.material ? 28 : 20
+            readonly property int cellH: Theme.material ? 8 + chipH + 8 + thumbH + 12 : 8 + thumbH + 8 + 20 + 10
             readonly property int perRow: Math.max(1, Math.min(count, Math.floor(((screen?.width ?? 1920) - 96 - 2 * margin - 2 * pad + gap) / (cellW + gap))))
             readonly property int rows: Math.ceil(count / perRow)
             readonly property int visibleRows: Math.max(1, Math.min(rows, Math.floor(((screen?.height ?? 1080) - 160 - 2 * margin - 2 * pad + gap) / (cellH + gap))))
@@ -346,12 +348,14 @@ Scope {
                         scale: mouse.pressed ? 0.97 : 1
                         Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
-                        // Selection (accent ring and tint) and hover
+                        // Selection (accent ring and tint) and hover. Material:
+                        // a state layer only; the card itself is outlined
                         Squircle {
                             anchors.fill: parent
-                            radius: 14
-                            color: tile.current ? Qt.alpha(Theme.accent, Theme.dark ? 0.22 : 0.14) : mouse.containsMouse ? Theme.color.fillHover : "transparent"
-                            border.width: tile.current ? 2 : 0
+                            radius: Theme.material ? 16 : 14
+                            color: Theme.material ? (mouse.pressed ? Qt.alpha(Theme.m3.onSurface, 0.1) : mouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
+                                : tile.current ? Qt.alpha(Theme.accent, Theme.dark ? 0.22 : 0.14) : mouse.containsMouse ? Theme.color.fillHover : "transparent"
+                            border.width: tile.current && !Theme.material ? 2 : 0
                             border.color: Theme.accent
                             Behavior on color { ColorAnimation { duration: Theme.motion.press } }
                         }
@@ -361,7 +365,7 @@ Scope {
                         Item {
                             id: thumbBox
                             x: 8
-                            y: 8
+                            y: Theme.material ? 8 + win.chipH + 8 : 8
                             width: parent.width - 16
                             height: win.thumbH
                             readonly property real srcW: tile.ipc.size?.[0] ?? 16
@@ -369,10 +373,13 @@ Scope {
                             readonly property real k: Math.min(width / Math.max(1, srcW), height / Math.max(1, srcH))
 
                             ClippingRectangle {
+                                id: card
                                 anchors.centerIn: parent
                                 width: Math.max(32, Math.round(thumbBox.srcW * thumbBox.k))
                                 height: Math.max(24, Math.round(thumbBox.srcH * thumbBox.k))
-                                radius: 8
+                                // (Material: a recents card, large-increased
+                                // corners at this size)
+                                radius: Theme.material ? 20 : 8
                                 color: Theme.color.fill
 
                                 ScreencopyView {
@@ -389,15 +396,37 @@ Scope {
                                     source: Apps.iconFor(tile.entry ?? tile.cls)
                                 }
                             }
+                            // Material: the selected card outlined in primary,
+                            // a little off its edge
+                            Rectangle {
+                                visible: Theme.material && tile.current
+                                anchors.centerIn: card
+                                width: card.width + 10
+                                height: card.height + 10
+                                radius: card.radius + 5
+                                color: "transparent"
+                                border.width: 3
+                                border.color: Theme.m3.primary ?? "transparent"
+                            }
                         }
 
-                        // Icon and title; where it lives if not on this space
+                        // Icon and title; where it lives if not on this space.
+                        // Material: above the card, the icon and title on a chip
                         Item {
                             x: 10
-                            y: 8 + win.thumbH + 8
+                            y: Theme.material ? 8 : 8 + win.thumbH + 8
                             width: parent.width - 20
-                            height: 20
+                            height: win.chipH
 
+                            Rectangle {
+                                visible: Theme.material
+                                x: -6
+                                width: 6 + smallIcon.width + 6 + Math.min(titleText.implicitWidth, titleText.width) + 12
+                                height: parent.height
+                                radius: height / 2
+                                color: tile.current ? (Theme.m3.secondaryContainer ?? "transparent") : (Theme.m3.surfaceContainerHigh ?? "transparent")
+                                Behavior on color { ColorAnimation { duration: Theme.motion.press } }
+                            }
                             AppIcon {
                                 id: smallIcon
                                 anchors.verticalCenter: parent.verticalCenter
@@ -405,10 +434,11 @@ Scope {
                                 source: Apps.iconFor(tile.entry ?? tile.cls)
                             }
                             Text {
-                                anchors { left: smallIcon.right; leftMargin: 6; right: place.visible ? place.left : parent.right; rightMargin: place.visible ? 6 : 0; verticalCenter: parent.verticalCenter }
+                                id: titleText
+                                anchors { left: smallIcon.right; leftMargin: 6; right: place.visible ? place.left : parent.right; rightMargin: place.visible ? (Theme.material ? 18 : 6) : (Theme.material ? 12 : 0); verticalCenter: parent.verticalCenter }
                                 elide: Text.ElideRight
                                 text: tile.modelData.title || tile.entry?.name || tile.cls || "Window"
-                                color: Theme.color.label
+                                color: Theme.material && tile.current ? Theme.m3.onSecondaryContainer : Theme.color.label
                                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: tile.current ? Font.DemiBold : Font.Medium }
                             }
                             Text {

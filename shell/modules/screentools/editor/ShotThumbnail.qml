@@ -29,8 +29,8 @@ GlassWindow {
     readonly property real aspect: preview.status === Image.Ready && preview.implicitHeight > 0 ? preview.implicitWidth / preview.implicitHeight : 16 / 10
     readonly property int thumbW: Math.round(aspect >= 1 ? 200 : Math.max(72, 200 * aspect))
     readonly property int thumbH: Math.round(aspect >= 1 ? Math.max(72, 200 / aspect) : 200)
-    readonly property int cardW: deleted ? toastRow.implicitWidth + 24 : thumbW + 12
-    readonly property int cardH: deleted ? 44 : thumbH + 12
+    readonly property int cardW: deleted ? toastRow.implicitWidth + (Theme.material ? 32 : 24) : thumbW + 12
+    readonly property int cardH: deleted ? (Theme.material ? 48 : 44) : thumbH + 12
     implicitWidth: cardW + 2 * m
     implicitHeight: cardH + 2 * m
 
@@ -122,8 +122,16 @@ GlassWindow {
             anchors.fill: parent
             anchors.margins: -win.m
             shadowMargin: win.m
-            radius: win.deleted ? 22 : 14
+            // (Material: a card with corner 16; deleted, a snackbar's corner 4)
+            radius: Theme.material ? (win.deleted ? 4 : 16) : win.deleted ? 22 : 14
             bevel: 12
+        }
+        // Material: the Undo toast is a snackbar in inverseSurface
+        Rectangle {
+            visible: Theme.material && win.deleted
+            anchors.fill: parent
+            radius: 4
+            color: Theme.m3.inverseSurface ?? "transparent"
         }
 
         HoverHandler { id: hover }
@@ -139,7 +147,7 @@ GlassWindow {
                 id: frame
                 anchors.fill: parent
                 anchors.margins: 6
-                radius: 8
+                radius: Theme.material ? 10 : 8
                 color: Theme.color.fill
                 Image {
                     id: preview
@@ -174,8 +182,8 @@ GlassWindow {
                 // Press feedback
                 Rectangle {
                     anchors.fill: parent
-                    color: "black"
-                    opacity: mouse.pressed && win.mode === "" ? 0.12 : 0
+                    color: Theme.material ? Theme.m3.onSurface : "black"
+                    opacity: mouse.pressed && win.mode === "" ? (Theme.material ? 0.1 : 0.12) : 0
                     Behavior on opacity { NumberAnimation { duration: Theme.motion.press } }
                 }
             }
@@ -184,16 +192,17 @@ GlassWindow {
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
                 width: hintText.implicitWidth + 16
-                height: 22
-                radius: 11
-                color: Qt.rgba(0.1, 0.1, 0.12, 0.78)
+                height: Theme.material ? 24 : 22
+                // (Material: a plain tooltip)
+                radius: Theme.material ? 4 : 11
+                color: Theme.material ? Theme.m3.inverseSurface : Qt.rgba(0.1, 0.1, 0.12, 0.78)
                 opacity: hover.hovered && win.mode === "" && preview.status === Image.Ready ? 1 : 0
                 Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Text {
                     id: hintText
                     anchors.centerIn: parent
                     text: "Click to mark up"
-                    color: "white"
+                    color: Theme.material ? Theme.m3.inverseOnSurface : "white"
                     font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
                 }
             }
@@ -249,16 +258,18 @@ GlassWindow {
             Rectangle {
                 x: -6
                 y: -6
-                width: 22
-                height: 22
-                radius: 11
-                color: closeMouse.pressed ? Theme.color.fillPressed : Theme.dark ? "#3A3A3F" : "#FFFFFF"
-                border.width: 1
+                width: Theme.material ? 24 : 22
+                height: width
+                radius: width / 2
+                // (Material: a small tonal icon button)
+                color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, closeMouse.pressed ? 0.1 : 0))
+                    : closeMouse.pressed ? Theme.color.fillPressed : Theme.dark ? "#3A3A3F" : "#FFFFFF"
+                border.width: Theme.material ? 0 : 1
                 border.color: Theme.color.separator
                 opacity: hover.hovered && win.mode === "" ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
-                Icon { anchors.centerIn: parent; name: "x"; bold: true; size: 11; color: Theme.color.secondary }
+                Icon { anchors.centerIn: parent; name: "x"; bold: true; size: Theme.material ? 13 : 11; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
                 MouseArea {
                     id: closeMouse
                     anchors.fill: parent
@@ -275,26 +286,28 @@ GlassWindow {
             visible: win.deleted
             anchors.centerIn: parent
             spacing: 12
-            Icon { anchors.verticalCenter: parent.verticalCenter; name: "trash"; size: 16; color: Theme.color.secondary }
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "trash"; size: 16; color: Theme.material ? Theme.m3.inverseOnSurface : Theme.color.secondary }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Screenshot deleted"
-                color: Theme.color.label
+                color: Theme.material ? Theme.m3.inverseOnSurface : Theme.color.label
                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
             }
             Squircle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: undoText.implicitWidth + 20
-                height: 28
-                radius: Theme.radius.control
-                color: undoMouse.pressed ? Theme.color.fillPressed : undoMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                scale: undoMouse.pressed ? 0.97 : 1
+                height: Theme.material ? 32 : 28
+                // (Material: the snackbar's text action in inversePrimary)
+                radius: Theme.material ? height / 2 : Theme.radius.control
+                color: Theme.material ? Qt.alpha(Theme.m3.inversePrimary, undoMouse.pressed ? 0.1 : undoMouse.containsMouse ? 0.08 : 0)
+                    : undoMouse.pressed ? Theme.color.fillPressed : undoMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                scale: undoMouse.pressed && !Theme.material ? 0.97 : 1
                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                 Text {
                     id: undoText
                     anchors.centerIn: parent
                     text: "Undo"
-                    color: Theme.accentInk
+                    color: Theme.material ? Theme.m3.inversePrimary : Theme.accentInk
                     font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                 }
                 MouseArea {

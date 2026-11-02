@@ -21,15 +21,30 @@ Variants {
             screen: modelData
             dialogName: "about"
             contentWidth: 300
+            padding: Theme.material ? 24 : 20
 
             Column {
                 width: dialog.contentWidth
                 spacing: 6
 
-                IconImage {
+                // (Material: the logo on a shape, a hero moment)
+                Item {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    implicitSize: 72
-                    source: IconLookup.path(SystemInfo.osLogo || "distributor-logo", "computer")
+                    width: Theme.material ? 104 : 72
+                    height: width
+                    Loader {
+                        anchors.fill: parent
+                        active: Theme.material
+                        sourceComponent: MaterialShape {
+                            shape: "cookie12"
+                            color: Theme.m3.primaryContainer
+                        }
+                    }
+                    IconImage {
+                        anchors.centerIn: parent
+                        implicitSize: Theme.material ? 64 : 72
+                        source: IconLookup.path(SystemInfo.osLogo || "distributor-logo", "computer")
+                    }
                 }
                 Item { width: 1; height: 6 }
                 Text {
@@ -37,7 +52,7 @@ Variants {
                     horizontalAlignment: Text.AlignHCenter
                     text: SystemInfo.osName
                     color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.display; weight: Font.DemiBold }
+                    font { family: Theme.font.family; pixelSize: Theme.font.display; weight: Theme.material ? Font.Normal : Font.DemiBold }
                 }
                 Text {
                     width: parent.width

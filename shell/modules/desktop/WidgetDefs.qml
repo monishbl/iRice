@@ -34,6 +34,20 @@ QtObject {
         return Qt.size(u[0] * cell + (u[0] - 1) * gap, u[1] * cell + (u[1] - 1) * gap);
     }
 
+    // The Material look: each kind's card, for the mix of tonal containers
+    // on an Android 16 home screen. `bg` is a Theme.m3 role ("" draws no
+    // card: the clock face, the weather circle and a small photo are shapes
+    // of their own, straight on the wallpaper); `pill` cards are fully
+    // round, which needs more room at the sides (`padX`).
+    function materialCard(kind, size) {
+        if (size === "s" && (kind === "clock" || kind === "weather" || kind === "photos"))
+            return { bg: "", pill: false, pad: 2, padX: 2 };
+        if (kind === "weather")
+            return { bg: "secondaryContainer", pill: true, pad: 16, padX: 36 };
+        const bg = ({ clock: "primaryContainer", today: "primaryContainer", notes: "tertiaryContainer", nowPlaying: "secondaryContainer", screenTime: "surfaceContainerHigh" })[kind] ?? "surfaceContainer";
+        return { bg: bg, pill: false, pad: 16, padX: 16 };
+    }
+
     // "kind:size:col:row[:id]" <-> { kind, size, col, row, id }
     // (id: widgets with their own content, like each Note)
     function parse(entry) {

@@ -130,3 +130,25 @@ hl.animation({ leaf = "windowsMove", enabled = true, speed = 3.5, bezier = "iric
 hl.animation({ leaf = "fade", enabled = true, speed = 2.5, bezier = "irice" })
 hl.animation({ leaf = "layers", enabled = true, speed = 2.5, bezier = "irice", style = "fade" })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 4.0, bezier = "irice", style = "slide" })
+
+-- The Material look (Settings → Appearance → Look): round corners (a plain
+-- circular arc, rounding_power 2, instead of Glass's continuous squircle)
+-- and a lower, softer shadow, as Android draws a window. The shell sets the
+-- rest live (the border in the palette's primary, AppTheme.qml) and puts
+-- these back after a config reload; this sets them at login. Glass keeps
+-- the values above.
+pcall(function()
+    local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+    local f = io.open((IRICE_USER_DIR or (cfg .. "/irice")) .. "/config.json", "r")
+    if not f then return end
+    local look = f:read("*a"):match('"look"%s*:%s*"(%w+)"')
+    f:close()
+    if look ~= "material" then return end
+    hl.config({
+        general = { col = { active_border = "rgba(ffffff24)", inactive_border = "rgba(ffffff00)" } },
+        decoration = {
+            rounding_power = 2.0,
+            shadow = { range = 18, render_power = 3, offset = { 0, 4 }, color = "rgba(0000002e)" }
+        }
+    })
+end)

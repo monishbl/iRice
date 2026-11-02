@@ -123,18 +123,18 @@ Variants {
                     r.pinned ? Clipboard.unpin(r.pin) : Clipboard.remove(r.item);
             }
 
-            // Search
+            // Search (Material: a search bar, a pill in surface container high)
             Squircle {
                 id: search
                 width: parent.width - kindPicker.width - 12
                 height: 36
-                radius: Theme.radius.control
-                color: Theme.color.fill
-                border.width: 1
+                radius: Theme.material ? height / 2 : Theme.radius.control
+                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
+                border.width: Theme.material ? 0 : 1
                 border.color: field.activeFocus ? Theme.accent : "transparent"
 
                 Icon {
-                    x: 10
+                    x: Theme.material ? 14 : 10
                     anchors.verticalCenter: parent.verticalCenter
                     name: "magnifying-glass"
                     size: 16
@@ -142,10 +142,10 @@ Variants {
                 }
                 TextInput {
                     id: field
-                    anchors { fill: parent; leftMargin: 34; rightMargin: 10 }
+                    anchors { fill: parent; leftMargin: Theme.material ? 40 : 34; rightMargin: Theme.material ? 16 : 10 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
-                    selectionColor: Theme.accentAlpha(0.4)
+                    selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
                     clip: true
                     font { family: Theme.font.family; pixelSize: Theme.font.body + 1 }
                     onTextChanged: dialog.selected = 0
@@ -185,13 +185,14 @@ Variants {
                 onSelected: i => dialog.kind = i
             }
 
+            // (Material: a list's section label, in primary)
             component Heading: Text {
                 property bool first: false
-                leftPadding: 10
-                topPadding: first ? 0 : 12
-                bottomPadding: 4
-                color: Theme.color.tertiary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                leftPadding: Theme.material ? 16 : 10
+                topPadding: first ? 0 : Theme.material ? 16 : 12
+                bottomPadding: Theme.material ? 8 : 4
+                color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
+                font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.small : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
             }
 
             // All and Text: a list, a heading wherever the section changes
@@ -212,6 +213,7 @@ Variants {
                     required property var modelData
                     required property int index
                     readonly property bool header: index === 0 || dialog.rows[index - 1]?.section !== modelData.section
+                    readonly property bool footerRow: index === dialog.rows.length - 1 || dialog.rows[index + 1]?.section !== modelData.section
                     readonly property bool isSelected: index === dialog.selected
                     width: list.width
 
@@ -225,7 +227,29 @@ Variants {
                         width: parent.width
                         height: rowItem.modelData.image ? 168 : 44
                         radius: Theme.radius.control
-                        color: rowItem.isSelected ? Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16) : rowMouse.containsMouse ? Theme.color.fill : "transparent"
+                        color: Theme.material ? "transparent" : rowItem.isSelected ? Qt.alpha(Theme.accent, Theme.dark ? 0.32 : 0.16) : rowMouse.containsMouse ? Theme.color.fill : "transparent"
+
+                        // Material: a segmented list, each section a group
+                        // (16 px outer corners, 4 px between rows 2 apart); the
+                        // selected row rounds fully in secondary container
+                        Loader {
+                            anchors.fill: parent
+                            active: Theme.material
+                            sourceComponent: Rectangle {
+                                readonly property real topCorner: rowItem.isSelected || rowItem.header ? 16 : 4
+                                readonly property real bottomCorner: rowItem.isSelected || rowItem.footerRow ? 16 : 4
+                                topLeftRadius: topCorner
+                                topRightRadius: topCorner
+                                bottomLeftRadius: bottomCorner
+                                bottomRightRadius: bottomCorner
+                                color: rowItem.isSelected ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, rowMouse.pressed ? 0.1 : 0)) : Theme.m3.surfaceContainerHigh
+                                Behavior on topLeftRadius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                                Behavior on topRightRadius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                                Behavior on bottomLeftRadius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                                Behavior on bottomRightRadius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                            }
+                        }
 
                         MouseArea {
                             id: rowMouse
@@ -254,7 +278,7 @@ Variants {
                             width: 20
                             name: /^https?:\/\//.test(rowItem.modelData.text) ? "link" : "text-align-left"
                             size: 16
-                            color: Theme.color.tertiary
+                            color: Theme.material ? (rowItem.isSelected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : Theme.color.tertiary
                         }
                         // The picture, about twice as tall as it used to be,
                         // its own shape (wide pictures capped at most of the row)
@@ -275,7 +299,7 @@ Variants {
                             text: rowItem.modelData.text.replace(/\s+/g, " ").trim()
                             elide: Text.ElideRight
                             maximumLineCount: 1
-                            color: Theme.color.label
+                            color: Theme.material && rowItem.isSelected ? Theme.m3.onSecondaryContainer : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                         }
 
@@ -347,14 +371,16 @@ Variants {
                                         readonly property bool isSelected: row === dialog.selected
                                         width: gridView.cellW
                                         height: gridView.cellH
-                                        radius: 12
+                                        // (Material: 16 px corners, the chosen one outlined 3 px in primary)
+                                        radius: Theme.material ? 16 : 12
                                         color: "transparent"
-                                        border.width: isSelected ? 2 : 0
+                                        border.width: isSelected ? (Theme.material ? 3 : 2) : 0
                                         border.color: Theme.accent
                                         onIsSelectedChanged: if (isSelected) Qt.callLater(() => gridView.reveal(tile))
 
                                         Preview {
-                                            anchors { fill: parent; margins: 2 }
+                                            anchors { fill: parent; margins: Theme.material ? 4 : 2 }
+                                            radius: Theme.material ? 12 : 10
                                             path: tile.entry.image ?? ""
                                             pinned: !!tile.entry.pinned
                                         }
@@ -366,26 +392,27 @@ Variants {
                                             onClicked: m => dialog.activate(tile.row, false, m.modifiers & Qt.ShiftModifier)
                                         }
                                         // Pin and remove, on a dark chip so they read over any picture
+                                        // (Material: a small vibrant floating toolbar, a pill in primary container)
                                         Squircle {
-                                            anchors { top: parent.top; right: parent.right; margins: 8 }
+                                            anchors { top: parent.top; right: parent.right; margins: Theme.material ? 10 : 8 }
                                             visible: tile.isSelected || tile.entry.pinned === true
                                             width: tileActions.implicitWidth + 4
                                             height: 32
-                                            radius: 10
-                                            color: Qt.rgba(0.09, 0.09, 0.11, 0.72)
+                                            radius: Theme.material ? height / 2 : 10
+                                            color: Theme.material ? Theme.m3.primaryContainer : Qt.rgba(0.09, 0.09, 0.11, 0.72)
                                             Row {
                                                 id: tileActions
                                                 anchors.centerIn: parent
                                                 IconButton {
                                                     icon: "push-pin"
                                                     fill: tile.entry.pinned === true
-                                                    iconColor: tile.entry.pinned ? Theme.accent : "white"
+                                                    iconColor: Theme.material ? Theme.m3.onPrimaryContainer : tile.entry.pinned ? Theme.accent : "white"
                                                     onClicked: dialog.togglePin(tile.row)
                                                 }
                                                 IconButton {
                                                     visible: tile.isSelected
                                                     icon: "trash"
-                                                    iconColor: "white"
+                                                    iconColor: Theme.material ? Theme.m3.onPrimaryContainer : "white"
                                                     onClicked: dialog.remove(tile.row)
                                                 }
                                             }
@@ -408,17 +435,18 @@ Variants {
                 id: prev
                 property string path
                 property bool pinned: false
+                property real radius: Theme.material ? 12 : 10
                 readonly property real aspect: img.implicitHeight > 0 ? img.implicitWidth / img.implicitHeight : 0
                 Squircle {
                     id: prevMask
                     anchors.fill: parent
-                    radius: 10
+                    radius: prev.radius
                     visible: false
                     layer.enabled: true
                 }
                 Squircle {
                     anchors.fill: parent
-                    radius: 10
+                    radius: prev.radius
                     color: Theme.color.fill
                 }
                 Image {
@@ -446,15 +474,38 @@ Variants {
                 spacing: 8
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !Theme.material
                     name: field.text === "" ? "clipboard-text" : "magnifying-glass"
                     size: 32
                     color: Theme.color.tertiary
+                }
+                // Material: the icon on a shape, as Android's empty states
+                Loader {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: Theme.material
+                    active: Theme.material
+                    sourceComponent: Item {
+                        implicitWidth: 72
+                        implicitHeight: 80
+                        MaterialShape {
+                            width: 72
+                            height: 72
+                            shape: field.text === "" ? "cookie9" : "clover4"
+                            color: Theme.m3.secondaryContainer
+                            Icon {
+                                anchors.centerIn: parent
+                                name: field.text === "" ? "clipboard-text" : "magnifying-glass"
+                                size: 30
+                                color: Theme.m3.onSecondaryContainer
+                            }
+                        }
+                    }
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: field.text !== "" ? "No matches for “" + field.text + "”" : dialog.kind === 2 ? "No images copied yet" : "Nothing copied yet"
                     color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.large : Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold }
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -493,15 +544,17 @@ Variants {
                 Squircle {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     visible: Clipboard.items.length > 0
-                    width: clearLabel.implicitWidth + 20
-                    height: 28
-                    radius: Theme.radius.control - 2
-                    color: dialog.confirmClear ? Theme.color.danger : clearMouse.containsMouse ? Theme.color.fill : "transparent"
+                    // (Material: a text button in error, a filled error pill to confirm)
+                    width: clearLabel.implicitWidth + (Theme.material ? 24 : 20)
+                    height: Theme.material ? 32 : 28
+                    radius: Theme.material ? height / 2 : Theme.radius.control - 2
+                    color: Theme.material ? (dialog.confirmClear ? Theme.m3.error : Qt.alpha(Theme.m3.error, clearMouse.pressed ? 0.1 : clearMouse.containsMouse ? 0.08 : 0))
+                        : dialog.confirmClear ? Theme.color.danger : clearMouse.containsMouse ? Theme.color.fill : "transparent"
                     Text {
                         id: clearLabel
                         anchors.centerIn: parent
                         text: dialog.confirmClear ? "Clear " + Clipboard.items.length + " items" : "Clear history"
-                        color: dialog.confirmClear ? "white" : Theme.color.danger
+                        color: dialog.confirmClear ? (Theme.material ? Theme.m3.onError : "white") : Theme.color.danger
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
                     }
                     MouseArea {

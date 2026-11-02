@@ -14,6 +14,9 @@ import qs.services
 // phones with Quick Share open; a device seen both ways is listed once.
 // Click one to send. They're asked to accept on their side; the sheet shows
 // how far each send has got (the island does too, once the sheet is closed).
+// Material: a dialog in surfaceContainerHigh (corner 28), devices on
+// Material shapes, a wavy bar for a send, the loading indicator while it
+// looks, and the other ways as a segmented list.
 Variants {
     model: Quickshell.screens
 
@@ -79,8 +82,8 @@ Variants {
             Item {
                 id: card
                 anchors.centerIn: parent
-                width: 420
-                height: column.implicitHeight + 32
+                width: Theme.material ? 432 : 420
+                height: column.implicitHeight + 2 * column.y
                 opacity: win.progress
                 scale: 0.94 + 0.06 * win.progress
                 focus: win.shown
@@ -91,14 +94,21 @@ Variants {
                     anchors.margins: -shadowMargin
                     radius: Theme.radius.panel
                 }
+                // (Material: a dialog's surfaceContainerHigh)
+                Rectangle {
+                    visible: Theme.material
+                    anchors.fill: parent
+                    radius: 28
+                    color: Theme.m3.surfaceContainerHigh ?? "transparent"
+                }
                 MouseArea { anchors.fill: parent }
 
                 Column {
                     id: column
-                    x: 16
-                    y: 16
-                    width: parent.width - 32
-                    spacing: 14
+                    x: Theme.material ? 24 : 16
+                    y: Theme.material ? 24 : 16
+                    width: parent.width - 2 * x
+                    spacing: Theme.material ? 16 : 14
 
                     // ── What's being shared (iOS: a preview, its name, ×) ──
                     Item {
@@ -108,7 +118,7 @@ Variants {
                             id: thumb
                             width: 52
                             height: 52
-                            radius: 12
+                            radius: Theme.material ? 16 : 12
                             color: Theme.color.fill
                             readonly property bool image: win.note === "" && win.paths.length >= 1 && /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(win.paths[0] ?? "")
                             Image {
@@ -150,9 +160,9 @@ Variants {
                         Rectangle {
                             id: close
                             anchors { right: parent.right; top: parent.top }
-                            width: 30
-                            height: 30
-                            radius: 15
+                            width: Theme.material ? 40 : 30
+                            height: width
+                            radius: Theme.material && closeMouse.pressed ? 12 : width / 2
                             color: closeMouse.pressed ? Theme.color.fillPressed : closeMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                             activeFocusOnTab: true
                             Keys.onPressed: event => {
@@ -163,20 +173,20 @@ Variants {
                             }
                             Accessible.role: Accessible.Button
                             Accessible.name: "Close"
-                            FocusRing { radius: 19 }
-                            Icon { anchors.centerIn: parent; name: "x"; size: 14; color: Theme.color.secondary }
+                            FocusRing { radius: close.radius + 4 }
+                            Icon { anchors.centerIn: parent; name: "x"; size: Theme.material ? 18 : 14; color: Theme.color.secondary }
                             MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: Panels.close() }
                         }
                     }
 
-                    Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+                    Rectangle { visible: !Theme.material; width: parent.width; height: 1; color: Theme.color.separator }
 
                     // ── Nearby (iOS's AirDrop row: round avatars, names under) ──
                     Flickable {
                         id: people
                         Momentum {}
                         width: parent.width
-                        height: 118
+                        height: Theme.material ? 128 : 118
                         visible: win.devices.length > 0
                         contentWidth: peopleRow.width
                         clip: true
@@ -195,7 +205,7 @@ Variants {
                                     readonly property string ended: sending ? "" : Sharing.outcomeFor(modelData)
                                     readonly property real frac: sending && sending.total > 0 ? sending.done / sending.total : 0
                                     width: 92
-                                    height: 118
+                                    height: people.height
                                     // Keyboard: Tab or the arrows to a device, Space or Enter sends
                                     activeFocusOnTab: true
                                     Keys.onPressed: event => {
@@ -225,7 +235,30 @@ Variants {
                                         scale: peerMouse.pressed ? 0.94 : 1
                                         Behavior on scale { NumberAnimation { duration: 100 } }
                                         FocusRing { radius: 38; visible: peer.activeFocus }
+                                        // Material: the device on a shape, its kind
+                                        // telling which (phones a cookie, tablets a
+                                        // clover, computers a soft square, Chromecasts
+                                        // a sunny); a hover morphs it, as Android does
+                                        Loader {
+                                            anchors.centerIn: parent
+                                            active: Theme.material
+                                            sourceComponent: MaterialShape {
+                                                width: 64
+                                                height: 64
+                                                readonly property string kind: peer.modelData.cast ? "sunny" : peer.modelData.type === "mobile" ? "cookie9" : peer.modelData.type === "tablet" ? "clover4" : "cookie4"
+                                                shape: peerMouse.containsMouse && !peer.sending ? "cookie12" : peer.sending ? "circle" : kind
+                                                color: peer.modelData.cast ? Theme.m3.tertiaryContainer : Theme.m3.primaryContainer
+                                                Icon {
+                                                    anchors.centerIn: parent
+                                                    name: peer.modelData.cast ? Cast.iconFor(peer.modelData) : peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
+                                                    fill: true
+                                                    size: 28
+                                                    color: peer.modelData.cast ? Theme.m3.onTertiaryContainer : Theme.m3.onPrimaryContainer
+                                                }
+                                            }
+                                        }
                                         Rectangle {
+                                            visible: !Theme.material
                                             anchors.centerIn: parent
                                             width: 60
                                             height: 60
@@ -246,7 +279,7 @@ Variants {
                                         // Sending: a ring fills around them
                                         Canvas {
                                             anchors.fill: parent
-                                            visible: peer.sending !== null
+                                            visible: peer.sending !== null && !Theme.material
                                             readonly property real f: peer.frac
                                             onFChanged: requestPaint()
                                             onVisibleChanged: requestPaint()
@@ -272,20 +305,32 @@ Variants {
                                             width: 22
                                             height: 22
                                             radius: 11
-                                            color: peer.ended === "sent" ? Theme.color.success : Theme.color.secondary
+                                            // (Material: sent in primary, else a neutral container)
+                                            color: Theme.material ? (peer.ended === "sent" ? Theme.m3.primary : Theme.m3.surfaceContainerHighest) : peer.ended === "sent" ? Theme.color.success : Theme.color.secondary
                                             border.width: 2
-                                            border.color: Theme.glass.solid
+                                            border.color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.glass.solid
                                             Icon {
                                                 anchors.centerIn: parent
                                                 name: peer.ended === "sent" ? "check" : "x"
                                                 size: 12
-                                                color: "white"
+                                                color: Theme.material ? (peer.ended === "sent" ? Theme.m3.onPrimary : Theme.m3.onSurfaceVariant) : "white"
                                             }
+                                        }
+                                    }
+                                    // Material: how far the send has got, a wavy bar
+                                    Loader {
+                                        id: sendBar
+                                        anchors { top: avatar.bottom; horizontalCenter: parent.horizontalCenter }
+                                        active: Theme.material && peer.sending !== null
+                                        visible: active
+                                        sourceComponent: WavyProgress {
+                                            width: 64
+                                            value: peer.sending?.waiting ? -1 : peer.frac
                                         }
                                     }
                                     Text {
                                         id: nameText
-                                        anchors { top: avatar.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
+                                        anchors { top: sendBar.visible ? sendBar.bottom : avatar.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
                                         width: 88
                                         horizontalAlignment: Text.AlignHCenter
                                         text: peer.modelData.name
@@ -302,7 +347,7 @@ Variants {
                                         text: peer.sending ? (peer.sending.waiting ? "Waiting…" : "Sending… " + Math.round(100 * peer.frac) + "%")
                                             : peer.ended === "sent" ? "Sent" : peer.ended === "declined" ? "Declined" : peer.ended === "failed" ? "Didn't send"
                                             : peer.modelData.cast ? "Cast" : peer.modelData.prefer === "quickshare" ? "Quick Share" : "LocalSend"
-                                        color: peer.ended === "sent" ? Theme.color.success : Theme.color.secondary
+                                        color: peer.ended === "sent" ? (Theme.material ? Theme.m3.primary : Theme.color.success) : Theme.color.secondary
                                         font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                                     }
                                     MouseArea {
@@ -324,8 +369,31 @@ Variants {
                         visible: win.devices.length === 0
                         width: parent.width
                         spacing: 8
-                        Ticker { id: look; running: win.shown && win.devices.length === 0; fps: 15 }
+                        Ticker { id: look; running: win.shown && win.devices.length === 0 && !Theme.material; fps: 15 }
+                        // Material: the loading indicator while it looks, or
+                        // a quiet shape when it can't
+                        Loader {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            active: Theme.material
+                            visible: active
+                            sourceComponent: LocalSend.available ? lookingSpinner : notLooking
+                            Component {
+                                id: lookingSpinner
+                                Spinner { size: 48 }
+                            }
+                            Component {
+                                id: notLooking
+                                MaterialShape {
+                                    width: 56
+                                    height: 56
+                                    shape: "cookie9"
+                                    color: Theme.m3.secondaryContainer
+                                    Icon { anchors.centerIn: parent; name: "share-network"; size: 24; color: Theme.m3.onSecondaryContainer }
+                                }
+                            }
+                        }
                         Row {
+                            visible: !Theme.material
                             anchors.horizontalCenter: parent.horizontalCenter
                             spacing: 24
                             Repeater {
@@ -368,15 +436,19 @@ Variants {
                     }
 
                     // ── Other ways (iOS: a grouped list, the icon on the right) ──
+                    // (Material: a segmented list, rows 2 apart, the group's
+                    // outer corners 16, inner 4)
                     Squircle {
                         width: parent.width
                         height: actions.implicitHeight
                         radius: 14
-                        color: Theme.color.platter
+                        color: Theme.material ? "transparent" : Theme.color.platter
                         Column {
                             id: actions
                             width: parent.width
+                            spacing: Theme.material ? 2 : 0
                             Repeater {
+                                id: otherWays
                                 model: win.note !== "" ? [
                                     { label: "Copy", icon: "copy", act: () => Clipboard.copyText(win.note) }
                                 ] : [
@@ -388,7 +460,7 @@ Variants {
                                     required property var modelData
                                     required property int index
                                     width: actions.width
-                                    height: 44
+                                    height: Theme.material ? 52 : 44
                                     activeFocusOnTab: true
                                     Keys.onPressed: event => {
                                         if ((event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !event.isAutoRepeat) {
@@ -400,10 +472,22 @@ Variants {
                                     Accessible.role: Accessible.Button
                                     Accessible.name: modelData.label
                                     Squircle {
+                                        visible: !Theme.material
                                         anchors.fill: parent
                                         anchors.margins: 2
                                         radius: 12
                                         color: otherMouse.pressed ? Theme.color.fillPressed : otherMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                                    }
+                                    Rectangle {
+                                        visible: Theme.material
+                                        anchors.fill: parent
+                                        readonly property bool first: other.index === 0
+                                        readonly property bool last: other.index === otherWays.count - 1
+                                        topLeftRadius: first ? 16 : 4
+                                        topRightRadius: first ? 16 : 4
+                                        bottomLeftRadius: last ? 16 : 4
+                                        bottomRightRadius: last ? 16 : 4
+                                        color: Theme.material ? Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, otherMouse.pressed ? 0.1 : otherMouse.containsMouse ? 0.08 : 0)) : "transparent"
                                     }
                                     FocusRing { radius: 14 }
                                     Text {
@@ -420,7 +504,7 @@ Variants {
                                     }
                                     // (a hairline between rows, inset like iOS's)
                                     Rectangle {
-                                        visible: other.index > 0
+                                        visible: other.index > 0 && !Theme.material
                                         anchors { top: parent.top; left: parent.left; leftMargin: 14; right: parent.right }
                                         height: 1
                                         color: Theme.color.separator

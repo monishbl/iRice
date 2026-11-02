@@ -13,8 +13,12 @@ Rectangle {
     signal chosen(string code)
 
     height: 30
-    radius: 15
-    color: mouse.containsMouse || list.visible ? Theme.color.fillHover : Theme.color.fill
+    // (Material: a tonal button that turns a pill in secondary container
+    // while its list is open; 12 px corners otherwise)
+    radius: Theme.material ? (list.visible ? height / 2 : 12) : 15
+    Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+    color: Theme.material ? (list.visible ? Theme.m3.secondaryContainer : Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0)))
+        : mouse.containsMouse || list.visible ? Theme.color.fillHover : Theme.color.fill
 
     Row {
         anchors.centerIn: parent
@@ -22,10 +26,10 @@ Rectangle {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: root.label
-            color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+            color: Theme.material && list.visible ? Theme.m3.onSecondaryContainer : Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
         }
-        Icon { anchors.verticalCenter: parent.verticalCenter; name: "caret-down"; bold: true; size: 10; color: Theme.color.secondary }
+        Icon { anchors.verticalCenter: parent.verticalCenter; name: Theme.material && list.visible ? "caret-up" : "caret-down"; bold: true; size: Theme.material ? 12 : 10; color: Theme.material && list.visible ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
     }
     MouseArea {
         id: mouse
@@ -51,11 +55,11 @@ Rectangle {
             delegate: Squircle {
                 required property var modelData
                 width: view.width
-                height: 28
-                radius: 7
+                height: Theme.material ? 40 : 28
+                radius: Theme.material ? 12 : 7
                 color: itemMouse.containsMouse ? Theme.color.highlight : "transparent"
                 Text {
-                    x: 10
+                    x: Theme.material ? 12 : 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: parent.modelData[1]
                     color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label

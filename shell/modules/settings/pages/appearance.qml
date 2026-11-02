@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import QtQuick.Controls as QQC
 import Quickshell
 import Quickshell.Io
@@ -7,22 +8,128 @@ import qs.modules.settings
 import qs.services
 
 Column {
+    id: page
     width: parent?.width ?? 0
     spacing: 22
 
-    Group {
+    // The look: a picture of the desktop in each. Choosing one rebuilds
+    // Settings in that look, so the change waits until the click is done.
+    readonly property string lookDetail: Theme.material ? "Material 3 Expressive: tonal colour from your wallpaper, bold shapes, springy motion" : "Liquid Glass: translucent glass, continuous corners"
+    function choose(look) {
+        if (Config.options.appearance.look !== look)
+            Qt.callLater(() => Config.options.appearance.look = look);
+    }
+    Loader {
         width: parent.width
-        Row {
-            label: "Look"
-            detail: Theme.material ? "Material 3 Expressive: tonal colour from your wallpaper, bold shapes, springy motion" : "Liquid Glass: translucent glass, continuous corners"
-            Segmented {
-                width: 260
-                readonly property var values: ["glass", "material"]
-                options: ["Glass", "Material"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.look))
-                onSelected: i => Config.options.appearance.look = values[i]
+        sourceComponent: Theme.material ? materialLooks : glassLooks
+    }
+    // Glass: small thumbnails in a row, like macOS's Appearance
+    Component {
+        id: glassLooks
+        Group {
+            Row {
+                label: "Look"
+                detail: page.lookDetail
+                QQ.Row {
+                    spacing: 14
+                    Repeater {
+                        model: ["glass", "material"]
+                        Column {
+                            id: thumb
+                            required property string modelData
+                            topPadding: 6
+                            bottomPadding: 2
+                            spacing: 6
+                            LookPreview {
+                                width: 128
+                                height: 80
+                                look: thumb.modelData
+                                selected: Config.options.appearance.look === thumb.modelData
+                                onChosen: page.choose(thumb.modelData)
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: thumb.modelData === "material" ? "Material" : "Glass"
+                                color: Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Config.options.appearance.look === thumb.modelData ? Font.DemiBold : Font.Normal }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: page.choose(thumb.modelData)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+    // Material: two large preview cards across the page, as Android's
+    // Wallpaper & style shows its choices
+    Component {
+        id: materialLooks
+        Column {
+            readonly property string label: "Look" // (a search for it lands here)
+            spacing: 12
+            QQ.Row {
+                id: cards
+                spacing: 24
+                topPadding: 6
+                Repeater {
+                    model: ["glass", "material"]
+                    Column {
+                        id: card
+                        required property string modelData
+                        readonly property bool chosen: Config.options.appearance.look === modelData
+                        spacing: 12
+                        LookPreview {
+                            x: 6
+                            width: (page.width - 24) / 2 - 12
+                            height: width * 10 / 16
+                            look: card.modelData
+                            selected: card.chosen
+                            onChosen: page.choose(card.modelData)
+                        }
+                        QQ.Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 6
+                            Icon {
+                                visible: card.chosen
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "check-circle"
+                                fill: true
+                                size: 20
+                                color: Theme.m3.primary
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: card.modelData === "material" ? "Material" : "Glass"
+                                color: card.chosen ? Theme.m3.primary : Theme.m3.onSurface
+                                font { family: Theme.font.family; pixelSize: 16; weight: card.chosen ? Font.DemiBold : Font.Medium }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: page.choose(card.modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                width: parent.width
+                leftPadding: 16
+                rightPadding: 16
+                wrapMode: Text.Wrap
+                text: page.lookDetail
+                color: Theme.m3.onSurfaceVariant
+                font { family: Theme.font.family; pixelSize: 14 }
+            }
+        }
+    }
+
+    Group {
+        width: parent.width
         Row {
             label: "Appearance"
             detail: Config.options.appearance.mode === "auto" ? "Light from sunrise (" + Focus.fmt(Math.floor(Daylight.sunrise / 60) + ":" + Daylight.sunrise % 60) + ") to sunset (" + Focus.fmt(Math.floor(Daylight.sunset / 60) + ":" + Daylight.sunset % 60) + ")" : ""
@@ -148,18 +255,18 @@ Column {
             Flow { // (Row here is the settings row)
                 spacing: 8
                 width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
-                Squircle {
+                Squircle { // (Material: a 40 px tonal button)
                     visible: !EmojiFont.available
-                    width: emojiInstall.implicitWidth + 24
-                    height: 28
-                    radius: Theme.radius.control
-                    color: emojiInstallMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                    width: emojiInstall.implicitWidth + (Theme.material ? 32 : 24)
+                    height: Theme.material ? 40 : 28
+                    radius: Theme.material ? height / 2 : Theme.radius.control
+                    color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, emojiInstallMouse.containsMouse ? 0.08 : 0)) : emojiInstallMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                     Text {
                         id: emojiInstall
                         anchors.centerIn: parent
                         text: "Install font"
-                        color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                        color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium }
                     }
                     MouseArea {
                         id: emojiInstallMouse
@@ -276,10 +383,18 @@ Column {
     Group {
         width: parent.width
         SubpageLink {
+            visible: !Theme.material // (Material surfaces are opaque: no glass to tune)
             icon: "drop-half"
             label: "Glass"
             detail: "Material, frost, lens and which apps match it"
             value: ({ liquid: "Glass", frosted: "Frost", solid: "Solid", custom: "Custom" })[Theme.glass.material] ?? ""
+            page: "appearance/glass"
+        }
+        SubpageLink {
+            visible: Theme.material // (the Glass page's Match apps, on its own)
+            icon: "paint-brush"
+            label: "Match apps"
+            detail: "Colour GTK and Qt apps, terminals and browsers to match"
             page: "appearance/glass"
         }
         SubpageLink {
@@ -300,6 +415,7 @@ Column {
         width: parent.width
         title: "Accessibility"
         Row {
+            visible: !Theme.material // (Material surfaces are always solid)
             label: "Reduce transparency"
             detail: "Solid surfaces instead of glass, whatever the material above"
             Switch {

@@ -31,8 +31,9 @@ DetailPage {
     Text {
         leftPadding: 6
         text: "Turn on"
-        color: Theme.color.tertiary
-        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+        bottomPadding: Theme.material ? 6 : 0
+        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
+        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
     }
     Segmented {
         width: parent.width

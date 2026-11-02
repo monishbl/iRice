@@ -2,7 +2,8 @@
 """Makes iRice's own UI sounds from sine partials, in several styles:
 shell/assets/sounds/<pack>/<event>.ogg (Settings → Notifications → Style).
 
-  tools/make-sounds.py
+  tools/make-sounds.py            every pack
+  tools/make-sounds.py material   one pack (its startup copied from soft's)
 
 Pure Python (no numpy); ffmpeg encodes the result as Ogg Vorbis. Every sound
 is original. The packs:
@@ -12,6 +13,9 @@ is original. The packs:
   taps     short low "thocks" and ticks, almost no melody
   minimal  quiet ticks
   glass    the first set: glassy taps, sparkles and pops (the most playful)
+  material the Material look's: bright, short, rounded blips (a sine with a
+           touch of triangle), a little lift into each note; up for good
+           news, down for bad (Sounds.qml's "auto" picks it in Material)
 Each pack has the same events (see EVENTS); Sounds.qml picks the folder.
 Logging in (startup) is one signature sound, the same in every pack.
 """
@@ -394,6 +398,24 @@ class Minimal(Pack):
         tone(buf, t, f, 1.0, attack=0.0008, tau=0.008 if kind != "error" else 0.02, partials=((1, 1), (1.5, 0.2)))
 
 
+class Material(Pack):
+    # bright, rounded blips: a sine with a little of a triangle's odd
+    # harmonics, a quick soft attack, a short ring, and each note sliding up
+    # into pitch by a hair (a lift, not a whistle)
+    name, shift, gain = "material", -2, -1.0
+    blip = ((1, 1), (3, 0.1), (5, 0.03))
+    def note(self, buf, t, m, amp, pan=0.0, ring=1.0):
+        tone(buf, t, hz(m + self.shift), amp, attack=0.004, tau=0.085 * ring, pan=pan, partials=self.blip,
+             glide=0.96, glide_time=0.012)
+        # a quiet octave on top, gone almost at once: the brightness
+        tone(buf, t, hz(m + self.shift + 12), amp * 0.12, attack=0.002, tau=0.025 * ring, pan=pan)
+    def tick(self, buf, t, kind):
+        # lock falls, unlock rises; volume a tiny drop of a blip; "no" low and falling
+        f, glide, tau = {"lock": (740, 1.25, 0.035), "unlock": (880, 0.8, 0.035), "volume": (1175, 1.0, 0.02),
+                         "error": (294, 1.3, 0.07)}[kind]
+        tone(buf, t, f, 1.0, attack=0.002, tau=tau, partials=self.blip, glide=glide, glide_time=0.02)
+
+
 def phrase(pack, name, length, notes, peak):
     """notes: (time, midi, amp, pan, ring)"""
     buf = buffer(length * pack.room)
@@ -483,7 +505,14 @@ if __name__ == "__main__":
     only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
     only_ring = sys.argv[1:] == ["ringtone"]  # tools/make-sounds.py ringtone: just ringtone.ogg
     only_startup = sys.argv[1:] == ["startup"]  # tools/make-sounds.py startup: just startup.ogg
-    for pack in (Soft(), Marimba(), Keys(), Taps(), Minimal(), None):
+    packs = (Soft(), Marimba(), Keys(), Taps(), Minimal(), Material(), None)
+    names = [p.name if p else "glass" for p in packs]
+    if len(sys.argv) == 2 and sys.argv[1] in names:
+        # One pack: every other file stays as it is, and logging in is the
+        # signature the other packs already have
+        packs = [packs[names.index(sys.argv[1])]]
+        _SIGNATURE = os.path.join(ROOT, "soft", "startup.ogg") if os.path.exists(os.path.join(ROOT, "soft", "startup.ogg")) else None
+    for pack in packs:
         random.seed(7)  # the same files every run
         OUT = os.path.join(ROOT, pack.name if pack else "glass")
         os.makedirs(OUT, exist_ok=True)

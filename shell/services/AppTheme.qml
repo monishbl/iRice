@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
 
@@ -9,15 +10,26 @@ import qs.common
 // (assets/scripts/app-theme.sh). Re-applied a moment after any of those
 // change; turning it off empties the generated colour files. Desktop light/dark
 // preferences and Dolphin's palette follow iRice even when Match apps is off.
+// In the Material look, matching apps (accent or wallpaper alike) takes the
+// shell's own Material palette, Theme.m3: matugen's scheme is an older spec
+// whose colours differ from the shell's, so the script fills the templates
+// with these roles itself (app-theme-render.py). Off stays off.
+//
+// The rest of the system follows the look here too: window corners, border
+// and shadow (Hyprland), the window controls the irice-glass plugin draws,
+// and the pointer when it's set to follow the look ("auto").
 Singleton {
     id: root
 
     readonly property var cfg: Config.options.appearance
     readonly property string source: cfg.appTheme // off | accent | wallpaper
-    readonly property bool available: Tools.has("matugen")
+    // (Material needs no matugen: the shell has the colours)
+    readonly property bool available: Tools.has("matugen") || Theme.material
+    // Material: every colour role, for the script ("" in Glass, or when off)
+    readonly property string roles: Theme.material && source !== "off" ? JSON.stringify(Theme.m3) : ""
     // (The accent only matters while matching is on: dragging it with Match
     // apps off mustn't rewrite and reload every app's palette)
-    readonly property string key: [Config.ready, source, available, Theme.dark, source !== "off" ? Theme.accent : "", source === "wallpaper" ? Wallpaper.path : "", cfg.appThemeTargets.join(",")].join("|")
+    readonly property string key: [Config.ready, source, available, Theme.dark, source !== "off" ? Theme.accent : "", source === "wallpaper" ? Wallpaper.path : "", cfg.appThemeTargets.join(","), roles].join("|")
     property string applied: ""
 
     onKeyChanged: if (Tools.ready) settle.restart()
@@ -33,7 +45,7 @@ Singleton {
                 return;
             run.running = false;
             run.command = [decodeURIComponent(Qt.resolvedUrl("../assets/scripts/app-theme.sh").toString().replace("file://", "")),
-                root.source === "off" || !root.available ? "off" : Theme.dark ? "dark" : "light", String(Theme.accent).slice(0, 7), root.source, Wallpaper.path, root.cfg.appThemeTargets.join(","), Theme.dark ? "dark" : "light"];
+                root.source === "off" || !root.available ? "off" : Theme.dark ? "dark" : "light", String(Theme.accent).slice(0, 7), root.source, Wallpaper.path, root.cfg.appThemeTargets.join(","), Theme.dark ? "dark" : "light", root.roles];
             run.running = true;
             root.applied = root.key;
         }
@@ -41,5 +53,149 @@ Singleton {
     Process {
         id: run
         onExited: code => UiState.data.appThemeOn = code === 0 && root.available && root.source !== "off"
+    }
+
+    // ── Windows follow the look ─────────────────────────────────────────
+    // Material: round corners (a circular arc, rounding_power 2, not Glass's
+    // squircle), a 1 px border in primary on the focused window and a faint
+    // outlineVariant on the rest, and a lower, softer shadow. Glass's values
+    // are hypr/irice/look.lua's, put back only if this shell changed them.
+    // look.lua sets Material's corners and shadow at login and after a config
+    // reload; System re-applies the corner radius then (with Glass's power),
+    // so this follows a moment later. Never touches what game mode turns off.
+    readonly property string windowLook: !Config.ready ? "" : Theme.material ? ["material", Theme.m3.primary, Theme.m3.outlineVariant, Theme.dark].join("|") : "glass"
+    property string windowApplied: ""
+    onWindowLookChanged: windowSettle.restart()
+    Connections {
+        target: System
+        function onWindowRadiusChanged() {
+            if (Theme.material)
+                windowSettle.restart();
+        }
+    }
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "configreloaded" && Theme.material)
+                windowSettle.restart();
+        }
+    }
+    Timer {
+        id: windowSettle
+        interval: 250 // after System's own corner update
+        onTriggered: root.applyWindows()
+    }
+    function applyWindows() {
+        if (windowLook === "")
+            return;
+        if (!Theme.material) {
+            if (windowApplied === "" || windowApplied === "glass")
+                return;
+            System.hyprEval('hl.config({ general = { col = { active_border = "rgba(ffffff38)", inactive_border = "rgba(ffffff10)" } }, decoration = { rounding_power = 4.0, shadow = { range = 24, render_power = 3, offset = { 0, 6 }, color = "rgba(00000045)" } } })');
+        } else {
+            const hex = c => String(c).slice(1, 7);
+            System.hyprEval('hl.config({ general = { col = { active_border = "rgb(' + hex(Theme.m3.primary) + ')", inactive_border = "rgba(' + hex(Theme.m3.outlineVariant) + '80)" } }, decoration = { rounding_power = 2.0, shadow = { range = 18, render_power = 3, offset = { 0, 4 }, color = "rgba(000000' + (Theme.dark ? "59" : "2e") + ')" } } })');
+        }
+        windowApplied = windowLook;
+    }
+
+    // Title bars (the optional hyprbars plugin) are styled as the config
+    // loads (hypr/irice/titlebars.lua reads the look): reload it once the
+    // new look is saved
+    readonly property bool materialLook: Theme.material
+    onMaterialLookChanged: if (Config.ready && Decorations.titlebarsActive) titlebarReload.restart()
+    Timer {
+        id: titlebarReload
+        interval: 800 // (Config writes the file 300 ms after a change)
+        onTriggered: Quickshell.execDetached(["sh", "-c", "hyprctl reload config-only >/dev/null"])
+    }
+
+    // Window controls the irice-glass plugin draws: round icon buttons on a
+    // tonal pill in Material, traffic lights in Glass (its default, so Glass
+    // only sends once Material has been on). A plugin built before this
+    // answers "unknown verb" and keeps its traffic lights.
+    readonly property string controlsStyle: Theme.material ? "material " + String(Theme.m3.surfaceContainerHigh).slice(1, 7) + " " + String(Theme.m3.onSurfaceVariant).slice(1, 7) : "glass"
+    property bool controlsSent: false
+    onControlsStyleChanged: sendControlsStyle()
+    Connections {
+        target: GlassPlugin
+        function onReady() { root.sendControlsStyle(); }
+    }
+    function sendControlsStyle() {
+        if (!GlassPlugin.available || (!Theme.material && !controlsSent))
+            return;
+        GlassPlugin.command("controls-style", "irice-glass controls-style " + controlsStyle);
+        controlsSent = true;
+    }
+
+    // ── The pointer follows the look ("auto") ───────────────────────────
+    // macOS in Glass, Bibata in Material (when it's installed; else macOS).
+    // An explicit macOS or Bibata is System's (it sets those); hypr/irice/
+    // cursor.lua sets it at login.
+    readonly property string cursorTheme: cfg.cursor === "bibata" || (cfg.cursor === "auto" && Theme.material) ? "Bibata-Modern-Classic" : "macOS"
+    readonly property string cursorFollows: Config.ready && cfg.cursor === "auto" ? cursorTheme : ""
+    onCursorFollowsChanged: if (cursorFollows !== "") cursorSettle.restart()
+    Timer {
+        id: cursorSettle
+        interval: 300 // after System's own update, which knows only macOS and Bibata
+        onTriggered: Quickshell.execDetached(["sh", "-c", "found() { for d in /usr/share/icons \"$HOME/.local/share/icons\" \"$HOME/.icons\"; do [ -d \"$d/$1\" ] && return 0; done; return 1; }; t=$1; found \"$t\" || t=macOS; h=$t; [ \"$t\" = macOS ] && found macOS-hypr && h=macOS-hypr; hyprctl setcursor \"$h\" 24 >/dev/null; gsettings set org.gnome.desktop.interface cursor-theme \"$t\" 2>/dev/null", "sh", root.cursorTheme])
+    }
+
+    // The login screen matches the desktop's look: it runs as greetd's user
+    // and can't read these settings, so iRice's root helper writes
+    // /usr/share/irice/look.json (no password: 49-irice.rules), a couple of
+    // seconds after the look, its colours or light/dark last changed. Only
+    // where the iRice login screen and the helper are installed, never from
+    // the dev sandbox.
+    readonly property string greeterLook: Config.ready ? [Config.options.appearance.look === "material" ? "material" : "glass", Theme.materialSeed.toUpperCase(), Config.options.appearance.materialStyle, Theme.dark ? "dark" : "light"].join(" ") : ""
+    property string greeterSent: ""
+    property bool greeterReady: false
+    onGreeterLookChanged: if (greeterReady && greeterLook !== "" && greeterLook !== greeterSent) greeterSync.restart()
+    Process {
+        running: Config.ready && !System.sandboxed
+        // (and the installed rules know this job: before an update installs
+        // them, pkexec would ask for a password instead)
+        command: ["sh", "-c", "[ -d /usr/share/irice ] && [ -x /usr/lib/irice/irice-root ] && grep -q greeter-look /etc/polkit-1/rules.d/49-irice.rules 2>/dev/null && grep -q greeter-look /usr/share/polkit-1/actions/org.irice.root.policy 2>/dev/null"]
+        onExited: code => {
+            root.greeterReady = code === 0;
+            if (root.greeterReady)
+                greeterSync.restart();
+        }
+    }
+    Timer {
+        id: greeterSync
+        interval: 2500
+        onTriggered: {
+            if (/^(glass|material) #[0-9A-F]{6} [a-zA-Z]+ (dark|light)$/.test(root.greeterLook) && !greeterProc.running) {
+                root.greeterSent = root.greeterLook;
+                greeterProc.command = ["pkexec", "/usr/lib/irice/irice-root", "greeter-look"].concat(root.greeterLook.split(" "));
+                greeterProc.running = true;
+            }
+        }
+    }
+    Process {
+        id: greeterProc
+        onExited: code => {
+            if (code !== 0)
+                root.greeterSent = ""; // (try again on the next change)
+        }
+    }
+
+    // 2 Nov: the sound set and the pointer that were the defaults (marimba,
+    // macOS) follow the look now ("auto": the same in Glass), once for
+    // settings saved before then (Config.lookDefaults)
+    function adoptLookDefaults() {
+        if (!Config.ready || Config.options.lookDefaults >= 1)
+            return;
+        if (Config.options.sounds.pack === "marimba")
+            Config.options.sounds.pack = "auto";
+        if (cfg.cursor === "macos")
+            cfg.cursor = "auto";
+        Config.options.lookDefaults = 1;
+    }
+    Component.onCompleted: adoptLookDefaults()
+    Connections {
+        target: Config
+        function onReadyChanged() { root.adoptLookDefaults(); }
     }
 }

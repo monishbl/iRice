@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Effects
 import qs.common
 import qs.modules.controlcenter
 import qs.services
@@ -16,14 +17,18 @@ Item {
     Item {
         id: header
         width: parent.width
-        height: 30
+        height: Theme.material ? 32 : 30
 
+        // (Material: a chip, 12 px corners, turning a pill in secondary
+        // container while its menu is open)
         Rectangle {
             id: picker
-            height: 30
+            height: header.height
             width: pickerRow.implicitWidth + 24
-            radius: 15
-            color: pickerMouse.containsMouse || modelMenu.visible ? Theme.color.fillHover : Theme.color.fill
+            radius: Theme.material ? (modelMenu.visible ? height / 2 : 12) : 15
+            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+            color: Theme.material ? (modelMenu.visible ? Theme.m3.secondaryContainer : Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, pickerMouse.pressed ? 0.1 : pickerMouse.containsMouse ? 0.08 : 0)))
+                : pickerMouse.containsMouse || modelMenu.visible ? Theme.color.fillHover : Theme.color.fill
             Row {
                 id: pickerRow
                 anchors.centerIn: parent
@@ -32,10 +37,10 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Ai.model.name
-                    color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                    color: Theme.material && modelMenu.visible ? Theme.m3.onSecondaryContainer : Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
                 }
-                Icon { anchors.verticalCenter: parent.verticalCenter; name: "caret-down"; bold: true; size: 11; color: Theme.color.secondary }
+                Icon { anchors.verticalCenter: parent.verticalCenter; name: Theme.material && modelMenu.visible ? "caret-up" : "caret-down"; bold: true; size: 11; color: Theme.material && modelMenu.visible ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
             }
             MouseArea {
                 id: pickerMouse
@@ -45,14 +50,17 @@ Item {
             }
         }
 
+        // (Material: a tonal icon button)
         Rectangle {
             anchors.right: parent.right
-            width: 30
-            height: 30
-            radius: 15
+            width: header.height
+            height: header.height
+            radius: Theme.material && newMouse.pressed ? 8 : height / 2
+            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
             visible: Ai.chat.count > 0
-            color: newMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-            Icon { anchors.centerIn: parent; name: "note-pencil"; size: 15 }
+            color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, newMouse.pressed ? 0.1 : newMouse.containsMouse ? 0.08 : 0))
+                : newMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+            Icon { anchors.centerIn: parent; name: "note-pencil"; size: 15; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label }
             MouseArea {
                 id: newMouse
                 anchors.fill: parent
@@ -69,13 +77,30 @@ Item {
         visible: Ai.chat.count === 0
         spacing: 8
 
-        Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "sparkle"; fill: true; size: 34; color: Theme.color.tertiary }
+        Icon { anchors.horizontalCenter: parent.horizontalCenter; visible: !Theme.material; name: "sparkle"; fill: true; size: 34; color: Theme.color.tertiary }
+        // Material: the sparkle on a cookie, Android's hero shape
+        Loader {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: Theme.material
+            active: Theme.material
+            sourceComponent: Item {
+                implicitWidth: 72
+                implicitHeight: 80 // (a little room below the shape)
+                MaterialShape {
+                    width: 72
+                    height: 72
+                    shape: "cookie9"
+                    color: Theme.m3.primaryContainer
+                    Icon { anchors.centerIn: parent; name: "sparkle"; fill: true; size: 30; color: Theme.m3.onPrimaryContainer }
+                }
+            }
+        }
         Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             text: !Ai.configured ? "Add your AI model" : Ai.needsKey ? "Connect " + Ai.providerName : "Ask " + Ai.model.name
             color: Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
+            font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.large : Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold }
         }
         Text {
             width: parent.width
@@ -94,14 +119,14 @@ Item {
             topPadding: 8
             Squircle {
                 width: 220
-                height: 32
-                radius: Theme.radius.control
-                color: Theme.color.fill
-                border.width: 1
+                height: Theme.material ? 40 : 32
+                radius: Theme.material ? height / 2 : Theme.radius.control
+                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
+                border.width: Theme.material ? (keyField.activeFocus ? 2 : 0) : 1
                 border.color: keyField.activeFocus ? Theme.accent : Theme.color.separator
                 TextInput {
                     id: keyField
-                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                    anchors { fill: parent; leftMargin: Theme.material ? 16 : 10; rightMargin: Theme.material ? 16 : 10 }
                     verticalAlignment: TextInput.AlignVCenter
                     echoMode: TextInput.Password
                     color: Theme.color.label
@@ -126,15 +151,17 @@ Item {
                     keyField.text = "";
                     composer.forceActiveFocus();
                 }
-                width: 64
-                height: 32
-                radius: Theme.radius.control
-                color: keyField.text.trim() !== "" ? Theme.accent : Theme.color.toggleOff
+                // (Material: a filled pill; disabled, 12% and 38% of onSurface)
+                width: Theme.material ? saveLabel.implicitWidth + 32 : 64
+                height: Theme.material ? 40 : 32
+                radius: Theme.material ? height / 2 : Theme.radius.control
+                color: keyField.text.trim() !== "" ? Theme.accent : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.12) : Theme.color.toggleOff
                 Text {
+                    id: saveLabel
                     anchors.centerIn: parent
                     text: "Save key"
-                    color: keyField.text.trim() !== "" ? Theme.color.onAccent : Theme.color.tertiary
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                    color: keyField.text.trim() !== "" ? Theme.color.onAccent : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.38) : Theme.color.tertiary
+                    font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
                 }
                 MouseArea { anchors.fill: parent; onClicked: saveKey.save() }
             }
@@ -165,9 +192,9 @@ Item {
         anchors { left: parent.left; bottom: composerBox.top; bottomMargin: 8 }
         width: chipRow.implicitWidth + 12
         height: 48
-        radius: Theme.radius.control
-        color: Theme.color.fill
-        border.width: 1
+        radius: Theme.material ? 16 : Theme.radius.control
+        color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
+        border.width: Theme.material ? 0 : 1
         border.color: Theme.color.separator
         Row {
             id: chipRow
@@ -201,17 +228,18 @@ Item {
     Squircle {
         id: composerBox
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: Math.min(150, composer.contentHeight + 22)
-        radius: 18
-        color: Theme.color.fill
-        border.width: 1
+        // (Material: a pill in surface container high, no outline)
+        height: Math.min(150, composer.contentHeight + (Theme.material ? 32 : 22))
+        radius: Theme.material ? Math.min(height / 2, 28) : 18
+        color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
+        border.width: Theme.material ? 0 : 1
         border.color: composer.activeFocus ? Theme.accentAlpha(0.6) : Theme.color.separator
 
         Flickable {
             id: scroller
 
             Momentum {}
-            anchors { left: parent.left; right: sendButton.left; top: parent.top; bottom: parent.bottom; leftMargin: 14; rightMargin: 6; topMargin: 11; bottomMargin: 11 }
+            anchors { left: parent.left; right: sendButton.left; top: parent.top; bottom: parent.bottom; leftMargin: Theme.material ? 20 : 14; rightMargin: 6; topMargin: Theme.material ? 16 : 11; bottomMargin: Theme.material ? 16 : 11 }
             contentHeight: composer.contentHeight
             clip: true
             TextArea.flickable: TextArea {
@@ -237,21 +265,27 @@ Item {
         Rectangle {
             id: sendButton
             anchors { right: parent.right; rightMargin: 6; bottom: parent.bottom; bottomMargin: 6 }
-            width: 28
-            height: 28
-            radius: 14
+            // (Material: a filled primary circle, squaring a little while
+            // pressed; disabled, 12% and 38% of onSurface)
+            width: Theme.material ? 36 : 28
+            height: width
+            radius: Theme.material && sendMouse.pressed ? 10 : width / 2
+            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
             readonly property bool canSend: composer.text.trim() !== "" || Ai.attachment !== null
-            color: Ai.busy || canSend ? Theme.accent : Theme.color.toggleOff
+            color: Ai.busy || canSend ? (Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, sendMouse.pressed ? 0.1 : sendMouse.containsMouse ? 0.08 : 0)) : Theme.accent)
+                : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.12) : Theme.color.toggleOff
             Icon {
                 anchors.centerIn: parent
                 name: Ai.busy ? "stop" : "arrow-up"
                 bold: !Ai.busy
                 fill: Ai.busy
-                size: 14
-                color: Ai.busy || sendButton.canSend ? Theme.color.onAccent : Theme.color.tertiary
+                size: Theme.material ? 18 : 14
+                color: Ai.busy || sendButton.canSend ? Theme.color.onAccent : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.38) : Theme.color.tertiary
             }
             MouseArea {
+                id: sendMouse
                 anchors.fill: parent
+                hoverEnabled: Theme.material
                 onClicked: {
                     if (Ai.busy) {
                         Ai.stop();
@@ -265,15 +299,27 @@ Item {
     }
 
     // Model menu
+    // (Material: a menu, surface container with 16 px corners and a soft shadow)
+    Loader {
+        active: Theme.material && modelMenu.visible
+        anchors.fill: modelMenu
+        z: 9
+        sourceComponent: RectangularShadow {
+            radius: 16
+            offset.y: 2
+            blur: 12
+            color: Qt.alpha(Theme.m3.shadow, Theme.dark ? 0.4 : 0.16)
+        }
+    }
     Squircle {
         id: modelMenu
         visible: false
         anchors { top: header.bottom; topMargin: 6; left: parent.left }
         width: 280
         height: Math.min(340, menuColumn.implicitHeight + 10)
-        radius: 14
-        color: Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.97) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
-        border.width: 1
+        radius: Theme.material ? 16 : 14
+        color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.97) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
+        border.width: Theme.material ? 0 : 1
         border.color: Theme.color.separator
         z: 10
 
@@ -290,27 +336,31 @@ Item {
                 Repeater {
                     model: Ai.models
                     Squircle {
+                        id: modelItem
                         required property var modelData
+                        // (Material: 44 px items, the chosen one in tertiary container)
+                        readonly property bool chosen: modelData.key === Ai.model.key
                         width: menuColumn.width
-                        height: 30
-                        radius: 8
-                        color: itemMouse.containsMouse ? Theme.color.highlight : "transparent"
+                        height: Theme.material ? 44 : 30
+                        radius: Theme.material ? 12 : 8
+                        color: Theme.material && chosen ? Qt.tint(Theme.m3.tertiaryContainer, Qt.alpha(Theme.m3.onTertiaryContainer, itemMouse.containsMouse ? 0.08 : 0))
+                            : itemMouse.containsMouse ? Theme.color.highlight : "transparent"
                         Icon {
-                            x: 8
+                            x: Theme.material ? 12 : 8
                             anchors.verticalCenter: parent.verticalCenter
                             visible: parent.modelData.key === Ai.model.key
                             name: "check"
                             bold: true
-                            size: 12
-                            color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
+                            size: Theme.material ? 16 : 12
+                            color: Theme.material && modelItem.chosen ? Theme.m3.onTertiaryContainer : itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
                         }
                         Text {
-                            x: 26
+                            x: Theme.material ? 40 : 26
                             anchors.verticalCenter: parent.verticalCenter
                             text: parent.modelData.name + " · " + Ai.nameForProvider(parent.modelData.provider)
-                            width: parent.width - 32
+                            width: parent.width - x - 6
                             elide: Text.ElideRight
-                            color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
+                            color: Theme.material && modelItem.chosen ? Theme.m3.onTertiaryContainer : itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                         }
                         MouseArea {
@@ -326,11 +376,11 @@ Item {
                 }
                 Squircle {
                     width: menuColumn.width
-                    height: 30
-                    radius: 8
-                    color: manageMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                    height: Theme.material ? 44 : 30
+                    radius: Theme.material ? 12 : 8
+                    color: manageMouse.containsMouse ? (Theme.material ? Theme.color.highlight : Theme.color.fillHover) : "transparent"
                     Text {
-                        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                        anchors { left: parent.left; leftMargin: Theme.material ? 40 : 12; verticalCenter: parent.verticalCenter }
                         text: "Manage models…"
                         color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.body }

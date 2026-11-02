@@ -9,6 +9,9 @@ import qs.services
 // Window controls (Settings → Decorations → Window controls): a small pill at
 // the top centre of the focused window. Hover it to reveal close, minimize and
 // zoom; rest on the green button for the tiling grid. Hidden for fullscreen.
+// In the Material look they're round icon buttons instead of traffic lights
+// (minimize, maximize, close, as ChromeOS and Android draw a window's), and
+// resting on maximize opens the grid.
 // With the irice-glass plugin the compositor draws the pill (it can't lag
 // behind a moving window); this then only shows the tile grid, when the
 // plugin reports a rest on the green button.
@@ -34,15 +37,15 @@ Variants {
         readonly property bool expanded: hover.hovered || tiling
         property bool tiling: false // the tile grid under the green button
         onExpandedChanged: if (!hover.hovered && !pluginMode) tiling = false
-        readonly property int head: pluginMode ? 8 : 24 + 8 // traffic lights above the grid (or just padding)
+        readonly property int head: pluginMode ? 8 : (Theme.material ? 28 : 24) + 8 // traffic lights above the grid (or just padding)
         readonly property int m: 12
         readonly property var tileRows: [["left", "right", "top", "bottom"], ["topLeft", "topRight", "bottomLeft", "bottomRight"], ["leftThird", "centerThird", "rightThird", "fill"]]
 
         visible: onThisScreen && (!pluginMode || tiling)
         WlrLayershell.layer: WlrLayer.Top
         anchors { top: true; left: true }
-        implicitWidth: (tiling ? 196 : expanded ? 76 : 44) + 2 * m
-        implicitHeight: (tiling ? head + 3 * 32 + 2 * 4 + 8 : expanded ? 24 : 10) + 2 * m
+        implicitWidth: (tiling ? 196 : expanded ? (Theme.material ? 84 : 76) : 44) + 2 * m
+        implicitHeight: (tiling ? head + 3 * 32 + 2 * 4 + 8 : expanded ? (Theme.material ? 28 : 24) : 10) + 2 * m
         margins.left: pluginMode ? tileAt.x - (monitor?.x ?? 0) - implicitWidth / 2 : (ipc?.size ? ipc.at[0] - (monitor?.x ?? 0) + ipc.size[0] / 2 : 0) - implicitWidth / 2
         margins.top: pluginMode ? tileAt.y - (monitor?.y ?? 0) + 6 - m : (ipc?.at ? ipc.at[1] - (monitor?.y ?? 0) + 4 : 0) - m
 
@@ -104,7 +107,7 @@ Variants {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             y: win.m + (24 - 14) / 2
-            visible: win.expanded && !win.pluginMode
+            visible: win.expanded && !win.pluginMode && !Theme.material
             spacing: 8
             Repeater {
                 model: [
@@ -142,7 +145,48 @@ Variants {
                 }
             }
         }
-    
+
+        // Material: round icon buttons in onSurfaceVariant, each with a
+        // state layer (IconButton), minimize, maximize and close
+        Loader {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: win.m + 2
+            active: Theme.material && !win.pluginMode
+            visible: win.expanded
+            sourceComponent: Row {
+                spacing: 2
+                Repeater {
+                    model: [
+                        { icon: "minus", name: "Minimize", act: () => Apps.minimize(win.target) },
+                        { icon: "square", name: "Maximize", act: () => Apps.windowActionFor(win.target, "fullscreen", { mode: "maximized", action: "toggle" }) },
+                        { icon: "x", name: "Close", act: () => Apps.windowActionFor(win.target, "close") }
+                    ]
+                    IconButton {
+                        id: control
+                        required property var modelData
+                        width: 24
+                        height: 24
+                        icon: modelData.icon
+                        iconSize: 16
+                        iconColor: Theme.m3.onSurfaceVariant
+                        accessibleName: modelData.name
+                        onClicked: modelData.act()
+                        // Resting on maximize opens the tile grid
+                        HoverHandler {
+                            onHoveredChanged: {
+                                if (control.modelData.icon !== "square")
+                                    return;
+                                if (hovered)
+                                    tileDelay.restart();
+                                else
+                                    tileDelay.stop();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Column {
             anchors.horizontalCenter: parent.horizontalCenter
             y: win.m + win.head

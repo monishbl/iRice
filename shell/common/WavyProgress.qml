@@ -10,6 +10,7 @@ Item {
     id: root
 
     property real value: 0
+    property bool paused: false // (Material: the wave lies flat and still, as Android's does while media is paused)
     property color color: Theme.material ? (Theme.m3.primary ?? Theme.accent) : Theme.accent
     property color trackColor: Theme.material ? (Theme.m3.secondaryContainer ?? Theme.color.toggleOff) : Theme.color.toggleOff
     readonly property bool indeterminate: value < 0
@@ -57,7 +58,7 @@ Item {
             readonly property real start: root.indeterminate ? slide.pos * (width - width * 0.3) : 0
             readonly property real end: start + width * root.shown
             // (flat near 0 and 100%, as Google's)
-            property real amplitude: !root.indeterminate && (root.shown <= 0.1 || root.shown >= 0.95) ? 0 : 3
+            property real amplitude: root.paused || (!root.indeterminate && (root.shown <= 0.1 || root.shown >= 0.95)) ? 0 : 3
             Behavior on amplitude { NumberAnimation { duration: 300 } }
             property real phase: 0
             NumberAnimation on phase {

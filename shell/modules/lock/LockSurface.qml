@@ -91,10 +91,10 @@ WlSessionLockSurface {
         id: frosted
         anchors.fill: parent
         visible: false
-        layer.enabled: surface.material === "frost"
+        layer.enabled: surface.material === "frost" && !Theme.material
         Image {
             anchors.fill: parent
-            source: surface.material === "frost" ? Wallpaper.source : ""
+            source: surface.material === "frost" && !Theme.material ? Wallpaper.source : ""
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(parent.width / 4, parent.height / 4)
             asynchronous: true
@@ -166,13 +166,34 @@ WlSessionLockSurface {
         }
     }
 
+    // The Material look draws its own lock (LockMaterial.qml), Android's,
+    // over the same wallpaper and under the same StandBy; this file keeps
+    // every rule about what shows when
+    function focusField() {
+        if (materialLock.item)
+            materialLock.item.focusField();
+        else
+            input.forceActiveFocus();
+    }
+    Loader {
+        id: materialLock
+        anchors.fill: parent
+        active: Theme.material
+        sourceComponent: Component {
+            LockMaterial {
+                host: surface
+            }
+        }
+    }
+
     // Everything but the wallpaper and StandBy (lifts away on unlock)
     Item {
         id: content
         anchors.fill: parent
         opacity: 1 - surface.exit
         scale: surface.zoomOut ? 1 + 0.08 * surface.exit : 1
-        visible: !(surface.standby && surface.sb >= 1)
+        visible: !Theme.material && !(surface.standby && surface.sb >= 1)
+        enabled: !Theme.material // (and its field lets go of the keyboard)
 
         // ── Date and time ───────────────────────────────────────────────────
         Column {
@@ -546,7 +567,7 @@ WlSessionLockSurface {
                 standbyView.step(e.key === Qt.Key_Right ? 1 : -1);
             } else {
                 surface.woke();
-                input.forceActiveFocus();
+                surface.focusField();
             }
             e.accepted = true;
         }
@@ -563,12 +584,12 @@ WlSessionLockSurface {
                     from = Qt.point(m.x, m.y);
                 } else if (Math.hypot(m.x - from.x, m.y - from.y) > 24) {
                     surface.woke();
-                    input.forceActiveFocus();
+                    surface.focusField();
                 }
             }
             onClicked: {
                 surface.woke();
-                input.forceActiveFocus();
+                surface.focusField();
             }
             onWheel: w => standbyView.step(w.angleDelta.x + w.angleDelta.y < 0 ? 1 : -1)
         }
@@ -584,7 +605,7 @@ WlSessionLockSurface {
     readonly property real flyY: flyFrom.y + (flyTo.y - flyFrom.y) * sb
     readonly property real sizeRatio: standbyView.clockSize / lockClock.font.pixelSize
     Text {
-        visible: surface.morphing
+        visible: surface.morphing && !Theme.material
         x: surface.flyX - width / 2
         y: surface.flyY - height / 2
         scale: 1 + (surface.sizeRatio - 1) * surface.sb
@@ -594,7 +615,7 @@ WlSessionLockSurface {
         font: lockClock.font
     }
     Text {
-        visible: surface.morphing
+        visible: surface.morphing && !Theme.material
         x: surface.flyX - width / 2
         y: surface.flyY - height / 2
         scale: 1 / surface.sizeRatio + (1 - 1 / surface.sizeRatio) * surface.sb
@@ -602,6 +623,37 @@ WlSessionLockSurface {
         text: lockClock.text
         color: standbyView.ink
         font { family: Theme.font.family; pixelSize: standbyView.clockSize; weight: standbyView.clockWeight; letterSpacing: -standbyView.clockSize * 0.03; features: { "tnum": 1 } }
+    }
+    // The Material morph: the lock's big clock itself flies to StandBy's,
+    // thinning through the font's weight axis on the way (as a Pixel's clock
+    // does going always-on) and dimming to StandBy's colour and brightness
+    function mix(a, b, t) {
+        return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+    }
+    Loader {
+        active: Theme.material && surface.morphing && materialLock.item !== null
+        sourceComponent: Component {
+            MaterialClock {
+                readonly property var lock: materialLock.item
+                readonly property rect from: lock.clockRect
+                readonly property rect to: standbyView.mClockTarget
+                readonly property real t: surface.sb
+                readonly property real ratio: lock.clockSize > 0 ? standbyView.mClockSize / lock.clockSize : 1
+                x: from.x + from.width / 2 + (to.x + to.width / 2 - from.x - from.width / 2) * t - width / 2
+                y: from.y + from.height / 2 + (to.y + to.height / 2 - from.y - from.height / 2) * t - height / 2
+                width: implicitWidth
+                height: implicitHeight
+                scale: 1 + (ratio - 1) * t
+                time: lock.now
+                size: lock.clockSize
+                weight: lock.clockWeight + (standbyView.mClockWeight - lock.clockWeight) * t
+                widthAxis: lock.clockWidth + (standbyView.mClockWidth - lock.clockWidth) * t
+                color: surface.mix(lock.clockInk, standbyView.mInk, t)
+                color2: surface.mix(lock.clockInk2, standbyView.mInk2, t)
+                opacity: 1 + (standbyView.clockOpacity - 1) * t
+                align: lock.split ? Text.AlignLeft : Text.AlignHCenter
+            }
+        }
     }
     // Any use of the lock screen keeps StandBy away
     Connections {

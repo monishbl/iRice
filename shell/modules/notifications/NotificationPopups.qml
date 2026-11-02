@@ -21,8 +21,15 @@ Scope {
     onWindowWantedChanged: windowWanted ? (windowAlive = true, windowUnload.stop()) : windowUnload.restart()
     Timer { id: windowUnload; interval: 800; onTriggered: root.windowAlive = false }
 
+    // Material: Android's heads-up notifications (MaterialPopupWindow.qml)
     LazyLoader {
-        active: root.windowAlive
+        active: root.windowAlive && Theme.material
+
+        MaterialPopupWindow {}
+    }
+
+    LazyLoader {
+        active: root.windowAlive && !Theme.material
 
         GlassWindow {
             id: win

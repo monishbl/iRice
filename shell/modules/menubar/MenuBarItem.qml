@@ -32,10 +32,12 @@ Item {
     implicitWidth: content.implicitWidth + 18
     implicitHeight: 24
 
+    // (Material: a pill of state layer, 8% hovered, 10% pressed, 16% while
+    // its menu is open)
     Squircle {
         anchors.fill: parent
-        radius: Theme.radius.item
-        color: Qt.alpha(root.color, root.active ? 0.22 : mouse.pressed ? 0.2 : root.hovered ? 0.12 : 0)
+        radius: Theme.material ? height / 2 : Theme.radius.item
+        color: Theme.material ? Qt.alpha(root.color, root.active ? 0.16 : mouse.pressed ? 0.1 : root.hovered ? 0.08 : 0) : Qt.alpha(root.color, root.active ? 0.22 : mouse.pressed ? 0.2 : root.hovered ? 0.12 : 0)
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     }
 
@@ -74,8 +76,8 @@ Item {
                         width: 7
                         height: 7
                         radius: 3.5
-                        color: Theme.accents.blue // unread is status: always the vivid system blue
-                        border.width: 1
+                        color: Theme.material ? Theme.m3.primary : Theme.accents.blue // unread is status: always the vivid system blue (Material: primary)
+                        border.width: Theme.material ? 0 : 1
                         border.color: Qt.alpha("black", 0.25)
                     }
                 }
@@ -85,7 +87,7 @@ Item {
                     width: 7
                     height: 7
                     radius: 3.5
-                    color: Theme.accents.blue
+                    color: Theme.material ? Theme.m3.primary : Theme.accents.blue
                 }
                 // Count as a pill (inline, not an overlay)
                 Rectangle {
@@ -94,12 +96,12 @@ Item {
                     width: Math.max(16, countText.implicitWidth + 8)
                     height: 16
                     radius: 8
-                    color: root.indicator === "count" ? Theme.accents.blue : "transparent"
+                    color: root.indicator === "count" ? (Theme.material ? Theme.m3.primary : Theme.accents.blue) : "transparent"
                     Text {
                         id: countText
                         anchors.centerIn: parent
                         text: root.unread > 99 ? "99+" : root.unread
-                        color: root.indicator === "count" ? "white" : root.color
+                        color: root.indicator === "count" ? (Theme.material ? Theme.m3.onPrimary : "white") : root.color
                         font { family: Theme.font.family; pixelSize: 11; weight: Font.DemiBold; features: { "tnum": 1 } }
                     }
                 }
@@ -138,8 +140,9 @@ Item {
             text: root.text
             color: root.color
             font.family: Theme.font.family
-            font.pixelSize: Theme.font.body
-            font.weight: root.bold ? Font.Bold : Font.Medium
+            // (Material: the status bar's 14 px, medium; bold is semibold)
+            font.pixelSize: Theme.material ? 14 : Theme.font.body
+            font.weight: root.bold ? (Theme.material ? Font.DemiBold : Font.Bold) : Font.Medium
             font.features: { "tnum": 1 }
         }
     }
@@ -155,7 +158,7 @@ Item {
             id: badgeText
             anchors.centerIn: parent
             text: root.badge > 99 ? "99+" : root.badge
-            color: "white"
+            color: Theme.material ? Theme.m3.onError : "white"
             font { family: Theme.font.family; pixelSize: 9; weight: Font.Bold }
         }
     }

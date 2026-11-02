@@ -85,9 +85,10 @@ Scope {
                     height: parent.s.height + 2
                     visible: parent.s.width > 0
                     color: "transparent"
-                    border.width: 1
-                    border.color: "white"
-                    radius: win.dragging ? 0 : 12
+                    // (Material: a 2 px primary outline)
+                    border.width: Theme.material ? 2 : 1
+                    border.color: Theme.material ? Theme.m3.primary : "white"
+                    radius: win.dragging ? 0 : Theme.material ? 16 : 12
                 }
             }
 
@@ -97,14 +98,15 @@ Scope {
                 x: Math.min(win.selection.x + win.selection.width + 8, win.width - width - 8)
                 y: Math.min(win.selection.y + win.selection.height + 8, win.height - height - 8)
                 width: sizeText.implicitWidth + 16
-                height: 22
-                radius: 11
-                color: Qt.rgba(0.1, 0.1, 0.12, 0.85)
+                height: Theme.material ? 28 : 22
+                radius: height / 2
+                // (Material: a primary badge)
+                color: Theme.material ? Theme.m3.primary : Qt.rgba(0.1, 0.1, 0.12, 0.85)
                 Text {
                     id: sizeText
                     anchors.centerIn: parent
                     text: Math.round(win.selection.width) + " × " + Math.round(win.selection.height)
-                    color: "white"
+                    color: Theme.material ? Theme.m3.onPrimary : "white"
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
                 }
             }
@@ -112,16 +114,17 @@ Scope {
             // Hint
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 48 }
-                width: hint.implicitWidth + 28
-                height: 32
-                radius: 16
-                color: Qt.rgba(0.1, 0.1, 0.12, 0.85)
+                width: hint.implicitWidth + (Theme.material ? 40 : 28)
+                height: Theme.material ? 48 : 32
+                radius: height / 2
+                // (Material: a snackbar-like hint in inverseSurface, as a pill)
+                color: Theme.material ? Theme.m3.inverseSurface : Qt.rgba(0.1, 0.1, 0.12, 0.85)
                 Text {
                     id: hint
                     anchors.centerIn: parent
                     text: root.mode === "record-window" ? "Click a window to record it. Esc to cancel." : "Drag to select an area to " + win.verb + ", or click a window. Esc to cancel."
-                    color: "white"
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                    color: Theme.material ? Theme.m3.inverseOnSurface : "white"
+                    font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Font.Medium }
                 }
             }
 

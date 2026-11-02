@@ -12,6 +12,9 @@ import qs.services
 // shows, and Decline / Accept. Accepted, a ring fills around them while it
 // arrives; then Open and Show in Files. Hide leaves the transfer to the
 // island. It doesn't block the rest of the screen.
+// Material: a dialog (surfaceContainerHigh, corner 28), who it is on a shape
+// that changes as it goes, a wavy bar while it arrives, filled and tonal
+// buttons.
 Scope {
     id: root
 
@@ -64,13 +67,22 @@ Scope {
                 opacity: win.shown
                 scale: 0.9 + 0.1 * win.shown
             }
+            // (Material: a dialog's surfaceContainerHigh)
+            Rectangle {
+                visible: Theme.material
+                anchors.fill: card
+                radius: 28
+                color: Theme.m3.surfaceContainerHigh ?? "transparent"
+                opacity: win.shown
+                scale: 0.9 + 0.1 * win.shown
+            }
 
             Item {
                 id: card
                 x: glass.shadowMargin
                 y: glass.shadowMargin
-                width: 300
-                height: body.implicitHeight + 40
+                width: Theme.material ? 312 : 300
+                height: body.implicitHeight + 2 * body.x
                 opacity: win.shown
                 scale: 0.9 + 0.1 * win.shown
                 focus: true
@@ -79,9 +91,9 @@ Scope {
 
                 Column {
                     id: body
-                    x: 20
-                    y: 22
-                    width: parent.width - 40
+                    x: Theme.material ? 24 : 20
+                    y: Theme.material ? 24 : 22
+                    width: parent.width - 2 * x
                     spacing: 6
 
                     // Who: a round avatar, and the ring that fills as it arrives
@@ -89,14 +101,29 @@ Scope {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 84
                         height: 84
+                        // Material: they're on a shape: a cookie while it asks,
+                        // round while it arrives, sunny when it's there, a
+                        // square in errorContainer if it went wrong
+                        Loader {
+                            anchors.centerIn: parent
+                            active: Theme.material
+                            sourceComponent: MaterialShape {
+                                width: 76
+                                height: 76
+                                shape: root.state_ === "receiving" ? "circle" : root.state_ === "done" ? "sunny" : root.state_ === "failed" ? "square" : "cookie9"
+                                color: root.state_ === "failed" ? Theme.m3.errorContainer : Theme.m3.primaryContainer
+                            }
+                        }
                         Rectangle {
                             anchors.centerIn: parent
                             width: 68
                             height: 68
                             radius: 34
+                            // (Material: only what's on it; the shape is the container)
+                            readonly property color ink: Theme.material ? (root.state_ === "failed" ? Theme.m3.onErrorContainer : Theme.m3.onPrimaryContainer) : Theme.color.onAccent
                             gradient: Gradient {
-                                GradientStop { position: 0; color: Qt.lighter(Theme.accent, 1.25) }
-                                GradientStop { position: 1; color: Theme.accent }
+                                GradientStop { position: 0; color: Theme.material ? "transparent" : Qt.lighter(Theme.accent, 1.25) }
+                                GradientStop { position: 1; color: Theme.material ? "transparent" : Theme.accent }
                             }
                             Icon {
                                 anchors.centerIn: parent
@@ -104,7 +131,7 @@ Scope {
                                 name: root.kindIcon
                                 fill: true
                                 size: 32
-                                color: Theme.color.onAccent
+                                color: parent.ink
                             }
                             // A phone (or tablet), its screen showing the link
                             Rectangle {
@@ -115,14 +142,14 @@ Scope {
                                 radius: 7
                                 color: "transparent"
                                 border.width: 2.5
-                                border.color: Theme.color.onAccent
+                                border.color: parent.ink
                                 Rectangle {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     y: 4
                                     width: 8
                                     height: 2.5
                                     radius: 1.25
-                                    color: Theme.color.onAccent
+                                    color: parent.parent.ink
                                 }
                                 Icon {
                                     anchors.centerIn: parent
@@ -131,14 +158,14 @@ Scope {
                                     name: root.linkIcon
                                     fill: true
                                     size: 14
-                                    color: Theme.color.onAccent
+                                    color: parent.parent.ink
                                 }
                             }
                         }
                         Canvas {
                             id: ring
                             anchors.fill: parent
-                            visible: root.state_ === "receiving"
+                            visible: root.state_ === "receiving" && !Theme.material
                             readonly property real f: root.frac
                             onFChanged: requestPaint()
                             onVisibleChanged: requestPaint()
@@ -164,18 +191,29 @@ Scope {
                             width: 26
                             height: 26
                             radius: 13
-                            color: root.state_ === "done" ? Theme.color.success : Theme.color.danger
+                            // (Material: done in primary, failed in error)
+                            color: Theme.material ? (root.state_ === "done" ? Theme.m3.primary : Theme.m3.error) : root.state_ === "done" ? Theme.color.success : Theme.color.danger
                             border.width: 2
-                            border.color: Theme.glass.solid
+                            border.color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.glass.solid
                             Icon {
                                 anchors.centerIn: parent
                                 name: root.state_ === "done" ? "check" : "x"
                                 size: 14
-                                color: "white"
+                                color: Theme.material ? (root.state_ === "done" ? Theme.m3.onPrimary : Theme.m3.onError) : "white"
                             }
                         }
                     }
 
+                    // Material: how far it's got, a wavy bar
+                    Loader {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        active: Theme.material && root.state_ === "receiving"
+                        visible: active
+                        sourceComponent: WavyProgress {
+                            width: 160
+                            value: root.item?.waiting ? -1 : root.frac
+                        }
+                    }
                     Text {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
@@ -210,10 +248,13 @@ Scope {
                     Rectangle {
                         visible: root.state_ === "asking" && (root.req?.pin ?? "") !== ""
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: pinText.implicitWidth + 20
-                        height: 24
-                        radius: 12
-                        color: Theme.color.fill
+                        width: pinText.implicitWidth + (Theme.material ? 24 : 20)
+                        // (Material: an outlined chip, 32 high, corner 8)
+                        height: Theme.material ? 32 : 24
+                        radius: Theme.material ? 8 : 12
+                        color: Theme.material ? "transparent" : Theme.color.fill
+                        border.width: Theme.material ? 1 : 0
+                        border.color: Theme.color.separator
                         Text {
                             id: pinText
                             anchors.centerIn: parent
@@ -251,10 +292,19 @@ Scope {
                                 required property var modelData
                                 width: (parent.width - 10 * (parent.buttons.length - 1)) / parent.buttons.length
                                 height: 40
-                                radius: 20
-                                color: modelData.primary ? (btnMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent)
+                                // Material: filled primary for the one to do, tonal
+                                // (secondaryContainer) for the rest, squaring off
+                                // while pressed
+                                radius: Theme.material && btnMouse.pressed ? 12 : 20
+                                Behavior on radius {
+                                    enabled: Theme.material
+                                    SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
+                                }
+                                readonly property color ink: Theme.material ? (modelData.primary ? Theme.m3.onPrimary : Theme.m3.onSecondaryContainer) : modelData.primary ? Theme.color.onAccent : Theme.color.label
+                                color: Theme.material ? Qt.tint(modelData.primary ? Theme.m3.primary : Theme.m3.secondaryContainer, Qt.alpha(ink, btnMouse.pressed ? 0.1 : btnMouse.containsMouse ? 0.08 : 0))
+                                    : modelData.primary ? (btnMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent)
                                     : (btnMouse.pressed ? Theme.color.fillPressed : btnMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill)
-                                scale: btnMouse.pressed ? 0.97 : 1
+                                scale: btnMouse.pressed && !Theme.material ? 0.97 : 1
                                 Behavior on scale { NumberAnimation { duration: 100 } }
                                 activeFocusOnTab: true
                                 Keys.onPressed: event => {
@@ -270,7 +320,7 @@ Scope {
                                 Text {
                                     anchors.centerIn: parent
                                     text: btn.modelData.label
-                                    color: btn.modelData.primary ? Theme.color.onAccent : Theme.color.label
+                                    color: btn.ink
                                     font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                                 }
                                 MouseArea {

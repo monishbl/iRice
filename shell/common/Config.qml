@@ -285,6 +285,10 @@ Singleton {
             }
 
             property int defaultsVersion: 0 // one-time changes to saved settings (onLoaded)
+            // 1: the default sound set and pointer (marimba, macos) became "auto",
+            // following the look (marimba / macOS in Glass, material / Bibata in
+            // Material); set once by services/AppTheme.qml
+            property int lookDefaults: 0
             // Overlay (Super+G): the floating image, crosshair and FPS limit
             // widgets are only offered when this is on
             property JsonObject overlays: JsonObject {

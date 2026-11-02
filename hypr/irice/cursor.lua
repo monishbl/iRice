@@ -1,7 +1,8 @@
 -- Cursor (Settings → Appearance → Pointer): the macOS pointer (apple_cursor
 -- for apps, apple_hyprcursor for Hyprland itself, sharper at any scale) or
--- Bibata Modern Classic like end4, when installed; else the system's. Same
--- size everywhere. The shell switches it live; this sets it at login.
+-- Bibata Modern Classic like end4, when installed; else the system's. "auto"
+-- follows the look: macOS in Glass, Bibata in Material. Same size
+-- everywhere. The shell switches it live; this sets it at login.
 local function installed(name)
     for _, dir in ipairs({ "/usr/share/icons/", (os.getenv("HOME") or "") .. "/.local/share/icons/", (os.getenv("HOME") or "") .. "/.icons/" }) do
         local f = io.open(dir .. name .. "/index.theme", "r") or io.open(dir .. name .. "/manifest.hl", "r")
@@ -17,8 +18,12 @@ local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME"
 local f = io.open((IRICE_USER_DIR or (cfg .. "/irice")) .. "/config.json", "r")
 local choice = "macos"
 if f then
-    choice = f:read("*a"):match('"cursor"%s*:%s*"(%w+)"') or "macos"
+    local s = f:read("*a")
     f:close()
+    choice = s:match('"cursor"%s*:%s*"(%w+)"') or "macos"
+    if choice == "auto" then
+        choice = s:match('"look"%s*:%s*"(%w+)"') == "material" and "bibata" or "macos"
+    end
 end
 
 hl.env("XCURSOR_SIZE", "24")

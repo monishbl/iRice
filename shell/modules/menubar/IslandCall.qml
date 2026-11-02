@@ -9,6 +9,8 @@ import qs.services
 // app that can't take the call here (WhatsApp: "check your phone").
 // The card itself is Island event { kind: "ringing", call: Calls.describe() };
 // what the buttons do is Calls.answer() / Calls.decline().
+// Material: the island's colours (IslandInk), Answer in primary and Decline
+// in error, the pulse in primary.
 Item {
     id: root
 
@@ -17,8 +19,10 @@ Item {
     property bool still: false // nobody can see it: the pulse holds
     readonly property var call: event?.call ?? null
     readonly property bool reduce: Config.options.appearance.reduceMotion === true
-    readonly property color ink: "#F5F5F7"
-    readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
+    property bool inverse: false // (Material: on inverseSurface)
+    readonly property color ink: IslandInk.ink(inverse)
+    readonly property color ink2: IslandInk.dim(0.6, inverse)
+    readonly property color pulse: Theme.material ? IslandInk.accent(inverse) : Theme.color.success
 
     implicitHeight: 68
 
@@ -56,7 +60,7 @@ Item {
                 radius: width / 2
                 color: "transparent"
                 border.width: 2
-                border.color: Theme.color.success
+                border.color: root.pulse
                 opacity: 0.55 * (1 - u)
             }
         }
@@ -68,18 +72,18 @@ Item {
             radius: width / 2
             color: "transparent"
             border.width: 2
-            border.color: Qt.alpha(Theme.color.success, 0.6)
+            border.color: Qt.alpha(root.pulse, 0.6)
         }
 
         ClippingRectangle {
             anchors.fill: parent
             radius: width / 2
-            color: "#636366"
+            color: Theme.material ? Theme.m3.tertiaryContainer : "#636366"
             Text {
                 anchors.centerIn: parent
                 visible: !photoImage.visible
                 text: root.call?.initials ?? ""
-                color: "white"
+                color: Theme.material ? Theme.m3.onTertiaryContainer : "white"
                 font { family: Theme.font.family; pixelSize: 19; weight: Font.DemiBold }
             }
             // No initials either: a person
@@ -89,7 +93,7 @@ Item {
                 name: "user"
                 fill: true
                 size: 24
-                color: "white"
+                color: Theme.material ? Theme.m3.onTertiaryContainer : "white"
             }
             Image {
                 id: photoImage
@@ -155,12 +159,14 @@ Item {
             label: "Decline"
             icon: "phone-disconnect"
             fillColor: Theme.color.danger
+            iconColor: Theme.material ? Theme.m3.onError : "white"
             onActivated: Calls.decline()
         }
         CallButton {
             label: root.call?.openOnly ? "Open" : "Answer"
             icon: root.call?.openOnly ? "arrow-square-out" : "phone"
-            fillColor: Theme.color.success
+            fillColor: Theme.material ? IslandInk.accent(root.inverse) : Theme.color.success
+            iconColor: Theme.material ? IslandInk.onAccent(root.inverse) : "white"
             onActivated: Calls.answer()
         }
     }
@@ -170,6 +176,7 @@ Item {
         property string label
         property string icon
         property color fillColor
+        property color iconColor: "white"
         signal activated
         spacing: 4
         Rectangle {
@@ -178,7 +185,7 @@ Item {
             width: 44
             height: 44
             radius: 22
-            color: mouse.pressed ? Qt.darker(btn.fillColor, 1.2) : mouse.containsMouse ? Qt.lighter(btn.fillColor, 1.1) : btn.fillColor
+            color: Theme.material ? Qt.tint(btn.fillColor, Qt.alpha(btn.iconColor, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0)) : mouse.pressed ? Qt.darker(btn.fillColor, 1.2) : mouse.containsMouse ? Qt.lighter(btn.fillColor, 1.1) : btn.fillColor
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             scale: mouse.pressed ? 0.94 : 1
             Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
@@ -187,7 +194,7 @@ Item {
                 name: btn.icon
                 fill: true
                 size: 22
-                color: "white"
+                color: btn.iconColor
             }
             MouseArea {
                 id: mouse

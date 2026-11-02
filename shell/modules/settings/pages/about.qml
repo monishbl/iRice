@@ -43,12 +43,12 @@ Column {
         footer: "Settings live in ~/.config/irice/config.json and apply as you change them."
         Row {
             label: "Configuration file"
-            Rectangle {
-                width: openText.implicitWidth + 24
-                height: 26
-                radius: 13
-                color: Theme.color.fill
-                Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+            Rectangle { // (Material: a 40 px tonal button)
+                width: openText.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 26
+                radius: height / 2
+                color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+                Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.Medium } }
                 MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
             }
         }

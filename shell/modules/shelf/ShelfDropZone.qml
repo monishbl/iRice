@@ -10,6 +10,8 @@ import qs.services
 // or send them to a phone (the share sheet: Quick Share or LocalSend). It
 // goes if the drag ends elsewhere, a moment after the drag leaves it, or
 // with a click on it or its close button (Shelf.offer).
+// Material: a surfaceContainer card (corner 28), the targets tonal, the one
+// under the drag in primaryContainer outlined in primary.
 LazyLoader {
     id: loader
     property bool leaving: false
@@ -55,9 +57,9 @@ LazyLoader {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 520
             height: column.implicitHeight + 32
-            radius: 32
-            color: "#000000"
-            border.width: 1
+            radius: Theme.material ? 28 : 32
+            color: Theme.material ? Theme.m3.surfaceContainer : "#000000"
+            border.width: Theme.material ? 0 : 1
             border.color: Qt.rgba(1, 1, 1, 0.12)
             opacity: win.shown
             scale: 0.72 + 0.28 * win.shown
@@ -97,19 +99,19 @@ LazyLoader {
                         name: "tray-arrow-down"
                         fill: true
                         size: 18
-                        color: "#F5F5F7"
+                        color: Theme.material ? Theme.m3.primary : "#F5F5F7"
                     }
                     Text {
                         anchors { left: headIcon.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
                         text: "Drop to keep or send"
-                        color: "#F5F5F7"
+                        color: Theme.material ? Theme.m3.onSurface : "#F5F5F7"
                         font { family: Theme.font.family; pixelSize: 15; weight: Font.DemiBold }
                     }
                     Text {
                         anchors { right: closeButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
                         visible: Shelf.count > 0
                         text: Shelf.count + " on the shelf"
-                        color: Qt.rgba(1, 1, 1, 0.6)
+                        color: Theme.material ? Theme.m3.onSurfaceVariant : Qt.rgba(1, 1, 1, 0.6)
                         font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                     }
                     Rectangle {
@@ -118,7 +120,9 @@ LazyLoader {
                         width: 28
                         height: 28
                         radius: 14
-                        color: closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
+                        // (Material: a standard icon button, its state layer)
+                        color: Theme.material ? Qt.alpha(Theme.m3.onSurfaceVariant, closeMouse.containsMouse ? 0.08 : 0)
+                            : closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
                         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                         Accessible.role: Accessible.Button
                         Accessible.name: "Close"
@@ -127,7 +131,7 @@ LazyLoader {
                             name: "x"
                             bold: true
                             size: 14
-                            color: "#F5F5F7"
+                            color: Theme.material ? Theme.m3.onSurfaceVariant : "#F5F5F7"
                         }
                         MouseArea {
                             id: closeMouse
@@ -168,11 +172,17 @@ LazyLoader {
         signal droppedHere(var urls, string text)
         width: 236
         height: 116
-        radius: 20
         readonly property bool over: dropArea.containsDrag
-        color: over ? Qt.alpha(Theme.accent, 0.38) : Qt.rgba(1, 1, 1, 0.08)
-        border.width: 1
-        border.color: over ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
+        // (Material: tonal, the one under the drag in primaryContainer with a
+        // primary outline, its corners rounder)
+        radius: Theme.material ? (over ? 28 : 20) : 20
+        Behavior on radius {
+            enabled: Theme.material
+            SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
+        }
+        color: Theme.material ? (over ? Theme.m3.primaryContainer : Theme.m3.surfaceContainerHighest) : over ? Qt.alpha(Theme.accent, 0.38) : Qt.rgba(1, 1, 1, 0.08)
+        border.width: Theme.material ? (over ? 2 : 0) : 1
+        border.color: Theme.material ? Theme.m3.primary : over ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
         scale: over ? 1.03 : 1
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         Behavior on scale { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
@@ -184,18 +194,18 @@ LazyLoader {
                 name: target.icon
                 fill: true
                 size: 28
-                color: "#F5F5F7"
+                color: Theme.material ? (target.over ? Theme.m3.onPrimaryContainer : Theme.m3.primary) : "#F5F5F7"
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: target.title
-                color: "#F5F5F7"
+                color: Theme.material ? (target.over ? Theme.m3.onPrimaryContainer : Theme.m3.onSurface) : "#F5F5F7"
                 font { family: Theme.font.family; pixelSize: 14; weight: Font.DemiBold }
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: target.detail
-                color: Qt.rgba(1, 1, 1, 0.6)
+                color: Theme.material ? (target.over ? Theme.m3.onPrimaryContainer : Theme.m3.onSurfaceVariant) : Qt.rgba(1, 1, 1, 0.6)
                 font { family: Theme.font.family; pixelSize: Theme.font.small }
             }
         }

@@ -14,7 +14,8 @@ import "MaterialColor.js" as MaterialColor
 Singleton {
     id: root
 
-    readonly property bool material: Config.options.appearance.look === "material"
+    // (the look shown: LookSwitch holds the old one while the switching screen covers the change)
+    readonly property bool material: LookSwitch.shown === "material"
 
     // "auto" follows the sun: light from sunrise to sunset
     readonly property bool dark: Config.options.appearance.mode === "auto" ? !Daylight.day : Config.options.appearance.mode !== "light"

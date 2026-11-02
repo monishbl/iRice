@@ -12,15 +12,19 @@ import qs.modules.settings
 // community packages only when asked for (the AUR filter on search results,
 // or "aur: name"), each saying what it is, with its votes and popularity,
 // before it's installed. Spotlight's "Get" rows open it on that app.
+// Material: like the Play Store. A pill search bar over a navigation drawer
+// (the open place on a secondaryContainer pill), Material filter chips, app
+// cards on surfaceContainer, and an app's page with a big logo, a filled
+// Install pill and its details as an Expressive segmented list.
 Scope {
     LazyLoader {
         active: Panels.appStoreOpen
         FloatingWindow {
             id: win
             title: "App Store"
-            implicitWidth: 980
-            implicitHeight: 660
-            minimumSize: Qt.size(760, 500)
+            implicitWidth: Theme.material ? 1040 : 980
+            implicitHeight: Theme.material ? 720 : 660
+            minimumSize: Theme.material ? Qt.size(820, 640) : Qt.size(760, 500)
             color: "transparent"
             onClosed: Panels.appStoreOpen = false
 
@@ -57,7 +61,7 @@ Scope {
                 return view !== "search" && placeId === place.id;
             }
             function pick(place) {
-                search.text = "";
+                searchBox.text = "";
                 go(place.category ? "category" : place.id, place.category ? place.id : "");
             }
             function go(v, cat) {
@@ -97,6 +101,21 @@ Scope {
                     detail = Panels.appStoreApp;
             }
             Component.onDestruction: AppStore.users--
+
+            // The search field on show (Material has its own pill), and what
+            // typing in either does
+            readonly property Item searchBox: Theme.material && m3Search.item ? m3Search.item : search
+            function typed(text) {
+                win.query = text;
+                if (/^aur:/i.test(text))
+                    win.filter = "aur";
+                searchDebounce.restart();
+            }
+            function entered() {
+                searchDebounce.stop();
+                if (win.query.trim().length >= 2)
+                    win.go("search");
+            }
             Connections {
                 target: Panels
                 function onAppStoreAppChanged() {
@@ -130,48 +149,114 @@ Scope {
             // ── Sidebar ─────────────────────────────────────────────────
             Rectangle {
                 id: sidebar
-                width: 230
+                width: Theme.material ? 272 : 230
                 height: parent.height
-                color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.78) : Qt.rgba(0.94, 0.94, 0.96, 0.8)
+                color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.78) : Qt.rgba(0.94, 0.94, 0.96, 0.8)
 
                 TextField {
                     id: search
+                    visible: !Theme.material
                     x: 10
                     y: 14
                     width: parent.width - 20
                     height: 28
                     placeholder: "Search apps"
                     commitOnBlur: false
-                    onTextChanged: {
-                        win.query = text;
-                        if (/^aur:/i.test(text))
-                            win.filter = "aur";
-                        searchDebounce.restart();
-                    }
-                    onCommitted: {
-                        searchDebounce.stop();
-                        if (win.query.trim().length >= 2)
-                            win.go("search");
-                    }
+                    onTextChanged: win.typed(text)
+                    onCommitted: win.entered()
                     Keys.onEscapePressed: text = ""
-                    Component.onCompleted: if (!Panels.appStoreApp) focusInput()
+                    Component.onCompleted: if (!Panels.appStoreApp && !Theme.material) focusInput()
+                }
+                // Material: the Play Store's pill search bar
+                Loader {
+                    id: m3Search
+                    active: Theme.material
+                    x: 12
+                    y: 16
+                    width: parent.width - 24
+                    height: 56
+                    sourceComponent: Rectangle {
+                        id: pill
+                        property alias text: pillInput.text
+                        function focusInput() {
+                            pillInput.cursorPosition = pillInput.length;
+                            pillInput.forceActiveFocus();
+                        }
+                        radius: height / 2
+                        color: pillInput.activeFocus ? Theme.m3.surfaceContainerHighest : pillHover.hovered ? Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, 0.08)) : Theme.m3.surfaceContainerHigh
+                        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                        Component.onCompleted: if (!Panels.appStoreApp) focusInput()
+                        HoverHandler {
+                            id: pillHover
+                            cursorShape: Qt.IBeamCursor
+                        }
+                        TapHandler {
+                            onTapped: if (!pillInput.activeFocus) pill.focusInput()
+                        }
+                        Icon {
+                            id: pillGlass
+                            x: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "magnifying-glass"
+                            size: 22
+                            color: Theme.m3.onSurfaceVariant
+                        }
+                        TextInput {
+                            id: pillInput
+                            anchors { left: pillGlass.right; leftMargin: 12; right: pillClear.visible ? pillClear.left : parent.right; rightMargin: pillClear.visible ? 4 : 20; verticalCenter: parent.verticalCenter }
+                            color: Theme.m3.onSurface
+                            selectionColor: Qt.alpha(Theme.m3.primary, 0.3)
+                            selectedTextColor: Theme.m3.onSurface
+                            selectByMouse: true
+                            activeFocusOnTab: true
+                            clip: true
+                            font { family: Theme.font.family; pixelSize: 16 }
+                            Accessible.role: Accessible.EditableText
+                            Accessible.name: "Search apps"
+                            onTextChanged: win.typed(text)
+                            onAccepted: win.entered()
+                            Keys.onEscapePressed: text = ""
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: pillInput.text === ""
+                                text: "Search apps"
+                                color: Theme.m3.onSurfaceVariant
+                                font: pillInput.font
+                            }
+                        }
+                        IconButton {
+                            id: pillClear
+                            visible: pillInput.text !== ""
+                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            width: 40
+                            height: 40
+                            icon: "x"
+                            iconSize: 20
+                            iconColor: Theme.m3.onSurfaceVariant
+                            tooltip: "Clear search"
+                            onClicked: {
+                                pillInput.text = "";
+                                pill.focusInput();
+                            }
+                        }
+                    }
                 }
 
                 Column {
-                    anchors { left: parent.left; right: parent.right; top: search.bottom; topMargin: 14; leftMargin: 10; rightMargin: 10 }
-                    spacing: 2
+                    anchors { left: parent.left; right: parent.right; top: Theme.material ? m3Search.bottom : search.bottom; topMargin: Theme.material ? 12 : 14; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
+                    spacing: Theme.material ? 0 : 2
                     PlaceRow {
                         place: win.places[0]
                         selected: win.isOn(place)
                         onActivated: win.pick(place)
                     }
                     Text {
-                        leftPadding: 8
-                        topPadding: 14
-                        bottomPadding: 4
+                        leftPadding: Theme.material ? 16 : 8
+                        topPadding: Theme.material ? 12 : 14
+                        bottomPadding: Theme.material ? 8 : 4
                         text: "Categories"
-                        color: Theme.color.tertiary
-                        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                        color: Theme.material ? Theme.m3.onSurfaceVariant : Theme.color.tertiary
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 12 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold; letterSpacing: Theme.material ? 0.5 : 0 }
                     }
                     Repeater {
                         model: win.places.filter(p => p.category)
@@ -182,7 +267,7 @@ Scope {
                             onActivated: win.pick(place)
                         }
                     }
-                    Item { width: 1; height: 12 }
+                    Item { width: 1; height: Theme.material ? 8 : 12 }
                     PlaceRow {
                         place: win.places[win.places.length - 1]
                         selected: win.isOn(place)
@@ -202,9 +287,13 @@ Scope {
                     activated();
                 }
                 width: parent?.width ?? 0
-                height: 32
-                radius: 8
-                color: selected ? Theme.color.fillPressed : rowMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                // (Material: a navigation drawer item, the open one on a
+                // secondaryContainer pill)
+                height: Theme.material ? 44 : 32
+                radius: Theme.material ? height / 2 : 8
+                color: Theme.material ? (selected ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, rowMouse.pressed ? 0.1 : rowMouse.containsMouse ? 0.08 : 0)) : Qt.alpha(Theme.m3.onSurface, rowMouse.pressed ? 0.1 : rowMouse.containsMouse ? 0.08 : 0))
+                    : selected ? Theme.color.fillPressed : rowMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                Behavior on color { enabled: Theme.material; ColorAnimation { duration: Theme.motion.hover } }
                 activeFocusOnTab: true
                 Accessible.role: Accessible.ListItem
                 Accessible.name: place.name
@@ -214,20 +303,21 @@ Scope {
                         e.accepted = true;
                     }
                 }
-                FocusRing { radius: 10 }
+                FocusRing { radius: row.radius + 2 }
                 Icon {
-                    x: 10
+                    x: Theme.material ? 16 : 10
                     anchors.verticalCenter: parent.verticalCenter
                     name: row.place.icon
-                    size: 16
-                    color: row.selected ? Theme.color.label : Theme.color.secondary
+                    size: Theme.material ? 22 : 16
+                    fill: Theme.material && row.selected
+                    color: Theme.material ? (row.selected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : row.selected ? Theme.color.label : Theme.color.secondary
                 }
                 Text {
-                    x: 36
+                    x: Theme.material ? 52 : 36
                     anchors.verticalCenter: parent.verticalCenter
                     text: row.place.name
-                    color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: row.selected ? Font.Medium : Font.Normal }
+                    color: Theme.material ? (row.selected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; weight: Theme.material ? (row.selected ? Font.DemiBold : Font.Medium) : row.selected ? Font.Medium : Font.Normal; letterSpacing: Theme.material ? 0.1 : 0 }
                 }
                 MouseArea {
                     id: rowMouse
@@ -241,9 +331,10 @@ Scope {
             Rectangle {
                 id: content
                 anchors { left: sidebar.right; right: parent.right; top: parent.top; bottom: parent.bottom }
-                color: Theme.dark ? "#1E1E21" : "#F5F5F7"
-                readonly property int columns: Math.max(1, Math.floor((width - 48 + 16) / (300 + 16)))
-                readonly property real cardW: (width - 48 - (columns - 1) * 16) / columns
+                color: Theme.material ? Theme.m3.surface : Theme.dark ? "#1E1E21" : "#F5F5F7"
+                readonly property int gap: Theme.material ? 12 : 16
+                readonly property int columns: Math.max(1, Math.floor((width - 48 + gap) / (300 + gap)))
+                readonly property real cardW: (width - 48 - (columns - 1) * gap) / columns
 
                 Flickable {
                     id: listScroll
@@ -261,22 +352,23 @@ Scope {
                         spacing: 24
 
                         Column {
-                            spacing: 4
+                            spacing: Theme.material ? 8 : 4
                             Text {
                                 text: win.heading
                                 color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.DemiBold }
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 32 : Theme.font.large; weight: Theme.material ? Font.Medium : Font.DemiBold }
                             }
                             Text {
                                 text: win.view === "installed" ? "Apps on this computer from the Arch repos, the AUR and Flathub"
                                     : win.view === "search" && win.filter === "aur" ? "Community packages from the AUR"
                                     : "From the Arch repos and Flathub"
                                 color: Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body }
                             }
                         }
 
-                        // Where search results come from (the AUR only when chosen)
+                        // Where search results come from (the AUR only when chosen;
+                        // Material: filter chips, the chosen one ticked)
                         QQ.Row {
                             visible: win.view === "search"
                             spacing: 8
@@ -286,20 +378,22 @@ Scope {
                                     id: chipButton
                                     required property var modelData
                                     readonly property bool on: win.filter === modelData.id
-                                    width: chipLabel.implicitWidth + 24
-                                    height: 28
-                                    radius: 14
-                                    color: on ? Theme.accentTint : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                                    border.width: on ? 1 : 0
-                                    border.color: Theme.accent
+                                    width: chipLabel.implicitWidth + (Theme.material ? (on ? 16 + 18 + 8 : 32) : 24)
+                                    height: Theme.material ? 32 : 28
+                                    radius: Theme.material ? 8 : 14
+                                    color: Theme.material ? (on ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, chipMouse.containsMouse ? 0.08 : 0)) : Qt.alpha(Theme.m3.onSurfaceVariant, chipMouse.containsMouse ? 0.08 : 0))
+                                        : on ? Theme.accentTint : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                                    border.width: Theme.material ? (on ? 0 : 1) : on ? 1 : 0
+                                    border.color: Theme.material ? Theme.m3.outlineVariant : Theme.accent
+                                    Behavior on width { enabled: Theme.material; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
                                     activeFocusOnTab: true
                                     Accessible.role: Accessible.RadioButton
                                     Accessible.name: modelData.name
                                     Accessible.checked: on
                                     function choose() {
                                         win.filter = modelData.id;
-                                        if (modelData.id !== "aur" && /^aur:/i.test(search.text))
-                                            search.text = search.text.replace(/^aur:\s*/i, "");
+                                        if (modelData.id !== "aur" && /^aur:/i.test(win.searchBox.text))
+                                            win.searchBox.text = win.searchBox.text.replace(/^aur:\s*/i, "");
                                         win.load();
                                     }
                                     Keys.onPressed: e => {
@@ -308,13 +402,24 @@ Scope {
                                             e.accepted = true;
                                         }
                                     }
-                                    FocusRing { radius: 16 }
+                                    FocusRing { radius: chipButton.radius + 2 }
+                                    Icon {
+                                        visible: Theme.material && chipButton.on
+                                        x: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "check"
+                                        size: 18
+                                        color: Theme.m3.onSecondaryContainer ?? "transparent"
+                                    }
                                     Text {
                                         id: chipLabel
-                                        anchors.centerIn: parent
+                                        anchors.horizontalCenter: Theme.material ? undefined : parent.horizontalCenter
+                                        anchors.right: Theme.material ? parent.right : undefined
+                                        anchors.rightMargin: 16
+                                        anchors.verticalCenter: parent.verticalCenter
                                         text: chipButton.modelData.name
-                                        color: chipButton.on ? Theme.accentInk : Theme.color.label
-                                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                        color: Theme.material ? (chipButton.on ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : chipButton.on ? Theme.accentInk : Theme.color.label
+                                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium; letterSpacing: Theme.material ? 0.1 : 0 }
                                     }
                                     MouseArea {
                                         id: chipMouse
@@ -330,34 +435,35 @@ Scope {
                         Squircle {
                             visible: AppStore.status.catalogue === false && Tools.has("pacman")
                             width: parent.width
-                            height: 64
-                            radius: Theme.radius.module - 6
-                            color: Theme.color.fill
+                            height: Theme.material ? 80 : 64
+                            radius: Theme.material ? 24 : Theme.radius.module - 6
+                            color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
                             Icon {
                                 x: 16
                                 anchors.verticalCenter: parent.verticalCenter
                                 name: "info"
-                                size: 20
-                                color: Theme.color.secondary
+                                size: Theme.material ? 24 : 20
+                                color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary
                             }
                             Column {
-                                anchors { left: parent.left; leftMargin: 48; right: catalogueButton.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                                anchors { left: parent.left; leftMargin: Theme.material ? 56 : 48; right: catalogueButton.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
                                 spacing: 2
                                 Text {
                                     text: "Get the app catalogue"
-                                    color: Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
+                                    color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
+                                    font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body; weight: Font.Medium }
                                 }
                                 Text {
                                     width: parent.width
                                     elide: Text.ElideRight
                                     text: "Logos, descriptions and categories for the Arch repos' apps (about 20 MB)"
-                                    color: Theme.color.secondary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                                    color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary
+                                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small }
                                 }
                             }
                             SettingsButton {
                                 id: catalogueButton
+                                primary: Theme.material
                                 anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                                 text: Updates.running ? "Installing…" : "Install Catalogue"
                                 busy: Updates.running
@@ -366,11 +472,22 @@ Scope {
                         }
 
                         // Loading, a problem, or nothing found
-                        Text {
+                        // (Material: the loading indicator beside the words)
+                        QQ.Row {
                             visible: win.loading
-                            text: win.view !== "search" ? "Loading…" : win.filter === "aur" ? "Looking in the AUR…" : "Looking in the Arch repos and on Flathub…"
-                            color: Theme.color.secondary
-                            font { family: Theme.font.family; pixelSize: Theme.font.body }
+                            spacing: 12
+                            Loader {
+                                active: Theme.material
+                                visible: active
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceComponent: Spinner { size: 32 }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: win.view !== "search" ? "Loading…" : win.filter === "aur" ? "Looking in the AUR…" : "Looking in the Arch repos and on Flathub…"
+                                color: Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body }
+                            }
                         }
                         Text {
                             visible: !win.loading && win.failed !== ""
@@ -409,11 +526,11 @@ Scope {
                                 Text {
                                     text: sectionCol.modelData.title
                                     color: Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
+                                    font { family: Theme.font.family; pixelSize: Theme.material ? 22 : Theme.font.title; weight: Theme.material ? Font.Medium : Font.DemiBold }
                                 }
                                 Flow {
                                     width: parent.width
-                                    spacing: 16
+                                    spacing: content.gap
                                     Repeater {
                                         model: sectionCol.modelData.apps
                                         AppCard {
@@ -427,7 +544,7 @@ Scope {
                         Flow {
                             visible: win.view !== "discover"
                             width: parent.width
-                            spacing: 16
+                            spacing: content.gap
                             Repeater {
                                 model: win.view !== "discover" ? win.apps : []
                                 AppCard {
@@ -458,29 +575,32 @@ Scope {
                         spacing: 24
 
                         IconButton {
+                            width: Theme.material ? 40 : implicitWidth
+                            height: Theme.material ? 40 : implicitHeight
                             icon: "caret-left"
-                            iconSize: 16
+                            iconSize: Theme.material ? 24 : 16
                             tooltip: "Back"
                             onClicked: win.detail = null
                         }
 
                         QQ.Row {
                             width: parent.width
-                            spacing: 20
+                            spacing: Theme.material ? 24 : 20
                             AppTile {
+                                id: bigTile
                                 app: page.app
-                                size: 96
+                                size: Theme.material ? 112 : 96
                             }
                             Column {
-                                width: parent.width - 116
+                                width: parent.width - bigTile.width - parent.spacing
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
+                                spacing: Theme.material ? 8 : 6
                                 Text {
                                     width: parent.width
                                     elide: Text.ElideRight
                                     text: page.app?.name ?? ""
                                     color: Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.font.display; weight: Font.DemiBold }
+                                    font { family: Theme.font.family; pixelSize: Theme.material ? 32 : Theme.font.display; weight: Theme.material ? Font.Medium : Font.DemiBold }
                                 }
                                 Text {
                                     width: parent.width
@@ -489,7 +609,7 @@ Scope {
                                     elide: Text.ElideRight
                                     text: page.app?.summary ?? ""
                                     color: Theme.color.secondary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.title }
+                                    font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.title }
                                 }
                                 QQ.Row {
                                     spacing: 8
@@ -498,26 +618,39 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         visible: text !== ""
                                         text: page.app?.developer ? (page.app.source === "aur" ? "packaged by " : "by ") + page.app.developer : ""
-                                        color: Theme.color.tertiary
-                                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                                        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
+                                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.Normal }
                                     }
                                 }
                             }
                         }
 
-                        // Get / Open / Remove
+                        // Get / Open / Remove (Material: the Play Store's wide
+                        // Install pill; Remove beside Open, in the error container)
                         Column {
                             spacing: 8
                             QQ.Row {
                                 spacing: 8
                                 SettingsButton {
+                                    id: removeButton
+                                    visible: Theme.material && (page.app?.installed ?? false)
+                                    width: Theme.material ? Math.max(implicitWidth, 160) : implicitWidth
+                                    height: Theme.material ? 48 : implicitHeight
+                                    danger: true
+                                    text: page.busyWith === "removing" ? "Removing…" : "Remove"
+                                    busy: page.busyWith !== ""
+                                    onClicked: AppStore.remove(page.app)
+                                }
+                                SettingsButton {
                                     primary: true
-                                    text: page.busyWith === "installing" ? "Installing…" : page.app?.installed ? "Open" : "Get"
+                                    width: Theme.material ? Math.max(implicitWidth, (page.app?.installed ?? false) ? 160 : 240) : implicitWidth
+                                    height: Theme.material ? 48 : implicitHeight
+                                    text: page.busyWith === "installing" ? "Installing…" : page.app?.installed ? "Open" : Theme.material ? "Install" : "Get"
                                     busy: page.busyWith !== ""
                                     onClicked: page.app?.installed ? AppStore.open(page.app) : AppStore.install(page.app)
                                 }
                                 SettingsButton {
-                                    visible: page.app?.installed ?? false
+                                    visible: !Theme.material && (page.app?.installed ?? false)
                                     danger: true
                                     text: page.busyWith === "removing" ? "Removing…" : "Remove"
                                     busy: page.busyWith !== ""
@@ -544,32 +677,33 @@ Scope {
                         Squircle {
                             visible: page.app?.source === "aur"
                             width: parent.width
-                            height: aurText.implicitHeight + 28
-                            radius: Theme.radius.module - 6
-                            color: Qt.alpha(Theme.color.warning, Theme.dark ? 0.16 : 0.12)
-                            border.width: 1
+                            height: aurText.implicitHeight + (Theme.material ? 40 : 28)
+                            // (Material: a bold tertiary-container card)
+                            radius: Theme.material ? 24 : Theme.radius.module - 6
+                            color: Theme.material ? Theme.m3.tertiaryContainer : Qt.alpha(Theme.color.warning, Theme.dark ? 0.16 : 0.12)
+                            border.width: Theme.material ? 0 : 1
                             border.color: Qt.alpha(Theme.color.warning, 0.4)
                             readonly property bool littleUsed: (page.app?.popularity ?? 0) < 0.1 && (page.app?.votes ?? 0) < 10
                             Icon {
-                                x: 14
-                                y: 14
+                                x: Theme.material ? 20 : 14
+                                y: Theme.material ? 20 : 14
                                 name: "warning"
-                                size: 18
-                                color: Theme.color.warning
+                                size: Theme.material ? 24 : 18
+                                color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.color.warning
                             }
                             Text {
                                 id: aurText
-                                x: 44
-                                y: 14
-                                width: parent.width - 58
+                                x: Theme.material ? 56 : 44
+                                y: Theme.material ? 20 : 14
+                                width: parent.width - (Theme.material ? 76 : 58)
                                 wrapMode: Text.Wrap
                                 textFormat: Text.StyledText
                                 text: "<b>A community package from the AUR.</b> It's built on this computer from a script anyone can upload, not checked by Arch. "
                                     + (parent.littleUsed ? "Hardly anyone uses this one: install it only if you know and trust it. " : "")
                                     + (page.app?.votes ?? 0) + " votes · popularity " + (page.app?.popularity ?? 0)
                                     + (page.app?.outOfDate ? " · flagged out of date" : "")
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                                color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body }
                             }
                         }
 
@@ -579,12 +713,45 @@ Scope {
                             wrapMode: Text.Wrap
                             text: page.app?.description && page.app.description !== page.app.summary ? page.app.description : ""
                             color: Theme.color.label
-                            lineHeight: 1.25
-                            font { family: Theme.font.family; pixelSize: Theme.font.body }
+                            lineHeight: Theme.material ? 1.3 : 1.25
+                            font { family: Theme.font.family; pixelSize: Theme.material ? 15 : Theme.font.body }
                         }
 
-                        // Details
+                        // Details (Material: an Expressive segmented list)
+                        Group {
+                            visible: Theme.material
+                            width: parent.width
+                            title: "About this app"
+                            Row {
+                                icon: "package"
+                                label: "Package"
+                                detail: page.app?.pkg ?? ""
+                            }
+                            Row {
+                                visible: !!page.app?.version
+                                icon: "arrow-circle-up"
+                                label: "Version"
+                                detail: page.app?.version ?? ""
+                            }
+                            Row {
+                                icon: "storefront"
+                                label: "From"
+                                detail: AppStore.sourceName(page.app) + (page.app?.repo ? " · " + page.app.repo : "")
+                            }
+                            Row {
+                                visible: !!page.app?.homepage
+                                icon: "globe"
+                                label: "Website"
+                                detail: page.app?.homepage ?? ""
+                                SettingsButton {
+                                    minor: true
+                                    text: "Open"
+                                    onClicked: Launch.open(page.app.homepage)
+                                }
+                            }
+                        }
                         Column {
+                            visible: !Theme.material
                             spacing: 6
                             Text {
                                 text: "Package " + (page.app?.pkg ?? "") + (page.app?.version ? " · " + page.app.version : "") + (page.app?.repo ? " · " + page.app.repo : "")
@@ -628,11 +795,11 @@ Scope {
                     visible: tile.source === ""
                     anchors.fill: parent
                     radius: tile.size * 0.24
-                    color: Theme.color.fill
+                    color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
                     Text {
                         anchors.centerIn: parent
                         text: (tile.app?.name ?? "?").slice(0, 1).toUpperCase()
-                        color: Theme.color.secondary
+                        color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: tile.size * 0.42; weight: Font.DemiBold }
                     }
                 }
@@ -641,16 +808,19 @@ Scope {
             component SourceChip: Squircle {
                 id: chip
                 property var app
-                width: chipText.implicitWidth + 16
-                height: 22
-                radius: 11
-                color: Theme.color.fill
+                // (Material: an assist chip, outlined, 8 px corners)
+                width: chipText.implicitWidth + (Theme.material ? 24 : 16)
+                height: Theme.material ? 32 : 22
+                radius: Theme.material ? 8 : 11
+                color: Theme.material ? "transparent" : Theme.color.fill
+                border.width: Theme.material ? 1 : 0
+                border.color: Theme.color.separator
                 Text {
                     id: chipText
                     anchors.centerIn: parent
                     text: AppStore.sourceName(chip.app) + (chip.app?.verified ? " · verified" : "")
                     color: Theme.color.secondary
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Font.Medium }
                 }
             }
             // An app in a list: logo, name, summary, where from; Get or Open
@@ -659,9 +829,11 @@ Scope {
                 required property var modelData
                 signal opened(var app)
                 readonly property string busyWith: AppStore.busyWith(modelData)
-                height: 76
-                radius: Theme.radius.module - 6
-                color: cardMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                // (Material: a card on surfaceContainer with a hover state layer)
+                height: Theme.material ? 88 : 76
+                radius: Theme.material ? 20 : Theme.radius.module - 6
+                color: Theme.material ? Qt.tint(Theme.m3.surfaceContainer, Qt.alpha(Theme.m3.onSurface, cardMouse.pressed ? 0.1 : cardMouse.containsMouse ? 0.08 : 0))
+                    : cardMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
@@ -672,7 +844,7 @@ Scope {
                         e.accepted = true;
                     }
                 }
-                FocusRing { radius: Theme.radius.module - 4 }
+                FocusRing { radius: card.radius + 2 }
                 MouseArea {
                     id: cardMouse
                     anchors.fill: parent
@@ -681,40 +853,40 @@ Scope {
                     onClicked: card.opened(card.modelData)
                 }
                 AppTile {
-                    x: 14
+                    x: Theme.material ? 16 : 14
                     anchors.verticalCenter: parent.verticalCenter
                     app: card.modelData
-                    size: 44
+                    size: Theme.material ? 56 : 44
                 }
                 Column {
-                    anchors { left: parent.left; leftMargin: 70; right: getButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                    spacing: 2
+                    anchors { left: parent.left; leftMargin: Theme.material ? 88 : 70; right: getButton.left; rightMargin: Theme.material ? 12 : 10; verticalCenter: parent.verticalCenter }
+                    spacing: Theme.material ? 0 : 2
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
                         text: card.modelData.name
                         color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body; weight: Theme.material ? Font.Medium : Font.DemiBold }
                     }
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
                         text: card.modelData.summary || " "
                         color: Theme.color.secondary
-                        font { family: Theme.font.family; pixelSize: Theme.font.small }
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small }
                     }
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
                         text: AppStore.sourceName(card.modelData)
                         color: Theme.color.tertiary
-                        font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 12 : Theme.font.caption }
                     }
                 }
                 SettingsButton {
                     id: getButton
-                    anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                    text: card.busyWith !== "" ? "…" : card.modelData.installed ? "Open" : "Get"
+                    anchors { right: parent.right; rightMargin: Theme.material ? 16 : 14; verticalCenter: parent.verticalCenter }
+                    text: card.busyWith !== "" ? "…" : card.modelData.installed ? "Open" : Theme.material ? "Install" : "Get"
                     busy: card.busyWith !== ""
                     // (an AUR package's Get goes to its page first: the warning)
                     onClicked: card.modelData.installed ? AppStore.open(card.modelData) : card.modelData.source === "aur" ? card.opened(card.modelData) : AppStore.install(card.modelData)

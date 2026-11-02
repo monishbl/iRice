@@ -11,6 +11,10 @@ Without a password, for an administrator (wheel) at this computer
   wallpaper <path>   copies one image (JPEG, PNG or WebP, up to 64 MB, read
                      as you) to /usr/share/irice/wallpaper.jpg, the login
                      screen's copy
+  greeter-look glass|material <#rrggbb> <style> dark|light
+                     the login screen's look (/usr/share/irice/look.json):
+                     Glass or Material, and Material's seed colour, colour
+                     style and light or dark, so it matches the desktop
   fix <id>           one of the fixed fixes below (system services, the
                      firewall, Bluetooth's pairing prompts); nothing
                      free-form ever runs
@@ -84,6 +88,8 @@ import time
 LIB = "/usr/lib/irice"
 PACMAN = "/usr/bin/pacman"
 LOGIN_WALLPAPER = "/usr/share/irice/wallpaper.jpg"
+LOGIN_LOOK = "/usr/share/irice/look.json"
+LOOK_STYLES = ("tonalSpot", "vibrant", "expressive", "neutral", "content", "fidelity", "monochrome")
 MAX_IMAGE = 64 * 1024 * 1024
 MAX_SOURCE = 1024 * 1024
 PREFIX = "/"  # where FILES go (tests: a folder)
@@ -576,6 +582,23 @@ def wallpaper(path, uid, dest=LOGIN_WALLPAPER):
     write_root(dest, data, 0o644)
 
 
+def greeter_look(look, seed, style, mode, dest=LOGIN_LOOK):
+    """The login screen's look, as the desktop's (modules/greeter reads it)."""
+    if look not in ("glass", "material"):
+        raise Refused("the look is glass or material")
+    if not (isinstance(seed, str) and len(seed) == 7 and seed[0] == "#" and all(c in "0123456789abcdefABCDEF" for c in seed[1:])):
+        raise Refused("the seed colour is #rrggbb")
+    if style not in LOOK_STYLES:
+        raise Refused("unknown colour style")
+    if mode not in ("dark", "light"):
+        raise Refused("the mode is dark or light")
+    d = os.path.dirname(dest)
+    if not os.path.isdir(d) or os.path.islink(d):
+        raise Refused("the iRice login screen isn't installed (./install.sh --greeter)")
+    data = json.dumps({"look": look, "seed": seed.upper(), "style": style, "dark": mode == "dark"}) + "\n"
+    write_root(dest, data.encode(), 0o644)
+
+
 # ── fix ─────────────────────────────────────────────────────────────────
 def fix_command(id):
     if id not in FIXES:
@@ -879,6 +902,9 @@ def main(argv):
         if cmd == "wallpaper" and len(args) == 1:
             wallpaper(args[0], uid)
             return 0
+        if cmd == "greeter-look" and len(args) == 4:
+            greeter_look(*args)
+            return 0
         if cmd == "fix" and len(args) == 1:
             c = fix_command(args[0])
             os.execvp(c[0], c)
@@ -908,7 +934,7 @@ def main(argv):
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
+        raise Refused("usage: irice-root wallpaper <path> | greeter-look glass|material <#rrggbb> <style> dark|light | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
                       "quickshare-trust on|off | "
                       "update … | setup <folder>")
     except Refused as e:
