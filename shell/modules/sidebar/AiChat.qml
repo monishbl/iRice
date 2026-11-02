@@ -294,7 +294,7 @@ Item {
                         width: menuColumn.width
                         height: 30
                         radius: 8
-                        color: itemMouse.containsMouse ? Theme.accent : "transparent"
+                        color: itemMouse.containsMouse ? Theme.color.highlight : "transparent"
                         Icon {
                             x: 8
                             anchors.verticalCenter: parent.verticalCenter
@@ -302,7 +302,7 @@ Item {
                             name: "check"
                             bold: true
                             size: 12
-                            color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                            color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
                         }
                         Text {
                             x: 26
@@ -310,7 +310,7 @@ Item {
                             text: parent.modelData.name + " · " + Ai.nameForProvider(parent.modelData.provider)
                             width: parent.width - 32
                             elide: Text.ElideRight
-                            color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                            color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                         }
                         MouseArea {

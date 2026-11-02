@@ -49,22 +49,41 @@ Squircle {
     readonly property string currentLabel: options.find(o => o.value === value)?.label ?? String(value ?? "")
 
     implicitWidth: Math.max(140, label.implicitWidth + 40)
-    implicitHeight: 28
+    implicitHeight: Theme.material ? 36 : 28
     radius: Theme.radius.control - 2
-    color: mouse.containsMouse || menu.visible ? Theme.color.fillHover : Theme.color.fill
+    color: Theme.material ? "transparent" : mouse.containsMouse || menu.visible ? Theme.color.fillHover : Theme.color.fill
+    readonly property int itemHeight: Theme.material ? 36 : 28
+
+    // Material: a filled field, like TextField's, its underline primary while open
+    Loader {
+        anchors.fill: parent
+        active: Theme.material
+        sourceComponent: Rectangle {
+            topLeftRadius: 4
+            topRightRadius: 4
+            color: mouse.containsMouse ? Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, 0.08)) : Theme.m3.surfaceContainerHighest
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: menu.visible ? 2 : 1
+                color: menu.visible ? Theme.m3.primary : Theme.m3.onSurfaceVariant
+            }
+        }
+    }
 
     Text {
         id: label
-        anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: Theme.material ? 12 : 10; verticalCenter: parent.verticalCenter }
         text: root.currentLabel
         color: Theme.color.label
         font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
     Icon {
         anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-        name: "caret-up-down"
+        name: Theme.material ? "caret-down" : "caret-up-down"
         bold: true
-        size: 11
+        size: Theme.material ? 14 : 11
+        rotation: Theme.material && menu.visible ? 180 : 0
+        Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         color: Theme.color.secondary
     }
     MouseArea {
@@ -88,6 +107,8 @@ Squircle {
         modal: false
         closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutsideParent
         background: GlassPopupBackground {}
+        topPadding: Theme.material ? 4 : 5
+        bottomPadding: Theme.material ? 4 : 5
         focus: true
         // Keyboard focus goes back to the button when the list closes
         onClosed: if (root.activeFocusOnTab) root.forceActiveFocus()
@@ -116,11 +137,11 @@ Squircle {
                 }
                 event.accepted = true;
                 // keep the highlighted one in view
-                const y = root.highlighted * 28;
+                const y = root.highlighted * root.itemHeight;
                 if (y < contentY)
                     contentY = y;
-                else if (y + 28 > contentY + height)
-                    contentY = y + 28 - height;
+                else if (y + root.itemHeight > contentY + height)
+                    contentY = y + root.itemHeight - height;
             }
             Column {
                 id: column
@@ -131,10 +152,12 @@ Squircle {
                         required property var modelData
                         required property int index
                         readonly property bool lit: itemMouse.containsMouse || index === root.highlighted
+                        readonly property bool chosen: modelData.value === root.value
                         width: column.width
-                        height: 28
-                        radius: 7
-                        color: lit ? Theme.accent : "transparent"
+                        height: root.itemHeight
+                        radius: Theme.material ? (chosen ? 12 : 8) : 7
+                        // (Material: the chosen one in the tertiary container, a state layer on hover)
+                        color: Theme.material ? (chosen ? Theme.m3.tertiaryContainer : lit ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent") : lit ? Theme.accent : "transparent"
                         Accessible.role: Accessible.ListItem
                         Accessible.name: modelData.label
                         Accessible.selected: modelData.value === root.value
@@ -143,19 +166,19 @@ Squircle {
                             root.chosen(modelData.value);
                         }
                         Icon {
-                            x: 6
+                            x: Theme.material ? 8 : 6
                             anchors.verticalCenter: parent.verticalCenter
                             visible: parent.modelData.value === root.value
                             name: "check"
                             bold: true
                             size: 11
-                            color: parent.lit ? Theme.color.onAccent : Theme.color.label
+                            color: Theme.material ? Theme.m3.onTertiaryContainer : parent.lit ? Theme.color.onAccent : Theme.color.label
                         }
                         Text {
-                            x: 24
+                            x: Theme.material ? 28 : 24
                             anchors.verticalCenter: parent.verticalCenter
                             text: parent.modelData.label
-                            color: parent.lit ? Theme.color.onAccent : Theme.color.label
+                            color: Theme.material ? (parent.chosen ? Theme.m3.onTertiaryContainer : Theme.m3.onSurface) : parent.lit ? Theme.color.onAccent : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body }
                         }
                         MouseArea {

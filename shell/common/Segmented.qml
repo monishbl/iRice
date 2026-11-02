@@ -1,6 +1,8 @@
 import QtQuick
 
-// Segmented control: a track with a sliding selection pill.
+// Segmented control: a track with a sliding selection pill. Material: Material
+// 3 Expressive's connected button group (segments 2 px apart, round outer
+// ends, 8 px inner corners; the chosen one fills and turns fully round).
 Rectangle {
     id: root
 
@@ -9,7 +11,7 @@ Rectangle {
     property string accessibleName
     signal selected(int index)
 
-    implicitHeight: 30
+    implicitHeight: Theme.material ? 36 : 30
     activeFocusOnTab: true
     Keys.onPressed: event => {
         const k = event.key;
@@ -28,7 +30,7 @@ Rectangle {
     Accessible.description: options[current] ?? ""
     implicitWidth: natural.reduce((a, b) => a + b, 0) + 4
     radius: height / 2
-    color: Theme.color.toggleOff
+    color: Theme.material ? "transparent" : Theme.color.toggleOff
 
     // Each segment fits its label (plus padding); room to spare is shared
     // equally, so short labels still split the track evenly. Too little room
@@ -41,8 +43,9 @@ Rectangle {
             w.push(Math.ceil(metrics.advanceWidth(options[i])) + pad);
         return w;
     }
+    readonly property real gap: Theme.material ? 2 : 0
     readonly property var widths: {
-        const n = Math.max(1, natural.length), avail = width - 4;
+        const n = Math.max(1, natural.length), avail = width - 4 - gap * (n - 1);
         const total = natural.reduce((a, b) => a + b, 0);
         const extra = (avail - total) / n;
         return natural.map(w => extra >= 0 ? w + extra : w * avail / Math.max(1, total));
@@ -50,15 +53,16 @@ Rectangle {
     function offset(i) {
         let x = 0;
         for (let k = 0; k < i; k++)
-            x += widths[k] ?? 0;
+            x += (widths[k] ?? 0) + gap;
         return x;
     }
     FontMetrics {
         id: metrics
-        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+        font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
     }
 
     Rectangle {
+        visible: !Theme.material
         x: 2 + root.offset(root.current)
         y: 2
         width: root.widths[root.current] ?? 0
@@ -71,20 +75,54 @@ Rectangle {
 
     Row {
         x: 2
+        spacing: root.gap
         Repeater {
             model: root.options
             Item {
+                id: segment
                 required property string modelData
                 required property int index
+                readonly property bool chosen: index === root.current
                 width: root.widths[index] ?? 0
                 height: root.height
+                // Material: the segment's own button
+                Loader {
+                    anchors.fill: parent
+                    active: Theme.material
+                    sourceComponent: Rectangle {
+                        readonly property real full: height / 2
+                        readonly property real inner: segment.chosen ? full : segMouse.pressed ? 4 : 8
+                        readonly property bool first: segment.index === 0
+                        readonly property bool last: segment.index === root.options.length - 1
+                        // (springs: Material's fast spatial, ζ 0.6, k 800)
+                        property real leftR: first ? full : inner
+                        property real rightR: last ? full : inner
+                        Behavior on leftR { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.1 } }
+                        Behavior on rightR { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.1 } }
+                        topLeftRadius: Math.max(0, Math.min(full, leftR))
+                        bottomLeftRadius: topLeftRadius
+                        topRightRadius: Math.max(0, Math.min(full, rightR))
+                        bottomRightRadius: topRightRadius
+                        color: segment.chosen ? Theme.m3.primary : Theme.m3.surfaceContainerHighest
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Rectangle {
+                            anchors.fill: parent
+                            topLeftRadius: parent.topLeftRadius
+                            bottomLeftRadius: parent.bottomLeftRadius
+                            topRightRadius: parent.topRightRadius
+                            bottomRightRadius: parent.bottomRightRadius
+                            color: segment.chosen ? Theme.m3.onPrimary : Theme.m3.onSurfaceVariant
+                            opacity: segMouse.pressed ? 0.1 : segMouse.containsMouse ? 0.08 : 0
+                        }
+                    }
+                }
                 Text {
                     anchors.centerIn: parent
                     width: Math.min(implicitWidth, parent.width - 12)
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     text: parent.modelData
-                    color: parent.index === root.current ? Theme.color.label : Theme.color.secondary
+                    color: Theme.material ? (parent.chosen ? Theme.m3.onPrimary : Theme.m3.onSurfaceVariant) : parent.index === root.current ? Theme.color.label : Theme.color.secondary
                     font: metrics.font
                 }
                 Accessible.role: Accessible.PageTab
@@ -92,7 +130,9 @@ Rectangle {
                 Accessible.checked: index === root.current
                 Accessible.onPressAction: root.selected(index)
                 MouseArea {
+                    id: segMouse
                     anchors.fill: parent
+                    hoverEnabled: Theme.material
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.selected(parent.index)
                 }

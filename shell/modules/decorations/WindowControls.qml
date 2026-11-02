@@ -162,7 +162,7 @@ Variants {
                             width: 44
                             height: 32
                             radius: Theme.radius.item + 2
-                            color: tileMouse.containsMouse ? Theme.accent : "transparent"
+                            color: tileMouse.containsMouse ? Theme.color.highlight : "transparent"
                             TileGlyph {
                                 anchors.centerIn: parent
                                 frac: Tiling.layouts[tile.modelData]

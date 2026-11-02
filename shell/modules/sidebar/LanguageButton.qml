@@ -53,12 +53,12 @@ Rectangle {
                 width: view.width
                 height: 28
                 radius: 7
-                color: itemMouse.containsMouse ? Theme.accent : "transparent"
+                color: itemMouse.containsMouse ? Theme.color.highlight : "transparent"
                 Text {
                     x: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: parent.modelData[1]
-                    color: itemMouse.containsMouse ? Theme.color.onAccent : Theme.color.label
+                    color: itemMouse.containsMouse ? Theme.color.onHighlight : Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.body }
                 }
                 MouseArea {

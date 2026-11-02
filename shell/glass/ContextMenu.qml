@@ -153,7 +153,7 @@ GlassWindow {
                         visible: !row.modelData.separator
                         anchors.fill: parent
                         radius: Theme.radius.item + 2
-                        color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
+                        color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger && !Theme.material ? Theme.color.danger : Theme.color.highlight) : "transparent"
                         // A choice among several (checked: true/false): a tick
                         // beside the current one, every label indented alike
                         Icon {
@@ -163,13 +163,13 @@ GlassWindow {
                             name: "check"
                             bold: true
                             size: 12
-                            color: row.hot ? "white" : Theme.color.label
+                            color: row.hot ? Theme.color.onHighlight : Theme.color.label
                         }
                         Text {
                             x: row.modelData.checked !== undefined ? 28 : 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.armedRow ? row.modelData.confirm : (row.modelData.text ?? "")
-                            color: row.armedRow || row.hot ? "white" : !row.enabled_ ? Theme.color.tertiary : row.modelData.danger ? Theme.color.danger : Theme.color.label
+                            color: row.armedRow ? (Theme.material ? Theme.m3.onError : "white") : row.hot && !(Theme.material && row.modelData.danger) ? Theme.color.onHighlight : !row.enabled_ ? Theme.color.tertiary : row.modelData.danger ? Theme.color.danger : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: row.armedRow ? Font.DemiBold : Font.Normal }
                         }
                         MouseArea {

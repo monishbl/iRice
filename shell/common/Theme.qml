@@ -73,9 +73,10 @@ Singleton {
         readonly property int caption: 11
         readonly property int small: 12
         readonly property int body: 13
-        readonly property int title: 15
-        readonly property int large: 20
-        readonly property int display: 24
+        // (Material: its title, title large and headline sizes)
+        readonly property int title: root.material ? 16 : 15
+        readonly property int large: root.material ? 22 : 20
+        readonly property int display: root.material ? 28 : 24
     }
 
     readonly property bool reduceTransparency: Config.options.appearance.reduceTransparency
@@ -106,6 +107,14 @@ Singleton {
         readonly property color platter: root.material ? root.m3.surfaceContainerHigh : root.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(1, 1, 1, 0.45)
         // Unchecked toggles, slider and segmented tracks
         readonly property color toggleOff: root.material ? root.m3.surfaceContainerHighest : root.dark ? Qt.rgba(1, 1, 1, root.level(0.14, 0.24, 0.32)) : Qt.rgba(0, 0, 0, root.level(0.08, 0.16, 0.24))
+        // A menu's hovered row: macOS fills it with the accent (white text),
+        // Material lays a state layer over it (text unchanged)
+        readonly property color highlight: root.material ? Qt.alpha(root.m3.onSurface, 0.1) : root.accent
+        readonly property color onHighlight: root.material ? root.m3.onSurface : onAccent
+        // A selected row (Spotlight's chosen result, Settings' page): the
+        // accent, or Material's secondary container
+        readonly property color selection: root.material ? root.m3.secondaryContainer : root.accent
+        readonly property color onSelection: root.material ? root.m3.onSecondaryContainer : onAccent
         readonly property color onAccent: root.material ? root.m3.onPrimary : root.lightAccent ? "#1C1C1E" : "white" // text and glyphs on accent fills: near-black on light accents (yellow), else white
         readonly property color danger: root.material ? root.m3.error : root.dark ? "#FF453A" : "#FF3B30"
         readonly property color success: root.dark ? "#30D158" : "#34C759"
@@ -221,11 +230,21 @@ Singleton {
         // (the Material look moves on Material's expressive springs)
         readonly property bool expressive: root.material || Config.options.appearance.motion === "expressive"
         // Springs (SpringAnimation): open/expand, settle back, and elastic pull
-        readonly property real spring: expressive ? 3.0 : 3.8
-        readonly property real damping: expressive ? 0.22 : 0.32
-        readonly property real pull: expressive ? 14 : 6 // how far a panel gives when pressed and dragged
-        readonly property real controlPull: expressive ? 5 : 2.5 // same for small controls
-        readonly property real squish: expressive ? 0.9 : 0.95 // press scale
+        // (Material: its default spatial spring)
+        readonly property real spring: root.material ? 6.08 : expressive ? 3.0 : 3.8
+        readonly property real damping: root.material ? 0.5 : expressive ? 0.22 : 0.32
+        // Material 3 Expressive's springs as SpringAnimation values (Qt's spring
+        // steps 16 ms: spring = k / 62.5, damping = 2ζ√k / 62.5). Spatial ones
+        // (position, size, shape) overshoot; for colour and opacity use the
+        // `hover`/`popover` durations, which don't.
+        //   fast ζ 0.6 k 800 · default ζ 0.8 k 380 · slow ζ 0.8 k 200
+        readonly property var springFast: ({ spring: 12.8, damping: 0.54 })
+        readonly property var springDefault: ({ spring: 6.08, damping: 0.5 })
+        readonly property var springSlow: ({ spring: 3.2, damping: 0.36 })
+        // (Material has no elastic give: presses change shape instead)
+        readonly property real pull: root.material ? 0 : expressive ? 14 : 6 // how far a panel gives when pressed and dragged
+        readonly property real controlPull: root.material ? 0 : expressive ? 5 : 2.5 // same for small controls
+        readonly property real squish: root.material ? 0.97 : expressive ? 0.9 : 0.95 // press scale
         readonly property int press: Math.round(100 * CoolDown.motionScale)
         readonly property int hover: Math.round(150 * CoolDown.motionScale)
         readonly property int popover: Math.round(220 * CoolDown.motionScale)
