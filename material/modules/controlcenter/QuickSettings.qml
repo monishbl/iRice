@@ -541,11 +541,6 @@ Popover {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     spacing: 8
                     TonalButton {
-                        icon: "pencil-simple"
-                        tip: "Edit controls"
-                        onClicked: Panels.ccEditing = true
-                    }
-                    TonalButton {
                         icon: "gear-six"
                         tip: "Open Settings"
                         onClicked: Panels.openSettings()
@@ -556,6 +551,12 @@ Popover {
                         icon: "power"
                         tip: "Power options"
                         onClicked: Panels.show("session", qs.screen)
+                    }
+                    // Edit, in the corner (Android 17)
+                    TonalButton {
+                        icon: "pencil-simple"
+                        tip: "Edit controls"
+                        onClicked: Panels.ccEditing = true
                     }
                 }
             }
@@ -605,12 +606,18 @@ Popover {
     Component { id: mirroringPage; MirroringPage { onBack: qs.page = "" } }
     Component { id: castPage; CastPage { onBack: qs.page = "" } }
 
-    // The media card, and its row in Edit controls
+    // The media card (Android 17's carousel: other players wait beside it),
+    // and its row in Edit controls
     Component {
         id: mediaCard
-        QSMedia {
-            id: card
-            shown: qs.shown
+        MediaCarousel {
+            implicitHeight: 136
+            peekRadius: 28
+            card: Component {
+                QSMedia {
+                    shown: qs.shown
+                }
+            }
             QSRise {
                 id: mediaRise
                 order: qs.sliderIds.length + qs.tileIds.length

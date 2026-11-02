@@ -85,6 +85,7 @@ Singleton {
                 // In the Material look: its own sound set, and the Bibata pointer
                 property bool materialSounds: true
                 property bool materialCursor: true
+                property bool materialBlur: true // Material: Android 17's tinted blur behind panels and menus (off: opaque)
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 // (frosted by default: light on the GPU; liquid, the full glass that
                 // bends what's behind, needs the irice-glass plugin, else it's frosted)
@@ -149,6 +150,15 @@ Singleton {
                 property string standbyTransition: "morph" // lock → StandBy: morph (the clock moves and thins) | fade | none
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
+                // The Material look's lock clock (Android 17's clock styles):
+                // stacked | wide | overlap | analog | weather
+                property string clockFace: "stacked"
+                // dynamic: large while the lock screen is empty, small once
+                // notifications or Now Playing are there | large | small
+                property string clockSize: "dynamic"
+                property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
+                property int clockWidth: 112 // wdth, 25 .. 151
+                property bool clockRound: true // rounded digits (else sharp)
             }
 
             property JsonObject notificationCenter: JsonObject {
@@ -549,6 +559,7 @@ Singleton {
                 property int iconSize: 48
                 property real gap: 0.18 // space between icons, as a fraction of the icon size (0.05 .. 0.4)
                 property bool appsButton: true // App Library button at the start
+                property bool appNames: true // Material: names under the app drawer's icons (Android 17's option)
                 property bool magnification: false
                 property string autoHide: "off" // off | always | windows (hide when a window overlaps it)
                 property bool recentApps: true // up to 3 recent apps after a divider

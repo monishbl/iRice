@@ -37,6 +37,8 @@ Variants {
                     openAnim.start();
             }
             onShownChanged: {
+                if (!shown)
+                    menu = null;
                 if (shown) {
                     reset();
                     closeAnim.stop();
@@ -131,6 +133,35 @@ Variants {
                 field.forceActiveFocus();
                 enter();
             }
+            // An app's menu, as Android 17's: its own shortcuts (the desktop
+            // file's actions: New Window, New Private Window…), then the
+            // system's actions
+            property var menu: null
+            function openMenu(entry, m, from) {
+                const id = entry.id ?? "";
+                const pinned = Config.options.dock.pinned.includes(id);
+                const own = (entry.actions ?? []).map(a => ({ text: a.name, action: () => {
+                    Panels.close();
+                    a.execute();
+                } }));
+                const items = (own.length > 0 ? [{ header: "Shortcuts" }].concat(own) : []).concat([{ header: "Actions" }, { text: "Open", action: () => {
+                    Panels.close();
+                    Apps.launch(entry);
+                } }, { text: pinned ? "Remove from Dock" : "Keep in Dock", action: () => pinned ? Apps.unpin(id) : Apps.pin(id) }]);
+                const p = from.mapToItem(null, m.x, m.y);
+                menu = { items: items, x: p.x, y: p.y };
+            }
+            Loader {
+                active: win.menu !== null
+                sourceComponent: ContextMenu {
+                    screen: win.screen
+                    items: win.menu?.items ?? []
+                    pointX: (win.menu?.x ?? 0) + menuWidth / 2
+                    pointY: win.menu?.y ?? 0
+                    upward: false
+                    onDismissed: win.menu = null
+                }
+            }
             function toggleView() {
                 view = 1 - view;
                 folder = null;
@@ -181,7 +212,7 @@ Variants {
                 x: Math.round((win.width - width) / 2)
                 y: Math.round((win.height - height) / 2)
                 radius: 28
-                color: Theme.m3.surface
+                color: Theme.veil(Theme.m3.surface)
                 opacity: Math.max(0, Math.min(1, win.progress * 1.6))
                 // Rises from the dock and grows, on a spring, as the app
                 // drawer swipes up
@@ -437,6 +468,8 @@ Variants {
                                     Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
                                 }
                                 Text {
+                                    // (Settings → Dock → App names: off, only icons)
+                                    visible: Config.options.dock.appNames ?? true
                                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
                                     width: parent.width - 12
                                     horizontalAlignment: Text.AlignHCenter
@@ -450,8 +483,11 @@ Variants {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     onEntered: win.selected = cell.index
-                                    onClicked: win.activate(cell.index)
+                                    // Right-click or press and hold: its menu
+                                    onClicked: m => m.button === Qt.RightButton ? win.openMenu(cell.modelData, m, appMouse) : win.activate(cell.index)
+                                    onPressAndHold: m => win.openMenu(cell.modelData, m, appMouse)
                                 }
                             }
 

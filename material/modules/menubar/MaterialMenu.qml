@@ -107,7 +107,7 @@ Popover {
                 readonly property bool last: index === root.groups.length - 1
                 width: parent.width
                 height: rowsCol.implicitHeight + 8
-                color: Theme.m3.surfaceContainerLow
+                color: Theme.veil(Theme.m3.surfaceContainerLow)
                 topLeftRadius: first ? 12 : 4
                 topRightRadius: first ? 12 : 4
                 bottomLeftRadius: last ? 12 : 4

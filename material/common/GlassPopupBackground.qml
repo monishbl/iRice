@@ -91,7 +91,7 @@ Item {
 
     // Material: elevation 2's shadow
     RectangularShadow {
-        visible: Theme.material
+        visible: Theme.material && !Theme.blur
         anchors.fill: parent
         radius: root.radius
         offset.y: 2
@@ -102,7 +102,7 @@ Item {
     Squircle {
         anchors.fill: parent
         radius: root.radius
-        color: Theme.material ? Theme.m3.surfaceContainer : root.color
+        color: Theme.material ? Theme.veil(Theme.m3.surfaceContainer) : root.color
         borderWidth: Theme.material ? 0 : 1
         borderColor: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
     }

@@ -82,6 +82,14 @@ Singleton {
     }
 
     readonly property bool reduceTransparency: Config.options.appearance.reduceTransparency
+    // The Material look's blur (Android 17's): panels, the volume panel, the
+    // power menu, the app drawer and menus let the blurred desktop through,
+    // tinted by their own colour. Off (or Reduce transparency): opaque
+    readonly property bool blur: material && !reduceTransparency && (Config.options.appearance.materialBlur ?? true) && CoolDown.glass !== "solid"
+    // A surface's colour, see-through where the blur is on
+    function veil(c) {
+        return blur ? Qt.alpha(c, dark ? 0.8 : 0.84) : c;
+    }
     // Text contrast (Settings → Appearance): 0 standard (macOS vibrancy),
     // 1 higher (text about 4.5:1 over glass), 2 maximum (about 7:1). It's
     // for text, icons, controls and selection; borders barely change.
@@ -132,11 +140,14 @@ Singleton {
         // (blurs it) and solid (opacity). Glass, Frost and Solid are tuned
         // presets; Custom uses your own (Settings → Appearance → Advanced).
         // [lens, frost, solid, tint]
-        readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0] })
-        // (the Material look: opaque tonal surfaces)
-        readonly property string chosen: root.reduceTransparency || root.material ? "solid" : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
+        // (veil: the Material look's, Android 17's tinted blur: no lens, all
+        // frost, mostly its own tonal colour)
+        readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0], veil: [0, 1, 0.8, 0.5] })
+        // (the Material look: tonal surfaces, blurred behind unless that's
+        // off, then opaque)
+        readonly property string chosen: root.reduceTransparency ? "solid" : root.material ? (root.blur ? "veil" : "solid") : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
         // Cool-down swaps in a cheaper material (never a heavier one)
-        readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" ? "frosted" : chosen
+        readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" && chosen !== "veil" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
         // Switching materials (Cool-down, or picking Glass, Frost or Solid)
         // glides over about 0.6 s rather than snapping; Custom's sliders

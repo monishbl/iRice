@@ -6,6 +6,7 @@ import qs.common
 // A glass menu at any point on screen (dock right-click and the like). It's a
 // full-screen overlay, so a click anywhere else or Escape closes it. Items:
 //   { text, action, enabled?, danger?, confirm? }  or  { separator: true }
+//   or { header: "Shortcuts" } (a section's name, as Android 17's app menu)
 // `confirm: "Empty Trash (12 items)"` turns the first click into a second,
 // red "are you sure" row; only that one acts. Create it with a Loader and
 // clear it from onDismissed.
@@ -36,7 +37,7 @@ GlassWindow {
 
     function activate(i) {
         const it = items[i];
-        if (!it || it.separator || it.enabled === false)
+        if (!it || it.separator || it.header || it.enabled === false)
             return;
         if (it.confirm && armed !== i) {
             armed = i;
@@ -88,7 +89,7 @@ GlassWindow {
         function step(d) {
             for (let i = root.current + d; i >= 0 && i < root.items.length; i += d) {
                 const it = root.items[i];
-                if (it && !it.separator && it.enabled !== false) {
+                if (it && !it.separator && !it.header && it.enabled !== false) {
                     root.current = i;
                     return;
                 }
@@ -136,8 +137,8 @@ GlassWindow {
                     readonly property bool enabled_: modelData.enabled !== false
                     readonly property bool hot: (rowMouse.containsMouse || root.current === index) && enabled_
                     width: parent.width
-                    height: modelData.separator ? 11 : 28
-                    Accessible.role: modelData.separator ? Accessible.Separator : Accessible.MenuItem
+                    height: modelData.separator ? 11 : modelData.header ? 26 : 28
+                    Accessible.role: modelData.separator ? Accessible.Separator : modelData.header ? Accessible.StaticText : Accessible.MenuItem
                     Accessible.name: modelData.text ?? ""
                     Accessible.checkable: modelData.checked !== undefined
                     Accessible.checked: !!modelData.checked
@@ -149,8 +150,17 @@ GlassWindow {
                         height: 1
                         color: Theme.color.separator
                     }
+                    Text {
+                        visible: !!row.modelData.header
+                        x: 12
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        text: row.modelData.header ?? ""
+                        color: Theme.material ? Theme.m3.primary : Theme.color.secondary
+                        font { family: Theme.font.family; pixelSize: 12; weight: Font.Medium }
+                    }
                     Squircle {
-                        visible: !row.modelData.separator
+                        visible: !row.modelData.separator && !row.modelData.header
                         anchors.fill: parent
                         radius: Theme.radius.item + 2
                         color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger && !Theme.material ? Theme.color.danger : Theme.color.highlight) : "transparent"

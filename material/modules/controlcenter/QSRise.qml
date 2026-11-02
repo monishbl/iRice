@@ -2,7 +2,8 @@ import QtQuick
 import qs.common
 
 // How far a piece of Quick Settings has risen into place as the panel
-// opens: 0 → 1 on Material's fast spatial spring (it overshoots a little),
+// opens: 0 → 1 on a bouncy spring (Android 17's opening: ζ 0.42, k 800, a
+// clear overshoot; Reduce motion keeps Material's fast spring),
 // its turn coming `order` steps after the panel starts to open, so the
 // sliders, tiles and media card arrive one after another.
 //   QSRise { id: rise; order: index; stagger: qs.stagger }
@@ -29,7 +30,7 @@ QtObject {
         property: "value"
         to: 1
         spring: Theme.motion.springFast.spring
-        damping: Theme.motion.springFast.damping
+        damping: CoolDown.motionScale < 1 ? Theme.motion.springFast.damping : 0.38
         epsilon: 0.004
     }
 }

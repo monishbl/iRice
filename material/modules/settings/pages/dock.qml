@@ -54,6 +54,11 @@ Column {
             Switch { checked: Config.options.dock.appsButton; onToggled: Config.options.dock.appsButton = !checked }
         }
         Row {
+            label: "App names in the app drawer"
+            detail: "Off shows only the icons"
+            Switch { checked: Config.options.dock.appNames ?? true; onToggled: Config.options.dock.appNames = !checked }
+        }
+        Row {
             label: "Automatically hide"
             detail: Config.options.dock.autoHide === "windows" ? "Hides when a window overlaps it; point at the bottom edge to show it." : Config.options.dock.autoHide === "always" ? "Point at the bottom edge of the screen to show it." : ""
             Segmented {

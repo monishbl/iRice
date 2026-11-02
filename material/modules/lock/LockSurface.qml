@@ -51,7 +51,7 @@ WlSessionLockSurface {
         enabled: surface.sbMode !== "none"
         NumberAnimation { duration: surface.sbMode === "morph" ? 650 : 400; easing.type: Easing.InOutCubic }
     }
-    readonly property bool morphOn: sbMode === "morph" && standbyHere && standbyView.view === 0
+    readonly property bool morphOn: sbMode === "morph" && standbyHere && standbyView.view === 0 && (!Theme.material || (materialLock.item?.morphable ?? true))
     readonly property bool morphing: morphOn && sb > 0 && sb < 1
     function ramp(a, b) { // sb mapped to 0..1 over [a, b], smoothstepped
         const t = Math.max(0, Math.min(1, (sb - a) / (b - a)));

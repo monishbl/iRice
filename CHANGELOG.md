@@ -1,5 +1,13 @@
 # iRice changelog
 
+## The Material look, Android 17 · 2026-11-03
+
+- **Lock screen clocks.** Pick a style in Settings → Lock Screen → Clock from a carousel over your wallpaper: Stacked, Wide, Overlap, Analog or Weather, with their thickness, width and rounded or sharp digits. The clock is dynamic, as Android 17's: large while the lock screen is empty, small in the top corner once notifications arrive or something's playing (or always large, or always small).
+- **A media carousel.** With more than one player, the others wait beside the current one in Quick Settings and on the lock screen as narrow cards with their album art. Click one, or swipe the card, to switch.
+- **Tinted blur.** Quick Settings, menus, the power menu, the volume panel and the app drawer show the desktop behind them, blurred and tinted by your colours. Settings → Appearance → Blur turns it off.
+- **Quick Settings opens with more bounce**, and its edit button is in the bottom-right corner.
+- **The app drawer's menu.** Right-click an app, or press and hold: its own shortcuts (New Window and the like), then Open and Keep in Dock. Settings → Dock can hide the names under the drawer's icons.
+
 ## A calmer Material lock screen; Edit controls stays open · 2026-11-02
 
 - **The Material look's lock screen is quieter.** The clock is about a third smaller, and Now Playing, your picture, the name, the field and the fingerprint button are all more compact. The fingerprint is offered once, by its button: the field says "Enter password", and the line under it only appears when there's news (a finger that didn't match, the face camera looking).
