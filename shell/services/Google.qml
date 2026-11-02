@@ -276,7 +276,7 @@ Singleton {
         }
     }
 
-    function openKeep() { Qt.openUrlExternally("https://keep.google.com/"); }
+    function openKeep() { Launch.open("https://keep.google.com/"); }
     Component.onCompleted: run({ cmd: "status" })
 
     // ── When to sync ────────────────────────────────────────────────────
@@ -410,7 +410,7 @@ Singleton {
                         root.signingIn = true;
                     if (message.authUrl && message.authUrl.startsWith("https://accounts.google.com/o/oauth2/v2/auth?")) {
                         root.signingIn = true;
-                        Qt.openUrlExternally(message.authUrl);
+                        Launch.open(message.authUrl);
                     }
                     if (message.data) {
                         root.account = message.data;

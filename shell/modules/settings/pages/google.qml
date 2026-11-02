@@ -198,7 +198,7 @@ Column {
         }
         Row {
             label: "Task lists"
-            SettingsButton { text: "Open Google Tasks"; onClicked: Qt.openUrlExternally("https://tasks.google.com/") }
+            SettingsButton { text: "Open Google Tasks"; onClicked: Launch.open("https://tasks.google.com/") }
         }
     }
 

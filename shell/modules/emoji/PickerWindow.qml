@@ -892,7 +892,7 @@ GlassWindow {
 
                 function act(secondary) {
                     if (secondary) {
-                        Qt.openUrlExternally("https://partner.klipy.com/api-keys");
+                        Launch.open("https://partner.klipy.com/api-keys");
                         Panels.close();
                         return;
                     }

@@ -175,7 +175,7 @@ Singleton {
         }
         stdout: StdioCollector {
             onStreamFinished: if (text.trim().startsWith("https://"))
-                Qt.openUrlExternally(text.trim())
+                Launch.open(text.trim())
         }
     }
 }

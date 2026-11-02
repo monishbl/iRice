@@ -49,7 +49,7 @@ Column {
                 color: Theme.color.label
                 linkColor: Theme.accent
                 font { family: Theme.font.family; pixelSize: 14 }
-                onLinkActivated: link => Qt.openUrlExternally(link)
+                onLinkActivated: link => Launch.open(link)
                 HoverHandler {
                     cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
                 }

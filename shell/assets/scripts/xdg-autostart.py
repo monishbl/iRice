@@ -296,6 +296,8 @@ def child_env():
 def launch(argv, cwd, terminal):
     if terminal:
         argv = ["bash", os.path.join(HERE, "open-app.sh"), "terminal", "--"] + argv
+    # (in a scope of its own, as the shell starts apps: app-scope.sh)
+    argv = [os.path.join(HERE, "app-scope.sh"), "--"] + argv
     try:
         subprocess.run(["setsid", "-f"] + argv, cwd=cwd or os.path.expanduser("~"), env=child_env(),
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)

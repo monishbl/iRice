@@ -2,8 +2,10 @@ pragma Singleton
 import QtQuick
 import Quickshell
 
-// Starts apps and opens files and links. Normally that's the same as starting
-// them directly; in the tty session (dev.sh tty, IRICE_TTY=1) the shell runs
+// Starts apps and opens files and links, each app in a scope of its own
+// under the user's app.slice (assets/scripts/app-scope.sh), so an app
+// working flat out shares the CPU with the desktop instead of taking it
+// from Hyprland and this shell (without systemd: started directly). In the tty session (dev.sh tty, IRICE_TTY=1) the shell runs
 // with sandbox config, data and state folders, and anything it starts would
 // inherit them: apps would miss their settings and open links with whatever
 // registered itself in the sandbox. There, those variables are dropped first,
@@ -18,17 +20,17 @@ Singleton {
     function wrap(cmd) {
         return scrub.concat(cmd);
     }
-    function run(cmd) {
-        Quickshell.execDetached(wrap(cmd));
+    readonly property string appScope: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/app-scope.sh").toString().replace("file://", ""))
+    // An app's command line, in a scope of its own (`id`: what it's named after)
+    function scoped(cmd, id) {
+        return [appScope, "--id", id ?? "", "--"].concat(wrap(cmd));
+    }
+    function run(cmd, id) {
+        Quickshell.execDetached(scoped(cmd, id));
     }
     // A link, file or folder in its default app
     function open(url) {
-        const u = url.toString();
-        if (!tty) {
-            Qt.openUrlExternally(u);
-            return;
-        }
-        run(["xdg-open", u]);
+        run(["xdg-open", url.toString()], "open");
     }
     // A command in a terminal: the one chosen in Settings → Default apps,
     // else $TERMINAL, else the first installed (kitty, foot, alacritty,
@@ -40,14 +42,14 @@ Singleton {
         return ["env", "IRICE_USER_DIR=" + Config.dir, "bash", openApp, "terminal"].concat(hold ? ["--hold"] : [], ["--"], args);
     }
     function terminal(args, hold) {
-        run(terminalCommand(args, hold));
+        run(terminalCommand(args, hold), "terminal");
     }
     // An app from its desktop entry
     function app(entry) {
         if (!entry)
             return;
         const env = AppQuirks.envFor(entry); // (apps that need a nudge)
-        if ((!tty && env.length === 0) || !entry.command || entry.command.length === 0) {
+        if (!entry.command || entry.command.length === 0) {
             entry.execute();
             return;
         }
@@ -55,8 +57,8 @@ Singleton {
         if (env.length > 0)
             cmd = ["env"].concat(env, cmd);
         if (entry.workingDirectory)
-            Quickshell.execDetached({ command: wrap(cmd), workingDirectory: entry.workingDirectory });
+            Quickshell.execDetached({ command: scoped(cmd, entry.id), workingDirectory: entry.workingDirectory });
         else
-            run(cmd);
+            run(cmd, entry.id);
     }
 }

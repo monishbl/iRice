@@ -237,7 +237,7 @@ Scope {
                                 { label: "Hide", primary: false, act: () => Sharing.updateRequest(root.req.id, { hidden: true }) }
                             ] : root.state_ === "done" ? (root.req.paths.length === 1 ? [
                                 { label: "Show in Files", primary: false, act: () => { Files.reveal(root.req.paths[0]); Sharing.dropRequest(root.req.id); } },
-                                { label: "Open", primary: true, act: () => { Qt.openUrlExternally("file://" + root.req.paths[0]); Sharing.dropRequest(root.req.id); } }
+                                { label: "Open", primary: true, act: () => { Launch.open("file://" + root.req.paths[0]); Sharing.dropRequest(root.req.id); } }
                             ] : [
                                 { label: "Done", primary: false, act: () => Sharing.dropRequest(root.req.id) },
                                 { label: "Show in Files", primary: true, act: () => { Files.reveal(root.req.paths[0] ?? ""); Sharing.dropRequest(root.req.id); } }

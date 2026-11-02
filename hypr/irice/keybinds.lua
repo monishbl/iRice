@@ -75,7 +75,8 @@ local function actionOf(a)
     if a.space then return space(a) end
     if a.shell then return hl.dsp.global("irice:" .. a.shell) end
     if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$IRICE_SHELL", shellDir))) end
-    if a.app then return hl.dsp.exec_cmd("IRICE_USER_DIR='" .. userDir .. "' '" .. shellDir .. "/assets/scripts/open-app.sh' " .. a.app) end
+    -- (each app in a scope of its own: assets/scripts/app-scope.sh)
+    if a.app then return hl.dsp.exec_cmd("'" .. shellDir .. "/assets/scripts/app-scope.sh' --id " .. a.app .. " -- env IRICE_USER_DIR='" .. userDir .. "' '" .. shellDir .. "/assets/scripts/open-app.sh' " .. a.app) end
     if a.zoom then return zoom(a.zoom) end
     if a.dsp then
         local f, err = load("return " .. a.dsp, "dispatcher", "t", { hl = hl })

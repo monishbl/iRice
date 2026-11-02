@@ -244,7 +244,7 @@ Column {
                     visible: BugReport.state_ === "sent" && BugReport.issueUrl !== ""
                     text: "Open issue"
                     icon: "arrow-square-out"
-                    onClicked: Qt.openUrlExternally(BugReport.issueUrl)
+                    onClicked: Launch.open(BugReport.issueUrl)
                 }
                 SettingsButton {
                     visible: BugReport.state_ === "error"
