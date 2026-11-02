@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iRice</title>
-<meta name="description" content="A macOS Tahoe–style desktop for Hyprland: Liquid Glass, a dynamic island, Quick Share and Fast Pair with Android, and updates you can undo. On Arch Linux, next to the desktop you already have.">
+<meta name="description" content="A macOS Tahoe–style desktop for Hyprland, with a second look after Android 17: Liquid Glass or Material, a dynamic island, Quick Share and Fast Pair with Android, an App Store, and updates you can undo. On Arch Linux, next to the desktop you already have.">
 <meta property="og:title" content="iRice: Tahoe, on Hyprland">
-<meta property="og:description" content="Liquid Glass, a dynamic island, Quick Share and Fast Pair for Hyprland on Arch Linux.">
+<meta property="og:description" content="Two looks, Glass and Material, a dynamic island, Quick Share and Fast Pair for Hyprland on Arch Linux.">
 <meta property="og:image" content="https://irice.monishbl.in/media/shots/hero.webp">
 <meta name="theme-color" content="#111113">
 <script>
@@ -143,6 +143,13 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .tile .shot.pair { display: grid; gap: 1px; background: var(--border); }
 .tile .shot.pair > div { aspect-ratio: 4 / 1; overflow: hidden; background: var(--frame); }
 .tile .shot.pair img { object-position: 50% 0; }
+.tile .shot { position: relative; }
+.tile .shot video { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+.tile .shot.hd { aspect-ratio: 16 / 9; }
+/* Two looks: the grid under the switch, and three lock clocks in a row */
+.bento.looks { margin-top: 24px; }
+.tile .clocks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: auto; background: var(--border); border-top: 1px solid var(--border); }
+.tile .clocks img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--frame); }
 .tag {
   display: inline-block; vertical-align: 2px; margin-left: 8px; padding: 0 8px; border-radius: 999px;
   background: var(--tag); color: var(--tag-text); font-size: 12px; line-height: 20px; font-weight: 500; letter-spacing: 0;
@@ -291,6 +298,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 <nav class="nav" aria-label="Main">
   <div class="wrap">
     <a class="brand" href="#top">iRice</a>
+    <a class="link hide-sm" href="#looks">Two looks</a>
     <a class="link hide-sm" href="#only">Only on iRice</a>
     <a class="link hide-sm" href="#design">Design</a>
     <a class="link" href="https://github.com/monishbl/iRice">GitHub</a>
@@ -305,15 +313,86 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 <main id="top">
   <section class="hero wrap">
     <h1>Tahoe, on Hyprland.</h1>
-    <p class="sub">Liquid Glass, a dynamic island, and your Android phone and earbuds, as close as they are on a phone. On Arch Linux, next to the desktop you already have.</p>
+    <p class="sub">Liquid Glass, a dynamic island, and your Android phone and earbuds, as close as they are on a phone. Or the same desktop in Material, after Android 17. On Arch Linux, next to the desktop you already have.</p>
     <div class="actions">
       <a class="btn" href="#install">Install iRice</a>
       <a class="more" href="#only">What only iRice does</a>
     </div>
   </section>
   <div class="film reveal">
-    <div class="media"><video src="/media/hero.mp4" poster="/media/hero.jpg" muted loop playsinline autoplay preload="auto" data-auto aria-label="A short film: liquid glass gathers on a photo into a drop, which leaps to the top of the screen and becomes the island. Everything, at a glance: the island opens for charging, a notification, Wi-Fi and the volume. Pulled back, it is on a laptop. Earbuds, found: a case opens beside the laptop, which connects the earbuds and shows their batteries. A phone sends two photos and the laptop accepts them. Phones and laptops, shared: the laptop passes them on to another laptop. Just ask: Spotlight answers four questions. Captions, live, over a video. Just say it: dictation writes a note. StandBy shows a large clock. All in glass: Control Center over the leaves. It ends on the word iRice over a drop of glass."></video></div>
+    <div class="media"><video src="/media/hero.mp4" poster="/media/hero.jpg" muted loop playsinline autoplay preload="auto" data-auto aria-label="A short film: liquid glass gathers on a photo into a drop, which leaps to the top of the screen and becomes the island. Everything, at a glance: the island opens for charging, a notification, Wi-Fi and the volume. Pulled back, it is on a laptop. Earbuds, found: a case opens beside the laptop, which connects the earbuds and shows their batteries. A phone sends two photos and the laptop accepts them. Phones and laptops, shared: the laptop passes them on to another laptop. Just ask: Spotlight answers four questions. Captions, live, over a video. Just say it: dictation writes a note. StandBy shows a large clock. All in glass: Control Center over the leaves. Or Material: the switching screen's shape morphs, Quick Settings bounces open, and the lock screen's clock moves to the corner when music starts. It ends on the word iRice over a drop of glass."></video></div>
   </div>
+
+  <!-- ── Two looks ─────────────────────────────────────────────────── -->
+  <section class="feature wrap" id="looks">
+    <header class="reveal">
+      <p class="eyebrow">New</p>
+      <h2>Two looks. One desktop.</h2>
+      <p class="sub">Glass, after macOS Tahoe. Or Material, after Android 17: colours from your wallpaper, bold shapes and springy motion. Every feature works in both.</p>
+      <div class="seg" role="group" aria-label="Look">
+        <button type="button" aria-pressed="true" data-show="glass">Glass</button>
+        <button type="button" aria-pressed="false" data-show="material">Material</button>
+      </div>
+    </header>
+    <div class="media swap reveal" data-swap>
+      <img class="on" data-name="glass" src="/media/shots/look-glass.webp" alt="The Glass look over a violet wallpaper: Control Center open on the right in frosted glass, with Focus, Dark Mode, brightness and volume, and Slow Tides playing." loading="lazy">
+      <img data-name="material" src="/media/shots/look-material.webp" alt="The same desktop in the Material look: Quick Settings in lavender tones from the wallpaper, tall brightness and volume sliders, round tiles, and Slow Tides playing with a second player waiting beside it." loading="lazy">
+    </div>
+
+    <div class="bento looks">
+      <div class="tile w3 reveal">
+        <div class="copy">
+          <h3>Switch in a second.</h3>
+          <p>Pick a look in Settings → Appearance. The shell restarts behind a shape that morphs while it works. Your apps and windows stay open.</p>
+        </div>
+        <div class="shot hd"><video src="/media/clips/look-switch.mp4" poster="/media/clips/look-switch.jpg" muted loop playsinline preload="none" data-auto aria-label="The desktop switches from Glass to Material: a shape morphs in the middle of the screen, then the Material desktop appears."></video></div>
+      </div>
+      <div class="tile w3 reveal">
+        <div class="copy">
+          <h3>A clock that makes room.<span class="tag">Material</span></h3>
+          <p>Large while the lock screen is empty. When music starts or a notification arrives, it moves to the corner, as on Android 17.</p>
+        </div>
+        <div class="shot hd"><video src="/media/clips/m-clock-room.mp4" poster="/media/clips/m-clock-room.jpg" muted loop playsinline preload="none" data-auto aria-label="The Material lock screen: a large two-line clock shrinks to the top left corner as a music player appears."></video></div>
+      </div>
+
+      <div class="tile w4 reveal">
+        <div class="copy">
+          <h3>Five clocks, one swipe.<span class="tag">Material</span></h3>
+          <p>Stacked, Wide, Overlap, Analog or Weather, picked from a carousel over your own wallpaper. Then make the digits thinner or bolder, narrower or wider, rounded or sharp.</p>
+        </div>
+        <div class="shot std"><img src="/media/shots/m-settings-clock.webp" alt="Settings, Lock Screen: a carousel of clock styles with Overlap chosen between Wide and Analog, then Size, Thickness, Width and Digits." loading="lazy" style="object-position: 0 0"></div>
+      </div>
+      <div class="tile w2 reveal">
+        <div class="copy">
+          <h3>Every player in reach.<span class="tag">Material</span></h3>
+          <p>Quick Settings springs open. Other players wait beside the one that's playing: click one to switch.</p>
+        </div>
+        <div class="shot" style="flex: 1; min-height: 240px"><video src="/media/clips/m-qs-open.mp4" poster="/media/clips/m-qs-open.jpg" muted loop playsinline preload="none" data-auto aria-label="Material Quick Settings bouncing open: sliders, tiles, and a media card with a second player beside it." style="object-position: 50% 0"></video></div>
+      </div>
+
+      <div class="tile w6 reveal">
+        <div class="copy">
+          <h3>Material, all the way through.<span class="tag">Experimental</span></h3>
+          <p>Not a recolour: its own lock screen, app drawer, Quick Settings, sounds and pointer. If it doesn't start, iRice goes back to Glass on its own.</p>
+          <div class="chips">
+            <span class="chip">Colours from your wallpaper</span>
+            <span class="chip">Tinted blur</span>
+            <span class="chip">Media carousel</span>
+            <span class="chip">Dynamic lock clock</span>
+            <span class="chip">Material Symbols</span>
+            <span class="chip">Shape morphs</span>
+            <span class="chip">Its own sounds</span>
+            <span class="chip">Two-pane Settings</span>
+          </div>
+        </div>
+        <div class="clocks">
+          <img src="/media/shots/m-clock-stacked.webp" alt="The Stacked clock: 01 over 59 in rounded lavender digits." loading="lazy">
+          <img src="/media/shots/m-clock-overlap.webp" alt="The Overlap clock: 02 and 00, the minutes over the hours' corner in pink." loading="lazy">
+          <img src="/media/shots/m-clock-analog.webp" alt="The Analog clock: two rounded hands on a scalloped dial." loading="lazy">
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- ── Only on iRice ─────────────────────────────────────────────── -->
   <section class="feature wrap" id="only">
@@ -359,6 +438,14 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
 
       <div class="tile w6 reveal">
         <div class="copy">
+          <h3>An App Store for Arch.</h3>
+          <p>Apps from the Arch repositories and Flathub in one place, with pictures and descriptions. The AUR is there when you ask for it. Spotlight finds apps you don't have yet, too.</p>
+        </div>
+        <div class="shot wide"><img src="/media/shots/appstore.webp" alt="The App Store: Discover, Popular on Flathub, with apps like Firefox, OBS Studio, Steam and Obsidian, each with a Get button, and categories down the side." loading="lazy" style="object-position: 0 0"></div>
+      </div>
+
+      <div class="tile w6 reveal">
+        <div class="copy">
           <h3>Your devices and accounts.</h3>
           <p>Ones marked Preview are built and working in testing, waiting to be checked with real hardware.</p>
           <div class="chips">
@@ -370,7 +457,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
             <span class="chip">iCloud calendars <span class="tag">Preview</span></span>
             <span class="chip">Microsoft 365 <span class="tag">Preview</span></span>
             <span class="chip">Face unlock <span class="tag">Preview</span></span>
-            <span class="chip">Fingerprint <span class="tag">Preview</span></span>
+            <span class="chip">Fingerprint</span>
             <span class="chip">Offline dictation</span>
             <span class="chip">Live captions over video</span>
           </div>
@@ -470,6 +557,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Per-app volume, output and input pickers</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Window rules</span></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Cool-down when the laptop runs hot</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Glass, Frost or Solid; Subtle, Snappy or Expressive motion</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Smooth while other apps are busy</span></li>
       </ul>
     </div>
   </section>
@@ -517,6 +606,10 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
           </dl>
           <p>Settings and shortcuts are backed up before anything changes.</p>
         </div>
+      </details>
+      <details>
+        <summary>How do I switch between Glass and Material?</summary>
+        <div class="ans"><p>Settings → Appearance → Look, then pick one. The shell restarts in a few seconds; your apps stay open. Material is experimental: if it doesn't start, iRice switches back to Glass by itself and tells you.</p></div>
       </details>
       <details>
         <summary>How do I share my look with a friend?</summary>

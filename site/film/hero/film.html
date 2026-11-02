@@ -6,7 +6,7 @@
 		<link rel="icon" href="data:," />
 		<title>iRice hero film</title>
 		<!--
-		The site's hero: a 56 s muted loop.
+		The site's hero: a 62.5 s muted loop.
 
 		It opens on glass: liquid gathers on a photo into one drop, the photos
 		change beneath it in liquid wipes, and the drop leaps to the top of the
@@ -19,7 +19,10 @@
 		sends it two photos (the laptop's card is the real one). Pulled back,
 		another laptop joins: phones and laptops. Then Spotlight (whip up),
 		captions (whip left) whose bar becomes the dictation island, StandBy
-		and Control Center (liquid glass warps between them, glass.js), and the
+		and Control Center (liquid glass warps between them, glass.js). Then
+		the other look, recorded too: "All in glass." becomes "Or Material."
+		over the switching screen's shape morph, Quick Settings bounces open,
+		and the lock screen's clock makes room when the music starts. The
 		end: the drop forms on the petals again, "iRice" over it, and it melts.
 
 		The warps bend images, so the scenes on either side of each one are
@@ -45,8 +48,11 @@
 		  38.20–41.20  Captions, live                                 bar → island
 		  41.20–44.00  Just say it                                    liquid warp
 		  45.00–47.60  StandBy                                        liquid warp
-		  48.60–51.30  All in glass: Control Center                   liquid warp
-		  52.30–56.00  the drop on the petals; "iRice"; it melts      (loops to 0)
+		  48.60–51.30  All in glass: Control Center                   the title turns
+		  51.30–53.80  Or Material: the switching screen's morph       cut
+		  53.80–55.80  Quick Settings bounces open                    cut
+		  55.80–57.80  the clock makes room for Now Playing           liquid warp
+		  58.80–62.50  the drop on the petals; "iRice"; it melts      (loops to 0)
 		-->
 		<style>
 			@font-face {
@@ -846,6 +852,7 @@
 		<div id="art">
 			<div id="world">
 				<img id="ccimg" class="a" src="assets/cc.webp" style="width: 1920px; height: 1080px" data-persp="2400" alt="" />
+				<img id="mClip" class="a clip" style="width: 1920px; height: 1080px" alt="" />
 			</div>
 
 			<div id="bg" class="a"></div>
@@ -969,6 +976,8 @@
 			<div id="h4" class="a title">Captions, live.</div>
 			<div id="h5" class="a title">Just say it.</div>
 			<div id="h6" class="a title">All in glass.</div>
+			<div id="hMat" class="a title">Or Material.</div>
+			<div id="hRoom" class="a title">It makes room.</div>
 
 			<!-- the glass: above everything but the name written on it -->
 			<canvas id="gl"></canvas>
@@ -1000,22 +1009,22 @@
 			const WARPS = [
 				[44.0, 45.0, 'snapD', 'snapS1', [0, -1]],
 				[47.6, 48.6, 'snapS2', 'snapC1', [1, 0]],
-				[51.3, 52.3, 'snapC2', 'petals', [-1, 0]],
+				[57.8, 58.8, 'snapM', 'petals', [-1, 0]],
 			];
 			const images = { petals: 'assets/p-petals.jpg', ocean: 'assets/p-ocean.jpg', isl: 'frames/charge/0001.jpg' };
-			if (!NOWARP) Object.assign(images, { snapD: 'assets/snap/d.jpg', snapS1: 'assets/snap/s1.jpg', snapS2: 'assets/snap/s2.jpg', snapC1: 'assets/snap/c1.jpg', snapC2: 'assets/snap/c2.jpg' });
+			if (!NOWARP) Object.assign(images, { snapD: 'assets/snap/d.jpg', snapS1: 'assets/snap/s1.jpg', snapS2: 'assets/snap/s2.jpg', snapC1: 'assets/snap/c1.jpg', snapM: 'frames/mlock/0061.jpg' });
 
 			await document.fonts.load('650 250px Geist');
 			await document.fonts.ready;
 			await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => (i.onload = i.onerror = r)))));
 			const G = await createGlass(document.getElementById('gl'), { images });
-			const f = createFilm({ duration: 56.0 });
+			const f = createFilm({ duration: 62.5 });
 			const E = EASE;
 			const at = (sel, x, y) => f.tw(sel, [[0, { x, y }]]);
 			const $ = f.$;
 
 			/* ═══ footage: real iRice, a frame at a time (clips.sh) ═══════════ */
-			const CLIPN = { charge: 90, note: 90, wifi: 90, vol: 78, music: 165, fastpair: 462, card: 444 };
+			const CLIPN = { charge: 90, note: 90, wifi: 90, vol: 78, music: 165, fastpair: 462, card: 444, mswitch: 75, mqs: 60, mlock: 75 };
 			const frame = (c, local) => `frames/${c}/${String(clamp(Math.floor(local * 30 + 1e-4) + 1, 1, CLIPN[c])).padStart(4, '0')}.jpg`;
 			const setSrc = (el, src) => el.getAttribute('src') !== src && el.setAttribute('src', src);
 
@@ -1111,17 +1120,17 @@
 					return s;
 				}
 				/* the end: the drop on the petals, the name on it, then it melts */
-				if (t >= 52.3) {
-					const s = { t, a: 'petals', glass: 1, wob: 1 - 0.7 * ramp(t, 53.2, 54.0), rect: [CX, CY, 330, 130], rectR: 130, kA: lerp(1.0, 1.08, ramp(t, 51.3, 56.0)) };
-					Object.assign(s, gather(t, 52.2, 52.8, 53.4));
-					s.disp = 0.2 + 0.6 * E.io(ramp(t, 53.1, 53.9));
-					const melt = E.i(ramp(t, 55.35, 55.85));
+				if (t >= 58.8) {
+					const s = { t, a: 'petals', glass: 1, wob: 1 - 0.7 * ramp(t, 59.7, 60.5), rect: [CX, CY, 330, 130], rectR: 130, kA: lerp(1.0, 1.08, ramp(t, 57.8, 62.5)) };
+					Object.assign(s, gather(t, 58.7, 59.3, 59.9));
+					s.disp = 0.2 + 0.6 * E.io(ramp(t, 59.6, 60.4));
+					const melt = E.i(ramp(t, 61.85, 62.35));
 					if (melt > 0) {
 						s.rectOn = 1 - melt;
 						s.wob = 0.3 + melt;
 						s.balls = [[CX - 150 * melt, CY - 20 * melt, 80 * Math.sin(Math.PI * melt)], [CX + 170 * melt, CY + 30 * melt, 70 * Math.sin(Math.PI * melt)], [CX + 20, CY - 60 * melt, 50 * Math.sin(Math.PI * melt)]];
 					}
-					s.glass = 1 - ramp(t, 55.8, 55.98);
+					s.glass = 1 - ramp(t, 62.3, 62.48);
 					return s;
 				}
 				return null;
@@ -1139,9 +1148,9 @@
 			});
 			/* the name, on top of the glass */
 			f.tw('#word', [[0, { x: 960, y: 548 }]]);
-			R.blurIn(f, '#word', 53.15, { y: 548, rise: 12, dur: 0.6 });
-			f.tw('#word', [[55.2, { o: 1, blur: 0, s: 1 }], [55.55, { o: 0, blur: 12, s: 1.04 }, 'i']]);
-			f.show('#word', 53.1, 55.6);
+			R.blurIn(f, '#word', 59.65, { y: 548, rise: 12, dur: 0.6 });
+			f.tw('#word', [[61.7, { o: 1, blur: 0, s: 1 }], [62.05, { o: 0, blur: 12, s: 1.04 }, 'i']]);
+			f.show('#word', 59.6, 62.1);
 
 			/* ═══ the devices (4.60–32.90) ═══════════════════════════════════ */
 			f.show('#dev', 4.6, 33.15);
@@ -1435,10 +1444,10 @@
 			f.tw(['#sbw1', '#sbw2'], [[44.5, { s: 1 }], [47.6, { s: 1.02 }, 'lin']]);
 
 			/* ═══ All in glass (48.60–51.30) ═════════════════════════════════ */
-			f.fx((t) => (f.W.style.display = t >= 48.1 && t < 51.55 ? '' : 'none'));
+			f.fx((t) => (f.W.style.display = t >= 48.1 && t < 57.8 ? '' : 'none'));
 			at('#ccimg', 960, 540);
-			f.show('#ccimg', 48.1, 51.55);
-			f.show('#vig', 48.1, 51.55);
+			f.show('#ccimg', 48.1, 51.3);
+			f.show('#vig', 48.1, 51.3);
 			at('#vig', 960, 540);
 			f.tw('#ccimg', [[48.6, { ry: -7, rx: 3, s: 1.08 }], [49.4, { ry: 0, rx: 0, s: 1 }, 'o']]);
 			f.cam([
@@ -1446,13 +1455,45 @@
 				[48.6, { cx: 1372, cy: 308, s: 1.75 }],
 				[49.9, { cx: 960, cy: 540, s: 1 }, 'io5'],
 				[51.3, { s: 1.025 }, 'lin'],
+				/* Or Material: in close on the switching screen's shape */
+				[51.3, { cx: 960, cy: 430, s: 2.9 }, 'step'],
+				[53.8, { s: 3.05 }, 'lin'],
+				/* Quick Settings, close up, pushing in as it bounces open */
+				[53.8, { cx: 1408, cy: 330, s: 1.9 }, 'step'],
+				[55.8, { s: 1.98 }, 'o'],
+				/* the lock screen, whole, settling back to the still the warp starts from */
+				[55.8, { cx: 960, cy: 540, s: 1.05 }, 'step'],
+				[57.8, { s: 1 }, 'io'],
 			]);
 			f.tw('#vig', [[48.6, { o: 0 }], [49.4, { o: 1 }, 'o']]);
 			const h6 = split($('#h6'), 'words');
 			h6.at(-1).classList.add('acc');
 			f.tw('#h6', [[0, { x: 520, y: 540 }]]);
 			h6.forEach((s, i) => f.tw(s, [[49.3 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [49.3 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
-			f.show('#h6', 49.3, 51.55);
+			/* the title turns: All in glass. → Or Material. (the same place) */
+			h6.forEach((s, i) => f.tw(s, [[51.15 + i * 0.05, { o: 1, dy: 0, blur: 0 }], [51.45 + i * 0.05, { o: 0, dy: -24, blur: 12 }, 'i']]));
+			f.show('#h6', 49.3, 51.6);
+
+			/* ═══ Or Material (51.30–57.80): recorded, a frame at a time ═════ */
+			const mClip = $('#mClip');
+			at('#mClip', 960, 540);
+			f.show('#mClip', 51.3, 57.8);
+			f.fx((t) => {
+				if (t < 51.3 || t >= 57.8) return;
+				const [c, t0] = t < 53.8 ? ['mswitch', 51.3] : t < 55.8 ? ['mqs', 53.8] : ['mlock', 55.8];
+				setSrc(mClip, frame(c, t - t0));
+			});
+			const hm = split($('#hMat'), 'words');
+			hm.at(-1).classList.add('acc');
+			f.tw('#hMat', [[0, { x: 960, y: 300 }]]);
+			hm.forEach((s, i) => f.tw(s, [[51.4 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [51.4 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo'], [53.45, { o: 1, blur: 0 }], [53.75, { o: 0, blur: 12 }, 'i']]));
+			f.show('#hMat', 51.4, 53.8);
+			/* the clock moves aside for the music: the line takes its place */
+			const hr = split($('#hRoom'), 'words');
+			hr.at(-1).classList.add('acc');
+			f.tw('#hRoom', [[0, { x: 960, y: 470 }]]);
+			hr.forEach((s, i) => f.tw(s, [[56.75 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [56.75 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo'], [57.4, { o: 1, blur: 0 }], [57.75, { o: 0, blur: 10 }, 'i']]));
+			f.show('#hRoom', 56.75, 57.8);
 
 			f.start();
 			/* a seek isn't drawn until the footage frames it asked for are decoded */
