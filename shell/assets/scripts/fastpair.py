@@ -21,8 +21,14 @@ BlueZ:
                         forgets KNOWN, their old pairing (earbuds that were
                         reset no longer take it), and pairs them afresh
 
-Scanning is light: only while Bluetooth is on; continuous on the charger,
-else 4 seconds every 30. Devices not heard from for 20 seconds are dropped.
+Watching is light: BlueZ looks for Fast Pair adverts itself (an
+advertisement monitor, matched in the Bluetooth controller where it can), so
+only those reach this script, and nobody else's adverts (an office has
+hundreds of phones, watches and beacons) make devices or D-Bus traffic for
+it, the shell or the sound server. Without monitors (an older BlueZ), it
+scans: continuous on the charger, else 4 seconds every 30. Devices BlueZ
+reports lost, or not heard from for 20 seconds (60 with a monitor), are
+dropped.
 (The device's real name and picture come from Google's model lookup, which
 needs an API key: the Bluetooth name is used instead.)
 """
@@ -154,6 +160,42 @@ def pick_twin(devices, name, address, fallback=False):
     return near[0] if fallback and len(near) == 1 else None
 
 
+# The advertisement monitor: Fast Pair adverts are service data (AD type
+# 0x16) for the 16-bit UUID 0xFE2C, which leads it little-endian
+APP_PATH = "/org/irice/fastpair"
+MONITOR_PATH = APP_PATH + "/monitor0"
+MONITOR_XML = """<node><interface name="org.bluez.AdvertisementMonitor1">
+<method name="Release"/><method name="Activate"/>
+<method name="DeviceFound"><arg type="o" direction="in"/></method>
+<method name="DeviceLost"><arg type="o" direction="in"/></method>
+<property name="Type" type="s" access="read"/>
+<property name="Patterns" type="a(yyay)" access="read"/>
+<property name="RSSIHighThreshold" type="n" access="read"/>
+<property name="RSSILowThreshold" type="n" access="read"/>
+<property name="RSSIHighTimeout" type="q" access="read"/>
+<property name="RSSILowTimeout" type="q" access="read"/>
+<property name="RSSISamplingPeriod" type="q" access="read"/>
+</interface></node>"""
+MANAGER_XML = """<node><interface name="org.freedesktop.DBus.ObjectManager">
+<method name="GetManagedObjects"><arg type="a{oa{sa{sv}}}" direction="out"/></method>
+</interface></node>"""
+
+
+def monitor_props(GLib):
+    """The monitor: found at -90 dBm or closer for a second, lost below
+    -100 for 10 seconds (or unheard that long); every advert reported (the
+    batteries change in them)"""
+    return {
+        "Type": GLib.Variant("s", "or_patterns"),
+        "Patterns": GLib.Variant("a(yyay)", [(0, 0x16, b"\x2c\xfe")]),
+        "RSSIHighThreshold": GLib.Variant("n", -90),
+        "RSSILowThreshold": GLib.Variant("n", -100),
+        "RSSIHighTimeout": GLib.Variant("q", 1),
+        "RSSILowTimeout": GLib.Variant("q", 10),
+        "RSSISamplingPeriod": GLib.Variant("q", 0),
+    }
+
+
 def emit(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
@@ -169,6 +211,11 @@ class Watcher:
         self.last = None
         self.adapter = None
         self.scanning = False
+        self.monitoring = False  # BlueZ's advertisement monitor is on (no scanning)
+        self.monitor_failed = False  # (then: scanning, as before monitors)
+        self.registered = False
+        self.subscribed = False  # (to every device's signals: scanning only)
+        self.watching = {}  # path -> signal subscription (with a monitor: only its devices)
         self.cached = (0, {})
 
     def call(self, path, iface, method, args=None, sig=None, timeout=10000):
@@ -266,7 +313,8 @@ class Watcher:
 
     def report(self):
         now = time.monotonic()
-        self.devices = {p: d for p, d in self.devices.items() if now - d["at"] < 20}
+        keep = 60 if self.monitoring else 20  # (a monitor says when they're lost)
+        self.devices = {p: d for p, d in self.devices.items() if now - d["at"] < keep}
         state = []
         for path, d in self.devices.items():
             out = {k: d.get(k) for k in ("address", "name", "model", "pairing", "rssi", "battery", "showUi")}
@@ -307,12 +355,100 @@ class Watcher:
         except Exception:  # noqa: BLE001
             self.scanning = False
 
+    # ── The advertisement monitor ────────────────────────────────────────
+    def found(self, path):
+        # (its changes only: other apps' scans make every device nearby
+        # signal, which this doesn't need to hear)
+        if path not in self.watching:
+            self.watching[path] = self.bus.signal_subscribe(
+                "org.bluez", "org.freedesktop.DBus.Properties", "PropertiesChanged", path, None,
+                self.Gio.DBusSignalFlags.NONE, self.on_signal)
+        try:
+            (props,) = self.call(path, "org.freedesktop.DBus.Properties", "GetAll", ("org.bluez.Device1",), "(s)")
+        except Exception:  # noqa: BLE001
+            return
+        self.seen(path, props)
+
+    def lost(self, path):
+        self.devices.pop(path, None)
+        sub = self.watching.pop(path, None)
+        if sub is not None:
+            self.bus.signal_unsubscribe(sub)
+
+    def subscribe_all(self):
+        """Every device's signals (scanning, without a monitor)"""
+        if self.subscribed:
+            return
+        self.subscribed = True
+        for signal in ("InterfacesAdded", "InterfacesRemoved"):
+            self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.ObjectManager", signal, None, None,
+                                      self.Gio.DBusSignalFlags.NONE, self.on_signal)
+        self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.Properties", "PropertiesChanged", None, None,
+                                  self.Gio.DBusSignalFlags.NONE, self.on_signal)
+        for path, ifaces in self.objects().items():
+            if "org.bluez.Device1" in ifaces:
+                self.seen(path, ifaces["org.bluez.Device1"])
+
+    def monitor(self):
+        """Asks BlueZ to watch for Fast Pair adverts (async: BlueZ asks this
+        process for the monitor while it registers it). Falls back to
+        scanning if it can't."""
+        Gio, GLib = self.Gio, self.GLib
+        try:
+            (mgr,) = self.call(self.adapter, "org.freedesktop.DBus.Properties", "GetAll",
+                               ("org.bluez.AdvertisementMonitorManager1",), "(s)")
+            if "or_patterns" not in mgr.get("SupportedMonitorTypes", []):
+                raise RuntimeError("no or_patterns monitors")
+            if not self.registered:
+                props = monitor_props(GLib)
+
+                def on_monitor(conn, sender, path, iface, method, params, inv):
+                    if method == "DeviceFound":
+                        self.found(params.unpack()[0])
+                    elif method == "DeviceLost":
+                        self.lost(params.unpack()[0])
+                    elif method == "Release":
+                        self.monitoring = False  # (registered again on the next duty)
+                    inv.return_value(None)
+
+                def on_manager(conn, sender, path, iface, method, params, inv):
+                    inv.return_value(GLib.Variant("(a{oa{sa{sv}}})", ({MONITOR_PATH: {"org.bluez.AdvertisementMonitor1": props}},)))
+
+                self.bus.register_object(MONITOR_PATH, Gio.DBusNodeInfo.new_for_xml(MONITOR_XML).interfaces[0],
+                                         on_monitor, lambda c, s, p, i, name: props.get(name), None)
+                self.bus.register_object(APP_PATH, Gio.DBusNodeInfo.new_for_xml(MANAGER_XML).interfaces[0],
+                                         on_manager, None, None)
+                self.registered = True
+        except Exception:  # noqa: BLE001
+            self.monitor_failed = True
+            return
+
+        def done(bus, res):
+            try:
+                bus.call_finish(res)
+                self.monitoring = True
+                self.scan(False)
+            except Exception:  # noqa: BLE001
+                self.monitor_failed = True
+                self.duty()
+
+        self.monitoring = True  # (asked: no scanning meanwhile)
+        self.bus.call("org.bluez", self.adapter, "org.bluez.AdvertisementMonitorManager1", "RegisterMonitor",
+                      GLib.Variant("(o)", (APP_PATH,)), None, Gio.DBusCallFlags.NONE, 10000, None, done)
+
     def duty(self):
-        """Every 30 s: scan 4 s (continuously on the charger), only while powered."""
+        """Every 30 s: the monitor (else scan 4 s, continuously on the
+        charger), only while powered."""
         self.adapter, props = self.find_adapter()
         if not self.adapter or not props.get("Powered"):
             self.scan(False)
             return True
+        if not self.monitor_failed:
+            if not self.monitoring:
+                self.monitor()
+            if not self.monitor_failed:
+                return True
+        self.subscribe_all()
         if not self.on_battery_power():
             self.scan(True)
             return True
@@ -450,15 +586,8 @@ class Watcher:
             self.scanning = False
 
     def run(self):
-        self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", None, None,
-                                  self.Gio.DBusSignalFlags.NONE, self.on_signal)
-        self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", None, None,
-                                  self.Gio.DBusSignalFlags.NONE, self.on_signal)
-        self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.Properties", "PropertiesChanged", None, None,
-                                  self.Gio.DBusSignalFlags.NONE, self.on_signal)
-        for path, ifaces in self.objects().items():
-            if "org.bluez.Device1" in ifaces:
-                self.seen(path, ifaces["org.bluez.Device1"])
+        # (signals: only the monitor's devices', or every device's when
+        # scanning instead: duty decides)
         self.duty()
         self.GLib.timeout_add_seconds(30, self.duty)
         self.GLib.timeout_add_seconds(1, self.report)
