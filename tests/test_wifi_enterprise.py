@@ -29,6 +29,8 @@ FAKE_NMCLI = textwrap.dedent(r'''
         out = "".join(f"{p['name']}:{u}:802-11-wireless\n" for u, p in db["profiles"].items())
     elif args[:2] == ["-g", "802-11-wireless.ssid"]:
         out = db["profiles"].get(args[-1], {}).get("ssid", "") + "\n"
+    elif args[:2] == ["-g", "connection.timestamp"]:
+        out = str(db["profiles"].get(args[-1], {}).get("timestamp", 0)) + "\n"
     elif args[:2] == ["-t", "-f"] and args[3:5] == ["connection", "show"]:
         p = db["profiles"].get(args[-1], {})
         out = "".join(f"{k}:{v}\n" for k, v in p.get("settings", {}).items())
@@ -75,7 +77,10 @@ class WifiEnterprise(unittest.TestCase):
         self.runtime.mkdir(mode=0o700)
         self.ca = root / "ca.pem"
         self.ca.write_text("-----BEGIN CERTIFICATE-----\n")
-        self.env = dict(os.environ, PATH=f"{root / 'bin'}:{os.environ['PATH']}", FAKE_NM_STATE=str(self.state), XDG_RUNTIME_DIR=str(self.runtime))
+        self.bundle = root / "bundle.crt"
+        self.bundle.write_text("-----BEGIN CERTIFICATE-----\n")
+        self.env = dict(os.environ, PATH=f"{root / 'bin'}:{os.environ['PATH']}", FAKE_NM_STATE=str(self.state), XDG_RUNTIME_DIR=str(self.runtime),
+                        IRICE_CA_BUNDLE=str(self.bundle))
 
     def run_script(self, *args, request=None, **env):
         e = dict(self.env, **env)
@@ -101,11 +106,42 @@ class WifiEnterprise(unittest.TestCase):
         edits = [c for c in self.calls() if c["argv"][:2] == ["connection", "edit"]]
         self.assertEqual(len(edits), 1)
         self.assertIn("set 802-1x.password s3cret pass!", edits[0]["stdin"])
-        self.assertIn("set 802-1x.system-ca-certs yes", edits[0]["stdin"])
+        # the system's certificates: its CA bundle, as a file
+        self.assertIn(f"set 802-1x.ca-cert {self.bundle}", edits[0]["stdin"])
+        self.assertIn("set 802-1x.system-ca-certs no", edits[0]["stdin"])
         self.assertIn("set 802-1x.domain-suffix-match radius.uni.edu", edits[0]["stdin"])
         self.assertNotIn("s3cret", r.stdout + r.stderr)
         # nothing left behind: no secret files
         self.assertEqual(list(self.runtime.iterdir()), [])
+
+    def test_system_certificates_without_a_bundle_file(self):
+        req = {"ssid": "eduroam", "security": "enterprise", "eap": "peap", "identity": "me", "password": "p", "ca": "system"}
+        r, out = self.run_script("join", request=req, IRICE_CA_BUNDLE="none")
+        stdin = [c for c in self.calls() if c["argv"][:2] == ["connection", "edit"]][0]["stdin"]
+        self.assertIn("set 802-1x.system-ca-certs yes", stdin)
+
+    def test_a_failed_join_leaves_no_profile_it_made(self):
+        req = {"ssid": "Office", "security": "enterprise", "eap": "peap", "identity": "me", "password": "wrong", "ca": "system"}
+        r, out = self.run_script("join", request=req, FAKE_NM_UP_ERROR="Error: Connection activation failed: Secrets were required, but not provided")
+        self.assertEqual(out[-1]["state"], "error")
+        self.assertEqual(json.loads(self.state.read_text())["profiles"], {})
+
+    def test_a_failed_join_keeps_a_profile_that_was_there(self):
+        db = {"profiles": {"u1": {"name": "Office", "ssid": "Office", "timestamp": 1700000000, "settings": {}}}, "calls": []}
+        self.state.write_text(json.dumps(db))
+        req = {"ssid": "Office", "security": "enterprise", "eap": "peap", "identity": "me", "password": "wrong", "ca": "system"}
+        r, out = self.run_script("join", request=req, FAKE_NM_UP_ERROR="Error: Secrets were required, but not provided")
+        self.assertIn("u1", json.loads(self.state.read_text())["profiles"])
+
+    def test_the_last_used_of_two_profiles_is_the_one_edited(self):
+        # (an extra, broken profile for the same name mustn't be the one changed)
+        db = {"profiles": {"broken": {"name": "Office", "ssid": "Office", "timestamp": 0, "settings": {}},
+                           "works": {"name": "Office", "ssid": "Office", "timestamp": 1793598236, "settings": {}}}, "calls": []}
+        self.state.write_text(json.dumps(db))
+        req = {"ssid": "Office", "security": "enterprise", "eap": "peap", "identity": "me", "password": "p", "ca": "system"}
+        self.run_script("join", request=req)
+        edits = [c for c in self.calls() if c["argv"][:2] == ["connection", "edit"]]
+        self.assertEqual(edits[0]["argv"][:4], ["connection", "edit", "uuid", "works"])
 
     def test_tls_with_key_password_and_ca_file(self):
         cert, key = Path(self.tmp.name) / "me.crt", Path(self.tmp.name) / "me.key"

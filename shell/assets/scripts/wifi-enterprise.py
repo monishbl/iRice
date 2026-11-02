@@ -35,6 +35,20 @@ EAP = ("peap", "ttls", "tls", "pwd")
 PHASE2 = ("mschapv2", "pap", "gtc", "mschap")
 SECURITY = ("enterprise", "psk", "open")
 TIMEOUT = 45  # seconds NetworkManager gets to join before we say so
+# "The system's certificates": the distribution's CA bundle, as a file. (NM's
+# own system-ca-certs hands wpa_supplicant a folder of hashed links, which
+# not every distribution makes, and which failed where the bundle worked.)
+CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+              "/etc/ca-certificates/extracted/tls-ca-bundle.pem", "/etc/ssl/cert.pem", "/etc/ssl/ca-bundle.pem")
+
+
+def ca_bundle():
+    if os.environ.get("IRICE_CA_BUNDLE") == "none":  # (tests: a system without one)
+        return ""
+    for path in ([os.environ["IRICE_CA_BUNDLE"]] if os.environ.get("IRICE_CA_BUNDLE") else []) + list(CA_BUNDLES):
+        if os.path.isfile(path) and os.access(path, os.R_OK):
+            return path
+    return ""
 
 
 def emit(**kw):
@@ -90,20 +104,19 @@ def forget(ssid):
 
 
 def profile_for(ssid):
-    """The saved Wi-Fi profile for this network name, if there is one."""
-    r = nmcli("-t", "-f", "NAME,UUID,TYPE", "connection", "show")
-    if r.returncode != 0:
-        return None
-    for line in r.stdout.splitlines():
-        # nmcli -t escapes ":" inside fields as "\:"
-        parts = line.replace("\\:", "\0").split(":")
-        parts = [p.replace("\0", ":") for p in parts]
-        if len(parts) >= 3 and parts[2] == "802-11-wireless":
-            name, uuid = parts[0], parts[1]
-            s = nmcli("-g", "802-11-wireless.ssid", "connection", "show", uuid)
-            if s.returncode == 0 and s.stdout.strip() == ssid:
-                return uuid
-    return None
+    """The saved Wi-Fi profile for this network name, if there is one: the
+    one last connected, when there are several (a broken extra one, say)"""
+    uuids = [u for u, _, s in wifi_profiles() if s == ssid]
+    if len(uuids) <= 1:
+        return uuids[0] if uuids else None
+
+    def last_used(u):
+        r = nmcli("-g", "connection.timestamp", "connection", "show", "uuid", u)
+        try:
+            return int(r.stdout.strip() or 0)
+        except ValueError:
+            return 0
+    return max(uuids, key=last_used)
 
 
 def show(ssid):
@@ -161,7 +174,9 @@ def commands(req):
     cmds.append(f"set 802-1x.domain-suffix-match {domain}" if domain else "remove 802-1x.domain-suffix-match")
 
     ca = req.get("ca", "system")
-    if ca == "system":
+    if ca == "system" and ca_bundle():
+        cmds += [f"set 802-1x.ca-cert {ca_bundle()}", "set 802-1x.system-ca-certs no"]
+    elif ca == "system":
         cmds += ["remove 802-1x.ca-cert", "set 802-1x.system-ca-certs yes"]
     elif ca == "none":
         cmds += ["remove 802-1x.ca-cert", "set 802-1x.system-ca-certs no"]
@@ -228,6 +243,7 @@ def join(req):
         return 1
     emit(state="saving")
     uuid = profile_for(ssid)
+    created = uuid is None
     if uuid:
         edit = ["connection", "edit", "uuid", uuid]
     else:
@@ -258,6 +274,10 @@ def join(req):
         emit(state="error", message="The network didn't answer in time. Move closer to it and try again.")
         return 1
     if r.returncode != 0:
+        # (a profile this join made, that never connected, goes again: the
+        # next try starts clean instead of finding a broken one)
+        if created:
+            nmcli("connection", "delete", "uuid", uuid)
         emit(state="error", message=explain(r.stderr + r.stdout, req))
         return 1
     emit(state="connected")
