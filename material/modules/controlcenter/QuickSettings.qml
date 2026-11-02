@@ -541,11 +541,6 @@ Popover {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     spacing: 8
                     TonalButton {
-                        icon: "pencil-simple"
-                        tip: "Edit controls"
-                        onClicked: Panels.ccEditing = true
-                    }
-                    TonalButton {
                         icon: "gear-six"
                         tip: "Open Settings"
                         onClicked: Panels.openSettings()
@@ -556,6 +551,12 @@ Popover {
                         icon: "power"
                         tip: "Power options"
                         onClicked: Panels.show("session", qs.screen)
+                    }
+                    // Edit, in the corner (Android 17)
+                    TonalButton {
+                        icon: "pencil-simple"
+                        tip: "Edit controls"
+                        onClicked: Panels.ccEditing = true
                     }
                 }
             }

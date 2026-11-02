@@ -559,6 +559,7 @@ Singleton {
                 property int iconSize: 48
                 property real gap: 0.18 // space between icons, as a fraction of the icon size (0.05 .. 0.4)
                 property bool appsButton: true // App Library button at the start
+                property bool appNames: true // Material: names under the app drawer's icons (Android 17's option)
                 property bool magnification: false
                 property string autoHide: "off" // off | always | windows (hide when a window overlaps it)
                 property bool recentApps: true // up to 3 recent apps after a divider
