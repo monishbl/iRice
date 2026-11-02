@@ -8,7 +8,8 @@ import qs.services
 // shelf (a shake, an edge) gets two big targets under the menu bar, in the
 // island's black: keep them on the shelf (it shrinks to the shelf's card),
 // or send them to a phone (the share sheet: Quick Share or LocalSend). It
-// goes if the drag ends elsewhere.
+// goes if the drag ends elsewhere, a moment after the drag leaves it, or
+// with a click on it or its close button (Shelf.offer).
 LazyLoader {
     id: loader
     property bool leaving: false
@@ -62,6 +63,23 @@ LazyLoader {
             scale: 0.72 + 0.28 * win.shown
             transformOrigin: Item.Top
 
+            // The drag over it (anywhere: the edge, a target) keeps it; a
+            // click on it (once the drag is over) puts it away
+            readonly property bool hovering: zoneArea.containsDrag || keepTarget.over || sendTarget.over
+            onHoveringChanged: Shelf.zoneHover(hovering)
+            DropArea {
+                id: zoneArea
+                anchors.fill: parent
+                // (only to know the drag is here: a copy at most, and a drop
+                // between the targets does nothing)
+                onEntered: d => d.accept(Qt.CopyAction)
+                onDropped: d => d.accepted = false
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: Shelf.cancelZone()
+            }
+
             Column {
                 id: column
                 x: 16
@@ -88,23 +106,50 @@ LazyLoader {
                         font { family: Theme.font.family; pixelSize: 15; weight: Font.DemiBold }
                     }
                     Text {
-                        anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+                        anchors { right: closeButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
                         visible: Shelf.count > 0
                         text: Shelf.count + " on the shelf"
                         color: Qt.rgba(1, 1, 1, 0.6)
                         font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+                    }
+                    Rectangle {
+                        id: closeButton
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.1)
+                        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Close"
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "x"
+                            bold: true
+                            size: 14
+                            color: "#F5F5F7"
+                        }
+                        MouseArea {
+                            id: closeMouse
+                            anchors.fill: parent
+                            anchors.margins: -8 // (a bigger target than it looks)
+                            hoverEnabled: true
+                            onClicked: Shelf.cancelZone()
+                        }
                     }
                 }
 
                 Row {
                     spacing: 12
                     Target {
+                        id: keepTarget
                         icon: "tray"
                         title: "Keep on the shelf"
                         detail: "Park them, take them out later"
                         onDroppedHere: (urls, text) => Shelf.keep(urls, text)
                     }
                     Target {
+                        id: sendTarget
                         icon: "share-network"
                         title: "Send to a phone"
                         detail: "Quick Share or LocalSend"

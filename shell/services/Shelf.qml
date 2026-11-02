@@ -163,12 +163,33 @@ Singleton {
     // A drag of files that asks for the shelf (a shake, an edge) gets the
     // island's big drop zone first: keep the files on the shelf, or send
     // them to a phone. Dropped on Keep, it shrinks to the shelf's card.
+    // It goes by itself too: a file drag swallows the button's release (which
+    // ends it, below) until the next click, so it also goes a moment after
+    // the drag leaves it (1.5 s) or if the drag never comes over it (6 s);
+    // and a click on it, or its close button, puts it away.
     property bool zone: false
     property var zoneScreen: null
     function offer(scr) {
         zoneScreen = scr ?? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
         zoneEnd.stop();
         zone = true;
+        zoneHover(false, 6000);
+    }
+    function cancelZone() {
+        zone = false;
+    }
+    // (ShelfDropZone: whether the drag is over it)
+    function zoneHover(over, ms) {
+        if (over) {
+            zoneIdle.stop();
+        } else if (zone) {
+            zoneIdle.interval = ms ?? 1500;
+            zoneIdle.restart();
+        }
+    }
+    Timer {
+        id: zoneIdle
+        onTriggered: root.zone = false
     }
     function keep(urls, text) {
         const ok = drop(urls, text);
@@ -331,11 +352,14 @@ Singleton {
         }
         // (held at an edge: the edge strips tell, ShelfProbes)
     }
-    // qs ipc call shelf toggle | open | close | clear
+    // qs ipc call shelf toggle | open | close | clear | zone (the drop zone, as a drag would show it)
     IpcHandler {
         target: "shelf"
         function toggle(): void {
             root.toggle(null);
+        }
+        function zone(): void {
+            root.offer(null);
         }
         function open(): void {
             root.show("shortcut", null);
