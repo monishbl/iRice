@@ -263,10 +263,43 @@ Item {
                 readonly property var p: Island.player
                 readonly property bool timeline: (p?.lengthSupported ?? false) && (p?.length ?? 0) > 0
                 visible: !!p && (p.trackTitle ?? "") !== ""
-                width: parent.width
+                // Android 17's carousel: other players wait beside it as
+                // narrow cards (MediaPeek), the card giving them room; a
+                // swipe on it or a click on one switches
+                readonly property var others: Media.players.filter(o => o !== p && (o.trackTitle ?? "") !== "").slice(-2)
+                width: parent.width - others.length * 48
+                Behavior on width {
+                    SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.5 }
+                }
                 height: 80
                 radius: Theme.radius.tile
                 color: root.m3.surfaceContainerHigh
+                Row {
+                    x: parent.width + 8
+                    height: parent.height
+                    spacing: 8
+                    Repeater {
+                        model: media.others
+                        MediaPeek {
+                            required property var modelData
+                            player: modelData
+                            width: 40
+                            height: media.height
+                        }
+                    }
+                }
+                DragHandler {
+                    target: null
+                    yAxis.enabled: false
+                    enabled: media.others.length > 0
+                    onActiveChanged: {
+                        if (active)
+                            return;
+                        const dx = centroid.position.x - centroid.pressPosition.x;
+                        if (Math.abs(dx) >= 48)
+                            Media.pinned = dx < 0 ? media.others[0] : media.others[media.others.length - 1];
+                    }
+                }
 
                 Timer {
                     interval: 1000
