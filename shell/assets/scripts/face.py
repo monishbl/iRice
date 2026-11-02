@@ -7,7 +7,12 @@ IR cameras are offered.
   face.py status     JSON: {"camera": {"path", "name"} | null (an IR camera,
                      by its stable /dev/v4l path), "howdy": bool (installed),
                      "pam": bool (pam_howdy.so), "device": the camera Howdy
-                     is set to ("" when not set up), "models": downloaded}
+                     is set to ("" when not set up), "models": downloaded,
+                     "private": Howdy's settings are root's to read}
+
+howdy-next keeps /etc/howdy root's (0750: users' face models are in it), so
+this, running as you, usually can't see the camera it's set to: "private",
+and the shell goes by what it set up itself (Config lock.faceDevice).
 
 Adding a face and setting Howdy up need root: irice-root face …
 """
@@ -89,6 +94,17 @@ def ir_camera(fmts=formats):
     return found[0] if found else None
 
 
+def config_private():
+    """Howdy's config is there but not yours to read (its folder is 0750)"""
+    try:
+        with open(path(CONFIG)):
+            return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def configured_device():
     m = re.search(r"^\s*device_path\s*=\s*(\S+)", read(CONFIG), re.M)
     return m.group(1) if m and m.group(1).lower() not in ("none", "") else ""
@@ -99,6 +115,7 @@ def status():
             "howdy": bool(shutil.which("howdy")) if ROOT == "/" else os.path.exists(path("/usr/bin/howdy")),
             "pam": any(os.path.exists(path(m)) for m in PAM_MODULES),
             "device": configured_device(),
+            "private": config_private(),
             "models": bool(glob.glob(path(ONNX_DIR + "/*.onnx")))}
 
 

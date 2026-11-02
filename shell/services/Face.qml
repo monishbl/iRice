@@ -17,7 +17,10 @@ Singleton {
     readonly property var camera: info.camera ?? null
     readonly property bool hasCamera: camera !== null
     readonly property bool installed: (info.howdy ?? false) && (info.pam ?? false)
-    readonly property bool setUp: installed && (info.device ?? "") !== "" && (info.models ?? false)
+    // The camera Howdy uses: from its config, or (howdy-next keeps that
+    // root's to read) the one iRice set it up with
+    readonly property string device: (info.private ?? false) ? (Config.options.lock.faceDevice ?? "") : (info.device ?? "")
+    readonly property bool setUp: installed && device !== "" && (info.models ?? false)
     // Faces added (kept here: Howdy's own list is root's to read)
     readonly property int faces: Config.options.lock.faceCount ?? 0
     readonly property bool lockScreen: setUp && faces > 0 && (Config.options.lock.face ?? true)
@@ -93,7 +96,9 @@ Singleton {
             const job = root.busy;
             root.busy = "";
             if (code === 0) {
-                if (job === "add")
+                if (job === "setup")
+                    Config.options.lock.faceDevice = root.camera?.path ?? "";
+                else if (job === "add")
                     Config.options.lock.faceCount = root.faces + 1;
                 else if (job === "clear")
                     Config.options.lock.faceCount = 0;

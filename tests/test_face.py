@@ -62,6 +62,23 @@ class Camera(unittest.TestCase):
         (self.root / "etc/howdy/config.ini").write_text("[video]\ndevice_path = none\n")
         self.assertEqual(fc.configured_device(), "")
 
+    def test_howdy_config_root_only(self):
+        # (howdy-next makes /etc/howdy 0750: a user can't read the camera
+        # it's set to, which isn't the same as not set up)
+        (self.root / "etc/howdy").mkdir(parents=True)
+        (self.root / "etc/howdy/config.ini").write_text("[video]\ndevice_path = /dev/video2\n")
+        self.assertFalse(fc.config_private())
+        if os.geteuid() != 0:
+            os.chmod(self.root / "etc/howdy", 0o700)
+            os.chmod(self.root / "etc/howdy/config.ini", 0o000)
+            try:
+                self.assertTrue(fc.config_private())
+                self.assertEqual(fc.configured_device(), "")
+            finally:
+                os.chmod(self.root / "etc/howdy/config.ini", 0o644)
+        (self.root / "etc/howdy/config.ini").unlink()
+        self.assertFalse(fc.config_private())  # (missing isn't private)
+
 
 if __name__ == "__main__":
     unittest.main()
