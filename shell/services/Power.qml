@@ -84,12 +84,19 @@ Singleton {
     readonly property string why: winner.owner === "manual" || winner.owner === "default" ? "" : winner.why
 
     // Applied when the answer changes; what we set is remembered, so a
-    // different profile showing up means someone else changed it
+    // different profile showing up means someone else changed it. Not
+    // in the first seconds after a start: the daemon's first report is the
+    // profile left from before (a battery saver or cool-down that ended
+    // with the old shell), which would otherwise be saved as your choice;
+    // iRice's own answer is put back instead.
     property string applied: ""
+    property real appliedAt: 0
     onModeChanged: apply()
     function apply() {
         if (!Config.ready || sandboxed || !Backends.ppd)
             return;
+        if (applied === "")
+            appliedAt = Date.now();
         applied = mode;
         if (PowerProfiles.profile !== profileOf(mode))
             PowerProfiles.profile = profileOf(mode);
@@ -98,11 +105,15 @@ Singleton {
         target: PowerProfiles
         function onProfileChanged() {
             const seen = root.modeOf(PowerProfiles.profile);
-            if (!root.sandboxed && root.applied !== "" && seen !== root.applied && Config.ready) {
-                // Changed outside iRice: your choice now
-                root.applied = seen;
-                root.setMode(seen);
+            if (root.sandboxed || root.applied === "" || seen === root.applied || !Config.ready)
+                return;
+            if (Date.now() - root.appliedAt < 10000) {
+                root.apply(); // (left from before this start)
+                return;
             }
+            // Changed outside iRice: your choice now
+            root.applied = seen;
+            root.setMode(seen);
         }
     }
     Connections {
