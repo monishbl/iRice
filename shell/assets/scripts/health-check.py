@@ -35,7 +35,7 @@ import subprocess
 import sys
 import threading
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.realpath(__file__))  # (the real folder, from the Material look's links too)
 SHELL = os.path.dirname(os.path.dirname(HERE))
 REPO = os.path.dirname(SHELL)
 EACH = 2.0   # seconds a check may take

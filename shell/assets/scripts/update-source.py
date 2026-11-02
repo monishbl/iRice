@@ -6,7 +6,10 @@ import sys
 
 
 def resolve(shell):
-    candidates = [os.environ.get('IRICE_UPDATE_REPO', ''), str(Path(shell).resolve().parent)]
+    # (the Material look runs from a folder of links in the cache: its
+    # shell.qml leads back to the checkout, material/shell.qml)
+    candidates = [os.environ.get('IRICE_UPDATE_REPO', ''), str(Path(shell).resolve().parent),
+                  str((Path(shell) / 'shell.qml').resolve().parent.parent)]
     for base in [os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')), str(Path.home() / '.local/share')]:
         try:
             candidates.append((Path(base) / 'irice/source').read_text().strip())

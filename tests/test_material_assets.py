@@ -64,6 +64,21 @@ class Root(unittest.TestCase):
             have = {str(p.relative_to(root)) for p in root.rglob("*") if p.is_symlink()}
             self.assertEqual(have, want)
 
+    def test_scripts_find_the_checkout_from_it(self):
+        # (Software Update said "the installation source is missing" in the
+        # Material look: it looked beside the root, in the cache)
+        import subprocess
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(self.mr.build(str(SHELL), str(MATERIAL), os.path.join(t, "material-shell")))
+            env = dict(os.environ, XDG_DATA_HOME=t, HOME=t)
+            env.pop("IRICE_UPDATE_REPO", None)
+            out = subprocess.run(["python3", "-I", str(root / "assets/scripts/update-source.py"), str(root)],
+                                 env=env, capture_output=True, text=True, timeout=10).stdout.strip()
+            self.assertEqual(out, str(ROOT))
+            for name in ("sysupdate", "health-check"):
+                mod = load(root / "assets/scripts" / (name + ".py"), "via_root_" + name.replace("-", "_"))
+                self.assertEqual(Path(mod.SHELL), SHELL, name)
+
     def test_rebuilt_whole(self):
         with tempfile.TemporaryDirectory() as t:
             out = os.path.join(t, "material-shell")
