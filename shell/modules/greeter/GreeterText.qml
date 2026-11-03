@@ -9,20 +9,12 @@ import "../../common/phosphor.js" as Phosphor
 // the session or the person, typing goes into the password from anywhere,
 // Enter logs in. F1 shut down, F2 restart, F3 sleep: each asks to confirm
 // (Enter, or the same key again). A fingerprint reader's words show in the
-// box. Everything also works by pointer. Authentication goes through greetd
-// (GreeterAuth).
-PanelWindow {
+// box. Everything also works by pointer. The window and the logging in:
+// GreeterWindow.
+GreeterWindow {
     id: win
-    // 24-hour time (Settings → Appearance), passed in by greeter-start.sh
-    readonly property bool h24: Quickshell.env("IRICE_GREETER_CLOCK24") === "1"
-    required property var auth
-    property bool primary: false
+    passwordField: input
     color: "#0B0C0E"
-    WlrLayershell.namespace: "irice-greeter"
-    WlrLayershell.layer: auth.mock ? WlrLayer.Overlay : WlrLayer.Top // (a preview covers the menu bar too)
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-    anchors { top: true; bottom: true; left: true; right: true }
 
     readonly property string mono: "monospace"
     readonly property color fg: "#E6E9EF"
@@ -30,46 +22,8 @@ PanelWindow {
     readonly property color accent: "#9BBCFF"
     readonly property color bad: "#FF9C9C"
     property int row: 2 // 0 session, 1 login, 2 password
-    property string powerChoice: ""
 
-    function nextUser(step) {
-        if (auth.busy || !auth.users.length)
-            return;
-        auth.user = (auth.user + auth.users.length + step) % auth.users.length;
-        input.text = "";
-    }
-    function nextSession(step) {
-        if (!auth.busy && auth.sessions.length)
-            auth.session = (auth.session + auth.sessions.length + step) % auth.sessions.length;
-    }
-    function submit() {
-        if (powerChoice) {
-            const action = powerChoice;
-            powerChoice = "";
-            if (auth.mock)
-                console.log("greeter (mock):", action);
-            else
-                Quickshell.execDetached(["systemctl", action]);
-        } else if (!auth.busy) {
-            auth.login(input.text);
-        }
-    }
-    function choosePower(action) {
-        if (auth.busy)
-            return;
-        if (powerChoice === action)
-            submit();
-        else
-            powerChoice = action;
-        input.forceActiveFocus();
-    }
     readonly property var powerActions: [["F1", "shutdown", "poweroff"], ["F2", "reboot", "reboot"], ["F3", "sleep", "suspend"]]
-    onPrimaryChanged: if (primary) input.forceActiveFocus()
-    Connections {
-        target: win.auth
-        function onErrorChanged() { if (win.auth.error) input.text = ""; }
-        function onUserChanged() { input.text = ""; }
-    }
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
     // The power keys, and the time, along the top
@@ -185,14 +139,7 @@ PanelWindow {
                         else if (win.row === 1) win.nextUser(1);
                         else event.accepted = false;
                     }
-                    Keys.onEscapePressed: {
-                        if (win.powerChoice !== "")
-                            win.powerChoice = "";
-                        else if (win.auth.mock)
-                            win.auth.quitPreview();
-                        else
-                            text = "";
-                    }
+                    Keys.onEscapePressed: win.cancel()
                     Keys.onPressed: event => {
                         const actions = { [Qt.Key_F1]: "poweroff", [Qt.Key_F2]: "reboot", [Qt.Key_F3]: "suspend" };
                         if (actions[event.key] && !win.auth.busy) {

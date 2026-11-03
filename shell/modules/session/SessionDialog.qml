@@ -19,19 +19,23 @@ Variants {
             readonly property var modelData: slot.modelData
             screen: modelData
             dialogName: "session"
-            contentWidth: 5 * 80 + 4 * 12
+            // (Material: bigger shaped buttons, 8 apart, and a dialog's 24 padding)
+            contentWidth: Theme.material ? 5 * 96 + 4 * 8 : 5 * 80 + 4 * 12
+            padding: Theme.material ? 24 : 20
 
             property int current: 4
             readonly property bool keyboardConfirmation: Panels.sessionAction !== ""
             onShownChanged: if (shown) resetSelection()
             Component.onCompleted: if (shown) resetSelection()
 
+            // (shape and roles: the Material look's big tonal shaped buttons,
+            // as Android 16's power menu; the shape it morphs into when chosen)
             readonly property var options: [
-                { id: "lock", text: "Lock", icon: "lock" },
-                { id: "sleep", text: "Sleep", icon: "moon" },
-                { id: "logout", text: "Log Out", icon: "sign-out" },
-                { id: "restart", text: "Restart", icon: "arrow-clockwise" },
-                { id: "shutdown", text: "Shut Down", icon: "power" }
+                { id: "lock", text: "Lock", icon: "lock", shape: "cookie4", role: "primary" },
+                { id: "sleep", text: "Sleep", icon: "moon", shape: "cookie9", role: "secondary" },
+                { id: "logout", text: "Log Out", icon: "sign-out", shape: "clover4", role: "secondary" },
+                { id: "restart", text: "Restart", icon: "arrow-clockwise", shape: "cookie12", role: "tertiary" },
+                { id: "shutdown", text: "Shut Down", icon: "power", shape: "softBurst", role: "error" }
             ]
 
             function resetSelection() {
@@ -57,12 +61,13 @@ Variants {
                     horizontalAlignment: Text.AlignHCenter
                     text: "What would you like to do?"
                     color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.DemiBold }
+                    // (Material: the dialog's headline, headline small)
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 24 : Theme.font.large; weight: Theme.material ? Font.Normal : Font.DemiBold }
                 }
 
                 Row {
                     id: actions
-                    spacing: 12
+                    spacing: Theme.material ? 8 : 12
                     focus: dialog.shown
                     Keys.onLeftPressed: dialog.current = Math.max(0, dialog.current - 1)
                     Keys.onRightPressed: dialog.current = Math.min(dialog.options.length - 1, dialog.current + 1)
@@ -81,25 +86,52 @@ Variants {
                             required property var modelData
                             required property int index
                             readonly property bool hot: dialog.current === index
-                            width: 80
-                            spacing: 8
+                            // Material: each a big tonal button in its own
+                            // container colour (Shut Down in the error
+                            // colours); the chosen one fills with the solid
+                            // colour and morphs from a rounded square into
+                            // its shape. A state layer for hover and press.
+                            readonly property string role: modelData.role
+                            readonly property color mContainer: !Theme.material ? "transparent" : hot ? Theme.m3[role] : Theme.m3[role + "Container"]
+                            readonly property color mInk: !Theme.material ? "transparent" : hot ? Theme.m3["on" + role.charAt(0).toUpperCase() + role.slice(1)]
+                                : Theme.m3["on" + role.charAt(0).toUpperCase() + role.slice(1) + "Container"]
+                            width: Theme.material ? 96 : 80
+                            spacing: Theme.material ? 12 : 8
 
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: 64
-                                height: 64
-                                radius: 32
-                                color: option.hot ? (option.modelData.id === "shutdown" || option.modelData.id === "restart" ? Theme.color.danger : Theme.accent) : Theme.color.toggleOff
-                                scale: mouse.pressed ? 0.94 : 1
+                                width: Theme.material ? 88 : 64
+                                height: width
+                                radius: width / 2
+                                color: Theme.material ? "transparent" : option.hot ? (option.modelData.id === "shutdown" || option.modelData.id === "restart" ? Theme.color.danger : Theme.accent) : Theme.color.toggleOff
+                                // (Material's press swell; Glass shrinks by scale instead)
+                                transform: Theme.material ? pressFx1.effects : []
+                                ElasticControl { id: pressFx1; enabled: Theme.material; pressed: Theme.material && mouse.pressed }
+                                scale: Theme.material ? 1 : mouse.pressed ? 0.94 : 1
                                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
+
+                                Loader {
+                                    anchors.fill: parent
+                                    active: Theme.material
+                                    sourceComponent: MaterialShape {
+                                        shape: option.hot ? (mouse.pressed ? "square" : option.modelData.shape) : "square"
+                                        color: Qt.tint(option.mContainer, Qt.alpha(option.mInk, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
+                                        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                                    }
+                                }
 
                                 Icon {
                                     anchors.centerIn: parent
                                     name: option.modelData.icon
-                                    bold: true
-                                    size: 26
-                                    color: option.hot ? Theme.color.onAccent : Theme.color.label
+                                    bold: !Theme.material
+                                    fill: Theme.material && option.hot
+                                    size: Theme.material ? 32 : 26
+                                    color: Theme.material ? option.mInk : option.hot ? Theme.color.onAccent : Theme.color.label
+                                    Behavior on color {
+                                        enabled: Theme.material
+                                        ColorAnimation { duration: Theme.motion.hover }
+                                    }
                                 }
                                 MouseArea {
                                     id: mouse
@@ -115,9 +147,10 @@ Variants {
                             Text {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
-                                text: option.modelData.text
+                                text: Theme.material ? option.modelData.text.charAt(0) + option.modelData.text.slice(1).toLowerCase() : option.modelData.text
                                 color: option.hot ? Theme.color.label : Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                // (Material: label large, emphasized when chosen)
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material && option.hot ? Font.DemiBold : Font.Medium }
                             }
                         }
                     }

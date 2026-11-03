@@ -1,5 +1,4 @@
 import QtQuick
-import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -12,7 +11,6 @@ GlassWindow {
     id: root
 
     required property var dock
-    readonly property string dir: Quickshell.env("HOME") + "/Downloads"
     readonly property int cols: 4
     readonly property int cell: 96
     readonly property int m: glass.shadowMargin
@@ -30,14 +28,12 @@ GlassWindow {
     }
     Behavior on progress { SpringAnimation { spring: 4.5; damping: 0.34; epsilon: 0.005 } }
 
-    FolderListModel {
-        id: files
-        folder: "file://" + root.dir
-        sortField: FolderListModel.Time
-        showDirs: false
-        showHidden: false
+    // The files and the clicks: DownloadsFiles
+    DownloadsFiles {
+        id: downloads
+        dock: root.dock
     }
-    readonly property int shown: Math.min(12, files.count)
+    readonly property int shown: downloads.shown
 
     MouseArea {
         anchors.fill: parent
@@ -75,7 +71,7 @@ GlassWindow {
                 Item {
                     id: fileCell
                     required property int index
-                    readonly property string path: files.get(index, "filePath") ?? ""
+                    readonly property string path: downloads.path(index)
                     width: root.cell
                     height: root.cell
                     Squircle {
@@ -104,14 +100,7 @@ GlassWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        // Right-click: share it with a nearby device
-                        onClicked: m => {
-                            root.dock.stackOpen = false;
-                            if (m.button === Qt.RightButton)
-                                Panels.share([fileCell.path]);
-                            else
-                                Files.open(fileCell.path);
-                        }
+                        onClicked: m => downloads.open(fileCell.path, m.button)
                     }
                     // Quick Look without opening the app
                     IconButton {
@@ -155,10 +144,7 @@ GlassWindow {
                 id: openMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: {
-                    root.dock.stackOpen = false;
-                    Files.openFolder(root.dir);
-                }
+                onClicked: downloads.openFolder()
             }
         }
     }

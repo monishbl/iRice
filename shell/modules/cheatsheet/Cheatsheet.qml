@@ -63,10 +63,11 @@ Variants {
                             required property var modelData
                             width: (flow.width - 2 * 24) / 3
                             spacing: 6
+                            // (Material: a list's subheader, in primary)
                             Text {
                                 text: group.modelData.name
-                                color: Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                                color: Theme.material ? Theme.m3.primary : Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
                             }
                             Repeater {
                                 model: group.modelData.binds
@@ -118,9 +119,15 @@ Variants {
                             y: (row <= 7 ? row - 1 : row - 2.6) * table.cell + 1
                             width: table.cell - 2
                             height: table.cell - 2
-                            radius: 6
+                            // (Material: its small corner; the hovered element
+                            // rounds off and gets a 2 px outline)
+                            radius: Theme.material ? (table.hovered === modelData ? width / 2 : 8) : 6
+                            Behavior on radius {
+                                enabled: Theme.material
+                                MaterialSpring { speed: "fast"; epsilon: 0.25 }
+                            }
                             color: Qt.alpha(tint, table.hovered === modelData ? 0.45 : 0.18)
-                            border.width: table.hovered === modelData ? 1 : 0
+                            border.width: table.hovered === modelData ? (Theme.material ? 2 : 1) : 0
                             border.color: tint
 
                             Text {
@@ -155,7 +162,7 @@ Variants {
                         Text {
                             text: table.hovered ? table.hovered[2] : ""
                             color: Theme.color.label
-                            font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.Bold }
+                            font { family: Theme.font.family; pixelSize: Theme.material ? 28 : Theme.font.large; weight: Theme.material ? Font.Medium : Font.Bold }
                         }
                         Text {
                             text: table.hovered ? "Atomic number " + table.hovered[0] + " · " + table.hovered[3] + " u · " + PT.categories[table.hovered[4]][0] : ""

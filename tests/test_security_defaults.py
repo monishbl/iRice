@@ -657,8 +657,7 @@ class Shell(unittest.TestCase):
         for rel, n in (("shell/modules/menubar/Marquee.qml", 2), ("shell/modules/menubar/HoverTip.qml", 1),
                        ("shell/modules/controlcenter/ListRow.qml", 2)):
             self.assertGreaterEqual((ROOT / rel).read_text().count("textFormat: Text.PlainText"), n, rel)
-        for rel in ("shell/modules/clipboard/ClipboardPanel.qml", "material/modules/clipboard/ClipboardPanel.qml"):
-            self.assertRegex((ROOT / rel).read_text(), r"component Heading: Text \{\n\s*textFormat: Text\.PlainText")
+        self.assertRegex((ROOT / "shell/modules/clipboard/ClipboardPanel.qml").read_text(), r"component Heading: Text \{\n\s*textFormat: Text\.PlainText")
 
     def run_js(self, source, calls):
         if not shutil.which("node"):

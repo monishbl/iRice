@@ -1,5 +1,4 @@
 import QtQuick
-import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -9,26 +8,16 @@ import qs.services
 // minimized window (live thumbnail with its app's badge), Downloads or Trash.
 // Hover lifts the icon on a spring; with magnification on, icons grow with
 // pointer proximity (cosine falloff over ~2.5 icons). Right-click for a menu.
-Item {
+DockSlot {
     id: root
-
-    required property var item
-    required property var dock
     property real restCenter: 0
 
-    readonly property string kind: item.kind
-    readonly property bool isApp: kind === "app" || kind === "recent"
-    readonly property var windows: isApp ? Apps.windowsOf(item.id) : []
-    readonly property bool running: kind === "phone" ? Phone.mirroring(item.phone?.serial ?? "") : windows.length > 0
-    // (the phone as it is now: its battery changes after it came)
-    readonly property var livePhone: kind === "phone" ? (Phone.devices.find(d => d.serial === item.phone?.serial) ?? item.phone) : null
     readonly property int base: dock.iconSize
     readonly property real proximity: dock.pointerX < -9999 ? 0 : Math.cos(Math.min(1, Math.abs(dock.pointerX - restCenter) / (base * 2.5)) * Math.PI / 2)
     readonly property real size: base * (1 + (dock.maxScale - 1) * proximity)
     // Hover comes from the dock's pointer tracking (it sits on top of the icons)
     readonly property real leftEdge: dock.pad + x + lead
     readonly property bool hot: dock.hovered && dock.menuFor === "" && dock.pointerLocal >= leftEdge - dock.gap / 2 && dock.pointerLocal < leftEdge + size + dock.gap / 2
-    readonly property int lead: item.divider ? dock.dividerWidth : 0
 
     width: lead + size
     height: size
@@ -154,9 +143,8 @@ Item {
         id: bounce
         property real offset: 0
     }
-    // An app asking for attention (urgent) bounces, like macOS
-    readonly property bool wantsAttention: root.isApp && root.item.entry ? Badges.urgentFor(root.item.id) : false
-    onWantsAttentionChanged: if (wantsAttention) bounceAnim.restart()
+    // Launching, or asking for attention: it bounces, like macOS
+    onBounce: bounceAnim.restart()
     SequentialAnimation {
         id: bounceAnim
         loops: 2
@@ -188,25 +176,10 @@ Item {
         Text {
             id: label
             anchors.centerIn: parent
-            text: root.kind === "launcher" ? "Apps" : root.kind === "phone" ? (root.livePhone?.model || "Phone") + (root.livePhone?.battery !== undefined ? " · " + root.livePhone.battery + "%" : "") : root.kind === "downloads" ? "Downloads" : root.kind === "trash" ? "Trash" : root.kind === "minimized" ? (root.item.minimized?.title || root.item.entry?.name || "Window") : (root.item.entry?.name ?? root.item.id)
+            text: root.name
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
         }
-    }
-
-    // Trash: full or empty. Only the Trash item has the model (an empty
-    // folder makes FolderListModel list and watch the working folder)
-    Loader {
-        id: trashLoader
-        active: root.kind === "trash"
-        sourceComponent: FolderListModel {
-            folder: "file://" + (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/Trash/files"
-            showHidden: true
-            showDirsFirst: false
-        }
-    }
-    readonly property QtObject trashFiles: QtObject {
-        readonly property int count: trashLoader.item?.count ?? 0
     }
 
     MouseArea {
@@ -217,44 +190,6 @@ Item {
         height: root.size + art.lift
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: m => {
-            if (m.button === Qt.RightButton && root.kind === "phone") {
-                Panels.openSettings("phone");
-                return;
-            }
-            if (m.button === Qt.RightButton) {
-                root.dock.menuItem = Object.assign({ trashCount: trashFiles.count, running: root.running }, root.item);
-                root.dock.menuX = mapToItem(null, width / 2, 0).x;
-                root.dock.menuFor = root.item.id;
-                return;
-            }
-            switch (root.kind) {
-            case "launcher":
-                Panels.toggle("launchpad", root.dock.screen);
-                break;
-            case "minimized":
-                Apps.restore(root.item.minimized);
-                break;
-            case "downloads":
-                root.dock.stackX = mapToItem(null, width / 2, 0).x;
-                root.dock.stackOpen = !root.dock.stackOpen;
-                break;
-            case "trash":
-                Files.openTrash();
-                break;
-            case "phone":
-                Phone.mirror(root.item.phone.serial);
-                break;
-            default:
-                if (!root.running)
-                    bounceAnim.restart();
-                // Clicking the app that's already in front: App Exposé (only
-                // when some of its windows are in sight; else they come back)
-                if (root.running && Apps.activeEntry?.id === root.item.id && Apps.visibleWindowsOf(root.item.id).length > 0)
-                    Panels.appExpose(root.item.id, root.dock.screen);
-                else
-                    Apps.activateOrLaunch(root.item);
-            }
-        }
+        onClicked: m => root.activate(m.button, mapToItem(null, width / 2, 0).x)
     }
 }

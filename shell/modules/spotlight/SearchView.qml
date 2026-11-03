@@ -28,9 +28,6 @@ Variants {
 
             readonly property bool shown: Panels.isOpen("spotlight", screen)
             readonly property int panelWidth: Math.min(720, (screen?.width ?? 1920) - 64)
-            property var results: []
-            property int selected: 0
-            property bool answering: false // showing an AI answer instead of results
             // The list just appeared: its rows come in one after another
             property bool entering: false
             property bool hadResults: false
@@ -42,14 +39,14 @@ Variants {
             Component.onCompleted: {
                 if (shown) {
                     openAnim.start();
-                    reset();
+                    search.reset();
                 }
             }
             onShownChanged: {
                 if (shown) {
                     closeAnim.stop();
                     openAnim.start();
-                    reset();
+                    search.reset();
                 } else {
                     openAnim.stop();
                     closeAnim.start();
@@ -84,83 +81,29 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-            function reset() {
-                answering = false;
-                Ai.stopQuick();
-                field.text = "";
-                results = [];
-                selected = 0;
-                field.forceActiveFocus();
-                Search.refreshClipboard();
+            // The results, the chosen row and running it: SearchModel, as
+            // Glass's Spotlight
+            SearchModel {
+                id: search
+                searchField: field
+                shown: win.shown
             }
 
-            onResultsChanged: {
-                const has = results.length > 0;
-                if (has && !hadResults) {
-                    entering = true;
-                    enterTimer.restart();
+            Connections {
+                target: search
+                function onResultsChanged() {
+                    const has = search.results.length > 0;
+                    if (has && !win.hadResults) {
+                        win.entering = true;
+                        enterTimer.restart();
+                    }
+                    win.hadResults = has;
                 }
-                hadResults = has;
             }
             Timer {
                 id: enterTimer
                 interval: 450
                 onTriggered: win.entering = false
-            }
-
-            // Files, conversions and definitions arrive later
-            Connections {
-                target: Search
-                function onRevisionChanged() {
-                    if (!win.shown || win.answering)
-                        return;
-                    // Keep the row you moved to; otherwise the new answer leads
-                    const keep = win.selected > 0 ? win.results[win.selected]?.title : undefined;
-                    win.results = Search.query(field.text);
-                    const i = win.results.findIndex(r => r.title === keep);
-                    win.selected = i >= 0 ? i : 0;
-                }
-            }
-
-            function run(i) {
-                const r = results[i];
-                if (!r)
-                    return;
-                if (r.ai) {
-                    answering = true;
-                    r.run();
-                    return;
-                }
-                Panels.close();
-                r.run();
-            }
-            function continueInChat() {
-                Ai.continueQuick();
-            }
-            // The bar's AI button: ask about what's typed (or open the chat)
-            function askAi() {
-                const q = field.text.trim().replace(/^\?/, "").trim();
-                if (q === "") {
-                    Panels.show("sidebar");
-                    return;
-                }
-                const r = Search.aiRow(q);
-                if (r.ai) {
-                    answering = true;
-                    r.run();
-                } else {
-                    Panels.close();
-                    r.run();
-                }
-                field.forceActiveFocus();
-            }
-            // Back from an AI answer to the results
-            function backToResults() {
-                answering = false;
-                Ai.stopQuick();
-                results = Search.query(field.text);
-                selected = 0;
-                field.forceActiveFocus();
             }
 
             // Material's scrim; a click on it closes
@@ -197,8 +140,8 @@ Variants {
                 // The search view: the bar on top, the results dropping below
                 Rectangle {
                     id: view
-                    readonly property bool open: win.answering || win.results.length > 0
-                    readonly property real bodyHeight: win.answering ? answerBody.implicitHeight + 28 : list.height + 20
+                    readonly property bool open: search.answering || search.results.length > 0
+                    readonly property real bodyHeight: search.answering ? answerBody.implicitHeight + 28 : list.height + 20
                     width: parent.width
                     height: 56 + (open ? bodyHeight : 0)
                     Behavior on height { SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.5 } }
@@ -218,7 +161,7 @@ Variants {
                         color: Theme.m3.surfaceContainerHigh
 
                         Icon {
-                            visible: !win.answering
+                            visible: !search.answering
                             x: 18
                             anchors.verticalCenter: parent.verticalCenter
                             name: "magnifying-glass"
@@ -227,7 +170,7 @@ Variants {
                         }
                         // (on an AI answer: back to the results)
                         IconButton {
-                            visible: win.answering
+                            visible: search.answering
                             x: 8
                             anchors.verticalCenter: parent.verticalCenter
                             width: 40
@@ -236,7 +179,7 @@ Variants {
                             iconSize: 22
                             iconColor: Theme.m3.onSurface
                             tooltip: "Back to results"
-                            onClicked: win.backToResults()
+                            onClicked: search.backToResults()
                         }
 
                         TextInput {
@@ -253,28 +196,14 @@ Variants {
                             Accessible.role: Accessible.EditableText
                             Accessible.name: "Search"
 
-                            onTextChanged: {
-                                if (win.answering) {
-                                    win.answering = false;
-                                    Ai.stopQuick();
-                                }
-                                win.results = Search.query(text);
-                                win.selected = 0;
-                            }
+                            onTextChanged: search.typed(text)
                             Keys.onEscapePressed: Panels.close()
-                            Keys.onReturnPressed: win.answering ? win.continueInChat() : win.run(win.selected)
-                            Keys.onEnterPressed: win.answering ? win.continueInChat() : win.run(win.selected)
-                            Keys.onDownPressed: win.selected = Math.min(win.results.length - 1, win.selected + 1)
-                            Keys.onUpPressed: win.selected = Math.max(0, win.selected - 1)
-                            Keys.onTabPressed: win.selected = (win.selected + 1) % Math.max(1, win.results.length)
-                            // Quick Look the selected file: Shift+Space or Ctrl+Y
-                            Keys.onPressed: e => {
-                                const r = win.results[win.selected];
-                                if (r?.path && ((e.key === Qt.Key_Space && (e.modifiers & Qt.ShiftModifier)) || (e.key === Qt.Key_Y && (e.modifiers & Qt.ControlModifier)))) {
-                                    Panels.quickLook(r.path);
-                                    e.accepted = true;
-                                }
-                            }
+                            Keys.onReturnPressed: search.accept()
+                            Keys.onEnterPressed: search.accept()
+                            Keys.onDownPressed: search.down()
+                            Keys.onUpPressed: search.up()
+                            Keys.onTabPressed: search.next()
+                            Keys.onPressed: e => search.quickLookKey(e)
 
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -309,11 +238,11 @@ Variants {
                                 width: 40
                                 height: 40
                                 icon: "sparkle"
-                                fill: win.answering
+                                fill: search.answering
                                 iconSize: 22
-                                iconColor: win.answering ? Theme.m3.primary : Theme.m3.onSurfaceVariant
+                                iconColor: search.answering ? Theme.m3.primary : Theme.m3.onSurfaceVariant
                                 tooltip: Ai.configured ? "Ask " + Ai.model.name.replace(/ \(.*\)$/, "") : "Set up AI"
-                                onClicked: win.askAi()
+                                onClicked: search.askAi()
                             }
                         }
                     }
@@ -336,10 +265,10 @@ Variants {
                             y: 8
                             width: parent.width - 24
                             height: Math.min(contentHeight, 480)
-                            visible: !win.answering
+                            visible: !search.answering
                             clip: true
-                            model: win.results
-                            currentIndex: win.selected
+                            model: search.results
+                            currentIndex: search.selected
                             boundsBehavior: Flickable.StopAtBounds
                             highlightMoveDuration: 0
 
@@ -350,8 +279,8 @@ Variants {
                                 width: list.width
                                 height: entryColumn.height
 
-                                readonly property var prev: index > 0 ? win.results[index - 1] : null
-                                readonly property var next: win.results[index + 1] ?? null
+                                readonly property var prev: index > 0 ? search.results[index - 1] : null
+                                readonly property var next: search.results[index + 1] ?? null
                                 readonly property bool hero: index === 0 && win.heroSections.includes(modelData.section)
                                 // A section's rows form one group; a row after the hero starts its own
                                 readonly property bool groupStart: index === 0 || prev.section !== modelData.section || (index === 1 && win.heroSections.includes(prev.section))
@@ -403,17 +332,17 @@ Variants {
                                         visible: entry.hero
                                         width: parent.width
                                         result: entry.modelData
-                                        selected: entry.index === win.selected
-                                        onActivated: win.run(entry.index)
+                                        selected: entry.index === search.selected
+                                        onActivated: search.run(entry.index)
                                     }
                                     SearchRow {
                                         visible: !entry.hero
                                         width: parent.width
                                         result: entry.modelData
-                                        selected: entry.index === win.selected
+                                        selected: entry.index === search.selected
                                         firstInGroup: entry.groupStart
                                         lastInGroup: entry.groupEnd
-                                        onActivated: win.run(entry.index)
+                                        onActivated: search.run(entry.index)
                                     }
                                     // (rows of a group sit 2 apart)
                                     Item {
@@ -428,7 +357,7 @@ Variants {
                         // Inline AI answer
                         Column {
                             id: answerBody
-                            visible: win.answering
+                            visible: search.answering
                             x: 20
                             y: 12
                             width: parent.width - 40
@@ -499,7 +428,7 @@ Variants {
                                 SearchButton {
                                     text: "Continue in chat"
                                     filled: true
-                                    onClicked: win.continueInChat()
+                                    onClicked: search.continueInChat()
                                 }
                                 SearchButton {
                                     text: "Copy answer"

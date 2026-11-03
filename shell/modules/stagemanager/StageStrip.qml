@@ -44,6 +44,9 @@ Variants {
                     readonly property var tops: modelData.wins.slice(-3).map(a => StageManager.toplevel(a)).filter(t => !!t)
                     width: 140
                     height: 104
+                    // (Material's press swell)
+                    transform: Theme.material ? pressFx1.effects : []
+                    ElasticControl { id: pressFx1; enabled: Theme.material; pressed: Theme.material && mouse.pressed }
                     scale: mouse.pressed ? 0.96 : mouse.containsMouse ? 1.04 : 1
                     Behavior on scale { ScaleAnimator { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
 
@@ -51,6 +54,7 @@ Variants {
                     Repeater {
                         model: stage.tops
                         Squircle {
+                            id: card
                             required property var modelData
                             required property int index
                             readonly property int depth: stage.tops.length - 1 - index
@@ -58,32 +62,71 @@ Variants {
                             y: depth * 6
                             width: 120
                             height: 80
-                            radius: 8
-                            color: Theme.dark ? "#1A1A1D" : "#FFFFFF"
-                            border.width: 1
+                            // (Material: a recents card, large corners, its tone
+                            // instead of a hairline)
+                            radius: Theme.material ? 16 : 8
+                            color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#1A1A1D" : "#FFFFFF"
+                            border.width: Theme.material ? 0 : 1
                             border.color: Theme.dark ? "#36363C" : "#D4D4D8"
                             opacity: 1 - depth * 0.2
                             clip: true
-                            ScreencopyView {
-                                id: stageShot
-                                anchors { fill: parent; margins: 1 }
-                                captureSource: parent.modelData.wayland ?? null
-                                live: false
-                                constraintSize: Qt.size(240, 160)
+                            // The picture; Material clips it to the card's round
+                            // corners (Glass's are small enough to leave square)
+                            Loader {
+                                anchors { fill: parent; margins: Theme.material ? 0 : 1 }
+                                sourceComponent: Theme.material ? roundShot : plainShot
                             }
-                            // Live previews (Settings → Overview): the strip's
-                            // windows keep updating too, but at most 5 times a
-                            // second (it's on screen all the time), and not
-                            // while a window is over the strip (full screen,
-                            // floating) or the screen is locked
-                            LiveCapture {
-                                target: stageShot
-                                interval: 200
-                                live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
+                            Component {
+                                id: plainShot
+                                ScreencopyView {
+                                    id: stageShot
+                                    captureSource: card.modelData.wayland ?? null
+                                    live: false
+                                    constraintSize: Qt.size(240, 160)
+                                    // Live previews (Settings → Overview): the strip's
+                                    // windows keep updating too, but at most 5 times a
+                                    // second (it's on screen all the time), and not
+                                    // while a window is over the strip (full screen,
+                                    // floating) or the screen is locked
+                                    LiveCapture {
+                                        target: stageShot
+                                        interval: 200
+                                        live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
+                                    }
+                                }
+                            }
+                            Component {
+                                id: roundShot
+                                ClippingRectangle {
+                                    radius: card.radius
+                                    color: "transparent"
+                                    ScreencopyView {
+                                        id: roundStageShot
+                                        anchors.fill: parent
+                                        captureSource: card.modelData.wayland ?? null
+                                        live: false
+                                        constraintSize: Qt.size(240, 160)
+                                    }
+                                    LiveCapture {
+                                        target: roundStageShot
+                                        interval: 200
+                                        live: win.visible && Config.options.overview.previews === "live" && !win.covered && !System.locked
+                                    }
+                                }
                             }
                         }
                     }
 
+                    // Material: the app icon on a round chip
+                    Rectangle {
+                        visible: Theme.material
+                        x: -4
+                        y: 60
+                        width: 44
+                        height: 44
+                        radius: 22
+                        color: Theme.m3.surfaceContainerHigh ?? "transparent"
+                    }
                     AppIcon {
                         x: 0
                         y: 64
