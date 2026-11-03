@@ -12,8 +12,10 @@ LINK = (ROOT / "shell/services/HyprlandLink.qml").read_text()
 
 class HyprlandLink(unittest.TestCase):
     def test_both_looks_start_it(self):
+        # (both roots run the one shell, which starts it)
+        self.assertIn("HyprlandLink.linked", (ROOT / "shell/IriceShell.qml").read_text())
         for p in ("shell/shell.qml", "material/shell.qml"):
-            self.assertIn("HyprlandLink.linked", (ROOT / p).read_text(), p)
+            self.assertIn("IriceShell {}", (ROOT / p).read_text(), p)
 
     def test_it_checks_only_when_quiet_and_rereads_state(self):
         self.assertIn("onRawEvent", LINK)

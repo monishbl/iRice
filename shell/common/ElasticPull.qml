@@ -4,6 +4,9 @@ import QtQuick
 // target follows the drag like rubber (resisting more the further it goes,
 // up to Theme.motion.pull px) and stretches a little that way; on release it
 // springs back. Nothing happens on hover. Positions are window coordinates.
+// The Material look has none (presses change shape instead): its pull is 0,
+// and the rubber band divides by it (0 / 0 left a pressed panel's position
+// NaN, so it never drew again).
 //   ElasticPull { id: pull; target: body; active: dragging; from: pressPoint; pointer: currentPoint }
 //   body.transform: [pull.translate, pull.stretch]
 QtObject {
@@ -19,7 +22,7 @@ QtObject {
     function rubber(d) {
         return Math.sign(d) * strength * (1 - Math.exp(-Math.abs(d) / (strength * 6)));
     }
-    readonly property point lean: active && target ? Qt.point(rubber(pointer.x - from.x), rubber(pointer.y - from.y)) : Qt.point(0, 0)
+    readonly property point lean: active && target && !Theme.material ? Qt.point(rubber(pointer.x - from.x), rubber(pointer.y - from.y)) : Qt.point(0, 0)
 
     property real lx: lean.x
     property real ly: lean.y

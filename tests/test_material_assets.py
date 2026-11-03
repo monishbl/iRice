@@ -26,8 +26,8 @@ class Sounds(unittest.TestCase):
         self.assertEqual(have, want)
 
     def test_sounds_follow_their_own_setting(self):
-        qml = (MATERIAL / "services/Sounds.qml").read_text()
-        self.assertIn("materialSounds", qml)
+        qml = (SHELL / "services/Sounds.qml").read_text()
+        self.assertIn("Theme.material && Config.options.appearance.materialSounds", qml)
         # (never a value Glass doesn't know written to the shared settings)
         self.assertNotIn('"auto"', qml)
 
@@ -52,11 +52,12 @@ class Root(unittest.TestCase):
     def test_material_files_win_and_the_rest_is_glass(self):
         with tempfile.TemporaryDirectory() as t:
             root = Path(self.mr.build(str(SHELL), str(MATERIAL), os.path.join(t, "material-shell")))
-            # its own Theme, shell.qml and control
-            for rel in ("common/Theme.qml", "shell.qml", "common/Switch.qml", "common/ElasticPull.qml"):
+            # its own entry point and look switch (Theme.material)
+            for rel in ("shell.qml", "common/Look.js"):
                 self.assertEqual(os.path.realpath(root / rel), str((MATERIAL / rel).resolve()), rel)
-            # shared: the services and settings data, unchanged
-            for rel in ("services/Audio.qml", "common/Config.qml", "common/Panels.qml", "assets/scripts/launch-shell.sh", "common/LookPreview.qml", "common/MaterialShape.qml"):
+            # shared: the shell, Theme, controls, services and settings data
+            for rel in ("IriceShell.qml", "common/Theme.qml", "common/Switch.qml", "services/Audio.qml", "common/Config.qml", "common/Panels.qml",
+                        "assets/scripts/launch-shell.sh", "common/LookPreview.qml", "common/MaterialShape.qml"):
                 self.assertEqual(os.path.realpath(root / rel), str((SHELL / rel).resolve()), rel)
             # every file of both is there, nothing else
             want = {str(p.relative_to(SHELL)) for p in SHELL.rglob("*") if p.is_file() and "build" not in p.relative_to(SHELL).parts and "__pycache__" not in p.parts and p.suffix != ".pyc"}

@@ -165,7 +165,7 @@ function groups(ctx) {
     var out = [{ kind: "own", base: base, label: labels[base] || "", ids: sorted(own) }];
     var keys = Object.keys(guests).map(Number).sort(function (p, q) { return p - q; });
     for (i = 0; i < keys.length; i++)
-        out.push({ kind: "guest", base: keys[i], label: labels[keys[i]] || "Display " + (keys[i] / STRIDE + 1), ids: sorted(guests[keys[i]]) });
+        out.push({ kind: "guest", base: keys[i], label: labels[keys[i]] || "Display " + (keys[i] / STRIDE + 1), unplugged: connected[keys[i]] === undefined, ids: sorted(guests[keys[i]]) });
     keys = Object.keys(others).map(Number).sort(function (p, q) { return p - q; });
     for (i = 0; i < keys.length; i++)
         out.push({ kind: "other", base: keys[i], label: labels[keys[i]] || "", ids: sorted(others[keys[i]]) });

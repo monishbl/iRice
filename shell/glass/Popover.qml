@@ -79,27 +79,12 @@ GlassWindow {
     anchors { top: true; bottom: true; left: true; right: true }
 
     readonly property int bodyWidth: contentWidth + 2 * padding + 2 * margin
-    ElasticPull {
-        id: pull
+    // Elastic pull while the button is held (press and drag anywhere)
+    ElasticGrab {
+        id: grab
         target: body
-        active: grab.active && Panels.holdPull === 0 && !Panels.ccEditing
-        from: grab.point.scenePressPosition
-        pointer: grab.point.scenePosition
+        onGrabbed: at => root.pressedAt(at)
     }
-    // Elastic pull: only while the button is held (press and drag anywhere)
-    Item {
-        anchors.fill: parent
-        z: 1000
-        PointHandler {
-            id: grab
-            acceptedButtons: Qt.LeftButton
-            onActiveChanged: if (active) root.pressedAt(point.scenePressPosition)
-        }
-    }
-    // A drag that ends outside the panel isn't a click to close it
-    readonly property bool dragged: grab.active && Math.hypot(grab.point.scenePosition.x - grab.point.scenePressPosition.x, grab.point.scenePosition.y - grab.point.scenePressPosition.y) > 8
-    property bool wasDragged: false
-    onDraggedChanged: if (dragged) wasDragged = true
     readonly property int bodyHeight: contentHeight + 2 * padding + 2 * margin
 
     // The whole screen takes input while open: outside clicks close; clicks on
@@ -109,9 +94,9 @@ GlassWindow {
         id: catcher
         anchors.fill: parent
         enabled: root.shown
-        onPressed: root.wasDragged = false
+        onPressed: grab.wasDragged = false
         onClicked: m => {
-            if (root.wasDragged)
+            if (grab.wasDragged)
                 return;
             const item = m.y < 30 ? Panels.barItemAt(root.screen, m.x) : null;
             if (item)
@@ -137,7 +122,7 @@ GlassWindow {
         y: 30 + 4 - root.margin + (1 - root.progress) * -8
         onXChanged: glass.updatePosition()
         opacity: Math.min(1, root.progress)
-        transform: [pull.translate, pull.stretch]
+        transform: [grab.pull.translate, grab.pull.stretch]
         focus: root.shown
         Keys.onEscapePressed: root.sideOpen ? root.closeSide() : Panels.close()
         HoverHandler { id: bodyHover }
@@ -153,7 +138,7 @@ GlassWindow {
                 function onYChanged() { glass.updatePosition(); }
             }
             Connections {
-                target: pull
+                target: grab.pull
                 function onLxChanged() { glass.updatePosition(); }
                 function onLyChanged() { glass.updatePosition(); }
             }

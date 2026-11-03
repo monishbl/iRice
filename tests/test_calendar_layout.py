@@ -180,7 +180,7 @@ class CalendarLayoutTests(unittest.TestCase):
 
         shutil.copy(ROOT / 'shell/modules/notifications/CalendarWidget.qml', p / 'CalendarWidget.qml')
         shutil.copy(ROOT / 'shell/modules/notifications/TodoWidget.qml', p / 'TodoWidget.qml')
-        for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml', 'FocusRing.qml', 'Momentum.qml']:
+        for f in ['IconButton.qml', 'Segmented.qml', 'TextField.qml', 'FilledField.qml', 'FocusRing.qml', 'Momentum.qml']:
             shutil.copy(ROOT / 'shell/common' / f, p / 'common' / f)
         put('common/Squircle.qml', 'import QtQuick\nRectangle { id: s; property alias borderWidth: s.border.width; property alias borderColor: s.border.color }')
         put('modules/controlcenter/Platter.qml','import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')

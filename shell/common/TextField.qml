@@ -1,6 +1,8 @@
 import QtQuick
 
 // Single-line text field with placeholder. Commits on Enter or focus loss.
+// Material: a filled field (4 px top corners, an underline that turns primary
+// and thicker while typing).
 Squircle {
     id: root
 
@@ -22,19 +24,27 @@ Squircle {
     }
 
     implicitWidth: 220
-    implicitHeight: 28
+    implicitHeight: Theme.material ? 36 : 28
     radius: Theme.radius.control - 2
-    color: Theme.color.fill
-    border.width: 1
+    color: Theme.material ? "transparent" : Theme.color.fill
+    border.width: Theme.material ? 0 : 1
     border.color: input.activeFocus ? Theme.accent : Theme.color.separator
+
+    Loader {
+        anchors.fill: parent
+        active: Theme.material
+        sourceComponent: FilledField {
+            active: input.activeFocus
+        }
+    }
 
     TextInput {
         id: input
-        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+        anchors { fill: parent; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
         verticalAlignment: TextInput.AlignVCenter
         echoMode: root.secret ? TextInput.Password : TextInput.Normal
         color: Theme.color.label
-        selectionColor: Theme.accentAlpha(0.4)
+        selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
         selectByMouse: true
         activeFocusOnTab: true // Tab moves on to the next control
         clip: true
