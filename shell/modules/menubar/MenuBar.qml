@@ -94,8 +94,20 @@ Variants {
             }
         }
 
-        readonly property bool opaque: cfg.background || autoHide || Theme.glass.tier === "solid"
-        readonly property color fg: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
+        // (Material is always the solid material, but its bar is clear over
+        // the wallpaper unless Menu Bar → Background asks for one, like
+        // Android's status bar)
+        readonly property bool opaque: Theme.material ? cfg.background || autoHide : cfg.background || autoHide || Theme.glass.tier === "solid"
+        // Over the wallpaper: dark or light text as the wallpaper needs (the
+        // spaces and the island)
+        readonly property color wallInk: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
+        // Material, without a bar background: the left and right groups sit
+        // in tonal pills (Material's chips, not macOS's bare titles), their
+        // text and icons in onSurface
+        readonly property bool pills: Theme.material && !opaque
+        readonly property color fg: pills ? Theme.m3.onSurface : wallInk
+        // (all three pills one colour and height: the island's own surface)
+        readonly property color pillColor: Theme.material ? Theme.veil(Qt.alpha(IslandInk.surface(false), 1)) : "transparent"
 
         IdleInhibitor {
             window: bar
@@ -119,7 +131,7 @@ Variants {
             Rectangle {
                 anchors.fill: parent
                 visible: bar.opaque && bar.chromeShown
-                color: Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
+                color: Theme.material ? Theme.m3.surfaceContainer : Theme.glass.tier === "solid" ? Theme.glass.solid : Qt.alpha(Theme.glass.solid, bar.autoHide ? 0.92 : 0.6)
             }
 
             // Top rounded screen corners (bottom ones: ScreenCorners)
@@ -141,11 +153,31 @@ Variants {
                 }
             }
 
+            // The groups' pills (behind the left and right rows)
+            Rectangle {
+                visible: bar.pills && bar.chromeShown && leftItems.width > 0
+                x: leftItems.x - 2
+                width: leftItems.width + 4
+                height: 26
+                anchors.verticalCenter: parent.verticalCenter
+                radius: height / 2
+                color: bar.pillColor
+            }
+            Rectangle {
+                visible: bar.pills && bar.chromeShown && rightItems.width > 0
+                x: rightItems.x - 2
+                width: rightItems.width + 4
+                height: 26
+                anchors.verticalCenter: parent.verticalCenter
+                radius: height / 2
+                color: bar.pillColor
+            }
+
             // ── Left ────────────────────────────────────────────────────
             Row {
                 id: leftItems
                 visible: bar.chromeShown
-                anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; leftMargin: bar.pills ? 6 : 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
                 // The system menu: iRice's drop, your distro's logo, Tux or a
@@ -195,11 +227,20 @@ Variants {
             }
 
             // ── Centre: Spaces ──────────────────────────────────────────
+            Rectangle {
+                visible: spacesOnly.visible && bar.pills
+                anchors.centerIn: spacesOnly
+                width: spacesOnly.width + 20
+                height: 26
+                radius: height / 2
+                color: bar.pillColor
+            }
             Workspaces {
+                id: spacesOnly
                 visible: bar.cfg.workspaces !== "off" && !Config.options.island.enabled // the island shows them instead
                 anchors.centerIn: parent
                 screen: bar.screen
-                fg: bar.fg
+                fg: bar.pills ? Theme.m3.onSurface : bar.wallInk
             }
 
             // ── Centre: the dynamic island (it shows the spaces) ────────
@@ -209,7 +250,8 @@ Variants {
                 width: parent.width
                 height: 420
                 screen: bar.screen
-                fg: bar.fg
+                fg: bar.pills ? Theme.m3.onSurface : bar.wallInk
+                pilled: bar.pills
                 pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
             }
             // Alerts that come while the island is open: a card under it
@@ -222,8 +264,9 @@ Variants {
 
             // ── Right ───────────────────────────────────────────────────
             Row {
+                id: rightItems
                 visible: bar.chromeShown
-                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                anchors { right: parent.right; rightMargin: bar.pills ? 6 : 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
                 // Extra buttons (Settings → Menu Bar)
@@ -444,6 +487,13 @@ Variants {
                     }
                 }
 
+                // Material: the clock leads the status icons, as on Android
+                Loader {
+                    active: Theme.material
+                    visible: bar.cfg.clock
+                    sourceComponent: clockItem
+                }
+
                 // Battery
                 MenuBarItem {
                     id: batteryItem
@@ -618,26 +668,34 @@ Variants {
                         text: "Quick Settings"
                     }
                 }
-                MenuBarItem {
+                // Glass: the clock ends the bar, as on macOS
+                Loader {
+                    active: !Theme.material
                     visible: bar.cfg.clock
-                    color: bar.fg
-                    active: Panels.isOpen("notificationCenter", bar.screen)
-                    menu: "notificationCenter"
-                    onClicked: Panels.toggle("notificationCenter", bar.screen)
-                    indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
-                    unread: Notifications.unread
-                    text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? TimeFormat.hms : TimeFormat.hm))
-                    HoverTip {
-                        target: parent
-                        hovered: parent.hovered && !parent.active
-                        screen: bar.screen
-                        text: Qt.formatDate(clock.date, "dddd d MMMM yyyy") + (Notifications.unread > 0 ? " · " + Notifications.unread + (Notifications.unread === 1 ? " notification" : " notifications") : "")
+                    sourceComponent: clockItem
+                }
+                // The clock, in the place each look gives it (above)
+                Component {
+                    id: clockItem
+                    MenuBarItem {
+                        color: bar.fg
+                        active: Panels.isOpen("notificationCenter", bar.screen)
+                        menu: "notificationCenter"
+                        onClicked: Panels.toggle("notificationCenter", bar.screen)
+                        indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
+                        unread: Notifications.unread
+                        text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? TimeFormat.hms : TimeFormat.hm))
+                        HoverTip {
+                            target: parent
+                            hovered: parent.hovered && !parent.active
+                            screen: bar.screen
+                            text: Qt.formatDate(clock.date, "dddd d MMMM yyyy") + (Notifications.unread > 0 ? " · " + Notifications.unread + (Notifications.unread === 1 ? " notification" : " notifications") : "")
+                        }
                     }
-
-                    SystemClock {
-                        id: clock
-                        precision: bar.cfg.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
-                    }
+                }
+                SystemClock {
+                    id: clock
+                    precision: bar.cfg.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
                 }
             }
         }

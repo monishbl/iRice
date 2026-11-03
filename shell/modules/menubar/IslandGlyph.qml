@@ -15,12 +15,15 @@ import qs.common
 //   network                        Wi-Fi: the arcs fill in one by one; VPN,
 //                                  hotspot, Ethernet: ripples
 // Everything stops a moment after the alert opens (nothing loops forever).
+// Material: the icon on a filled circle (primary, error when urgent; inside
+// the ring when there is one), the art and pictures in a cookie.
 Item {
     id: root
 
     property var event: null
+    property bool inverse: false // (Material: on the alert surface, IslandInk)
     readonly property string kind: event?.kind ?? ""
-    readonly property color tint: event?.color ?? Theme.accent
+    readonly property color tint: Theme.material ? IslandInk.tint(event?.color, inverse) : event?.color ?? Theme.accent
     readonly property bool hasArt: !!event?.art
     // A drawing of the device (Devices.pictureFor), in place of the disc
     readonly property bool hasPicture: !hasArt && !!event?.picture
@@ -95,10 +98,13 @@ Item {
         Squircle {
             id: disc
             anchors.fill: parent
+            // (Material: solid, inside the ring)
+            anchors.margins: Theme.material && root.ringed ? 6 : 0
             radius: root.hasArt ? 12 : width / 2
-            color: root.hasArt ? Qt.rgba(1, 1, 1, 0.1) : root.hasPicture ? "transparent" : Qt.alpha(root.tint, 0.24)
+            color: root.hasArt ? (Theme.material ? "transparent" : Qt.rgba(1, 1, 1, 0.1)) : root.hasPicture ? "transparent" : Theme.material ? root.tint : Qt.alpha(root.tint, 0.24)
             clip: true
             Image {
+                id: artImage
                 anchors.fill: parent
                 visible: root.hasArt
                 source: root.event?.art ?? ""
@@ -111,7 +117,7 @@ Item {
                 id: glow
                 anchors.fill: parent
                 radius: parent.radius
-                color: root.tint
+                color: Theme.material ? IslandInk.onTint(root.event?.color, root.inverse) : root.tint
                 opacity: 0
                 SequentialAnimation on opacity {
                     running: shake.running
@@ -119,6 +125,17 @@ Item {
                     NumberAnimation { to: 0.35; duration: 260 }
                     NumberAnimation { to: 0; duration: 380 }
                 }
+            }
+        }
+        // Material: the art in a cookie
+        Loader {
+            anchors.fill: parent
+            active: Theme.material && root.hasArt
+            sourceComponent: MaterialShape {
+                shape: "cookie9"
+                animated: false
+                color: IslandInk.dim(0.1, root.inverse)
+                source: artImage
             }
         }
         Image {
@@ -136,8 +153,8 @@ Item {
             visible: !root.hasArt && !root.hasPicture
             name: root.wifiStep >= 0 ? ["wifi-none", "wifi-low", "wifi-medium", "wifi-high"][root.wifiStep] : (root.event?.icon ?? "")
             fill: true
-            size: Math.round(root.size * (root.ringed ? 0.42 : 0.48))
-            color: root.tint
+            size: Math.round(root.size * (root.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48))
+            color: Theme.material ? IslandInk.onTint(root.event?.color, root.inverse) : root.tint
             rotation: body.turn
         }
         transform: [
@@ -156,7 +173,7 @@ Item {
         readonly property real sweep: root.kind === "timer" ? 1 - (1 - target) * root.ringT : target * root.ringT
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
-            strokeColor: Qt.rgba(1, 1, 1, 0.14)
+            strokeColor: IslandInk.dim(0.14, root.inverse)
             strokeWidth: 3
             fillColor: "transparent"
             capStyle: ShapePath.RoundCap
@@ -164,7 +181,7 @@ Item {
         }
         ShapePath {
             // Temperature warms from orange to red as it fills
-            strokeColor: root.kind === "temperature" ? Qt.rgba(1, 0.62 - 0.35 * root.ringT, 0.1, 1) : root.tint
+            strokeColor: root.kind === "temperature" && !Theme.material ? Qt.rgba(1, 0.62 - 0.35 * root.ringT, 0.1, 1) : root.tint
             strokeWidth: 3
             fillColor: "transparent"
             capStyle: ShapePath.RoundCap

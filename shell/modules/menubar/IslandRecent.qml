@@ -11,6 +11,8 @@ import qs.services
 // runs on a click while the shell remembers it.
 //   collapsible  live activities share the island: the header opens and
 //                closes the list (IslandView hides them while it's open)
+// Material: the island's colours (IslandInk), each alert's icon in a
+// primary (or error) circle.
 Column {
     id: root
 
@@ -22,8 +24,8 @@ Column {
     readonly property int rowH: 36
     readonly property int most: 8
     readonly property bool listShown: !collapsible || open
-    readonly property color ink: "#F5F5F7"
-    readonly property color ink2: Qt.rgba(1, 1, 1, 0.6)
+    readonly property color ink: IslandInk.ink()
+    readonly property color ink2: IslandInk.dim(0.6)
     readonly property bool still: Config.options.appearance.reduceMotion === true
     spacing: 4
 
@@ -49,7 +51,7 @@ Column {
             width: toggleRow.implicitWidth + 12
             height: 24
             radius: 12
-            color: !root.collapsible ? "transparent" : toggleMouse.pressed ? Qt.rgba(1, 1, 1, 0.16) : toggleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+            color: !root.collapsible ? "transparent" : toggleMouse.pressed ? IslandInk.dim(0.16) : toggleMouse.containsMouse ? IslandInk.dim(0.1) : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             border.width: toggleMouse.activeFocus ? 2 : 0
             border.color: Theme.accent
@@ -92,7 +94,7 @@ Column {
             width: clearText.implicitWidth + 16
             height: 24
             radius: 12
-            color: clearMouse.pressed ? Qt.rgba(1, 1, 1, 0.16) : clearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+            color: clearMouse.pressed ? IslandInk.dim(0.16) : clearMouse.containsMouse ? IslandInk.dim(0.1) : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             border.width: clearMouse.activeFocus ? 2 : 0
             border.color: Theme.accent
@@ -194,7 +196,7 @@ Column {
                         Squircle {
                             anchors { fill: parent; leftMargin: -6; rightMargin: -6 }
                             radius: 10
-                            color: Qt.rgba(1, 1, 1, lineHover.hovered ? 0.08 : 0)
+                            color: IslandInk.dim(lineHover.hovered ? 0.08 : 0)
                             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                         }
                         Rectangle {
@@ -203,7 +205,7 @@ Column {
                             width: 24
                             height: 24
                             radius: 12
-                            color: line.modelData.picture ? "transparent" : Qt.alpha(line.modelData.color, 0.22)
+                            color: line.modelData.picture ? "transparent" : Theme.material ? IslandInk.tint(line.modelData.color) : Qt.alpha(line.modelData.color, 0.22)
                             Image {
                                 anchors.fill: parent
                                 visible: !!line.modelData.picture
@@ -217,8 +219,8 @@ Column {
                                 visible: !line.modelData.picture
                                 name: line.modelData.icon
                                 fill: true
-                                size: 14
-                                color: line.modelData.color
+                                size: Theme.material ? 13 : 14
+                                color: Theme.material ? IslandInk.onTint(line.modelData.color) : line.modelData.color
                             }
                         }
                         Text {
@@ -249,7 +251,7 @@ Column {
                                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                                 visible: !lineHover.hovered
                                 text: Island.ago(line.modelData.at, clock.date.getTime())
-                                color: Qt.rgba(1, 1, 1, 0.45)
+                                color: IslandInk.dim(0.45)
                                 font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
                             }
                             Rectangle {
@@ -258,15 +260,15 @@ Column {
                                 width: 20
                                 height: 20
                                 radius: 10
-                                color: xMouse.pressed ? "#5A5A5E" : xMouse.containsMouse ? "#48484A" : "#3A3A3C"
-                                border.width: 1
+                                color: Theme.material ? IslandInk.layer(IslandInk.tonal(), IslandInk.onTonal(), xMouse) : xMouse.pressed ? "#5A5A5E" : xMouse.containsMouse ? "#48484A" : "#3A3A3C"
+                                border.width: Theme.material ? 0 : 1
                                 border.color: Qt.rgba(1, 1, 1, 0.2)
                                 Icon {
                                     anchors.centerIn: parent
                                     name: "x"
                                     bold: true
                                     size: 10
-                                    color: root.ink
+                                    color: Theme.material ? IslandInk.onTonal() : root.ink
                                 }
                                 MouseArea {
                                     id: xMouse

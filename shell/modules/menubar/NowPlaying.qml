@@ -7,7 +7,9 @@ import qs.glass
 import qs.services
 
 // Media popover from the menu bar's Now Playing item: art, title, seek bar,
-// transport, and a switcher when several players are open.
+// transport, and a switcher when several players are open. (Material: the
+// art cut into a cookie while it plays, a square when paused, and a play
+// button that morphs the same way.)
 Variants {
     model: Quickshell.screens
 
@@ -50,13 +52,14 @@ Variants {
                 Row {
                     spacing: 12
                     ClippingRectangle {
+                        visible: !Theme.material
                         width: 72
                         height: 72
                         radius: 12
                         color: Theme.color.fill
                         Image {
                             anchors.fill: parent
-                            source: Media.artUrl(pop.player)
+                            source: Theme.material ? "" : Media.artUrl(pop.player)
                             retainWhileLoading: true
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(144, 144)
@@ -69,6 +72,30 @@ Variants {
                             fill: true
                             size: 28
                             color: Theme.color.tertiary
+                        }
+                    }
+                    // Material: the art cut into a cookie while it plays, a square when paused
+                    Loader {
+                        active: Theme.material
+                        visible: active
+                        width: 72
+                        height: 72
+                        sourceComponent: Item {
+                            ShapedArt {
+                                anchors.fill: parent
+                                url: Media.artUrl(pop.player)
+                                sourceSize: Qt.size(144, 144)
+                                shape: pop.player?.isPlaying ? "cookie9" : "square"
+                                color: Theme.m3.surfaceContainerHighest
+                            }
+                            Icon {
+                                anchors.centerIn: parent
+                                visible: Media.artUrl(pop.player) === ""
+                                name: "music-notes"
+                                fill: true
+                                size: 28
+                                color: Theme.m3.onSurfaceVariant
+                            }
                         }
                     }
                     Column {
@@ -125,6 +152,7 @@ Variants {
                 }
 
                 Row {
+                    visible: !Theme.material
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 18
                     Repeater {
@@ -141,6 +169,47 @@ Variants {
                             size: modelData.size
                             opacity: modelData.on ? 1 : 0.35
                             MouseArea { anchors { fill: parent; margins: -8 } enabled: parent.modelData.on; onClicked: parent.modelData.act() }
+                        }
+                    }
+                }
+                // Material: tonal skip buttons around the morphing play button
+                Loader {
+                    active: Theme.material
+                    visible: active
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    sourceComponent: Row {
+                        spacing: 12
+                        IconButton {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 40
+                            height: 40
+                            icon: "skip-back"
+                            fill: true
+                            iconSize: 20
+                            iconColor: Theme.m3.onSurfaceVariant
+                            tooltip: "Previous"
+                            enabled: pop.player?.canGoPrevious ?? false
+                            opacity: enabled ? 1 : 0.38
+                            onClicked: pop.player?.previous()
+                        }
+                        PlayButton {
+                            size: 56
+                            playing: pop.player?.isPlaying ?? false
+                            enabled: pop.player?.canTogglePlaying ?? false
+                            onClicked: pop.player?.togglePlaying()
+                        }
+                        IconButton {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 40
+                            height: 40
+                            icon: "skip-forward"
+                            fill: true
+                            iconSize: 20
+                            iconColor: Theme.m3.onSurfaceVariant
+                            tooltip: "Next"
+                            enabled: pop.player?.canGoNext ?? false
+                            opacity: enabled ? 1 : 0.38
+                            onClicked: pop.player?.next()
                         }
                     }
                 }

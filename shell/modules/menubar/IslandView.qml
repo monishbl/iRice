@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
@@ -13,11 +14,19 @@ import qs.services
 // the pill with an icon on the left and a detail on the right. Expanded: it
 // springs open for an event (Island.event: an animated alert, or an iOS-style
 // card) or while hovered (the dots on top, live activities below).
+// Material: Android 16's Live Updates chip and floating toolbar instead. A
+// tonal pill (surfaceContainerHigh; a step up while it shows an alert)
+// holds the spaces' indicator; a live activity turns it into a chip with its
+// icon in a primary circle; open, it's a Material card (corners 28, elevation
+// 2's shadow). Same sizes, springs, gestures and contents (IslandInk).
 Item {
     id: root
 
     required property var screen
     required property color fg // menu bar text colour (idle and compact)
+    // The bar's groups sit in pills (Material, no bar background): the
+    // island idles in the same pill, not bare
+    property bool pilled: false
     // A fullscreen window (a video, a game) covers the bar. The island is
     // then drawn only while it has something to say: the bar lifts it over
     // the app (`lifted`, MenuBar) until it has closed again; otherwise it's
@@ -143,13 +152,21 @@ Item {
         recentOpen = !recentOpen;
     }
     // On the black island when open; collapsed it's just the dots on the bar
-    readonly property color ink: filled || Island.showHot ? "#F5F5F7" : fg
+    // (Material: always on its own surface)
+    // Material, idle (only the spaces' dots): no pill, the dots straight on
+    // the bar in its text colour, as iOS's status bar; the pill comes for an
+    // activity, an alert or a hover
+    readonly property bool bare: Theme.material && !filled && !compact && !pilled
+    readonly property color ink: Theme.material ? (bare ? fg : IslandInk.ink(inverse)) : filled || Island.showHot ? "#F5F5F7" : fg
+    // Material: an alert in it raises it a tonal step (not the volume and
+    // brightness HUD, which stays as it is, like Android's)
+    readonly property bool inverse: Theme.material && eventInside && (Island.event?.kind ?? "") !== "hud"
 
     // ── Size, on springs ────────────────────────────────────────────────
     readonly property real dotsW: dots.implicitWidth
     // Collapsed with a live activity: its info and controls replace the dots,
     // or sit around them (split), or after them (beside)
-    readonly property int pad: 10
+    readonly property int pad: Theme.material ? 4 : 10 // (Material: the chip's icon circle hugs its edge)
     readonly property real leadW: lead.implicitWidth
     readonly property real trailW: trail.implicitWidth
     // Split: both sides as wide as the wider one, so the dots stay centred.
@@ -161,7 +178,7 @@ Item {
     // evenly around its content instead of the content sliding in
     readonly property real groupLeft: w / 2 - compactW / 2 + pad // left edge of the compact content
     readonly property real leadX: layout === "split" ? w / 2 - dotsW / 2 - 12 - leadW : layout === "beside" ? groupLeft + dotsW + 21 : groupLeft
-    readonly property real trailX: layout === "split" ? w / 2 + dotsW / 2 + 12 : w / 2 + compactW / 2 - pad - trailW + 4
+    readonly property real trailX: layout === "split" ? w / 2 + dotsW / 2 + 12 : w / 2 + compactW / 2 - pad - trailW + (Theme.material ? 0 : 4)
     readonly property real compactW: layout === "split" ? 2 * pad + 2 * side + 24 + dotsW
         : layout === "beside" ? 2 * pad + dotsW + 21 + area
         : pad + leadW + 12 + trailW + pad
@@ -226,23 +243,57 @@ Item {
         y: 3 - (root.overFs && !root.filled && !root.reduceMotion ? Math.round((1 - root.openness) * 10) : 0)
         width: root.w
         height: root.h
-        onXChanged: glass.updatePosition()
-        onYChanged: glass.updatePosition()
-        onWidthChanged: glass.updatePosition()
-        onHeightChanged: glass.updatePosition()
+        onXChanged: glass.item?.updatePosition()
+        onYChanged: glass.item?.updatePosition()
+        onWidthChanged: glass.item?.updatePosition()
+        onHeightChanged: glass.item?.updatePosition()
 
-        // Glass underneath shows through only at the lower rim when open
-        Glass {
-            id: glass
+        // Material: the island's own tonal surface, its shadow only while it
+        // floats open
+        Loader {
             anchors.fill: parent
-            anchors.margins: -shadowMargin
-            shadowMargin: 16
-            radius: root.r
-            bevel: Math.min(16, root.r) + shadowMargin
-            opacity: root.filled ? openFade : root.openness
-            property real openFade: root.filled ? 1 : 0
-            Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
-            onOpacityChanged: updatePosition()
+            active: Theme.material
+            // (over a fullscreen app, only while it has something to say)
+            opacity: root.overFs && !root.filled ? shape.fade : 1
+            visible: opacity > 0.01
+            sourceComponent: Item {
+                RectangularShadow {
+                    anchors.fill: parent
+                    radius: root.r
+                    offset.y: 2
+                    blur: 12
+                    color: Qt.alpha(Theme.m3.shadow, Theme.dark ? 0.4 : 0.16)
+                    opacity: root.expanded || root.pillMode ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: root.r
+                    opacity: root.bare ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                    // Running hot while open: tinted with error
+                    color: Theme.veil(Qt.alpha(Island.showHot && root.expanded ? Qt.tint(IslandInk.surface(root.inverse), Qt.alpha(Theme.m3.error, 0.14)) : IslandInk.surface(root.inverse), 1))
+                    Behavior on color { ColorAnimation { duration: Theme.motion.popover } }
+                }
+            }
+        }
+        // Glass underneath shows through only at the lower rim when open
+        Loader {
+            id: glass
+            readonly property int margin: 16
+            anchors.fill: parent
+            anchors.margins: -margin
+            active: !Theme.material
+            sourceComponent: Glass {
+                shadowMargin: glass.margin
+                radius: root.r
+                bevel: Math.min(16, root.r) + shadowMargin
+                opacity: root.filled ? openFade : root.openness
+                property real openFade: root.filled ? 1 : 0
+                Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
+                onOpacityChanged: updatePosition()
+            }
         }
         // Black at the top melting into the glass below, like iOS 26. The
         // gradient is a plain rectangle clipped by a rounded mask (translucent
@@ -251,12 +302,13 @@ Item {
         property real openFade: root.filled ? 1 : 0
         Behavior on openFade { NumberAnimation { duration: Theme.motion.hover } }
         readonly property real fade: root.filled ? openFade : root.openness
+        // (Glass only: Material's art is in the card, IslandFocusCard)
         Item {
             id: ink
             anchors.fill: parent
             opacity: shape.fade
-            visible: opacity > 0.01
-            layer.enabled: true
+            visible: opacity > 0.01 && !Theme.material
+            layer.enabled: !Theme.material
             layer.effect: SquircleClip {}
             // Running hot, while open: a faint red arch rising from the bottom
             // edge, breathing slowly, behind the black so it only glows
@@ -363,11 +415,11 @@ Item {
             borderWidth: 1
             borderColor: Qt.rgba(1, 1, 1, 0.14)
             opacity: shape.fade
-            visible: opacity > 0.01
+            visible: opacity > 0.01 && !Theme.material
         }
         // A soft highlight along the glassy lower edge
         Rectangle {
-            visible: root.expanded
+            visible: root.expanded && !Theme.material
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: root.r * 0.6; rightMargin: root.r * 0.6; bottomMargin: 1 }
             height: 1
             gradient: Gradient {
@@ -474,7 +526,7 @@ Item {
                         name: pillBox.ev?.icon ?? "bell"
                         fill: true
                         size: 16
-                        color: pillBox.ev?.color ?? root.ink
+                        color: Theme.material ? IslandInk.tint(pillBox.ev?.color, root.inverse) : pillBox.ev?.color ?? root.ink
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -496,7 +548,7 @@ Item {
                         visible: Island.count > 1
                         anchors.verticalCenter: parent.verticalCenter
                         text: "+" + (Island.count - 1)
-                        color: Qt.rgba(1, 1, 1, 0.6)
+                        color: IslandInk.dim(0.6, root.inverse)
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
                     }
                 }
@@ -561,12 +613,14 @@ Item {
                                 event: Island.byUid[uid] ?? null
                                 delay: event?.delay ?? 0
                                 unseen: root.unseen
+                                inverse: root.inverse
                                 wheelDismiss: !alertScroll.overflows
                                 onActed: (uid, since) => Island.dismiss(since)
                                 onDismissRequested: Island.remove(uid)
                                 // A hairline between stacked alerts
+                                // (Material: space alone)
                                 Rectangle {
-                                    visible: parent.index > 0
+                                    visible: parent.index > 0 && !Theme.material
                                     y: -6
                                     width: parent.width
                                     height: 1
@@ -597,7 +651,7 @@ Item {
                         return [above, below];
                     }
                     text: outside[0] > 0 ? outside[0] + " earlier · scroll up" : outside[1] + " more · scroll down"
-                    color: Qt.rgba(1, 1, 1, 0.55)
+                    color: IslandInk.dim(0.55, root.inverse)
                     font { family: Theme.font.family; pixelSize: Theme.font.caption }
                 }
 
@@ -633,7 +687,8 @@ Item {
                                 width: index === Island.focusIndex ? 14 : 6
                                 height: 6
                                 radius: 3
-                                color: Qt.rgba(1, 1, 1, index === Island.focusIndex ? 0.9 : 0.35)
+                                // (Material: the current one a primary pill)
+                                color: Theme.material ? (index === Island.focusIndex ? Theme.m3.primary : Qt.alpha(Theme.m3.onSurfaceVariant, 0.38)) : Qt.rgba(1, 1, 1, index === Island.focusIndex ? 0.9 : 0.35)
                                 Behavior on width { NumberAnimation { duration: Theme.motion.hover } }
                                 MouseArea {
                                     anchors { fill: parent; margins: -4 }
@@ -649,7 +704,7 @@ Item {
                     visible: !root.eventInside && !root.recentOver && root.oneAtATime && Captions.enabled && Captions.placement === "island" && (root.shownAct?.kind ?? "") !== "captions"
                     width: body.width
                     height: visible ? implicitHeight : 0
-                    ink: "#F5F5F7"
+                    ink: IslandInk.ink()
                     size: Theme.font.small
                     lines: 2
                 }
@@ -706,7 +761,7 @@ Item {
             icon: "clock-counter-clockwise"
             fill: root.recentOpen
             iconSize: 14
-            iconColor: root.recentOpen ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
+            iconColor: root.recentOpen ? IslandInk.ink() : IslandInk.dim(0.55)
             tooltip: root.recentOpen ? "Hide recent alerts" : "Recent alerts · " + Math.min(8, Island.history.length)
             opacity: root.expanded && root.h > 40 ? root.contentIn : 0
             onClicked: root.toggleRecent()
@@ -722,7 +777,7 @@ Item {
             icon: Island.pinned ? "push-pin-slash" : "push-pin"
             fill: Island.pinned
             iconSize: 14
-            iconColor: Island.pinned ? "#F5F5F7" : Qt.rgba(1, 1, 1, 0.55)
+            iconColor: Island.pinned ? IslandInk.ink() : IslandInk.dim(0.55)
             // Gone the moment it starts closing (as fast as a fade-in would
             // be noticed: an animated fade-out lingered over the shrinking pill)
             opacity: root.expanded && root.h > 40 ? root.contentIn : 0
