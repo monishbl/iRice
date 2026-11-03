@@ -427,35 +427,10 @@ Column {
             Component.onDestruction: if (active) Updates.logUsers--
             width: parent.width
             height: 240
-            Squircle {
+            LogView {
                 anchors { fill: parent; margins: 10 }
-                radius: 8
-                color: Theme.dark ? "#0E0E10" : "#18181B"
-                Flickable {
-                    id: logView
-                    Momentum {}
-                    anchors { fill: parent; margins: 10 }
-                    clip: true
-                    contentHeight: logText.implicitHeight
-                    boundsBehavior: Flickable.StopAtBounds
-                    // Follows the end, unless you scrolled up to read
-                    property bool follow: true
-                    onMovementEnded: follow = contentY >= contentHeight - height - 4
-                    onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)
-                    Text {
-                        id: logText
-                        width: logView.width
-                        text: Updates.log === "" ? "Waiting for output…" : Updates.log.replace(/^@@step .*\n/gm, "")
-                        wrapMode: Text.WrapAnywhere
-                        textFormat: Text.PlainText
-                        color: "#D4D4D8"
-                        font { family: Theme.font.mono; pixelSize: 11 }
-                    }
-                }
-                ScrollIndicator {
-                    target: logView
-                    anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 2 }
-                }
+                follow: true
+                text: Updates.log === "" ? "Waiting for output…" : Updates.log.replace(/^@@step .*\n/gm, "")
             }
         }
     }

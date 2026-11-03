@@ -15,12 +15,12 @@ Column {
         Row {
             label: "Edit Controls"
             detail: Config.options.controlCenter.layout.length > 0 ? Config.options.controlCenter.layout.length + " controls, arranged by you" : "The default arrangement"
-            Rectangle {
-                width: editLabel.implicitWidth + 24
-                height: 28
-                radius: 14
+            Rectangle { // (Material: a 40 px filled button)
+                width: editLabel.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 28
+                radius: height / 2
                 color: Theme.accent
-                Text { id: editLabel; anchors.centerIn: parent; text: "Edit…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                Text { id: editLabel; anchors.centerIn: parent; text: "Edit…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -33,6 +33,7 @@ Column {
             }
         }
         Row {
+            visible: !Theme.material // (glass chips or one glass panel: Glass only)
             label: "Panel background"
             detail: Theme.glass.tier === "solid" ? "Always on with Solid glass" : Config.options.controlCenter.background ? "Controls sit on one glass panel" : "Each control is its own glass chip"
             Switch {

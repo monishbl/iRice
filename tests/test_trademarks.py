@@ -302,9 +302,9 @@ class FormerNamesStillFind(unittest.TestCase):
         pairs = dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', table.group(1)))
         for old, new in self.RENAMED.items():
             self.assertEqual(pairs.get(old), new, old)
-        # both looks' Settings search through it
-        for f in ("shell/modules/settings/Settings.qml", "material/modules/settings/Settings.qml"):
-            self.assertIn("SettingsMap.searchQuery(", (ROOT / f).read_text(encoding="utf-8"), f)
+        # Settings searches through it (one window for both looks)
+        f = "shell/modules/settings/Settings.qml"
+        self.assertIn("SettingsMap.searchQuery(", (ROOT / f).read_text(encoding="utf-8"), f)
 
     @unittest.skipUnless(shutil.which("node"), "node isn't installed")
     def test_search_query_swaps_old_names(self):

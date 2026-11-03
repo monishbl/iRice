@@ -55,34 +55,9 @@ Column {
         }
     }
     // What's attached: scrubbed text shown as it will be sent
-    component Preview: Squircle {
-        id: pv
-        property string body
+    component Preview: LogView {
         width: parent?.width ?? 0
         height: 200
-        radius: 8
-        color: Theme.dark ? "#0E0E10" : "#18181B"
-        Flickable {
-            id: flick
-            Momentum {}
-            anchors { fill: parent; margins: 10 }
-            clip: true
-            contentHeight: previewText.implicitHeight
-            boundsBehavior: Flickable.StopAtBounds
-            Text {
-                id: previewText
-                width: flick.width
-                text: pv.body
-                wrapMode: Text.WrapAnywhere
-                textFormat: Text.PlainText
-                color: "#D4D4D8"
-                font { family: Theme.font.mono; pixelSize: 11 }
-            }
-        }
-        ScrollIndicator {
-            target: flick
-            anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 2 }
-        }
     }
 
     property bool showLog: false
@@ -196,7 +171,7 @@ Column {
                 x: 12
                 y: 12
                 width: parent.width - 24
-                body: BugReport.gathering ? "Reading the log…" : (BugReport.log || "The log is empty.")
+                text: BugReport.gathering ? "Reading the log…" : (BugReport.log || "The log is empty.")
             }
         }
         Row {
@@ -223,7 +198,7 @@ Column {
                 y: 12
                 width: parent.width - 24
                 height: 140
-                body: BugReport.gathering ? "Reading…" : page.infoText
+                text: BugReport.gathering ? "Reading…" : page.infoText
             }
         }
     }

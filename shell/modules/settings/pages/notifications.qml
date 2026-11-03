@@ -60,25 +60,34 @@ Column {
         width: parent.width
         title: "Sound effects"
         footer: "Choose… plays your own file instead of the style's sound."
-        // One choice: off, or the style they play in
+        // One choice: off, or the style they play in. Material also offers
+        // its own sounds (materialSounds wins over the pack, as Material's
+        // services/Sounds picks it)
         Row {
+            id: styleRow
             label: "Style"
-            detail: !Config.options.sounds.enabled ? "No sound effects. The log-in sound is set on its own." : ({ soft: "Low, rounded tones", marimba: "Warm wooden mallets", keys: "A soft electric piano", taps: "Short, low taps", minimal: "Quiet ticks", glass: "Bright glass and pops" })[Config.options.sounds.pack] ?? ""
+            readonly property string now: !Config.options.sounds.enabled ? "off" : Theme.material && Config.options.appearance.materialSounds ? "material" : Config.options.sounds.pack
+            detail: ({ off: "No sound effects. The log-in sound is set on its own.", material: Theme.material ? "Short bright blips, made for the Material look" : "", soft: "Low, rounded tones", marimba: "Warm wooden mallets", keys: "A soft electric piano", taps: "Short, low taps", minimal: "Quiet ticks", glass: "Bright glass and pops" })[now] ?? ""
             Dropdown {
                 width: 200
                 options: [
                     { value: "off", label: "Off" },
+                    { value: "material", label: Theme.material ? "Material" : "" }, // (Material's own: none in Glass)
                     { value: "marimba", label: "Marimba" },
                     { value: "taps", label: "Taps" },
                     { value: "soft", label: "Soft" },
                     { value: "keys", label: "Keys" },
                     { value: "minimal", label: "Minimal" },
                     { value: "glass", label: "Glass" }
-                ]
-                value: Config.options.sounds.enabled ? Config.options.sounds.pack : "off"
+                ].filter(o => o.label !== "")
+                value: styleRow.now
                 onChosen: v => {
-                    if (v !== "off")
-                        Config.options.sounds.pack = v;
+                    if (v !== "off") {
+                        if (Theme.material)
+                            Config.options.appearance.materialSounds = v === "material";
+                        if (v !== "material")
+                            Config.options.sounds.pack = v;
+                    }
                     Config.options.sounds.enabled = v !== "off";
                     if (v !== "off")
                         Qt.callLater(() => Sounds.play("notifications", true)); // hear it
@@ -104,13 +113,13 @@ Column {
         Row {
             label: "Notification history"
             detail: Notifications.list.length + " kept"
-            Rectangle {
-                width: clearText.implicitWidth + 24
-                height: 26
-                radius: 13
-                color: Theme.color.fill
+            Rectangle { // (Material: a 40 px tonal button)
+                width: clearText.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 26
+                radius: height / 2
+                color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
                 opacity: Notifications.list.length > 0 ? 1 : 0.4
-                Text { id: clearText; anchors.centerIn: parent; text: "Clear all"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+                Text { id: clearText; anchors.centerIn: parent; text: "Clear all"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
                 MouseArea { anchors.fill: parent; enabled: Notifications.list.length > 0; onClicked: Notifications.clearAll() }
             }
         }

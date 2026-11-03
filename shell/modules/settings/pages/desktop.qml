@@ -16,12 +16,12 @@ Column {
         Row {
             label: "Edit Widgets"
             detail: Config.options.desktop.widgets.length + (Config.options.desktop.widgets.length === 1 ? " widget" : " widgets") + " on the desktop"
-            Rectangle {
-                width: editLabel.implicitWidth + 24
-                height: 28
-                radius: 14
+            Rectangle { // (Material: a 40 px filled button)
+                width: editLabel.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 28
+                radius: height / 2
                 color: Theme.accent
-                Text { id: editLabel; anchors.centerIn: parent; text: "Edit…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                Text { id: editLabel; anchors.centerIn: parent; text: "Edit…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor

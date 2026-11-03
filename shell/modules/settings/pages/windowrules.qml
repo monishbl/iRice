@@ -45,53 +45,10 @@ Column {
     }
 
     // ── Shared pieces ────────────────────────────────────────────────────
-    // Ghost text button; `danger` for removing
-    component TextButton: Squircle {
-        id: tb
-        property string text
-        property string icon
-        property bool danger: false
-        property bool primary: false
-        signal clicked
-        width: tbRow.implicitWidth + 24
-        height: 28
-        radius: Theme.radius.control
-        color: primary ? (tbMouse.pressed ? Qt.darker(Theme.accent, 1.2) : tbMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent) : tbMouse.pressed ? Theme.color.fillPressed : tbMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-        scale: tbMouse.pressed ? 0.97 : 1
-        Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
-        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-        // (not a Row: in Settings pages Row is the settings row)
-        Item {
-            id: tbRow
-            anchors.centerIn: parent
-            implicitWidth: (tbIcon.visible ? tbIcon.implicitWidth + 6 : 0) + tbLabel.implicitWidth
-            implicitHeight: tbLabel.implicitHeight
-            width: implicitWidth
-            height: implicitHeight
-            Icon {
-                id: tbIcon
-                visible: tb.icon !== ""
-                anchors.verticalCenter: parent.verticalCenter
-                name: tb.icon
-                bold: true
-                size: 12
-                color: tbLabel.color
-            }
-            Text {
-                id: tbLabel
-                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                text: tb.text
-                color: tb.primary ? Theme.color.onAccent : tb.danger ? Theme.color.danger : Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: tb.primary ? Font.DemiBold : Font.Medium }
-            }
-        }
-        MouseArea {
-            id: tbMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: tb.clicked()
-        }
+    // Ghost text button; `danger` for removing. SettingsButton, out of the
+    // Tab order as these always were
+    component TextButton: SettingsButton {
+        activeFocusOnTab: false
     }
 
     // An app row: icon, name, detail, chevron; the whole row is clickable
@@ -103,24 +60,25 @@ Column {
         property bool chevron: true
         signal clicked
         width: parent?.width ?? 0
-        height: 48
-        color: arMouse.pressed ? Theme.color.fillPressed : arMouse.containsMouse ? Theme.color.fill : "transparent"
+        height: Theme.material ? 64 : 48
+        // (Material: the Group's tile shows the hover)
+        color: Theme.material ? "transparent" : arMouse.pressed ? Theme.color.fillPressed : arMouse.containsMouse ? Theme.color.fill : "transparent"
         AppIcon {
             id: arIcon
-            x: 14
+            x: Theme.material ? 20 : 14
             anchors.verticalCenter: parent.verticalCenter
-            size: 28
+            size: Theme.material ? 40 : 28
             source: ar.iconSource
         }
         Column {
-            anchors { left: arIcon.right; leftMargin: 12; right: arChevron.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: arIcon.right; leftMargin: Theme.material ? 16 : 12; right: arChevron.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             Text {
                 width: parent.width
                 text: ar.name
                 elide: Text.ElideRight
                 color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
             }
             Text {
                 width: parent.width
@@ -128,16 +86,16 @@ Column {
                 text: ar.detail
                 elide: Text.ElideRight
                 color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption }
             }
         }
         Icon {
             id: arChevron
-            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: Theme.material ? 16 : 14; verticalCenter: parent.verticalCenter }
             visible: ar.chevron
             name: "caret-right"
-            bold: true
-            size: 12
+            bold: !Theme.material
+            size: Theme.material ? 24 : 12
             color: Theme.color.tertiary
         }
         MouseArea {

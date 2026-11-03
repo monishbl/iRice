@@ -20,36 +20,12 @@ Column {
         onSelected: i => page.cfg[key] = values[i]
     }
 
-    // Slider with words at either end
-    component Scale: Column {
-        id: scale
-        property alias from: slider.from
-        property alias to: slider.to
-        property alias value: slider.value
-        property string low
-        property string high
-        signal moved(real v)
-        width: 240
-        spacing: 2
-        Slider {
-            id: slider
-            width: parent.width
-            onMoved: v => scale.moved(v)
-        }
-        Item {
-            width: parent.width
-            height: lowText.implicitHeight
-            Text { id: lowText; text: scale.low; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
-            Text { anchors.right: parent.right; text: scale.high; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
-        }
-    }
-
     Group {
         width: parent.width
         footer: Mouse.mice.length === 0 ? "No mouse is connected. These settings apply when one is." : Mouse.mice.length === 1 ? "Applies to " + Mouse.mice[0] + "." : "Applies to " + Mouse.mice.length + " mice. Trackpads have their own settings."
         Row {
             label: "Tracking speed"
-            Scale {
+            WordSlider {
                 from: -1
                 to: 1
                 low: "Slow"
@@ -87,7 +63,7 @@ Column {
         }
         Row {
             label: "Scroll speed"
-            Scale {
+            WordSlider {
                 from: 0.2
                 to: 3
                 low: "Slow"
@@ -181,7 +157,7 @@ Column {
                 visible: page.cfg.boundaryMode === "corners"
                 label: "Corner reach"
                 detail: page.cfg.cornerSize + " logical pixels from each corner"
-                Scale { from: 4; to: 100; low: "Small"; high: "Large"; value: page.cfg.cornerSize; onMoved: v => page.cfg.cornerSize = Math.round(v) }
+                WordSlider { from: 4; to: 100; low: "Small"; high: "Large"; value: page.cfg.cornerSize; onMoved: v => page.cfg.cornerSize = Math.round(v) }
             }
         }
     }

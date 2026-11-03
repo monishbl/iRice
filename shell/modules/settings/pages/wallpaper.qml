@@ -14,7 +14,7 @@ Column {
     ClippingRectangle {
         width: Math.min(parent.width, 420)
         height: width * 9 / 16
-        radius: 14
+        radius: Theme.material ? 28 : 14
         color: Theme.color.fill
         Image {
             anchors.fill: parent
@@ -58,7 +58,7 @@ Column {
                     ClippingRectangle {
                         width: 150
                         height: 90
-                        radius: 12
+                        radius: Theme.material ? 16 : 12
                         color: Theme.color.fill
                         border.width: setTile.current ? 3 : 0
                         border.color: Theme.accent
@@ -204,12 +204,12 @@ Column {
             visible: loginGroup.installed
             label: "Use this wallpaper on the login screen"
             detail: loginGroup.passwordless ? "Copies it to the login screen." : "Asks for your password to update the login screen's copy."
-            Rectangle {
-                width: setLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: Theme.color.fill
-                Text { id: setLabel; anchors.centerIn: parent; text: "Use wallpaper"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+            Rectangle { // (Material: a 40 px tonal button)
+                width: setLabel.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 28
+                radius: height / 2
+                color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+                Text { id: setLabel; anchors.centerIn: parent; text: "Use wallpaper"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: {
                         // The dev sandbox must not change the real login screen
                         if (System.sandboxed) {
@@ -250,7 +250,7 @@ Column {
                 required property string modelData
                 width: (root.width - 24) / 3
                 height: width * 9 / 16
-                radius: 10
+                radius: Theme.material ? 16 : 10
                 color: Theme.color.fill
                 border.width: Wallpaper.path === modelData ? 3 : 0
                 border.color: Theme.accent

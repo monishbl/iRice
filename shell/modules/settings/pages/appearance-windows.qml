@@ -128,12 +128,12 @@ Column {
                 visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
                 label: "hyprbars plugin"
                 detail: "Builds the official plugin with hyprpm in a terminal."
-                Rectangle {
-                    width: instLabel.implicitWidth + 24
-                    height: 28
-                    radius: 14
+                Rectangle { // (Material: a 40 px filled button)
+                    width: instLabel.implicitWidth + (Theme.material ? 32 : 24)
+                    height: Theme.material ? 40 : 28
+                    radius: height / 2
                     color: Theme.accent
-                    Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                    Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
                     MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
                 }
             }
