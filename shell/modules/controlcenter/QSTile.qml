@@ -70,7 +70,7 @@ Item {
             root.openPage(def.page);
     }
     function openMenu() {
-        root.menuRequested(def.menu().map(it => it.openPage ? Object.assign({}, it, { action: () => root.openPage(it.openPage) }) : it));
+        root.menuRequested(defs.menuItems(moduleId, root.openPage));
     }
 
     // ── Keyboard ────────────────────────────────────────────────────────
@@ -102,21 +102,7 @@ Item {
     }
     // The nearest tile whose centre lies that way
     function moveFocus(dx, dy) {
-        const cx = x + width / 2, cy = y + height / 2;
-        let best = null, bestD = Infinity;
-        for (const m of parent?.children ?? []) {
-            if (m === root || m.moduleId === undefined || !m.visible)
-                continue;
-            const mx = m.x + m.width / 2 - cx, my = m.y + m.height / 2 - cy;
-            if ((dx !== 0 && Math.sign(mx) !== dx) || (dy !== 0 && Math.sign(my) !== dy))
-                continue;
-            const d = dx !== 0 ? Math.abs(mx) + 2 * Math.abs(my) : Math.abs(my) + 2 * Math.abs(mx);
-            if (d < bestD) {
-                bestD = d;
-                best = m;
-            }
-        }
-        best?.forceActiveFocus(Qt.TabFocusReason);
+        defs.nearestToward(root, dx, dy)?.forceActiveFocus(Qt.TabFocusReason);
     }
     Accessible.role: def.kind === "toggle" ? Accessible.CheckBox : Accessible.Button
     Accessible.name: info ? def.label + ", " + title : def.label ?? moduleId

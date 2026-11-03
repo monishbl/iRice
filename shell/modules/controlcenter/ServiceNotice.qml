@@ -49,12 +49,16 @@ Column {
         id: button
         visible: root.action !== ""
         anchors.horizontalCenter: parent.horizontalCenter
-        width: label.implicitWidth + 28
-        height: 30
-        radius: Theme.radius.control
+        width: label.implicitWidth + (Theme.material ? 48 : 28)
+        height: Theme.material ? 40 : 30
+        radius: Theme.material ? height / 2 : Theme.radius.control // (Material: a filled pill button)
         opacity: root.busy ? 0.6 : 1
-        color: mouse.pressed ? Qt.darker(Theme.accent, 1.15) : mouse.containsMouse ? Qt.darker(Theme.accent, 1.07) : Theme.accent
-        scale: mouse.pressed ? 0.97 : 1
+        color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
+            : mouse.pressed ? Qt.darker(Theme.accent, 1.15) : mouse.containsMouse ? Qt.darker(Theme.accent, 1.07) : Theme.accent
+        // (Glass squishes on press; Material grows: the ElasticControl)
+        scale: !Theme.material && mouse.pressed ? 0.97 : 1
+        transform: Theme.material ? pressFx1.effects : []
+        ElasticControl { id: pressFx1; pressed: mouse.pressed; enabled: Theme.material }
         Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
         activeFocusOnTab: visible
         Keys.onPressed: event => {

@@ -121,19 +121,6 @@ Popover {
         return row * (tileHeight + gap);
     }
 
-    // The sliders' values: brightness, volume, the microphone
-    function sliderValue(id) {
-        return id === "display" ? Brightness.value : id === "micLevel" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume);
-    }
-    function setSlider(id, v) {
-        if (id === "display")
-            Brightness.set(v, true);
-        else if (id === "micLevel")
-            Audio.setMicVolume(v, true);
-        else
-            Audio.setVolume(v, true);
-    }
-
     // A press (Material 3 Expressive, as its button groups): the pressed
     // tile widens and its neighbours in the row give it the room, then all
     // spring back. shift(id): how far a control moves (dx) and widens (dw)
@@ -175,16 +162,7 @@ Popover {
     }
     // A dragged tile lands in the place of the tile nearest its centre
     function dropAt(id, cx, cy) {
-        let best = "", bestD = 1e9;
-        for (const p of itemPack) {
-            const ex = p.col * (unit + gap) + (p.w * unit + (p.w - 1) * gap) / 2;
-            const ey = cellY(p.row) + (p.h * tileHeight + (p.h - 1) * gap) / 2;
-            const d = (ex - cx) * (ex - cx) + (ey - cy) * (ey - cy);
-            if (d < bestD) {
-                bestD = d;
-                best = p.id;
-            }
-        }
+        const best = itemPack[moduleDefs.nearestSlot(itemPack, cx, cy, unit, tileHeight, gap)]?.id ?? "";
         if (best !== "" && best !== id)
             moduleDefs.moveModule(id, moduleDefs.layout.findIndex(e => e.id === best));
     }
@@ -380,9 +358,9 @@ Popover {
                                     trackHeight: sv.standing ? sv.width - 8 : 52
                                     icon: cell.def.icon ?? ""
                                     accessibleName: cell.def.label ?? cell.modelData
-                                    value: qs.sliderValue(cell.modelData)
+                                    value: moduleDefs.sliderValue(cell.modelData)
                                     hasMore: !!cell.def.page
-                                    onMoved: v => qs.setSlider(cell.modelData, v)
+                                    onMoved: v => moduleDefs.setSlider(cell.modelData, v)
                                     onMore: qs.page = cell.def.page
                                 }
                                 TonalButton {
@@ -465,10 +443,7 @@ Popover {
                             spacing: 2
                             Repeater {
                                 model: ScriptModel {
-                                    values: {
-                                        const ids = Object.keys(moduleDefs.all).filter(id => !moduleDefs.layout.some(e => e.id === id));
-                                        return ids.filter(id => moduleDefs.usable(id)).concat(ids.filter(id => !moduleDefs.usable(id)));
-                                    }
+                                    values: moduleDefs.galleryIds
                                 }
                                 ListRow {
                                     required property string modelData
@@ -717,68 +692,6 @@ Popover {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: txb.clicked()
-        }
-    }
-
-    // A slider or the media player in Edit controls: a row with its icon
-    // and name, and − to remove it
-    component EditRow: Item {
-        id: er
-        property string icon
-        property string label
-        signal removeRequested
-        Rectangle {
-            anchors.fill: parent
-            radius: 20
-            color: Theme.m3.surfaceContainerHighest
-        }
-        Icon {
-            id: erIcon
-            x: 20
-            anchors.verticalCenter: parent.verticalCenter
-            name: er.icon
-            size: 20
-            color: Theme.m3.onSurface
-        }
-        Text {
-            anchors { left: erIcon.right; leftMargin: 16; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-            text: er.label
-            elide: Text.ElideRight
-            color: Theme.m3.onSurface
-            font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
-        }
-        Rectangle {
-            x: -6
-            y: -6
-            z: 10
-            width: 24
-            height: 24
-            radius: 12
-            color: Theme.m3.inverseSurface
-            activeFocusOnTab: true
-            Keys.onPressed: event => {
-                if ((event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Delete) && !event.isAutoRepeat) {
-                    er.removeRequested();
-                    event.accepted = true;
-                }
-            }
-            Accessible.role: Accessible.Button
-            Accessible.name: "Remove " + er.label
-            FocusRing {
-                radius: 17
-            }
-            Rectangle {
-                anchors.centerIn: parent
-                width: 10
-                height: 2
-                radius: 1
-                color: Theme.m3.inverseOnSurface
-            }
-            MouseArea {
-                anchors { fill: parent; margins: -4 }
-                cursorShape: Qt.PointingHandCursor
-                onClicked: er.removeRequested()
-            }
         }
     }
 }

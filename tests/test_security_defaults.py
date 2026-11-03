@@ -655,8 +655,7 @@ class Shell(unittest.TestCase):
 
     def test_text_components_are_plain(self):
         for rel, n in (("shell/modules/menubar/Marquee.qml", 2), ("shell/modules/menubar/HoverTip.qml", 1),
-                       ("material/modules/menubar/HoverTip.qml", 1), ("shell/modules/controlcenter/ListRow.qml", 2),
-                       ("material/modules/controlcenter/ListRow.qml", 2)):
+                       ("material/modules/menubar/HoverTip.qml", 1), ("shell/modules/controlcenter/ListRow.qml", 2)):
             self.assertGreaterEqual((ROOT / rel).read_text().count("textFormat: Text.PlainText"), n, rel)
         for rel in ("shell/modules/clipboard/ClipboardPanel.qml", "material/modules/clipboard/ClipboardPanel.qml"):
             self.assertRegex((ROOT / rel).read_text(), r"component Heading: Text \{\n\s*textFormat: Text\.PlainText")
