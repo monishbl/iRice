@@ -79,34 +79,51 @@ Singleton {
     // ── A Wi-Fi code in a screenshot ────────────────────────────────────
     // (ScreenTools, after each screenshot: a quick local look with zbar)
     function scan(file) {
-        const p = scanComp.createObject(root, { command: ["python3", "-I", script, "scan", file] });
+        find(file, found => {
+            for (const w of found)
+                root.offer(w);
+        });
+    }
+    // The Wi-Fi codes in a picture: done([{ ssid, security, password,
+    // hidden }]) (also Live Text's chips)
+    function find(file, done) {
+        const p = scanComp.createObject(root, { command: ["python3", "-I", script, "scan", file], done: done });
         p.running = true;
     }
     Component {
         id: scanComp
         Process {
             id: job
+            property var done
             stdout: StdioCollector {
                 onStreamFinished: {
+                    let found = [];
                     try {
-                        const r = JSON.parse(text);
-                        for (const w of r.found ?? [])
-                            root.offer(w);
+                        found = JSON.parse(text).found ?? [];
                     } catch (e) {}
+                    if (job.done)
+                        job.done(found);
                 }
             }
             onExited: job.destroy()
         }
     }
+    // A code a computer can join from: open, or WPA with a real password
+    function joinable(w) {
+        return w.security === "nopass" || ((w.security === "WPA" || w.security === "SAE") && w.password.length >= 8);
+    }
+    function join(w) {
+        WifiJoin.join({ ssid: w.ssid, hidden: w.hidden, security: w.security === "nopass" ? "open" : "psk", psk: w.password });
+    }
     function offer(w) {
-        const joinable = w.security === "nopass" || ((w.security === "WPA" || w.security === "SAE") && w.password.length >= 8);
+        const joinable = root.joinable(w);
         Island.post({
             kind: "custom", icon: "wifi-high", title: "Wi-Fi network in your screenshot",
             subtitle: w.ssid + (w.security === "nopass" ? " · open network" : ""), color: Theme.accent,
             action: joinable ? "Join" : (w.password !== "" ? "Copy Password" : ""),
             onAction: () => {
                 if (joinable)
-                    WifiJoin.join({ ssid: w.ssid, hidden: w.hidden, security: w.security === "nopass" ? "open" : "psk", psk: w.password });
+                    root.join(w);
                 else
                     Clipboard.copyText(w.password);
             },

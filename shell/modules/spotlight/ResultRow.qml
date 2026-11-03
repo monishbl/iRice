@@ -32,9 +32,18 @@ Squircle {
         text: root.result.emoji ?? ""
         font { family: EmojiFont.family; pixelSize: 20 }
     }
+    // (a screenshot found by its words: the shot itself)
+    ResultPicture {
+        visible: !!root.result.picture
+        x: 10
+        width: 26
+        height: 26
+        anchors.verticalCenter: parent.verticalCenter
+        path: root.result.picture ?? ""
+    }
     Icon {
         id: glyph
-        visible: !root.result.icon && !root.result.emoji
+        visible: !root.result.icon && !root.result.emoji && !root.result.picture
         x: 10
         width: 26
         anchors.verticalCenter: parent.verticalCenter
@@ -59,6 +68,7 @@ Squircle {
             id: title
             width: Math.min(implicitWidth, parent.width)
             text: root.result.title
+            textFormat: Text.PlainText // (a clipboard entry's, a screenshot's words)
             elide: Text.ElideRight
             color: root.selected ? Theme.color.onAccent : Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.Medium }
@@ -67,6 +77,7 @@ Squircle {
             width: parent.width - title.width - 8
             anchors.baseline: title.baseline
             text: root.result.subtitle ?? ""
+            textFormat: Text.PlainText
             elide: Text.ElideRight
             color: root.selected ? Qt.alpha(Theme.color.onAccent, 0.75) : Theme.color.tertiary
             font { family: Theme.font.family; pixelSize: Theme.font.body }
