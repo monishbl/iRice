@@ -20,8 +20,6 @@ Item {
     property bool plain: false // no capsule of its own (inside the island)
     property bool hot: false // CPU running hot: the active chip turns red
     property real activeCenter: width / 2 // x of the active chip's centre (the island's heat ripples start there)
-    // Material's fast spatial spring (Glass eases instead: it has none)
-    readonly property var springFast: Theme.motion.springFast ?? ({ spring: 1, damping: 1 })
     readonly property string style: Config.options.menubar.workspaces // dots | icons
     // This display, by name (Spaces works by names: Hyprland's monitor
     // objects compared by identity could be stale ones, and then only the
@@ -209,7 +207,7 @@ Item {
                 // Material: the widths spring (Material's fast spatial spring)
                 readonly property real mTarget: showIcons ? apps.length * 14 + 10 : active ? 30 : shownThere ? 22 : 14
                 property real mw: mTarget
-                Behavior on mw { enabled: Theme.material; SpringAnimation { id: mwSpring; spring: root.springFast.spring; damping: root.springFast.damping; epsilon: 0.25 } }
+                Behavior on mw { enabled: Theme.material; SpringAnimation { id: mwSpring; spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 } }
                 readonly property bool springing: mwSpring.running
                 width: Theme.material ? mw * fall : (showIcons ? apps.length * 14 + 10 : (active || shownThere ? 26 : 18)) * fall
                 radius: 9
@@ -250,7 +248,7 @@ Item {
                     // a wider primary pill that springs to its width)
                     readonly property real mTarget: ws.active ? 22 : ws.shownThere ? 14 : 8
                     property real mw: mTarget
-                    Behavior on mw { enabled: Theme.material; SpringAnimation { spring: root.springFast.spring; damping: root.springFast.damping; epsilon: 0.25 } }
+                    Behavior on mw { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 } }
                     width: Theme.material ? mw : ws.active || ws.shownThere ? 14 : root.occupied[ws.wsId] ? 10 : 5
                     height: Theme.material ? 8 : 5
                     radius: height / 2
