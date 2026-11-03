@@ -87,6 +87,20 @@ Singleton {
     // Selected rows, chips and soft highlights: a pale shade in light mode,
     // the accent faintly in dark mode
     readonly property color accentTint: material ? m3.secondaryContainer : dark ? Qt.alpha(accent, 0.26) : Qt.alpha(accentRamp[1], 0.9)
+    // Markdown replies (common/Markdown.js, as rich text): each look's colours
+    // as CSS, and the code boxes' fill (one step above the reply's surface)
+    readonly property color codeFill: material ? m3.surfaceContainerHighest : dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)
+    readonly property var markdown: ({
+        text: css(color.label),
+        muted: css(color.secondary),
+        link: css(accentInk),
+        codeBg: css(codeFill),
+        rule: css(color.separator),
+        mono: font.mono
+    })
+    function css(c) {
+        return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + c.a.toFixed(3) + ")";
+    }
 
     readonly property QtObject font: QtObject {
         readonly property string family: root.material ? "iRice Sans Flex" : "Inter"

@@ -4,6 +4,7 @@ import Quickshell
 import qs.common
 import Quickshell.Io
 import "AiModels.js" as ModelConfig
+import "AiPrompt.js" as Prompt
 
 // Models and connections are owned by the user in Settings → AI. Streams
 // over XMLHttpRequest, so credentials stay in-process. `chat` drives the UI;
@@ -25,10 +26,24 @@ Singleton {
     function hasCredential(m) { return m.auth === "none" || AiKeys.has(ModelConfig.credentialProvider(m), m.key); }
     function saveCredential(m, key) { AiKeys.set(m.key, key, m.name + " · " + ModelConfig.credentialLabel(m)); }
 
-    Component.onCompleted: migrateModels()
+    Component.onCompleted: { migrateModels(); migratePrompt(); }
     Connections {
         target: Config
-        function onReadyChanged() { root.migrateModels(); }
+        function onReadyChanged() { root.migrateModels(); root.migratePrompt(); }
+    }
+    // A whole system prompt from before (it replaced iRice's own) becomes the
+    // person's note, unless it was the old default
+    readonly property string oldDefaultPrompt: "You are a helpful assistant in a Linux desktop sidebar (Hyprland). Be concise and direct. Use Markdown: short paragraphs, lists where they help, and fenced code blocks for commands or code."
+    function migratePrompt() {
+        if (!Config.ready)
+            return;
+        const cfg = Config.options.ai;
+        const old = cfg.systemPrompt.trim();
+        if (old === "")
+            return;
+        if (old !== oldDefaultPrompt && cfg.customInstructions.trim() === "")
+            cfg.customInstructions = Prompt.clean(old);
+        cfg.systemPrompt = "";
     }
     function migrateModels() {
         if (!Config.ready || Config.options.ai.modelsMigrated)
@@ -99,8 +114,12 @@ Singleton {
     // API-facing turns: { role, text, image?, blocks? } (image = { data, mediaType } base64;
     // blocks = Claude content blocks, echoed back unchanged)
     property var history: []
-    // Image to send with the next message (Ask about the screen): { path, data, mediaType }
-    property var attachment: null
+    // Pictures to send with the next message (up to maxImages): { path, data, mediaType }
+    // (path: a small JPEG copy in the runtime folder, for the previews)
+    property var attachments: []
+    readonly property int maxImages: 4
+    // Which of the person's models read pictures (to suggest one)
+    readonly property var visionModels: models.filter(m => m.vision)
     property var xhr: null
     readonly property bool busy: xhr !== null
 
@@ -130,7 +149,8 @@ Singleton {
                 rows.push({ role: r.role, text: r.text, thinking: r.thinking, status: r.status, model: r.model, image: r.image });
         }
         // Image data stays in memory only; a saved chat remembers that there was one
-        const turns = history.map(h => h.image ? { role: h.role, text: "[A screenshot was attached here]\n" + h.text } : h);
+        const pics = h => (h.images ?? (h.image ? [h.image] : [])).length;
+        const turns = history.map(h => pics(h) ? { role: h.role, text: "[" + (pics(h) === 1 ? "A picture was" : pics(h) + " pictures were") + " attached here]\n" + h.text } : h);
         saver.payload = JSON.stringify({ rows: rows, history: turns });
         saver.running = true;
     }
@@ -172,7 +192,7 @@ Singleton {
 
     // Slash commands: /clear, /model <id>, /key <key>
     function submit(text) {
-        const t = text.trim() || (attachment ? "What's in this screenshot?" : "");
+        const t = text.trim() || (attachments.length === 1 ? "What's in this picture?" : attachments.length > 1 ? "What's in these pictures?" : "");
         if (t === "" || busy)
             return;
         if (t === "/clear")
@@ -190,21 +210,94 @@ Singleton {
         }
         if (needsKey)
             return note("Add your " + providerName + " " + credentialLabel.toLowerCase() + " in Settings → AI, or type /key followed by the credential.");
+        if (attachments.length > 0 && !model.vision)
+            return note(cantSee());
         send(t);
     }
 
+    // The model can't read pictures: say which of theirs can
+    function cantSee() {
+        const can = visionModels.map(m => m.name);
+        return model.name + " can't read pictures. " + (can.length === 0
+            ? "Add a model that can (Claude, Gemini or another vision model) in Settings → AI, or remove the pictures."
+            : "Switch to " + (can.length === 1 ? can[0] : can.slice(0, -1).join(", ") + " or " + can[can.length - 1]) + " in the model menu (or type /model " + can[0] + "), then send again.");
+    }
+
+    // attach(null): drop them all; attach(picture): one more, while there's room
     function attach(image) {
-        attachment = image;
+        if (image === null)
+            attachments = [];
+        else if (attachments.length < maxImages)
+            attachments = attachments.concat([image]);
+        else
+            noteFull();
+    }
+    function noteFull() {
+        note("A message can carry " + maxImages + " pictures. Remove one to add another.");
+    }
+    function detach(index) {
+        attachments = attachments.filter((a, i) => i !== index);
+    }
+    // Pictures from files (the picker, a drop) or the clipboard, made
+    // send-ready by ai-image.sh; true for a paste that had a picture
+    function attachFiles(paths) {
+        const room = maxImages - attachments.length;
+        if (room <= 0)
+            return noteFull();
+        if (paths.length > room)
+            note("Only the first " + room + " of those were added: a message carries " + maxImages + " pictures.");
+        prepare(paths.slice(0, room));
+    }
+    function attachClipboard() {
+        if (attachments.length >= maxImages)
+            return noteFull();
+        prepare(["--clipboard"]);
+    }
+    signal pastedText // (the clipboard had no picture: paste as usual)
+    function prepare(args) {
+        const p = imageJob.createObject(root, { args: args });
+        p.running = true;
+    }
+    Component {
+        id: imageJob
+        Process {
+            id: job
+            property var args: []
+            command: [Quickshell.shellDir + "/assets/scripts/ai-image.sh"].concat(args)
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const bad = [];
+                    for (const line of text.split("\n")) {
+                        const tab = line.indexOf("\t");
+                        if (tab < 0)
+                            continue;
+                        const file = line.slice(0, tab), data = line.slice(tab + 1);
+                        if (file === "!")
+                            bad.push(data);
+                        else
+                            root.attach({ path: file, data: data, mediaType: "image/jpeg" });
+                    }
+                    if (bad.length)
+                        root.note("Couldn't add " + bad.join(", ") + ": only pictures up to 64 MB (JPEG, PNG, WebP, GIF, HEIC…) can be sent.");
+                }
+            }
+            onExited: code => {
+                if (code === 3)
+                    root.pastedText();
+                job.destroy();
+            }
+        }
     }
 
     function send(text) {
-        const img = attachment;
-        attachment = null;
+        const imgs = attachments;
+        attachments = [];
         const turn = { role: "user", text: text };
-        if (img)
-            turn.image = { data: img.data, mediaType: img.mediaType };
+        if (imgs.length)
+            turn.images = imgs.map(i => ({ data: i.data, mediaType: i.mediaType }));
         history = history.concat([turn]);
-        chatModel.append({ role: "user", text: text, thinking: "", status: "done", model: "", image: img?.path ?? "" });
+        // (row image: the previews' paths, one per line)
+        chatModel.append({ role: "user", text: text, thinking: "", status: "done", model: "", image: imgs.map(i => i.path).join("\n") });
         chatModel.append({ role: "assistant", text: "", thinking: "", status: "streaming", model: model.name, image: "" });
 
         const req = buildRequest(model, history, {});
@@ -232,9 +325,14 @@ Singleton {
         x.send(JSON.stringify(req.body));
     }
 
+    // Every request carries iRice's system prompt (AiPrompt.js): the
+    // person's style and note go inside it, never in its place
     function buildRequest(m, turns, opts) {
         const credential = AiKeys.get(ModelConfig.credentialProvider(m), m.key);
-        return ModelConfig.buildRequest(m, turns, opts, Config.options.ai, credential);
+        const o = Object.assign({}, opts);
+        if (o.system === undefined)
+            o.system = Prompt.system(Config.options.ai);
+        return ModelConfig.buildRequest(m, turns, o, Config.options.ai, credential);
     }
 
     // Incremental SSE parser for all three wire formats.
@@ -321,7 +419,6 @@ Singleton {
         property string error
     }
     property var quickXhr: null
-    readonly property string quickPrompt: "You answer quick questions typed into a desktop search bar. Reply in at most three short sentences or a short list. No preamble, no follow-up questions. Use Markdown sparingly."
 
     function quickAsk(question) {
         stopQuick();
@@ -333,7 +430,7 @@ Singleton {
             return;
         }
         quick.busy = true;
-        const req = buildRequest(model, [{ role: "user", text: question }], { system: quickPrompt, effort: "low", maxTokens: 2048, thinking: false });
+        const req = buildRequest(model, [{ role: "user", text: question }], { system: Prompt.system(Config.options.ai, "quick"), effort: "low", maxTokens: 2048, thinking: false });
         const x = new XMLHttpRequest();
         quickXhr = x;
         quickParser.reset(ModelConfig.protocol(model));

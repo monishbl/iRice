@@ -4,6 +4,7 @@ import QtQuick.Controls.Basic
 import qs.common
 import qs.modules.settings
 import qs.services
+import "../../../services/AiPrompt.js" as Prompt
 
 Column {
     id: root
@@ -14,6 +15,9 @@ Column {
     property string provider: "aistudio"
     property string auth: "apiKey"
     property bool thinking: false
+    // Reads pictures: null until set here (then guessed from the provider and ID)
+    property var vision: null
+    readonly property bool visionNow: vision ?? Ai.normalizeModel({ provider: provider, id: modelField.text }).vision
     property string message: ""
     property bool messageIsError: false
 
@@ -46,6 +50,7 @@ Column {
         provider = m?.provider ?? "aistudio";
         auth = m?.auth ?? "apiKey";
         thinking = m?.thinking ?? false;
+        vision = m ? m.vision : null;
         nameField.text = m?.name ?? "";
         modelField.text = m?.id ?? "";
         endpointField.text = m?.endpoint ?? "";
@@ -59,7 +64,7 @@ Column {
     function draft() {
         return { id: modelField.text, name: nameField.text, provider: provider,
             auth: auth, endpoint: endpointField.text, project: projectField.text,
-            location: locationField.text, thinking: thinking, maxTokens: tokensField.text };
+            location: locationField.text, thinking: thinking, maxTokens: tokensField.text, vision: visionNow };
     }
     function save() {
         const raw = draft();
@@ -208,6 +213,11 @@ Column {
             TextField { id: tokensField; width: 120; text: "4096" }
         }
         Row {
+            label: "Reads pictures"
+            detail: "Screenshots, photos and circle to search need a model that can see. Guessed from the model ID; change it if that's wrong."
+            Switch { checked: root.visionNow; onToggled: root.vision = !checked }
+        }
+        Row {
             visible: root.provider === "anthropic"
             label: "Adaptive thinking"
             detail: "Enable only if this model supports adaptive thinking"
@@ -248,21 +258,57 @@ Column {
             }
         }
         Row {
-            label: "System prompt"
-            detail: "Instructions included with each request"
+            label: "Style"
+            detail: "How the assistant sounds"
+            Dropdown {
+                width: 200
+                options: [
+                    { value: "balanced", label: "Balanced" },
+                    { value: "concise", label: "Concise" },
+                    { value: "friendly", label: "Friendly" },
+                    { value: "professional", label: "Professional" },
+                    { value: "playful", label: "Playful" }
+                ]
+                value: Config.options.ai.style
+                onChosen: v => Config.options.ai.style = v
+            }
         }
+        Row {
+            label: "Your note"
+            detail: "How it should answer: tone, length, what to call you. iRice's own rules stay in place. " + noteArea.length + " of " + Prompt.MAX_NOTE
+        }
+        // (a few lines; Glass: the field's fill and hairline, Material: its pill)
         Item {
             width: parent.width
-            height: 140
-            ScrollView {
-                anchors { fill: parent; margins: 12 }
-                TextArea {
-                    wrapMode: TextEdit.Wrap
-                    text: Config.options.ai.systemPrompt
-                    color: Theme.color.label
-                    background: null
-                    font { family: Theme.font.family; pixelSize: Theme.font.body }
-                    onEditingFinished: Config.options.ai.systemPrompt = text
+            height: 112
+            Rectangle {
+                id: noteBox
+                anchors { fill: parent; leftMargin: Theme.material ? 20 : 14; rightMargin: Theme.material ? 20 : 14; bottomMargin: Theme.material ? 16 : 12 }
+                radius: Theme.material ? 20 : Theme.radius.control - 2
+                color: Theme.material ? "transparent" : Theme.color.fill
+                border.width: Theme.material ? 0 : 1
+                border.color: noteArea.activeFocus ? Theme.accent : Theme.color.separator
+                Loader {
+                    anchors.fill: parent
+                    active: Theme.material
+                    sourceComponent: FilledField { active: noteArea.activeFocus; radius: 20 }
+                }
+                ScrollView {
+                    anchors { fill: parent; margins: 4 }
+                    TextArea {
+                        id: noteArea
+                        wrapMode: TextEdit.Wrap
+                        text: Config.options.ai.customInstructions
+                        placeholderText: "For example: answer in British English, and keep it short."
+                        placeholderTextColor: Theme.color.tertiary
+                        color: Theme.color.label
+                        background: null
+                        font { family: Theme.font.family; pixelSize: Theme.font.body }
+                        Accessible.name: "Your note to the assistant"
+                        // (kept to the length that's sent)
+                        onTextChanged: if (length > Prompt.MAX_NOTE) remove(Prompt.MAX_NOTE, length)
+                        onEditingFinished: Config.options.ai.customInstructions = Prompt.clean(text)
+                    }
                 }
             }
         }

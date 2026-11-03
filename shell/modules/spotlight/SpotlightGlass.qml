@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.common
 import qs.glass
 import qs.services
+import "../../common/Markdown.js" as Markdown
 
 // Spotlight: a floating glass search field; results appear in a second glass
 // panel below as you type. Up/Down to move, Enter to open, Esc to close.
@@ -242,12 +243,13 @@ Variants {
                             visible: Ai.quick.answer !== "" || Ai.quick.error !== ""
                             TextEdit {
                                 id: answerText
+                                onLinkActivated: link => Launch.openLink(link)
                                 width: parent.width
                                 readOnly: true
                                 selectByMouse: true
                                 wrapMode: TextEdit.Wrap
-                                textFormat: Ai.quick.error !== "" ? TextEdit.PlainText : TextEdit.MarkdownText
-                                text: Ai.quick.error !== "" ? Ai.quick.error : Ai.quick.answer
+                                textFormat: Ai.quick.error !== "" ? TextEdit.PlainText : TextEdit.RichText
+                                text: Ai.quick.error !== "" ? Ai.quick.error : Markdown.html(Ai.quick.answer, Theme.markdown) // (escaped; links http(s) and mailto only)
                                 color: Ai.quick.error !== "" ? Theme.color.danger : Theme.color.label
                                 selectionColor: Theme.accentAlpha(0.4)
                                 font { family: Theme.font.family; pixelSize: Theme.font.title }

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../shell/services/AiModels.js'), 'utf8').replace(/^\.pragma library\s*/, '');
-const api = vm.runInNewContext(source + '; ({normalize, validate, read, protocol, credentialProvider, sameConnection, migrate, buildRequest})');
+const api = vm.runInNewContext(source + '; ({normalize, validate, read, protocol, credentialProvider, sameConnection, migrate, buildRequest, guessVision})');
 const plain = value => JSON.parse(JSON.stringify(value));
 const settings = { systemPrompt: 'Test system', showThinking: true, effort: 'medium', ollamaUrl: 'http://localhost:11434' };
 const turns = [{role: 'user', text: 'Test prompt'}, {role: 'assistant', text: 'Test reply'}];
@@ -138,4 +138,31 @@ test('credential retention is limited to edits on the same connection', () => {
     assert.equal(api.sameConnection(original, model('custom',{endpoint:'https://two.example/v1'})), false);
     assert.equal(api.sameConnection(model('vertex',{auth:'token',project:'one'}), model('vertex',{auth:'token',project:'two'})), false);
     assert.equal(api.sameConnection(model('vertex'), model('vertex',{auth:'token',project:'one'})), false);
+});
+
+test('which models read pictures: guessed, and the record wins', () => {
+    assert.equal(api.guessVision('anthropic', 'anything'), true);
+    assert.equal(api.guessVision('aistudio', 'gemini-2.5-flash'), true);
+    assert.equal(api.guessVision('openai', 'gpt-4o-mini'), true);
+    assert.equal(api.guessVision('openai', 'gpt-3.5-turbo'), false);
+    assert.equal(api.guessVision('ollama', 'llama3.1:8b'), false);
+    assert.equal(api.guessVision('ollama', 'qwen2.5vl:7b'), true);
+    assert.equal(api.guessVision('ollama', 'llava:13b'), true);
+    assert.equal(model('ollama', {vision: true}).vision, true);
+    assert.equal(model('anthropic', {vision: false}).vision, false);
+});
+
+test('up to four pictures in one turn, for every wire format', () => {
+    const pics = [{data: 'AAA', mediaType: 'image/jpeg'}, {data: 'BBB', mediaType: 'image/png'}];
+    const history = [{role: 'user', text: 'Compare these', images: pics}];
+    const claude = plain(request(model('anthropic'), {}, history).body.messages[0].content);
+    assert.deepEqual(claude.map(c => c.type), ['image', 'image', 'text']);
+    assert.equal(claude[1].source.media_type, 'image/png');
+    const gemini = plain(request(model('aistudio'), {}, history).body.contents[0].parts);
+    assert.equal(gemini.filter(p => p.inline_data).length, 2);
+    const openai = plain(request(model('openai'), {}, history).body.messages[1].content);
+    assert.deepEqual(openai.map(c => c.type), ['image_url', 'image_url', 'text']);
+    // (one picture saved by an older version still goes)
+    const legacy = plain(request(model('anthropic'), {}, [{role: 'user', text: 'x', image: pics[0]}]).body.messages[0].content);
+    assert.equal(legacy[0].source.data, 'AAA');
 });

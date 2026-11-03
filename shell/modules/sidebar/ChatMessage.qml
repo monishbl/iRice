@@ -2,6 +2,7 @@ import QtQuick
 import qs.common
 import qs.services
 import qs.modules.controlcenter
+import "../../common/Markdown.js" as Markdown
 
 // One chat row. User turns are accent bubbles on the right; assistant turns are
 // Markdown with an optional collapsible reasoning summary; notes are captions.
@@ -16,26 +17,39 @@ Item {
     required property string image
 
     property bool showThinking: false
+    // The reply in parts: prose and code blocks (a Repeater over the count
+    // keeps parts' delegates while a reply streams in)
+    readonly property var parts: role === "assistant" && status !== "error" ? Markdown.split(text) : []
     implicitHeight: role === "user" ? bubble.y + bubble.height : role === "note" ? noteText.implicitHeight : assistant.implicitHeight
 
-    // Attached screenshot, above the bubble
-    Squircle {
+    // Attached pictures, above the bubble (one large, several as a row)
+    readonly property var pictures: role === "user" && image !== "" ? image.split("\n") : []
+    Row {
         id: shot
-        // (a screenshot that's since been deleted leaves no empty box)
-        visible: root.role === "user" && root.image !== "" && shotImage.status !== Image.Error
+        visible: shotRepeater.count > 0 && root.pictures.length > 0
         anchors.right: parent.right
-        width: 200
-        height: 120
-        radius: Theme.material ? 20 : 14
-        color: Theme.color.fill
-        clip: true
-        Image {
-            id: shotImage
-            anchors.fill: parent
-            source: root.role === "user" && root.image !== "" ? "file://" + root.image : ""
-            fillMode: Image.PreserveAspectCrop
-            sourceSize: Qt.size(400, 240)
-            asynchronous: true
+        spacing: 4
+        Repeater {
+            id: shotRepeater
+            model: root.pictures
+            Squircle {
+                required property string modelData
+                // (one deleted since leaves no empty box)
+                visible: shotImage.status !== Image.Error
+                width: root.pictures.length === 1 ? 200 : 76
+                height: root.pictures.length === 1 ? 120 : 76
+                radius: Theme.material ? (root.pictures.length === 1 ? 20 : 14) : (root.pictures.length === 1 ? 14 : 10)
+                color: Theme.color.fill
+                clip: true
+                Image {
+                    id: shotImage
+                    anchors.fill: parent
+                    source: "file://" + parent.modelData
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize: Qt.size(400, 240)
+                    asynchronous: true
+                }
+            }
         }
     }
 
@@ -141,37 +155,68 @@ Item {
             width: parent.width
             leftPadding: 10
             wrapMode: Text.Wrap
-            textFormat: Text.MarkdownText
-            text: root.thinking
+            textFormat: Text.RichText
+            text: root.showThinking ? Markdown.html(root.thinking, Theme.markdown) : ""
             color: Theme.color.secondary
+            onLinkActivated: link => Launch.openLink(link)
             font { family: Theme.font.family; pixelSize: Theme.font.small }
             Rectangle { width: 2; height: parent.height; radius: 1; color: Theme.color.separator }
         }
 
-        TextEdit {
-            visible: text !== "" && root.status !== "error"
+        // The reply: prose as rich text, code blocks in their own boxes
+        // (Material: in a surface-container-high bubble, its corner nearest
+        // the speaker, top left, small)
+        Item {
+            visible: root.parts.length > 0
             width: parent.width
-            // (Material: in a surface-container-high bubble, its corner
-            // nearest the speaker, top left, small)
-            padding: Theme.material ? 16 : 0
-            topPadding: Theme.material ? 12 : 0
-            bottomPadding: Theme.material ? 12 : 0
-            readOnly: true
-            selectByMouse: true
-            wrapMode: TextEdit.Wrap
-            textFormat: TextEdit.MarkdownText
-            text: root.role === "assistant" ? root.text : ""
-            color: Theme.color.label
-            selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
-            font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Launch.openLink(link)
+            height: replyParts.implicitHeight + (Theme.material ? 24 : 0)
             Rectangle {
-                z: -1
                 anchors.fill: parent
                 visible: Theme.material
                 radius: 20
                 topLeftRadius: 4
                 color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
+            }
+            Column {
+                id: replyParts
+                x: Theme.material ? 16 : 0
+                y: Theme.material ? 12 : 0
+                width: parent.width - 2 * x
+                spacing: 8
+                Repeater {
+                    model: root.parts.length
+                    Loader {
+                        required property int index
+                        readonly property var part: root.parts[index] ?? null
+                        width: replyParts.width
+                        sourceComponent: part?.kind === "code" ? codePart : prosePart
+                    }
+                }
+            }
+        }
+        Component {
+            id: prosePart
+            TextEdit {
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.RichText
+                text: Markdown.html(parent?.part?.md ?? "", Theme.markdown)
+                color: Theme.color.label
+                selectionColor: Theme.material ? Qt.alpha(Theme.m3.primary, 0.3) : Theme.accentAlpha(0.4)
+                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                onLinkActivated: link => Launch.openLink(link)
+                HoverHandler {
+                    cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
+                }
+            }
+        }
+        Component {
+            id: codePart
+            CodeBlock {
+                lang: parent?.part?.lang ?? ""
+                code: parent?.part?.code ?? ""
+                open: parent?.part?.open ?? false
             }
         }
 
@@ -220,7 +265,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: {
-                        System.run(["wl-copy", root.text]);
+                        System.run(["wl-copy", "--", root.text]);
                         copyIcon.name = "check";
                         copyReset.restart();
                     }

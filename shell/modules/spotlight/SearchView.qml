@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.common
 import qs.glass
 import qs.services
+import "../../common/Markdown.js" as Markdown
 
 // Spotlight in the Material look: Google-style search. A 56 px pill search
 // bar drops into Material 3's docked search view (corner 28), the results in
@@ -409,12 +410,13 @@ Variants {
                                 visible: Ai.quick.answer !== "" || Ai.quick.error !== ""
                                 TextEdit {
                                     id: answerText
+                                    onLinkActivated: link => Launch.openLink(link)
                                     width: parent.width
                                     readOnly: true
                                     selectByMouse: true
                                     wrapMode: TextEdit.Wrap
-                                    textFormat: Ai.quick.error !== "" ? TextEdit.PlainText : TextEdit.MarkdownText
-                                    text: Ai.quick.error !== "" ? Ai.quick.error : Ai.quick.answer
+                                    textFormat: Ai.quick.error !== "" ? TextEdit.PlainText : TextEdit.RichText
+                                    text: Ai.quick.error !== "" ? Ai.quick.error : Markdown.html(Ai.quick.answer, Theme.markdown) // (escaped; links http(s) and mailto only)
                                     color: Ai.quick.error !== "" ? Theme.m3.error : Theme.m3.onSurface
                                     selectionColor: Theme.m3.primaryContainer
                                     selectedTextColor: Theme.m3.onPrimaryContainer

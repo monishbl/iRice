@@ -12,6 +12,15 @@ const providers = [
     { value: "custom", label: "OpenAI-compatible endpoint" }
 ];
 
+// Whether a model reads pictures, when its record doesn't say: Claude and
+// Gemini do; elsewhere, IDs that name a vision model (the person can change
+// it per model in Settings → AI)
+function guessVision(provider, id) {
+    if (provider === "anthropic" || provider === "aistudio" || provider === "vertex")
+        return true;
+    return /(gpt-4o|gpt-4\.1|gpt-5|\bo[34]\b|o[34]-|claude|gemini|vision|[-_.]vl\b|-vl-|llava|pixtral|gemma-?3|qwen.*vl|minicpm-v|moondream|bakllava)/i.test(id);
+}
+
 function providerName(provider) {
     return providers.find(p => p.value === provider)?.label ?? provider;
 }
@@ -26,7 +35,8 @@ function normalize(raw) {
         location: provider === "vertex" ? text(raw.location) || "global" : "",
         auth: provider === "ollama" ? "none" : provider === "vertex" && raw.auth === "token" ? "token" : provider === "custom" && raw.auth === "none" ? "none" : "apiKey",
         thinking: provider === "anthropic" && raw.thinking === true,
-        maxTokens: provider === "anthropic" ? Number(raw.maxTokens ?? 4096) : 0
+        maxTokens: provider === "anthropic" ? Number(raw.maxTokens ?? 4096) : 0,
+        vision: typeof raw.vision === "boolean" ? raw.vision : guessVision(provider, text(raw.id))
     };
     if (m.provider === "aistudio")
         m.id = m.id.replace(/^models\//, "");
@@ -121,19 +131,25 @@ function migrate(selected, extras, ollamaUrl) {
     return read(raw);
 }
 
+// A turn's pictures: `images` (up to 4), or one `image` (saved before)
+function imagesOf(h) {
+    return h.images ?? (h.image ? [h.image] : []);
+}
+
 function content(h, provider) {
+    const imgs = imagesOf(h);
     if (provider === "anthropic")
-        return h.blocks ?? (h.image ? [{ type: "image", source: { type: "base64", media_type: h.image.mediaType, data: h.image.data } }, { type: "text", text: h.text }] : h.text);
+        return h.blocks ?? (imgs.length ? imgs.map(i => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: i.data } })).concat([{ type: "text", text: h.text }]) : h.text);
     if (provider === "gemini")
-        return (h.image ? [{ inline_data: { mime_type: h.image.mediaType, data: h.image.data } }] : []).concat([{ text: h.text }]);
-    return h.image ? [{ type: "image_url", image_url: { url: "data:" + h.image.mediaType + ";base64," + h.image.data } }, { type: "text", text: h.text }] : h.text;
+        return imgs.map(i => ({ inline_data: { mime_type: i.mediaType, data: i.data } })).concat([{ text: h.text }]);
+    return imgs.length ? imgs.map(i => ({ type: "image_url", image_url: { url: "data:" + i.mediaType + ";base64," + i.data } })).concat([{ type: "text", text: h.text }]) : h.text;
 }
 
 function buildRequest(m, turns, opts, settings, credential) {
     const error = validate(m);
     if (error)
         throw new Error(error);
-    const sys = opts.system ?? settings.systemPrompt;
+    const sys = opts.system ?? ""; // (AiPrompt's, from the caller)
     const headers = { "content-type": "application/json" };
     if (m.provider === "anthropic") {
         const body = { model: m.id, max_tokens: opts.maxTokens ?? m.maxTokens, stream: true, system: sys,

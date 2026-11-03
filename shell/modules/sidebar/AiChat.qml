@@ -7,6 +7,7 @@ import qs.services
 
 // AI chat: model picker, conversation, composer. Enter sends, Shift+Enter
 // adds a line. /clear, /model <id>, /key <key> work in the composer.
+// Pictures (up to 4 a message): the + button, a screenshot, Ctrl+V or a drop.
 Item {
     id: root
 
@@ -174,7 +175,7 @@ Item {
         id: list
 
         Momentum {}
-        anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: attachmentChip.visible ? attachmentChip.top : composerBox.top; bottomMargin: 10 }
+        anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: pictures.visible ? pictures.top : composerBox.top; bottomMargin: 10 }
         clip: true
         spacing: 14
         model: Ai.chat
@@ -187,41 +188,75 @@ Item {
         }
     }
 
-    // Screenshot waiting to be sent with the next message
-    Squircle {
-        id: attachmentChip
-        visible: Ai.attachment !== null
+    // Pictures waiting to go with the next message, each with its remove button
+    Row {
+        id: pictures
+        visible: Ai.attachments.length > 0
         anchors { left: parent.left; bottom: composerBox.top; bottomMargin: 8 }
-        width: chipRow.implicitWidth + 12
-        height: 48
-        radius: Theme.material ? 16 : Theme.radius.control
-        color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
-        border.width: Theme.material ? 0 : 1
-        border.color: Theme.color.separator
-        Row {
-            id: chipRow
-            x: 6
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
-            Image {
-                width: 56
-                height: 36
-                source: Ai.attachment ? "file://" + Ai.attachment.path : ""
-                fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(112, 72)
-                asynchronous: true
+        spacing: 8
+        Repeater {
+            model: Ai.attachments
+            Item {
+                id: pic
+                required property var modelData
+                required property int index
+                width: 64
+                height: 64
+                Squircle {
+                    anchors.fill: parent
+                    radius: Theme.material ? 16 : 12
+                    color: Theme.color.fill
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        source: "file://" + pic.modelData.path
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize: Qt.size(128, 128)
+                        asynchronous: true
+                    }
+                }
+                Rectangle {
+                    anchors { right: parent.right; top: parent.top; margins: -6 }
+                    width: 22
+                    height: 22
+                    radius: 11
+                    color: Theme.material ? Theme.m3.inverseSurface : Qt.rgba(0.1, 0.1, 0.12, 0.85)
+                    Icon { anchors.centerIn: parent; name: "x"; bold: true; size: 11; color: Theme.material ? Theme.m3.inverseOnSurface : "white" }
+                    MouseArea {
+                        anchors { fill: parent; margins: -11 } // (44 px to hit)
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Remove picture " + (pic.index + 1)
+                        onClicked: Ai.detach(pic.index)
+                    }
+                }
             }
+        }
+    }
+
+    // Files dropped on the chat: the pictures among them
+    DropArea {
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onEntered: drag => drag.accepted = drag.hasUrls
+        onDropped: drop => {
+            const files = drop.urls.map(u => String(u)).filter(u => u.startsWith("file://")).map(u => decodeURIComponent(u.slice(7)));
+            if (files.length)
+                Ai.attachFiles(files);
+            drop.accept(Qt.CopyAction);
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: parent.containsDrag
+            radius: Theme.material ? 24 : 16
+            color: Theme.material ? Qt.alpha(Theme.m3.primary, 0.08) : Theme.accentAlpha(0.08)
+            border.width: 2
+            border.color: Theme.material ? Theme.m3.primary : Theme.accent
             Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Screenshot"
-                color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-            }
-            IconButton {
-                anchors.verticalCenter: parent.verticalCenter
-                icon: "x"
-                iconSize: 13
-                onClicked: Ai.attach(null)
+                anchors.centerIn: parent
+                text: "Drop pictures to add them"
+                color: Theme.material ? Theme.m3.primary : Theme.accentInk
+                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
             }
         }
     }
@@ -237,11 +272,55 @@ Item {
         border.width: Theme.material ? 0 : 1
         border.color: composer.activeFocus ? Theme.accentAlpha(0.6) : Theme.color.separator
 
+        // Add pictures, take a screenshot (its menu: area or window)
+        Row {
+            id: tools
+            anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: Theme.material ? 6 : 3 }
+            spacing: 0
+            IconButton {
+                icon: "plus"
+                tooltip: "Add pictures"
+                width: Theme.material ? 36 : 28
+                height: width
+                enabled: Ai.attachments.length < Ai.maxImages && !FilePicker.busy
+                onClicked: FilePicker.pick({ multiple: true, title: "Add pictures", start: "~/Pictures", filter: "Pictures|*.png *.jpg *.jpeg *.webp *.gif *.heic *.avif *.bmp *.tif *.tiff" }, paths => {
+                    if (paths && paths.length)
+                        Ai.attachFiles(paths);
+                })
+            }
+            IconButton {
+                id: shotButton
+                icon: "camera"
+                tooltip: "Take a screenshot (right-click: area or window)"
+                accessibleName: "Take a screenshot"
+                width: Theme.material ? 36 : 28
+                height: width
+                enabled: Ai.attachments.length < Ai.maxImages
+                onClicked: ScreenTools.askScreen()
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: shotMenu.visible = !shotMenu.visible
+                }
+                TapHandler {
+                    onLongPressed: shotMenu.visible = true
+                }
+            }
+            IconButton {
+                icon: "caret-up"
+                iconSize: 10
+                tooltip: "More screenshot options"
+                width: 18
+                height: Theme.material ? 36 : 28
+                enabled: Ai.attachments.length < Ai.maxImages
+                onClicked: shotMenu.visible = !shotMenu.visible
+            }
+        }
+
         Flickable {
             id: scroller
 
             Momentum {}
-            anchors { left: parent.left; right: sendButton.left; top: parent.top; bottom: parent.bottom; leftMargin: Theme.material ? 20 : 14; rightMargin: 6; topMargin: Theme.material ? 16 : 11; bottomMargin: Theme.material ? 16 : 11 }
+            anchors { left: tools.right; right: sendButton.left; top: parent.top; bottom: parent.bottom; leftMargin: 6; rightMargin: 6; topMargin: Theme.material ? 16 : 11; bottomMargin: Theme.material ? 16 : 11 }
             contentHeight: composer.contentHeight
             clip: true
             TextArea.flickable: TextArea {
@@ -249,10 +328,22 @@ Item {
                 padding: 0
                 wrapMode: TextEdit.Wrap
                 color: Theme.color.label
-                placeholderText: !Ai.configured ? "Add a model in Settings → AI" : Ai.needsKey ? "Add a credential to start" : Ai.attachment ? "Ask about this screenshot" : "Message " + Ai.model.name
+                placeholderText: !Ai.configured ? "Add a model in Settings → AI" : Ai.needsKey ? "Add a credential to start" : Ai.attachments.length === 1 ? "Ask about this picture" : Ai.attachments.length > 1 ? "Ask about these pictures" : "Message " + Ai.model.name
                 placeholderTextColor: Theme.color.tertiary
                 background: null
                 font { family: Theme.font.family; pixelSize: Theme.font.body }
+                // Ctrl+V: a picture on the clipboard is added; otherwise text
+                // pastes as usual (Ai.pastedText)
+                Keys.onPressed: e => {
+                    if (e.matches(StandardKey.Paste)) {
+                        e.accepted = true;
+                        Ai.attachClipboard();
+                    }
+                }
+                Connections {
+                    target: Ai
+                    function onPastedText() { composer.paste(); }
+                }
                 Keys.onReturnPressed: e => {
                     if (e.modifiers & Qt.ShiftModifier) {
                         e.accepted = false;
@@ -275,7 +366,7 @@ Item {
             ElasticControl { id: pressFx2; pressed: sendMouse.pressed; enabled: Theme.material }
             radius: Theme.material && sendMouse.pressed ? 10 : width / 2
             Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
-            readonly property bool canSend: composer.text.trim() !== "" || Ai.attachment !== null
+            readonly property bool canSend: composer.text.trim() !== "" || Ai.attachments.length > 0
             color: Ai.busy || canSend ? (Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, sendMouse.pressed ? 0.1 : sendMouse.containsMouse ? 0.08 : 0)) : Theme.accent)
                 : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.12) : Theme.color.toggleOff
             Icon {
@@ -296,6 +387,65 @@ Item {
                     } else if (sendButton.canSend) {
                         Ai.submit(composer.text);
                         composer.text = "";
+                    }
+                }
+            }
+        }
+    }
+
+    // Screenshot menu: above the composer's screenshot button
+    Squircle {
+        id: shotMenu
+        visible: false
+        anchors { left: parent.left; bottom: composerBox.top; bottomMargin: 6 }
+        width: 220
+        height: shotItems.implicitHeight + 10
+        radius: Theme.material ? 16 : 14
+        color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.97) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
+        border.width: Theme.material ? 0 : 1
+        border.color: Theme.color.separator
+        z: 10
+        Column {
+            id: shotItems
+            x: 5
+            y: 5
+            width: parent.width - 10
+            Repeater {
+                model: [
+                    { icon: "monitor", label: "Whole screen", run: () => ScreenTools.askScreen() },
+                    { icon: "selection", label: "Area or window…", run: () => ScreenTools.select("ask") }
+                ]
+                Squircle {
+                    required property var modelData
+                    width: shotItems.width
+                    height: Theme.material ? 44 : 30
+                    radius: Theme.material ? 12 : 8
+                    color: shotItemMouse.containsMouse ? (Theme.material ? Theme.color.highlight : Theme.accent) : "transparent"
+                    Row {
+                        x: Theme.material ? 12 : 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.material ? 12 : 8
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: modelData.icon
+                            size: Theme.material ? 18 : 14
+                            color: shotItemMouse.containsMouse ? (Theme.material ? Theme.color.onHighlight : Theme.color.onAccent) : Theme.color.secondary
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.label
+                            color: shotItemMouse.containsMouse ? (Theme.material ? Theme.color.onHighlight : Theme.color.onAccent) : Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.font.body }
+                        }
+                    }
+                    MouseArea {
+                        id: shotItemMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            shotMenu.visible = false;
+                            modelData.run();
+                        }
                     }
                 }
             }

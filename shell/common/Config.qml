@@ -330,7 +330,11 @@ Singleton {
                 property string effort: "medium" // low | medium | high | xhigh | max (Claude)
                 property bool showThinking: true
                 property string ollamaUrl: "http://localhost:11434"
-                property string systemPrompt: "You are a helpful assistant in a Linux desktop sidebar (Hyprland). Be concise and direct. Use Markdown: short paragraphs, lists where they help, and fenced code blocks for commands or code."
+                // How the assistant answers (iRice's own prompt is fixed:
+                // services/AiPrompt.js): a style and the person's short note
+                property string style: "balanced" // balanced | concise | friendly | professional | playful
+                property string customInstructions: ""
+                property string systemPrompt: "" // (legacy: a whole prompt; moved into customInstructions once)
                 // Legacy user models, imported once into models above.
                 property list<var> extraModels: []
             }
