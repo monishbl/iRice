@@ -26,19 +26,10 @@ Rectangle {
         flashAnim.restart();
     }
 
-    // Each sidebar group's icons in one tonal colour, turn about: primary,
-    // secondary, tertiary (as Android's Settings colours its rows)
-    readonly property var groups: {
-        const g = [];
-        for (const s of win.sections)
-            if (!g.includes(s.group))
-                g.push(s.group);
-        return g;
-    }
-    readonly property var tones: ["Primary", "Secondary", "Tertiary"]
+    // One tone for every page's icon (the groups' three tones read as
+    // icons that don't match); the open page's is primary
     function tone(sectionId) {
-        const s = win.sections.find(x => x.id === sectionId);
-        return tones[Math.max(0, groups.indexOf(s?.group ?? "")) % 3];
+        return "Secondary";
     }
 
     color: Theme.m3.surface
@@ -267,7 +258,7 @@ Rectangle {
                                     Icon {
                                         anchors.centerIn: parent
                                         name: item.modelData.icon
-                                        fill: item.current
+                                        fill: true
                                         size: 22
                                         color: item.current ? Theme.m3.onPrimary : Theme.m3["on" + item.tone + "Container"]
                                     }
