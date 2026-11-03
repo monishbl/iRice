@@ -87,18 +87,28 @@ for look in "${LOOKS[@]}"; do
         continue
     fi
     if [[ -n "${SMOKE_SHOTS:-}" ]]; then
-        blank=$(python3 -I - "$SMOKE_SHOTS" "$look" <<'PY'
-import sys, pathlib
+        read -r blank frozen < <(python3 -I - "$SMOKE_SHOTS" "$look" <<'PY'
+import sys, os, pathlib, hashlib
 from PIL import Image, ImageStat
-n = 0
-for f in sorted(pathlib.Path(sys.argv[1]).glob(sys.argv[2] + "-*.png")):
+blank = frozen = 0
+prev = None
+for f in sorted(pathlib.Path(sys.argv[1]).glob(sys.argv[2] + "-*.png"), key=os.path.getmtime):
     # (nothing drawn: near black on average; the pointer alone can be white)
-    n += ImageStat.Stat(Image.open(f).convert("L")).mean[0] < 6
-print(n)
+    blank += ImageStat.Stat(Image.open(f).convert("L")).mean[0] < 6
+    # (a different panel, the very same pixels: the shell stopped drawing)
+    h = hashlib.md5(Image.open(f).tobytes()).digest()
+    frozen += h == prev
+    prev = h
+print(blank, frozen)
 PY
 )
         if [[ "$blank" -gt 0 ]]; then
             echo "FAIL $look: $blank screenshots are blank (nothing drawn)"
+            failed=1
+            continue
+        fi
+        if [[ "$frozen" -gt 0 ]]; then
+            echo "FAIL $look: $frozen screenshots repeat the one before (the shell stopped drawing)"
             failed=1
             continue
         fi
