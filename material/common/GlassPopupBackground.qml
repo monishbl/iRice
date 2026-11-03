@@ -22,7 +22,10 @@ Item {
     // all of it would copy this popup too (a feedback loop of smeared copies).
     readonly property Item content: Window.contentItem
     property Item page: null
+    // (Material: only when Transparency lets it show; under its opaque surface
+    // the copy and the blur ran every frame for nothing)
     readonly property bool blurring: blurContent && visible && page !== null && Theme.glass.tier !== "solid"
+        && (!Theme.material || Theme.transparency > 0)
     readonly property int pad: 24 // blur reaches this far in from outside the edges
     // Where this sits over `page`, padded (popups don't move while open)
     property rect area: Qt.rect(0, 0, 0, 0)
