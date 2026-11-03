@@ -1,4 +1,5 @@
 import QtQuick
+import qs.common
 
 // The Material look's big clock, as Android 16's large lock screen clock: the
 // hours over the minutes in Google Sans Flex, chunky and rounded through the
@@ -25,7 +26,7 @@ Item {
     // does (once a minute; off for StandBy, where nothing should move)
     property bool ticks: false
 
-    readonly property string hours: String((time.getHours() + 11) % 12 + 1).padStart(2, "0")
+    readonly property string hours: TimeFormat.hour(time).padStart(2, "0")
     readonly property string minutes: String(time.getMinutes()).padStart(2, "0")
 
     // Google Sans Flex: ascent 0.966 em, digits 0.716 em tall. The lines are

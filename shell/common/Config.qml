@@ -39,6 +39,15 @@ Singleton {
                 adapter.sidebar.booru = false;
                 adapter.defaultsVersion = 1;
             }
+            // 3 Nov: the welcome screen (modules/welcome) shows once, on a
+            // new setup. Settings saved before it (no "welcome" in the file)
+            // count as welcomed; a file written from the defaults, or by
+            // install.sh, has `welcome.done: false`
+            if (adapter.defaultsVersion < 2) {
+                if (!text().includes('"welcome"'))
+                    adapter.welcome.done = true;
+                adapter.defaultsVersion = 2;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -73,6 +82,7 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
+                property bool clock24: false // 24-hour time everywhere (TimeFormat)
                 // The look: glass (this shell) | material (experimental: Material 3
                 // Expressive, the material/ folder; switching restarts the shell,
                 // assets/scripts/switch-look.sh)
@@ -85,7 +95,11 @@ Singleton {
                 // In the Material look: its own sound set, and the Bibata pointer
                 property bool materialSounds: true
                 property bool materialCursor: true
-                property bool materialBlur: true // Material: Android 17's tinted blur behind panels and menus (off: opaque)
+                property bool materialBlur: true // (before 3 Nov: the on/off blur; materialTransparency replaced it)
+                // Material: how see-through panels, menus, tiles and tonal buttons
+                // are, 0 (solid) .. 1, over the blurred desktop; text and accent
+                // fills stay solid
+                property real materialTransparency: 0
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 // (frosted by default: light on the GPU; liquid, the full glass that
                 // bends what's behind, needs the irice-glass plugin, else it's frosted)
@@ -151,14 +165,24 @@ Singleton {
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
                 // The Material look's lock clock (Android 17's clock styles):
-                // stacked | wide | overlap | analog | weather
-                property string clockFace: "stacked"
-                // dynamic: large while the lock screen is empty, small once
-                // notifications or Now Playing are there | large | small
-                property string clockSize: "dynamic"
+                // dynamic (the hours tall, the minutes smaller beside them,
+                // AM/PM under the minutes) | stacked | wide | overlap | analog | weather
+                property string clockFace: "dynamic"
+                // large | small (the top corner); it doesn't move by itself
+                // ("dynamic" before 3 Nov counts as large)
+                property string clockSize: "large"
+                // Notifications and Now Playing: shelf (the apps' icons and
+                // the newest card under the clock, the player over the account
+                // pill) | column (beside the clock, like a tablet) | icons
+                // (only the apps' icons)
+                property string notifications: "shelf"
                 property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
                 property int clockWidth: 112 // wdth, 25 .. 151
                 property bool clockRound: true // rounded digits (else sharp)
+                // The iRice login screen (greetd, ./install.sh --greeter): look
+                // (Glass or Material, the look you last used) | text (ly's) |
+                // plain (black, your picture and the field)
+                property string loginStyle: "look"
             }
 
             property JsonObject notificationCenter: JsonObject {
@@ -333,6 +357,12 @@ Singleton {
                 property list<string> stocks: ["AAPL", "MSFT", "^GSPC", "BTC-USD", "NVDA", "GOOGL"] // Yahoo Finance symbols for the Stocks widget
             }
 
+            // The welcome screen (modules/welcome: the look, light or dark, a
+            // wallpaper): shown until it's finished or put off; Settings →
+            // About shows it again
+            property JsonObject welcome: JsonObject {
+                property bool done: false
+            }
             // Today (services/Today.qml): the morning screen on the first
             // unlock of the day (after 4 AM), and its desktop widget
             property JsonObject today: JsonObject {

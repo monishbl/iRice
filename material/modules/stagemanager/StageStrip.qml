@@ -44,6 +44,8 @@ Variants {
                     readonly property var tops: modelData.wins.slice(-3).map(a => StageManager.toplevel(a)).filter(t => !!t)
                     width: 140
                     height: 104
+                    transform: pressFx1.effects
+                    ElasticControl { id: pressFx1; pressed: mouse.pressed }
                     scale: mouse.pressed ? 0.96 : mouse.containsMouse ? 1.04 : 1
                     Behavior on scale { ScaleAnimator { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
 

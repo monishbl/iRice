@@ -38,6 +38,13 @@ Variants {
                 draft = editor.text;
             }
             property string savingPath: ""
+            // Text into the note at the cursor
+            function put(t) {
+                if (!t)
+                    return;
+                editor.insert(editor.cursorPosition, t);
+                editor.forceActiveFocus();
+            }
             function save() {
                 if (savingPath !== "" || editor.text.trim() === "")
                     return;
@@ -142,6 +149,18 @@ Variants {
                             font: editor.font
                         }
                     }
+                    // More to put in (Material 3 Expressive's FAB menu)
+                    FabMenu {
+                        anchors { right: parent.right; bottom: parent.bottom; margins: 12 }
+                        icon: "plus"
+                        label: "Add to the note"
+                        items: [
+                            { text: "Checklist item", icon: "list-checks", action: () => dialog.put((editor.cursorPosition > 0 && editor.text[editor.cursorPosition - 1] !== "\n" ? "\n" : "") + "- [ ] ") },
+                            { text: "Paste what you copied", icon: "clipboard-text", action: () => dialog.put(Quickshell.clipboardText) },
+                            { text: "Today's date", icon: "calendar-blank", action: () => dialog.put(Qt.formatDate(new Date(), "dddd d MMMM yyyy")) },
+                            { text: "Open the Notes folder", icon: "folder-open", action: () => { Panels.close(); Notes.openFolder(); } }
+                        ]
+                    }
                 }
 
                 Item {
@@ -163,6 +182,8 @@ Variants {
                         // (12% / 38% of onSurface) with nothing to save
                         width: saveLabel.implicitWidth + (Theme.material ? 48 : 28)
                         height: Theme.material ? 40 : 32
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: saveMouse.pressed }
                         radius: Theme.material ? (saveMouse.pressed ? 8 : height / 2) : Theme.radius.control
                         Behavior on radius {
                             enabled: Theme.material

@@ -48,7 +48,25 @@ Rectangle {
         const n = Math.max(1, natural.length), avail = width - 4 - gap * (n - 1);
         const total = natural.reduce((a, b) => a + b, 0);
         const extra = (avail - total) / n;
-        return natural.map(w => extra >= 0 ? w + extra : w * avail / Math.max(1, total));
+        const w = natural.map(w => extra >= 0 ? w + extra : w * avail / Math.max(1, total));
+        // Material 3 Expressive: the pressed button widens and its
+        // neighbours give way, on the press spring (bouncing back)
+        const p = pressing;
+        if (p >= 0 && p < w.length && w.length > 1 && squeeze !== 0) {
+            const next = [p - 1, p + 1].filter(i => i >= 0 && i < w.length);
+            const d = Math.min(14, w[p] * 0.18) * squeeze;
+            w[p] += d;
+            for (const i of next)
+                w[i] -= d / next.length;
+        }
+        return w;
+    }
+    property int pressing: -1
+    property real squeeze: pressing >= 0 && pressedNow ? 1 : 0
+    property bool pressedNow: false
+    Behavior on squeeze {
+        enabled: Theme.motion.pressBounce
+        SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.002 }
     }
     function offset(i) {
         let x = 0;
@@ -135,6 +153,13 @@ Rectangle {
                     hoverEnabled: Theme.material
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.selected(parent.index)
+                    onPressedChanged: {
+                        if (!Theme.material)
+                            return;
+                        if (pressed)
+                            root.pressing = parent.index;
+                        root.pressedNow = pressed;
+                    }
                 }
             }
         }

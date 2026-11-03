@@ -305,7 +305,7 @@ Singleton {
             return "now";
         if (mins < 60)
             return mins + "m ago";
-        return Qt.formatTime(t, "h:mm AP");
+        return Qt.formatTime(t, TimeFormat.hm);
     }
 
     NotificationServer {

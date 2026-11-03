@@ -148,7 +148,7 @@ Variants {
             anchors.bottom: true
             margins.bottom: (Config.options.dock.enabled ? Config.options.dock.iconSize + 14 + 6 + 14 : 14) - m
             implicitWidth: Math.max(row.implicitWidth + 24, 340) + 2 * m
-            implicitHeight: 64 + 2 * m + (optionsOpen ? options.height - 2 * m + 8 : 0)
+            implicitHeight: 64 + 2 * m + (optionsOpen ? options.height - 2 * m + 8 : 0) + (recordSplit.open ? recordSplit.menuHeight : 0)
 
             Item {
                 anchors.fill: parent
@@ -313,6 +313,8 @@ Variants {
                                     // the picked one filled in primary, the rest a
                                     // state layer of the toolbar's content colour
                                     readonly property bool active: toolMouse.pressed || (!!tool.modelData.options && win.optionsOpen)
+                                    transform: pressFx1.effects
+                                    ElasticControl { id: pressFx1; pressed: toolMouse.pressed }
                                     radius: Theme.material ? (toolMouse.pressed ? 16 : tool.picked ? 20 : height / 2) : 12
                                     Behavior on radius {
                                         enabled: Theme.material
@@ -377,41 +379,25 @@ Variants {
                             }
                         }
 
-                        // Recording only: the Record button
+                        // Recording only: Record, a split button whose menu
+                        // records the other areas straight away
                         Item {
                             visible: win.recordOnly
-                            width: recordLabel.implicitWidth + 40
+                            width: recordSplit.implicitWidth + 16
                             height: 56
-                            Rectangle {
+                            SplitButton {
+                                id: recordSplit
                                 anchors.centerIn: parent
-                                width: parent.width
-                                height: Theme.material ? 40 : 36
-                                // (Material: the toolbar's key action, a filled
-                                // primary button, squaring off while pressed)
-                                radius: Theme.material && recordMouse.pressed ? 12 : height / 2
-                                Behavior on radius {
-                                    enabled: Theme.material
-                                    SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
-                                }
-                                color: Theme.material ? (!Recorder.available ? Qt.alpha(Theme.m3.onSurface, 0.12) : Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, recordMouse.pressed ? 0.1 : recordMouse.containsMouse ? 0.08 : 0)))
-                                    : !Recorder.available ? Theme.color.fill : recordMouse.pressed ? Qt.darker(Theme.color.danger, 1.2) : recordMouse.containsMouse ? Qt.darker(Theme.color.danger, 1.08) : Theme.color.danger
-                                scale: recordMouse.pressed && !Theme.material ? 0.97 : 1
-                                Behavior on scale { NumberAnimation { duration: 100 } }
-                                Text {
-                                    id: recordLabel
-                                    anchors.centerIn: parent
-                                    text: "Record"
-                                    color: Theme.material ? (Recorder.available ? Theme.m3.onPrimary : Qt.alpha(Theme.m3.onSurface, 0.38)) : Recorder.available ? "white" : Theme.color.tertiary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-                                }
-                                MouseArea {
-                                    id: recordMouse
-                                    anchors.fill: parent
-                                    enabled: Recorder.available
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: win.record(win.rec.area)
-                                }
+                                upward: true
+                                text: "Record"
+                                icon: "record"
+                                enabled: Recorder.available
+                                onClicked: win.record(win.rec.area)
+                                menu: [
+                                    { text: "Record entire screen", icon: "monitor", action: () => { win.rec.area = "screen"; win.record("screen"); } },
+                                    { text: "Record a window", icon: "app-window", action: () => { win.rec.area = "window"; win.record("window"); } },
+                                    { text: "Record a region", icon: "selection", action: () => { win.rec.area = "region"; win.record("region"); } }
+                                ]
                             }
                         }
                     }

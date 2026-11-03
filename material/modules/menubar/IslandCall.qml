@@ -187,7 +187,9 @@ Item {
             radius: 22
             color: Theme.material ? Qt.tint(btn.fillColor, Qt.alpha(btn.iconColor, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0)) : mouse.pressed ? Qt.darker(btn.fillColor, 1.2) : mouse.containsMouse ? Qt.lighter(btn.fillColor, 1.1) : btn.fillColor
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-            scale: mouse.pressed ? 0.94 : 1
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: mouse.pressed }
+            // (Material: grows on press: the ElasticControl above)
             Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
             Icon {
                 anchors.centerIn: parent

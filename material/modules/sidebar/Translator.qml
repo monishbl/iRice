@@ -95,6 +95,8 @@ Item {
                 anchors.centerIn: parent
                 width: parent.height
                 height: parent.height
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: swapMouse.pressed }
                 radius: Theme.material && swapMouse.pressed ? 12 : height / 2
                 Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                 opacity: root.source === "auto" ? (Theme.material ? 0.38 : 0.4) : 1
@@ -168,6 +170,8 @@ Item {
                 visible: root.result !== "" && root.error === ""
                 width: copyLabel.implicitWidth + (Theme.material ? 32 : 24)
                 height: Theme.material ? 36 : 28
+                transform: pressFx2.effects
+                ElasticControl { id: pressFx2; pressed: copyMouse.pressed }
                 radius: Theme.material && copyMouse.pressed ? 8 : height / 2
                 Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                 color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, copyMouse.pressed ? 0.1 : copyMouse.containsMouse ? 0.08 : 0))

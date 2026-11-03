@@ -137,6 +137,8 @@ Item {
             visible: !root.store
             anchors.fill: parent
             // (a round button that squares off a little while pressed)
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: goMouse.pressed }
             property real corner: goMouse.pressed ? 16 : height / 2
             Behavior on corner { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
             radius: Math.max(0, Math.min(height / 2, corner))

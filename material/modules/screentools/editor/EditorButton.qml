@@ -63,6 +63,8 @@ Squircle {
     implicitHeight: Theme.material ? 40 : 36
     implicitWidth: label === "" ? implicitHeight : row.implicitWidth + (Theme.material ? 32 : 28)
     // (Material: round; a selected toggle squares off, a press more so)
+    transform: pressFx1.effects
+    ElasticControl { id: pressFx1; pressed: mouse.pressed }
     radius: Theme.material ? (mouse.pressed && live ? 8 : selected ? 12 : height / 2) : Theme.radius.control
     Behavior on radius {
         enabled: Theme.material

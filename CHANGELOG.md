@@ -1,5 +1,24 @@
 # iRice changelog
 
+## Material 3 Expressive, round two; welcome, backups, 24-hour time · 2026-11-03
+
+- **Transparency, as much as you like.** Settings → Appearance → Transparency (Material look) replaces the Blur switch: 0% is solid, the default; slide it up and panels, menus, tiles and tonal buttons let the blurred desktop through. Text and filled buttons stay solid so they stay readable.
+- **Every press bounces.** Buttons and tiles swell a little while pressed and spring back past their size, their corners squaring off, as Material 3 Expressive does. In button groups the pressed button widens and its neighbours make room.
+- **The spaces bar is quiet.** In the Material look the dots sit straight on the menu bar; the pill only appears for something live, an alert, or a hover.
+- **Quick Settings in every size.** It packs the same layout as the Glass Control Center, in every size Edit controls offers: toggles small or wide, brightness and volume across or standing (tall sliders), the player half-width or full-width, readings wide or large.
+- **Players stay where they are.** Choosing another player widens its card in place while the current one narrows to a slice; nothing swaps places. The lock screen's players work the same way.
+- **The lock screen, redone (Material).** A new clock face, Dynamic: tall hours with the minutes beside them and AM/PM under the minutes (the date, with 24-hour time). The clock no longer shrinks into the corner by itself. At the bottom there's one pill, your picture, your name and the fingerprint glyph, that opens into the password field as soon as you type or move the mouse; the key you pressed is kept.
+- **Notifications on the lock screen, three ways** (both looks): Newest (the apps' icons and the newest one under the clock, the player over your account), Beside (a column next to the clock, like a tablet) or Icons. Settings → Lock Screen → Notifications.
+- **24-hour time everywhere.** Settings → Appearance → 24-hour time: the menu bar, the lock and StandBy clocks, widgets, events, alarms, timers and status lines follow it.
+- **Split buttons, FAB menus and floating toolbars.** The screenshot editor's Save, the recorder's Record and the App Store's Install/Open are split buttons with the other choices in their menu; Quick Note and the app drawer have FAB menus; the clipboard's actions float over the list.
+- **No more flash of the bundled wallpaper at start.** The desktop waited for nothing: before your settings were read it showed the default Tahoe picture for a moment, then yours. It now fades in straight to your own wallpaper.
+- **Login screens, four ways.** Settings → Lock Screen → Login screen: your look (Glass, or Material with your clock and colours, whichever you used last), Text (like ly: a box of text, keyboard first) or Plain (black, your picture and the field). The Glass and Material ones have no wallpaper either, just a clean background, the clock a little lower. A fingerprint works at all of them where the reader is set up; if a style ever fails to start, the text one comes up instead. Preview shows each on your screen without logging out. (It's used once the iRice login screen is installed: ./install.sh --greeter.)
+- **Settings' icons match** in the Material look: one tone, all filled, and Software Update's is an arrow, not a dot.
+- **Material window controls.** In the Material look the controls at the top of each window (Settings → Appearance → Windows → window controls) are round icon buttons on a tonal pill: minimize, maximize and close, close turning red under the pointer. Glass keeps its traffic lights; switching looks switches them. (The compositor plugin is rebuilt with the update.)
+- **A welcome screen.** On a new setup iRice asks three things: Glass or Material, light or dark, and a wallpaper. Settings → About shows it again.
+- **Back up and restore your settings.** Settings → About → Back up and restore saves your setup (settings, shortcuts, Focus modes and your wallpapers) to one file, without passwords, keys or accounts, and loads it on another computer; restoring keeps an Undo copy.
+- **Fixed:** a half-typed password stayed in the lock screen's field after unlocking with a finger or a face, and showed again at the next lock.
+
 ## The Material look, Android 17 · 2026-11-03
 
 - **Lock screen clocks.** Pick a style in Settings → Lock Screen → Clock from a carousel over your wallpaper: Stacked, Wide, Overlap, Analog or Weather, with their thickness, width and rounded or sharp digits. The clock is dynamic, as Android 17's: large while the lock screen is empty, small in the top corner once notifications arrive or something's playing (or always large, or always small).

@@ -233,7 +233,7 @@ FocusScope {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     visible: !!todo.modelData.due
                     readonly property date at: new Date(todo.modelData.due ?? 0)
-                    text: todo.modelData.allDay ? (Today.dayKey(at) === Today.day ? "Today" : Qt.formatDate(at, "ddd d MMM")) : Qt.formatTime(at, "h:mm AP")
+                    text: todo.modelData.allDay ? (Today.dayKey(at) === Today.day ? "Today" : Qt.formatDate(at, "ddd d MMM")) : Qt.formatTime(at, TimeFormat.hm)
                     color: (todo.modelData.due ?? Infinity) < root.now.getTime() ? Theme.color.danger : Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.body; features: { "tnum": 1 } }
                 }

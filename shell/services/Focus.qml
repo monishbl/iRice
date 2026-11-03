@@ -93,12 +93,12 @@ Singleton {
     }
 
     // "On until 7:00 PM" style status
-    readonly property string statusText: !on ? "Off" : until > 0 ? "On until " + Qt.formatTime(new Date(until), "h:mm AP") : source === "schedule" ? "On until " + fmt(mode.schedule.to) : "On"
+    readonly property string statusText: !on ? "Off" : until > 0 ? "On until " + Qt.formatTime(new Date(until), TimeFormat.hm) : source === "schedule" ? "On until " + fmt(mode.schedule.to) : "On"
     function fmt(hhmm) {
         const [h, m] = hhmm.split(":").map(Number);
         const d = new Date();
         d.setHours(h, m, 0, 0);
-        return Qt.formatTime(d, "h:mm AP");
+        return Qt.formatTime(d, TimeFormat.hm);
     }
 
     function applyEffects(m) {
@@ -201,6 +201,10 @@ Singleton {
     // Persistence: modes and the current state
     readonly property string path: Config.dir + "/focus.json"
     property bool loaded: false
+    // Read the file again (Settings → About restored it; this doesn't watch it)
+    function reload() {
+        file.reload();
+    }
     function save() {
         if (loaded)
             saveTimer.restart();

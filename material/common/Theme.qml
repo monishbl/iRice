@@ -45,7 +45,21 @@ Singleton {
         const s = Config.options.appearance.materialSeed;
         return /^#[0-9a-fA-F]{6}$/.test(s) ? s : Wallpaper.seed;
     }
-    readonly property var m3: material ? MaterialColor.MCU.scheme(materialSeed, dark, Config.options.appearance.materialStyle, [0, 0.5, 1][contrastLevel]) : ({})
+    readonly property var m3: material ? seeThrough(MaterialColor.MCU.scheme(materialSeed, dark, Config.options.appearance.materialStyle, [0, 0.5, 1][contrastLevel])) : ({})
+    // Transparency (Settings → Appearance): the containers (panels' and
+    // tiles', tonal buttons') let the blurred desktop through; text, accent
+    // fills and outlines stay solid. (Hyprland blurs layers above 40% alpha:
+    // the most see-through stays over that.)
+    readonly property var containerRoles: ["surface", "surfaceDim", "surfaceBright", "surfaceVariant", "surfaceContainerLowest", "surfaceContainerLow", "surfaceContainer", "surfaceContainerHigh", "surfaceContainerHighest", "primaryContainer", "secondaryContainer", "tertiaryContainer", "errorContainer"]
+    function seeThrough(s) {
+        if (transparency <= 0)
+            return s;
+        const o = Object.assign({}, s);
+        for (const k of containerRoles)
+            if (o[k] !== undefined)
+                o[k] = Qt.alpha(o[k], controlAlpha);
+        return o;
+    }
     // A light accent (yellow, cyan, a pale wallpaper colour) can't carry white
     // text: text and glyphs on accent fills are dark then (color.onAccent)
     readonly property bool lightAccent: AccentRamp.contrast(accent, "white") < 3 // (measured as real contrast: white on green #30D158 is only ~2:1)
@@ -85,10 +99,13 @@ Singleton {
     // The Material look's blur (Android 17's): panels, the volume panel, the
     // power menu, the app drawer and menus let the blurred desktop through,
     // tinted by their own colour. Off (or Reduce transparency): opaque
-    readonly property bool blur: material && !reduceTransparency && (Config.options.appearance.materialBlur ?? true) && CoolDown.glass !== "solid"
-    // A surface's colour, see-through where the blur is on
+    readonly property real transparency: material && !reduceTransparency && CoolDown.glass !== "solid" ? Math.max(0, Math.min(1, Config.options.appearance.materialTransparency ?? 0)) : 0
+    readonly property bool blur: transparency > 0
+    readonly property real panelAlpha: 1 - 0.55 * transparency
+    readonly property real controlAlpha: 1 - 0.5 * transparency
+    // A panel's colour, see-through as far as Transparency says
     function veil(c) {
-        return blur ? Qt.alpha(c, dark ? 0.8 : 0.84) : c;
+        return blur ? Qt.alpha(c, panelAlpha) : c;
     }
     // Text contrast (Settings → Appearance): 0 standard (macOS vibrancy),
     // 1 higher (text about 4.5:1 over glass), 2 maximum (about 7:1). It's
@@ -142,7 +159,7 @@ Singleton {
         // [lens, frost, solid, tint]
         // (veil: the Material look's, Android 17's tinted blur: no lens, all
         // frost, mostly its own tonal colour)
-        readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0], veil: [0, 1, 0.8, 0.5] })
+        readonly property var presets: ({ liquid: [1, 0.75, 0, 0.75], frosted: [0.3, 1, 0.45, 0.5], solid: [0, 0, 1, 0], veil: [0, 1, root.panelAlpha, 0.5] })
         // (the Material look: tonal surfaces, blurred behind unless that's
         // off, then opaque)
         readonly property string chosen: root.reduceTransparency ? "solid" : root.material ? (root.blur ? "veil" : "solid") : Config.options.appearance.glass === "auto" ? "liquid" : Config.options.appearance.glass
@@ -255,6 +272,14 @@ Singleton {
         readonly property var springFast: ({ spring: 12.8, damping: 0.54 })
         readonly property var springDefault: ({ spring: 6.08, damping: 0.5 })
         readonly property var springSlow: ({ spring: 3.2, damping: 0.36 })
+        // A press (Expressive): the control swells and its corners square
+        // off, then it springs back past its size and settles (ζ ~0.35)
+        readonly property var springPress: ({ spring: 7.5, damping: 0.3 })
+        readonly property bool pressBounce: root.material && CoolDown.motionScale >= 1 && Config.options.appearance.reduceMotion !== true
+        // How much a pressed control grows: ~6%, at most ~10 px for big ones
+        function pressGrow(size) {
+            return pressBounce ? Math.min(0.06, 10 / Math.max(1, size)) : 0;
+        }
         // (Material has no elastic give: presses change shape instead)
         readonly property real pull: root.material ? 0 : expressive ? 14 : 6 // how far a panel gives when pressed and dragged
         readonly property real controlPull: root.material ? 0 : expressive ? 5 : 2.5 // same for small controls

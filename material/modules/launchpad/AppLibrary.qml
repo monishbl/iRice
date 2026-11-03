@@ -216,7 +216,9 @@ Scope {
                                 y: 12
                                 size: 56
                                 source: dialog.showingApps ? Apps.iconFor(cell.modelData) : ""
-                                scale: appMouse.pressed ? 0.94 : 1
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: appMouse.pressed }
+                                // (Material: grows on press: the ElasticControl above)
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                             }
                             Text {
@@ -250,7 +252,9 @@ Scope {
                                 color: folderMouse.containsMouse || cell.isSelected ? Theme.color.fillHover : Theme.color.platter
                                 border.width: cell.isSelected ? 2 : 1
                                 border.color: cell.isSelected ? Theme.accent : Theme.color.separator
-                                scale: folderMouse.pressed ? 0.97 : 1
+                                transform: pressFx2.effects
+                                ElasticControl { id: pressFx2; pressed: folderMouse.pressed }
+                                // (Material: grows on press: the ElasticControl above)
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                                 readonly property var list: dialog.showingApps ? [] : cell.modelData.apps
 

@@ -79,6 +79,14 @@ Column {
             }
         }
         Row {
+            label: "24-hour time"
+            detail: "Clocks, events and alarms show " + (Config.options.appearance.clock24 ? "17:30" : "5:30 PM")
+            Switch {
+                checked: Config.options.appearance.clock24
+                onToggled: Config.options.appearance.clock24 = !checked
+            }
+        }
+        Row {
             label: "App icons"
             detail: ({ dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
             Segmented {

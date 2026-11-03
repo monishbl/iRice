@@ -29,7 +29,7 @@ Column {
     Group {
         width: parent.width
         footer: Health.error !== "" ? Health.error
-            : Health.checkedAt > 0 ? "Checked at " + Qt.formatTime(new Date(Health.checkedAt), "h:mm AP") + ". Nothing is checked in the background; this page asks each service when it opens."
+            : Health.checkedAt > 0 ? "Checked at " + Qt.formatTime(new Date(Health.checkedAt), TimeFormat.hm) + ". Nothing is checked in the background; this page asks each service when it opens."
             : ""
         Row {
             label: Health.checking && Health.checks.length === 0 ? "Checking…"

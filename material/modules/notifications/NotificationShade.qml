@@ -26,7 +26,7 @@ Column {
         Text {
             id: time
             x: 12
-            text: Qt.formatTime(clock.date, "h:mm")
+            text: Qt.formatTime(clock.date, TimeFormat.hmShort)
             color: Theme.m3.onSurface
             font { family: Theme.font.family; pixelSize: 40; weight: Font.Medium; letterSpacing: -0.4; features: { "tnum": 1 } }
         }
@@ -333,6 +333,8 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             width: manageLabel.implicitWidth + 24
             height: 40
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: manageMouse.pressed }
             radius: manageMouse.pressed ? 12 : 20
             Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
             color: manageMouse.pressed ? Qt.alpha(Theme.m3.primary, 0.1) : manageMouse.containsMouse ? Qt.alpha(Theme.m3.primary, 0.08) : "transparent"
@@ -365,6 +367,8 @@ Column {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             width: clearLabel.implicitWidth + 40
             height: 40
+            transform: pressFx2.effects
+            ElasticControl { id: pressFx2; pressed: clearMouse.pressed }
             radius: clearMouse.pressed ? 12 : 20
             Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
             color: clearMouse.pressed ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.1)) : clearMouse.containsMouse ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.08)) : Theme.m3.secondaryContainer

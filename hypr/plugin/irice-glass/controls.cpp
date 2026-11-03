@@ -5,6 +5,10 @@
 //
 // hyprctl irice-glass controls on [dark|light]
 // hyprctl irice-glass controls off
+// hyprctl irice-glass controls-style glass | material <container rrggbb> <ink rrggbb>
+//   glass: traffic lights (close, minimize, zoom from the left); material:
+//   round icon buttons on a tonal pill, minimize, maximize and close (from
+//   the left, close last), a state layer under the hovered one (close: red)
 //
 // Resting on the zoom button for half a second posts the IPC event
 // `irice-controls>>tile,<address>,<x>,<y>` so the shell can show its tile grid.
@@ -34,6 +38,7 @@
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <format>
 #include <vector>
@@ -48,6 +53,16 @@ constexpr float kAnimMs = 150;
 
 static HANDLE g_ctlHandle = nullptr;
 static bool   g_enabled = false, g_dark = true;
+// The Material look (controls-style material …): its container and icon colours
+static bool       g_material = false;
+static CHyprColor g_mBg{0.17, 0.17, 0.19, 1}, g_mInk{0.8, 0.8, 0.84, 1};
+// Sizes, logical px: Glass's dots, or Material's round buttons
+static float pillW() { return g_material ? 92 : kPillW; }
+static float pillH() { return g_material ? 26 : kPillH; }
+static float dotD() { return g_material ? 22 : kDot; }
+static float dotGap() { return g_material ? 4 : kGap; }
+// Where button i (0 close, 1 minimize, 2 zoom) sits, left to right
+static int slotOf(int i) { return g_material ? (i == 0 ? 2 : i - 1) : i; }
 
 class CIriceControls;
 static std::vector<CIriceControls*> g_decos;
@@ -129,8 +144,8 @@ class CIriceControls : public IHyprWindowDecoration {
     // Button i (0 close, 1 minimize, 2 zoom) in global logical px
     CBox button(int i) {
         auto z  = zone();
-        auto x0 = z.x + z.w / 2 - kPillW / 2 + (kPillW - 3 * kDot - 2 * kGap) / 2;
-        return {x0 + i * (kDot + kGap), z.y + kTop + (kPillH - kDot) / 2, kDot, kDot};
+        auto x0 = z.x + z.w / 2 - pillW() / 2 + (pillW() - 3 * dotD() - 2 * dotGap()) / 2;
+        return {x0 + slotOf(i) * (dotD() + dotGap()), z.y + kTop + (pillH() - dotD()) / 2, dotD(), dotD()};
     }
 
     void renderPass(float a) {
@@ -153,17 +168,21 @@ class CIriceControls : public IHyprWindowDecoration {
 
         const float s  = mon->m_scale;
         auto        z  = zone();
-        const float pw = kHandleW + (kPillW - kHandleW) * e, ph = kHandleH + (kPillH - kHandleH) * e;
-        CBox        pill{z.x + z.w / 2 - pw / 2, z.y + kTop + (kPillH - ph) / 2, pw, ph};
+        const float pw = kHandleW + (pillW() - kHandleW) * e, ph = kHandleH + (pillH() - kHandleH) * e;
+        CBox        pill{z.x + z.w / 2 - pw / 2, z.y + kTop + (pillH() - ph) / 2, pw, ph};
         pill.translate(-mon->m_position).scale(s).round();
 
-        const CHyprColor handle = g_dark ? CHyprColor{1, 1, 1, 0.45} : CHyprColor{0, 0, 0, 0.35};
-        const CHyprColor bg     = g_dark ? CHyprColor{0.11, 0.11, 0.12, 0.82} : CHyprColor{0.98, 0.98, 0.98, 0.86};
+        const CHyprColor handle = g_material ? CHyprColor{g_mInk.r, g_mInk.g, g_mInk.b, 0.5} : g_dark ? CHyprColor{1, 1, 1, 0.45} : CHyprColor{0, 0, 0, 0.35};
+        const CHyprColor bg     = g_material ? g_mBg : g_dark ? CHyprColor{0.11, 0.11, 0.12, 0.82} : CHyprColor{0.98, 0.98, 0.98, 0.86};
         CHyprColor       c{handle.r + (bg.r - handle.r) * e, handle.g + (bg.g - handle.g) * e, handle.b + (bg.b - handle.b) * e, (handle.a + (bg.a - handle.a) * e) * a};
         g_pHyprOpenGL->renderRect(pill, c, {.round = (int)(pill.h / 2), .roundingPower = 2.f});
 
         if (e < 0.35f)
             return;
+        if (g_material) {
+            renderMaterial(mon, (e - 0.35f) / 0.65f * a);
+            return;
+        }
         static const CHyprColor kColors[3] = {{1.0, 0.373, 0.341, 1}, {0.996, 0.737, 0.18, 1}, {0.157, 0.784, 0.251, 1}};
         const float             da         = (e - 0.35f) / 0.65f * a;
         for (int i = 0; i < 3; i++) {
@@ -174,6 +193,43 @@ class CIriceControls : public IHyprWindowDecoration {
                 col = CHyprColor{col.r * 0.85, col.g * 0.85, col.b * 0.85, 1};
             col.a *= da;
             g_pHyprOpenGL->renderRect(b, col, {.round = (int)(b.w / 2), .roundingPower = 2.f});
+        }
+    }
+
+    // Material: each button a circle (a state layer while hovered; close
+    // turns red), its icon drawn in the ink colour: a bar (minimize), a
+    // square outline (maximize), a cross of two turned bars (close)
+    void renderMaterial(PHLMONITOR mon, float da) {
+        const float s   = mon->m_scale;
+        auto        ink = [&](float al) { return CHyprColor{g_mInk.r, g_mInk.g, g_mInk.b, al * da}; };
+        auto        rect = [&](double x, double y, double w, double h, const CHyprColor& c, double rot = 0) {
+            CBox b{x, y, w, h};
+            b.translate(-mon->m_position).scale(s);
+            b.rot = rot;
+            g_pHyprOpenGL->renderRect(b, c, {.round = (int)std::round(std::min(b.w, b.h) / 2), .roundingPower = 2.f});
+        };
+        for (int i = 0; i < 3; i++) {
+            const CBox b  = button(i);
+            const bool hot = m_hot == i;
+            CBox       c  = b;
+            c.translate(-mon->m_position).scale(s).round();
+            if (hot)
+                g_pHyprOpenGL->renderRect(c, i == 0 ? CHyprColor{0.86, 0.15, 0.15, da} : ink(0.14), {.round = (int)(c.w / 2), .roundingPower = 2.f});
+            const CHyprColor col = hot && i == 0 ? CHyprColor{1, 1, 1, da} : ink(1);
+            const double     cx = b.x + b.w / 2, cy = b.y + b.h / 2, t = 1.6;
+            if (i == 1) {
+                rect(cx - 5, cy - t / 2, 10, t, col);
+            } else if (i == 2) {
+                const double h = 9;
+                rect(cx - h / 2, cy - h / 2, h, t, col);
+                rect(cx - h / 2, cy + h / 2 - t, h, t, col);
+                rect(cx - h / 2, cy - h / 2, t, h, col);
+                rect(cx + h / 2 - t, cy - h / 2, t, h, col);
+            } else {
+                const double l = 12;
+                rect(cx - l / 2, cy - t / 2, l, t, col, M_PI / 4);
+                rect(cx - l / 2, cy - t / 2, l, t, col, -M_PI / 4);
+            }
         }
     }
 
@@ -352,6 +408,32 @@ void controlsExit() {
         std::erase_if(decos, [](const auto& d) { return d && d->getDisplayName() == "iRiceControls"; });
     }
     g_decos.clear();
+}
+
+// "controls-style glass" / "controls-style material <rrggbb> <rrggbb>"
+static bool hexColor(const std::string& h, CHyprColor& out) {
+    if (h.size() != 6 || h.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+        return false;
+    const auto v = std::stoul(h, nullptr, 16);
+    out          = CHyprColor{((v >> 16) & 255) / 255.0, ((v >> 8) & 255) / 255.0, (v & 255) / 255.0, 1};
+    return true;
+}
+std::string controlsStyleCommand(const std::string& style, const std::string& bg, const std::string& ink) {
+    if (style == "glass") {
+        g_material = false;
+    } else if (style == "material") {
+        CHyprColor b, i;
+        if (!hexColor(bg, b) || !hexColor(ink, i))
+            return "error: controls-style material <container rrggbb> <ink rrggbb>";
+        g_material = true;
+        g_mBg      = b;
+        g_mInk     = i;
+    } else {
+        return "error: controls-style glass | material <container> <ink>";
+    }
+    for (auto* d : g_decos)
+        d->damageEntire();
+    return "ok";
 }
 
 // "controls on [dark|light]" / "controls off"

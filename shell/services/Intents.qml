@@ -125,7 +125,7 @@ Singleton {
             const secs = Alarms.parseDuration(text);
             if (secs > 0) {
                 const label = text.replace(/(\d+(?:\.\d+)?)\s*(h|hr|hrs|hours?|m|min|mins|minutes?|s|sec|secs|seconds?)\b/gi, "").replace(/^\s*for\s+/i, "").replace(/\s+/g, " ").trim();
-                out.push(row("Start a " + Alarms.describe(secs) + " timer" + (label ? ": " + label : ""), "Ends at " + Qt.formatTime(new Date(Date.now() + secs * 1000), "h:mm AP"), "timer", () => {
+                out.push(row("Start a " + Alarms.describe(secs) + " timer" + (label ? ": " + label : ""), "Ends at " + Qt.formatTime(new Date(Date.now() + secs * 1000), TimeFormat.hm), "timer", () => {
                     Alarms.addTimer(secs, label);
                     done("timer", "Timer started", Alarms.describe(secs) + (label ? " · " + label : ""), Theme.accents.orange);
                 }));
@@ -138,9 +138,9 @@ Singleton {
             if (when) {
                 const label = (a[2] || "").trim();
                 const day = when.getDate() === new Date().getDate() ? "today" : "tomorrow";
-                out.push(row("Set an alarm for " + Qt.formatTime(when, "h:mm AP") + " " + day + (label ? ": " + label : ""), "Sounds even with interface sounds off", "alarm", () => {
+                out.push(row("Set an alarm for " + Qt.formatTime(when, TimeFormat.hm) + " " + day + (label ? ": " + label : ""), "Sounds even with interface sounds off", "alarm", () => {
                     Alarms.addAlarm(when, label);
-                    done("alarm", "Alarm set", Qt.formatTime(when, "h:mm AP") + " " + day, Theme.accents.orange);
+                    done("alarm", "Alarm set", Qt.formatTime(when, TimeFormat.hm) + " " + day, Theme.accents.orange);
                 }));
             }
             return;
@@ -188,7 +188,7 @@ Singleton {
                 out.push(row("Turn Focus off", "", "moon", () => Focus.deactivate()));
             else {
                 const secs = m[2] ? Alarms.parseDuration(m[2]) : 0;
-                out.push(row("Do Not Disturb" + (secs > 0 ? " for " + Alarms.describe(secs) : ""), secs > 0 ? "Until " + Qt.formatTime(new Date(Date.now() + secs * 1000), "h:mm AP") : "Until you turn it off", "moon", () => Focus.activate("dnd", secs * 1000, false)));
+                out.push(row("Do Not Disturb" + (secs > 0 ? " for " + Alarms.describe(secs) : ""), secs > 0 ? "Until " + Qt.formatTime(new Date(Date.now() + secs * 1000), TimeFormat.hm) : "Until you turn it off", "moon", () => Focus.activate("dnd", secs * 1000, false)));
             }
             return;
         }

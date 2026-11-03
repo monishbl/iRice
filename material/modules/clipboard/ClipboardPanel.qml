@@ -207,6 +207,7 @@ Variants {
                 boundsBehavior: Flickable.StopAtBounds
                 highlightMoveDuration: 0
                 spacing: 2
+                bottomMargin: actions.visible ? actions.height + 12 : 0 // (the floating toolbar sits over the end)
 
                 delegate: Column {
                     id: rowItem
@@ -513,6 +514,22 @@ Variants {
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.body }
                 }
+            }
+
+            // The chosen item's actions, a floating toolbar over the list's
+            // foot (Material 3 Expressive): paste, paste as plain text, copy
+            // only, pin, delete
+            FloatingToolbar {
+                id: actions
+                visible: dialog.rows.length > 0
+                z: 5
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: footer.top; bottomMargin: 12 }
+                readonly property var row: dialog.rows[dialog.selected] ?? null
+                IconButton { width: 48; height: 48; icon: "clipboard-text"; iconSize: 22; iconColor: actions.ink; tooltip: "Paste (Enter)"; onClicked: dialog.activate(dialog.selected, false, false) }
+                IconButton { visible: !(actions.row?.image ?? false); width: 48; height: 48; icon: "text-aa"; iconSize: 22; iconColor: actions.ink; tooltip: "Paste as plain text (Alt+Enter)"; onClicked: dialog.activate(dialog.selected, true, false) }
+                IconButton { width: 48; height: 48; icon: "copy"; iconSize: 22; iconColor: actions.ink; tooltip: "Copy only (Shift+Enter)"; onClicked: dialog.activate(dialog.selected, false, true) }
+                IconButton { width: 48; height: 48; icon: "push-pin"; fill: actions.row?.pinned ?? false; iconSize: 22; iconColor: actions.ink; tooltip: (actions.row?.pinned ?? false) ? "Unpin (Ctrl+P)" : "Pin (Ctrl+P)"; onClicked: dialog.togglePin(dialog.selected) }
+                IconButton { width: 48; height: 48; icon: "trash"; iconSize: 22; iconColor: Theme.m3.error; tooltip: "Delete (Delete)"; onClicked: dialog.remove(dialog.selected) }
             }
 
             // Footer: shortcut hints and clear history

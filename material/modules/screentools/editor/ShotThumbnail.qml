@@ -301,6 +301,8 @@ GlassWindow {
                 radius: Theme.material ? height / 2 : Theme.radius.control
                 color: Theme.material ? Qt.alpha(Theme.m3.inversePrimary, undoMouse.pressed ? 0.1 : undoMouse.containsMouse ? 0.08 : 0)
                     : undoMouse.pressed ? Theme.color.fillPressed : undoMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: undoMouse.pressed }
                 scale: undoMouse.pressed && !Theme.material ? 0.97 : 1
                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                 Text {

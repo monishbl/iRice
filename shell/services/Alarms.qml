@@ -82,7 +82,7 @@ Singleton {
             UiState.data.alarms = (UiState.data.alarms ?? []).filter(a => a.at > now + 250);
             for (const a of due) {
                 const title = a.kind === "timer" ? "Timer done" : "Alarm";
-                const body = a.label || (a.kind === "timer" ? "Your timer has finished." : Qt.formatTime(new Date(a.at), "h:mm AP"));
+                const body = a.label || (a.kind === "timer" ? "Your timer has finished." : Qt.formatTime(new Date(a.at), TimeFormat.hm));
                 // (even with interface sounds off: it's an alarm)
                 Quickshell.execDetached(["sh", "-c", "f=/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga; pw-play \"$f\" 2>/dev/null || paplay \"$f\""]);
                 Quickshell.execDetached(["notify-send", "-a", "Clock", "-u", "critical", "-i", "alarm-clock", title, body]);

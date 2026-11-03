@@ -55,6 +55,8 @@ Item {
             anchors.right: parent.right
             width: header.height
             height: header.height
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: newMouse.pressed }
             radius: Theme.material && newMouse.pressed ? 8 : height / 2
             Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
             visible: Ai.chat.count > 0
@@ -269,6 +271,8 @@ Item {
             // pressed; disabled, 12% and 38% of onSurface)
             width: Theme.material ? 36 : 28
             height: width
+            transform: pressFx2.effects
+            ElasticControl { id: pressFx2; pressed: sendMouse.pressed }
             radius: Theme.material && sendMouse.pressed ? 10 : width / 2
             Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
             readonly property bool canSend: composer.text.trim() !== "" || Ai.attachment !== null

@@ -16,6 +16,8 @@ Rectangle {
 
     implicitHeight: 40
     implicitWidth: label.implicitWidth + 2 * Math.round(height * 0.6)
+    transform: pressFx1.effects
+    ElasticControl { id: pressFx1; pressed: mouse.pressed }
     property real corner: mouse.pressed ? Math.min(12, height / 2) : height / 2
     Behavior on corner { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
     radius: Math.max(0, Math.min(height / 2, corner))

@@ -104,6 +104,8 @@ Variants {
                                 height: width
                                 radius: width / 2
                                 color: Theme.material ? "transparent" : option.hot ? (option.modelData.id === "shutdown" || option.modelData.id === "restart" ? Theme.color.danger : Theme.accent) : Theme.color.toggleOff
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: mouse.pressed }
                                 scale: Theme.material ? 1 : mouse.pressed ? 0.94 : 1
                                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }

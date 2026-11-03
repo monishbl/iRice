@@ -101,52 +101,49 @@ Popover {
         }
     }
 
-    // ── The layout, Android's way ───────────────────────────────────────
-    // The same saved layout as Control Center's: sliders go to the top, the
-    // media player under the tiles, and every other module is a tile, large
-    // when it's two columns wide there (2×1, 2×2), small at 1×1
-    function form(e) {
-        const k = moduleDefs.all[e.id]?.kind;
-        return k === "slider" ? "slider" : k === "media" ? "media" : e.w >= 2 ? "large" : "small";
-    }
-    readonly property var sliderIds: moduleDefs.layout.filter(e => form(e) === "slider").map(e => e.id)
-    readonly property bool hasMedia: moduleDefs.layout.some(e => form(e) === "media")
-    readonly property var tilePack: moduleDefs.pack(moduleDefs.layout.filter(e => form(e) === "small" || form(e) === "large").map(e => ({ id: e.id, w: form(e) === "large" ? 2 : 1, h: 1 })), 4)
-    // (the tiles' model is their ids, so a tile's state changing doesn't
-    // rebuild them; each looks up its place)
-    readonly property var tileIds: tilePack.map(p => p.id)
-    readonly property var tilePos: {
+    // ── The layout: Control Center's, every size it offers ──────────────
+    // One grid of four columns, the same saved layout and sizes as the Glass
+    // Control Center (Edit controls): toggles 1×1 or 2×1, sliders across
+    // (4×1) or standing (1×2), the media player 2×2 or 4×1, readings 2×1 or
+    // 2×2. Packed first-fit, row by row, as Control Center packs it.
+    readonly property var itemPack: moduleDefs.pack(moduleDefs.layout.map(e => ({ id: e.id, w: Math.min(4, e.w), h: Math.max(1, e.h) })), 4)
+    // (the model is the ids, so a control's state changing doesn't rebuild
+    // them; each looks up its place)
+    readonly property var itemIds: itemPack.map(p => p.id)
+    readonly property var itemPos: {
         const m = {};
-        for (const p of tilePack)
+        for (const p of itemPack)
             m[p.id] = p;
         return m;
     }
-    readonly property int tileRows: tilePack.reduce((m, p) => Math.max(m, p.row + 1), 0)
+    readonly property int rows: itemPack.reduce((m, p) => Math.max(m, p.row + p.h), 0)
+    function cellY(row) {
+        return row * (tileHeight + gap);
+    }
 
-    // Edit controls: a click switches a tile between small and large (the
-    // next size it offers that's drawn differently here)
+    // The sliders' values: brightness, volume, the microphone
+    function sliderValue(id) {
+        return id === "display" ? Brightness.value : id === "micLevel" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume);
+    }
+    function setSlider(id, v) {
+        if (id === "display")
+            Brightness.set(v, true);
+        else if (id === "micLevel")
+            Audio.setMicVolume(v, true);
+        else
+            Audio.setVolume(v, true);
+    }
+
+    // Edit controls: a click gives a control its next size
     function resize(id) {
-        const e = moduleDefs.layout.find(x => x.id === id);
-        if (!e)
-            return;
-        const sizes = moduleDefs.all[id].sizes;
-        const now = form(e);
-        const i = sizes.indexOf(e.w + "x" + e.h);
-        for (let n = 1; n < sizes.length; n++) {
-            const s = sizes[(i + n + sizes.length) % sizes.length];
-            const [w, h] = s.split("x").map(Number);
-            if (form({ id: id, w: w, h: h }) !== now) {
-                moduleDefs.setSize(id, s);
-                return;
-            }
-        }
+        moduleDefs.cycleSize(id);
     }
     // A dragged tile lands in the place of the tile nearest its centre
     function dropAt(id, cx, cy) {
         let best = "", bestD = 1e9;
-        for (const p of tilePack) {
+        for (const p of itemPack) {
             const ex = p.col * (unit + gap) + (p.w * unit + (p.w - 1) * gap) / 2;
-            const ey = p.row * (tileHeight + gap) + tileHeight / 2;
+            const ey = cellY(p.row) + (p.h * tileHeight + (p.h - 1) * gap) / 2;
             const d = (ex - cx) * (ex - cx) + (ey - cy) * (ey - cy);
             if (d < bestD) {
                 bestD = d;
@@ -235,100 +232,37 @@ Popover {
                 }
             }
 
-            // Brightness, volume (and the microphone, if added): Expressive's
-            // tall sliders; those with a page get a button for it
-            Column {
-                id: sliders
-                width: parent.width
-                spacing: 8
-                visible: qs.sliderIds.length > 0
-                Repeater {
-                    model: ScriptModel { values: qs.sliderIds }
-                    Item {
-                        id: sl
-                        required property string modelData
-                        required property int index
-                        readonly property var def: moduleDefs.all[modelData] ?? ({})
-                        width: sliders.width
-                        height: qs.editing ? 56 : 60
-                        QSRise {
-                            id: slRise
-                            order: sl.index
-                            stagger: qs.stagger
-                        }
-                        opacity: Math.min(1, slRise.value)
-                        transform: Translate { y: 12 * (1 - slRise.value) }
-
-                        QSSlider {
-                            visible: !qs.editing
-                            anchors { left: parent.left; right: slMore.visible ? slMore.left : parent.right; rightMargin: slMore.visible ? 8 : 0; verticalCenter: parent.verticalCenter }
-                            trackHeight: 52
-                            icon: sl.def.icon ?? ""
-                            accessibleName: sl.def.label ?? sl.modelData
-                            value: sl.modelData === "display" ? Brightness.value : sl.modelData === "micLevel" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
-                            hasMore: !!sl.def.page
-                            onMoved: v => {
-                                if (sl.modelData === "display")
-                                    Brightness.set(v, true);
-                                else if (sl.modelData === "micLevel")
-                                    Audio.setMicVolume(v, true);
-                                else
-                                    Audio.setVolume(v, true);
-                            }
-                            onMore: qs.page = sl.def.page
-                        }
-                        // Its page (Sound: outputs and apps; Microphone: inputs)
-                        TonalButton {
-                            id: slMore
-                            visible: !qs.editing && !!sl.def.page
-                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                            width: 52
-                            height: 52
-                            corner: 16
-                            icon: "sliders-horizontal"
-                            tip: (sl.def.label ?? "") + " options"
-                            onClicked: qs.page = sl.def.page
-                        }
-                        EditRow {
-                            visible: qs.editing
-                            anchors.fill: parent
-                            icon: sl.def.icon ?? ""
-                            label: sl.def.label ?? sl.modelData
-                            onRemoveRequested: Qt.callLater(moduleDefs.removeModule, sl.modelData)
-                        }
-                    }
-                }
-            }
-
-            // The tiles: four columns, small ones one wide, large ones two
+            // Everything, in the grid; in Edit controls each is a tile to
+            // click (its next size), drag (to move) or remove (−)
             Item {
                 id: grid
                 width: parent.width
-                visible: qs.tileIds.length > 0
-                height: qs.tileRows * qs.tileHeight + Math.max(0, qs.tileRows - 1) * qs.gap
+                visible: qs.itemIds.length > 0
+                height: qs.rows * qs.tileHeight + Math.max(0, qs.rows - 1) * qs.gap
                 Behavior on height {
                     SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.5 }
                 }
                 Repeater {
-                    model: ScriptModel { values: qs.tileIds }
-                    QSTile {
-                        id: tile
+                    model: ScriptModel { values: qs.itemIds }
+                    Item {
+                        id: cell
                         required property string modelData
                         required property int index
-                        readonly property var pos: qs.tilePos[modelData] ?? ({ col: 0, row: 0, w: 1 })
-                        moduleId: modelData
-                        defs: moduleDefs
-                        large: pos.w >= 2
-                        editing: qs.editing
+                        readonly property var pos: qs.itemPos[modelData] ?? ({ col: 0, row: 0, w: 1, h: 1 })
+                        readonly property var def: moduleDefs.all[modelData] ?? ({})
+                        readonly property string kind: def.kind ?? ""
                         width: pos.w * qs.unit + (pos.w - 1) * qs.gap
-                        height: qs.tileHeight
+                        height: pos.h * qs.tileHeight + (pos.h - 1) * qs.gap
                         Behavior on width {
+                            SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.3 }
+                        }
+                        Behavior on height {
                             SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.3 }
                         }
                         // Its place, gliding there on the default spring when
                         // the layout changes; under the pointer while dragged
                         readonly property real homeX: pos.col * (qs.unit + qs.gap)
-                        readonly property real homeY: pos.row * (qs.tileHeight + qs.gap)
+                        readonly property real homeY: qs.cellY(pos.row)
                         property vector2d lastT: Qt.vector2d(0, 0)
                         function settle() {
                             xAnim.to = homeX;
@@ -346,7 +280,7 @@ Popover {
                         onHomeYChanged: if (!drag.active) settle()
                         SpringAnimation {
                             id: xAnim
-                            target: tile
+                            target: cell
                             property: "x"
                             spring: Theme.motion.springDefault.spring
                             damping: Theme.motion.springDefault.damping
@@ -354,7 +288,7 @@ Popover {
                         }
                         SpringAnimation {
                             id: yAnim
-                            target: tile
+                            target: cell
                             property: "y"
                             spring: Theme.motion.springDefault.spring
                             damping: Theme.motion.springDefault.damping
@@ -362,18 +296,79 @@ Popover {
                         }
                         z: drag.active ? 5 : 0
                         QSRise {
-                            id: tileRise
-                            order: qs.sliderIds.length + tile.index
+                            id: cellRise
+                            order: cell.index
                             stagger: qs.stagger
                         }
-                        scale: (0.86 + 0.14 * tileRise.value) * (drag.active ? 1.05 : 1)
-                        opacity: Math.min(1, tileRise.value)
-                        onOpenPage: p => qs.page = p
-                        onMenuRequested: items => choices.open(items)
-                        // (layout changes wait for the click or drag that asked to
-                        // finish: they can remove the very tile handling it)
-                        onRemoveRequested: Qt.callLater(moduleDefs.removeModule, modelData)
-                        onResizeRequested: qs.resize(modelData)
+                        scale: (0.86 + 0.14 * cellRise.value) * (drag.active ? 1.05 : 1)
+                        opacity: Math.min(1, cellRise.value)
+
+                        Loader {
+                            anchors.fill: parent
+                            sourceComponent: qs.editing || (cell.kind !== "slider" && cell.kind !== "media") ? tileView : cell.kind === "slider" ? sliderView : mediaView
+                        }
+                        Component {
+                            id: tileView
+                            QSTile {
+                                moduleId: cell.modelData
+                                defs: moduleDefs
+                                large: cell.pos.w >= 2
+                                editing: qs.editing
+                                onOpenPage: p => qs.page = p
+                                onMenuRequested: items => choices.open(items)
+                                // (layout changes wait for the click or drag that asked to
+                                // finish: they can remove the very tile handling it)
+                                onRemoveRequested: Qt.callLater(moduleDefs.removeModule, cell.modelData)
+                                onResizeRequested: qs.resize(cell.modelData)
+                            }
+                        }
+                        // A slider: across (4×1), with its page's button at
+                        // the end, or standing (1×2), Android's tall one,
+                        // the icon at its foot
+                        Component {
+                            id: sliderView
+                            Item {
+                                id: sv
+                                readonly property bool standing: cell.pos.h > cell.pos.w
+                                readonly property bool more: !!cell.def.page && !standing
+                                QSSlider {
+                                    width: sv.standing ? sv.height : sv.width - (sv.more ? 60 : 0)
+                                    height: sv.standing ? sv.width : sv.height
+                                    x: sv.standing ? (sv.width - width) / 2 : 0
+                                    y: (sv.height - height) / 2
+                                    rotation: sv.standing ? -90 : 0
+                                    glyphRotation: sv.standing ? 90 : 0
+                                    trackHeight: sv.standing ? sv.width - 8 : 52
+                                    icon: cell.def.icon ?? ""
+                                    accessibleName: cell.def.label ?? cell.modelData
+                                    value: qs.sliderValue(cell.modelData)
+                                    hasMore: !!cell.def.page
+                                    onMoved: v => qs.setSlider(cell.modelData, v)
+                                    onMore: qs.page = cell.def.page
+                                }
+                                TonalButton {
+                                    visible: sv.more
+                                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                    width: 52
+                                    height: 52
+                                    corner: 16
+                                    icon: "sliders-horizontal"
+                                    tip: (cell.def.label ?? "") + " options"
+                                    onClicked: qs.page = cell.def.page
+                                }
+                            }
+                        }
+                        Component {
+                            id: mediaView
+                            MediaCarousel {
+                                peekRadius: 28
+                                card: Component {
+                                    QSMedia {
+                                        shown: qs.shown
+                                    }
+                                }
+                            }
+                        }
 
                         DragHandler {
                             id: drag
@@ -382,32 +377,23 @@ Popover {
                             onActiveTranslationChanged: {
                                 if (!active)
                                     return;
-                                tile.lastT = activeTranslation;
+                                cell.lastT = activeTranslation;
                                 xAnim.stop();
                                 yAnim.stop();
-                                tile.x = tile.homeX + activeTranslation.x;
-                                tile.y = tile.homeY + activeTranslation.y;
+                                cell.x = cell.homeX + activeTranslation.x;
+                                cell.y = cell.homeY + activeTranslation.y;
                             }
                             onActiveChanged: {
                                 if (active) {
-                                    tile.lastT = Qt.vector2d(0, 0);
+                                    cell.lastT = Qt.vector2d(0, 0);
                                     return;
                                 }
-                                Qt.callLater(qs.dropAt, tile.modelData, tile.homeX + tile.lastT.x + tile.width / 2, tile.homeY + tile.lastT.y + tile.height / 2);
-                                tile.settle();
+                                Qt.callLater(qs.dropAt, cell.modelData, cell.homeX + cell.lastT.x + cell.width / 2, cell.homeY + cell.lastT.y + cell.height / 2);
+                                cell.settle();
                             }
                         }
                     }
                 }
-            }
-
-            // The media player
-            Loader {
-                id: media
-                active: qs.hasMedia
-                visible: active
-                width: parent.width
-                sourceComponent: qs.editing ? mediaEditRow : mediaCard
             }
 
             // Edit controls: everything that isn't here yet (then the ones
@@ -430,7 +416,7 @@ Popover {
                         Momentum {}
                         width: parent.width
                         // (what's left of the panel's height)
-                        height: Math.min(contentHeight, Math.max(176, qs.maxHeight - editHeader.height - sliders.height - grid.height - (media.visible ? media.height : 0) - 4 * home.spacing - 40))
+                        height: Math.min(contentHeight, Math.max(176, qs.maxHeight - editHeader.height - grid.height - 3 * home.spacing - 40))
                         contentHeight: galleryList.implicitHeight
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
@@ -472,7 +458,7 @@ Popover {
                 height: 48
                 QSRise {
                     id: footerRise
-                    order: qs.sliderIds.length + qs.tileIds.length + 1
+                    order: qs.itemIds.length + 1
                     stagger: qs.stagger
                 }
                 opacity: Math.min(1, footerRise.value)
@@ -606,37 +592,6 @@ Popover {
     Component { id: mirroringPage; MirroringPage { onBack: qs.page = "" } }
     Component { id: castPage; CastPage { onBack: qs.page = "" } }
 
-    // The media card (Android 17's carousel: other players wait beside it),
-    // and its row in Edit controls
-    Component {
-        id: mediaCard
-        MediaCarousel {
-            implicitHeight: 136
-            peekRadius: 28
-            card: Component {
-                QSMedia {
-                    shown: qs.shown
-                }
-            }
-            QSRise {
-                id: mediaRise
-                order: qs.sliderIds.length + qs.tileIds.length
-                stagger: qs.stagger
-            }
-            opacity: Math.min(1, mediaRise.value)
-            transform: Translate { y: 12 * (1 - mediaRise.value) }
-        }
-    }
-    Component {
-        id: mediaEditRow
-        EditRow {
-            height: 56
-            icon: "music-notes"
-            label: moduleDefs.all.nowPlaying?.label ?? "Now Playing"
-            onRemoveRequested: Qt.callLater(moduleDefs.removeModule, "nowPlaying")
-        }
-    }
-
     // ── Small parts ─────────────────────────────────────────────────────
     // A round tonal icon button (strong: in primaryContainer, a wider pill,
     // as Android's power button); a press squares it off
@@ -650,6 +605,8 @@ Popover {
         width: 40
         height: 40
         readonly property color ink: strong ? Theme.m3.onPrimaryContainer : Theme.m3.onSurfaceVariant
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: tbMouse.pressed }
         property real shownCorner: tbMouse.pressed ? Math.min(12, corner) : corner
         Behavior on shownCorner {
             SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 }

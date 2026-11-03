@@ -13,6 +13,8 @@ import qs.services
 //   overlap  heavy two-tone pairs, the minutes over the hours' corner
 //   analog   hands on a 12-scallop dial
 //   weather  the time over the weather's icon and temperature, as large
+//   dynamic  the hours tall and narrow, the minutes smaller beside their
+//            top, AM or PM under the minutes (24-hour time: the date)
 //   LockClock { face: "stacked"; time: clock.date; size: 240; small: 0 }
 Item {
     id: root
@@ -32,7 +34,7 @@ Item {
     property real small: 0 // 0 large … 1 small
 
     readonly property string family: "Google Sans Flex"
-    readonly property int h12: (time.getHours() + 11) % 12 + 1
+    readonly property string hh: TimeFormat.hour(time) // (Settings → Appearance → 24-hour time)
     readonly property string mm: String(time.getMinutes()).padStart(2, "0")
     // (weight in steps: an animated weight makes a handful of font
     // instances, not one a frame)
@@ -55,7 +57,7 @@ Item {
         opacity: Math.max(0, 1 - root.k * 1.7)
         scale: 1 - (1 - root.ratio) * root.k
         transformOrigin: Item.TopLeft
-        sourceComponent: root.face === "wide" ? wide : root.face === "overlap" ? overlap : root.face === "analog" ? analog : root.face === "weather" ? weatherFace : stacked
+        sourceComponent: root.face === "dynamic" ? dynamicFace : root.face === "wide" ? wide : root.face === "overlap" ? overlap : root.face === "analog" ? analog : root.face === "weather" ? weatherFace : stacked
         readonly property real w: item?.implicitWidth ?? 0
         readonly property real h: item?.implicitHeight ?? 0
     }
@@ -75,7 +77,7 @@ Item {
         id: probe
         visible: false
         px: root.smallSize
-        text: root.h12 + ":" + root.mm
+        text: root.hh + ":" + root.mm
         wght: root.face === "overlap" ? Math.max(root.weight, 760) : root.weight
     }
 
@@ -119,11 +121,48 @@ Item {
     }
 
     Component {
+        id: dynamicFace
+        Item {
+            // (tall and narrow, as Android's: the width at most 50)
+            readonly property real wd: Math.min(root.widthAxis, 50)
+            readonly property real gapX: Math.round(root.size * 0.1)
+            implicitWidth: hours.implicitWidth + gapX + Math.max(minutes.implicitWidth, half.implicitWidth)
+            implicitHeight: hours.implicitHeight
+            Ink {
+                id: hours
+                px: Math.round(root.size * 1.6)
+                wd: parent.wd
+                text: root.hh.padStart(2, "0")
+            }
+            Ink {
+                id: minutes
+                x: hours.implicitWidth + parent.gapX
+                px: Math.round(root.size * 0.95)
+                wd: parent.wd
+                tone: root.color2
+                text: root.mm
+            }
+            // AM or PM under the minutes, along the hours' foot; with
+            // 24-hour time, the day and month there instead
+            Text {
+                id: half
+                x: minutes.x + Math.round((minutes.implicitWidth - implicitWidth) / 2)
+                y: hours.implicitHeight - Math.round(height * 0.8)
+                text: TimeFormat.h24 ? Qt.formatDate(root.time, "d MMM") : root.time.getHours() < 12 ? "AM" : "PM"
+                color: root.color2
+                font.family: root.family
+                font.pixelSize: Math.max(14, Math.round(root.size * 0.3))
+                font.variableAxes: root.axes(root.weight * 0.8, Math.max(14, Math.round(root.size * 0.3)), 60)
+            }
+        }
+    }
+
+    Component {
         id: wide
         Ink {
             px: Math.round(root.size * 0.8)
             wd: Math.max(root.widthAxis, 140)
-            text: root.h12 + ":" + root.mm
+            text: root.hh + ":" + root.mm
         }
     }
 
@@ -138,7 +177,7 @@ Item {
                 px: Math.round(root.size * 0.95)
                 wght: parent.w
                 wd: Math.min(root.widthAxis, 100)
-                text: String(root.h12).padStart(2, "0")
+                text: root.hh.padStart(2, "0")
             }
             Ink {
                 id: minutes
@@ -231,7 +270,7 @@ Item {
                 id: clockLine
                 x: (parent.width - implicitWidth) / 2
                 px: Math.round(root.size * 0.78)
-                text: root.h12 + ":" + root.mm
+                text: root.hh + ":" + root.mm
             }
             Row {
                 id: sky
@@ -261,7 +300,7 @@ Item {
         Ink {
             px: root.smallSize
             wght: root.face === "overlap" ? Math.max(root.weight, 760) : root.weight
-            text: root.h12 + ":" + root.mm
+            text: root.hh + ":" + root.mm
         }
     }
 }

@@ -69,6 +69,8 @@ LazyLoader {
                             required property var modelData
                             width: Theme.material ? 32 : 22
                             height: width
+                            transform: pressFx1.effects
+                            ElasticControl { id: pressFx1; pressed: m2.pressed }
                             radius: Theme.material && m2.pressed ? 8 : width / 2
                             // (Material: a tonal icon button, its state layer over it)
                             color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, m2.pressed ? 0.1 : m2.containsMouse ? 0.08 : 0))

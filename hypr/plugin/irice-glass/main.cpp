@@ -63,6 +63,7 @@ std::string pointerCommand(const std::string&, std::istringstream&);
 void        controlsInit(HANDLE);
 void        controlsExit();
 std::string controlsCommand(const std::string& state, const std::string& theme);
+std::string controlsStyleCommand(const std::string& style, const std::string& bg, const std::string& ink);
 
 static HANDLE        g_handle = nullptr;
 static CFunctionHook* g_hook  = nullptr;
@@ -626,6 +627,11 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             g_pHyprRenderer->damageMonitor(m);
         return "ok";
     }
+    if (verb == "controls-style") {
+        std::string style, bg, ink;
+        in >> style >> bg >> ink;
+        return controlsStyleCommand(style, bg, ink);
+    }
     if (verb == "controls") {
         std::string state, theme;
         in >> state >> theme;
@@ -727,7 +733,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             g_shapes[key] = std::move(shapes);
         return "ok";
     }
-    return "error: unknown verb (set, clear, ping, stats, controls, groups, window-frost, frametimes)";
+    return "error: unknown verb (set, clear, ping, stats, controls, controls-style, groups, window-frost, frametimes)";
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {

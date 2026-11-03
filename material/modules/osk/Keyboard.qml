@@ -111,6 +111,8 @@ Scope {
                                     : isMod || (modelData[3] ?? 1) > 1 ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
                                 width: win.unit * (modelData[3] ?? 1) - 6 + (modelData[3] ? 0 : 0)
                                 height: win.unit - 6
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: keyMouse.pressed }
                                 radius: Theme.material ? (keyMouse.pressed || latched ? height / 2 : 12) : 10
                                 Behavior on radius {
                                     enabled: Theme.material

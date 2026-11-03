@@ -211,6 +211,8 @@ Scope {
                         anchors { right: parent.right; rightMargin: Theme.material ? 16 : 12; verticalCenter: parent.verticalCenter }
                         width: openText.implicitWidth + (Theme.material ? 32 : 28)
                         height: Theme.material ? 36 : 28
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: openMouse.pressed }
                         radius: Theme.material ? (openMouse.pressed ? 8 : height / 2) : Theme.radius.control
                         Behavior on radius {
                             enabled: Theme.material
@@ -340,6 +342,8 @@ Scope {
                                 }
                                 MaterialShape {
                                     anchors.fill: parent
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: playMouse.pressed }
                                     shape: playMouse.pressed ? "cookie9" : playBtn.playing ? "circle" : "square"
                                     color: Qt.tint(Theme.m3.primaryContainer, Qt.alpha(Theme.m3.onPrimaryContainer, playMouse.pressed ? 0.1 : playMouse.containsMouse ? 0.08 : 0))
                                 }

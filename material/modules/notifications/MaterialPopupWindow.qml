@@ -246,6 +246,8 @@ GlassWindow {
                 }
                 Rectangle {
                     anchors.fill: parent
+                    transform: pressFx1.effects
+                    ElasticControl { id: pressFx1; pressed: pillMouse.pressed }
                     radius: pillMouse.pressed ? 8 : height / 2
                     Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
                     color: pillMouse.pressed ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.1)) : pillMouse.containsMouse ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.08)) : Theme.m3.secondaryContainer

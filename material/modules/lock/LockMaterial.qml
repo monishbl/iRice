@@ -30,8 +30,14 @@ Item {
     readonly property var cfg: host.cfg
     readonly property var m3: Theme.m3
     readonly property bool ios: host.ios
-    // A wide screen splits like a tablet: clock left, cards right
-    readonly property bool split: ios && width > height * 1.2
+    // Where notifications and Now Playing go (lock.notifications):
+    //   shelf   under the clock: the apps' icons and the newest as a card;
+    //           Now Playing as a slim player over the account pill
+    //   column  beside the clock, like a tablet: the player and the cards
+    //   icons   under the clock, only the apps' icons; the player as shelf
+    readonly property string style: cfg.notifications ?? "shelf"
+    // (column needs a wide screen; on a narrow one it's shelf)
+    readonly property bool split: style === "column" && width > height
 
     // Ink over the wallpaper: Material's fixed tones (the same in light and
     // dark), dark on a light wallpaper (lock.text)
@@ -50,11 +56,10 @@ Item {
     // the rest)
     readonly property bool morphable: clock.face === "stacked" && smallT === 0
 
-    // The dynamic clock (lock.clockSize): large while the lock screen is
-    // empty, small in the top corner once notifications or Now Playing are
-    // there, as Android 17's
+    // The clock stays where it is (lock.clockSize large, or small in the
+    // top corner); notifications and the player find room around it
     readonly property bool hasContent: media.visible || cards.recent.length > 0
-    readonly property bool compact: cfg.clockSize === "small" || (cfg.clockSize !== "large" && hasContent)
+    readonly property bool compact: cfg.clockSize === "small"
     property real smallT: compact ? 1 : 0
     Behavior on smallT {
         SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.002 }
@@ -175,6 +180,8 @@ Item {
                     anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 12
                     Text {
+                        // (the dynamic face shows the date itself with 24-hour time)
+                        visible: !(clock.face === "dynamic" && TimeFormat.h24 && root.smallT < 0.5)
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDate(wallClock.date, "dddd d MMMM")
                         color: root.ink
@@ -221,7 +228,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.min(implicitWidth, 320)
                             elide: Text.ElideRight
-                            text: !smartspace.next ? "" : (smartspace.next.title || "Event") + " · " + (smartspace.next.allDay ? "Today" : Qt.formatTime(smartspace.next.start, "h:mm AP"))
+                            text: !smartspace.next ? "" : (smartspace.next.title || "Event") + " · " + (smartspace.next.allDay ? "Today" : Qt.formatTime(smartspace.next.start, TimeFormat.hm))
                             color: root.ink2
                             font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
                         }
@@ -246,220 +253,39 @@ Item {
             }
         }
 
-        // ── Now Playing and notifications ───────────────────────────────
+        // ── Now Playing ─────────────────────────────────────────────────
+        // Its players in Material's carousel: beside the clock (column), or
+        // a slim card over the account pill
+        MediaCarousel {
+            id: media
+            visible: !!Media.player && (Media.player.trackTitle ?? "") !== ""
+            width: cards.width
+            height: 80
+            x: cards.x
+            y: root.split ? header.y : unlock.y - height - 20
+            peekRadius: Theme.radius.tile
+            opacity: root.reveal
+            card: Component {
+                LockPlayer {}
+            }
+        }
+
+        // ── Notifications ───────────────────────────────────────────────
         Column {
             id: cards
             width: root.split ? Math.min(380, root.width * 0.3) : 380
             x: root.split ? Math.round(root.width * 0.72 - width / 2) : Math.round((root.width - width) / 2)
-            // (moving with the clock, or in macos with the field, on unlock)
-            y: root.split ? header.y : root.ios ? header.y + header.height + 32 : unlock.y - height - 32
+            // (moving with the clock on unlock)
+            y: root.split ? header.y + (media.visible ? media.height + 12 : 0) : header.y + header.height + 32
             spacing: 12
             opacity: root.reveal
 
-            // Now Playing: art in a cookie, a play button that squares off
-            // while playing, the wavy timeline
-            Rectangle {
-                id: media
-                readonly property var p: Island.player
-                readonly property bool timeline: (p?.lengthSupported ?? false) && (p?.length ?? 0) > 0
-                visible: !!p && (p.trackTitle ?? "") !== ""
-                // Android 17's carousel: other players wait beside it as
-                // narrow cards (MediaPeek), the card giving them room; a
-                // swipe on it or a click on one switches
-                readonly property var others: Media.players.filter(o => o !== p && (o.trackTitle ?? "") !== "").slice(-2)
-                width: parent.width - others.length * 48
-                Behavior on width {
-                    SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.5 }
-                }
-                height: 80
-                radius: Theme.radius.tile
-                color: root.m3.surfaceContainerHigh
-                Row {
-                    x: parent.width + 8
-                    height: parent.height
-                    spacing: 8
-                    Repeater {
-                        model: media.others
-                        MediaPeek {
-                            required property var modelData
-                            player: modelData
-                            width: 40
-                            height: media.height
-                        }
-                    }
-                }
-                DragHandler {
-                    target: null
-                    yAxis.enabled: false
-                    enabled: media.others.length > 0
-                    onActiveChanged: {
-                        if (active)
-                            return;
-                        const dx = centroid.position.x - centroid.pressPosition.x;
-                        if (Math.abs(dx) >= 48)
-                            Media.pinned = dx < 0 ? media.others[0] : media.others[media.others.length - 1];
-                    }
-                }
-
-                Timer {
-                    interval: 1000
-                    repeat: true
-                    running: media.visible && media.timeline && Island.musicPlaying && root.visible
-                    onTriggered: media.p?.positionChanged()
-                }
-
-                // The art in a cookie while it plays, a circle when paused
-                Item {
-                    id: art
-                    x: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 56
-                    height: 56
-                    Image {
-                        id: artImage
-                        anchors.fill: parent
-                        source: Media.artUrl(media.p)
-                        retainWhileLoading: true
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(112, 112)
-                        asynchronous: true
-                    }
-                    MaterialShape {
-                        anchors.fill: parent
-                        shape: Island.musicPlaying ? "cookie9" : "circle"
-                        color: root.m3.surfaceContainerHighest
-                        source: artImage.status === Image.Ready && artImage.source != "" ? artImage : null
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        visible: artImage.status !== Image.Ready || artImage.source == ""
-                        name: "music-notes"
-                        fill: true
-                        size: 28
-                        color: root.m3.onSurfaceVariant
-                    }
-                }
-                Column {
-                    anchors { left: art.right; leftMargin: 12; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    spacing: 2
-                    Text {
-                        width: parent.width
-                        text: media.p?.trackTitle ?? ""
-                        elide: Text.ElideRight
-                        color: root.m3.onSurface
-                        font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
-                    }
-                    Text {
-                        width: parent.width
-                        text: media.p?.trackArtist ?? ""
-                        elide: Text.ElideRight
-                        color: root.m3.onSurfaceVariant
-                        font { family: Theme.font.family; pixelSize: 13 }
-                    }
-                    // The timeline: wavy while it plays, flat when paused (so
-                    // a paused track on the lock screen draws nothing)
-                    Item {
-                        id: timelineBox
-                        visible: media.timeline
-                        width: parent.width
-                        height: 18
-                        readonly property real done: media.timeline ? Math.max(0, Math.min(1, (media.p?.position ?? 0) / media.p.length)) : 0
-                        WavyProgress {
-                            visible: Island.musicPlaying
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width
-                            value: timelineBox.done
-                        }
-                        Rectangle {
-                            visible: !Island.musicPlaying
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width
-                            height: 4
-                            radius: 2
-                            color: root.m3.secondaryContainer
-                            Rectangle {
-                                width: parent.width * timelineBox.done
-                                height: parent.height
-                                radius: 2
-                                color: root.m3.primary
-                            }
-                        }
-                    }
-                }
-                Row {
-                    id: controls
-                    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                    spacing: 2
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 36
-                        height: 36
-                        icon: "skip-back"
-                        fill: true
-                        iconSize: 20
-                        iconColor: root.m3.onSurfaceVariant
-                        tooltip: "Previous track"
-                        onClicked: media.p?.previous()
-                    }
-                    Item {
-                        id: play
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 44
-                        height: 44
-                        scale: playMouse.pressed ? 0.92 : 1
-                        Behavior on scale { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.005 } }
-                        activeFocusOnTab: true
-                        Accessible.role: Accessible.Button
-                        Accessible.name: Island.musicPlaying ? "Pause" : "Play"
-                        Accessible.onPressAction: media.p?.togglePlaying()
-                        Keys.onPressed: e => {
-                            if (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                                media.p?.togglePlaying();
-                                e.accepted = true;
-                            }
-                        }
-                        // Selected (playing) squares off, as Material's toggles do
-                        MaterialShape {
-                            anchors.fill: parent
-                            shape: Island.musicPlaying ? "square" : "circle"
-                            color: playMouse.containsMouse ? Qt.tint(root.m3.primary, Qt.alpha(root.m3.onPrimary, playMouse.pressed ? 0.1 : 0.08)) : root.m3.primary
-                        }
-                        Icon {
-                            anchors.centerIn: parent
-                            name: Island.musicPlaying ? "pause" : "play"
-                            fill: true
-                            size: 22
-                            color: root.m3.onPrimary
-                        }
-                        FocusRing {
-                            radius: play.width / 2 + 4
-                        }
-                        MouseArea {
-                            id: playMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: media.p?.togglePlaying()
-                        }
-                    }
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 36
-                        height: 36
-                        icon: "skip-forward"
-                        fill: true
-                        iconSize: 20
-                        iconColor: root.m3.onSurfaceVariant
-                        tooltip: "Next track"
-                        onClicked: media.p?.next()
-                    }
-                }
-            }
-
-            // Notifications (ios layout), newest first: who sent them as a
-            // shelf of app icons, or with "Show previews" on, compact cards
-            // in a segmented group (corners 24 outside, 6 inside, 2 apart)
-            readonly property var recent: root.ios ? Notifications.list.slice().reverse() : []
+            // Newest first: who sent them as a shelf of app icons (shelf,
+            // icons), and compact cards in a segmented group (corners 24
+            // outside, 6 inside, 2 apart): the newest (shelf) or the latest
+            // four (column). Without "Show previews", a card says only
+            // which app it's from.
+            readonly property var recent: Notifications.list.slice().reverse()
             readonly property var apps: {
                 const seen = {}, out = [];
                 for (let i = 0; i < recent.length && out.length < 6; i++) {
@@ -475,7 +301,7 @@ Item {
 
             Rectangle {
                 id: shelf
-                visible: !root.cfg.previews && cards.recent.length > 0
+                visible: !root.split && cards.recent.length > 0
                 x: root.split ? 0 : (parent.width - width) / 2
                 width: shelfRow.implicitWidth + 16
                 height: 52
@@ -518,10 +344,10 @@ Item {
 
             Column {
                 id: noteList
-                visible: root.cfg.previews && cards.recent.length > 0
+                visible: root.style !== "icons" && cards.recent.length > 0
                 width: parent.width
                 spacing: 2
-                readonly property var shown: visible ? cards.recent.slice(0, 3) : []
+                readonly property var shown: visible ? cards.recent.slice(0, root.split ? 4 : 1) : []
                 Repeater {
                     model: noteList.shown
                     Rectangle {
@@ -560,7 +386,7 @@ Item {
                                 Text {
                                     id: noteTitle
                                     width: parent.width - noteWhen.implicitWidth - 8
-                                    text: note.modelData.summary || note.modelData.appName || "Notification"
+                                    text: (root.cfg.previews ? note.modelData.summary : "") || note.modelData.appName || "Notification"
                                     elide: Text.ElideRight
                                     color: root.m3.onSurface
                                     font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
@@ -576,7 +402,7 @@ Item {
                             }
                             Text {
                                 width: parent.width
-                                text: (note.modelData.body ?? "").replace(/<[^>]*>/g, "") || (note.modelData.appName ?? "")
+                                text: root.cfg.previews ? (note.modelData.body ?? "").replace(/<[^>]*>/g, "") || (note.modelData.appName ?? "") : "New notification"
                                 elide: Text.ElideRight
                                 maximumLineCount: 1
                                 color: root.m3.onSurfaceVariant
@@ -587,69 +413,31 @@ Item {
                 }
             }
             Text {
-                visible: root.cfg.previews && cards.recent.length > 3
-                x: root.split ? 8 : (parent.width - width) / 2
-                text: (cards.recent.length - 3) + " more"
+                visible: root.split && cards.recent.length > 4
+                x: 8
+                text: (cards.recent.length - 4) + " more"
                 color: root.ink
                 font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
             }
         }
 
-        // ── Unlock ──────────────────────────────────────────────────────
+        // ── Unlock: one pill ────────────────────────────────────────────
+        // At rest: your picture, your name and, with a fingerprint reader
+        // set up, its glyph at the end. A key or a mouse move springs it
+        // open into the password field (the key typed is kept: the field
+        // always has the keyboard); the glyph stays at the end, pulsing
+        // while the reader listens, shaking on a miss, a check on a match.
+        // 10 s untouched with nothing typed: back to the pill.
         Column {
             id: unlock
             x: Math.round((root.width - width) / 2)
-            y: root.height - height - Math.round(root.height * (root.ios ? 0.05 : 0.08)) + root.part
-            spacing: 16
+            y: root.height - height - Math.round(root.height * 0.06) + root.part
+            spacing: 12
             opacity: root.reveal
 
-            // The avatar (~/.face, or AccountsService's picture) in a cookie
-            Column {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                Item {
-                    id: avatar
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: root.ios ? 48 : 64
-                    height: width
-                    Image {
-                        id: avatarImage
-                        anchors.fill: parent
-                        source: root.avatarPath !== "" ? "file://" + root.avatarPath : ""
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(192, 192)
-                        asynchronous: true
-                    }
-                    MaterialShape {
-                        anchors.fill: parent
-                        shape: "cookie9"
-                        color: root.m3.primaryContainer
-                        source: avatarImage.status === Image.Ready && avatarImage.source != "" ? avatarImage : null
-                        // (a turn while the password is checked)
-                        spin: root.lockScope.busy ? 40 : 0
-                        Behavior on spin { SpringAnimation { spring: 3.2; damping: 0.27; epsilon: 0.05 } }
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        visible: avatarImage.status !== Image.Ready || avatarImage.source == ""
-                        name: "user"
-                        fill: true
-                        size: Math.round(avatar.width * 0.45)
-                        color: root.m3.onPrimaryContainer
-                    }
-                }
-                Text {
-                    visible: !root.ios
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: Quickshell.env("USER") ?? ""
-                    color: root.ink
-                    font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
-                }
-            }
-
-            // What went wrong and how to fix it, above the field as Android's
+            // What went wrong and how to fix it, above the pill as Android's
             // bouncer has it, in error on a container so it reads on any
-            // wallpaper (the field stays put)
+            // wallpaper (the pill stays put)
             Rectangle {
                 visible: root.lockScope.error !== ""
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -677,14 +465,15 @@ Item {
                     }
                 }
             }
-            // The field: a filled pill, outlined in primary while typing (in
-            // error after a wrong password), the send button squaring off
-            // once there's something to send
+
             Item {
                 id: fieldBox
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 320
-                height: 52
+                readonly property bool fingered: Fingerprint.lockScreen || finger.matched
+                // (closed: as wide as the name; open: the field's width)
+                readonly property real restWidth: 8 + 40 + 12 + Math.min(nameText.implicitWidth, 240) + (fingered ? 12 + 40 + 8 : 24)
+                width: Math.round(restWidth + (360 - restWidth) * root.openT)
+                height: 56
 
                 property real shake: 0
                 // (a loose spring, ζ 0.15, k 1500: a quick decaying shake)
@@ -706,48 +495,108 @@ Item {
                     height: parent.height
                     radius: height / 2
                     color: root.m3.surfaceContainerHigh
-                    border.width: input.activeFocus || root.lockScope.error !== "" ? 2 : 0
+                    border.width: root.open && (input.activeFocus || root.lockScope.error !== "") ? 2 : 0
                     border.color: root.lockScope.error !== "" ? root.m3.error : root.m3.primary
 
+                    // Your picture (~/.face, or AccountsService's) in a cookie
+                    Item {
+                        id: avatar
+                        x: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        height: 40
+                        Image {
+                            id: avatarImage
+                            anchors.fill: parent
+                            source: root.avatarPath !== "" ? "file://" + root.avatarPath : ""
+                            fillMode: Image.PreserveAspectCrop
+                            sourceSize: Qt.size(120, 120)
+                            asynchronous: true
+                        }
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: "cookie9"
+                            color: root.m3.primaryContainer
+                            source: avatarImage.status === Image.Ready && avatarImage.source != "" ? avatarImage : null
+                            // (a turn while the password is checked)
+                            spin: root.lockScope.busy ? 40 : 0
+                            Behavior on spin { SpringAnimation { spring: 3.2; damping: 0.27; epsilon: 0.05 } }
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: avatarImage.status !== Image.Ready || avatarImage.source == ""
+                            name: "user"
+                            fill: true
+                            size: 18
+                            color: root.m3.onPrimaryContainer
+                        }
+                    }
+
+                    // Your name, closed; the field, open
+                    Text {
+                        id: nameText
+                        x: avatar.x + avatar.width + 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 240)
+                        elide: Text.ElideRight
+                        text: root.fullName || (Quickshell.env("USER") ?? "")
+                        color: root.m3.onSurface
+                        opacity: 1 - root.openT
+                        visible: opacity > 0.01
+                        font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
+                    }
                     TextInput {
                         id: input
-                        x: 24
-                        width: parent.width - 24 - 60
+                        x: avatar.x + avatar.width + 12
+                        width: Math.max(0, (send.visible ? send.x : fingerSlot.x) - x - 8)
                         height: parent.height
                         verticalAlignment: TextInput.AlignVCenter
                         echoMode: TextInput.Password
                         passwordCharacter: "•"
                         enabled: !root.lockScope.busy
                         focus: true
+                        clip: true
+                        opacity: root.openT
                         color: root.m3.onSurface
                         selectionColor: root.m3.primary
                         selectedTextColor: root.m3.onPrimary
                         font { family: Theme.font.family; pixelSize: 18; letterSpacing: 2 }
                         text: root.lockScope.password
-                        onTextChanged: root.lockScope.password = text
+                        onTextChanged: {
+                            root.lockScope.password = text;
+                            root.wake();
+                        }
                         onAccepted: root.lockScope.submit()
+                        Keys.onPressed: e => {
+                            root.wake();
+                            e.accepted = false;
+                        }
                         Accessible.name: "Password"
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: input.text === ""
-                            // (the fingerprint target under the field says a finger works)
                             text: "Enter password"
                             color: root.m3.onSurfaceVariant
                             font { family: Theme.font.family; pixelSize: 16 }
                         }
                     }
 
+                    // Send: a circle, filled once there's something to send
                     Item {
                         id: send
-                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        x: fingerSlot.x - (fieldBox.fingered ? 4 : 0) - width
+                        anchors.verticalCenter: parent.verticalCenter
                         width: 40
                         height: 40
                         readonly property bool ready: input.text !== ""
-                        visible: !root.lockScope.busy
+                        visible: root.openT > 0.5 && !root.lockScope.busy
+                        opacity: ready ? 1 : 0.6
+                        transform: sendPress.effects
+                        ElasticControl { id: sendPress; pressed: sendMouse.pressed }
                         MaterialShape {
                             anchors.fill: parent
-                            shape: send.ready ? "square" : "circle"
+                            shape: "circle"
                             color: send.ready ? (sendMouse.containsMouse ? Qt.tint(root.m3.primary, Qt.alpha(root.m3.onPrimary, sendMouse.pressed ? 0.1 : 0.08)) : root.m3.primary) : Qt.alpha(root.m3.onSurface, 0.12)
                         }
                         Icon {
@@ -768,17 +617,124 @@ Item {
                         Accessible.onPressAction: root.lockScope.submit()
                     }
                     Spinner {
-                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        x: send.x
+                        anchors.verticalCenter: parent.verticalCenter
                         visible: root.lockScope.busy
                         size: 40
+                    }
+
+                    // The fingerprint glyph at the end (its place even while
+                    // the reader isn't listening yet)
+                    Item {
+                        id: fingerSlot
+                        x: pill.width - 8 - width
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: fieldBox.fingered ? 40 : 0
+                        height: 40
+                        Item {
+                            id: finger
+                            anchors.fill: parent
+                            visible: fieldBox.fingered
+                            // The match (or any unlock) holds the check while the lock fades
+                            property bool matched: false
+                            readonly property string phase: matched || root.lockScope.leaving ? "match" : root.lockScope.fingerState
+                            property real pulse: 1
+                            property real shake: 0
+                            scale: pulse
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: root.lockScope.fingerText || "Fingerprint"
+
+                            onPhaseChanged: {
+                                if (CoolDown.motionScale <= 0)
+                                    return;
+                                if (phase === "waiting") {
+                                    pulseAnim.restart();
+                                } else if (phase === "miss") {
+                                    fingerShake.restart();
+                                } else if (phase === "match") {
+                                    pulseAnim.restart();
+                                    ripple.restart();
+                                }
+                            }
+                            // Listening: a subtle spring out and back
+                            SpringAnimation {
+                                id: pulseAnim
+                                target: finger
+                                property: "pulse"
+                                from: 1.15
+                                to: 1
+                                spring: 6.08
+                                damping: 0.5
+                                epsilon: 0.002
+                            }
+                            SpringAnimation {
+                                id: fingerShake
+                                target: finger
+                                property: "shake"
+                                from: 8
+                                to: 0
+                                spring: 24
+                                damping: 0.19
+                                epsilon: 0.2
+                            }
+                            // Android's ripple from the sensor on a match
+                            Rectangle {
+                                id: rippleRing
+                                anchors.centerIn: parent
+                                property real grow: 0
+                                width: 40 + grow * 240
+                                height: width
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: 2
+                                border.color: root.m3.primary
+                                opacity: grow > 0 ? (1 - grow) * 0.8 : 0
+                                NumberAnimation {
+                                    id: ripple
+                                    target: rippleRing
+                                    property: "grow"
+                                    from: 0
+                                    to: 1
+                                    duration: 600
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                            MaterialShape {
+                                id: fingerShape
+                                x: finger.shake
+                                width: parent.width
+                                height: parent.height
+                                shape: finger.phase === "match" ? "cookie9" : "circle"
+                                color: finger.phase === "match" ? root.m3.primaryContainer : finger.phase === "miss" ? root.m3.errorContainer : finger.phase === "waiting" ? root.m3.secondaryContainer : "transparent"
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                            Icon {
+                                anchors.centerIn: fingerShape
+                                name: finger.phase === "match" ? "check" : "fingerprint"
+                                size: 22
+                                color: finger.phase === "match" ? root.m3.onPrimaryContainer : finger.phase === "miss" ? root.m3.onErrorContainer : root.m3.primary
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+                    }
+
+                    // A click on the closed pill opens it
+                    MouseArea {
+                        anchors.fill: parent
+                        visible: !root.open
+                        cursorShape: Qt.IBeamCursor
+                        onClicked: {
+                            root.wake();
+                            input.forceActiveFocus();
+                        }
                     }
                 }
             }
 
             // What the fingerprint reader or the face camera wants (Lock.qml),
-            // under a wrong-password message too: the finger still works then
-            // (its line kept while either is set up, so the field doesn't jump;
-            // blank while the reader just listens: the target says that)
+            // under the pill (its line kept while either is set up, so the
+            // pill doesn't jump; blank while the reader just listens: the
+            // glyph says that)
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6
@@ -801,104 +757,214 @@ Item {
                     font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
                 }
             }
-
-            // The fingerprint target
-            Item {
-                id: finger
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 56
-                height: 56
-                // (its place kept while the reader is set up; it shows while
-                // the reader listens)
-                visible: Fingerprint.lockScreen || matched
-                readonly property bool shown: root.lockScope.fingerState !== "" || matched || root.lockScope.leaving
-                opacity: shown ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                // The match (or any unlock) holds the check while the lock fades
-                property bool matched: false
-                readonly property string phase: matched || root.lockScope.leaving ? "match" : root.lockScope.fingerState
-                property real pulse: 1
-                property real shake: 0
-                scale: pulse
-                Accessible.role: Accessible.StaticText
-                Accessible.name: root.lockScope.fingerText || "Fingerprint"
-
-                onPhaseChanged: {
-                    if (CoolDown.motionScale <= 0)
-                        return;
-                    if (phase === "waiting") {
-                        pulseAnim.restart();
-                    } else if (phase === "miss") {
-                        fingerShake.restart();
-                    } else if (phase === "match") {
-                        pulseAnim.restart();
-                        ripple.restart();
-                    }
-                }
-                // Listening: a subtle spring out and back (Material's default
-                // spatial spring, ζ 0.8, k 380)
-                SpringAnimation {
-                    id: pulseAnim
-                    target: finger
-                    property: "pulse"
-                    from: 1.1
-                    to: 1
-                    spring: 6.08
-                    damping: 0.5
-                    epsilon: 0.002
-                }
-                SpringAnimation {
-                    id: fingerShake
-                    target: finger
-                    property: "shake"
-                    from: 10
-                    to: 0
-                    spring: 24
-                    damping: 0.19
-                    epsilon: 0.2
-                }
-
-                // Android's ripple from the sensor on a match
-                Rectangle {
-                    id: rippleRing
-                    anchors.centerIn: parent
-                    property real grow: 0
-                    width: 56 + grow * 320
-                    height: width
-                    radius: width / 2
-                    color: "transparent"
-                    border.width: 2
-                    border.color: root.m3.primary
-                    opacity: grow > 0 ? (1 - grow) * 0.8 : 0
-                    NumberAnimation {
-                        id: ripple
-                        target: rippleRing
-                        property: "grow"
-                        from: 0
-                        to: 1
-                        duration: 600
-                        easing.type: Easing.OutCubic
-                    }
-                }
-                MaterialShape {
-                    id: fingerShape
-                    x: finger.shake
-                    width: parent.width
-                    height: parent.height
-                    shape: finger.phase === "match" ? "cookie9" : "circle"
-                    color: finger.phase === "match" ? root.m3.primaryContainer : finger.phase === "miss" ? root.m3.errorContainer : root.m3.surfaceContainerHigh
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                }
-                Icon {
-                    anchors.centerIn: fingerShape
-                    name: finger.phase === "match" ? "check" : "fingerprint"
-                    size: 26
-                    color: finger.phase === "match" ? root.m3.onPrimaryContainer : finger.phase === "miss" ? root.m3.onErrorContainer : root.m3.primary
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                }
-            }
         }
     }
+
+    // The pill opens on a key or a mouse move and closes 10 s after the
+    // last one, unless something's typed (or being checked, or wrong)
+    property bool typing: false
+    readonly property bool open: typing || input.text !== "" || lockScope.busy || lockScope.error !== ""
+    property real openT: open ? 1 : 0
+    Behavior on openT {
+        SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.002 }
+    }
+    function wake() {
+        typing = true;
+        idle.restart();
+    }
+    Timer {
+        id: idle
+        interval: 10000
+        onTriggered: root.typing = false
+    }
+    HoverHandler {
+        // (the first position after the lock appears isn't a move)
+        property point last: Qt.point(-1, -1)
+        onPointChanged: {
+            const p = point.position;
+            if (last.x >= 0 && (Math.abs(p.x - last.x) > 2 || Math.abs(p.y - last.y) > 2))
+                root.wake();
+            last = p;
+        }
+    }
+    // Your name as the account has it (its full name), else the login
+    property string fullName: ""
+    Process {
+        running: true
+        command: ["sh", "-c", "getent passwd \"$USER\" | cut -d: -f5 | cut -d, -f1"]
+        stdout: StdioCollector {
+            onStreamFinished: root.fullName = text.trim()
+        }
+    }
+
+    // Now Playing on the lock screen: art in a cookie, a play button that
+    // squares off while playing, the wavy timeline (one per player: the
+    // carousel widens the chosen one in place)
+    component LockPlayer: Rectangle {
+                id: lp
+                property var player
+                readonly property var p: player
+                readonly property bool playingNow: p?.isPlaying ?? false
+                readonly property bool timeline: (p?.lengthSupported ?? false) && (p?.length ?? 0) > 0
+                radius: Theme.radius.tile
+                color: root.m3.surfaceContainerHigh
+
+                Timer {
+                    interval: 1000
+                    repeat: true
+                    running: lp.visible && lp.timeline && lp.playingNow && root.visible
+                    onTriggered: lp.p?.positionChanged()
+                }
+
+                // The art in a cookie while it plays, a circle when paused
+                Item {
+                    id: art
+                    x: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 56
+                    height: 56
+                    Image {
+                        id: artImage
+                        anchors.fill: parent
+                        source: Media.artUrl(lp.p)
+                        retainWhileLoading: true
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize: Qt.size(112, 112)
+                        asynchronous: true
+                    }
+                    MaterialShape {
+                        anchors.fill: parent
+                        shape: lp.playingNow ? "cookie9" : "circle"
+                        color: root.m3.surfaceContainerHighest
+                        source: artImage.status === Image.Ready && artImage.source != "" ? artImage : null
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        visible: artImage.status !== Image.Ready || artImage.source == ""
+                        name: "music-notes"
+                        fill: true
+                        size: 28
+                        color: root.m3.onSurfaceVariant
+                    }
+                }
+                Column {
+                    anchors { left: art.right; leftMargin: 12; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                    spacing: 2
+                    Text {
+                        width: parent.width
+                        text: lp.p?.trackTitle ?? ""
+                        elide: Text.ElideRight
+                        color: root.m3.onSurface
+                        font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
+                    }
+                    Text {
+                        width: parent.width
+                        text: lp.p?.trackArtist ?? ""
+                        elide: Text.ElideRight
+                        color: root.m3.onSurfaceVariant
+                        font { family: Theme.font.family; pixelSize: 13 }
+                    }
+                    // The timeline: wavy while it plays, flat when paused (so
+                    // a paused track on the lock screen draws nothing)
+                    Item {
+                        id: timelineBox
+                        visible: lp.timeline
+                        width: parent.width
+                        height: 18
+                        readonly property real done: lp.timeline ? Math.max(0, Math.min(1, (lp.p?.position ?? 0) / lp.p.length)) : 0
+                        WavyProgress {
+                            visible: lp.playingNow
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            value: timelineBox.done
+                        }
+                        Rectangle {
+                            visible: !lp.playingNow
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            height: 4
+                            radius: 2
+                            color: root.m3.secondaryContainer
+                            Rectangle {
+                                width: parent.width * timelineBox.done
+                                height: parent.height
+                                radius: 2
+                                color: root.m3.primary
+                            }
+                        }
+                    }
+                }
+                Row {
+                    id: controls
+                    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                    spacing: 2
+                    IconButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 36
+                        height: 36
+                        icon: "skip-back"
+                        fill: true
+                        iconSize: 20
+                        iconColor: root.m3.onSurfaceVariant
+                        tooltip: "Previous track"
+                        onClicked: lp.p?.previous()
+                    }
+                    Item {
+                        id: play
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 44
+                        height: 44
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: playMouse.pressed }
+                        // (Material: grows on press: the ElasticControl above)
+                        Behavior on scale { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.005 } }
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: lp.playingNow ? "Pause" : "Play"
+                        Accessible.onPressAction: lp.p?.togglePlaying()
+                        Keys.onPressed: e => {
+                            if (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                                lp.p?.togglePlaying();
+                                e.accepted = true;
+                            }
+                        }
+                        // Selected (playing) squares off, as Material's toggles do
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: lp.playingNow ? "square" : "circle"
+                            color: playMouse.containsMouse ? Qt.tint(root.m3.primary, Qt.alpha(root.m3.onPrimary, playMouse.pressed ? 0.1 : 0.08)) : root.m3.primary
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            name: lp.playingNow ? "pause" : "play"
+                            fill: true
+                            size: 22
+                            color: root.m3.onPrimary
+                        }
+                        FocusRing {
+                            radius: play.width / 2 + 4
+                        }
+                        MouseArea {
+                            id: playMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: lp.p?.togglePlaying()
+                        }
+                    }
+                    IconButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 36
+                        height: 36
+                        icon: "skip-forward"
+                        fill: true
+                        iconSize: 20
+                        iconColor: root.m3.onSurfaceVariant
+                        tooltip: "Next track"
+                        onClicked: lp.p?.next()
+                    }
+                }
+            }
 
     // A picture for the avatar, if there is one
     property string avatarPath: ""

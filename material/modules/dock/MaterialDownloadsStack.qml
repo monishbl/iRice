@@ -183,6 +183,8 @@ PanelWindow {
                         anchors { right: parent.right; top: parent.top; margins: 6 }
                         width: 28
                         height: 28
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: quickLook.pressed }
                         radius: quickLook.pressed ? 8 : 14
                         Behavior on radius { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
                         color: Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, quickLook.pressed ? 0.1 : quickLook.containsMouse ? 0.08 : 0))

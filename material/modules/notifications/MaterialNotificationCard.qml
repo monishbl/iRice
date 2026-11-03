@@ -279,6 +279,8 @@ Item {
                     anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
                     width: 32
                     height: 32
+                    transform: pressFx1.effects
+                    ElasticControl { id: pressFx1; pressed: sendMouse.pressed }
                     radius: sendMouse.pressed && ready ? 8 : 16
                     Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
                     color: !ready ? "transparent" : sendMouse.pressed ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, 0.1)) : sendMouse.containsMouse ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, 0.08)) : Theme.m3.primary
@@ -322,6 +324,8 @@ Item {
         signal clicked
         width: pillRow.implicitWidth + 32
         height: 32
+        transform: pressFx2.effects
+        ElasticControl { id: pressFx2; pressed: pillMouse.pressed }
         radius: pillMouse.pressed ? 8 : 16
         Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
         color: pillMouse.pressed ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.1)) : pillMouse.containsMouse ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.08)) : Theme.m3.secondaryContainer

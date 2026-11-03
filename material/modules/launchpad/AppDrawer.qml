@@ -464,7 +464,9 @@ Variants {
                                     y: 12
                                     size: 56
                                     source: win.showingApps ? Apps.iconFor(cell.modelData) : ""
-                                    scale: appMouse.pressed ? 0.88 : 1
+                                    transform: pressFx1.effects
+                                    ElasticControl { id: pressFx1; pressed: appMouse.pressed }
+                                    // (Material: grows on press: the ElasticControl above)
                                     Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
                                 }
                                 Text {
@@ -508,7 +510,9 @@ Variants {
                                     radius: Math.max(0, corner)
                                     color: cell.isSelected ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHigh
                                     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                                    scale: folderMouse.pressed ? 0.95 : 1
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: folderMouse.pressed }
+                                    // (Material: grows on press: the ElasticControl above)
                                     Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
                                     Accessible.role: Accessible.Button
                                     Accessible.name: win.showingApps ? "" : cell.modelData.name + ", " + cell.modelData.apps.length + " apps"
@@ -681,6 +685,19 @@ Variants {
                             font { family: Theme.font.family; pixelSize: 14 }
                         }
                     }
+                }
+
+                // More (Material 3 Expressive's FAB menu): get apps, change
+                // the view, the drawer's settings
+                FabMenu {
+                    anchors { right: parent.right; bottom: parent.bottom; margins: 24 }
+                    icon: "dots-three"
+                    label: "More"
+                    items: [
+                        { text: "Get apps", icon: "storefront", action: () => Panels.openAppStore() },
+                        { text: win.view === 1 ? "Show folders" : "Show A to Z", icon: win.view === 1 ? "squares-four" : "list", action: () => win.toggleView() },
+                        { text: "Dock and drawer settings", icon: "gear", action: () => Panels.openSettings("dock") }
+                    ]
                 }
             }
         }

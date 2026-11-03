@@ -55,7 +55,9 @@ Column {
         opacity: root.busy ? 0.6 : 1
         color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
             : mouse.pressed ? Qt.darker(Theme.accent, 1.15) : mouse.containsMouse ? Qt.darker(Theme.accent, 1.07) : Theme.accent
-        scale: mouse.pressed ? 0.97 : 1
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: mouse.pressed }
+        // (Material: grows on press: the ElasticControl above)
         Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
         activeFocusOnTab: visible
         Keys.onPressed: event => {

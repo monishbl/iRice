@@ -16,6 +16,7 @@ Item {
     property bool hasMore: false
     property real trackHeight: 52 // Expressive's large slider (medium: 40)
     property string accessibleName: icon
+    property real glyphRotation: 0 // (a standing slider is this one turned: its icon turns back)
     signal moved(real value)
     signal more
 
@@ -123,6 +124,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         name: root.icon
         fill: true
+        rotation: root.glyphRotation
         color: inside ? Theme.m3.onPrimary : Theme.m3.onSecondaryContainer
         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
     }

@@ -646,7 +646,32 @@ def stage_incoming(ref):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(r.stdout)
+    stage_login_tree(repo, ref, out)
     return out
+
+
+LOGIN_COPY = "/usr/share/irice/shell"  # the login screen's (./install.sh --greeter)
+
+
+def stage_login_tree(repo, ref, out, copy=LOGIN_COPY):
+    """Where the login screen has its own copy of iRice, the whole of the
+    incoming version too (<out>/tree: shell, material and greeter.lua), for
+    the helper's setup to refresh it from. Without it, the copy stays."""
+    if not os.path.isdir(copy):
+        return
+    tree = os.path.join(out, "tree")
+    for paths in (["shell", "material", "hypr/greeter.lua"], ["shell", "hypr/greeter.lua"]):
+        shutil.rmtree(tree, ignore_errors=True)
+        try:
+            a = subprocess.run(["git", "-C", repo, "archive", "--format=tar", ref, "--", *paths], capture_output=True, timeout=120)
+            if a.returncode != 0:
+                continue  # (an older version without material/)
+            os.makedirs(tree)
+            subprocess.run(["tar", "-x", "-C", tree], input=a.stdout, capture_output=True, timeout=120, check=True)
+            return
+        except (OSError, subprocess.SubprocessError):
+            break
+    shutil.rmtree(tree, ignore_errors=True)
 
 
 def root_helper():

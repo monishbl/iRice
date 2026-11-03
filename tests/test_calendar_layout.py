@@ -183,6 +183,7 @@ class CalendarLayoutTests(unittest.TestCase):
         put('common/Squircle.qml', 'import QtQuick\nRectangle { id: s; property alias borderWidth: s.border.width; property alias borderColor: s.border.color }')
         put('modules/controlcenter/Platter.qml','import QtQuick\nRectangle { property real shapeRadius: 24; color: "#332036"; radius: shapeRadius }')
         put('common/Theme.qml', THEME)
+        put('common/TimeFormat.qml', 'pragma Singleton\nimport QtQuick\nimport Quickshell\nSingleton { readonly property bool h24: false; readonly property string hm: "h:mm AP"; readonly property string hmShort: "h:mm"; function hour(d) { return String((d.getHours() + 11) % 12 + 1); } function time(d) { return Qt.formatTime(d, hm); } }')
         put('common/Icon.qml', 'import QtQuick\nText { property string name; property bool fill; property bool bold; property int size: 14; text: name === "arrow-up" ? "↑" : name === "caret-left" ? "‹" : name === "caret-right" ? "›" : "+"; font.pixelSize: size }')
         put('common/ElasticControl.qml', 'import QtQuick\nQtObject { property bool pressed; property var effects: [] }')
         put('common/Switch.qml', 'import QtQuick\nItem { property bool checked; signal toggled(); implicitWidth: 40; implicitHeight: 24 }')

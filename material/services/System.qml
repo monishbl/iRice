@@ -72,7 +72,7 @@ Singleton {
         // and the sleep it holds the inhibition for)
         command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
     }
-    readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), "h:mm AP") : "Until off"
+    readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), TimeFormat.hm) : "Until off"
     Timer {
         running: root.keepAwake && root.keepAwakeUntil > 0
         interval: Math.max(1000, root.keepAwakeUntil - Date.now())

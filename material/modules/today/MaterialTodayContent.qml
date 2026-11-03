@@ -62,6 +62,8 @@ FocusScope {
         signal activated
         implicitWidth: buttonRow.implicitWidth + 48
         implicitHeight: 40
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: buttonMouse.pressed }
         radius: buttonMouse.pressed ? 12 : 20
         Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
         readonly property color base: primary ? Theme.m3.primary : Theme.m3.secondaryContainer
@@ -403,7 +405,7 @@ FocusScope {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         visible: !!todo.modelData.due
                         readonly property date at: new Date(todo.modelData.due ?? 0)
-                        text: todo.modelData.allDay ? (Today.dayKey(at) === Today.day ? "Today" : Qt.formatDate(at, "ddd d MMM")) : Qt.formatTime(at, "h:mm AP")
+                        text: todo.modelData.allDay ? (Today.dayKey(at) === Today.day ? "Today" : Qt.formatDate(at, "ddd d MMM")) : Qt.formatTime(at, TimeFormat.hm)
                         color: (todo.modelData.due ?? Infinity) < root.now.getTime() ? Theme.m3.error : Theme.m3.onSurfaceVariant
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
                     }

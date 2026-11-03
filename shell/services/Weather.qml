@@ -79,7 +79,7 @@ Singleton {
                 const area = j.nearest_area?.[0];
                 place = requestedPlace || area?.areaName?.[0]?.value || "";
                 hourly = today.hourly.filter(h => +h.time / 100 >= hour - 1).slice(0, 5).map(h => ({
-                    time: Qt.formatTime(new Date(2000, 0, 1, +h.time / 100), "h AP"),
+                    time: Qt.formatTime(new Date(2000, 0, 1, +h.time / 100), TimeFormat.hOnly),
                     temp: +(metric ? h.tempC : h.tempF),
                     icon: iconFor(h.weatherCode, (+h.time / 100) < 6 || (+h.time / 100) >= 19),
                     rain: +(h.chanceofrain ?? 0)

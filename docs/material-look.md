@@ -68,8 +68,18 @@ and switched live; it broke Control Center on real hardware and was reverted
 - **Talking to the shell:** `shell-ipc.sh` finds whichever root runs (idle
   lock, file sharing, `./dev.sh ipc`). `start-idle.sh` replaces a listener
   from before it (its lock command named one folder).
-- **Not in v2 yet:** the login screen stays Glass; the irice-glass plugin's
-  Material window controls and the login-screen sync are left out.
+- **Login screen (3 Nov):** Settings → Lock Screen → Login screen picks a
+  style: your look (Glass, or Material's own `modules/greeter/
+  GreeterSurface.qml` in the Android 17 lock style), text (ly's) or plain.
+  The greeter can't read your home, so `services/LoginScreen.qml` sends the
+  style, the look, light or dark, the seed and the clock to
+  `/usr/share/irice/greeter.json` (irice-root login-look), and
+  `assets/scripts/greeter-start.sh` turns that into the greeter's own
+  config.json, assembling the Material root from the login screen's copies
+  of shell/ and material/ (which every update's setup refreshes). A login
+  screen that won't start gives way to the text one.
+- **Not in v2 yet:** the irice-glass plugin's Material window controls are
+  left out.
 - **Lesson kept:** Material's pull is 0, and Glass's ElasticPull divides by
   it (0/0 → NaN → a pressed panel never drew again). Material has its own
   no-op ElasticPull/ElasticControl. Test with real clicks, not only IPC.

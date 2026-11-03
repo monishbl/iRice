@@ -115,7 +115,7 @@ Singleton {
     // tonal pill in Material, traffic lights in Glass (its default, so Glass
     // only sends once Material has been on). A plugin built before this
     // answers "unknown verb" and keeps its traffic lights.
-    readonly property string controlsStyle: Theme.material ? "material " + String(Theme.m3.surfaceContainerHigh).slice(1, 7) + " " + String(Theme.m3.onSurfaceVariant).slice(1, 7) : "glass"
+    readonly property string controlsStyle: Theme.material ? "material " + String(Qt.alpha(Theme.m3.surfaceContainerHigh, 1)).slice(1, 7) /* (opaque: Transparency gives the containers an alpha, "#aarrggbb") */ + " " + String(Theme.m3.onSurfaceVariant).slice(1, 7) : "glass"
     property bool controlsSent: false
     onControlsStyleChanged: sendControlsStyle()
     Connections {

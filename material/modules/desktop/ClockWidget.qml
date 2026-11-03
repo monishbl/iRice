@@ -28,7 +28,7 @@ Item {
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Bold; letterSpacing: 1 }
         }
         Text {
-            text: Qt.formatTime(clock.date, "h:mm")
+            text: Qt.formatTime(clock.date, TimeFormat.hmShort)
             // (Material: on its primary container card)
             color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.label
             font { family: Theme.font.family; pixelSize: 64; weight: Font.DemiBold; letterSpacing: -2; features: { "tnum": 1 } }

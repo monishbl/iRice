@@ -174,6 +174,141 @@ class Wallpaper(unittest.TestCase):
             R.MAX_IMAGE = old
 
 
+class LoginLook(unittest.TestCase):
+    GOOD = {"style": "look", "look": "material", "mode": "dark", "seed": "#6750A4", "materialStyle": "vibrant",
+            "clockFace": "dynamic", "clockWeight": 640, "clockWidth": 112, "clockRound": True}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        (self.d / "share").mkdir()
+        self.dest = self.d / "share/greeter.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_writes_it_checked_and_sorted(self):
+        R.login_look(json.dumps(self.GOOD), dest=str(self.dest))
+        text = self.dest.read_text()
+        self.assertEqual(json.loads(text), self.GOOD)
+        self.assertEqual(text, json.dumps(self.GOOD, sort_keys=True, separators=(",", ":")))
+        self.assertEqual(stat.S_IMODE(self.dest.stat().st_mode), 0o644)
+
+    def test_refuses_anything_else(self):
+        bad = [
+            "not json", "[]", json.dumps({**self.GOOD, "extra": 1}),
+            json.dumps({k: v for k, v in self.GOOD.items() if k != "seed"}),
+            json.dumps({**self.GOOD, "style": "$(reboot)"}), json.dumps({**self.GOOD, "look": "aqua"}),
+            json.dumps({**self.GOOD, "seed": "red"}), json.dumps({**self.GOOD, "seed": "#12345"}),
+            json.dumps({**self.GOOD, "clockWeight": 2000}), json.dumps({**self.GOOD, "clockWeight": 640.5}),
+            json.dumps({**self.GOOD, "clockWidth": True}), json.dumps({**self.GOOD, "clockRound": 1}),
+            json.dumps({**self.GOOD, "clockFace": "digital"}), json.dumps({**self.GOOD, "clock24": "yes"}), "x" * 5000,
+        ]
+        for b in bad:
+            with self.assertRaises(R.Refused, msg=b[:60]):
+                R.login_look(b, dest=str(self.dest))
+        self.assertFalse(self.dest.exists())
+
+    def test_24_hour_time_is_optional(self):
+        R.login_look(json.dumps({**self.GOOD, "clock24": True}), dest=str(self.dest))
+        self.assertTrue(json.loads(self.dest.read_text())["clock24"])
+        R.login_look(json.dumps(self.GOOD), dest=str(self.dest))  # (a shell from before it)
+        self.assertNotIn("clock24", json.loads(self.dest.read_text()))
+
+    def test_not_without_the_login_screen(self):
+        with self.assertRaises(R.Refused):
+            R.login_look(json.dumps(self.GOOD), dest=str(self.d / "nowhere/greeter.json"))
+        (self.d / "link").symlink_to(self.d / "share")
+        with self.assertRaises(R.Refused):
+            R.login_look(json.dumps(self.GOOD), dest=str(self.d / "link/greeter.json"))
+
+
+class LoginCopy(unittest.TestCase):
+    """setup refreshes the login screen's copy of iRice (./install.sh
+    --greeter's /usr/share/irice) from the checkout, only where there is one."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.repo = self.d / "repo"
+        for name in ("shell", "material"):
+            (self.repo / name / "modules").mkdir(parents=True)
+            (self.repo / name / "shell.qml").write_text(f"// {name}\n")
+            (self.repo / name / "modules/A.qml").write_text("Item {}\n")
+        (self.repo / "shell/assets/scripts").mkdir(parents=True)
+        script = self.repo / "shell/assets/scripts/greeter-start.sh"
+        script.write_text("#!/bin/sh\n")
+        script.chmod(0o755)
+        (self.repo / "shell/__pycache__").mkdir()
+        (self.repo / "shell/__pycache__/x.pyc").write_bytes(b"x")
+        (self.repo / "shell/link.qml").symlink_to("/etc/shadow")
+        (self.repo / "hypr").mkdir()
+        (self.repo / "hypr/greeter.lua").write_text("-- greeter\n")
+        self.share = self.d / "root/usr/share/irice"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def refresh(self, src=None):
+        return R.refresh_login(str(src or self.repo / "shell"), os.getuid(), prefix=str(self.d / "root"))
+
+    def test_nothing_without_the_login_screen(self):
+        self.assertEqual(self.refresh(), [])
+        self.assertFalse(self.share.exists())
+
+    def test_copies_the_shell_and_material(self):
+        (self.share / "shell").mkdir(parents=True)
+        (self.share / "shell/old.qml").write_text("gone\n")
+        (self.share / "greeter.lua").write_text("-- old\n\n-- virtual machine (kvm): software cursor\nhl.config({})\n")
+        written = self.refresh()
+        self.assertEqual(sorted(written), sorted(str(self.share / x) for x in ("shell", "material", "greeter.lua")))
+        self.assertEqual((self.share / "material/shell.qml").read_text(), "// material\n")
+        self.assertFalse((self.share / "shell/old.qml").exists())
+        self.assertFalse((self.share / "shell/__pycache__").exists())
+        self.assertFalse((self.share / "shell/link.qml").exists())  # (links aren't followed)
+        self.assertEqual(stat.S_IMODE((self.share / "shell/assets/scripts/greeter-start.sh").stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE((self.share / "shell/shell.qml").stat().st_mode), 0o644)
+        lua = (self.share / "greeter.lua").read_text()
+        self.assertTrue(lua.startswith("-- greeter\n"))
+        self.assertIn("-- virtual machine (kvm)", lua)  # (install.sh's addition stays)
+        self.assertFalse((self.share / "shell.new").exists() or (self.share / "shell.old").exists())
+        self.assertEqual(self.refresh(), [])  # nothing changed
+
+    def test_from_an_updates_staged_tree(self):
+        (self.share / "shell").mkdir(parents=True)
+        staged = self.d / "incoming"
+        shutil.copytree(self.repo, staged / "tree", symlinks=True)
+        self.assertIn(str(self.share / "shell"), self.refresh(staged))
+        # (a staged folder of only the helper's files: nothing to copy from)
+        self.assertEqual(R.refresh_login(str(self.d / "empty"), os.getuid(), prefix=str(self.d / "root")), [])
+
+
+class LoginTreeStaged(unittest.TestCase):
+    """An update stages the incoming version's whole tree when the login
+    screen has its own copy (sysupdate.stage_login_tree)."""
+
+    def test_staged_only_with_a_login_copy(self):
+        su = load(SYSUPDATE, "sysupdate_stage")
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t) / "repo"
+            for p in ("shell/shell.qml", "material/shell.qml", "hypr/greeter.lua", "README.md"):
+                (repo / p).parent.mkdir(parents=True, exist_ok=True)
+                (repo / p).write_text(p + "\n")
+            git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(git + ["add", "-A"], check=True)
+            subprocess.run(git + ["commit", "-qm", "x"], check=True)
+            out = Path(t) / "incoming"
+            out.mkdir()
+            su.stage_login_tree(str(repo), "HEAD", str(out), copy=str(Path(t) / "missing"))
+            self.assertFalse((out / "tree").exists())
+            su.stage_login_tree(str(repo), "HEAD", str(out), copy=t)
+            self.assertEqual((out / "tree/material/shell.qml").read_text(), "material/shell.qml\n")
+            self.assertTrue((out / "tree/hypr/greeter.lua").exists())
+            self.assertFalse((out / "tree/README.md").exists())
+            self.assertEqual(R.login_tree(str(out)), str(out / "tree"))
+
+
 class Setup(unittest.TestCase):
     def test_ananicy_rule_only_where_ananicy_is(self):
         with tempfile.TemporaryDirectory() as t:
@@ -203,7 +338,7 @@ class Setup(unittest.TestCase):
 
     def test_policy_actions_match_the_subcommands(self):
         policy = (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text()
-        for sub in ("wallpaper", "fix", "wifi-helper", "update"):
+        for sub in ("wallpaper", "login-look", "fix", "wifi-helper", "update"):
             self.assertIn(f'<action id="org.irice.root.{sub}">', policy)
             self.assertIn(f'org.freedesktop.policykit.exec.argv1">{sub}<', policy)
         # every action names its first argument (pkexec takes the first action

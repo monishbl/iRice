@@ -144,6 +144,14 @@ Column {
             }
         }
         Row {
+            label: "24-hour time"
+            detail: "Clocks, events and alarms show " + (Config.options.appearance.clock24 ? "17:30" : "5:30 PM")
+            Switch {
+                checked: Config.options.appearance.clock24
+                onToggled: Config.options.appearance.clock24 = !checked
+            }
+        }
+        Row {
             label: "App icons"
             detail: ({ dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
             Segmented {
@@ -217,12 +225,15 @@ Column {
         }
         Row {
             visible: Theme.material
-            label: "Blur"
-            detail: Config.options.appearance.reduceTransparency ? "Off while Reduce transparency is on" : "Panels, the volume panel, the power menu, the app drawer and menus show the desktop behind them, blurred and tinted. Off: solid"
+            label: "Transparency"
+            detail: Config.options.appearance.reduceTransparency ? "Off while Reduce transparency is on" : Theme.transparency > 0 ? Math.round(Theme.transparency * 100) + "%: panels, menus, tiles and buttons show the blurred desktop behind them" : "Solid. Slide to let the blurred desktop show through panels, menus, tiles and buttons"
             enabled: !Config.options.appearance.reduceTransparency
-            Switch {
-                checked: Config.options.appearance.materialBlur
-                onToggled: Config.options.appearance.materialBlur = !checked
+            Slider {
+                width: 220
+                from: 0
+                to: 1
+                value: Config.options.appearance.materialTransparency
+                onMoved: v => Config.options.appearance.materialTransparency = Math.round(v * 20) / 20
             }
         }
         Row {
