@@ -40,23 +40,11 @@ GlassWindow {
         easing.type: Easing.BezierSpline
         easing.bezierCurve: Theme.motion.exit
     }
-    ElasticPull {
-        id: pull
+    // Elastic pull while the button is held (press and drag anywhere)
+    ElasticGrab {
+        id: grab
         target: body
-        active: grab.active && Panels.holdPull === 0 && !Panels.ccEditing
-        from: grab.point.scenePressPosition
-        pointer: grab.point.scenePosition
     }
-    // Elastic pull: only while the button is held (press and drag anywhere)
-    Item {
-        anchors.fill: parent
-        z: 1000
-        PointHandler { id: grab; acceptedButtons: Qt.LeftButton }
-    }
-    // A drag that ends outside the panel isn't a click to close it
-    readonly property bool dragged: grab.active && Math.hypot(grab.point.scenePosition.x - grab.point.scenePressPosition.x, grab.point.scenePosition.y - grab.point.scenePressPosition.y) > 8
-    property bool wasDragged: false
-    onDraggedChanged: if (dragged) wasDragged = true
 
     name: dialogName
     visible: progress > 0 && closeGuard.open
@@ -72,8 +60,8 @@ GlassWindow {
         color: Qt.rgba(0, 0, 0, 0.25 * root.progress)
         MouseArea {
             anchors.fill: parent
-            onPressed: root.wasDragged = false
-            onClicked: if (!root.wasDragged) Panels.close()
+            onPressed: grab.wasDragged = false
+            onClicked: if (!grab.wasDragged) Panels.close()
         }
     }
 
@@ -85,7 +73,7 @@ GlassWindow {
         y: (parent.height - height) / 2 - 40
         opacity: Math.min(1, root.progress)
         scale: 0.96 + 0.04 * root.progress
-        transform: [pull.translate, pull.stretch]
+        transform: [grab.pull.translate, grab.pull.stretch]
         focus: root.shown
         Keys.onEscapePressed: Panels.close()
         Keys.onTabPressed: root.tabPressed()
@@ -101,7 +89,7 @@ GlassWindow {
                 function onScaleChanged() { glass.updatePosition(); }
             }
             Connections {
-                target: pull
+                target: grab.pull
                 function onLxChanged() { glass.updatePosition(); }
                 function onLyChanged() { glass.updatePosition(); }
             }

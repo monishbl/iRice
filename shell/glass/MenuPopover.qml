@@ -121,7 +121,7 @@ Popover {
                             width: 44
                             height: 32
                             radius: Theme.radius.item + 2
-                            color: tileMouse.containsMouse ? Theme.accent : "transparent"
+                            color: tileMouse.containsMouse ? Theme.color.highlight : "transparent"
                             TileGlyph {
                                 anchors.centerIn: parent
                                 frac: tile.modelData.frac
@@ -144,7 +144,7 @@ Popover {
                     visible: !row.modelData.separator && !row.modelData.header && !row.modelData.tiles
                     anchors.fill: parent
                     radius: Theme.radius.item + 2
-                    color: row.hot ? Theme.accent : "transparent"
+                    color: row.hot ? Theme.color.highlight : "transparent"
 
                     Icon {
                         visible: !!row.modelData.checked
@@ -153,19 +153,19 @@ Popover {
                         name: "check"
                         bold: true
                         size: 12
-                        color: row.hot ? Theme.color.onAccent : Theme.color.label
+                        color: row.hot ? Theme.color.onHighlight : Theme.color.label
                     }
                     Text {
                         x: 22
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.modelData.text ?? ""
-                        color: row.hot ? Theme.color.onAccent : row.enabled_ ? Theme.color.label : Theme.color.tertiary
+                        color: row.hot ? Theme.color.onHighlight : row.enabled_ ? Theme.color.label : Theme.color.tertiary
                         font { family: Theme.font.family; pixelSize: Theme.font.body }
                     }
                     Text {
                         anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                         text: row.modelData.shortcut ?? ""
-                        color: row.hot ? Qt.alpha(Theme.color.onAccent, 0.8) : Theme.color.tertiary
+                        color: row.hot ? Qt.alpha(Theme.color.onHighlight, 0.8) : Theme.color.tertiary
                         font { family: Theme.font.family; pixelSize: Theme.font.body }
                     }
                     MouseArea {

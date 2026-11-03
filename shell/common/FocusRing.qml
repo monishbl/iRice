@@ -1,6 +1,7 @@
 import QtQuick
 
-// The keyboard focus ring: 2px in the accent, 2px outside its control. It
+// The keyboard focus ring: 2px in the accent, 2px outside its control
+// (Material: 3px in the secondary colour). It
 // shows only when focus came from the keyboard (Tab, arrows): a click that
 // happens to focus the control doesn't ring it, as on macOS. Put it inside
 // the control it rings:
@@ -18,7 +19,7 @@ Item {
     property bool keyboard: false
     property real pressedAt: 0
 
-    anchors { fill: parent; margins: -4 }
+    anchors { fill: parent; margins: Theme.material ? -5 : -4 } // (Material: 3px, 2px out)
     z: 100
 
     Connections {
@@ -40,7 +41,7 @@ Item {
         visible: root.shown
         radius: root.radius
         color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
+        border.width: Theme.material ? 3 : 2
+        border.color: Theme.material ? Theme.m3.secondary : Theme.accent
     }
 }

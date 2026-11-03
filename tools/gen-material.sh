@@ -3,7 +3,7 @@
 #  - material/assets/fonts/MaterialSymbolsRounded.ttf: Material Symbols Rounded
 #    (variable: FILL, GRAD, opsz, wght), cut down to the icons in
 #    tools/material-symbols-map.txt and renamed "iRice Symbols" (NOTICE there)
-#  - material/common/material-symbols.js: Phosphor name -> Material Symbols glyph
+#  - shell/common/material-symbols.js: Phosphor name -> Material Symbols glyph
 #  - material/assets/fonts/GoogleSansFlex.ttf (variable), renamed "iRice Sans Flex"
 #    (its outlines unchanged)
 #  - shell/common/MaterialColor.js (shared: the look previews use it too): Google's material-color-utilities bundled
@@ -24,7 +24,7 @@ curl -sfL -o "$T/gsf.ttf" "$GH/google/fonts/main/ofl/googlesansflex/GoogleSansFl
 { curl -sfL "$GH/google/fonts/main/ofl/googlesansflex/OFL.txt"; echo; curl -sfL "$GH/google/fonts/main/ofl/googlesansflex/TRADEMARKS.md"; } > "$FONTS/LICENSE-google-sans-flex"
 
 # The map, checked against the font; the glyphs it needs
-python3 -I - "$ROOT/tools/material-symbols-map.txt" "$T/msr.codepoints" "$ROOT/material/common/material-symbols.js" "$T/unicodes" <<'PY'
+python3 -I - "$ROOT/tools/material-symbols-map.txt" "$T/msr.codepoints" "$ROOT/shell/common/material-symbols.js" "$T/unicodes" <<'PY'
 import sys
 pairs = [l.split() for l in open(sys.argv[1]) if l.strip() and not l.startswith("#")]
 cps = dict(l.split() for l in open(sys.argv[2]))
