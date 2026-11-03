@@ -13,6 +13,8 @@ import qs.services
 // a moment whenever either changes (or the island's HUD row, when it's set
 // to show there). Over a fullscreen app (a video, a game) it's only a thin
 // bar along the top edge instead. Also owns the media-key shortcuts.
+// The Material look draws Android's volume panel instead of the capsule
+// (MaterialVolumePanel: the same state and actions, at the right edge).
 Scope {
     id: root
 
@@ -29,7 +31,7 @@ Scope {
     Binding {
         target: Panels
         property: "osdVisible"
-        value: root.shown
+        value: root.shown && !Theme.material // (Material's panel is at the right edge, clear of the banners)
     }
 
     function show(k, dev) {
@@ -46,7 +48,8 @@ Scope {
             barHide.restart();
             return;
         }
-        if (Config.options.island.enabled && Config.options.island.hud) {
+        // (Material: Android's volume panel at the screen's edge, not the island)
+        if (Config.options.island.enabled && Config.options.island.hud && !Theme.material) {
             Island.hud(k, dev);
             return;
         }
@@ -125,7 +128,7 @@ Scope {
     Timer { id: windowUnload; interval: 600; onTriggered: root.windowAlive = false }
 
     LazyLoader {
-        active: root.windowAlive
+        active: root.windowAlive && !Theme.material
 
         GlassWindow {
             id: win
@@ -267,6 +270,14 @@ Scope {
         }
     }
 
+    LazyLoader {
+        active: root.windowAlive && Theme.material
+
+        MaterialVolumePanel {
+            osd: root
+        }
+    }
+
     // ── Over a fullscreen app: a thin bar centred along the top edge ──────
     // (a 5 px level on a faint track, a small icon before it); fades in, and
     // out after 1.2 s without a change
@@ -320,22 +331,24 @@ Scope {
                     name: root.barIcon
                     fill: true
                     size: 12
-                    color: "#F5F5F7"
+                    color: Theme.material ? Theme.m3.primaryFixedDim : "#F5F5F7"
                 }
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.round((fsBar.screen?.width ?? 1920) * 0.3) - 20
                     height: 5
                     radius: 2.5
-                    color: Qt.rgba(0, 0, 0, 0.35)
+                    // (Material: its fixed primary tones, which read the same over
+                    // any video in light or dark mode)
+                    color: Theme.material ? Qt.alpha(Theme.m3.scrim, 0.35) : Qt.rgba(0, 0, 0, 0.35)
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.22)
+                    border.color: Theme.material ? Qt.alpha(Theme.m3.primaryFixed, 0.22) : Qt.rgba(1, 1, 1, 0.22)
                     Rectangle {
                         width: Math.max(parent.height, parent.width * Math.max(0, Math.min(1, root.barValue)))
                         visible: root.barValue > 0
                         height: parent.height
                         radius: 2.5
-                        color: "#F5F5F7"
+                        color: Theme.material ? Theme.m3.primaryFixedDim : "#F5F5F7"
                         Behavior on width { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
                     }
                 }

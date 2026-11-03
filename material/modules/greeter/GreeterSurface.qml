@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Wayland
 import qs.common
 import qs.modules.lock as LockUi
 
@@ -13,77 +12,28 @@ import qs.modules.lock as LockUi
 // end while a reader listens; 10 s untouched with nothing typed closes it.
 // Up and Down choose the person, Tab the session (the chip in the corner,
 // beside Sleep, Restart and Shut down, each asking to confirm).
-// Authentication goes through greetd (GreeterAuth).
-PanelWindow {
+// The window and the logging in: GreeterWindow. (Its own file, not a
+// branch in Glass's: the Glass greeter stays clear of Material's common
+// files, and a Material screen that can't load fails the start, so
+// greeter-start.sh falls back to the text one.)
+GreeterWindow {
     id: win
-    required property var auth
-    property bool primary: false
-    color: "black"
-    WlrLayershell.namespace: "irice-greeter"
-    WlrLayershell.layer: auth.mock ? WlrLayer.Overlay : WlrLayer.Top // (a preview covers the menu bar too)
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-    anchors { top: true; bottom: true; left: true; right: true }
-
+    passwordField: input
+    onRefused: shakeAnim.restart()
     readonly property var m3: Theme.m3
     readonly property var cfg: Config.options.lock
-    readonly property var person: auth.users[auth.user] ?? null
-    readonly property string wallpaper: Quickshell.env("IRICE_GREETER_WALLPAPER") || "/usr/share/irice/wallpaper.jpg"
     // (the weather face would go online for it: the dynamic one instead)
     readonly property string face: (cfg.clockFace ?? "dynamic") === "weather" ? "dynamic" : (cfg.clockFace ?? "dynamic")
-    property string powerChoice: ""
 
-    function nextUser(step) {
-        if (auth.busy || auth.users.length < 2)
-            return;
-        auth.user = (auth.user + auth.users.length + step) % auth.users.length;
-        input.text = "";
-    }
-    function nextSession() {
-        if (!auth.busy && auth.sessions.length)
-            auth.session = (auth.session + 1) % auth.sessions.length;
-    }
-    function submit() {
-        if (powerChoice) {
-            const action = powerChoice;
-            powerChoice = "";
-            if (auth.mock)
-                console.log("greeter (mock):", action);
-            else
-                Quickshell.execDetached(["systemctl", action]);
-        } else if (!auth.busy) {
-            auth.login(input.text);
-        }
-    }
-    function choosePower(action) {
-        if (auth.busy)
-            return;
-        if (powerChoice === action)
-            submit();
-        else
-            powerChoice = action;
-        input.forceActiveFocus();
-    }
-    onPrimaryChanged: if (primary) input.forceActiveFocus()
-    Connections {
-        target: win.auth
-        function onErrorChanged() {
-            if (win.auth.error) {
-                input.text = "";
-                shakeAnim.restart();
-            }
-        }
-        function onUserChanged() { input.text = ""; }
-    }
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
     // The pill opens on a key or a mouse move and closes 10 s after the
     // last one, unless something's typed (or being checked, or wrong)
     property bool typing: false
-    readonly property bool open: typing || input.text !== "" || auth.busy || auth.error !== "" || powerChoice !== ""
+    readonly property bool open: typing || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
     property real openT: open ? 1 : 0
     Behavior on openT {
-        SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.002 }
+        M3Spring { epsilon: 0.002 }
     }
     function wake() {
         typing = true;
@@ -405,7 +355,7 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             radius: roundMouse.pressed ? 14 : 22
-            Behavior on radius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 } }
+            Behavior on radius { M3Spring { speed: "fast"; epsilon: 0.2 } }
             color: round.danger ? win.m3.errorContainer : roundMouse.containsMouse ? Qt.tint(win.m3.surfaceContainerHigh, Qt.alpha(win.m3.onSurface, 0.08)) : win.m3.surfaceContainerHigh
         }
         Icon {
