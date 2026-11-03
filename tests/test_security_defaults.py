@@ -309,6 +309,15 @@ class RootHelper(unittest.TestCase):
             with self.assertRaises(R.Refused):
                 R.fix_command(bad)
 
+    def test_the_boot_animation_asks_and_takes_only_its_names(self):
+        # (it rebuilds the boot image: never without the password, and never
+        # a theme name from outside its list)
+        self.assertNotIn("bootsplash", (ROOT / "shell/assets/polkit/49-irice.rules").read_text())
+        self.assertIn('<action id="org.irice.root.bootsplash">', (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text())
+        for bad in ("", "irice-breathe", "../breathe", "spinner", "text", "breathe orbit"):
+            with self.assertRaises(R.Refused, msg=bad):
+                R.bootsplash(bad, prefix=str(self.d), run=None, which=lambda n: None)
+
     def test_the_firewall_fix_opens_only_sharings_ports(self):
         # (ufw, firewalld, nftables, iptables alike: LocalSend 53317, Quick
         # Share 53318, its faster link 53319, link sharing and Cast 53320,

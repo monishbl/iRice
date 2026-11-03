@@ -66,8 +66,18 @@ With the password, once, at the start:
   bootmenu on|off
       snapshots in GRUB's boot menu: grub-btrfs's daemon (grub-btrfsd), on
       or off; on also writes the submenu now
+  bootsplash breathe|orbit|frost|bloom|system|none
+      the boot animation (Plymouth's theme; Settings → Lock & Login Screen):
+      one of iRice's (copied from /usr/lib/irice/plymouth, where setup put
+      them, to /usr/share/plymouth/themes/irice-<id>), the system's own (the
+      theme set before iRice first changed it, kept in
+      /etc/irice/bootsplash.json) or none (Plymouth's text theme); then the
+      boot image is rebuilt (mkinitcpio -P). The boot images are copied
+      first: if the rebuild fails, they and the theme setting are put back,
+      and the error says why
   setup <shell folder>
-      the same files as --setup, on their own (install.sh, with sudo)
+      the same files as --setup, on their own (install.sh, with sudo), and
+      the boot animations (assets/plymouth) into /usr/lib/irice/plymouth
       Both also refresh the login screen's own copy of iRice
       (/usr/share/irice/shell and material, and greeter.lua; only where
       ./install.sh --greeter made one) from the same version: the shell
@@ -113,6 +123,15 @@ FILES = [
 OPTIONAL_FILES = [
     ("assets/ananicy/irice.rules", "/etc/ananicy.d/irice.rules", 0o644),
 ]
+
+
+# The boot animations (tools/make-bootsplash.py): setup copies each theme's
+# folder from the shell's assets/plymouth to LIB/plymouth, root's own, the
+# only place bootsplash copies a theme from
+BOOTSPLASH_IDS = ("breathe", "orbit", "frost", "bloom")
+PLYMOUTH_LIB = LIB + "/plymouth"
+THEME_FILE = re.compile(r"^([a-z0-9]+@[12]x\.png|irice-[a-z]+\.(script|plymouth))$")
+MAX_THEME_FILES = 400
 
 
 class Refused(Exception):
@@ -565,6 +584,242 @@ def bootmenu(on, run=subprocess.run, which=shutil.which, exists=os.path.exists):
     return ["disabled grub-btrfsd"]
 
 
+# ── bootsplash (Settings → Lock & Login Screen → Boot animation) ───────
+PLYMOUTH_THEMES = "/usr/share/plymouth/themes"
+PLYMOUTH_CONF = "/etc/plymouth/plymouthd.conf"
+PLYMOUTH_DEFAULTS = "/usr/share/plymouth/plymouthd.defaults"
+BOOTSPLASH_RECORD = "/etc/irice/bootsplash.json"  # {"original": the system's theme, "applied": iRice's}
+INITRAMFS_BACKUP = "/var/lib/irice/initramfs-backup"
+THEME_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+
+
+def theme_files(folder):
+    """A theme folder's files ({name: (bytes, mode)}): only the names a theme
+    of ours has, regular files, no links."""
+    if os.path.islink(folder) or not os.path.isdir(folder):
+        return {}
+    files = read_tree(folder)
+    bad = [n for n in files if not THEME_FILE.match(n)]
+    if bad or len(files) > MAX_THEME_FILES:
+        raise Refused(f"{folder} holds files a boot animation doesn't: " + ", ".join(sorted(bad)[:3]))
+    return files
+
+
+def install_themes(src, uid, prefix):
+    """setup's part: each boot animation's folder from the shell's
+    assets/plymouth (read as you) to LIB/plymouth, whole, when it changed.
+    Returns the folders written."""
+    written = []
+    for id in BOOTSPLASH_IDS:
+        name = "irice-" + id
+        top = os.path.join(src, "assets", "plymouth", name)
+        with as_user(uid):
+            if not os.path.isdir(top):
+                continue  # (a shell folder from before them)
+            names = sorted(os.listdir(top))
+        if len(names) > MAX_THEME_FILES or not all(THEME_FILE.match(n) for n in names):
+            raise Refused(f"{top} holds files a boot animation doesn't")
+        files = {n: (read_as(uid, os.path.join(top, n), MAX_SOURCE), 0o644) for n in names}
+        dest = os.path.join(prefix, PLYMOUTH_LIB.lstrip("/"), name)
+        try:
+            same = theme_files(dest) == files
+        except (OSError, Refused):
+            same = False
+        if not same:
+            write_tree(files, dest)
+            written.append(dest)
+    return written
+
+
+def ini_value(text, key):
+    """The last `key=value` in a Plymouth config (its one section, [Daemon])."""
+    value = ""
+    for line in text.splitlines():
+        m = re.match(rf"^\s*{key}\s*=\s*(.*?)\s*$", line)
+        if m:
+            value = m.group(1)
+    return value
+
+
+def read_text(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def current_theme(prefix):
+    """Plymouth's theme now: its config's, else the distribution's default."""
+    for path in (PLYMOUTH_CONF, PLYMOUTH_DEFAULTS):
+        value = ini_value(read_text(os.path.join(prefix, path.lstrip("/"))) or "", "Theme")
+        if value:
+            return value
+    return ""
+
+
+def mkinitcpio_hooks(prefix):
+    """The HOOKS mkinitcpio builds with (its config, then conf.d's; the last wins)."""
+    hooks = []
+    paths = [os.path.join(prefix, "etc/mkinitcpio.conf")] + sorted(glob.glob(os.path.join(prefix, "etc/mkinitcpio.conf.d/*.conf")))
+    for path in paths:
+        for line in (read_text(path) or "").splitlines():
+            m = re.match(r"^\s*HOOKS(\+?)=\((.*)\)", line)
+            if m:
+                hooks = (hooks if m.group(1) else []) + m.group(2).split()
+    return hooks
+
+
+def boot_images(prefix):
+    """The boot images mkinitcpio -P writes (each preset's image and UKI),
+    and any initramfs in /boot: the ones copied before a rebuild."""
+    found = set(glob.glob(os.path.join(prefix, "boot/initramfs-*.img")))
+    for preset in glob.glob(os.path.join(prefix, "etc/mkinitcpio.d/*.preset")):
+        for line in (read_text(preset) or "").splitlines():
+            m = re.match(r"""^\s*[A-Za-z0-9]+_(image|uki)=(["']?)(/[^"'\s]+)\2\s*$""", line)
+            if m:
+                found.add(os.path.join(prefix, m.group(3).lstrip("/")))
+    return sorted(p for p in found if os.path.isfile(p) and not os.path.islink(p))
+
+
+def copy_file(src, dest):
+    """dest replaced whole by a copy of src (a temporary file, then a rename)."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix=".irice-")
+    try:
+        with os.fdopen(fd, "wb") as out, open(src, "rb") as f:
+            shutil.copyfileobj(f, out, 1 << 20)
+            out.flush()
+            os.fsync(out.fileno())
+        shutil.copystat(src, tmp)
+        os.rename(tmp, dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def bootsplash(choice, prefix=None, run=subprocess.run, which=shutil.which):
+    """Sets the boot animation and rebuilds the boot image; on any failure
+    the theme setting and the boot images are as they were. Returns what it
+    did, a line each."""
+    prefix = PREFIX if prefix is None else prefix
+
+    def at(path):
+        return os.path.join(prefix, path.lstrip("/"))
+    if choice not in BOOTSPLASH_IDS + ("system", "none"):
+        raise Refused("bootsplash: " + " | ".join(BOOTSPLASH_IDS) + " | system | none")
+    if not which("plymouth-set-default-theme") or not os.path.isdir(at(PLYMOUTH_THEMES)):
+        raise Refused("Plymouth isn't installed. Install the plymouth package, add plymouth to HOOKS in /etc/mkinitcpio.conf "
+                      "and splash to the kernel's command line, then try again")
+    if not which("mkinitcpio"):
+        if which("dracut"):
+            raise Refused("this computer builds its boot image with dracut, which iRice doesn't rebuild. "
+                          "Set the theme in a terminal: sudo plymouth-set-default-theme -R <theme>")
+        if which("booster"):
+            raise Refused("this computer builds its boot image with booster, which doesn't show Plymouth's animations")
+        raise Refused("there's no mkinitcpio to rebuild the boot image with")
+    if "plymouth" not in mkinitcpio_hooks(prefix):
+        raise Refused("Plymouth isn't in the boot image. Add plymouth to HOOKS in /etc/mkinitcpio.conf (after kms), then try again")
+
+    current = current_theme(prefix)
+    try:
+        record = json.loads(read_text(at(BOOTSPLASH_RECORD)) or "null")
+    except ValueError:
+        record = None
+    if not isinstance(record, dict) or not all(THEME_NAME.match(str(record.get(k, ""))) for k in ("original", "applied")):
+        record = None
+    # The system's own: the theme before iRice first changed it, unless
+    # someone has set another since (then that one)
+    original = record["original"] if record and record["applied"] == current else current
+    if not THEME_NAME.match(original or "") or original.startswith("irice-"):
+        original = ini_value(read_text(at(PLYMOUTH_DEFAULTS)) or "", "Theme") or "text"
+    target = {"system": original, "none": "text"}.get(choice, "irice-" + choice)
+
+    theme_dir = at(os.path.join(PLYMOUTH_THEMES, target))
+    files = {}
+    if choice in BOOTSPLASH_IDS:
+        src = at(os.path.join(PLYMOUTH_LIB, target))
+        if os.path.islink(src) or not os.path.isdir(src) or (os.geteuid() == 0 and os.stat(src).st_uid != 0):
+            raise Refused("iRice's boot animations aren't installed yet. Update iRice (Settings → Software Update), then try again")
+        files = theme_files(src)
+        if f"{target}.plymouth" not in files or f"{target}.script" not in files:
+            raise Refused(f"{src} is incomplete. Update iRice, then try again")
+    elif not os.path.isfile(os.path.join(theme_dir, target + ".plymouth")):
+        raise Refused(f"the theme {target} isn't installed any more. Reinstall it, or pick another")
+    fresh = bool(files) and theme_files(theme_dir) != files
+    if target == current and not fresh:
+        return [f"already {target}"]
+
+    # Copies of the boot images first: a failed rebuild must never leave the
+    # computer unable to start
+    images = boot_images(prefix)
+    backup = at(INITRAMFS_BACKUP)
+    shutil.rmtree(backup, ignore_errors=True)
+    os.makedirs(backup, mode=0o700)
+    need = sum(os.path.getsize(p) for p in images)
+    if shutil.disk_usage(backup).free < need + 64 * 1024 * 1024:
+        os.rmdir(backup)
+        raise Refused(f"there isn't room to keep a copy of the boot images while they're rebuilt "
+                      f"({need // (1024 * 1024) + 64} MB free in {os.path.dirname(INITRAMFS_BACKUP)}). Free some space, then try again")
+    conf = at(PLYMOUTH_CONF)
+    try:
+        with open(conf, "rb") as f:
+            conf_before = f.read()
+    except FileNotFoundError:
+        conf_before = None
+    had_dir = os.path.isdir(theme_dir)
+    kept = []
+
+    def undo():
+        if conf_before is None:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(conf)
+        else:
+            write_root(conf, conf_before, 0o644)
+        for p, copy in kept:
+            copy_file(copy, p)
+        if files and not had_dir:
+            shutil.rmtree(theme_dir, ignore_errors=True)
+
+    done = []
+    try:
+        for n, p in enumerate(images):
+            copy = os.path.join(backup, f"{n}.img")
+            shutil.copy2(p, copy)
+            kept.append((p, copy))
+        if fresh:
+            write_tree(files, theme_dir)
+            done.append(f"installed {theme_dir}")
+        r = run(["plymouth-set-default-theme", target], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Refused(f"Plymouth didn't take the theme {target}, so nothing changed: " + (r.stderr or r.stdout).strip()[-400:])
+        r = run(["mkinitcpio", "-P"], capture_output=True, text=True)
+        if r.returncode != 0:
+            out = (r.stdout or "") + (r.stderr or "")
+            said = [l.strip() for l in out.splitlines() if "ERROR" in l] or out.strip().splitlines()
+            raise Refused("rebuilding the boot image failed, so nothing changed: " + " / ".join(said[-3:])[-600:])
+    except BaseException:
+        undo()
+        raise
+    finally:
+        shutil.rmtree(backup, ignore_errors=True)
+    done.append(f"theme {target}, boot image rebuilt")
+
+    # Remembered: the system's own theme (for "system"), and what iRice set
+    rec = at(BOOTSPLASH_RECORD)
+    if target == original:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(rec)
+    else:
+        write_root(rec, json.dumps({"original": original, "applied": target}).encode(), 0o644)
+    # iRice's other themes, no longer used
+    for id in BOOTSPLASH_IDS:
+        other = at(os.path.join(PLYMOUTH_THEMES, "irice-" + id))
+        if "irice-" + id != target and os.path.isdir(other) and not os.path.islink(other):
+            shutil.rmtree(other, ignore_errors=True)
+    return done
+
+
 # ── wallpaper ───────────────────────────────────────────────────────────
 def image_kind(data):
     if data[:3] == b"\xff\xd8\xff":
@@ -787,6 +1042,7 @@ def setup(src, uid, prefix=None, run=subprocess.run):
         if not same:
             write_root(dest, data, mode)
             written.append(dest)
+    written += install_themes(src, uid, prefix)
     written += refresh_login(src, uid, prefix)
     # ananicy-cpp reads its rules as it starts
     if prefix == "/" and any(d.startswith("/etc/ananicy.d/") for d in written):
@@ -1092,12 +1348,16 @@ def main(argv):
             for d in bootmenu(args[0] == "on"):
                 print(d)
             return 0
+        if cmd == "bootsplash" and len(args) == 1:
+            for d in bootsplash(args[0]):
+                print(d)
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
         raise Refused("usage: irice-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
-                      "quickshare-trust on|off | "
+                      "bootsplash <id>|system|none | quickshare-trust on|off | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)
