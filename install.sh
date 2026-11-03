@@ -611,7 +611,7 @@ extras() {
         python3 - "$CONFIG/irice/config.json" "$walls" <<'PY'
 import json, sys
 path, walls = sys.argv[1], sys.argv[2]
-json.dump({"appearance": {"mode": "auto"},
+json.dump({"appearance": {"mode": "auto"}, "welcome": {"done": False},
            "wallpaper": {"dynamic": "appearance", "lightPath": walls + "/Tahoe Light.jpg", "darkPath": walls + "/Tahoe Dark.jpg"}},
           open(path, "w"), indent=4)
 PY

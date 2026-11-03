@@ -39,6 +39,15 @@ Singleton {
                 adapter.sidebar.booru = false;
                 adapter.defaultsVersion = 1;
             }
+            // 3 Nov: the welcome screen (modules/welcome) shows once, on a
+            // new setup. Settings saved before it (no "welcome" in the file)
+            // count as welcomed; a file written from the defaults, or by
+            // install.sh, has `welcome.done: false`
+            if (adapter.defaultsVersion < 2) {
+                if (!text().includes('"welcome"'))
+                    adapter.welcome.done = true;
+                adapter.defaultsVersion = 2;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -344,6 +353,12 @@ Singleton {
                 property list<string> stocks: ["AAPL", "MSFT", "^GSPC", "BTC-USD", "NVDA", "GOOGL"] // Yahoo Finance symbols for the Stocks widget
             }
 
+            // The welcome screen (modules/welcome: the look, light or dark, a
+            // wallpaper): shown until it's finished or put off; Settings →
+            // About shows it again
+            property JsonObject welcome: JsonObject {
+                property bool done: false
+            }
             // Today (services/Today.qml): the morning screen on the first
             // unlock of the day (after 4 AM), and its desktop widget
             property JsonObject today: JsonObject {

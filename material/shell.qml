@@ -46,6 +46,7 @@ import qs.modules.switcher
 import qs.modules.emoji
 import qs.modules.notes
 import qs.modules.hotcorners
+import qs.modules.welcome
 
 ShellRoot {
     id: root
@@ -124,6 +125,7 @@ ShellRoot {
     ShelfProbes {}
     ShelfDropZone {}
     ScreenshotEditor {}
+    Welcome {}
 
     // Compositor keybinds: bind = hl.dsp.global("irice:<name>")
     component Shortcut: GlobalShortcut {

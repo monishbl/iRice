@@ -54,6 +54,24 @@ Column {
                 MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
             }
         }
+        Row {
+            label: "Welcome screen"
+            detail: "Pick the look, light or dark, and a wallpaper again"
+            Rectangle {
+                width: welcomeText.implicitWidth + 24
+                height: 26
+                radius: 13
+                color: Theme.color.fill
+                activeFocusOnTab: true
+                Keys.onSpacePressed: Panels.welcomeRequested()
+                Keys.onReturnPressed: Panels.welcomeRequested()
+                Accessible.role: Accessible.Button
+                Accessible.name: "Show the welcome screen"
+                Text { id: welcomeText; anchors.centerIn: parent; text: "Show"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Panels.welcomeRequested() }
+                FocusRing { radius: 17 }
+            }
+        }
     }
 
     // ── Back up and restore: your setup in one file ─────────────────────
