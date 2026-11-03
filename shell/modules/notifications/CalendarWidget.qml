@@ -497,7 +497,7 @@ Platter {
                                     id: row
                                     required property var modelData
                                     readonly property bool isEvent: modelData.kind === "event"
-                                    readonly property bool movable: !isEvent || Calendar.editable(modelData.e)
+                                    readonly property bool movable: !isEvent || !!Calendar.editable(modelData.e)
                                     width: column.width
                                     height: 36
                                     radius: 8

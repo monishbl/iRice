@@ -79,7 +79,7 @@ Singleton {
             + "exec 9>\"$l\"; flock -n 9 || exit 0; "
             + "trap 'hyprctl setcursor \"$h\" \"$s\" >/dev/null' EXIT INT TERM HUP; "
             + "hyprctl setcursor \"$h\" $((s * 5 / 2)) >/dev/null; sleep 0.75", "sh",
-            Config.options.appearance.cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS"]
+            Theme.material ? AppTheme.cursorTheme : Config.options.appearance.cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS"]
     }
 
     // The ring, on the display the pointer is on (clicks go through)

@@ -497,6 +497,7 @@ Scope {
     // another three on input a few seconds after they run out; never in
     // StandBy. The first look starts at once.
     property string faceText: ""
+    readonly property bool faceLooking: face.active // (the Material lock spins its loading indicator meanwhile)
     property int faceTries: 0
     property bool faceBroken: false // (Howdy or the camera failed: not again until the next lock)
     readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceArmed && !faceBroken && faceTries < 3

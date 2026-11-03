@@ -133,7 +133,8 @@ Item {
                     width: 5
                     height: dotSlot.index === root.shown ? 12 : 5
                     radius: 2.5
-                    color: dotSlot.index === root.shown || dotMouse.containsMouse ? Theme.color.label : Theme.color.tertiary
+                    // (Material: the page indicator in primary, the rest outline variant)
+                    color: Theme.material ? (dotSlot.index === root.shown ? Theme.m3.primary : dotMouse.containsMouse ? Theme.m3.onSurfaceVariant : Theme.m3.outlineVariant) : dotSlot.index === root.shown || dotMouse.containsMouse ? Theme.color.label : Theme.color.tertiary
                     Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 }
                 MouseArea {

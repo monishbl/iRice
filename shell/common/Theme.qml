@@ -7,6 +7,12 @@ import "AccentRamp.js" as AccentRamp
 Singleton {
     id: root
 
+    // The Glass look: shared code that also runs in Material asks these
+    // (Material's Theme sets them); defined here so they're false and empty
+    // rather than undefined
+    readonly property bool material: false
+    readonly property var m3: ({})
+
     // "auto" follows the sun: light from sunrise to sunset
     readonly property bool dark: Config.options.appearance.mode === "auto" ? !Daylight.day : Config.options.appearance.mode !== "light"
 

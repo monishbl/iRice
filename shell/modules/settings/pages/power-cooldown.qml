@@ -51,6 +51,7 @@ Column {
             width: parent.width
             title: "Cool-down"
             Row {
+                visible: !Theme.material // (Material has no glass or blur)
                 label: "Glass"
                 detail: "During cool-down"
                 Segmented {
@@ -62,6 +63,7 @@ Column {
                 }
             }
             Row {
+                visible: !Theme.material // (Material has no glass or blur)
                 label: "Lighter blur"
                 Switch { checked: Config.options.cooling.lightBlur; onToggled: Config.options.cooling.lightBlur = !checked }
             }

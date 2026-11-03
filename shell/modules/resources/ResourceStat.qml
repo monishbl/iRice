@@ -14,7 +14,7 @@ Item {
     property int graphHeight: 32
     property bool showDetail: false // e.g. "6.1 of 15.4 GB" after the value
     readonly property var stat: Resources.stat(key)
-    readonly property color tone: Theme.accents[stat.tone] ?? Theme.accent
+    readonly property color tone: Theme.material ? Theme.m3[ResourceTones.role(stat.tone)] : Theme.accents[stat.tone] ?? Theme.accent
 
     property bool counted: false
     function count() {

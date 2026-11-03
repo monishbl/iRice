@@ -38,6 +38,7 @@ ShaderEffect {
     property real chroma: Theme.glass.chroma
     property real rim: Theme.glass.rim * (1 - Theme.glass.solidAmount)
     readonly property real gloss: Theme.glass.gloss
+    readonly property real circular: Theme.material ? 1 : 0 // (Material's corners are round arcs)
     readonly property real bandScale: Theme.glass.band // the rim's width × (Settings → Glass → Advanced → Refraction)
     readonly property real mode: modeIndex
     readonly property real saturation: Theme.glass.saturation
