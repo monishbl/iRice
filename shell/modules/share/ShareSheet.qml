@@ -206,6 +206,7 @@ Variants {
                                     readonly property var sending: Sharing.progressFor(modelData)
                                     readonly property string ended: sending ? "" : Sharing.outcomeFor(modelData)
                                     readonly property real frac: sending && sending.total > 0 ? sending.done / sending.total : 0
+                                    readonly property string deviceIcon: modelData.cast ? Cast.iconFor(modelData) : modelData.type === "mobile" ? "device-mobile" : modelData.type === "tablet" ? "device-tablet" : modelData.type === "laptop" ? "laptop" : "desktop"
                                     width: 92
                                     height: people.height
                                     // Keyboard: Tab or the arrows to a device, Space or Enter sends
@@ -255,7 +256,7 @@ Variants {
                                                 color: peer.modelData.cast ? Theme.m3.tertiaryContainer : Theme.m3.primaryContainer
                                                 Icon {
                                                     anchors.centerIn: parent
-                                                    name: peer.modelData.cast ? Cast.iconFor(peer.modelData) : peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
+                                                    name: peer.deviceIcon
                                                     fill: true
                                                     size: 28
                                                     color: peer.modelData.cast ? Theme.m3.onTertiaryContainer : Theme.m3.onPrimaryContainer
@@ -278,7 +279,7 @@ Variants {
                                                 opacity: peerMouse.containsMouse && !peer.sending ? 0.88 : 1
                                                 Icon {
                                                     anchors.centerIn: parent
-                                                    name: peer.modelData.cast ? Cast.iconFor(peer.modelData) : peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
+                                                    name: peer.deviceIcon
                                                     fill: true
                                                     size: 28
                                                     color: Theme.color.onAccent
@@ -288,25 +289,11 @@ Variants {
                                         Loader {
                                             anchors.fill: parent
                                             active: !Theme.material
-                                            sourceComponent: Canvas {
+                                            sourceComponent: ProgressRing {
                                                 visible: peer.sending !== null
-                                                readonly property real f: peer.frac
-                                                onFChanged: requestPaint()
-                                                onVisibleChanged: requestPaint()
-                                                onPaint: {
-                                                    const ctx = getContext("2d");
-                                                    ctx.reset();
-                                                    ctx.lineWidth = 3;
-                                                    ctx.lineCap = "round";
-                                                    ctx.strokeStyle = Theme.color.fill;
-                                                    ctx.beginPath();
-                                                    ctx.arc(width / 2, height / 2, width / 2 - 2, 0, 2 * Math.PI);
-                                                    ctx.stroke();
-                                                    ctx.strokeStyle = Theme.accent;
-                                                    ctx.beginPath();
-                                                    ctx.arc(width / 2, height / 2, width / 2 - 2, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * f);
-                                                    ctx.stroke();
-                                                }
+                                                value: peer.frac
+                                                thickness: 3
+                                                inset: 2
                                             }
                                         }
                                         // Sent: a check; declined or stopped: a mark
