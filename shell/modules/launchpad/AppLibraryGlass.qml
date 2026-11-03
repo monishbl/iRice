@@ -25,78 +25,14 @@ Variants {
             contentHeight: Math.min(720, (screen?.height ?? 1080) - 200)
             padding: 24
 
-            // [label, freedesktop categories]; apps go in the first match
-            readonly property var groups: [
-                ["Productivity", ["Office", "Calendar", "ContactManagement", "Finance", "WordProcessor", "Spreadsheet"]],
-                ["Development", ["Development", "IDE", "TextEditor"]],
-                ["Internet", ["Network", "WebBrowser", "Email", "Chat", "InstantMessaging"]],
-                ["Creativity", ["Graphics", "Photography", "2DGraphics", "3DGraphics", "VectorGraphics", "RasterGraphics"]],
-                ["Entertainment", ["AudioVideo", "Audio", "Video", "Player", "Music"]],
-                ["Games", ["Game"]],
-                ["Education", ["Education", "Science", "Math"]],
-                ["Utilities", ["Utility", "Accessories", "FileManager", "TerminalEmulator", "Archiving"]],
-                ["System", ["System", "Settings", "Monitor", "PackageManager", "HardwareSettings"]]
-            ]
-
-            readonly property var apps: Apps.entries.filter(a => !a.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name))
-            readonly property var folders: {
-                const map = {};
-                for (const a of apps) {
-                    const cats = a.categories ?? [];
-                    const g = groups.find(g => g[1].some(c => cats.includes(c)));
-                    const key = g ? g[0] : "Other";
-                    (map[key] = map[key] ?? []).push(a);
-                }
-                return groups.map(g => g[0]).concat(["Other"]).filter(k => map[k]).map(k => ({ name: k, apps: map[k] }));
+            // The apps, the search and the selection: AppLibraryModel
+            AppLibraryModel {
+                id: lib
+                searchField: field
             }
-
-            property int view: 0 // 0 folders, 1 all apps
-            property var folder: null // open folder
-            property int selected: 0
-            readonly property string query: field.text.trim().toLowerCase()
-            readonly property bool showingApps: query !== "" || view === 1 || folder !== null
-            readonly property var visibleApps: query !== "" ? apps.map(a => ({ a: a, s: Math.max(Search.score(a.name, query), Search.score(a.genericName, query) * 0.8, Search.score((a.keywords ?? []).join(" "), query) * 0.6) })).filter(x => x.s >= 30).sort((x, y) => y.s - x.s).map(x => x.a) : folder ? folder.apps : apps
-            readonly property int count: showingApps ? visibleApps.length : folders.length
-            onCountChanged: selected = Math.min(selected, Math.max(0, count - 1))
-
-            function reset() {
-                field.text = "";
-                folder = null;
-                selected = 0;
-                field.forceActiveFocus();
-            }
-            onShownChanged: if (shown) reset()
-            Component.onCompleted: reset()
-            onTabPressed: {
-                view = 1 - view;
-                folder = null;
-                selected = 0;
-            }
-
-            function activate(i) {
-                if (showingApps) {
-                    const a = visibleApps[i];
-                    if (!a)
-                        return;
-                    Panels.close();
-                    Apps.launch(a);
-                } else if (folders[i]) {
-                    folder = folders[i];
-                    selected = 0;
-                }
-            }
-            function back() {
-                if (field.text !== "")
-                    field.text = "";
-                else if (folder) {
-                    selected = Math.max(0, folders.indexOf(folder));
-                    folder = null;
-                } else
-                    Panels.close();
-            }
-            function move(d) {
-                selected = Math.max(0, Math.min(count - 1, selected + d));
-            }
+            onShownChanged: if (shown) lib.reset()
+            Component.onCompleted: lib.reset()
+            onTabPressed: lib.toggleView()
 
             // Header: back button (in a folder), search, view switch
             Item {
@@ -106,19 +42,19 @@ Variants {
 
                 IconButton {
                     id: backButton
-                    visible: dialog.folder !== null && dialog.query === ""
+                    visible: lib.folder !== null && lib.query === ""
                     anchors.verticalCenter: parent.verticalCenter
                     width: 36
                     height: 36
                     icon: "caret-left"
                     iconSize: 18
                     iconColor: Theme.color.label
-                    onClicked: dialog.back()
+                    onClicked: lib.back()
                 }
                 Text {
                     visible: backButton.visible
                     anchors { left: backButton.right; leftMargin: 8; verticalCenter: parent.verticalCenter }
-                    text: dialog.folder?.name ?? ""
+                    text: lib.folder?.name ?? ""
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.large; weight: Font.DemiBold }
                 }
@@ -147,18 +83,18 @@ Variants {
                         selectionColor: Theme.accentAlpha(0.4)
                         clip: true
                         font { family: Theme.font.family; pixelSize: Theme.font.body + 1 }
-                        onTextChanged: dialog.selected = 0
-                        Keys.onEscapePressed: dialog.back()
-                        Keys.onReturnPressed: dialog.activate(dialog.selected)
-                        Keys.onEnterPressed: dialog.activate(dialog.selected)
-                        Keys.onLeftPressed: e => { if (text === "") dialog.move(-1); else e.accepted = false; }
-                        Keys.onRightPressed: e => { if (text === "") dialog.move(1); else e.accepted = false; }
-                        Keys.onUpPressed: dialog.move(-grid.columns)
-                        Keys.onDownPressed: dialog.move(grid.columns)
+                        onTextChanged: lib.selected = 0
+                        Keys.onEscapePressed: lib.back()
+                        Keys.onReturnPressed: lib.activate(lib.selected)
+                        Keys.onEnterPressed: lib.activate(lib.selected)
+                        Keys.onLeftPressed: e => { if (text === "") lib.move(-1); else e.accepted = false; }
+                        Keys.onRightPressed: e => { if (text === "") lib.move(1); else e.accepted = false; }
+                        Keys.onUpPressed: lib.move(-grid.columns)
+                        Keys.onDownPressed: lib.move(grid.columns)
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
-                            text: "Search " + dialog.apps.length + " apps"
+                            text: "Search " + lib.apps.length + " apps"
                             color: Theme.color.tertiary
                             font: field.font
                         }
@@ -169,11 +105,11 @@ Variants {
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                     width: 200
                     options: ["Categories", "All Apps"]
-                    current: dialog.view
+                    current: lib.view
                     onSelected: i => {
-                        dialog.view = i;
-                        dialog.folder = null;
-                        dialog.selected = 0;
+                        lib.view = i;
+                        lib.folder = null;
+                        lib.selected = 0;
                     }
                 }
             }
@@ -183,13 +119,13 @@ Variants {
 
                 Momentum {}
                 anchors { top: header.bottom; topMargin: 24; left: parent.left; right: parent.right; bottom: parent.bottom }
-                readonly property int columns: Math.max(1, Math.floor(width / (dialog.showingApps ? 120 : 210)))
+                readonly property int columns: Math.max(1, Math.floor(width / (lib.showingApps ? 120 : 210)))
                 cellWidth: Math.floor(width / columns)
-                cellHeight: dialog.showingApps ? 116 : 236
+                cellHeight: lib.showingApps ? 116 : 236
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
-                model: dialog.showingApps ? dialog.visibleApps : dialog.folders
-                currentIndex: dialog.selected
+                model: lib.showingApps ? lib.visibleApps : lib.folders
+                currentIndex: lib.selected
                 highlightMoveDuration: 0
                 highlightFollowsCurrentItem: false
 
@@ -197,13 +133,13 @@ Variants {
                     id: cell
                     required property var modelData
                     required property int index
-                    readonly property bool isSelected: index === dialog.selected
+                    readonly property bool isSelected: index === lib.selected
                     width: grid.cellWidth
                     height: grid.cellHeight
 
                     // App
                     Squircle {
-                        visible: dialog.showingApps
+                        visible: lib.showingApps
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 104
                         height: 104
@@ -213,7 +149,7 @@ Variants {
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: 12
                             size: 56
-                            source: dialog.showingApps ? Apps.iconFor(cell.modelData) : ""
+                            source: lib.showingApps ? Apps.iconFor(cell.modelData) : ""
                             scale: appMouse.pressed ? 0.94 : 1
                             Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                         }
@@ -221,7 +157,7 @@ Variants {
                             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 10 }
                             width: parent.width - 12
                             horizontalAlignment: Text.AlignHCenter
-                            text: dialog.showingApps ? cell.modelData.name : ""
+                            text: lib.showingApps ? cell.modelData.name : ""
                             elide: Text.ElideRight
                             color: Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
@@ -230,14 +166,14 @@ Variants {
                             id: appMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onEntered: dialog.selected = cell.index
-                            onClicked: dialog.activate(cell.index)
+                            onEntered: lib.selected = cell.index
+                            onClicked: lib.activate(cell.index)
                         }
                     }
 
                     // Folder: three large icons and a cluster of small ones, like App Library
                     Column {
-                        visible: !dialog.showingApps
+                        visible: !lib.showingApps
                         anchors.horizontalCenter: parent.horizontalCenter
                         spacing: 8
                         Squircle {
@@ -250,7 +186,7 @@ Variants {
                             border.color: cell.isSelected ? Theme.accent : Theme.color.separator
                             scale: folderMouse.pressed ? 0.97 : 1
                             Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
-                            readonly property var list: dialog.showingApps ? [] : cell.modelData.apps
+                            readonly property var list: lib.showingApps ? [] : cell.modelData.apps
 
                             Grid {
                                 anchors.centerIn: parent
@@ -286,13 +222,13 @@ Variants {
                                 id: folderMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                onEntered: dialog.selected = cell.index
-                                onClicked: dialog.activate(cell.index)
+                                onEntered: lib.selected = cell.index
+                                onClicked: lib.activate(cell.index)
                             }
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: dialog.showingApps ? "" : cell.modelData.name + "  " + cell.modelData.apps.length
+                            text: lib.showingApps ? "" : cell.modelData.name + "  " + cell.modelData.apps.length
                             color: Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                         }
@@ -303,7 +239,7 @@ Variants {
             // No results
             Column {
                 anchors.centerIn: grid
-                visible: dialog.query !== "" && dialog.visibleApps.length === 0
+                visible: lib.query !== "" && lib.visibleApps.length === 0
                 spacing: 8
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
