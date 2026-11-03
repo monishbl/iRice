@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -13,6 +14,8 @@ import qs.services
 // their time; swipe one up, or its close button, to put it away.
 // (MenuBar shows it while IslandView.alertsBelow; `top` is the island's
 // bottom edge, in the bar window's coordinates, which are the screen's.)
+// Material: Material cards (corners 28, elevation 2's shadow) in the
+// island's alert colours, a tonal step up (a volume HUD stays as it is).
 Scope {
     id: root
 
@@ -38,7 +41,9 @@ Scope {
             name: "island-alerts"
             screen: root.screen
             anchors.top: true
-            implicitWidth: 392 + 2 * glass.shadowMargin
+            // Room around the card for its shadow (the glass's, or Material's)
+            readonly property int margin: 16
+            implicitWidth: 392 + 2 * margin
             // (room for the island at its tallest and the stack under it: the
             // card moves inside the window as the island springs, rather than
             // the window moving)
@@ -62,14 +67,14 @@ Scope {
 
             Item {
                 id: stack
-                x: glass.shadowMargin
+                x: win.margin
                 // (slides down 8px as it appears)
                 y: root.top + 10 - (1 - win.shown) * 8
                 width: 392
                 height: front.height + 7 * Math.max(0, Math.min(2, root.newest.length - 1))
                 opacity: win.shown
-                onYChanged: glass.updatePosition()
-                onHeightChanged: glass.updatePosition()
+                onYChanged: glass.item?.updatePosition()
+                onHeightChanged: glass.item?.updatePosition()
 
                 // The older ones, peeking out under the newest: only their
                 // rounded lower edges, 7px each (the front card is partly
@@ -90,8 +95,9 @@ Scope {
                             width: parent.width
                             height: 44
                             radius: Theme.radius.tile
-                            color: Qt.rgba(0.1, 0.1, 0.11, 0.92 - parent.depth * 0.18)
-                            border.width: 1
+                            // (Material: tonal steps down from the card)
+                            color: Theme.material ? (parent.depth === 1 ? Theme.m3.surfaceContainerHighest : Theme.m3.surfaceContainerHigh) : Qt.rgba(0.1, 0.1, 0.11, 0.92 - parent.depth * 0.18)
+                            border.width: Theme.material ? 0 : 1
                             border.color: Qt.rgba(1, 1, 1, 0.1)
                         }
                     }
@@ -104,14 +110,39 @@ Scope {
                     height: alert.implicitHeight + 32
                     Behavior on height { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
 
-                    Glass {
+                    readonly property bool inverse: Theme.material && alert.kind !== "hud"
+                    Loader {
                         id: glass
                         anchors.fill: parent
-                        anchors.margins: -shadowMargin
-                        shadowMargin: 16
-                        radius: Theme.radius.tile
+                        anchors.margins: -win.margin
+                        active: !Theme.material
+                        sourceComponent: Glass {
+                            shadowMargin: win.margin
+                            radius: Theme.radius.tile
+                        }
+                    }
+                    // Material: the card
+                    Loader {
+                        anchors.fill: parent
+                        active: Theme.material
+                        sourceComponent: Item {
+                            RectangularShadow {
+                                anchors.fill: parent
+                                radius: Theme.radius.tile
+                                offset.y: 2
+                                blur: 12
+                                color: Qt.alpha(Theme.m3.shadow, Theme.dark ? 0.4 : 0.16)
+                            }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: Theme.radius.tile
+                                color: IslandInk.surface(front.inverse)
+                                Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                            }
+                        }
                     }
                     Rectangle {
+                        visible: !Theme.material
                         anchors.fill: parent
                         radius: Theme.radius.tile
                         gradient: Gradient {
@@ -127,6 +158,7 @@ Scope {
                         y: 16
                         width: parent.width - 36
                         event: Island.byUid[root.newest[0]] ?? null
+                        inverse: front.inverse
                         unseen: root.unseen
                         onActed: (uid, since) => Island.remove(uid, since)
                         onDismissRequested: Island.remove(root.newest[0])
@@ -136,7 +168,7 @@ Scope {
                         visible: Island.alerts.count > 1
                         anchors { right: parent.right; bottom: parent.bottom; rightMargin: 14; bottomMargin: 6 }
                         text: "+" + (Island.alerts.count - 1)
-                        color: Qt.rgba(1, 1, 1, 0.5)
+                        color: IslandInk.dim(0.5, front.inverse)
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium; features: { "tnum": 1 } }
                     }
                 }

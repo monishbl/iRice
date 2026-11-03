@@ -56,6 +56,11 @@ Singleton {
         const k = Qt.alpha(c, 1); // (a colour, whether `c` is one or a name)
         return (k.r > 0.8 && k.g < 0.45 && k.b < 0.45) || (Theme.material && Qt.colorEqual(k, Theme.m3.error));
     }
+    // Material's state layer on `base`: its content colour at 8% while
+    // the pointer is over the MouseArea `m`, 10% pressed
+    function layer(base, content, m) {
+        return Qt.tint(base, Qt.alpha(content, m.pressed ? 0.1 : m.containsMouse ? 0.08 : 0));
+    }
     // A tonal button on the island (Material): secondaryContainer
     function tonal(inverse) {
         return Theme.m3.secondaryContainer;

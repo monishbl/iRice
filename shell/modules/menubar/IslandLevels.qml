@@ -11,6 +11,8 @@ import qs.services
 //   mic         the inputs, Sound settings
 //   brightness  each display with its own level, Display settings
 // Outputs and inputs show their device's picture when there is one.
+// Material: the current row on tertiaryContainer with round ends, levels on
+// Material's slider.
 Column {
     id: root
 
@@ -38,8 +40,9 @@ Column {
         height: 32
         Rectangle {
             anchors.fill: parent
-            radius: 10
-            color: rowMouse.pressed ? Qt.alpha(root.ink, 0.14) : rowMouse.containsMouse ? Qt.alpha(root.ink, 0.08) : "transparent"
+            radius: Theme.material && row.current ? height / 2 : 10
+            color: Theme.material && row.current ? IslandInk.layer(Theme.m3.tertiaryContainer, Theme.m3.onTertiaryContainer, rowMouse)
+                : rowMouse.pressed ? Qt.alpha(root.ink, Theme.material ? 0.1 : 0.14) : rowMouse.containsMouse ? Qt.alpha(root.ink, 0.08) : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
         }
         Image {
@@ -60,13 +63,14 @@ Column {
             name: row.icon
             fill: true
             size: 16
-            color: root.ink
+            color: row.content
         }
+        readonly property color content: Theme.material && row.current ? Theme.m3.onTertiaryContainer : root.ink
         Text {
             anchors { left: parent.left; leftMargin: 36; right: mark.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
             text: row.text
             elide: Text.ElideRight
-            color: root.ink
+            color: row.content
             font { family: Theme.font.family; pixelSize: 13; weight: row.current ? Font.DemiBold : Font.Normal }
         }
         Icon {
@@ -76,7 +80,7 @@ Column {
             name: row.chevron ? "caret-right" : "check"
             bold: true
             size: 13
-            color: root.ink2
+            color: Theme.material && row.current ? row.content : root.ink2
         }
         MouseArea {
             id: rowMouse
@@ -92,8 +96,9 @@ Column {
         id: lv
         property real value: 0
         signal moved(real v)
-        height: 20
+        height: Theme.material ? 32 : 20
         Rectangle {
+            visible: !Theme.material
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width
             height: 6
@@ -106,7 +111,17 @@ Column {
                 color: root.ink
             }
         }
+        // Material: its slider
+        Loader {
+            active: Theme.material
+            anchors.fill: parent
+            sourceComponent: Slider {
+                value: lv.value
+                onMoved: v => lv.moved(v)
+            }
+        }
         MouseArea {
+            enabled: !Theme.material
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             preventStealing: true

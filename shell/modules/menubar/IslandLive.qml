@@ -12,6 +12,8 @@ import qs.services
 // (What each kind says and does: LiveInfo.)
 // Each piece can be switched off (Settings → Menu bar, see Island.shows).
 // `maxWidth` limits the info side (the title gives way first).
+// Material: Android's Live Updates chip, the icon (or the art) in a primary
+// circle (error for recording and other urgent ones).
 Item {
     id: root
 
@@ -40,33 +42,53 @@ Item {
         // Album art, or the activity's icon
         Item {
             id: lead
+            readonly property bool art: root.kind === "music" && Media.artUrl(root.player) !== ""
             visible: root.on(root.kind === "music" ? "art" : "icon")
             anchors.verticalCenter: parent.verticalCenter
-            width: 18
-            height: 18
+            width: Theme.material ? 20 : 18
+            height: width
             Rectangle {
                 anchors.fill: parent
                 radius: 5
                 clip: true
                 color: Qt.alpha(root.ink, 0.15)
-                visible: root.kind === "music" && Media.artUrl(root.player) !== ""
+                visible: !Theme.material && lead.art
                 Image {
                     anchors.fill: parent
-                    source: root.kind === "music" ? Media.artUrl(root.player) : ""
+                    source: !Theme.material && root.kind === "music" ? Media.artUrl(root.player) : ""
                     retainWhileLoading: true
                     fillMode: Image.PreserveAspectCrop
                     sourceSize: Qt.size(36, 36)
                     asynchronous: true
                 }
             }
+            // Material: the circle
+            Rectangle {
+                visible: Theme.material && !lead.art && !callApp.visible
+                anchors.fill: parent
+                radius: width / 2
+                color: Theme.material ? IslandInk.tint(root.activity?.color) : "transparent"
+            }
+            // Material: the art, round
+            Loader {
+                anchors.fill: parent
+                active: Theme.material && lead.art
+                sourceComponent: ShapedArt {
+                    url: Media.artUrl(root.player)
+                    sourceSize: Qt.size(40, 40)
+                    shape: "circle"
+                    animated: false
+                    color: Theme.m3.surfaceContainerHighest
+                }
+            }
             // Recording: a pulsing red dot (1.4 s, on a slow clock)
             Rectangle {
                 visible: root.kind === "recording"
                 anchors.centerIn: parent
-                width: 9
-                height: 9
-                radius: 4.5
-                color: Theme.accents.red
+                width: Theme.material ? 8 : 9
+                height: width
+                radius: width / 2
+                color: Theme.material ? IslandInk.onTint(root.activity?.color) : Theme.accents.red
                 opacity: 0.675 + 0.325 * Math.cos(dotClock.time * Math.PI / 0.7)
                 Ticker { id: dotClock; running: root.kind === "recording" && root.part === "info" && root.visible; fps: 15 }
             }
@@ -80,11 +102,11 @@ Item {
             }
             Icon {
                 anchors.centerIn: parent
-                visible: root.kind !== "recording" && !callApp.visible && !(root.kind === "music" && Media.artUrl(root.player) !== "")
+                visible: root.kind !== "recording" && !callApp.visible && !lead.art
                 name: root.activity?.icon ?? ""
                 fill: true
-                size: 14
-                color: root.activity?.color ?? root.ink
+                size: Theme.material ? 12 : 14
+                color: Theme.material ? IslandInk.onTint(root.activity?.color) : root.activity?.color ?? root.ink
             }
         }
 
@@ -105,7 +127,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.kind !== "music" && root.on("time")
             text: LiveInfo.time(root.kind)
-            color: root.kind === "recording" ? Theme.accents.red : root.activity?.color ?? root.ink
+            color: Theme.material ? (root.kind === "recording" ? Theme.m3.error : root.ink) : root.kind === "recording" ? Theme.accents.red : root.activity?.color ?? root.ink
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold; features: { "tnum": 1 } }
         }
 
@@ -135,7 +157,7 @@ Item {
                     readonly property real hi: [11, 10, 13][index]
                     readonly property real period: [0.70, 0.66, 0.74][index]
                     height: lo + (hi - lo) * (0.5 - 0.5 * Math.cos(2 * Math.PI * barClock.time / period + index * 1.9))
-                    color: Theme.accents.green
+                    color: Theme.material ? Theme.m3.primary : Theme.accents.green
                 }
             }
         }
@@ -156,7 +178,7 @@ Item {
                 icon: modelData.icon
                 fill: modelData.fill
                 iconSize: 13
-                iconColor: modelData.danger ? Theme.accents.red : root.ink
+                iconColor: modelData.danger ? (Theme.material ? Theme.m3.error : Theme.accents.red) : root.ink
                 opacity: modelData.on ? 1 : 0.4
                 enabled: modelData.on
                 onClicked: modelData.act()

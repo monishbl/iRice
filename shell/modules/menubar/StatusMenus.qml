@@ -8,7 +8,8 @@ import qs.modules.network
 import qs.services
 
 // Menus behind the menu bar's status items: Wi-Fi, Bluetooth, Sound, battery,
-// resources and weather. Each is a glass popover under its item.
+// resources and weather. Each is a glass popover under its item (Material: a
+// surfaceContainer panel, its section headers in labelMedium).
 Scope {
     component StatusMenu: Variants {
         id: menu
@@ -98,6 +99,7 @@ Scope {
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }
+                // (Material: each on a tonal circle, the colours its roles')
                 Repeater {
                     model: [
                         ...Privacy.cameraApps.map(a => ({ app: a, icon: "video-camera", what: "Camera", color: "#30D158" })),
@@ -113,13 +115,13 @@ Scope {
                             width: 28
                             height: 28
                             radius: 14
-                            color: Qt.alpha(parent.modelData.color, 0.18)
+                            color: Theme.material ? Theme.m3.secondaryContainer : Qt.alpha(parent.modelData.color, 0.18)
                             Icon {
                                 anchors.centerIn: parent
                                 name: parent.parent.modelData.icon
                                 fill: true
                                 size: 15
-                                color: parent.parent.modelData.color
+                                color: Theme.material ? Theme.m3.onSecondaryContainer : parent.parent.modelData.color
                             }
                         }
                         Column {
@@ -140,21 +142,22 @@ Scope {
                 // Stop sharing (every shared screen at once)
                 Rectangle {
                     visible: Privacy.screenShared
-                    width: stopLabel.implicitWidth + 28
-                    height: 28
-                    radius: 14
-                    color: stopMouse.pressed ? Qt.darker(Theme.color.danger, 1.15) : Theme.color.danger
+                    width: stopLabel.implicitWidth + (Theme.material ? 32 : 28)
+                    height: Theme.material ? 40 : 28
+                    radius: height / 2
+                    color: Theme.material ? Qt.tint(Theme.m3.error, Qt.alpha(Theme.m3.onError, stopMouse.pressed ? 0.1 : stopMouse.containsMouse ? 0.08 : 0)) : stopMouse.pressed ? Qt.darker(Theme.color.danger, 1.15) : Theme.color.danger
                     opacity: Privacy.stopping ? 0.6 : 1
                     Text {
                         id: stopLabel
                         anchors.centerIn: parent
                         text: Privacy.stopping ? "Stopping…" : "Stop sharing"
-                        color: "white"
-                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                        color: Theme.material ? Theme.m3.onError : "white"
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
                     }
                     MouseArea {
                         id: stopMouse
                         anchors.fill: parent
+                        hoverEnabled: Theme.material
                         enabled: !Privacy.stopping
                         cursorShape: Qt.PointingHandCursor
                         onClicked: Privacy.stopSharing()
@@ -201,8 +204,19 @@ Scope {
                     Text {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         text: Math.round(bat.level * 100) + "%"
-                        color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold; features: { "tnum": 1 } }
+                        color: Theme.material ? Theme.m3.primary : Theme.color.label
+                        font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.large : Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold; features: { "tnum": 1 } }
+                    }
+                }
+                // Material: the level as a bar, error when low
+                Loader {
+                    active: Theme.material
+                    visible: active
+                    width: parent.width
+                    sourceComponent: WavyProgress {
+                        value: bat.level
+                        paused: true // (a level, not progress: flat)
+                        color: bat.level <= 0.2 && !bat.charging ? Theme.m3.error : Theme.m3.primary
                     }
                 }
                 Text {
@@ -227,7 +241,7 @@ Scope {
                     text: "Battery health"
                     color: Theme.color.secondary
                     topPadding: 4
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 12 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
                 }
                 Repeater {
                     model: [
@@ -248,7 +262,7 @@ Scope {
                         Text {
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                             text: parent.modelData.value
-                            color: parent.modelData.value === "Service recommended" ? Theme.color.warning : Theme.color.secondary
+                            color: parent.modelData.value === "Service recommended" ? (Theme.material ? Theme.m3.error : Theme.color.warning) : Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                         }
                     }
@@ -257,7 +271,7 @@ Scope {
                     text: "Energy mode"
                     color: Theme.color.secondary
                     topPadding: 4
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 12 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
                 }
                 // (without power-profiles-daemon: who manages power instead)
                 Text {
@@ -300,18 +314,19 @@ Scope {
                         Item {
                             width: parent.width
                             height: 16
-                            Text { text: metric.modelData.label; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                            Text { text: metric.modelData.label; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
                             Text { anchors.right: parent.right; text: metric.modelData.detail; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } } }
                         }
+                        // (Material: a 8 px track in secondaryContainer)
                         Rectangle {
                             width: parent.width
-                            height: 6
-                            radius: 3
-                            color: Theme.color.toggleOff
+                            height: Theme.material ? 8 : 6
+                            radius: height / 2
+                            color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.toggleOff
                             Rectangle {
                                 width: parent.width * Math.min(1, metric.modelData.value)
                                 height: parent.height
-                                radius: 3
+                                radius: height / 2
                                 color: metric.modelData.value > 0.9 ? Theme.color.danger : Theme.accent
                                 Behavior on width { NumberAnimation { duration: Theme.motion.popover } }
                             }
@@ -339,8 +354,8 @@ Scope {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.temp + "°"
-                        color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: 40; features: { "tnum": 1 } }
+                        color: Theme.material ? Theme.m3.primary : Theme.color.label
+                        font { family: Theme.font.family; pixelSize: Theme.material ? 45 : 40; features: { "tnum": 1 } }
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter

@@ -39,7 +39,7 @@ Item {
         height: root.size
         shape: root.playing ? "square" : "circle"
         // (a state layer of the icon's colour on hover and press)
-        color: Qt.tint(root.color, Qt.alpha(root.iconColor, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
+        color: IslandInk.layer(root.color, root.iconColor, mouse)
         transform: pressFx1.effects
         ElasticControl { id: pressFx1; pressed: mouse.pressed }
         // (Material: grows on press: the ElasticControl above)

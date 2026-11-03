@@ -8,6 +8,7 @@ import qs.glass
 // battery, the island's): one line of text. It takes no input, so the
 // pointer stays on what it's over. Like ResourceHover, the target's window
 // sits at the screen's top left, so window coordinates are screen ones.
+// Material: its plain tooltip, inverseSurface with 4 px corners.
 //   HoverTip { target: item; hovered: item.hovered; screen: bar.screen; text: "84% · Balanced" }
 Item {
     id: root
@@ -51,8 +52,8 @@ Item {
                 left: Math.round(Math.max(0, Math.min((screen?.width ?? 0) - width, root.at.x - width / 2)))
                 top: Math.round(Math.max(0, root.at.y - m))
             }
-            implicitWidth: label.implicitWidth + 24 + 2 * m
-            implicitHeight: label.implicitHeight + 14 + 2 * m
+            implicitWidth: label.implicitWidth + (Theme.material ? 16 : 24) + 2 * m
+            implicitHeight: label.implicitHeight + (Theme.material ? 8 : 14) + 2 * m
             mask: Region {}
 
             // Fades in and drops 4px
@@ -64,18 +65,27 @@ Item {
                 anchors.fill: parent
                 opacity: tip.shown
                 transform: Translate { y: (tip.shown - 1) * 4 }
-                Glass {
+                Loader {
                     anchors.fill: parent
-                    radius: Theme.radius.control
-                    shadowMargin: tip.m
-                    lensScale: 0.35
+                    active: !Theme.material
+                    sourceComponent: Glass {
+                        radius: Theme.radius.control
+                        shadowMargin: tip.m
+                        lensScale: 0.35
+                    }
+                }
+                Rectangle {
+                    visible: Theme.material
+                    anchors { fill: parent; margins: tip.m }
+                    radius: 4
+                    color: Theme.material ? Theme.m3.inverseSurface : "transparent"
                 }
                 Text {
                     id: label
                     anchors.centerIn: parent
                     textFormat: Text.PlainText
                     text: root.text
-                    color: Theme.color.label
+                    color: Theme.material ? Theme.m3.inverseOnSurface : Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                 }
             }
