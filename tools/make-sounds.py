@@ -549,11 +549,92 @@ def material_pack():
     finish(buf, "today", -9 + QUIET)
 
 
+# ── Startup sounds: more to log in to ───────────────────────────────────
+# shell/assets/sounds/startup/<style>-<motif>.ogg, chosen in Settings →
+# Notifications → Logging in (any of them, whichever style is on; the
+# signature above stays the default). The same four motifs on each style's
+# own instrument: Rise runs up the chord and
+# opens into it; Hello greets with a fifth that blooms into the chord; Dawn
+# swells slowly with notes sparkling over its peak; Bell is a three-note
+# chime, down then a leap up, in a long room. All in D-flat, like the
+# signature, under 4.5 s.
+STARTUP_MOTIFS = ("rise", "hello", "dawn", "bell")
+CHORD = (61, 65, 68, 72, 75)  # D-flat major with the seventh and ninth
+
+
+def glass_note(buf, t, m, amp, pan=0.0, ring=1.0):
+    tone(buf, t, hz(m + 12), amp * 0.8, attack=0.004, tau=0.25 * ring, pan=pan,
+         partials=((1, 1), (2.76, 0.12), (5.4, 0.04)), shimmer=0.04)
+
+
+def instrument(style):
+    """How one note sounds in a style: (note function, its semitone shift
+    already applied, whether it sustains on its own)"""
+    packs = {p.name: p for p in (Soft(), Marimba(), Keys(), Taps(), Minimal())}
+    if style in packs:
+        p = packs[style]
+        return lambda buf, t, m, amp, pan=0.0, ring=1.0: p.note(buf, t, m, amp, pan, ring), style in ("soft", "keys")
+    if style == "glass":
+        return glass_note, False
+    return (lambda buf, t, m, amp, pan=0.0, ring=1.0: material_note(buf, t, m, amp, pan, tau=0.3 * ring)), False
+
+
+def pad(buf, start, notes, amp, attack, tau):
+    """A soft held chord under the motif (sines, a little detuned, wide)"""
+    for k, m in enumerate(notes):
+        for cents, pan in ((-5, -0.5), (5, 0.5)):
+            tone(buf, start + 0.01 * k, hz(m) * 2 ** (cents / 1200), amp / 2, attack=attack, tau=tau, pan=pan,
+                 partials=((1, 1), (2, 0.15), (3, 0.04)))
+
+
+def startup_option(style, motif):
+    note, sustains = instrument(style)
+    random.seed(sum(map(ord, style + motif)))  # (the same file every run)
+    buf = buffer(4.5)
+    if motif == "rise":
+        for k, m in enumerate(CHORD + (77, 80)):
+            note(buf, 0.06 * k, m, 0.5 - 0.03 * k, -0.6 + 0.2 * k, 1.2)
+        hit = 0.06 * 7 + 0.05
+        for k, m in enumerate(CHORD):
+            note(buf, hit, m, 0.32, -0.4 + 0.2 * k, 3.0)
+        pad(buf, hit - 0.1, (49, 61, 68), 0.16, 0.25, 1.6)
+        room, wet = 2.4, 0.3
+    elif motif == "hello":
+        note(buf, 0.0, 68, 0.6, -0.25, 1.6)
+        note(buf, 0.22, 75, 0.7, 0.25, 2.4)
+        for k, m in enumerate((61, 65, 68, 72)):
+            note(buf, 0.5 + 0.03 * k, m, 0.22, -0.3 + 0.2 * k, 3.0)
+        pad(buf, 0.4, (49, 56, 61, 65), 0.2, 0.5, 1.8)
+        room, wet = 2.2, 0.28
+    elif motif == "dawn":
+        pad(buf, 0.0, (49, 56, 61, 65, 68), 0.3, 1.1, 1.5)
+        for k, (t, m) in enumerate(((0.95, 80), (1.1, 84), (1.28, 87), (1.5, 92))):
+            note(buf, t, m, 0.22 - 0.03 * k, -0.5 + 0.33 * k, 1.4)
+        room, wet = 3.0, 0.35
+    else:  # bell
+        for k, (t, m) in enumerate(((0.0, 73), (0.32, 68), (0.64, 80))):
+            note(buf, t, m, 0.6, (-0.3, 0.3, 0.0)[k], 3.5 if sustains else 2.5)
+            note(buf, t, m - 12, 0.18, 0.0, 2.0)
+        pad(buf, 0.64, (56, 61, 68), 0.12, 0.3, 1.6)
+        room, wet = 3.2, 0.4
+    reverb(buf, room, wet)
+    highpass(buf, 130, poles=3)
+    finish(buf, style + "-" + motif, -1.5)
+
+
 if __name__ == "__main__":
     import sys
     only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
     only_ring = sys.argv[1:] == ["ringtone"]  # tools/make-sounds.py ringtone: just ringtone.ogg
     only_startup = sys.argv[1:] == ["startup"]  # tools/make-sounds.py startup: just startup.ogg
+    if sys.argv[1:2] == ["startups"]:  # tools/make-sounds.py startups [STYLE…]: the startup sounds to choose from
+        OUT = os.path.join(ROOT, "startup")
+        os.makedirs(OUT, exist_ok=True)
+        for style in sys.argv[2:] or ("soft", "marimba", "keys", "taps", "minimal", "glass", "material"):
+            print("──", style)
+            for motif in STARTUP_MOTIFS:
+                startup_option(style, motif)
+        sys.exit(0)
     if sys.argv[1:] == ["material"]:  # tools/make-sounds.py material: just the Material look's set
         random.seed(7)
         OUT = os.path.abspath(MATERIAL_OUT)

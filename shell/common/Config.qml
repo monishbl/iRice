@@ -244,6 +244,7 @@ Singleton {
                 // The log-in sound's own volume: it plays at this, louder than
                 // the rest, even with sound effects off (only `startup` stops it)
                 property real startupVolume: 0.9
+                property string startupSound: "" // one of StartupSounds.js; "" = iRice's own chime
             }
 
             // Screen recording (services/Recorder.qml): gpu-screen-recorder,

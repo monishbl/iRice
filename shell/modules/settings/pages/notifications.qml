@@ -3,6 +3,7 @@ import QtQuick as QQ
 import qs.common
 import qs.modules.settings
 import qs.services
+import "../../../services/StartupSounds.js" as StartupSounds
 
 Column {
     width: parent?.width ?? 0
@@ -148,7 +149,14 @@ Column {
             width: parent.width
             title: "Logging in"
             footer: "Plays once when you log in, at its own volume, even with sound effects off."
-            SoundRow { key: "startup"; label: "Sound when you log in"; always: true; toggle: false }
+            SubpageLink {
+                icon: "music-notes"
+                label: "Sound when you log in"
+                readonly property var chosen: StartupSounds.find(Config.options.sounds.startupSound)
+                detail: Config.options.sounds.startupFile !== "" ? "Your own file" : chosen.name + " · " + chosen.style
+                page: "notifications/startup"
+            }
+            SoundRow { key: "startup"; label: "Play it, or use your own file"; always: true; toggle: false }
             // One slider: its left end is off (the volume you had is kept)
             Row {
                 label: "Volume"

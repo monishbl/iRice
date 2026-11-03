@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Services.Notifications
 import Quickshell.Services.UPower
 import qs.common
+import "StartupSounds.js" as StartupSounds
 
 // Short UI sounds, like macOS: a chime when the session starts (not when the
 // shell reloads), a blip when the charger goes in, two-tones when a display or
@@ -28,7 +29,8 @@ Singleton {
     readonly property string pack: Theme.material && Config.options.appearance.materialSounds ? "material" : packs.includes(cfg.pack) && cfg.pack !== "material" ? cfg.pack : "marimba"
     readonly property string own: Quickshell.shellDir + "/assets/sounds/" + pack + "/"
     readonly property var files: ({
-            startup: own + "startup.ogg",
+            // (logging in: the sound chosen from all of them, else the style's chime)
+            startup: StartupSounds.all.some(c => c.id === cfg.startupSound && c.id !== "") ? Quickshell.shellDir + "/assets/sounds/startup/" + cfg.startupSound + ".ogg" : own + "startup.ogg",
             charging: own + "charging.ogg",
             displays: own + "display-connect.ogg",
             displaysOff: own + "display-disconnect.ogg",
