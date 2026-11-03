@@ -77,8 +77,16 @@ case "${1:-help}" in
         stop_sandbox_apps # left behind by a sandbox that crashed
         : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
         [[ -d "$IRICE_HOME" ]] || seed_arena
-        setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
-            "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
+        # (without the files this shell has open: a smoke check's lock would
+        # stay held for as long as the sandbox runs)
+        (
+            for fd in /proc/$BASHPID/fd/*; do
+                fd=${fd##*/}
+                ((fd > 2)) && eval "exec $fd>&-"
+            done
+            exec setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
+                "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
+        )
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
         # Park the sandbox window alone on host workspace 1 (only touches that window).
