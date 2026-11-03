@@ -3,25 +3,41 @@
 # panel and every Settings page, and fails on any QML error: the check a
 # refactor runs before it's merged (tests don't load the shell).
 #   tools/smoke-looks.sh [glass|material]   (both when not given)
-# The sandbox is one, in the main checkout: checkouts take turns (a lock),
-# and the sandbox's config is put back afterwards. Screenshots of the
-# headless test output go to $SMOKE_SHOTS when it's set.
+# Runs in the first free sandbox arena (SMOKE_ARENAS of them, 3 by default:
+# the usual sandbox and IRICE_ARENA=2, 3, started when needed), so checkouts
+# check side by side; each arena's config is put back afterwards. Screenshots
+# of the headless test output go to $SMOKE_SHOTS when it's set.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAIN="${IRICE_MAIN:-/home/$(id -un)/Projects/Personal/iRice}"
 LOOKS=("${@:-glass material}")
 [[ $# -eq 0 ]] && LOOKS=(glass material)
-LOG=/tmp/irice-rt/quickshell.log
-CFG="$MAIN/.sandbox/home/.config/irice/config.json"
 PANELS=(controlCenter notificationCenter spotlight launchpad clipboard overview missionControl emoji cheatsheet
     quickNote screenTools session sidebar wallpaper about systemMenu soundMenu wifiMenu bluetoothMenu batteryMenu
     resourcesMenu weatherMenu privacyMenu)
 ERRORS='ERROR|caused by|ReferenceError|TypeError|is not defined|is not a type|Cannot assign|Unable to assign|non-existent property|Cannot read property|Cannot call method|unavailable'
 
-exec 9>/tmp/irice-smoke.lock
-flock 9 # (one checkout at a time in the one sandbox)
 cd "$MAIN" || exit 2
+# (one checkout at a time per arena: the first free one; arena 1 keeps the
+# lock name older checkouts' copies of this script use)
+arena=""
+until [[ -n "$arena" ]]; do
+    for n in $(seq 1 "${SMOKE_ARENAS:-3}"); do
+        lock=/tmp/irice-smoke.lock
+        [[ $n != 1 ]] && lock=/tmp/irice-smoke-$n.lock
+        exec 9>"$lock"
+        if flock -n 9; then arena=$n; break; fi
+        exec 9>&-
+    done
+    [[ -z "$arena" ]] && sleep 5
+done
+export IRICE_ARENA=$arena
+IRICE_RT=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "$IRICE_RT" )
+IRICE_HOME=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "$IRICE_HOME" )
+LOG="$IRICE_RT/quickshell.log"
+echo "arena $arena ($IRICE_RT)"
 ./dev.sh status | grep -q running || { ./dev.sh up >/dev/null; sleep 30; }
+CFG="$IRICE_HOME/.config/irice/config.json"
 backup="$(mktemp)"
 cp "$CFG" "$backup"
 trap 'cp "$backup" "$CFG"; rm -f "$backup"' EXIT
@@ -54,11 +70,11 @@ for look in "${LOOKS[@]}"; do
     fi
     # (and it really is this checkout's shell running, not main's)
     if [[ "$look" == material ]]; then
-        loaded="$(readlink -f "$MAIN/.sandbox/home/.cache/irice/material-shell/shell.qml")"
+        loaded="$(readlink -f "$IRICE_HOME/.cache/irice/material-shell/shell.qml")"
     else
         # (the sandbox's own shell: its binary link is in the sandbox's runtime
         # folder; the container also sees the person's real one)
-        loaded="$(./dev.sh run sh -c 'pgrep -a -x irice-shell' 2>/dev/null | grep '^[0-9]* /tmp/irice-rt/' | grep -o -- "-p [^ ]*" | head -1)"
+        loaded="$(./dev.sh run sh -c 'pgrep -a -x irice-shell' 2>/dev/null | grep "^[0-9]* $IRICE_RT/" | grep -o -- "-p [^ ]*" | head -1)"
     fi
     if [[ "$loaded" != *"$ROOT/"* ]]; then
         echo "FAIL $look: the sandbox runs another checkout ($loaded), not $ROOT"

@@ -1,9 +1,20 @@
-# Sourced by dev.sh and reload-shell.sh.
+# Sourced by dev.sh, inner.sh and reload-shell.sh (with ROOT set).
 # distrobox shares the host PID namespace, so sandbox processes are identified by
 # their environment: only they run with XDG_RUNTIME_DIR=/tmp/irice-rt. Host
 # processes (e.g. the real end4 `qs -c ii`) can never match.
+# IRICE_ARENA=2, 3, … is another identical sandbox beside the first, with its
+# own runtime folder (/tmp/irice-rt-N) and home (.sandbox/arena-N/home), so
+# checks can run side by side. 1 (the default) is the usual sandbox.
 
-IRICE_RT=/tmp/irice-rt
+IRICE_ARENA="${IRICE_ARENA:-1}"
+[[ "$IRICE_ARENA" =~ ^[1-9]$ ]] || { echo "IRICE_ARENA must be 1-9" >&2; exit 2; }
+if [[ "$IRICE_ARENA" == 1 ]]; then
+    IRICE_RT=/tmp/irice-rt
+    IRICE_HOME="$ROOT/.sandbox/home"
+else
+    IRICE_RT=/tmp/irice-rt-$IRICE_ARENA
+    IRICE_HOME="$ROOT/.sandbox/arena-$IRICE_ARENA/home"
+fi
 
 # PIDs of sandbox processes with the given executable name.
 sandbox_pids() {

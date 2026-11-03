@@ -8,11 +8,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RT=/tmp/irice-rt
+source "$ROOT/sandbox/lib.sh"
+RT="$IRICE_RT"
 HOST_RT=/run/user/$(id -u)
 HOST_WL="${IRICE_HOST_WAYLAND:-${WAYLAND_DISPLAY:-wayland-1}}"
 
-if [[ "$HOME" != "$ROOT/.sandbox/home" ]]; then
+if [[ "$HOME" != "$IRICE_HOME" ]]; then
     echo "inner.sh: refusing to run, HOME is $HOME (expected the sandbox home)" >&2
     exit 1
 fi

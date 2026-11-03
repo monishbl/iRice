@@ -8,8 +8,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # *that* iRice is (IRICE_ROOT), and the sandbox would run that copy instead
 export IRICE_ROOT="$ROOT"
 BOX=irice
-RT=/tmp/irice-rt
 source "$ROOT/sandbox/lib.sh"
+RT="$IRICE_RT"
 PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
       quickshell qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-5compat qt6-wayland qt6-shadertools
       pipewire wireplumber pipewire-pulse networkmanager bluez-utils upower libsecret brightnessctl playerctl
@@ -19,7 +19,16 @@ PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
       foot thunar mousepad gnome-calculator imagemagick ffmpeg
       libqalculate ripgrep plocate swappy psmisc poppler ffmpegthumbnailer python-gobject matugen)
 
-box() { distrobox enter "$BOX" -- "$@"; }
+# (the arena's own home: distrobox gives every session the first one's)
+box() {
+    if (($#)); then
+        distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" \
+            XDG_CONFIG_HOME="$IRICE_HOME/.config" XDG_CACHE_HOME="$IRICE_HOME/.cache" \
+            XDG_DATA_HOME="$IRICE_HOME/.local/share" XDG_STATE_HOME="$IRICE_HOME/.local/state" "$@"
+    else
+        distrobox enter "$BOX"
+    fi
+}
 # Runs a command inside the box, pointed at the nested compositor.
 nested() {
     local wl; wl="$(cd "$RT" && ls -d wayland-[0-9] 2>/dev/null | head -1)"
@@ -42,6 +51,19 @@ sandbox_pid() {
     echo "$p"
 }
 running() { sandbox_pid >/dev/null; }
+# A new arena's home: the first sandbox's, without the big app folders, so its
+# shell looks the same (settings, desktop files, icons, wallpapers)
+seed_arena() {
+    [[ "$IRICE_ARENA" == 1 ]] && return 0
+    echo "Seeding arena $IRICE_ARENA's home from .sandbox/home"
+    mkdir -p "$IRICE_HOME"
+    rsync -a --exclude=/.cache --exclude=/.copilot --exclude=/.vscode-oss --exclude=/.vscode-oss-shared \
+        --exclude=/live-test.mp4 --exclude=/.local/share/containers --exclude=/.local/share/Trash \
+        --exclude=/.local/share/baloo --exclude=/.config/discord --exclude=/.config/zen --exclude=/.config/Codex \
+        --exclude=/.config/mozilla --exclude=/.config/sh.cider.genten --exclude='/.config/Code - OSS' \
+        --exclude=/.config/Electron --exclude=/.config/autostart \
+        "$ROOT/.sandbox/home/" "$IRICE_HOME/"
+}
 
 case "${1:-help}" in
     create)
@@ -54,7 +76,8 @@ case "${1:-help}" in
         running && { echo "Sandbox already running."; exit 0; }
         stop_sandbox_apps # left behind by a sandbox that crashed
         : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
-        setsid -f distrobox enter "$BOX" -- env IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
+        [[ -d "$IRICE_HOME" ]] || seed_arena
+        setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
             "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
@@ -68,7 +91,10 @@ case "${1:-help}" in
             done
         fi
         # Only when that exact window exists; never a bare "pid:" to the real compositor
-        [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = ${IRICE_HOST_WORKSPACE:-1}, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
+        # (other arenas out of sight, on a special workspace of their own)
+        ws="${IRICE_HOST_WORKSPACE:-1}"
+        [[ "$IRICE_ARENA" != 1 ]] && ws='"special:irice-arenas"'
+        [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = $ws, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
         nested hyprctl output create headless IRICE-TEST >/dev/null
         # Layer surfaces in the nested output keep their first size after the host
         # resizes the window, so restart the shell once it has settled.
@@ -85,7 +111,7 @@ case "${1:-help}" in
     reload)  "$ROOT/tools/build-shaders.sh" && nested env IRICE_LAB="${IRICE_LAB:-0}" "$ROOT/sandbox/reload-shell.sh" ;;
     # Screenshots come from the headless IRICE-TEST output, which renders even
     # while the sandbox window is on a hidden host workspace.
-    shot)    nested timeout 15 grim -o IRICE-TEST "${2:-/tmp/irice-rt/shot.png}" && echo "${2:-/tmp/irice-rt/shot.png}" ;;
+    shot)    nested timeout 15 grim -o IRICE-TEST "${2:-$RT/shot.png}" && echo "${2:-$RT/shot.png}" ;;
     hyprctl) shift; nested hyprctl "$@" ;;
     run)     shift; nested "$@" ;;
     ipc)     shift; nested env QS=qs "$ROOT/shell/assets/scripts/shell-ipc.sh" call "$@" ;; # (either look's root)
@@ -158,7 +184,7 @@ case "${1:-help}" in
         ;;
     reset-home)
         running && { echo "Stop the sandbox first."; exit 1; }
-        rm -rf "$ROOT/.sandbox/home" && mkdir -p "$ROOT/.sandbox/home" && echo "Sandbox home wiped."
+        rm -rf "$IRICE_HOME" && mkdir -p "$IRICE_HOME" && echo "Sandbox home wiped ($IRICE_HOME)."
         ;;
     *)
         cat <<EOF
@@ -178,6 +204,8 @@ Usage: ./dev.sh <command>
   enter        Open a shell in the container
   logs [n]     Tail the sandbox Hyprland and Quickshell logs
   reset-home   Wipe the sandbox home (.sandbox/home)
+Every command works on another identical sandbox with IRICE_ARENA=2..9
+(e.g. IRICE_ARENA=2 ./dev.sh up): its own compositor, shell and home.
 EOF
         ;;
 esac
