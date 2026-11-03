@@ -29,8 +29,13 @@ Singleton {
     }
 
     function applyControls() {
-        if (GlassPlugin.available)
-            GlassPlugin.command("controls", "irice-glass controls " + (pluginControls ? "on " + (Theme.dark ? "dark" : "light") : "off"));
+        if (!GlassPlugin.available)
+            return;
+        GlassPlugin.command("controls", "irice-glass controls " + (pluginControls ? "on " + (Theme.dark ? "dark" : "light") : "off"));
+        // The traffic lights again after the Material look (it sends its own
+        // style, material/services/AppTheme; the plugin outlives the shell)
+        if (!Theme.material)
+            GlassPlugin.command("controls-style", "irice-glass controls-style glass");
     }
 
     function apply() {
