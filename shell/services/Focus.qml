@@ -201,6 +201,10 @@ Singleton {
     // Persistence: modes and the current state
     readonly property string path: Config.dir + "/focus.json"
     property bool loaded: false
+    // Read the file again (Settings → About restored it; this doesn't watch it)
+    function reload() {
+        file.reload();
+    }
     function save() {
         if (loaded)
             saveTimer.restart();
