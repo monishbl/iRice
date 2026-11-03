@@ -29,6 +29,11 @@ Column {
             Choice { key: "layout"; values: ["ios", "macos"]; options: ["iOS", "macOS"] }
         }
         Row {
+            label: "Notifications"
+            detail: ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over the sign-in.", column: "Beside the clock on a wide screen: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications" })[Config.options.lock.notifications] ?? ""
+            Choice { key: "notifications"; values: ["shelf", "column", "icons"]; options: ["Newest", "Beside", "Icons"] }
+        }
+        Row {
             label: "Cards and field"
             detail: "What notifications, Now Playing and the password field are made of"
             Choice { key: "material"; values: ["glass", "frost", "solid", "system"]; options: ["Glass", "Frost", "Solid", "System"] }

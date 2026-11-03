@@ -180,7 +180,6 @@ Item {
                     anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 12
                     Text {
-                        visible: clock.face !== "dynamic" || root.smallT > 0.5 // (the dynamic face has its own)
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDate(wallClock.date, "dddd d MMMM")
                         color: root.ink
@@ -581,7 +580,7 @@ Item {
                         }
                     }
 
-                    // Send: squares off once there's something to send
+                    // Send: a circle, filled once there's something to send
                     Item {
                         id: send
                         x: fingerSlot.x - (fieldBox.fingered ? 4 : 0) - width
@@ -595,7 +594,7 @@ Item {
                         ElasticControl { id: sendPress; pressed: sendMouse.pressed }
                         MaterialShape {
                             anchors.fill: parent
-                            shape: send.ready ? "square" : "circle"
+                            shape: "circle"
                             color: send.ready ? (sendMouse.containsMouse ? Qt.tint(root.m3.primary, Qt.alpha(root.m3.onPrimary, sendMouse.pressed ? 0.1 : 0.08)) : root.m3.primary) : Qt.alpha(root.m3.onSurface, 0.12)
                         }
                         Icon {

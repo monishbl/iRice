@@ -26,6 +26,11 @@ WlSessionLockSurface {
 
     readonly property var cfg: Config.options.lock
     readonly property bool ios: cfg.layout !== "macos"
+    // Notifications and Now Playing (lock.notifications): shelf (the apps'
+    // icons and the newest under the clock, the player over the sign-in),
+    // column (beside the clock, on a wide screen) or icons (only the icons)
+    readonly property string style: cfg.notifications ?? "shelf"
+    readonly property bool split: style === "column" && width > height
     readonly property string material: cfg.material === "system" ? (Theme.glass.tier === "liquid" ? "glass" : Theme.glass.tier === "frosted" ? "frost" : "solid") : cfg.material
     readonly property bool darkInk: cfg.text === "dark" || (cfg.text === "auto" && Wallpaper.topIsLight)
     readonly property color ink: darkInk ? "#18181B" : "#FFFFFF"
@@ -257,68 +262,119 @@ WlSessionLockSurface {
             }
         }
 
-        // ── Now Playing and notifications ───────────────────────────────────
+        // ── Notifications ───────────────────────────────────────────────────
+        // Now Playing: in the column beside the clock, or over the sign-in
+        Plate {
+            id: player
+            readonly property var p: Island.player
+            visible: !!p && (p.trackTitle ?? "") !== ""
+            width: cards.width
+            x: cards.x
+            y: surface.split ? header.y : login.y - height - 24
+            opacity: surface.reveal
+            height: 84
+            radius: 22
+            ClippingRectangle {
+                id: art
+                x: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 60
+                height: 60
+                radius: 12
+                color: Qt.rgba(1, 1, 1, 0.12)
+                Image {
+                    anchors.fill: parent
+                    source: Media.artUrl(player.p)
+                    retainWhileLoading: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize: Qt.size(120, 120)
+                    asynchronous: true
+                }
+            }
+            Column {
+                anchors { left: art.right; leftMargin: 12; right: buttons.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                Text {
+                    width: parent.width
+                    text: player.p?.trackTitle ?? ""
+                    elide: Text.ElideRight
+                    color: surface.ink
+                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                }
+                Text {
+                    width: parent.width
+                    text: player.p?.trackArtist ?? ""
+                    elide: Text.ElideRight
+                    color: surface.ink2
+                    font { family: Theme.font.family; pixelSize: Theme.font.small }
+                }
+            }
+            Row {
+                id: buttons
+                anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                IconButton { icon: "skip-back"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.previous() }
+                IconButton { icon: Island.musicPlaying ? "pause" : "play"; fill: true; iconColor: surface.ink; width: 40; height: 40; iconSize: 22; onClicked: player.p?.togglePlaying() }
+                IconButton { icon: "skip-forward"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.next() }
+            }
+        }
+
         Column {
             id: cards
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: surface.ios ? complications.y + complications.height + 40 : login.y - height - 24
-            width: 420
+            x: surface.split ? Math.round(parent.width * 0.74 - width / 2) : Math.round((parent.width - width) / 2)
+            y: surface.split ? header.y + (player.visible ? player.height + 10 : 0) : (surface.ios ? complications.y + complications.height : header.y + header.height) + 40
+            width: surface.split ? Math.min(420, parent.width * 0.3) : 420
             spacing: 10
             opacity: surface.reveal
 
+            // Who sent them, as a row of app icons (shelf, icons)
             Plate {
-                id: player
-                readonly property var p: Island.player
-                visible: !!p && (p.trackTitle ?? "") !== ""
-                width: parent.width
-                height: 84
-                radius: 22
-                ClippingRectangle {
-                    id: art
-                    x: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 60
-                    height: 60
-                    radius: 12
-                    color: Qt.rgba(1, 1, 1, 0.12)
-                    Image {
-                        anchors.fill: parent
-                        source: Media.artUrl(player.p)
-                        retainWhileLoading: true
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(120, 120)
-                        asynchronous: true
-                    }
-                }
-                Column {
-                    anchors { left: art.right; leftMargin: 12; right: buttons.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    Text {
-                        width: parent.width
-                        text: player.p?.trackTitle ?? ""
-                        elide: Text.ElideRight
-                        color: surface.ink
-                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-                    }
-                    Text {
-                        width: parent.width
-                        text: player.p?.trackArtist ?? ""
-                        elide: Text.ElideRight
-                        color: surface.ink2
-                        font { family: Theme.font.family; pixelSize: Theme.font.small }
-                    }
-                }
+                id: shelf
+                visible: !surface.split && cards.all.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: shelfRow.implicitWidth + 20
+                height: 48
+                radius: 24
+                Accessible.role: Accessible.StaticText
+                Accessible.name: cards.all.length + (cards.all.length === 1 ? " notification" : " notifications")
                 Row {
-                    id: buttons
-                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                    IconButton { icon: "skip-back"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.previous() }
-                    IconButton { icon: Island.musicPlaying ? "pause" : "play"; fill: true; iconColor: surface.ink; width: 40; height: 40; iconSize: 22; onClicked: player.p?.togglePlaying() }
-                    IconButton { icon: "skip-forward"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.next() }
+                    id: shelfRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Repeater {
+                        model: shelf.visible ? cards.apps : []
+                        AppIcon {
+                            required property var modelData
+                            anchors.verticalCenter: parent.verticalCenter
+                            size: 30
+                            styled: false
+                            source: Notifications.iconFor(modelData)
+                        }
+                    }
+                    Text {
+                        visible: cards.all.length > cards.apps.length
+                        anchors.verticalCenter: parent.verticalCenter
+                        leftPadding: 4
+                        text: "+" + (cards.all.length - cards.apps.length)
+                        color: surface.ink2
+                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold; features: { "tnum": 1 } }
+                    }
                 }
             }
+            readonly property var all: Notifications.list.slice().reverse()
+            readonly property var apps: {
+                const seen = {}, out = [];
+                for (let i = 0; i < all.length && out.length < 6; i++) {
+                    const key = all[i].appName || all[i].desktopEntry || String(all[i].id);
+                    if (!seen[key]) {
+                        seen[key] = true;
+                        out.push(all[i]);
+                    }
+                }
+                return out;
+            }
 
-            // Recent notifications (iOS layout): who and what; the text only
-            // with "Show previews" on
-            readonly property var recent: surface.ios ? Notifications.list.slice().reverse().slice(0, 3) : []
+            // The newest (shelf) or the latest three (column): who and what;
+            // the text only with "Show previews" on
+            readonly property var recent: surface.style === "icons" ? [] : all.slice(0, surface.split ? 3 : 1)
             Repeater {
                 model: cards.recent
                 Plate {
@@ -367,7 +423,7 @@ WlSessionLockSurface {
                 }
             }
             Text {
-                visible: surface.ios && Notifications.list.length > 3
+                visible: surface.split && Notifications.list.length > 3
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: (Notifications.list.length - 3) + " more"
                 color: surface.ink2

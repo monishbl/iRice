@@ -13,8 +13,8 @@ import qs.services
 //   overlap  heavy two-tone pairs, the minutes over the hours' corner
 //   analog   hands on a 12-scallop dial
 //   weather  the time over the weather's icon and temperature, as large
-//   dynamic  the hours large, the minutes smaller beside their top, the date
-//            under the minutes
+//   dynamic  the hours tall and narrow, the minutes smaller beside their
+//            top, AM or PM under the minutes
 //   LockClock { face: "stacked"; time: clock.date; size: 240; small: 0 }
 Item {
     id: root
@@ -123,30 +123,35 @@ Item {
     Component {
         id: dynamicFace
         Item {
-            readonly property real gapX: Math.round(root.size * 0.12)
-            implicitWidth: hours.implicitWidth + gapX + Math.max(minutes.implicitWidth, date.implicitWidth)
-            implicitHeight: Math.max(hours.implicitHeight, date.y + date.implicitHeight)
+            // (tall and narrow, as Android's: the width at most 50)
+            readonly property real wd: Math.min(root.widthAxis, 50)
+            readonly property real gapX: Math.round(root.size * 0.1)
+            implicitWidth: hours.implicitWidth + gapX + Math.max(minutes.implicitWidth, half.implicitWidth)
+            implicitHeight: hours.implicitHeight
             Ink {
                 id: hours
-                px: Math.round(root.size * 1.3)
-                text: String(root.h12)
+                px: Math.round(root.size * 1.6)
+                wd: parent.wd
+                text: String(root.h12).padStart(2, "0")
             }
             Ink {
                 id: minutes
                 x: hours.implicitWidth + parent.gapX
-                px: Math.round(root.size * 0.6)
+                px: Math.round(root.size * 0.95)
+                wd: parent.wd
                 tone: root.color2
                 text: root.mm
             }
+            // AM or PM, under the minutes, along the hours' foot
             Text {
-                id: date
-                x: minutes.x + 2
-                y: minutes.implicitHeight + Math.round(root.size * 0.14)
-                text: Qt.formatDate(root.time, "ddd d MMM")
-                color: root.color3
+                id: half
+                x: minutes.x + Math.round((minutes.implicitWidth - implicitWidth) / 2)
+                y: hours.implicitHeight - Math.round(height * 0.8)
+                text: root.time.getHours() < 12 ? "AM" : "PM"
+                color: root.color2
                 font.family: root.family
-                font.pixelSize: Math.max(14, Math.round(root.size * 0.17))
-                font.variableAxes: root.axes(560, Math.max(14, Math.round(root.size * 0.17)), 100)
+                font.pixelSize: Math.max(14, Math.round(root.size * 0.3))
+                font.variableAxes: root.axes(root.weight * 0.8, Math.max(14, Math.round(root.size * 0.3)), 60)
             }
         }
     }

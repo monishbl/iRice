@@ -155,8 +155,8 @@ Singleton {
                 property real standbyClockOpacity: 0.7 // StandBy clock brightness (0.2 .. 1)
                 property string standbyClockWeight: "thin" // thin | regular | bold
                 // The Material look's lock clock (Android 17's clock styles):
-                // dynamic (the hours large, the minutes and the date beside
-                // them) | stacked | wide | overlap | analog | weather
+                // dynamic (the hours tall, the minutes smaller beside them,
+                // AM/PM under the minutes) | stacked | wide | overlap | analog | weather
                 property string clockFace: "dynamic"
                 // large | small (the top corner); it doesn't move by itself
                 // ("dynamic" before 3 Nov counts as large)

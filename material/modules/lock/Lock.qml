@@ -53,6 +53,9 @@ Scope {
         target: System
         function onLockedChanged() {
             leaveTimer.stop();
+            // (a half-typed password never outlives a lock: a finger or a
+            // face can unlock without it)
+            root.password = "";
             if (System.locked) {
                 root.leaving = false;
                 if (root.held)
