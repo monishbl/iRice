@@ -53,4 +53,4 @@ ICON_THEMES=(colloid:colloid-icon-theme-git tela-circle:tela-circle-icon-theme-g
 ICON_THEMES_REPO=(papirus-icon-theme)
 # Packages iRice used to need and no longer does. Software Update offers to
 # remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.
-DROPPED=()
+DROPPED=(mactahoe-icon-theme-git mactahoe-gtk-theme apple_cursor apple_hyprcursor)  # (apps' own logos, Adwaita and Bibata since 3 Nov 2026)

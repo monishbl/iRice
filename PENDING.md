@@ -22,8 +22,11 @@ Done on the branch, tested with your phone:
 
 Still to do:
 
-- [ ] 5 GB single file, and 2 GB of many small files, both directions.
+- [x] 5 GB laptop→phone: 79 s (~75 MB/s, phone's 5.8 GHz Wi-Fi Direct). 5 GB phone→laptop: 160 s (~32 MB/s, laptop's 5 GHz group; ~6 MB/s when it was stuck on 2.4 GHz). 2 GB as 778 files laptop→phone: 66 s. All checksums match.
+- [x] Applied to the laptop (main 60cebd4), Wi-Fi helper installed, Hyprland config reloaded.
+- [ ] 2 GB of small files phone→laptop (the phone's file picker needs many taps to select them).
 - [ ] Remaining conditions: phone Wi-Fi off, laptop not on any network, phone hotspot.
+- [ ] Laptop on 2.4 GHz while receiving: the new 5 GHz group next to it (two channels at once) is unit-tested; check it on the real card the next time the Wi-Fi is on 2.4 GHz.
 - [ ] Phones are slow to find the laptop over Bluetooth alone (minutes; they find it at once over Wi-Fi). The laptop sends the slower kind of Bluetooth advertisement. Look into the fast kind.
 - [ ] Merge to main and apply to the laptop.
 - [ ] Put test state back: Quick Share visibility to Everyone, laptop Bluetooth off, test files removed from the phone.
