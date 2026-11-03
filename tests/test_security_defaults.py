@@ -571,6 +571,7 @@ SH_C_DYNAMIC = re.compile(
 # its data passed as "$1"…, quoted, or numbers only
 SH_C_ALLOWED = {
     "shell/services/BootSnapshots.qml": 1,  # constants joined
+    "shell/services/BootSplash.qml": 1,  # constants joined (reads Plymouth's config; changes nothing)
     "shell/services/Needs.qml": 1,  # constants joined; the folder as $1
     "shell/services/Clipboard.qml": 1,  # a constant flag; the id and db as $1, $2
     "shell/services/Files.qml": 1,  # the file manager quoted (q); the path as $1

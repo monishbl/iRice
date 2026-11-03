@@ -88,7 +88,7 @@ Variants {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             // Slides all the way out of the window (lifted icons included)
-            anchors.bottomMargin: win.bottomGap - (win.barHeight + win.iconSize * (win.maxScale - 1) + win.bottomGap + 24) * win.slide
+            anchors.bottomMargin: win.bottomGap - (win.barHeight + win.iconSize * (win.maxScale - 1) + win.bottomGap + 24) * win.slide - 20 * LockFx.settle // (and the login intro: settling in)
             width: row.width + 2 * win.pad
             height: win.barHeight
             onXChanged: glass.updatePosition()

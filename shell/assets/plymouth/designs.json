@@ -1,0 +1,22 @@
+[
+ {
+  "id": "breathe",
+  "name": "Breathe",
+  "description": "The drop with a soft glow that breathes, and a thin line that fills as your computer starts."
+ },
+ {
+  "id": "orbit",
+  "name": "Orbit",
+  "description": "The drop inside a thin ring, with a light chasing round it that grows and shrinks."
+ },
+ {
+  "id": "frost",
+  "name": "Frost",
+  "description": "For Glass: the drop on a frosted glass tile, soft lights drifting behind it and a light sweeping across."
+ },
+ {
+  "id": "bloom",
+  "name": "Bloom",
+  "description": "For Material: the drop on a shape that morphs through Material's loading shapes, turning as it goes."
+ }
+]

@@ -92,6 +92,7 @@ ShellRoot {
     SessionDialog {}
     AboutDialog {}
     Lock {}
+    LoginIntro {}
     Osd {}
     DisplayOverlay {}
     DisplayConnect {}

@@ -100,7 +100,7 @@ Variants {
             id: dock
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: win.bottomGap - (win.barHeight + win.bottomGap + 8) * win.slide
+            anchors.bottomMargin: win.bottomGap - (win.barHeight + win.bottomGap + 8) * win.slide - 20 * LockFx.settle // (and the login intro: settling in)
             width: row.width + 2 * win.pad
             height: win.barHeight
             radius: height / 2

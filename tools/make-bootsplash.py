@@ -4,6 +4,7 @@ shell/assets/plymouth/irice-<id>/ (Settings → Lock & Login Screen → Boot
 animation; the root helper installs the one you pick, irice-root bootsplash).
 
   tools/make-bootsplash.py                  the themes, and Settings' thumbnails
+                                            and names (thumbnails/, designs.json)
   tools/make-bootsplash.py --preview DIR    also DIR/<id>.webm (VP9, 1280x800,
                                             a seamless loop), DIR/<id>.png and
                                             DIR/designs.json
@@ -809,8 +810,8 @@ def preview(d, sets, out, W=1280, H=800, seconds=4.8):
 
 
 def thumbnail(d, sets, path):
-    """Settings' picture of a design: its middle, 320×200 (the mark 56 px)."""
-    scr = Screen(d, sets, 640, 400, L=56)
+    """Settings' picture of a design: its middle, 320×200 (the mark 84 px)."""
+    scr = Screen(d, sets, 640, 400, L=84)
     for i in range(60):
         scr.progress(0.6)
         scr.state["age"] += 1
@@ -834,9 +835,11 @@ def main():
             os.makedirs(a.preview, exist_ok=True)
             n = preview(d, sets, a.preview)
             print(f"  preview: {n / FPS:.1f} s")
-    if a.preview:
-        with open(os.path.join(a.preview, "designs.json"), "w") as f:
-            json.dump([{"id": d.id, "name": d.name, "description": d.description} for d in DESIGNS], f, indent=1)
+    names = [{"id": d.id, "name": d.name, "description": d.description} for d in DESIGNS]
+    for folder in [OUT] + ([a.preview] if a.preview else []):
+        with open(os.path.join(folder, "designs.json"), "w") as f:
+            json.dump(names, f, indent=1)
+            f.write("\n")
 
 
 if __name__ == "__main__":

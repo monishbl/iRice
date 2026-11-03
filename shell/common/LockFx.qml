@@ -23,6 +23,11 @@ Singleton {
 
     readonly property real wallpaperScale: zoom ? 1 + 0.05 * (1 - ease(desktop)) : 1
     readonly property real veil: 1 - ease(Math.min(1, desktop / 0.8))
+    // The login intro (LoginIntro) also settles the menu bar and dock in
+    // from just past their edges: how far they still have to go, 1 .. 0
+    property bool intro: false
+    readonly property real settle: intro ? 1 - ease((desktop - 0.2) / 0.8) : 0
+    signal playIntro // (Settings' Play Intro)
 
     function ease(t) { // ease-out cubic
         const c = Math.max(0, Math.min(1, t));
