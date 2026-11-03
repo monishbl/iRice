@@ -89,11 +89,11 @@ for look in "${LOOKS[@]}"; do
     if [[ -n "${SMOKE_SHOTS:-}" ]]; then
         blank=$(python3 -I - "$SMOKE_SHOTS" "$look" <<'PY'
 import sys, pathlib
-from PIL import Image
+from PIL import Image, ImageStat
 n = 0
 for f in sorted(pathlib.Path(sys.argv[1]).glob(sys.argv[2] + "-*.png")):
-    lo, hi = Image.open(f).convert("L").getextrema()
-    n += hi < 16  # (nothing drawn: all near black)
+    # (nothing drawn: near black on average; the pointer alone can be white)
+    n += ImageStat.Stat(Image.open(f).convert("L")).mean[0] < 6
 print(n)
 PY
 )
