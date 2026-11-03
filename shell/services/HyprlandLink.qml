@@ -49,11 +49,6 @@ Singleton {
         }
     }
 
-    // "0x55e0…" and "55e0…" alike
-    function addr(a) {
-        return String(a ?? "").replace(/^0x/, "").replace(/^0+/, "");
-    }
-
     Process {
         id: probe
         command: ["hyprctl", "-j", "activeworkspace"]
@@ -76,8 +71,7 @@ Singleton {
                     return;
                 }
                 root.linked = false;
-                root.asking = true;
-                stampFile.reload();
+                root.asking = true; // (sets the stamp's path: it loads)
             }
         }
     }
@@ -86,19 +80,20 @@ Singleton {
     // restarts it causes)
     FileView {
         id: stampFile
-        path: root.stamp
+        path: root.asking ? root.stamp : "" // (read only when a check asks)
         blockLoading: false
+        printErrors: false
         onLoaded: root.repairIfDue(parseFloat(text()) || 0)
         onLoadFailed: root.repairIfDue(0)
     }
     function repairIfDue(last) {
         if (!asking)
             return; // (the stamp loading as the shell starts)
+        if (Quickshell.env("IRICE_SANDBOX") !== "1" && Date.now() - last >= repairEvery) {
+            console.warn("HyprlandLink: Hyprland's events stopped arriving: restarting the shell");
+            stampFile.setText(String(Date.now())); // (while the path is set)
+            Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/repair-shell.sh"]);
+        }
         asking = false;
-        if (Quickshell.env("IRICE_SANDBOX") === "1" || Date.now() - last < repairEvery)
-            return;
-        console.warn("HyprlandLink: Hyprland's events stopped arriving: restarting the shell");
-        stampFile.setText(String(Date.now()));
-        Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/repair-shell.sh"]);
     }
 }

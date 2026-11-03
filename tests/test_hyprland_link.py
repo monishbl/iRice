@@ -22,7 +22,7 @@ class HyprlandLink(unittest.TestCase):
             self.assertIn(f"Hyprland.{f}()", LINK)
 
     def test_repairs_are_rare_and_never_in_the_sandbox(self):
-        self.assertRegex(LINK, r'Quickshell\.env\("IRICE_SANDBOX"\) === "1"')
+        self.assertRegex(LINK, r'Quickshell\.env\("IRICE_SANDBOX"\) !== "1"')
         every = int(re.search(r"repairEvery:\s*(\d+)", LINK).group(1))
         self.assertGreaterEqual(every, 600000)
         self.assertIn("repair-shell.sh", LINK)
