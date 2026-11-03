@@ -52,5 +52,23 @@ Column {
                 MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
             }
         }
+        Row {
+            label: "Welcome screen"
+            detail: "Pick the look, light or dark, and a wallpaper again"
+            Rectangle { // (Material: a 40 px tonal button)
+                width: welcomeText.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 40 : 26
+                radius: height / 2
+                color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+                activeFocusOnTab: true
+                Keys.onSpacePressed: Panels.welcomeRequested()
+                Keys.onReturnPressed: Panels.welcomeRequested()
+                Accessible.role: Accessible.Button
+                Accessible.name: "Show the welcome screen"
+                Text { id: welcomeText; anchors.centerIn: parent; text: "Show"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Panels.welcomeRequested() }
+                FocusRing { radius: parent.radius + 4 }
+            }
+        }
     }
 }

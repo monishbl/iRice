@@ -12,6 +12,8 @@ Singleton {
     property real anchorX: 0 // left edge of the menu bar item that opened a menu
     property string ccPage: "" // Control Center detail page: "" | wifi | bluetooth | sound | focus | caffeine
     property string sessionAction: "" // Spotlight power action: preselect and require keyboard confirmation
+    // The welcome screen again (Settings → About; modules/welcome answers)
+    signal welcomeRequested
     function showSession(action, scr) {
         show("session", scr, undefined, action);
     }
