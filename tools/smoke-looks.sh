@@ -42,10 +42,26 @@ failed=0
 for look in "${LOOKS[@]}"; do
     set_look "$look"
     sleep 25 # (Material's start guard counts a reload within ~20 s as a failed start)
-    IRICE_ROOT="$ROOT" ./dev.sh reload >/dev/null 2>&1
+    # (this checkout's shaders, and its shell: IRICE_ROOT given inside the
+    # container, where dev.sh's own environment doesn't reach)
+    "$ROOT/tools/build-shaders.sh" >/dev/null 2>&1
+    ./dev.sh run env IRICE_ROOT="$ROOT" IRICE_LAB=0 "$MAIN/sandbox/reload-shell.sh" >/dev/null 2>&1
     sleep 45
     if [[ "$(look_now)" != "$look" ]]; then
         echo "FAIL $look: the start guard switched the look (the $look shell didn't start)"
+        failed=1
+        continue
+    fi
+    # (and it really is this checkout's shell running, not main's)
+    if [[ "$look" == material ]]; then
+        loaded="$(readlink -f "$MAIN/.sandbox/home/.cache/irice/material-shell/shell.qml")"
+    else
+        # (the sandbox's own shell: its binary link is in the sandbox's runtime
+        # folder; the container also sees the person's real one)
+        loaded="$(./dev.sh run sh -c 'pgrep -a -x irice-shell' 2>/dev/null | grep '^[0-9]* /tmp/irice-rt/' | grep -o -- "-p [^ ]*" | head -1)"
+    fi
+    if [[ "$loaded" != *"$ROOT/"* ]]; then
+        echo "FAIL $look: the sandbox runs another checkout ($loaded), not $ROOT"
         failed=1
         continue
     fi
