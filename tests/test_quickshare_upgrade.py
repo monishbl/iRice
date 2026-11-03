@@ -366,14 +366,17 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.finish(data)
         self.assertEqual(FakeNm.made[0].restored, 1)
 
-    async def test_a_firewall_without_dhcp_is_fixed_first(self):
+    async def test_a_transfer_never_changes_the_firewall_for_good(self):
+        # (the user's rule: ports open only for a transfer, on its own link,
+        # by the root helper; the permanent fix is Settings' alone)
         await self.nm_ready(hotspot=False, fixed=True)
         data = os.urandom(300_000)
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
-        _, offer = await read_until_offer(self.p)
-        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_HOTSPOT)
-        self.assertEqual(self.fixes, 1)
-        await bp.respond_to_offer(self.p, offer, [])
+        warning = await self.events.wait("link", slow=True)
+        self.assertIn("firewall", warning["message"])
+        self.assertEqual(self.fixes, 0)
+        self.assertEqual(FakeNm.made, [])
+        await self.p.recv_sharing()  # the accept
         await self.finish(data)
 
     async def test_a_firewall_that_stays_shut_is_named(self):

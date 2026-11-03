@@ -23,7 +23,7 @@ Nothing in sections 3–5 has been changed yet.
 - Desktop widgets on a grid (10 kinds, gallery, drag to snap with a grid and ghost).
 - Icons: icon-theme launcher (`QS_ICON_THEME`), `IconLookup` (no more pink/black boxes); dock Downloads/Trash; themed Apps button.
 - Menu bar: menu icon choice (distro, brand marks); shortcut symbols (auto/macOS/Windows/Linux); every item can be hidden.
-- Wallpaper sets: "Name Light/Dark" pairs and time-of-day folders, detected automatically; macOS wallpapers downloaded to `~/Pictures/Wallpapers/macOS` (not in the repo).
+- Wallpaper sets: "Name Light/Dark" pairs and time-of-day folders, detected automatically (iRice ships its own; Apple's aren't downloaded).
 - Repair Shell (menu + Super+Ctrl+Esc); tty session can't duplicate shells any more.
 - Screenshots: Super+Shift+S full screen, Super+Ctrl+Shift+S area.
 

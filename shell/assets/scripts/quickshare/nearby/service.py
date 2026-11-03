@@ -84,7 +84,6 @@ class QuickShareService:
         self.reachable = wifi.reachable  # (whether the phone answers at the address it gave)
         self.latency = wifi.latency  # (and how quickly)
         self.firewall = firewall_status  # (whether a firewall may keep phones from reaching us)
-        self.allow_hotspot = allow_hotspot  # (the firewall fix, when it runs without a password)
         self.nm_can_host = wifi.NmWifi.can_host  # (a hotspot through NetworkManager: no password)
         self.nm_link = wifi.NmWifi
         self.nm_usable = wifi.NmWifi.usable
@@ -412,9 +411,10 @@ class QuickShareService:
         total = getattr(entry.get("session"), "total", 0) or 0
         nm_host = fw_blocked = False
         if self.pause_wifi and total >= wifi.NM_MIN_BYTES and not answers and await self.nm_can_host(net):
+            # (a firewall that keeps the phone from getting an address skips
+            # this path: transfers never change the firewall for good; the
+            # root helper's links open their own way in, for the link only)
             fw = self.firewall()
-            if fw.get("hotspot") is False:
-                fw = await self.allow_hotspot()
             nm_host = fw.get("hotspot") is not False
             fw_blocked = not nm_host
             if not nm_host:
@@ -882,15 +882,3 @@ def firewall_status():
         return mod.firewall() if mod else {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
     except (OSError, AttributeError):
         return {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
-
-
-async def allow_hotspot():
-    """Settings → Sharing's firewall fix, run now if it runs without a
-    password (iRice's root helper, for an administrator at the computer):
-    the phone needs DHCP from the hotspot. The firewall afterwards."""
-    mod = _sharing_check()
-    if mod is None or not mod.helper_installed():
-        return firewall_status()
-    result = await asyncio.to_thread(mod.fix, "firewall")
-    debuglog.log("service", f"firewall fix for the hotspot: {result}")
-    return firewall_status()

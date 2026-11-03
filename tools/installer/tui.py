@@ -102,16 +102,6 @@ class Checks:
         return [i["id"] for i in self.items if i["ticked"] and not i.get("locked")]
 
 
-def walls_ready():
-    pics = os.path.join(os.path.expanduser("~"), "Pictures")
-    try:
-        out = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True, text=True, timeout=5).stdout.strip()
-        pics = out or pics
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return os.path.isfile(os.path.join(pics, "Wallpapers", "macOS", "Tahoe Light.jpg"))
-
-
 def apps_missing():
     groups = [("foot", "kitty", "alacritty", "wezterm", "konsole", "gnome-terminal", "ghostty"),
               ("thunar", "nautilus", "dolphin", "nemo", "pcmanfm"),
@@ -151,8 +141,6 @@ class Installer:
             extras.append({"id": "pointer", "label": "Bibata pointer", "detail": "the pointer in both looks (from the AUR)", "ticked": True})
         if not {"ttf-apple-emoji", "ttf-fluent-emoji"} <= have:
             extras.append({"id": "emoji", "label": "Apple and Fluent emoji", "detail": "Noto emoji is the default (from the AUR)", "ticked": False})
-        if not sysinfo.get("walls_ready", walls_ready()):
-            extras.append({"id": "wallpapers", "label": "macOS wallpapers", "detail": "Tahoe and earlier, about 10 MB", "ticked": True})
         self.extras = Checks(extras)
         system_items = []
         if facts.get("pulseaudio"):

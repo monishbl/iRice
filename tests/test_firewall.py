@@ -236,3 +236,51 @@ class WifiLinks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TransferFirewall(unittest.TestCase):
+    """The Wi-Fi helper opens the firewall only for a transfer: on the link's
+    own interface, only DHCP and the transfer port, removed with the link
+    (the user's rule: never the permanent sharing rules mid-transfer)."""
+
+    def links(self, kind):
+        h = load("qs_wifi_helper_fw", SCRIPTS / "quickshare/qs-wifi-helper.py")
+        calls = []
+        h.have = lambda name: name == kind or (kind == "nft" and name == "nft")
+        h.run = lambda *cmd, check=True: (calls.append(list(cmd)), "# handle 7")[1]
+
+        class Done:
+            def __init__(self, code):
+                self.returncode = code
+        real = h.subprocess.run
+        h.subprocess.run = lambda cmd, **kw: Done(0 if (kind == "nft" and cmd[-1] == "nftables") else 1)
+        h.nft_input_chains = lambda text: [("inet", "filter", "input")]
+        try:
+            links = h.Links()
+            links._open_firewall("p2p-wlan0-3")
+            opened = list(calls)
+            calls.clear()
+            for undo in reversed(links.undo):
+                undo()
+            return opened, calls
+        finally:
+            h.subprocess.run = real
+
+    def test_iptables_only_the_two_ports_on_the_link(self):
+        opened, closed = self.links("iptables")
+        self.assertEqual(len(opened), 2)
+        for c in opened:
+            self.assertIn("p2p-wlan0-3", c)
+            self.assertIn("--dport", c)
+        self.assertEqual(sorted(c[c.index("--dport") + 1] for c in opened), ["53319", "67"])
+        self.assertEqual(len(closed), 2)
+        self.assertTrue(all("-D" in c for c in closed))
+
+    def test_nftables_only_the_two_ports_on_the_link(self):
+        opened, closed = self.links("nft")
+        inserts = [c for c in opened if "insert" in c]
+        self.assertEqual(len(inserts), 2)
+        for c in inserts:
+            self.assertIn("p2p-wlan0-3", c)
+            self.assertIn("dport", c)
+        self.assertTrue(all("delete" in c for c in closed) and len(closed) == 2)

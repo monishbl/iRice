@@ -53,6 +53,9 @@ P2P = IFACE + ".P2PDevice"
 GROUP = WPA + ".Group"
 GO_IP = "192.168.49.1"  # what Android's own groups use
 AP_IP = "192.168.50.1"
+# What a phone needs on our own link: an address (DHCP), and the transfer
+# port (nearby/wifi.py UPGRADE_PORT)
+LINK_PORTS = (("udp", 67), ("tcp", 53319))
 PREFERRED = [5180, 5200, 5220, 5240, 5745, 5765, 5785, 5805, 2412, 2437, 2462]
 JOIN_IFACE = "qsc0"
 AP_IFACE = "qsap0"
@@ -647,24 +650,28 @@ class Links:
             return ""
 
     def _open_firewall(self, iface):
-        """Lets the phone reach us on our own link (DHCP, the transfer port)
-        whatever the firewall says, for as long as the link exists: runtime
-        only (firewalld's trusted zone; with nftables.service, a rule first in
-        each input chain; else an iptables rule ahead of ufw's)."""
+        """Lets the phone reach us on our own link, whatever the firewall
+        says, for as long as the link exists and nowhere else: runtime only,
+        on this one interface, and (nftables, iptables) only DHCP and the
+        transfer port (firewalld: its trusted zone for the interface). Never
+        the permanent sharing rules (Settings asks for those)."""
         if have("firewall-cmd") and subprocess.run(["firewall-cmd", "--state"], capture_output=True).returncode == 0:
             run("firewall-cmd", "--zone=trusted", f"--add-interface={iface}", check=False)
             self.undo.append(lambda: run("firewall-cmd", "--zone=trusted", f"--remove-interface={iface}", check=False))
         elif have("nft") and subprocess.run(["systemctl", "is-active", "--quiet", "nftables"]).returncode == 0 and \
                 subprocess.run(["systemctl", "is-active", "--quiet", "ufw"]).returncode != 0:
             for f, t, c in nft_input_chains(run("nft", "list", "chains", check=False)):
-                out = run("nft", "--echo", "--handle", "insert", "rule", f, t, c, "iifname", iface, "accept",
-                          "comment", '"irice quick share"', check=False)
-                m = re.search(r"# handle (\d+)", out)
-                if m:
-                    self.undo.append(lambda f=f, t=t, c=c, h=m.group(1): run("nft", "delete", "rule", f, t, c, "handle", h, check=False))
+                for proto, port in LINK_PORTS:
+                    out = run("nft", "--echo", "--handle", "insert", "rule", f, t, c, "iifname", iface, proto, "dport",
+                              str(port), "accept", "comment", '"irice quick share"', check=False)
+                    m = re.search(r"# handle (\d+)", out)
+                    if m:
+                        self.undo.append(lambda f=f, t=t, c=c, h=m.group(1): run("nft", "delete", "rule", f, t, c, "handle", h, check=False))
         elif have("iptables"):
-            run("iptables", "-I", "INPUT", "1", "-i", iface, "-j", "ACCEPT", check=False)
-            self.undo.append(lambda: run("iptables", "-D", "INPUT", "-i", iface, "-j", "ACCEPT", check=False))
+            for proto, port in LINK_PORTS:
+                rule = ["INPUT", "-i", iface, "-p", proto, "--dport", str(port), "-j", "ACCEPT"]
+                run("iptables", "-I", *rule[:1], "1", *rule[1:], check=False)
+                self.undo.append(lambda rule=rule: run("iptables", "-D", *rule, check=False))
 
     @staticmethod
     def usable():

@@ -11,14 +11,14 @@
 #   ./install.sh --dev         link the shell to this folder instead of copying it
 #   ./install.sh --no-deps     skip installing packages
 #   ./install.sh --no-greeter  don't set up the iRice login screen
-#   ./install.sh --no-extras   skip the optional extras (apps, pointer, icon themes, emoji, wallpapers)
+#   ./install.sh --no-extras   skip the optional extras (apps, pointer, icon themes, emoji)
 #   ./install.sh --no-snapshot no snapper or Timeshift snapshot before starting
 #   ./install.sh --verify      only check an existing install (same as: irice doctor)
 # Choices (the interactive installer passes these; with --yes, unset ones are
 # the recommended ones, and nothing asked by name is done):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
-#   --extras=apps,pointer,emoji,wallpapers|none  --hardware=ID,…|none (see --plan)
+#   --extras=apps,pointer,emoji|none  --hardware=ID,…|none (see --plan)
 #   --replace-pulseaudio  --network=networkmanager|keep
 #
 # Your Hyprland config is backed up once (~/.config/hypr.pre-irice) and
@@ -336,7 +336,6 @@ icon_package() { # name -> its package (ICON_THEMES)
     for t in "${ICON_THEMES[@]}"; do [[ ${t%%:*} == "$1" ]] && { printf '%s\n' "${t#*:}"; return 0; }; done
     return 1
 }
-walls_dir() { printf '%s/Wallpapers/macOS\n' "$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")"; }
 # No terminal, file manager or browser yet
 apps_missing() {
     local t f b
@@ -377,7 +376,6 @@ decide() {
             [[ -n "$(missing_of "${EMOJI_AUR[@]}")" ]] &&
                 want_extra emoji "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n && WANT_EMOJI=1
         fi
-        [[ ! -f "$(walls_dir)/Tahoe Light.jpg" ]] && want_extra wallpapers "Download macOS wallpapers (Tahoe and earlier, about 10 MB)?" y && WANT_WALLS=1
     fi
     # Icon themes: none unless chosen (iRice styles the apps' own icons)
     local t
@@ -506,7 +504,6 @@ show_plan() {
     plan_row Files "$CONFIG/quickshell/irice and $CONFIG/hypr (the current ones copied to $DATA/irice/backups first;"
     plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-irice), $BIN/irice"
     [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
-    [[ $WANT_WALLS == 1 ]] && plan_row "" "macOS wallpapers into $(walls_dir)"
     if [[ $GREETER == yes ]]; then
         plan_row Login "the iRice login screen (greetd): /etc/greetd/config.toml (kept as .pre-irice), /usr/share/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (irice uninstall turns it back on)")"
     elif [[ -n "$OTHER_DM" ]]; then
@@ -962,25 +959,6 @@ install_files() {
 
 extras() {
     [[ $EXTRAS == 0 ]] && { note "Skipped."; return 0; }
-    local walls
-    walls=$(walls_dir)
-    if [[ -f "$walls/Tahoe Light.jpg" ]]; then
-        note "macOS wallpapers are in $walls"
-    elif [[ $WANT_WALLS == 1 ]]; then
-        run "$ROOT/tools/get-wallpapers.sh" || warn "Some wallpapers didn't download; the bundled ones still work."
-    fi
-    # First install: start on the Tahoe pictures, light by day and dark at night
-    if [[ ! -f "$CONFIG/irice/config.json" && -f "$walls/Tahoe Light.jpg" && $DRY == 0 ]]; then
-        mkdir -p "$CONFIG/irice"
-        python3 - "$CONFIG/irice/config.json" "$walls" <<'PY'
-import json, sys
-path, walls = sys.argv[1], sys.argv[2]
-json.dump({"appearance": {"mode": "auto"}, "welcome": {"done": False},
-           "wallpaper": {"dynamic": "appearance", "lightPath": walls + "/Tahoe Light.jpg", "darkPath": walls + "/Tahoe Dark.jpg"}},
-          open(path, "w"), indent=4)
-PY
-        note "Starting with the Tahoe wallpaper (light by day, dark at night)"
-    fi
     return 0
 }
 
@@ -1283,7 +1261,7 @@ This sets up iRice on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
   • what this computer's hardware is missing, if you like (firmware, drivers, biometrics)
   • builds the Liquid Glass plugin and shaders for this machine
   • installs the shell and its Hyprland config (yours is backed up first)
-  • sets up the login screen, services and, if you like, apps, icons and wallpapers
+  • sets up the login screen, services and, if you like, apps and icons
   • checks that everything works
 First the questions, then the whole plan; nothing changes until you say start.
 EOF
