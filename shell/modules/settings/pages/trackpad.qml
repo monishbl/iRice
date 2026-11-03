@@ -185,13 +185,6 @@ Column {
             Switch { checked: page.tp.tapAndDrag; onToggled: page.tp.tapAndDrag = !checked }
         }
         Row {
-            label: "Drag lock"
-            detail: "A tap-drag keeps holding when you lift your finger, until you tap again"
-            enabled: page.tp.tapToClick && page.tp.tapAndDrag
-            opacity: enabled ? 1 : 0.5
-            Switch { checked: page.tp.dragLock; onToggled: page.tp.dragLock = !checked }
-        }
-        Row {
             label: "Secondary click"
             detail: page.tp.rightClick === "corner" ? "Click in the bottom-right corner" : "Click or tap with two fingers"
             Segmented {
@@ -201,16 +194,6 @@ Column {
                 current: Math.max(0, values.indexOf(page.tp.rightClick))
                 onSelected: i => page.tp.rightClick = values[i]
             }
-        }
-        Row {
-            label: "Middle click"
-            detail: page.tp.rightClick === "corner" ? "Click both bottom corners together" : "Click or tap with three fingers"
-            Switch { checked: page.tp.middleClick; onToggled: page.tp.middleClick = !checked }
-        }
-        Row {
-            label: "Ignore the trackpad while typing"
-            detail: "Stops a resting palm from moving the pointer"
-            Switch { checked: page.tp.disableWhileTyping; onToggled: page.tp.disableWhileTyping = !checked }
         }
     }
 
@@ -253,7 +236,32 @@ Column {
             icon: "hand-swipe-right"
             label: "Gestures"
             detail: "Swipe and pinch with several fingers: spaces, Mission Control, apps"
-            page: "trackpad/gestures"
+            page: "mouse/gestures"
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Point and click"
+            Row {
+                label: "Drag lock"
+                detail: "A tap-drag keeps holding when you lift your finger, until you tap again"
+                enabled: page.tp.tapToClick && page.tp.tapAndDrag
+                opacity: enabled ? 1 : 0.5
+                Switch { checked: page.tp.dragLock; onToggled: page.tp.dragLock = !checked }
+            }
+            Row {
+                label: "Middle click"
+                detail: page.tp.rightClick === "corner" ? "Click both bottom corners together" : "Click or tap with three fingers"
+                Switch { checked: page.tp.middleClick; onToggled: page.tp.middleClick = !checked }
+            }
+            Row {
+                label: "Ignore the trackpad while typing"
+                detail: "Stops a resting palm from moving the pointer"
+                Switch { checked: page.tp.disableWhileTyping; onToggled: page.tp.disableWhileTyping = !checked }
+            }
         }
     }
 }

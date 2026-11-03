@@ -251,47 +251,6 @@ Column {
             }
         }
         Row {
-            visible: Theme.glass.lensAmount > 0.4 && Theme.glass.solidAmount < 0.9
-            label: "Lens"
-            Segmented {
-                width: 260
-                readonly property var values: ["thin", "depth", "auto"]
-                options: ["Thin", "Depth", "Auto"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.glassDepth))
-                onSelected: i => Config.options.appearance.glassDepth = values[i]
-            }
-        }
-        Row {
-            id: glassRow
-            visible: Theme.glass.tier !== "solid"
-            label: "Compositor glass"
-            // (3 and 4: built before glass faded with its layer, so a menu bar
-            // hidden under a full-screen app left an empty glass pill)
-            readonly property bool outdated: GlassPlugin.available && (GlassPlugin.version === 3 || GlassPlugin.version === 4)
-            detail: outdated ? "An older build. Update it so glass never shows over full-screen apps." : GlassPlugin.available ? "Active: Hyprland draws the glass" : "Not loaded. Build it once (and again after Hyprland updates)."
-            Rectangle {
-                visible: !GlassPlugin.available || glassRow.outdated
-                width: buildLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: buildMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
-                Text { id: buildLabel; anchors.centerIn: parent; text: glassRow.outdated ? "Update plugin…" : "Build plugin…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
-                MouseArea {
-                    id: buildMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"], true)
-                }
-            }
-            Icon {
-                visible: GlassPlugin.available && !glassRow.outdated
-                name: "check-circle"
-                fill: true
-                size: 18
-                color: Theme.color.success
-            }
-        }
-        Row {
             label: "Motion"
             detail: Config.options.appearance.motion === "expressive" ? "More pull toward the pointer and bouncier springs, like iOS 26" : Config.options.appearance.motion === "snappy" ? "Quick springs that settle at once, with little pull: the quickest feel" : "Springs with a touch of overshoot, like macOS"
             Segmented {
@@ -319,32 +278,6 @@ Column {
             Switch {
                 checked: Config.options.appearance.screenCorners
                 onToggled: Config.options.appearance.screenCorners = !checked
-            }
-        }
-        Row {
-            label: "Tint glass with wallpaper colour"
-            Switch {
-                checked: Config.options.appearance.wallpaperTint
-                onToggled: Config.options.appearance.wallpaperTint = !checked
-            }
-        }
-        Row {
-            visible: GlassPlugin.available && Theme.glass.tier !== "solid"
-            label: "Frost over windows"
-            detail: "Glass covering a window blurs it more, so its text doesn't compete with what's on the glass"
-            Segmented {
-                width: 300
-                readonly property var values: [0, 0.5, 0.75, 0.95]
-                options: ["Off", "Subtle", "Medium", "Strong"]
-                current: {
-                    const v = Config.options.appearance.glassWindowFrost;
-                    let best = 0;
-                    for (let i = 1; i < values.length; i++)
-                        if (Math.abs(values[i] - v) < Math.abs(values[best] - v))
-                            best = i;
-                    return best;
-                }
-                onSelected: i => Config.options.appearance.glassWindowFrost = values[i]
             }
         }
     }
@@ -376,6 +309,81 @@ Column {
                         const t = Config.options.appearance.appThemeTargets.filter(x => x !== targetRow.modelData[0]);
                         Config.options.appearance.appThemeTargets = checked ? t : t.concat([targetRow.modelData[0]]);
                     }
+                }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Glass"
+            Row {
+                visible: Theme.glass.lensAmount > 0.4 && Theme.glass.solidAmount < 0.9
+                label: "Lens"
+                Segmented {
+                    width: 260
+                    readonly property var values: ["thin", "depth", "auto"]
+                    options: ["Thin", "Depth", "Auto"]
+                    current: Math.max(0, values.indexOf(Config.options.appearance.glassDepth))
+                    onSelected: i => Config.options.appearance.glassDepth = values[i]
+                }
+            }
+            Row {
+                id: glassRow
+                visible: Theme.glass.tier !== "solid"
+                label: "Compositor glass"
+                // (3 and 4: built before glass faded with its layer, so a menu bar
+                // hidden under a full-screen app left an empty glass pill)
+                readonly property bool outdated: GlassPlugin.available && (GlassPlugin.version === 3 || GlassPlugin.version === 4)
+                detail: outdated ? "An older build. Update it so glass never shows over full-screen apps." : GlassPlugin.available ? "Active: Hyprland draws the glass" : "Not loaded. Build it once (and again after Hyprland updates)."
+                Rectangle {
+                    visible: !GlassPlugin.available || glassRow.outdated
+                    width: buildLabel.implicitWidth + 24
+                    height: 28
+                    radius: 14
+                    color: buildMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent
+                    Text { id: buildLabel; anchors.centerIn: parent; text: glassRow.outdated ? "Update plugin…" : "Build plugin…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
+                    MouseArea {
+                        id: buildMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"], true)
+                    }
+                }
+                Icon {
+                    visible: GlassPlugin.available && !glassRow.outdated
+                    name: "check-circle"
+                    fill: true
+                    size: 18
+                    color: Theme.color.success
+                }
+            }
+            Row {
+                label: "Tint glass with wallpaper colour"
+                Switch {
+                    checked: Config.options.appearance.wallpaperTint
+                    onToggled: Config.options.appearance.wallpaperTint = !checked
+                }
+            }
+            Row {
+                visible: GlassPlugin.available && Theme.glass.tier !== "solid"
+                label: "Frost over windows"
+                detail: "Glass covering a window blurs it more, so its text doesn't compete with what's on the glass"
+                Segmented {
+                    width: 300
+                    readonly property var values: [0, 0.5, 0.75, 0.95]
+                    options: ["Off", "Subtle", "Medium", "Strong"]
+                    current: {
+                        const v = Config.options.appearance.glassWindowFrost;
+                        let best = 0;
+                        for (let i = 1; i < values.length; i++)
+                            if (Math.abs(values[i] - v) < Math.abs(values[best] - v))
+                                best = i;
+                        return best;
+                    }
+                    onSelected: i => Config.options.appearance.glassWindowFrost = values[i]
                 }
             }
         }

@@ -656,4 +656,10 @@ Column {
         color: Theme.color.tertiary
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
     }
+
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Windows, Stage Manager and Overview"
+        source: Qt.resolvedUrl("appearance-windows.qml")
+    }
 }

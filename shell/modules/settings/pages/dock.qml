@@ -38,17 +38,6 @@ Column {
             }
         }
         Row {
-            label: "Space between icons"
-            detail: Math.round(Config.options.dock.iconSize * (Config.options.dock.gap ?? 0.18)) + " px"
-            Slider {
-                width: 220
-                from: 0.05
-                to: 0.4
-                value: Config.options.dock.gap ?? 0.18
-                onMoved: v => Config.options.dock.gap = Math.round(v * 100) / 100
-            }
-        }
-        Row {
             label: "Apps button"
             detail: "Opens the App Library (also Super+Shift+Space)"
             Switch { checked: Config.options.dock.appsButton; onToggled: Config.options.dock.appsButton = !checked }
@@ -62,35 +51,6 @@ Column {
                 options: ["Never", "Over windows", "Always"]
                 current: Math.max(0, values.indexOf(Config.options.dock.autoHide))
                 onSelected: i => Config.options.dock.autoHide = values[i]
-            }
-        }
-        Row {
-            label: "Recent apps"
-            detail: "Up to three apps you used lately, after a divider"
-            Switch { checked: Config.options.dock.recentApps; onToggled: Config.options.dock.recentApps = !checked }
-        }
-        Row {
-            label: "Downloads"
-            Switch { checked: Config.options.dock.downloads; onToggled: Config.options.dock.downloads = !checked }
-        }
-        Row {
-            label: "Trash"
-            Switch { checked: Config.options.dock.trash; onToggled: Config.options.dock.trash = !checked }
-        }
-        Row {
-            label: "Magnification"
-            Switch { checked: Config.options.dock.magnification; onToggled: Config.options.dock.magnification = !checked }
-        }
-        Row {
-            visible: Config.options.dock.magnification
-            label: "Magnified size"
-            Slider {
-                width: 220
-                from: 1.1
-                to: 2
-                stepSize: 0.05
-                value: Config.options.dock.magnifiedScale
-                onMoved: v => Config.options.dock.magnifiedScale = v
             }
         }
     }
@@ -155,6 +115,53 @@ Column {
                         anchors.fill: parent
                         onClicked: Config.options.dock.pinned = Config.options.dock.pinned.concat([addRow.modelData.id])
                     }
+                }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                label: "Space between icons"
+                detail: Math.round(Config.options.dock.iconSize * (Config.options.dock.gap ?? 0.18)) + " px"
+                Slider {
+                    width: 220
+                    from: 0.05
+                    to: 0.4
+                    value: Config.options.dock.gap ?? 0.18
+                    onMoved: v => Config.options.dock.gap = Math.round(v * 100) / 100
+                }
+            }
+            Row {
+                label: "Recent apps"
+                detail: "Up to three apps you used lately, after a divider"
+                Switch { checked: Config.options.dock.recentApps; onToggled: Config.options.dock.recentApps = !checked }
+            }
+            Row {
+                label: "Downloads"
+                Switch { checked: Config.options.dock.downloads; onToggled: Config.options.dock.downloads = !checked }
+            }
+            Row {
+                label: "Trash"
+                Switch { checked: Config.options.dock.trash; onToggled: Config.options.dock.trash = !checked }
+            }
+            Row {
+                label: "Magnification"
+                Switch { checked: Config.options.dock.magnification; onToggled: Config.options.dock.magnification = !checked }
+            }
+            Row {
+                visible: Config.options.dock.magnification
+                label: "Magnified size"
+                Slider {
+                    width: 220
+                    from: 1.1
+                    to: 2
+                    stepSize: 0.05
+                    value: Config.options.dock.magnifiedScale
+                    onMoved: v => Config.options.dock.magnifiedScale = v
                 }
             }
         }

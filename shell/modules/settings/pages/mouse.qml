@@ -59,11 +59,6 @@ Column {
             }
         }
         Row {
-            label: "Pointer acceleration"
-            detail: page.cfg.accelProfile === "flat" ? "The pointer moves the same distance however fast you move the mouse. Good for games and precise work." : "Faster movements carry the pointer further"
-            Choice { key: "accelProfile"; values: ["adaptive", "flat"]; options: ["On", "Off"]; width: 160 }
-        }
-        Row {
             label: "Shake to find the pointer"
             detail: "Move the mouse quickly back and forth: the pointer grows for a moment, with a ring around it. Works with a trackpad too."
             Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
@@ -104,11 +99,6 @@ Column {
                 onSelected: i => page.cfg.leftHanded = i === 1
             }
         }
-        Row {
-            label: "Middle click with both buttons"
-            detail: "Press left and right together, for mice without a wheel button"
-            Switch { checked: page.cfg.middleEmulation; onToggled: page.cfg.middleEmulation = !checked }
-        }
     }
 
     Group {
@@ -119,27 +109,6 @@ Column {
             label: "Focus"
             detail: page.cfg.focus === "click" ? "A window takes the keyboard when you click it, as on a Mac" : "Workspace changes focus under the pointer. New windows take focus and bring the pointer if needed."
             Choice { key: "focus"; values: ["hover", "click"]; options: ["Follows pointer", "On click"]; width: 260 }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Between displays"
-        footer: Mouse.boundaryAvailable ? "Applies to mice and trackpads. Deliberate focus warps still cross displays. During region selection, the pointer stays on the starting screen." : "Pointer boundaries need the updated iRice compositor plugin. Screenshot bounds are protected even without it."
-        Row {
-            label: "Pointer boundaries"
-            Dropdown {
-                width: 260
-                options: [{value: "corners", label: "Protect shared corners"}, {value: "resistance", label: "Edge resistance / push again"}, {value: "capture", label: "Only during screen selection"}, {value: "off", label: "Off"}]
-                value: page.cfg.boundaryMode
-                onChosen: v => page.cfg.boundaryMode = v
-            }
-        }
-        Row {
-            visible: page.cfg.boundaryMode === "corners"
-            label: "Corner reach"
-            detail: page.cfg.cornerSize + " logical pixels from each corner"
-            Scale { from: 4; to: 100; low: "Small"; high: "Large"; value: page.cfg.cornerSize; onMoved: v => page.cfg.cornerSize = Math.round(v) }
         }
     }
 
@@ -162,5 +131,52 @@ Column {
                 }
             }
         }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                label: "Pointer acceleration"
+                detail: page.cfg.accelProfile === "flat" ? "The pointer moves the same distance however fast you move the mouse. Good for games and precise work." : "Faster movements carry the pointer further"
+                Choice { key: "accelProfile"; values: ["adaptive", "flat"]; options: ["On", "Off"]; width: 160 }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Buttons"
+            Row {
+                label: "Middle click with both buttons"
+                detail: "Press left and right together, for mice without a wheel button"
+                Switch { checked: page.cfg.middleEmulation; onToggled: page.cfg.middleEmulation = !checked }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Between displays"
+            footer: Mouse.boundaryAvailable ? "Applies to mice and trackpads. Deliberate focus warps still cross displays. During region selection, the pointer stays on the starting screen." : "Pointer boundaries need the updated iRice compositor plugin. Screenshot bounds are protected even without it."
+            Row {
+                label: "Pointer boundaries"
+                Dropdown {
+                    width: 260
+                    options: [{value: "corners", label: "Protect shared corners"}, {value: "resistance", label: "Edge resistance / push again"}, {value: "capture", label: "Only during screen selection"}, {value: "off", label: "Off"}]
+                    value: page.cfg.boundaryMode
+                    onChosen: v => page.cfg.boundaryMode = v
+                }
+            }
+            Row {
+                visible: page.cfg.boundaryMode === "corners"
+                label: "Corner reach"
+                detail: page.cfg.cornerSize + " logical pixels from each corner"
+                Scale { from: 4; to: 100; low: "Small"; high: "Large"; value: page.cfg.cornerSize; onMoved: v => page.cfg.cornerSize = Math.round(v) }
+            }
+        }
+    }
+
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Trackpad"
+        source: Qt.resolvedUrl("trackpad.qml")
     }
 }

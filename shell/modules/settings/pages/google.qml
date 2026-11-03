@@ -167,16 +167,6 @@ Column {
                 }
             }
         }
-        Row {
-            visible: Google.accounts.length > 1
-            label: "Quick add uses"
-            Dropdown {
-                width: 260
-                options: Google.accounts.map(a => ({ value: a.id, label: a.identity || "Google account" }))
-                value: page.quickAccount
-                onChosen: v => page.quickAccount = v
-            }
-        }
     }
 
     Group {
@@ -212,50 +202,67 @@ Column {
         }
     }
 
-    // Advanced: your own OAuth client instead of Online Accounts, and
-    // removing iRice's copy without reaching Google
-    Group {
-        width: parent.width
-        title: "Advanced"
-        footer: page.advanced ? "A Desktop app OAuth client from your own Google Cloud project, with the Calendar and Tasks APIs enabled. iRice keeps its tokens privately on this computer." : ""
-        Row {
-            label: "Use your own OAuth client"
-            detail: "Instead of GNOME Online Accounts"
-            Switch { checked: page.advanced; onToggled: page.advanced = !checked }
-        }
-        Row {
-            visible: page.advanced
-            label: "Client file"
-            detail: Google.configured ? "Imported" : "The JSON file Google Cloud gives you"
-            PathField {
-                placeholder: "client_secret_….json"
-                filter: "OAuth client|*.json"
-                start: "~/Downloads"
-                onPicked: path => Google.run({ cmd: "configure", path: path })
-            }
-        }
-        Row {
-            visible: page.advanced
-            label: "Connect with your client"
-            SettingsButton {
-                text: "Connect Google account"
-                enabled: !Google.busy && Google.configured
-                onClicked: Google.run({ cmd: "connect" })
-            }
-        }
-        Repeater {
-            model: Google.accounts
-            Row {
-                id: forget
-                required property var modelData
-                label: "Remove iRice's copy" + (Google.accounts.length > 1 ? " of " + modelData.identity : "")
-                detail: "Deletes the synced data and unsent changes on this computer without contacting Google (for when you're offline)"
-                SettingsButton { text: "Remove local data"; enabled: !Google.busy; onClicked: Google.run({ cmd: "forget", account: forget.modelData.id }) }
-            }
-        }
-    }
-
 
     // Google Drive as a folder (rclone)
     DriveGroup { width: parent.width; drive: "gdrive" }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Calendars"
+            Row {
+                visible: Google.accounts.length > 1
+                label: "Quick add uses"
+                Dropdown {
+                    width: 260
+                    options: Google.accounts.map(a => ({ value: a.id, label: a.identity || "Google account" }))
+                    value: page.quickAccount
+                    onChosen: v => page.quickAccount = v
+                }
+            }
+        }
+        // Advanced: your own OAuth client instead of Online Accounts, and
+        // removing iRice's copy without reaching Google
+        Group {
+            width: parent.width
+            title: "Advanced"
+            footer: page.advanced ? "A Desktop app OAuth client from your own Google Cloud project, with the Calendar and Tasks APIs enabled. iRice keeps its tokens privately on this computer." : ""
+            Row {
+                label: "Use your own OAuth client"
+                detail: "Instead of GNOME Online Accounts"
+                Switch { checked: page.advanced; onToggled: page.advanced = !checked }
+            }
+            Row {
+                visible: page.advanced
+                label: "Client file"
+                detail: Google.configured ? "Imported" : "The JSON file Google Cloud gives you"
+                PathField {
+                    placeholder: "client_secret_….json"
+                    filter: "OAuth client|*.json"
+                    start: "~/Downloads"
+                    onPicked: path => Google.run({ cmd: "configure", path: path })
+                }
+            }
+            Row {
+                visible: page.advanced
+                label: "Connect with your client"
+                SettingsButton {
+                    text: "Connect Google account"
+                    enabled: !Google.busy && Google.configured
+                    onClicked: Google.run({ cmd: "connect" })
+                }
+            }
+            Repeater {
+                model: Google.accounts
+                Row {
+                    id: forget
+                    required property var modelData
+                    label: "Remove iRice's copy" + (Google.accounts.length > 1 ? " of " + modelData.identity : "")
+                    detail: "Deletes the synced data and unsent changes on this computer without contacting Google (for when you're offline)"
+                    SettingsButton { text: "Remove local data"; enabled: !Google.busy; onClicked: Google.run({ cmd: "forget", account: forget.modelData.id }) }
+                }
+            }
+        }
+    }
 }

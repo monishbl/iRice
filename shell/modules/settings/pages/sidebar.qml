@@ -8,31 +8,6 @@ Column {
 
     Group {
         width: parent.width
-        title: "Anime"
-        footer: "Images come from yande.re, Konachan or Danbooru. Explicit results are off unless you switch them on."
-        Row {
-            label: "Show Anime tab"
-            Switch { checked: Config.options.sidebar.booru; onToggled: Config.options.sidebar.booru = !checked }
-        }
-        Row {
-            label: "Allow explicit results"
-            Switch { checked: Config.options.sidebar.booruNsfw; onToggled: Config.options.sidebar.booruNsfw = !checked }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Overlay"
-        footer: "The overlay (Super+G) always has Notes, Resources, Recorder and the volume mixer."
-        Row {
-            label: "Gaming overlays"
-            detail: "Adds a floating image, a crosshair and an FPS limit (through MangoHud) to the overlay"
-            Switch { checked: Config.options.overlays.gaming; onToggled: Config.options.overlays.gaming = !checked }
-        }
-    }
-
-    Group {
-        width: parent.width
         title: "GIFs"
         footer: "The emoji picker's GIF tab (Super+.) uses KLIPY. Get a free app key at partner.klipy.com/api-keys and paste it here."
         Row {
@@ -58,6 +33,33 @@ Column {
                 options: ["Off", "Low", "Medium", "High"]
                 current: Math.max(0, values.indexOf(Config.options.emoji.gifFilter))
                 onSelected: i => Config.options.emoji.gifFilter = values[i]
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Anime"
+            footer: "Images come from yande.re, Konachan or Danbooru. Explicit results are off unless you switch them on."
+            Row {
+                label: "Show Anime tab"
+                Switch { checked: Config.options.sidebar.booru; onToggled: Config.options.sidebar.booru = !checked }
+            }
+            Row {
+                label: "Allow explicit results"
+                Switch { checked: Config.options.sidebar.booruNsfw; onToggled: Config.options.sidebar.booruNsfw = !checked }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Overlay"
+            footer: "The overlay (Super+G) always has Notes, Resources, Recorder and the volume mixer."
+            Row {
+                label: "Gaming overlays"
+                detail: "Adds a floating image, a crosshair and an FPS limit (through MangoHud) to the overlay"
+                Switch { checked: Config.options.overlays.gaming; onToggled: Config.options.overlays.gaming = !checked }
             }
         }
     }

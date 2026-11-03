@@ -39,21 +39,22 @@ Column {
             value: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "All good" : Health.attention.length + " to check"
             page: "about/health"
         }
+        SubpageLink {
+            icon: "rocket-launch"
+            label: "Login Items"
+            detail: "The apps that start when you log in"
+            page: "about/loginitems"
+        }
+        SubpageLink {
+            icon: "bug"
+            label: "Report a Bug"
+            detail: "Tell iRice what went wrong, with what helps fix it"
+            page: "about/bugreport"
+        }
     }
     Group {
         width: parent.width
         footer: "Settings live in ~/.config/irice/config.json and apply as you change them."
-        Row {
-            label: "Configuration file"
-            Rectangle {
-                width: openText.implicitWidth + 24
-                height: 26
-                radius: 13
-                color: Theme.color.fill
-                Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
-                MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
-            }
-        }
         Row {
             label: "Welcome screen"
             detail: "Pick the look, light or dark, and a wallpaper again"
@@ -243,6 +244,24 @@ Column {
             enabled: pb.enabled
             cursorShape: Qt.PointingHandCursor
             onClicked: pb.clicked()
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                label: "Configuration file"
+                Rectangle {
+                    width: openText.implicitWidth + 24
+                    height: 26
+                    radius: 13
+                    color: Theme.color.fill
+                    Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+                    MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
+                }
+            }
         }
     }
 }

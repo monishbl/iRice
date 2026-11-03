@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import "SettingsMap.js" as SettingsMap
 
 // Which popover is open, and on which screen. Only one at a time, like macOS.
 Singleton {
@@ -46,6 +47,18 @@ Singleton {
     signal addWidget(string kind, string size) // from the gallery to the desktop of Panels.screen
     property bool settingsOpen: false
     property string settingsPage: "appearance"
+    // A row, group or part heading Settings scrolls to once the page is on
+    // show (a page that's now part of another: its heading there)
+    property string settingsTarget: ""
+    // An older page id, from anywhere (a caller, IPC, a remembered page),
+    // goes to where that page is now (SettingsMap.aliases)
+    onSettingsPageChanged: {
+        const a = SettingsMap.aliases[settingsPage];
+        if (a) {
+            settingsTarget = a.part ?? "";
+            settingsPage = a.page;
+        }
+    }
     // The App Store window (modules/appstore), and an app it opens on (from Spotlight)
     property bool appStoreOpen: false
     property var appStoreApp: null
@@ -112,10 +125,14 @@ Singleton {
         appStoreOpen = true;
     }
 
-    function openSettings(page) {
+    // openSettings(page[, target]): target is a row, group or part heading
+    // on that page to scroll to
+    function openSettings(page, target) {
         close();
         if (page)
             settingsPage = page;
+        if (target)
+            settingsTarget = target;
         settingsOpen = true;
     }
 

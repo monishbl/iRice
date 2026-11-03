@@ -925,7 +925,7 @@ GlassWindow {
                         return;
                     }
                     if (kind === "noKey" || kind === "badKey")
-                        Panels.openSettings(EmojiStore.settingsPage);
+                        Panels.openSettings(EmojiStore.settingsPage, EmojiStore.settingsTarget);
                     else if (kind === "dataError")
                         EmojiStore.load();
                     else

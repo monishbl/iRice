@@ -10,6 +10,7 @@ import qs.services
 // iRice's report server (services/BugReport.qml), which files a GitHub issue.
 Column {
     id: page
+    readonly property string pageTitle: "Report a Bug"
     width: parent?.width ?? 0
     spacing: 24
 

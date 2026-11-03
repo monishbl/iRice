@@ -70,72 +70,6 @@ Column {
         }
     }
 
-    Group {
-        width: parent.width
-        title: "Default apps"
-        footer: "Used by keyboard shortcuts and the shell. Automatic picks the first one installed. The Files app is set above."
-        Row {
-            label: "Terminal"
-            detail: "Super+Return"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["kitty", "foot", "alacritty", "wezterm", "ghostty", "konsole", "gnome-terminal", "kgx", "ptyxis", "xfce4-terminal", "xterm"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.terminal
-                onChosen: v => Config.options.defaultApps.terminal = v
-            }
-        }
-        Row {
-            label: "Browser"
-            detail: "Super+W"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic (system default)" }].concat(["zen-browser", "firefox", "google-chrome-stable", "chromium", "brave"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.browser
-                onChosen: v => Config.options.defaultApps.browser = v
-            }
-        }
-        Row {
-            label: "Code editor"
-            detail: "Super+C"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["code", "codium", "zed", "cursor", "windsurf"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.code
-                onChosen: v => Config.options.defaultApps.code = v
-            }
-        }
-        Row {
-            label: "Text editor"
-            detail: "Super+X"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["gnome-text-editor", "kate", "mousepad"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.text
-                onChosen: v => Config.options.defaultApps.text = v
-            }
-        }
-        Row {
-            label: "Volume mixer"
-            detail: "Ctrl+Super+V"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["pavucontrol", "pavucontrol-qt"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.mixer
-                onChosen: v => Config.options.defaultApps.mixer = v
-            }
-        }
-        Row {
-            label: "Task manager"
-            detail: "Ctrl+Shift+Escape"
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(["gnome-system-monitor", "plasma-systemmonitor", "kitty -e btop", "kitty -e htop"].filter(c => Tools.has(c.split(" ").pop())).map(c => ({ value: c, label: c })))
-                value: Config.options.defaultApps.tasks
-                onChosen: v => Config.options.defaultApps.tasks = v
-            }
-        }
-    }
-
     readonly property var cornerActions: [{ value: "none", label: "None" }, { value: "overview", label: "Overview" }, { value: "missionControl", label: "Mission Control" }, { value: "desktop", label: "Show desktop" }, { value: "notificationCenter", label: "Notification Center" }, { value: "launchpad", label: "App Library" }, { value: "lock", label: "Lock screen" }, { value: "standby", label: "Start StandBy" }, { value: "quickNote", label: "Quick note" }]
     Group {
         width: parent.width
@@ -179,33 +113,37 @@ Column {
         }
     }
 
-    // ── Drop shelf (services/Shelf) ─────────────────────────────────────
-    Group {
-        width: parent.width
-        title: "Drop shelf"
-        footer: "A place to park files while you get to where they're going: drop them on the shelf, then drag them out again, one at a time or all together. Super+Alt+D opens it too."
-        Row {
-            label: "Shake while dragging"
-            detail: "Shake the pointer quickly from side to side with files held"
-            Switch { checked: Config.options.shelf.shake; onToggled: Config.options.shelf.shake = !checked }
-        }
-        Row {
-            label: "Drag to the side of the screen"
-            detail: "Hold the files at the left or right edge for a moment"
-            Switch { checked: Config.options.shelf.edge; onToggled: Config.options.shelf.edge = !checked }
-        }
-        Row {
-            label: "Menu bar icon"
-            detail: "While the shelf holds something, and while you drag: drop files on it"
-            Switch { checked: Config.options.shelf.menubar; onToggled: Config.options.shelf.menubar = !checked }
-        }
-        Row {
-            label: "Open the shelf"
-            detail: Shelf.count > 0 ? Shelf.count + (Shelf.count === 1 ? " item on it" : " items on it") : "Empty"
-            SettingsButton {
-                text: Shelf.opened ? "Hide Shelf" : "Show Shelf"
-                onClicked: Shelf.opened ? Shelf.hide() : Shelf.show("settings", null)
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        // ── Drop shelf (services/Shelf) ─────────────────────────────────────
+        Group {
+            width: parent.width
+            title: "Drop shelf"
+            footer: "A place to park files while you get to where they're going: drop them on the shelf, then drag them out again, one at a time or all together. Super+Alt+D opens it too."
+            Row {
+                label: "Shake while dragging"
+                detail: "Shake the pointer quickly from side to side with files held"
+                Switch { checked: Config.options.shelf.shake; onToggled: Config.options.shelf.shake = !checked }
+            }
+            Row {
+                label: "Drag to the side of the screen"
+                detail: "Hold the files at the left or right edge for a moment"
+                Switch { checked: Config.options.shelf.edge; onToggled: Config.options.shelf.edge = !checked }
+            }
+            Row {
+                label: "Menu bar icon"
+                detail: "While the shelf holds something, and while you drag: drop files on it"
+                Switch { checked: Config.options.shelf.menubar; onToggled: Config.options.shelf.menubar = !checked }
+            }
+            Row {
+                label: "Open the shelf"
+                detail: Shelf.count > 0 ? Shelf.count + (Shelf.count === 1 ? " item on it" : " items on it") : "Empty"
+                SettingsButton {
+                    text: Shelf.opened ? "Hide Shelf" : "Show Shelf"
+                    onClicked: Shelf.opened ? Shelf.hide() : Shelf.show("settings", null)
+                }
             }
         }
     }
+
 }

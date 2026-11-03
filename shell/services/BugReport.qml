@@ -64,7 +64,7 @@ Singleton {
             root.hasShot = code === 0;
             root.includeShot = root.hasShot;
             root.shotVersion++;
-            Panels.openSettings("bugreport");
+            Panels.openSettings("about/bugreport");
             root.gather();
         }
     }

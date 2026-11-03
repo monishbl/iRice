@@ -36,17 +36,6 @@ Column {
                 onClicked: FilePicker.pick({ title: "Choose a wallpaper", start: "~/Pictures", filter: "Images|*.jpg *.jpeg *.png *.webp" }, p => Wallpaper.set(p))
             }
         }
-        Row {
-            label: "Folder"
-            detail: "Images in this folder appear below and in the wallpaper picker."
-            PathField {
-                folder: true
-                value: Config.options.wallpaper.directory
-                placeholder: "~/Pictures/Wallpapers"
-                start: "~/Pictures"
-                onPicked: p => Config.options.wallpaper.directory = p
-            }
-        }
     }
 
     // Light/dark pairs and time-of-day folders found in the wallpaper folder
@@ -180,13 +169,6 @@ Column {
                 onPicked: p => Config.options.wallpaper.live = p
             }
         }
-        Row {
-            label: "Pause on battery"
-            Switch {
-                checked: Config.options.wallpaper.livePauseOnBattery
-                onToggled: Config.options.wallpaper.livePauseOnBattery = !checked
-            }
-        }
     }
 
     // Login screen (./install.sh --greeter keeps its own copy of the wallpaper)
@@ -283,6 +265,35 @@ Column {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: Wallpaper.set(thumb.modelData)
+                }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                label: "Folder"
+                detail: "Images in this folder appear below and in the wallpaper picker."
+                PathField {
+                    folder: true
+                    value: Config.options.wallpaper.directory
+                    placeholder: "~/Pictures/Wallpapers"
+                    start: "~/Pictures"
+                    onPicked: p => Config.options.wallpaper.directory = p
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Live wallpaper"
+            Row {
+                label: "Pause on battery"
+                Switch {
+                    checked: Config.options.wallpaper.livePauseOnBattery
+                    onToggled: Config.options.wallpaper.livePauseOnBattery = !checked
                 }
             }
         }

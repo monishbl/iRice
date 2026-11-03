@@ -403,70 +403,6 @@ Column {
         }
     }
 
-    Group {
-        width: parent.width
-        title: "When a display connects"
-        footer: "The new display fills from the side it shares with its neighbour, which comes from the arrangement above; a display that leaves pulls back from that side. Directional sound plays the connect sound from that side (with Sound effects on)."
-        Row {
-            label: "Animation"
-            Segmented {
-                width: 300
-                readonly property var values: ["off", "extend", "liquid", "warp"]
-                options: ["Off", "Extend", "Liquid", "Warp"]
-                current: Math.max(0, values.indexOf(Config.options.displays.connectAnimation))
-                onSelected: i => Config.options.displays.connectAnimation = values[i]
-            }
-        }
-        Row {
-            label: "Directional sound"
-            detail: "Heard from the side the display is on"
-            Switch { checked: Config.options.displays.directionalSound; onToggled: Config.options.displays.directionalSound = !checked }
-        }
-        Row {
-            label: "Preview"
-            detail: "On this display, as if one were plugged in on that side"
-            QQ.Row {
-                spacing: 8
-                SettingsButton { text: "Left"; icon: "arrow-left"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "left") }
-                SettingsButton { text: "Above"; icon: "arrow-up"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "top") }
-                SettingsButton { text: "Right"; icon: "arrow-right"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "right") }
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Switching displays"
-        footer: "Each display has its own spaces, numbered from 1: Super+number goes to that space on the display you're on."
-        Row {
-            label: "Move the pointer there"
-            detail: "When a shortcut takes you to another display"
-            Switch { checked: Config.options.workspaces.warpPointer; onToggled: Config.options.workspaces.warpPointer = !checked }
-        }
-        Row {
-            label: "Show which display you moved to"
-            detail: ({ glow: "A soft glow at its edges for a moment", dim: "It dims briefly", off: "Nothing shows" })[Config.options.workspaces.switchCue] ?? "A soft glow at its edges for a moment"
-            Segmented {
-                width: 200
-                readonly property var values: ["off", "glow", "dim"]
-                options: ["Off", "Glow", "Dim"]
-                current: Math.max(0, values.indexOf(Config.options.workspaces.switchCue || "glow"))
-                onSelected: i => Config.options.workspaces.switchCue = values[i]
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        visible: page.mons.length > 0
-        footer: "Settings are saved per display and come back when it's plugged in again."
-        Row {
-            label: "Restore defaults"
-            detail: "Every display goes back to what Hyprland picks by itself"
-            SettingsButton { text: "Restore Defaults"; enabled: (Config.options.displays.monitors ?? []).length > 0; onClicked: Displays.resetAll() }
-        }
-    }
-
     // ── Wireless displays (services/Mirroring) ──────────────────────────
     Group {
         id: wireless
@@ -524,6 +460,70 @@ Column {
                     icon: tv.here ? "stop" : "screencast"
                     onClicked: tv.here ? Mirroring.stop() : Mirroring.start(tv.modelData)
                 }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "When a display connects"
+            footer: "The new display fills from the side it shares with its neighbour, which comes from the arrangement above; a display that leaves pulls back from that side. Directional sound plays the connect sound from that side (with Sound effects on)."
+            Row {
+                label: "Animation"
+                Segmented {
+                    width: 300
+                    readonly property var values: ["off", "extend", "liquid", "warp"]
+                    options: ["Off", "Extend", "Liquid", "Warp"]
+                    current: Math.max(0, values.indexOf(Config.options.displays.connectAnimation))
+                    onSelected: i => Config.options.displays.connectAnimation = values[i]
+                }
+            }
+            Row {
+                label: "Directional sound"
+                detail: "Heard from the side the display is on"
+                Switch { checked: Config.options.displays.directionalSound; onToggled: Config.options.displays.directionalSound = !checked }
+            }
+            Row {
+                label: "Preview"
+                detail: "On this display, as if one were plugged in on that side"
+                QQ.Row {
+                    spacing: 8
+                    SettingsButton { text: "Left"; icon: "arrow-left"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "left") }
+                    SettingsButton { text: "Above"; icon: "arrow-up"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "top") }
+                    SettingsButton { text: "Right"; icon: "arrow-right"; onClicked: DisplayFx.preview(Config.options.displays.connectAnimation === "off" ? "extend" : Config.options.displays.connectAnimation, "right") }
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Switching displays"
+            footer: "Each display has its own spaces, numbered from 1: Super+number goes to that space on the display you're on."
+            Row {
+                label: "Move the pointer there"
+                detail: "When a shortcut takes you to another display"
+                Switch { checked: Config.options.workspaces.warpPointer; onToggled: Config.options.workspaces.warpPointer = !checked }
+            }
+            Row {
+                label: "Show which display you moved to"
+                detail: ({ glow: "A soft glow at its edges for a moment", dim: "It dims briefly", off: "Nothing shows" })[Config.options.workspaces.switchCue] ?? "A soft glow at its edges for a moment"
+                Segmented {
+                    width: 200
+                    readonly property var values: ["off", "glow", "dim"]
+                    options: ["Off", "Glow", "Dim"]
+                    current: Math.max(0, values.indexOf(Config.options.workspaces.switchCue || "glow"))
+                    onSelected: i => Config.options.workspaces.switchCue = values[i]
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            footer: "Settings are saved per display and come back when it's plugged in again."
+            Row {
+                label: "Restore defaults"
+                detail: "Every display goes back to what Hyprland picks by itself"
+                SettingsButton { text: "Restore Defaults"; enabled: (Config.options.displays.monitors ?? []).length > 0; onClicked: Displays.resetAll() }
             }
         }
     }

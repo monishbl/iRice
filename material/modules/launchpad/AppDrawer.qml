@@ -696,7 +696,7 @@ Variants {
                     items: [
                         { text: "Get apps", icon: "storefront", action: () => Panels.openAppStore() },
                         { text: win.view === 1 ? "Show folders" : "Show A to Z", icon: win.view === 1 ? "squares-four" : "list", action: () => win.toggleView() },
-                        { text: "Dock and drawer settings", icon: "gear", action: () => Panels.openSettings("dock") }
+                        { text: "Dock and drawer settings", icon: "gear", action: () => Panels.openSettings("menubar", "Dock") }
                     ]
                 }
             }

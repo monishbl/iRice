@@ -135,26 +135,6 @@ Column {
 
     Group {
         width: parent.width
-        title: "Server"
-        footer: SpeedTest.backend === "ookla" && !SpeedTest.ooklaReady ? SpeedTest.ooklaInstall
-            : SpeedTest.backend === "ookla" ? "Ookla tests against a nearby speedtest.net server, picked automatically." + (SpeedTest.hasOokla ? "" : " Using speedtest-cli; Ookla's official speedtest (paru -S ookla-speedtest-bin) measures more, including latency under load.")
-            : "Cloudflare tests against its nearest data centre, using curl. Nothing to install."
-        Row {
-            label: "Test with"
-            detail: SpeedTest.ooklaReady ? (SpeedTest.hasOokla ? "Ookla's speedtest is installed" : "speedtest-cli is installed") : "Ookla needs its speedtest app"
-            Segmented {
-                width: 220
-                enabled: !SpeedTest.running
-                readonly property var values: ["cloudflare", "ookla"]
-                options: ["Cloudflare", "Ookla"]
-                current: Math.max(0, values.indexOf(SpeedTest.backend))
-                onSelected: i => Config.options.network.speedTest = values[i]
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
         title: "Connection"
         footer: page.link.kind === "wifi" ? "Signal above −67 dBm is good for calls and video; below −75 dBm, move closer to the router or switch to 5 GHz." : ""
         Row {
@@ -192,65 +172,97 @@ Column {
             }
         }
         Row {
-            visible: page.link.kind === "wifi" && !!page.link.band
-            label: "Band"
-            Value { text: [page.link.standard, page.link.band, page.link.channel ? "channel " + page.link.channel : "", page.link.width ? page.link.width + " MHz wide" : ""].filter(x => x).join(" · ") }
-        }
-        Row {
-            visible: page.link.kind === "wifi" && (page.link.rx !== undefined || page.link.tx !== undefined)
-            label: "Link rate"
-            detail: "The most the Wi-Fi link carries right now; your internet is usually slower"
-            Value { text: page.link.tx ? "↓ " + Math.round(page.link.rx ?? 0) + " · ↑ " + Math.round(page.link.tx) + " Mbit/s" : Math.round(page.link.rx ?? 0) + " Mbit/s" }
-        }
-        Row {
-            visible: page.link.kind === "wifi" && !!page.link.security
-            label: "Security"
-            Value { text: page.link.security ?? "" }
-        }
-        Row {
             visible: page.link.kind === "wired"
             label: "Ethernet"
             Value { text: +(page.link.speed ?? 0) > 0 ? (+page.link.speed >= 1000 ? (+page.link.speed / 1000) + " Gbit/s" : page.link.speed + " Mbit/s") : "Connected" }
         }
-        Row {
-            visible: !!page.link.iface
-            label: "Interface"
-            Value { text: page.link.iface ?? "" }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Connection"
+            Row {
+                visible: page.link.kind === "wifi" && !!page.link.band
+                label: "Band"
+                Value { text: [page.link.standard, page.link.band, page.link.channel ? "channel " + page.link.channel : "", page.link.width ? page.link.width + " MHz wide" : ""].filter(x => x).join(" · ") }
+            }
+            Row {
+                visible: page.link.kind === "wifi" && (page.link.rx !== undefined || page.link.tx !== undefined)
+                label: "Link rate"
+                detail: "The most the Wi-Fi link carries right now; your internet is usually slower"
+                Value { text: page.link.tx ? "↓ " + Math.round(page.link.rx ?? 0) + " · ↑ " + Math.round(page.link.tx) + " Mbit/s" : Math.round(page.link.rx ?? 0) + " Mbit/s" }
+            }
+            Row {
+                visible: page.link.kind === "wifi" && !!page.link.security
+                label: "Security"
+                Value { text: page.link.security ?? "" }
+            }
+            Row {
+                visible: !!page.link.iface
+                label: "Interface"
+                Value { text: page.link.iface ?? "" }
+            }
+            Row {
+                visible: !!(SpeedTest.client.ip || SpeedTest.last?.ip)
+                label: "Public IP"
+                detail: SpeedTest.client.isp || SpeedTest.last?.isp || ""
+                Value { text: SpeedTest.client.ip || SpeedTest.last?.ip || "" }
+            }
         }
-        Row {
-            visible: !!(SpeedTest.client.ip || SpeedTest.last?.ip)
-            label: "Public IP"
-            detail: SpeedTest.client.isp || SpeedTest.last?.isp || ""
-            Value { text: SpeedTest.client.ip || SpeedTest.last?.ip || "" }
+        Group {
+            width: parent.width
+            title: "Server"
+            footer: SpeedTest.backend === "ookla" && !SpeedTest.ooklaReady ? SpeedTest.ooklaInstall
+                : SpeedTest.backend === "ookla" ? "Ookla tests against a nearby speedtest.net server, picked automatically." + (SpeedTest.hasOokla ? "" : " Using speedtest-cli; Ookla's official speedtest (paru -S ookla-speedtest-bin) measures more, including latency under load.")
+                : "Cloudflare tests against its nearest data centre, using curl. Nothing to install."
+            Row {
+                label: "Test with"
+                detail: SpeedTest.ooklaReady ? (SpeedTest.hasOokla ? "Ookla's speedtest is installed" : "speedtest-cli is installed") : "Ookla needs its speedtest app"
+                Segmented {
+                    width: 220
+                    enabled: !SpeedTest.running
+                    readonly property var values: ["cloudflare", "ookla"]
+                    options: ["Cloudflare", "Ookla"]
+                    current: Math.max(0, values.indexOf(SpeedTest.backend))
+                    onSelected: i => Config.options.network.speedTest = values[i]
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "History"
+            footer: SpeedTest.history.length > 0 ? "The last 10 tests." : ""
+            Row {
+                visible: SpeedTest.history.length === 0
+                label: "No tests yet"
+                detail: "Results appear here after you test your speed"
+            }
+            Repeater {
+                model: SpeedTest.history
+                Row {
+                    required property var modelData
+                    label: new Date(modelData.at).toLocaleString(Qt.locale(), "d MMM, HH:mm") + (modelData.network ? " · " + modelData.network : "")
+                    detail: [modelData.backend === "ookla" ? "Ookla" : "Cloudflare", modelData.server.replace(/^Cloudflare /, ""), modelData.ping >= 0 ? "ping " + SpeedTest.formatMs(modelData.ping) : "", modelData.loadedDown >= 0 ? "under load " + SpeedTest.formatMs(modelData.loadedDown) : ""].filter(x => x).join(" · ")
+                    Value { text: "↓ " + SpeedTest.format(modelData.download) + "   ↑ " + SpeedTest.format(modelData.upload) }
+                }
+            }
+            Row {
+                visible: SpeedTest.history.length > 0
+                label: "Remove all results"
+                SettingsButton {
+                    text: "Clear history"
+                    danger: true
+                    onClicked: SpeedTest.clearHistory()
+                }
+            }
         }
     }
 
-    Group {
-        width: parent.width
-        title: "History"
-        footer: SpeedTest.history.length > 0 ? "The last 10 tests." : ""
-        Row {
-            visible: SpeedTest.history.length === 0
-            label: "No tests yet"
-            detail: "Results appear here after you test your speed"
-        }
-        Repeater {
-            model: SpeedTest.history
-            Row {
-                required property var modelData
-                label: new Date(modelData.at).toLocaleString(Qt.locale(), "d MMM, HH:mm") + (modelData.network ? " · " + modelData.network : "")
-                detail: [modelData.backend === "ookla" ? "Ookla" : "Cloudflare", modelData.server.replace(/^Cloudflare /, ""), modelData.ping >= 0 ? "ping " + SpeedTest.formatMs(modelData.ping) : "", modelData.loadedDown >= 0 ? "under load " + SpeedTest.formatMs(modelData.loadedDown) : ""].filter(x => x).join(" · ")
-                Value { text: "↓ " + SpeedTest.format(modelData.download) + "   ↑ " + SpeedTest.format(modelData.upload) }
-            }
-        }
-        Row {
-            visible: SpeedTest.history.length > 0
-            label: "Remove all results"
-            SettingsButton {
-                text: "Clear history"
-                danger: true
-                onClicked: SpeedTest.clearHistory()
-            }
-        }
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Bluetooth"
+        source: Qt.resolvedUrl("bluetooth.qml")
     }
 }
