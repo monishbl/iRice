@@ -166,7 +166,7 @@ Variants {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: field.text === ""
-                        text: "Spotlight Search"
+                        text: "Search"
                         color: Theme.color.tertiary
                         font: field.font
                     }

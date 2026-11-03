@@ -12,7 +12,7 @@
   "id": "spotlight",
   "keys": "$MOD + Space",
   "group": "Shell",
-  "label": "Spotlight",
+  "label": "Search",
   "action": {
    "shell": "spotlight"
   }
@@ -63,7 +63,7 @@
   "id": "mission-control",
   "keys": "$MOD + SHIFT + Tab",
   "group": "Shell",
-  "label": "Mission Control",
+  "label": "All Windows",
   "action": {
    "shell": "missionControl"
   }
@@ -72,7 +72,7 @@
   "id": "launchpad",
   "keys": "$MOD + SHIFT + Space",
   "group": "Shell",
-  "label": "App Library",
+  "label": "App Drawer",
   "action": {
    "shell": "launchpad"
   }
@@ -153,7 +153,7 @@
   "id": "control-center",
   "keys": "$MOD + ALT + C",
   "group": "Shell",
-  "label": "Control Center",
+  "label": "Quick Settings",
   "action": {
    "shell": "controlCenter"
   }

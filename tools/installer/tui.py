@@ -117,7 +117,7 @@ class Installer:
         have = set(facts.get("installed", ()))
         sysinfo = system or {}
         dm = facts.get("display_manager", "")
-        self.look = Radio([("glass", "Glass", "Translucent, like macOS Tahoe. App icons start Clear."),
+        self.look = Radio([("glass", "Glass", "Translucent glass, like macOS. App icons start Clear."),
                            ("material", "Material", "Android's Material You. App icons start Themed.")], "glass")
         self.mode = Radio([("auto", "Automatic", "Light by day, dark at night"),
                            ("light", "Light", ""), ("dark", "Dark", "")], "auto")

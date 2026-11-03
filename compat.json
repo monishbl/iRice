@@ -3,7 +3,7 @@
     "hyprland": {
         "min": "0.56.0",
         "max": "0.56.x",
-        "why": "The Lua config and the Liquid Glass plugin (hypr/plugin/irice-glass) are built against Hyprland 0.56."
+        "why": "The Lua config and the glass plugin (hypr/plugin/irice-glass) are built against Hyprland 0.56."
     },
     "quickshell": {
         "min": "0.3.2",

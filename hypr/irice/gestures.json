@@ -42,7 +42,7 @@
   "id": "launchpad",
   "fingers": 4,
   "direction": "pinchin",
-  "label": "App Library",
+  "label": "App Drawer",
   "action": {
    "shell": "launchpad"
   }

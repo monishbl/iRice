@@ -1,5 +1,27 @@
 # iRice changelog
 
+## Licence, and names of our own · 2026-11-03
+
+- **iRice is GPL-3.0-or-later.** The licence is in LICENSE; THIRD_PARTY_NOTICES.md lists the fonts, icons, protocol definitions and data that come from others, with their licence texts in LICENSES/.
+- **Features renamed** so iRice no longer uses other companies' product names for its own features. Settings search still finds the old names, and nothing about your settings, shortcuts or IPC changes:
+
+  | Was | Now |
+  |---|---|
+  | Spotlight | Search |
+  | Mission Control | All Windows |
+  | App Exposé | App Windows |
+  | App Library | App Drawer |
+  | Stage Manager | Stages |
+  | StandBy | Bedside Mode |
+  | Smart Stack | Widget Stack |
+  | Quick Look | Quick Preview |
+  | App Store | Software |
+  | Control Center | Quick Settings (as in the Material look) |
+  | Liquid Glass | Glass |
+  | Overview style "macOS", lock layouts "iOS" / "macOS" | "Strip"; "Widgets" / "Classic" |
+  | Window tabs "Finder", emoji styles "Android" / "Windows" | "iRice"; "Noto" / "Fluent" |
+  | the built-in "Tahoe" wallpapers | the built-in set (Day, Dusk, Night) |
+
 ## Faster Quick Share, iPhones by QR code, apps' own logos · 2026-11-03
 
 - **Quick Share takes the fastest way first.** Before any file moves it checks the link: a shared Wi-Fi that's on the busy 2.4 GHz band or answers slowly gives way to a direct Wi-Fi link (Wi-Fi Direct, next to your own Wi-Fi). A link that fails gets a second try before the next one, and one that keeps failing with a phone is skipped for that phone for a day. Tested with a phone on a router that keeps devices apart: 500 MB in under a minute one way and about ten seconds the other, where it crawled at 0.3 MB/s before.

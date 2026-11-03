@@ -136,7 +136,7 @@ Column {
         visible: page.showPlan && SoftwareUpdate.hyprTooNew
         width: parent.width
         title: "Hyprland"
-        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.heldHypr.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the Liquid Glass plugin can't be built for it, glass falls back to frosted until iRice catches up." : "This iRice is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
+        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.heldHypr.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the glass plugin can't be built for it, glass falls back to frosted until iRice catches up." : "This iRice is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
         Row {
             label: "Hyprland " + SoftwareUpdate.hyprShort + " isn't supported by this iRice yet"
             detail: "Choose what to do for this update."

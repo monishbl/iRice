@@ -1,6 +1,6 @@
 # iRice
 
-A Hyprland desktop shell in the style of macOS Tahoe, with Liquid Glass, everything end4's illogical-impulse dots offer, and more from macOS: Stage Manager, window tiling, Focus modes, an App Library and a matching login screen. It's written from scratch in [Quickshell](https://quickshell.org) and tuned for integrated GPUs.
+A glass desktop shell for Hyprland, after macOS, with everything end4's illogical-impulse dots offer and more: Stages, window tiling, Focus modes, an App Drawer and a matching login screen. A second look, Material, follows Android. It's written from scratch in [Quickshell](https://quickshell.org) and tuned for integrated GPUs.
 
 ## What's in it
 
@@ -10,50 +10,50 @@ A Hyprland desktop shell in the style of macOS Tahoe, with Liquid Glass, everyth
   - Spaces with app icons (click or scroll to switch)
   - tray icons with glass menus, Now Playing and a recording indicator
   - status items with their own menus: battery and energy mode, Wi-Fi, Bluetooth, sound, CPU and memory, weather, keyboard layout
-  - every item can be hidden in Settings → Menu bar, including the app and Window menus, Search, AI, Control Center and the clock
+  - every item can be hidden in Settings → Menu bar, including the app and Window menus, Search, AI, Quick Settings and the clock
   - optional buttons: screenshot, colour picker, mic, keyboard, dark mode, energy mode, recording
   - unread notifications as a bell with a dot, a dot, or a count; scroll gestures (left half brightness, right half volume), auto-hide, per-screen
   - click a menu to open it, another title to switch, the same title to close
-- **Dynamic island** in the menu bar, black like the iPhone's: dots for your spaces, a compact live activity (recording, timer, music, stopwatch), and alerts that spring open with their own animation: headphones and other Bluetooth devices connecting (with a battery ring), USB devices and drives (with Open), displays, the charger filling its ring, sound moving to another output, low battery, track changes, Focus, CPU or memory running hot. When the CPU package passes a temperature you set (90 °C by default), a "Running hot" alert opens and, until it cools, the closed island turns red with heat ripples from the active space. Alerts that arrive together stack in one island and stagger in, each leaving on its own time. Live activities (music, a timer, the stopwatch, recording) sit in the closed island: art, a scrolling title and playing bars, with controls; they replace the space dots, or sit around or beside them (Settings → Menu bar, where every piece can be switched off). Point at it for a mini player over the album art with seek, open-the-player and volume. Several live at once: scroll over the island to switch, or list them all. Pin it open with the pin or a right-click. Notifications can appear there as iOS-style cards instead of banners. Hover it for details; the volume and brightness HUD can show there too. Preview any alert with `qs ipc call island demo device` (or usb, display, audio, charging, battery, notification).
+- **The island** in the menu bar, black like the iPhone's: dots for your spaces, a compact live activity (recording, timer, music, stopwatch), and alerts that spring open with their own animation: headphones and other Bluetooth devices connecting (with a battery ring), USB devices and drives (with Open), displays, the charger filling its ring, sound moving to another output, low battery, track changes, Focus, CPU or memory running hot. When the CPU package passes a temperature you set (90 °C by default), a "Running hot" alert opens and, until it cools, the closed island turns red with heat ripples from the active space. Alerts that arrive together stack in one island and stagger in, each leaving on its own time. Live activities (music, a timer, the stopwatch, recording) sit in the closed island: art, a scrolling title and playing bars, with controls; they replace the space dots, or sit around or beside them (Settings → Menu bar, where every piece can be switched off). Point at it for a mini player over the album art with seek, open-the-player and volume. Several live at once: scroll over the island to switch, or list them all. Pin it open with the pin or a right-click. Notifications can appear there as iOS-style cards instead of banners. Hover it for details; the volume and brightness HUD can show there too. Preview any alert with `qs ipc call island demo device` (or usb, display, audio, charging, battery, notification).
 - **Overview:** tap Super for this screen's spaces as plain containers with a tile per open window (app icon and name). Drag a tile to another space, or type to search apps.
 - **Privacy dots:** orange while an app uses the microphone, green for the camera, purple while the screen is shared; click for which apps.
 - **More live activities:** downloads and file copies (cp, mv, rsync, dd) with progress and speed; calls and meetings (Discord, Zoom, Teams, Slack, Google Meet and more) with mute, open and leave. Wi-Fi, VPN, hotspot and Ethernet changes are alerts. The status row of the open island shows the CPU temperature next to CPU.
 - Window decorations (Settings → Appearance): none, window controls, or macOS title bars via the hyprbars plugin. Window controls are a small pill at the top of each window that opens into close, minimize and zoom; with the glass plugin, Hyprland draws them so they move with the window.
 - Window corners: adjustable radius with continuous (squircle) corners
 - Minimize: windows park in the dock's Minimized section
-- **Dock:** recent apps, minimized windows, a Downloads stack and Trash, right-click menus, optional magnification and macOS-style auto-hide (rest at the bottom edge to bring it up). Unread-count badges from apps that report them (Telegram, Discord, Thunderbird...) and a dot when an app wants attention. Click the app in front again for App Exposé.
-- **Desktop widgets** on a snapping grid: Clock, World Clock, Weather, Calendar, Reminders (with due dates), Batteries, Battery History, Now Playing, System, Screen Time, Stocks, Shortcuts (one-click buttons), Photos, Note (each with its own text) and **Smart Stack** (several widgets in one, scroll to flip; it brings forward music, the next event or a low battery), in small, medium and large sizes. Drag to move; right-click for sizes, Remove and the widget's own options; Edit Widgets (right-click the desktop) opens a gallery to add more.
-- **Files on the desktop** (~/Desktop) on the same grid, from the top right: double-click to open, drag to arrange, right-click for Quick Look, Share, Move to Trash (with Undo). **Use Stacks** groups them by kind.
+- **Dock:** recent apps, minimized windows, a Downloads stack and Trash, right-click menus, optional magnification and macOS-style auto-hide (rest at the bottom edge to bring it up). Unread-count badges from apps that report them (Telegram, Discord, Thunderbird...) and a dot when an app wants attention. Click the app in front again for App Windows.
+- **Desktop widgets** on a snapping grid: Clock, World Clock, Weather, Calendar, Reminders (with due dates), Batteries, Battery History, Now Playing, System, Screen Time, Stocks, Shortcuts (one-click buttons), Photos, Note (each with its own text) and **Widget Stack** (several widgets in one, scroll to flip; it brings forward music, the next event or a low battery), in small, medium and large sizes. Drag to move; right-click for sizes, Remove and the widget's own options; Edit Widgets (right-click the desktop) opens a gallery to add more.
+- **Files on the desktop** (~/Desktop) on the same grid, from the top right: double-click to open, drag to arrange, right-click for Quick Preview, Share, Move to Trash (with Undo). **Use Stacks** groups them by kind.
 - Rounded screen corners
 
 **Windows**
 - **Tiling:** halves, quarters, thirds, fill and centre from the Window menu, from the tile grid that opens when you rest on the green window button, or with Super+Ctrl+Arrows / F / C. **Drag a window to a screen edge or corner** and a glass preview shows where it will go (needs the glass plugin). Arrange two to four windows side by side; Return to Previous Size puts a window back.
-- **App Exposé:** one app's windows from every space (three fingers down, or click the app in front in the dock).
+- **App Windows:** one app's windows from every space (three fingers down, or click the app in front in the dock).
 - **Picture in Picture:** browsers' video pop-outs float small in a corner on every space; any window can do it from the Window menu or Super+Shift+P.
-- **Window tabs:** merge windows into tabs (Window menu or Super+T, Super+[ / ] to switch). Tabs look like Hyprland's bar restyled, or like Finder's (Settings → Appearance).
-- **Stage Manager:** one group of windows in front, the rest as thumbnails on the left. New apps open in their own stage; Shift-click a thumbnail to merge it into the front one. Turn it on in Control Center.
+- **Window tabs:** merge windows into tabs (Window menu or Super+T, Super+[ / ] to switch). Tabs look like Hyprland's bar restyled, or iRice's own with icons (Settings → Appearance).
+- **Stages:** one group of windows in front, the rest as thumbnails on the left. New apps open in their own stage; Shift-click a thumbnail to merge it into the front one. Turn it on in Quick Settings.
 
 **Apps**
-- **App Library** (Super+Shift+Space or the dock's Apps button): every app in category folders or A–Z, with search and keyboard navigation.
-- **App icon styles** (Settings → Appearance): Default, Dark, Clear, Tinted, or Auto (dark in dark mode), like Tahoe.
+- **App Drawer** (Super+Shift+Space or the dock's Apps button): every app in category folders or A–Z, with search and keyboard navigation.
+- **App icon styles** (Settings → Appearance): Default, Dark, Clear, Tinted, or Auto (dark in dark mode), like macOS.
 
 **Panels**
-- **Control Center:** laid out like Tahoe's, each control its own glass chip (or on one glass panel: Settings → Control Center → Panel background): Wi-Fi, Bluetooth, Focus, Now Playing, display and sound sliders and more. Choose Edit Controls to add, remove, resize and drag controls, from a gallery that also has game mode, anti-flashbang, Identify Song, keyboard, colour picker, screenshot, recording, battery, weather, CPU and memory, EasyEffects and Cloudflare WARP (hidden when their tool isn't installed). Right-click a control (or click a wide one's label) for its details, which open as a second popover beside Control Center: Wi-Fi networks, Bluetooth devices, Focus modes, and sound output with a per-app mixer.
+- **Quick Settings:** each control its own glass chip (or on one glass panel: Settings → Menu Bar & Dock → Quick Settings → Panel background): Wi-Fi, Bluetooth, Focus, Now Playing, display and sound sliders and more. Choose Edit Controls to add, remove, resize and drag controls, from a gallery that also has game mode, anti-flashbang, Identify Song, keyboard, colour picker, screenshot, recording, battery, weather, CPU and memory, EasyEffects and Cloudflare WARP (hidden when their tool isn't installed). Right-click a control (or click a wide one's label) for its details, which open as a second popover beside Quick Settings: Wi-Fi networks, Bluetooth devices, Focus modes, and sound output with a per-app mixer.
 - **Notification Center:** history grouped by app, calendar with your events, to-do list, and a Pomodoro timer with stopwatch.
 - **Notifications:** glass banners with actions. Several stack into one with an expand button, and only a new one slides in.
-- **Spotlight:** apps, calculator, unit and currency conversion ("10 km to mi", "100 usd in eur"), definitions ("define serendipity"), actions, calendar events, `;` clipboard history, `:` emoji, `/` files by name and by what's inside, `>` commands, web search. Shift+Space or Ctrl+Y on a file opens Quick Look. Ask AI right in Spotlight (`?` or the Ask row) for a short answer, then continue in the sidebar. Type "remind me to call mum at 5pm" to add a reminder.
+- **Search:** apps, calculator, unit and currency conversion ("10 km to mi", "100 usd in eur"), definitions ("define serendipity"), actions, calendar events, `;` clipboard history, `:` emoji, `/` files by name and by what's inside, `>` commands, web search. Shift+Space or Ctrl+Y on a file opens Quick Preview. Ask AI right in Search (`?` or the Ask row) for a short answer, then continue in the sidebar. Type "remind me to call mum at 5pm" to add a reminder.
 - **Clipboard** (Super+V): history with image previews, search, pins that survive restarts, paste as plain text.
-- **Quick Look:** previews of images, video, audio, PDFs, text and folders without opening an app (Spotlight, the Downloads stack, desktop files).
-- **Nearby sharing**, like AirDrop: send files to phones and computers running LocalSend (Settings → Sharing → Send files, Share in Quick Look and on desktop files, or “Send Files” in Spotlight), and receive from them after an Accept in the island (Settings → Sharing: No one, Everyone for 10 minutes, Everyone). Sending works with receiving off. Android phones too, through **Quick Share** (Nearby Share), built in: phones find this computer in their Quick Share sheet and it finds them in the share sheet, with the same Accept in the island and the PIN both screens show (Settings → Sharing → Android Quick Share).
-- **Mission Control:** live window previews and Spaces.
+- **Quick Preview:** previews of images, video, audio, PDFs, text and folders without opening an app (Search, the Downloads stack, desktop files).
+- **Nearby sharing**, like AirDrop: send files to phones and computers running LocalSend (Settings → Sharing → Send files, Share in Quick Preview and on desktop files, or “Send Files” in Search), and receive from them after an Accept in the island (Settings → Sharing: No one, Everyone for 10 minutes, Everyone). Sending works with receiving off. Android phones too, through **Quick Share** (Nearby Share), built in: phones find this computer in their Quick Share sheet and it finds them in the share sheet, with the same Accept in the island and the PIN both screens show (Settings → Sharing → Android phones (Quick Share)).
+- **All Windows:** live window previews and Spaces.
 - **Sidebar:**
-  - **AI chat:** add your own models in Settings → AI: display name, model ID, provider, credentials and connection details. Supports Google AI Studio, Vertex AI (Gemini), Anthropic, OpenAI, OpenRouter, Ollama and custom OpenAI-compatible endpoints. Saved models appear in the sidebar and Spotlight; new installations have no preset model list.
+  - **AI chat:** add your own models in Settings → AI: display name, model ID, provider, credentials and connection details. Supports Google AI Studio, Vertex AI (Gemini), Anthropic, OpenAI, OpenRouter, Ollama and custom OpenAI-compatible endpoints. Saved models appear in the sidebar and Search; new installations have no preset model list.
   - **Translator**
   - **Anime image browser:** safe-rated results unless you switch on Explicit.
 
 **Focus and calendar**
 - **Focus modes:** Do Not Disturb, Work, Personal, Sleep, and your own. Each lets chosen apps through, can change the wallpaper and light/dark mode while on, and can run on a schedule, for an hour, or until the evening. The active mode shows in the menu bar.
-- **Calendar:** subscribe to Google, iCloud, Outlook or Nextcloud calendars with their .ics link (Settings → Calendar). Events show in Notification Center and Spotlight, with reminder notifications. Add your own reminders in plain words.
+- **Calendar:** subscribe to Google, iCloud, Outlook or Nextcloud calendars with their .ics link (Settings → Calendar). Events show in Notification Center and Search, with reminder notifications. Add your own reminders in plain words.
 
 **Tools**
 - Screenshots of the screen, a window or a selection; Super+Shift+5 opens a toolbar like macOS. Area screenshots open in Swappy to crop, draw and annotate (Settings → Keyboard Shortcuts).
@@ -63,13 +63,13 @@ A Hyprland desktop shell in the style of macOS Tahoe, with Liquid Glass, everyth
 - On-screen keyboard, colour picker, keyboard-shortcut cheatsheet, periodic table.
 
 **System**
-- **Lock screen** (Settings → Lock Screen): iOS layout (large clock, small widgets, Now Playing with controls, notifications) or macOS layout; cards in glass, frost or solid; light, dark or automatic text; notification previews optional.
-- **StandBy:** on a charging laptop left alone, the lock screen becomes a large clock, two widgets or your photos (red at night), and the screen stays on.
+- **Lock screen** (Settings → Lock Screen): Widgets layout (large clock, small widgets, Now Playing with controls, notifications) or Classic layout; cards in glass, frost or solid; light, dark or automatic text; notification previews optional.
+- **Bedside Mode:** on a charging laptop left alone, the lock screen becomes a large clock, two widgets or your photos (red at night), and the screen stays on.
 - Power dialog, polkit password prompt, volume and brightness HUD.
 - **Sound effects:** a chime at login, the shutter for screenshots, paper for Empty Trash (Settings → Notifications).
 - **Match apps** (Settings → Appearance): GTK, Qt/KDE, terminal (foot, kitty, Alacritty) and browser colours from your accent or wallpaper, with matugen. **Accessibility:** Reduce transparency and Increase contrast. Icons are each app's own logo, restyled to match the look (clear glass, or Material You themed); icon themes such as Colloid, Tela circle or Papirus are optional. GTK apps use Adwaita and the pointer is Bibata.
 - **Login screen** that matches the lock screen (greetd), set up with `./install.sh --greeter`.
-- **Wallpapers:** dynamic (time of day using sunrise and sunset, or light/dark pictures), live video wallpapers that pause when covered, and an Auto appearance that turns light at sunrise and dark at sunset. **Wallpaper sets** are found in your wallpaper folder automatically: pictures named "Name Light" and "Name Dark" switch with the theme, and a sub-folder of pictures follows the time of day; pick one in Settings → Wallpaper. (macOS wallpapers are Apple's and aren't included; if you have them, name them that way, e.g. "Tahoe Light.jpg" / "Tahoe Dark.jpg".)
+- **Wallpapers:** dynamic (time of day using sunrise and sunset, or light/dark pictures), live video wallpapers that pause when covered, and an Auto appearance that turns light at sunrise and dark at sunset. **Wallpaper sets** are found in your wallpaper folder automatically: pictures named "Name Light" and "Name Dark" switch with the theme, and a sub-folder of pictures follows the time of day; pick one in Settings → Wallpaper. (macOS wallpapers are Apple's and aren't included; if you have them, name them that way, e.g. "Beach Light.jpg" / "Beach Dark.jpg".)
 - Battery warnings, update notices, idle handling (hypridle).
 - Settings app (Super+,) for appearance, wallpaper, menu bar, dock, desktop and weather, notifications, Focus, calendar, AI, sidebar and shortcuts.
 
@@ -79,13 +79,13 @@ Choose the material in Settings → Appearance: Glass, Frost or Solid, or your o
 
 | Material | What it does | Cost |
 |---|---|---|
-| **Liquid** (default) | Refracts and lenses whatever is behind it, windows included | Low |
+| **Glass** (default) | Refracts and lenses whatever is behind it, windows included | Low |
 | Frosted | Blurs what's behind it | Low |
 | Solid | No transparency; also makes the menu bar opaque | None |
 
 **Lens** sets how thick the glass looks: Thin (edge lensing only), Depth (a thick lens that bends the whole shape), or Auto (depth on large panels, thin on small controls).
 
-Real Liquid glass over windows needs the **irice-glass** Hyprland plugin, which the installer builds (or Settings → Appearance → Build plugin…). Hyprland then draws the glass itself, and only where it repaints anyway, so static glass costs nothing. Without the plugin, Liquid refracts the wallpaper only and falls back to Frosted over windows. Rebuild the plugin after a Hyprland update; until then iRice uses Frosted.
+Real glass over windows needs the **irice-glass** Hyprland plugin, which the installer builds (or Settings → Appearance → Build plugin…). Hyprland then draws the glass itself, and only where it repaints anyway, so static glass costs nothing. Without the plugin, Glass refracts the wallpaper only and falls back to Frosted over windows. Rebuild the plugin after a Hyprland update; until then iRice uses Frosted.
 
 The shell idles below 0.1% CPU. A live wallpaper is the exception while it's visible (about 10% of a core for a 720p video in testing); it pauses when windows cover most of the screen.
 
@@ -105,9 +105,9 @@ It downloads iRice to `~/.local/share/irice/repo` and runs the installer. It ask
 3. updates the system and installs Hyprland, Quickshell and everything iRice uses (all from the official repositories)
 4. optionally installs the Bibata pointer from the AUR (it sets up `yay` if you have no AUR helper), the Apple and Fluent emoji styles (default no), and icon themes (Colloid, Tela circle, Numix Circle, Flat Remix, Papirus; default none: iRice styles the apps' own icons)
 5. installs what this computer's hardware is missing, as you choose: firmware (Intel SOF sound, Broadcom Wi-Fi), video decoding and Vulkan for each GPU, NVIDIA's driver (only when you tick it), the fingerprint reader's and face camera's drivers (each asked), and a display scale for a sharp screen. See it with `./install.sh --plan`
-6. compiles the shaders and builds the Liquid Glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
+6. compiles the shaders and builds the glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
 7. installs the shell (`~/.config/quickshell/irice`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-irice`)
-8. optionally downloads macOS wallpapers and starts you on Tahoe (light by day, dark at night), and saves the look, light or dark and login style you picked
+8. optionally downloads Apple's macOS wallpapers and starts you on them (light by day, dark at night), and saves the look, light or dark and login style you picked
 9. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools
 10. sets up the iRice login screen (greetd), or starts Hyprland when you log in on tty1
 11. checks the result and tells you how to fix anything that's off
@@ -145,12 +145,12 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | Keys | Action |
 |---|---|
 | Super (tap) | Overview of spaces, with search |
-| Super+Space | Spotlight |
-| Super+Shift+Space | App Library |
+| Super+Space | Search |
+| Super+Shift+Space | App Drawer |
 | Super+V | Clipboard history |
-| Super+Tab | Mission Control |
+| Super+Tab | All Windows |
 | Super+A | AI and tools sidebar |
-| Super+C / Super+N | Control Center / Notification Center |
+| Super+C / Super+N | Quick Settings / Notification Center |
 | Super+, | Settings |
 | Super+Shift+3 / 4 / 5 | Screenshot screen / area / tools |
 | Super+Shift+S | Screenshot of the screen (saved straight away) |
@@ -175,18 +175,18 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | Gesture | Action |
 |---|---|
 | 3 fingers left or right | Switch spaces |
-| 3 fingers up / down | Overview / App Exposé |
+| 3 fingers up / down | Overview / App Windows |
 | 4 fingers left / right | Sidebar / Notification Center |
-| Pinch / spread 4 fingers | App Library / Show Desktop |
+| Pinch / spread 4 fingers | App Drawer / Show Desktop |
 | Three-finger drag (Settings → Trackpad) | Move the window under your fingers; the swipes above move to 4 fingers |
-| Touchscreen: pull down from the menu bar | Control Center (right third) or Notification Center |
+| Touchscreen: pull down from the menu bar | Quick Settings (right third) or Notification Center |
 | Touchscreen: swipe up from the bottom edge | Show a hidden dock |
 
 ## Files
 
-To send files with **LocalSend**, open LocalSend on the receiving phone or computer and connect both devices to the same network. In iRice, go to **Settings → Sharing → Send files…**, choose one or more files, then click the receiving device. You can also use **Share…** on a desktop file or **Share** in Quick Look. The receiving device must accept the transfer.
+To send files with **LocalSend**, open LocalSend on the receiving phone or computer and connect both devices to the same network. In iRice, go to **Settings → Sharing → Send files…**, choose one or more files, then click the receiving device. You can also use **Share…** on a desktop file or **Share** in Quick Preview. The receiving device must accept the transfer.
 
-For Android's **Quick Share** (formerly Nearby Share), iRice speaks the protocol itself; nothing else needs installing. In Settings → Sharing → Android Quick Share, set **Visible to phones** to *Everyone for 10 min* or *Everyone*: phones on the same Wi-Fi then see this computer in their Quick Share sheet, and you're asked in the island before anything is saved (files go to Downloads, or the folder you choose; links and Wi-Fi networks can be opened or copied). To send, use Share on a file and pick the phone; it must have Quick Share open and be visible to Everyone. Without a shared network it works over Bluetooth (turn it on; Settings → Sharing offers a button): the phone and this computer find each other and connect over Bluetooth LE, then the transfer moves to a Wi-Fi Direct link for full speed, which asks for your password once (it needs root for a moment; nothing stays configured afterwards). Without the password, or without Wi-Fi, it carries on over Bluetooth, which is slow. If they can't find each other, make sure avahi-daemon is running; with ufw or firewalld on, Settings → Sharing offers **Allow through firewall** (ports 53317–53320 and mDNS, port 5353; 53320 lets a Chromecast play files from this computer). If phones ask to pair over Bluetooth, Settings → Sharing → **Stop pairing prompts** turns off BlueZ's experimental Ranging profile, which causes it. For testing with a phone, `IRICE_QS_DEBUG=1` logs what happens to `$XDG_RUNTIME_DIR/irice-quickshare.log` (no keys, PINs or passwords).
+For Android's **Quick Share** (formerly Nearby Share), iRice speaks the protocol itself; nothing else needs installing. In Settings → Sharing → Android phones (Quick Share), set **Visible to phones** to *Everyone for 10 min* or *Everyone*: phones on the same Wi-Fi then see this computer in their Quick Share sheet, and you're asked in the island before anything is saved (files go to Downloads, or the folder you choose; links and Wi-Fi networks can be opened or copied). To send, use Share on a file and pick the phone; it must have Quick Share open and be visible to Everyone. Without a shared network it works over Bluetooth (turn it on; Settings → Sharing offers a button): the phone and this computer find each other and connect over Bluetooth LE, then the transfer moves to a Wi-Fi Direct link for full speed, which asks for your password once (it needs root for a moment; nothing stays configured afterwards). Without the password, or without Wi-Fi, it carries on over Bluetooth, which is slow. If they can't find each other, make sure avahi-daemon is running; with ufw or firewalld on, Settings → Sharing offers **Allow through firewall** (ports 53317–53320 and mDNS, port 5353; 53320 lets a Chromecast play files from this computer). If phones ask to pair over Bluetooth, Settings → Sharing → **Stop pairing prompts** turns off BlueZ's experimental Ranging profile, which causes it. For testing with a phone, `IRICE_QS_DEBUG=1` logs what happens to `$XDG_RUNTIME_DIR/irice-quickshare.log` (no keys, PINs or passwords).
 
 Dolphin's KDE colors and the desktop light/dark preference follow iRice even when **Match apps** is off. Fonts, icons and widget styles are preserved. Reopen Dolphin if it retains an old palette after changing modes.
 
@@ -197,7 +197,7 @@ For **AI**, open **Settings → AI**, choose a provider, enter the exact model I
 - `~/.config/irice/config.json`: settings. Edits apply live.
 - `~/.config/irice/focus.json` and `calendars.json`: Focus modes and calendar subscriptions (also editable in Settings).
 - `~/.local/state/irice/`: layout, to-dos, notes, clipboard pins, your reminders, AI chat and API keys when no keyring is running. Private files are owner-only.
-- `~/.cache/irice/`: the baked glass backdrop, Quick Look's PDF pages.
+- `~/.cache/irice/`: the baked glass backdrop, Quick Preview's PDF pages.
 - With Match apps on: `irice-colors.*` files next to your GTK, terminal and Qt configs (each config gets one include line); turning it off empties them.
 
 ## Trying it without installing
@@ -236,12 +236,20 @@ Layout: `shell/` (Quickshell config), `hypr/` (Hyprland config), `sandbox/` (nes
 - **Calendar editing:** subscribed calendars are read-only (CalDAV writes would need an account integration); your own reminders are editable. Times with a time zone are read as local time.
 
 - **Global app menus:** Linux apps would need an AppMenu registrar service, and Quickshell doesn't provide one. The menu bar shows the app and window menus instead.
-- **hyprglass "Ultra" tier:** the plugin hooks Hyprland internals and wasn't tested here. Auto, Liquid, Frosted and Solid cover the looks without it.
+- **hyprglass "Ultra" tier:** the plugin hooks Hyprland internals and wasn't tested here. Auto, Glass, Frosted and Solid cover the looks without it.
 - **Vertical or bottom bar:** end4 offers these; a macOS menu bar stays at the top.
 
-Fonts and icons: Inter, Phosphor (MIT) and Papirus. The bundled wallpapers are generated by `tools/gen-wallpapers.sh`.
+Fonts and icons: Phosphor (MIT), iRice Sans Flex (Google Sans Flex, OFL-1.1) and iRice Symbols (Material Symbols, Apache-2.0) are bundled; Inter and Papirus are used when installed. The bundled wallpapers are generated by `tools/gen-wallpapers.sh`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 
 ### Google Calendar, Tasks and Keep
 
-Settings → Google connects Calendar and Tasks through desktop Online Accounts; users sign in without creating a Google Cloud project. A custom Desktop OAuth client remains an advanced option. Events appear in Calendar/Today/Spotlight; tasks appear alongside local reminders with completion, rename and deletion support. Choose a Google task list for new tasks or keep them local. Keep opens in your browser; native personal Keep synchronization is not supported. See [setup, security and limitations](docs/google-integration.md).
+Settings → Google connects Calendar and Tasks through desktop Online Accounts; users sign in without creating a Google Cloud project. A custom Desktop OAuth client remains an advanced option. Events appear in Calendar/Today/Search; tasks appear alongside local reminders with completion, rename and deletion support. Choose a Google task list for new tasks or keep them local. Keep opens in your browser; native personal Keep synchronization is not supported. See [setup, security and limitations](docs/google-integration.md).
+
+## Licence
+
+iRice is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (`GPL-3.0-or-later`). It comes with no warranty. The full text is in [LICENSE](LICENSE).
+
+The fonts, icons, protocol definitions and data iRice bundles from others keep their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists each one, and the licence texts are in [LICENSES/](LICENSES).
+
+**Trademarks.** macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast and Material You are trademarks of Google LLC. They are named here only to say what iRice works with or resembles. iRice is not affiliated with or endorsed by Apple or Google.

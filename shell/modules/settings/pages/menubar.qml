@@ -76,9 +76,9 @@ Column {
         Toggle { key: "weather"; text: "Weather" }
         Toggle { key: "keyboardLayout"; text: "Keyboard layout"; hint: "Shown when you have more than one layout." }
         Toggle { key: "collapseTray"; text: "Tuck away app icons"; hint: "The icons apps put in the menu bar wait behind an arrow; click it to show them." }
-        Toggle { key: "search"; text: "Search"; hint: "Spotlight still opens with " + KeyNames.combo("SUPER Space") + "." }
+        Toggle { key: "search"; text: "Search"; hint: "Search still opens with " + KeyNames.combo("SUPER Space") + "." }
         Toggle { key: "ai"; text: "AI"; hint: "The sidebar still opens with " + KeyNames.combo("SUPER A") + "." }
-        Toggle { key: "controlCenter"; text: "Control Center"; hint: "Still opens with " + KeyNames.combo("SUPER C") + "." }
+        Toggle { key: "controlCenter"; text: "Quick Settings"; hint: "Still opens with " + KeyNames.combo("SUPER C") + "." }
         Toggle { key: "clock"; text: "Clock and notifications"; hint: "Notification Center still opens with " + KeyNames.combo("SUPER N") + "." }
         Toggle { key: "appMenu"; text: "App name menu"; hint: "On the left, next to the system menu." }
         Toggle { key: "windowMenu"; text: "Window menu"; hint: "On the left; window actions are also in " + KeyNames.combo("SUPER CTRL F") + " and friends." }
@@ -197,7 +197,7 @@ Column {
         source: Qt.resolvedUrl("dock.qml")
     }
     PagePart {
-        title: "Control Center"
+        title: "Quick Settings"
         source: Qt.resolvedUrl("controlcenter.qml")
     }
 }

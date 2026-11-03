@@ -1,6 +1,7 @@
 These .proto files are copied unchanged from Google's open-source projects
 and are licensed under the Apache License, Version 2.0 (see the header of
-each file, and https://www.apache.org/licenses/LICENSE-2.0):
+each file; the licence's text is in LICENSES/Apache-2.0.txt at the top of
+the iRice repository, and at https://www.apache.org/licenses/LICENSE-2.0):
 
   nearby/   https://github.com/google/nearby   (Nearby Connections and
             Nearby Sharing wire formats)

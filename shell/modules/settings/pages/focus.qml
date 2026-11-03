@@ -28,7 +28,7 @@ Column {
 
     Group {
         width: parent.width
-        footer: "Click a mode to edit it. Turn modes on from Control Center or the menu bar."
+        footer: "Click a mode to edit it. Turn modes on from Quick Settings or the menu bar."
         Repeater {
             model: Focus.modes
             Row {

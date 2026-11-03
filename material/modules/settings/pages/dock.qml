@@ -14,7 +14,7 @@ Column {
 
     Group {
         width: parent.width
-        footer: root.on ? "" : "The App Library stays on Super+Shift+Space, and windows use the space at the bottom."
+        footer: root.on ? "" : "The App Drawer stays on Super+Shift+Space, and windows use the space at the bottom."
         Row {
             label: "Show the dock"
             Switch { checked: Config.options.dock.enabled; onToggled: Config.options.dock.enabled = !checked }
@@ -39,7 +39,7 @@ Column {
         }
         Row {
             label: "Apps button"
-            detail: "Opens the App Library (also Super+Shift+Space)"
+            detail: "Opens the App Drawer (also Super+Shift+Space)"
             Switch { checked: Config.options.dock.appsButton; onToggled: Config.options.dock.appsButton = !checked }
         }
         Row {
@@ -136,7 +136,7 @@ Column {
                 }
             }
             Row {
-                label: "App names in the app drawer"
+                label: "App names in the App Drawer"
                 detail: "Off shows only the icons"
                 Switch { checked: Config.options.dock.appNames ?? true; onToggled: Config.options.dock.appNames = !checked }
             }

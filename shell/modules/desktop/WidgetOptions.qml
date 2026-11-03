@@ -46,7 +46,7 @@ Variants {
 
             readonly property string kind: Panels.widgetOptionsKind
             readonly property var cfg: Config.options.desktop
-            readonly property string title: ({ photos: "Photos", worldClock: "World Clock", stocks: "Stocks", stack: "Smart Stack", system: "System" })[kind] ?? "Widget"
+            readonly property string title: ({ photos: "Photos", worldClock: "World Clock", stocks: "Stocks", stack: "Widget Stack", system: "System" })[kind] ?? "Widget"
             onShownChanged: if (shown) Qt.callLater(() => (field.visible ? field : done).forceActiveFocus())
 
             Column {
@@ -119,7 +119,7 @@ Variants {
                         anchors { left: parent.left; right: rotateSwitch.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
                         spacing: 2
                         Label { text: "Smart Rotate" }
-                        Hint { text: "Brings forward what matters now: music, the next event, a low battery. For every Smart Stack." }
+                        Hint { text: "Brings forward what matters now: music, the next event, a low battery. For every Widget Stack." }
                     }
                     Switch {
                         id: rotateSwitch
@@ -142,7 +142,7 @@ Variants {
                         current: Math.max(0, ["area", "bars", "line"].indexOf(Config.options.resources.graphStyle))
                         onSelected: i => Config.options.resources.graphStyle = ["area", "bars", "line"][i]
                     }
-                    Hint { text: "Also how the island, the menu bar's popovers and Control Center draw CPU, memory and network." }
+                    Hint { text: "Also how the island, the menu bar's popovers and Quick Settings draw CPU, memory and network." }
                 }
 
                 Item {

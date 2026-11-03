@@ -228,6 +228,8 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 
 ## 6. Licence checklist
 
+**Status (3 Nov 2026):** iRice is now GPL-3.0-or-later (`LICENSE`), with `THIRD_PARTY_NOTICES.md` and the licence texts in `LICENSES/`; the MaterialColor.js path and the Material Symbols modification notice are fixed. The Material sound pack's source is still unknown (PENDING.md).
+
 | Item | Licence | In the repo | What it needs | Status |
 |---|---|---|---|---|
 | **iRice itself** | none | no `LICENSE` at the root; the README states none | choose a licence (GPL-3.0, to match end4 and Hyprland plugins, or MIT/BSD) | **Missing (L2)** |
@@ -256,6 +258,8 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 ---
 
 ## 7. Trademarks
+
+**Status (3 Nov 2026):** the features below are renamed (mapping in CHANGELOG.md), and `tests/test_trademarks.py` keeps the old names out of user-facing text.
 
 **The rule you set.** The repo documents "no Google in look names" (`docs/material-look.md:17-18`) and "no company logos in the menu icon picker" (`CHANGELOG.md:103`). A general "no company trademarks in UI names" rule isn't written down anywhere; consider adding it to `docs/`.
 

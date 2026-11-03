@@ -111,7 +111,7 @@ class Scripted(unittest.TestCase):
 class Progress(unittest.TestCase):
     """install.sh's output (no colours: it isn't a terminal) as steps."""
     OUTPUT = """
-iRice  macOS Tahoe for Hyprland
+iRice  A glass desktop for Hyprland
 
 [1/14] Checking your system
   System: Arch Linux, x86_64
@@ -127,7 +127,7 @@ iRice  macOS Tahoe for Hyprland
   ! Skipped (optional).
 [✓] Checking the result
   ✓ Hyprland 0.56.2
-  ! The Liquid Glass plugin isn't built (glass looks frosted)
+  ! The glass plugin isn't built (glass looks frosted)
       → irice rebuild
   ✓ App icons: the apps' own, styled by iRice
 
@@ -147,7 +147,7 @@ iRice is installed, with problems above.
         self.assertEqual(states, [("Checking your system", "ok"), ("Safety snapshot", "ok"), ("Installing packages", "ok"),
                                   ("For this computer (optional)", "ok"), ("Installing iRice", "skipped"),
                                   ("Checking the result", "failed")])
-        self.assertIn(("!", "The Liquid Glass plugin isn't built (glass looks frosted)"), ins.checks)
+        self.assertIn(("!", "The glass plugin isn't built (glass looks frosted)"), ins.checks)
         self.assertIn("Fingerprint: Broadcom ControlVault 3 didn't finish (see above); the rest goes on.", ins.warnings)
         self.assertEqual(ins.result, "iRice is installed, with problems above.")
         from rich.console import Console

@@ -500,7 +500,7 @@ show_plan() {
     else
         plan_row Hardware "nothing chosen"
     fi
-    plan_row Builds "shaders, the Liquid Glass plugin and native helpers, for this machine ($DATA/irice)"
+    plan_row Builds "shaders, the glass plugin and native helpers, for this machine ($DATA/irice)"
     plan_row Files "$CONFIG/quickshell/irice and $CONFIG/hypr (the current ones copied to $DATA/irice/backups first;"
     plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-irice), $BIN/irice"
     [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
@@ -560,7 +560,7 @@ preflight() {
         if [[ -n "$repo_hv" ]] && ! hypr_tested "$repo_hv"; then
             warn "Your repositories have Hyprland $repo_hv; this iRice is tested with $HYPR_MAX."
             note "Installing updates the whole system, Hyprland included (Arch doesn't support holding one"
-            note "package back). Most of iRice works; the Liquid Glass plugin or some settings may not until"
+            note "package back). Most of iRice works; the glass plugin or some settings may not until"
             note "an iRice update supports $repo_hv (irice update, or Settings → Software Update)."
             ask "Continue with Hyprland $repo_hv anyway?" y ||
                 die "Stopped: nothing was changed. Run the installer again once iRice supports Hyprland $repo_hv."
@@ -823,7 +823,7 @@ build() {
     # rebuilt after Hyprland updates (irice rebuild, or Settings).
     say "  Compiling shaders…"
     run "$ROOT/tools/build-shaders.sh" || return 1
-    say "  Building the Liquid Glass plugin for Hyprland $(hypr_version)…"
+    say "  Building the glass plugin for Hyprland $(hypr_version)…"
     run mkdir -p "$DATA/irice/src/tools" "$DATA/irice/src/hypr"
     run rm -rf "$DATA/irice/src/hypr/plugin"
     run cp -r "$ROOT/hypr/plugin" "$DATA/irice/src/hypr/plugin"
@@ -1159,7 +1159,7 @@ verify() {
     [[ ${#missing[@]} == 0 ]] && ok "Core tools" || bad "Missing: ${missing[*]}" "run the installer again (it installs them)"
     missing=()
     for c in qalc rg plocate pdftoppm swappy matugen tesseract wf-recorder magick; do command -v "$c" >/dev/null || missing+=("$c"); done
-    [[ ${#missing[@]} == 0 ]] && ok "Feature tools (conversions, search, Quick Look, markup, app colours)" || meh "Some features are off; missing: ${missing[*]}"
+    [[ ${#missing[@]} == 0 ]] && ok "Feature tools (conversions, search, Quick Preview, markup, app colours)" || meh "Some features are off; missing: ${missing[*]}"
     # Shell files, shaders
     if [[ -f "$CONFIG/quickshell/irice/shell.qml" ]]; then
         local frag qsb
@@ -1173,12 +1173,12 @@ verify() {
     local so="$DATA/irice/irice-glass.so"
     if [[ -f "$so" ]] && [[ -n "$(nm -D "$so" 2>/dev/null | grep -E "pluginInit|PLUGIN_INIT")" ]]; then
         if [[ "$(cat "$DATA/irice/irice-glass.built-for" 2>/dev/null)" == "$hv" ]]; then
-            ok "Liquid Glass plugin built for Hyprland $hv"
+            ok "Glass plugin built for Hyprland $hv"
         else
             meh "The glass plugin was built for another Hyprland version" "irice rebuild (until then glass looks frosted)"
         fi
     else
-        meh "The Liquid Glass plugin isn't built (glass looks frosted)" "irice rebuild"
+        meh "The glass plugin isn't built (glass looks frosted)" "irice rebuild"
     fi
     # Hyprland config: Hyprland checks it itself
     if [[ -f "$CONFIG/hypr/hyprland.lua" ]]; then
@@ -1253,13 +1253,13 @@ fi
 
 cat <<EOF
 
-${B}iRice${R}  macOS Tahoe for Hyprland
+${B}iRice${R}  A glass desktop for Hyprland
 
 This sets up iRice on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
   • takes a snapshot first, when snapper or Timeshift is set up
   • installs Hyprland, Quickshell and everything iRice uses (pacman; updates the system)
   • what this computer's hardware is missing, if you like (firmware, drivers, biometrics)
-  • builds the Liquid Glass plugin and shaders for this machine
+  • builds the glass plugin and shaders for this machine
   • installs the shell and its Hyprland config (yours is backed up first)
   • sets up the login screen, services and, if you like, apps and icons
   • checks that everything works

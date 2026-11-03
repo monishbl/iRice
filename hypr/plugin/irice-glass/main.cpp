@@ -1,4 +1,5 @@
-// irice-glass: Liquid Glass for iRice, drawn by Hyprland itself.
+// SPDX-License-Identifier: GPL-3.0-or-later
+// irice-glass: iRice's glass, drawn by Hyprland itself.
 //
 // The shell tells the plugin where its glass shapes are (per monitor and
 // layer namespace) with `hyprctl irice-glass ...`. When Hyprland draws one of
@@ -779,7 +780,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         p.last = now;
     });
     g_cmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "irice-glass", .exact = false, .fn = onCommand});
-    return {"irice-glass", "Liquid Glass for the iRice shell", "iRice", "1.0"};
+    return {"irice-glass", "Glass for the iRice shell", "iRice", "1.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

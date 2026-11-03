@@ -171,7 +171,7 @@ Column {
             Row {
                 visible: Backends.ppd
                 label: "Game Mode uses Performance"
-                detail: PowerProfiles.hasPerformanceProfile ? "While Game Mode is on (Control Center)" : "This computer has no Performance mode"
+                detail: PowerProfiles.hasPerformanceProfile ? "While Game Mode is on (Quick Settings)" : "This computer has no Performance mode"
                 enabled: PowerProfiles.hasPerformanceProfile
                 Switch { checked: page.cfg.gamePerformance; onToggled: Config.options.power.gamePerformance = !checked }
             }

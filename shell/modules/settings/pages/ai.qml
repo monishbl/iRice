@@ -77,7 +77,7 @@ Column {
     Group {
         width: parent.width
         title: "Your models"
-        footer: "Add the model IDs available on your provider account. Only your saved models appear in the sidebar and Spotlight."
+        footer: "Add the model IDs available on your provider account. Only your saved models appear in the sidebar and Search."
         Row {
             label: "Selected model"
             detail: Ai.configured ? Ai.providerName : "Add your first model below"

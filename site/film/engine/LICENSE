@@ -27,6 +27,3 @@ Third-party files keep their own licences:
 - engine/fonts/Geist-Variable.woff2, GeistMono-Variable.woff2: SIL Open Font
   License 1.1, copyright Vercel in collaboration with basement.studio
   (engine/fonts/OFL-Geist.txt).
-- references/analyses/*.md describe and comment on films owned by their
-  makers. They contain no footage or frames. The films, names and trademarks
-  belong to their owners; see references/README.md.

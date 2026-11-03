@@ -43,7 +43,7 @@ QtObject {
             mirroring: { label: Mirroring.active ? Mirroring.targetName : "Screen Mirroring", kind: "toggle", sizes: ["2x1", "1x1"], icon: "screencast", on: Mirroring.active, status: Mirroring.active ? (Mirroring.state_ === "streaming" ? "Mirroring" : "Connecting…") : "", available: Mirroring.available, reason: "Needs GNOME Network Displays", page: "mirroring", act: () => Mirroring.active ? Mirroring.stop() : Panels.ccPage = "mirroring" },
             captions: { label: "Live Captions", kind: "toggle", sizes: ["1x1", "2x1"], icon: "closed-captioning", on: Captions.enabled, status: Captions.enabled ? "On" : "", act: () => Captions.ready || Captions.enabled ? Captions.toggle() : Panels.openSettings("accessibility") },
             keepAwake: { label: "Caffeine", kind: "toggle", sizes: ["1x1", "2x1"], icon: "coffee", on: System.keepAwake, status: System.keepAwakeStatus, page: "caffeine", act: () => System.setKeepAwake(!System.keepAwake, 0) },
-            stageManager: { label: "Stage Manager", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
+            stageManager: { label: "Stages", kind: "toggle", sizes: ["1x1", "2x1"], icon: "squares-four", on: Config.options.stageManager.enabled, status: "", act: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
             mic: { label: "Microphone", kind: "toggle", sizes: ["1x1", "2x1"], icon: Audio.micMuted ? "microphone-slash" : "microphone", on: !Audio.micMuted, status: Audio.micMuted ? "Muted" : "On", act: () => Audio.toggleMic(true) },
             lowPower: { label: "Low Power", kind: "toggle", sizes: ["1x1", "2x1"], available: Backends.ppd, reason: Backends.powerShort, icon: "leaf", on: PowerProfiles.profile === PowerProfile.PowerSaver, status: "", act: () => Power.setMode(PowerProfiles.profile === PowerProfile.PowerSaver ? "balanced" : "power-saver") },
             coolDown: { label: "Cool-down", kind: "toggle", sizes: ["1x1", "2x1"], icon: "snowflake", on: CoolDown.active, status: CoolDown.why, act: () => CoolDown.toggle() },
@@ -60,7 +60,7 @@ QtObject {
             calculator: { label: "Calculator", kind: "action", sizes: ["1x1", "2x1"], icon: "calculator", act: () => { Panels.close(); Launch.run(["sh", "-c", "gnome-calculator || qalculate-gtk || kcalc || galculator"]); } },
             timer: { label: "Timer", kind: "action", sizes: ["1x1", "2x1"], icon: "timer", act: () => { Panels.ncTab = 2; Panels.show("notificationCenter"); } },
             tileWindows: { label: "Tile Left & Right", kind: "action", sizes: ["2x1", "1x1"], icon: "square-split-horizontal", act: () => { Panels.close(); Tiling.arrange("leftRight"); } },
-            appLibrary: { label: "App Library", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
+            appLibrary: { label: "App Drawer", kind: "action", sizes: ["1x1", "2x1"], icon: "squares-four", act: () => Panels.show("launchpad") },
             display: { label: "Display", kind: "slider", sizes: ["4x1", "1x2"], icon: "sun", available: Brightness.available, reason: "No adjustable display brightness" },
             sound: { label: "Sound", kind: "slider", sizes: ["4x1", "1x2"], icon: Audio.icon, page: "sound" },
             // (only in Edit Controls to begin with: not in the default layout)

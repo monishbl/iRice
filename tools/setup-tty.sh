@@ -84,7 +84,7 @@ fi
 
 say "Building the glass shaders…"
 "$ROOT/tools/build-shaders.sh" || { echo "The shaders didn't build (needs qt6-shadertools)."; exit 1; }
-say "Building the Liquid Glass plugin for Hyprland $(pkg-config --modversion hyprland 2>/dev/null)…"
+say "Building the glass plugin for Hyprland $(pkg-config --modversion hyprland 2>/dev/null)…"
 make -C "$ROOT/hypr/plugin/irice-glass" -s || echo "The glass plugin didn't build: glass falls back to frosted. Check the Hyprland headers (hyprland package), then run this again."
 say "Building the native helpers…"
 "$ROOT/shell/native/build.sh" >/dev/null || echo "Native helpers skipped: the shell uses its slower fallbacks."

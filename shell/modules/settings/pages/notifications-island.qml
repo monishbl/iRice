@@ -8,7 +8,7 @@ Column {
     id: page
     width: parent?.width ?? 0
     spacing: 22
-    readonly property string pageTitle: "Dynamic island"
+    readonly property string pageTitle: "Island"
 
     readonly property var mb: Config.options.menubar
     function toggleIn(list, id) {
@@ -27,10 +27,10 @@ Column {
 
     Group {
         width: parent.width
-        title: "Dynamic island"
+        title: "Island"
         footer: "The spaces at the top centre become an island: it widens for something ongoing (music, a timer, recording) and springs open for a moment when something happens. Point at it to see what's live."
         Row {
-            label: "Dynamic island"
+            label: "Island"
             Switch { checked: Config.options.island.enabled; onToggled: Config.options.island.enabled = !checked }
         }
         Row {
@@ -75,7 +75,7 @@ Column {
     MoreOptions {
         Group {
             width: parent.width
-            title: "Dynamic island"
+            title: "Island"
             Row {
                 visible: Config.options.island.enabled
                 label: "When several are live"

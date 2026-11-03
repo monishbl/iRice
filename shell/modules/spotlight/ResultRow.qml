@@ -88,7 +88,7 @@ Squircle {
         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
         icon: "eye"
         iconColor: root.selected ? Theme.color.onAccent : Theme.color.secondary
-        tooltip: "Quick Look"
+        tooltip: "Quick Preview"
         onClicked: Panels.quickLook(root.result.path)
     }
 }

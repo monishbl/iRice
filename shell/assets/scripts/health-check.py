@@ -175,7 +175,7 @@ def check_bluetooth(_):
             if c == 0 and bus_value(v) is True:
                 return result("bluetooth", name, "Network & sharing", "ok", "On")
         return result("bluetooth", name, "Network & sharing", "off", "Off. Quick Share needs it to find phones without Wi-Fi",
-                      "Turn it on in Control Center or Settings → Bluetooth")
+                      "Turn it on in Quick Settings or Settings → Bluetooth")
     if not any(os.path.exists(os.path.join(SYSTEM, d, "bluetooth/bluetoothd")) for d in ("usr/lib", "usr/libexec")) and \
             not shutil.which("bluetoothd"):
         r = result("bluetooth", name, "Network & sharing", "fail", "BlueZ (the Bluetooth service) isn't installed",
@@ -434,11 +434,11 @@ def check_plugin(_):
     if code == 0 and m:
         n = int(m.group(1))
         if n >= PLUGIN_VERSION:
-            return result("plugin", "Liquid Glass plugin", "iRice itself", "ok", f"Loaded (version {n})")
-        return result("plugin", "Liquid Glass plugin", "iRice itself", "warn",
+            return result("plugin", "Glass plugin", "iRice itself", "ok", f"Loaded (version {n})")
+        return result("plugin", "Glass plugin", "iRice itself", "warn",
                       f"An older build is loaded (version {n}): pointer and focus fixes need the new one",
                       "Run Software Update, or rebuild it: irice rebuild plugin; then log out and in")
-    return result("plugin", "Liquid Glass plugin", "iRice itself", "fail", "Not loaded: glass falls back to frosted",
+    return result("plugin", "Glass plugin", "iRice itself", "fail", "Not loaded: glass falls back to frosted",
                   "Settings → Appearance → Glass → Build plugin, or: irice rebuild plugin")
 
 

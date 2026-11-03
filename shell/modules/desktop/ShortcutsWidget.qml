@@ -12,7 +12,7 @@ Item {
     property bool preview: false
     property string widgetId: ""
     readonly property int slots: size === "s" ? 4 : 8
-    readonly property var defaults: ["Take Screenshot", "Toggle Dark Mode", "Lock Screen", "Clipboard History", "Record Screen", "Mission Control", "App Library", "System Settings"]
+    readonly property var defaults: ["Take Screenshot", "Toggle Dark Mode", "Lock Screen", "Clipboard History", "Record Screen", "All Windows", "App Drawer", "System Settings"]
     readonly property var chosen: (UiState.data.shortcutButtons[widgetId] ?? defaults)
     // Short labels for the buttons (the menu keeps the full names)
     readonly property var shortNames: ({ "Take Screenshot": "Screen\u00ADshot", "Toggle Dark Mode": "Dark Mode", "Lock Screen": "Lock", "Clipboard History": "Clip\u00ADboard", "Record Screen": "Record", "System Settings": "Settings", "Copy Text from Screen": "Copy Text", "Ask AI About the Screen": "Ask AI", "On-Screen Keyboard": "Keyboard", "Keyboard Shortcuts": "Shortcuts", "Notification Center": "Notifications", "Check for Updates": "Updates", "Change Wallpaper": "Wallpaper", "Overlay Widgets": "Overlay" })

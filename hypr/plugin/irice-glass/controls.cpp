@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Window controls drawn by Hyprland: a small pill at the top centre of every
 // window. Hover it and it grows into close, minimize and zoom. Because the
 // compositor draws it as part of the window, it moves with the window on the

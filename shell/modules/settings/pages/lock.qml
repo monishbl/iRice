@@ -23,7 +23,7 @@ Column {
         footer: Config.options.lock.layout === "macos" ? "The clock up top; your picture, name and the password field at the bottom." : "A large clock with small widgets, Now Playing and your notifications, like iPhone."
         Row {
             label: "Layout"
-            Choice { key: "layout"; values: ["ios", "macos"]; options: ["iOS", "macOS"] }
+            Choice { key: "layout"; values: ["ios", "macos"]; options: ["Widgets", "Classic"] }
         }
         Row {
             label: "Notifications"
@@ -39,10 +39,10 @@ Column {
 
     Group {
         width: parent.width
-        title: "StandBy"
+        title: "Bedside Mode"
         footer: "While charging and left alone, the screen shows a large clock, your widgets or photos instead of going dark. Swipe or scroll to change; any key brings your desktop back."
         Row {
-            label: "StandBy"
+            label: "Bedside Mode"
             Switch { checked: Config.options.lock.standby; onToggled: Config.options.lock.standby = !checked }
         }
     }
@@ -102,7 +102,7 @@ Column {
         }
         Group {
             width: parent.width
-            title: "StandBy"
+            title: "Bedside Mode"
             Row {
                 label: "Prevent burn-in"
                 detail: "Moves the clock every minute and turns the screen dark for a minute every 15 minutes"
@@ -148,7 +148,7 @@ Column {
                 Choice { key: "lockTransition"; values: ["zoom", "fade", "none"]; options: ["Zoom", "Fade", "None"]; width: 240 }
             }
             Row {
-                label: "Into StandBy"
+                label: "Into Bedside Mode"
                 detail: Config.options.lock.standbyTransition === "morph" ? "The clock glides into place and thins" : ""
                 enabled: Config.options.lock.standby
                 Choice { key: "standbyTransition"; values: ["morph", "fade", "none"]; options: ["Morph", "Fade", "None"]; width: 240 }
@@ -160,8 +160,8 @@ Column {
             width: parent.width
             visible: Quickshell.screens.length > 1
             enabled: Config.options.lock.standby
-            title: "StandBy on displays"
-            footer: "Displays that are off stay dark while StandBy shows."
+            title: "Bedside Mode on displays"
+            footer: "Displays that are off stay dark while Bedside Mode shows."
             Row {
                 label: "Same clock position"
                 detail: "Every display moves its clock to the same spot"

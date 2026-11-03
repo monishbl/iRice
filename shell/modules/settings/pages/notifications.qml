@@ -20,7 +20,7 @@ Column {
         width: parent.width
         SubpageLink {
             icon: "pill"
-            label: "Dynamic island"
+            label: "Island"
             detail: "Live activities, alerts, the music player and what shows when you point at it"
             value: Config.options.island.enabled ? "On" : "Off"
             page: "notifications/island"
@@ -173,7 +173,7 @@ Column {
         }
         Group {
             width: parent.width
-            footer: "Without it, notifications and the calendar, to-do and focus widgets are each their own piece of glass, like Control Center's controls."
+            footer: "Without it, notifications and the calendar, to-do and focus widgets are each their own piece of glass, like the controls in Quick Settings."
             Row {
                 label: "Notification Center panel"
                 Switch { checked: Config.options.notificationCenter.background; onToggled: Config.options.notificationCenter.background = !checked }

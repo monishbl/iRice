@@ -14,7 +14,7 @@ Column {
 
     // The look: a picture of the desktop in each. Choosing one restarts the
     // shell in that look behind the switching screen (switch-look.sh)
-    readonly property string lookDetail: "Material 3 Expressive (experimental): tonal colour from your wallpaper, bold shapes, springy motion. Switching restarts the shell; apps keep running."
+    readonly property string lookDetail: "Material (experimental), after Google's Material 3 Expressive: tonal colour from your wallpaper, bold shapes, springy motion. Switching restarts the shell; apps keep running."
     function choose(look) {
         if (Config.options.appearance.look === look)
             return;
@@ -340,7 +340,7 @@ Column {
             }
             Row {
                 label: "Emoji"
-                detail: EmojiFont.available ? "In the emoji picker (Super+.) and Spotlight" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Android's until it is"
+                detail: EmojiFont.available ? "In the emoji picker (Super+.) and Search" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Noto until it is"
                 Flow { // (Row here is the settings row)
                     spacing: 8
                     width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
@@ -368,7 +368,7 @@ Column {
                     Segmented {
                         width: 300
                         readonly property var values: ["android", "apple", "windows"]
-                        options: ["Android", "Apple", "Windows"]
+                        options: ["Noto", "Apple", "Fluent"]
                         current: Math.max(0, values.indexOf(EmojiFont.style))
                         onSelected: i => Config.options.emoji.style = values[i]
                     }
@@ -428,7 +428,7 @@ Column {
             Row {
                 id: iconThemeRow
                 label: "Icon theme"
-                detail: "App icons in the dock, App Library, Spotlight and Overview. Changing it restarts the shell; apps keep running."
+                detail: "App icons in the dock, App Drawer, Search and Overview. Changing it restarts the shell; apps keep running."
                 // Installed icon themes (not cursor themes)
                 property var themes: []
                 Process {

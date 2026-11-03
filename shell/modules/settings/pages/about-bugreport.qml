@@ -140,7 +140,7 @@ Column {
         footer: "Only what's on is sent. Home folders, your user and computer names, email addresses, keys, IP and MAC addresses, and the names of your Wi-Fi networks and Bluetooth devices are taken out of the log and system info first."
         Row {
             label: "Screenshot"
-            detail: !BugReport.hasShot ? "None was taken. Open this page with the Report a bug shortcut or Spotlight to include one" : "The screen when you started the report. Mark it up to hide anything private"
+            detail: !BugReport.hasShot ? "None was taken. Open this page with the Report a bug shortcut or Search to include one" : "The screen when you started the report. Mark it up to hide anything private"
             QQ.Row {
                 spacing: 8
                 SettingsButton {
