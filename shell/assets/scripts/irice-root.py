@@ -11,7 +11,12 @@ Without a password, for an administrator (wheel) at this computer
   wallpaper <path>   copies one image (JPEG, PNG or WebP, up to 64 MB, read
                      as you) to /usr/share/irice/wallpaper.jpg, the login
                      screen's copy
-  fix <id>           one of the fixed fixes below (system services, the
+  login-look <json>  the login screen's look (Settings → Lock Screen → Login
+                     screen) as /usr/share/irice/greeter.json, which it can
+                     read (your home it can't): a style, the look, light or
+                     dark, Material's colours and the clock's style, each
+                     checked against its few values; nothing else is taken
+  fix <id>          one of the fixed fixes below (system services, the
                      firewall, Bluetooth's pairing prompts); nothing
                      free-form ever runs
   wifi-helper        Quick Share's Wi-Fi helper (qs-wifi-helper.py, next to
@@ -63,6 +68,10 @@ With the password, once, at the start:
       or off; on also writes the submenu now
   setup <shell folder>
       the same files as --setup, on their own (install.sh, with sudo)
+      Both also refresh the login screen's own copy of iRice
+      (/usr/share/irice/shell and material, and greeter.lua; only where
+      ./install.sh --greeter made one) from the same version: the shell
+      folder's checkout, or the update's staged one (<folder>/tree)
 
 Files are read as you (the person who started pkexec or sudo), never as
 root: a symlink in your home can't make root read anything you can't.
@@ -83,7 +92,9 @@ import time
 
 LIB = "/usr/lib/irice"
 PACMAN = "/usr/bin/pacman"
-LOGIN_WALLPAPER = "/usr/share/irice/wallpaper.jpg"
+LOGIN_SHARE = "/usr/share/irice"  # the login screen's (./install.sh --greeter)
+LOGIN_WALLPAPER = LOGIN_SHARE + "/wallpaper.jpg"
+LOGIN_LOOK = LOGIN_SHARE + "/greeter.json"
 MAX_IMAGE = 64 * 1024 * 1024
 MAX_SOURCE = 1024 * 1024
 PREFIX = "/"  # where FILES go (tests: a folder)
@@ -582,6 +593,163 @@ def wallpaper(path, uid, dest=LOGIN_WALLPAPER):
     write_root(dest, data, 0o644)
 
 
+# ── login-look: what the login screen looks like ──────────────────────
+LOOK_CHOICES = {
+    "style": ("look", "text", "plain"),
+    "look": ("glass", "material"),
+    "mode": ("dark", "light"),
+    "materialStyle": ("tonalSpot", "vibrant", "expressive", "neutral", "content", "fidelity", "monochrome"),
+    "clockFace": ("dynamic", "stacked", "wide", "overlap", "analog", "weather"),
+}
+LOOK_RANGES = {"clockWeight": (100, 1000), "clockWidth": (25, 151)}
+LOOK_KEYS = set(LOOK_CHOICES) | set(LOOK_RANGES) | {"seed", "clockRound"}
+SEED = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def check_login_look(text):
+    """The look, as JSON with exactly LOOK_KEYS, each one of its values."""
+    if not isinstance(text, str) or len(text) > 2048:
+        raise Refused("give the look as one short JSON object")
+    try:
+        d = json.loads(text)
+    except ValueError:
+        raise Refused("that isn't JSON") from None
+    if not isinstance(d, dict) or set(d) != LOOK_KEYS:
+        raise Refused("give exactly: " + ", ".join(sorted(LOOK_KEYS)))
+    for k, values in LOOK_CHOICES.items():
+        if not isinstance(d[k], str) or d[k] not in values:
+            raise Refused(f"{k} is one of: " + ", ".join(values))
+    for k, (lo, hi) in LOOK_RANGES.items():
+        if type(d[k]) is not int or not lo <= d[k] <= hi:
+            raise Refused(f"{k} is a whole number from {lo} to {hi}")
+    if not isinstance(d["seed"], str) or not SEED.match(d["seed"]):
+        raise Refused("seed is a colour as #rrggbb")
+    if type(d["clockRound"]) is not bool:
+        raise Refused("clockRound is true or false")
+    return d
+
+
+def login_look(text, dest=LOGIN_LOOK):
+    d = check_login_look(text)
+    folder = os.path.dirname(dest)
+    if not os.path.isdir(folder) or os.path.islink(folder):
+        raise Refused("the iRice login screen isn't installed (./install.sh --greeter)")
+    # (one line, keys sorted: the shell compares it with what it would send)
+    write_root(dest, json.dumps(d, sort_keys=True, separators=(",", ":")).encode(), 0o644)
+
+
+# ── The login screen's copy of iRice (setup) ──────────────────────────
+TREE_SKIP = {".git", "__pycache__", "build", "node_modules"}
+MAX_TREE_FILE = 32 * 1024 * 1024
+MAX_TREE = 256 * 1024 * 1024
+MAX_TREE_FILES = 20000
+VM_MARK = b"\n-- virtual machine ("  # (what install.sh adds to greeter.lua in one)
+
+
+def login_tree(src):
+    """The checkout the login screen's copy comes from: the shell folder's
+    own (install.sh, setup) or the update's staged one, else None."""
+    src = src.rstrip("/")
+    if os.path.isfile(os.path.join(src, "shell.qml")):
+        return os.path.dirname(src)
+    staged = os.path.join(src, "tree")
+    if os.path.isfile(os.path.join(staged, "shell", "shell.qml")):
+        return staged
+    return None
+
+
+def read_tree(top, uid=None):
+    """{relative path: (bytes, mode)} of a folder's regular files (links,
+    devices and TREE_SKIP folders left out), read as uid when one's given."""
+    out, total = {}, 0
+    with as_user(uid) if uid is not None else contextlib.nullcontext():
+        for d, dirs, names in os.walk(top):
+            dirs[:] = sorted(x for x in dirs if x not in TREE_SKIP and not os.path.islink(os.path.join(d, x)))
+            for n in sorted(names):
+                p = os.path.join(d, n)
+                st = os.lstat(p)
+                if n.endswith(".pyc") or st.st_mode & 0o170000 != 0o100000:
+                    continue
+                if uid is not None:
+                    data = read_as(uid, p, MAX_TREE_FILE)
+                else:
+                    with open(p, "rb") as f:
+                        data = f.read()
+                total += len(data)
+                if total > MAX_TREE or len(out) >= MAX_TREE_FILES:
+                    raise Refused(f"{top} is too big for the login screen's copy")
+                out[os.path.relpath(p, top)] = (data, 0o755 if st.st_mode & 0o111 else 0o644)
+    return out
+
+
+def write_tree(files, dest):
+    """Puts files ({path: (bytes, mode)}) at dest whole: built next to it,
+    then swapped in, so the login screen never starts from half a copy."""
+    new, old = dest + ".new", dest + ".old"
+    for p in (new, old):
+        if os.path.islink(p):
+            os.unlink(p)
+        shutil.rmtree(p, ignore_errors=True)
+    os.makedirs(new, mode=0o755)
+    for rel, (data, mode) in files.items():
+        p = os.path.join(new, rel)
+        os.makedirs(os.path.dirname(p), mode=0o755, exist_ok=True)
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, mode)
+        try:
+            os.fchmod(fd, mode)
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+    if os.path.islink(dest):
+        os.unlink(dest)
+    elif os.path.exists(dest):
+        os.rename(dest, old)
+    os.rename(new, dest)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def refresh_login(src, uid, prefix=None):
+    """The login screen's copy of iRice, from the same checkout as setup's
+    files, where ./install.sh --greeter made one. Returns what it wrote."""
+    prefix = PREFIX if prefix is None else prefix
+    share = os.path.join(prefix, LOGIN_SHARE.lstrip("/"))
+    if os.path.islink(share) or os.path.islink(os.path.join(share, "shell")) or not os.path.isdir(os.path.join(share, "shell")):
+        return []
+    repo = login_tree(src)
+    if repo is None:
+        return []
+    written = []
+    for name in ("shell", "material"):
+        top = os.path.join(repo, name)
+        if not os.path.isfile(os.path.join(top, "shell.qml")):
+            continue  # (a version without the Material look)
+        files = read_tree(top, uid)
+        dest = os.path.join(share, name)
+        try:
+            same = os.path.isdir(dest) and not os.path.islink(dest) and read_tree(dest) == files
+        except (OSError, Refused):
+            same = False
+        if not same:
+            write_tree(files, dest)
+            written.append(dest)
+    lua = os.path.join(repo, "hypr", "greeter.lua")
+    if os.path.isfile(lua):
+        data = read_as(uid, lua, MAX_SOURCE)
+        dest = os.path.join(share, "greeter.lua")
+        try:
+            with open(dest, "rb") as f:
+                before = f.read()
+        except OSError:
+            before = b""
+        # (a virtual machine's software cursor, which install.sh added, stays)
+        i = before.find(VM_MARK)
+        data = data.rstrip(b"\n") + b"\n" + (before[i:] if i >= 0 else b"")
+        if data != before:
+            write_root(dest, data, 0o644)
+            written.append(dest)
+    return written
+
+
 # ── fix ─────────────────────────────────────────────────────────────────
 def fix_command(id):
     if id not in FIXES:
@@ -617,6 +785,7 @@ def setup(src, uid, prefix=None, run=subprocess.run):
         if not same:
             write_root(dest, data, mode)
             written.append(dest)
+    written += refresh_login(src, uid, prefix)
     # ananicy-cpp reads its rules as it starts
     if prefix == "/" and any(d.startswith("/etc/ananicy.d/") for d in written):
         with contextlib.suppress(OSError, subprocess.SubprocessError):
@@ -893,6 +1062,9 @@ def main(argv):
         if cmd == "wallpaper" and len(args) == 1:
             wallpaper(args[0], uid)
             return 0
+        if cmd == "login-look" and len(args) == 1:
+            login_look(args[0])
+            return 0
         if cmd == "fix" and len(args) == 1:
             c = fix_command(args[0])
             os.execvp(c[0], c)
@@ -922,7 +1094,7 @@ def main(argv):
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
-        raise Refused("usage: irice-root wallpaper <path> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
+        raise Refused("usage: irice-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
                       "quickshare-trust on|off | "
                       "update … | setup <folder>")
     except Refused as e:

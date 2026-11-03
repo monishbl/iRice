@@ -722,7 +722,39 @@ login() {
         run sudo mkdir -p /usr/share/irice
         run sudo rm -rf /usr/share/irice/shell
         run sudo cp -r "$ROOT/shell" /usr/share/irice/shell
+        # (the Material look's files: its login screen is assembled from both)
+        run sudo rm -rf /usr/share/irice/material
+        if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/irice/material; fi
         run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/irice/greeter.lua
+        # Its look, from your settings (the shell keeps it up to date after:
+        # services/LoginScreen.qml, through irice-root login-look)
+        local look
+        look=$(python3 -I - "$CONFIG/irice/config.json" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    c = {}
+a, l = c.get("appearance", {}), c.get("lock", {})
+pick = lambda v, ok, d: v if v in ok else d
+whole = lambda v, lo, hi, d: v if type(v) is int and lo <= v <= hi else d
+seed = a.get("materialSeed", "")
+print(json.dumps({
+    "clockFace": pick(l.get("clockFace"), ("dynamic", "stacked", "wide", "overlap", "analog", "weather"), "dynamic"),
+    "clockRound": l.get("clockRound") if type(l.get("clockRound")) is bool else True,
+    "clockWeight": whole(l.get("clockWeight"), 100, 1000, 640),
+    "clockWidth": whole(l.get("clockWidth"), 25, 151, 112),
+    "look": pick(a.get("look"), ("glass", "material"), "glass"),
+    "materialStyle": pick(a.get("materialStyle"), ("tonalSpot", "vibrant", "expressive", "neutral", "content", "fidelity", "monochrome"), "tonalSpot"),
+    "mode": "light" if a.get("mode") == "light" else "dark",
+    "seed": seed if isinstance(seed, str) and len(seed) == 7 and seed.startswith("#") else "#6750A4",
+    "style": pick(l.get("loginStyle"), ("look", "text", "plain"), "look"),
+}, sort_keys=True, separators=(",", ":")))
+PY
+)
+        if [[ -n $look ]]; then
+            if [[ $DRY == 1 ]]; then note "would write /usr/share/irice/greeter.json"; else printf '%s' "$look" | sudo tee /usr/share/irice/greeter.json >/dev/null; fi
+        fi
         # In a virtual machine the login screen needs the software cursor too
         if [[ $VIRT != none && $DRY == 0 ]]; then
             printf '\n-- virtual machine (%s): software cursor\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" | sudo tee -a /usr/share/irice/greeter.lua >/dev/null

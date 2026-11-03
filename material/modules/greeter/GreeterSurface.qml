@@ -1,0 +1,431 @@
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+import qs.common
+import qs.modules.lock as LockUi
+
+// The Material login screen, as the Material lock screen (Android 17's):
+// your wallpaper, the lock's clock in the style you chose (its colours from
+// your palette: greeter-start.sh gives the greeter a config.json of them),
+// the date under it; at the bottom one account pill, your picture in a
+// cookie and your name, that springs open into the password field on a key
+// or a mouse move (the key typed is kept), the fingerprint glyph at its
+// end while a reader listens; 10 s untouched with nothing typed closes it.
+// Up and Down choose the person, Tab the session (the chip in the corner,
+// beside Sleep, Restart and Shut down, each asking to confirm).
+// Authentication goes through greetd (GreeterAuth).
+PanelWindow {
+    id: win
+    required property var auth
+    property bool primary: false
+    color: "black"
+    WlrLayershell.namespace: "irice-greeter"
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    anchors { top: true; bottom: true; left: true; right: true }
+
+    readonly property var m3: Theme.m3
+    readonly property var cfg: Config.options.lock
+    readonly property var person: auth.users[auth.user] ?? null
+    readonly property string wallpaper: Quickshell.env("IRICE_GREETER_WALLPAPER") || "/usr/share/irice/wallpaper.jpg"
+    // (the weather face would go online for it: the dynamic one instead)
+    readonly property string face: (cfg.clockFace ?? "dynamic") === "weather" ? "dynamic" : (cfg.clockFace ?? "dynamic")
+    property string powerChoice: ""
+
+    function nextUser(step) {
+        if (auth.busy || auth.users.length < 2)
+            return;
+        auth.user = (auth.user + auth.users.length + step) % auth.users.length;
+        input.text = "";
+    }
+    function nextSession() {
+        if (!auth.busy && auth.sessions.length)
+            auth.session = (auth.session + 1) % auth.sessions.length;
+    }
+    function submit() {
+        if (powerChoice) {
+            const action = powerChoice;
+            powerChoice = "";
+            if (auth.mock)
+                console.log("greeter (mock):", action);
+            else
+                Quickshell.execDetached(["systemctl", action]);
+        } else if (!auth.busy) {
+            auth.login(input.text);
+        }
+    }
+    function choosePower(action) {
+        if (auth.busy)
+            return;
+        if (powerChoice === action)
+            submit();
+        else
+            powerChoice = action;
+        input.forceActiveFocus();
+    }
+    onPrimaryChanged: if (primary) input.forceActiveFocus()
+    Connections {
+        target: win.auth
+        function onErrorChanged() {
+            if (win.auth.error) {
+                input.text = "";
+                shakeAnim.restart();
+            }
+        }
+        function onUserChanged() { input.text = ""; }
+    }
+    SystemClock { id: clock; precision: SystemClock.Minutes }
+
+    // The pill opens on a key or a mouse move and closes 10 s after the
+    // last one, unless something's typed (or being checked, or wrong)
+    property bool typing: false
+    readonly property bool open: typing || input.text !== "" || auth.busy || auth.error !== "" || powerChoice !== ""
+    property real openT: open ? 1 : 0
+    Behavior on openT {
+        SpringAnimation { spring: Theme.motion.springDefault.spring; damping: Theme.motion.springDefault.damping; epsilon: 0.002 }
+    }
+    function wake() {
+        typing = true;
+        idle.restart();
+    }
+    Timer {
+        id: idle
+        interval: 10000
+        onTriggered: win.typing = false
+    }
+
+    // The wallpaper, as on the lock screen
+    Image {
+        anchors.fill: parent
+        source: "file://" + win.wallpaper
+        fillMode: Image.PreserveAspectCrop
+        sourceSize: Qt.size(win.width, win.height)
+        asynchronous: true
+    }
+    Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, 0.12)
+    }
+    HoverHandler {
+        // (the first position isn't a move)
+        property point last: Qt.point(-1, -1)
+        onPointChanged: {
+            const p = point.position;
+            if (last.x >= 0 && (Math.abs(p.x - last.x) > 2 || Math.abs(p.y - last.y) > 2))
+                win.wake();
+            last = p;
+        }
+    }
+
+    // The clock and the date
+    Column {
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(win.height * 0.1) }
+        spacing: 20
+        LockUi.LockClock {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: implicitWidth
+            height: implicitHeight
+            face: win.face
+            time: clock.date
+            size: Math.round(Math.min(win.height * 0.15, win.width * 0.2))
+            weight: win.cfg.clockWeight ?? 640
+            widthAxis: win.cfg.clockWidth ?? 112
+            round: win.cfg.clockRound ?? true
+            color: win.m3.primaryFixed
+            color2: win.m3.primaryFixedDim
+            color3: win.m3.tertiaryFixed
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: Qt.formatDate(clock.date, "dddd d MMMM")
+            color: win.m3.secondaryFixed
+            font { family: Theme.font.family; pixelSize: 18; weight: Font.Medium }
+        }
+    }
+
+    // ── The account pill ────────────────────────────────────────────────
+    Column {
+        visible: win.primary
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Math.round(win.height * 0.06) }
+        spacing: 12
+
+        // What went wrong, a power choice to confirm, or the reader's words
+        Rectangle {
+            readonly property string say: win.powerChoice ? ({ suspend: "Sleep", reboot: "Restart", poweroff: "Shut down" })[win.powerChoice] + ": press Enter or click it again"
+                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is irice. Esc closes it." : "")
+            visible: say !== ""
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(sayText.implicitWidth, 440) + 32
+            height: sayText.height + 20
+            radius: sayText.lineCount > 1 ? 20 : height / 2
+            color: win.m3.surfaceContainerHigh
+            Text {
+                id: sayText
+                anchors.centerIn: parent
+                width: Math.min(implicitWidth, 440)
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                text: parent.say
+                color: win.auth.error || win.powerChoice ? win.m3.error : win.m3.onSurface
+                font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
+            }
+        }
+
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            Round { visible: win.auth.users.length > 1; icon: "caret-left"; tip: "Previous person"; onClicked: win.nextUser(-1) }
+            Item {
+                id: fieldBox
+                readonly property bool fingered: win.auth.finger !== ""
+                readonly property real restWidth: 8 + 40 + 12 + Math.min(nameText.implicitWidth, 240) + (fingered ? 12 + 40 + 8 : 24)
+                width: Math.round(restWidth + (360 - restWidth) * win.openT)
+                height: 56
+                property real shake: 0
+                SpringAnimation {
+                    id: shakeAnim
+                    target: fieldBox
+                    property: "shake"
+                    from: 18
+                    to: 0
+                    spring: 24
+                    damping: 0.19
+                    epsilon: 0.2
+                }
+                Rectangle {
+                    id: pill
+                    x: fieldBox.shake
+                    width: parent.width
+                    height: parent.height
+                    radius: height / 2
+                    color: win.m3.surfaceContainerHigh
+                    border.width: win.open && (input.activeFocus || win.auth.error !== "") ? 2 : 0
+                    border.color: win.auth.error !== "" ? win.m3.error : win.m3.primary
+
+                    // Your picture in a cookie (AccountsService's)
+                    Item {
+                        id: avatar
+                        x: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        height: 40
+                        Image {
+                            id: avatarImage
+                            anchors.fill: parent
+                            source: win.auth.avatar(win.person?.name ?? "")
+                            fillMode: Image.PreserveAspectCrop
+                            sourceSize: Qt.size(120, 120)
+                            asynchronous: true
+                        }
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: "cookie9"
+                            color: win.m3.primaryContainer
+                            source: avatarImage.status === Image.Ready ? avatarImage : null
+                            spin: win.auth.busy ? 40 : 0
+                            Behavior on spin { SpringAnimation { spring: 3.2; damping: 0.27; epsilon: 0.05 } }
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: avatarImage.status !== Image.Ready
+                            name: "user"
+                            fill: true
+                            size: 18
+                            color: win.m3.onPrimaryContainer
+                        }
+                    }
+                    Text {
+                        id: nameText
+                        x: avatar.x + avatar.width + 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 240)
+                        elide: Text.ElideRight
+                        text: win.person?.full ?? "No users"
+                        color: win.m3.onSurface
+                        opacity: 1 - win.openT
+                        visible: opacity > 0.01
+                        font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
+                    }
+                    TextInput {
+                        id: input
+                        x: avatar.x + avatar.width + 12
+                        width: Math.max(0, send.x - x - 8)
+                        height: parent.height
+                        verticalAlignment: TextInput.AlignVCenter
+                        echoMode: TextInput.Password
+                        passwordCharacter: "•"
+                        readOnly: win.auth.busy || win.powerChoice !== ""
+                        focus: win.primary
+                        clip: true
+                        opacity: win.openT
+                        color: win.m3.onSurface
+                        selectionColor: win.m3.primary
+                        selectedTextColor: win.m3.onPrimary
+                        font { family: Theme.font.family; pixelSize: 18; letterSpacing: 2 }
+                        Component.onCompleted: if (win.primary) forceActiveFocus()
+                        onTextChanged: win.wake()
+                        onAccepted: win.submit()
+                        Keys.onUpPressed: win.nextUser(-1)
+                        Keys.onDownPressed: win.nextUser(1)
+                        Keys.onTabPressed: win.nextSession()
+                        Keys.onEscapePressed: {
+                            if (win.powerChoice !== "")
+                                win.powerChoice = "";
+                            else if (win.auth.mock)
+                                win.auth.quitPreview();
+                            else
+                                text = "";
+                        }
+                        Keys.onPressed: e => {
+                            win.wake();
+                            e.accepted = false;
+                        }
+                        Accessible.name: "Password"
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: input.text === ""
+                            text: win.auth.busy ? "Logging in…" : "Enter password"
+                            color: win.m3.onSurfaceVariant
+                            font { family: Theme.font.family; pixelSize: 16 }
+                        }
+                    }
+                    // Send: a circle, filled once there's something to send
+                    Item {
+                        id: send
+                        x: fingerSlot.x - (fieldBox.fingered ? 4 : 0) - width
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        height: 40
+                        readonly property bool ready: input.text !== ""
+                        visible: win.openT > 0.5 && !win.auth.busy
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: "circle"
+                            color: send.ready ? win.m3.primary : Qt.alpha(win.m3.onSurface, 0.12)
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "arrow-right"
+                            size: 20
+                            color: send.ready ? win.m3.onPrimary : Qt.alpha(win.m3.onSurface, 0.38)
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: send.ready ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: win.submit()
+                        }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Log in"
+                        Accessible.onPressAction: win.submit()
+                    }
+                    Spinner {
+                        x: send.x
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: win.auth.busy
+                        size: 40
+                    }
+                    // The fingerprint, while a reader listens
+                    Item {
+                        id: fingerSlot
+                        x: pill.width - 8 - width
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: fieldBox.fingered ? 40 : 0
+                        height: 40
+                        MaterialShape {
+                            anchors.fill: parent
+                            visible: fieldBox.fingered
+                            shape: "circle"
+                            color: win.auth.finger === "miss" ? win.m3.errorContainer : win.m3.secondaryContainer
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: fieldBox.fingered
+                            name: "fingerprint"
+                            size: 22
+                            color: win.auth.finger === "miss" ? win.m3.onErrorContainer : win.m3.primary
+                        }
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: win.auth.message || "Fingerprint"
+                    }
+                    // A click on the closed pill opens it
+                    MouseArea {
+                        anchors.fill: parent
+                        visible: !win.open
+                        cursorShape: Qt.IBeamCursor
+                        onClicked: {
+                            win.wake();
+                            input.forceActiveFocus();
+                        }
+                    }
+                }
+            }
+            Round { visible: win.auth.users.length > 1; icon: "caret-right"; tip: "Next person"; onClicked: win.nextUser(1) }
+        }
+    }
+
+    // The session, and the power buttons, in the corner
+    Row {
+        visible: win.primary
+        anchors { right: parent.right; bottom: parent.bottom; margins: 24 }
+        spacing: 8
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: sessionText.implicitWidth + 32
+            height: 44
+            radius: 22
+            color: sessionMouse.containsMouse ? Qt.tint(win.m3.surfaceContainerHigh, Qt.alpha(win.m3.onSurface, 0.08)) : win.m3.surfaceContainerHigh
+            Text {
+                id: sessionText
+                anchors.centerIn: parent
+                text: win.auth.sessions[win.auth.session]?.name ?? ""
+                color: win.m3.onSurface
+                font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }
+            }
+            MouseArea {
+                id: sessionMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: win.nextSession()
+            }
+            Accessible.role: Accessible.Button
+            Accessible.name: "Session: " + sessionText.text
+        }
+        Round { icon: "moon"; tip: "Sleep"; danger: win.powerChoice === "suspend"; onClicked: win.choosePower("suspend") }
+        Round { icon: "arrow-clockwise"; tip: "Restart"; danger: win.powerChoice === "reboot"; onClicked: win.choosePower("reboot") }
+        Round { icon: "power"; tip: "Shut down"; danger: win.powerChoice === "poweroff"; onClicked: win.choosePower("poweroff") }
+    }
+
+    // A round tonal button (squares off a little while pressed)
+    component Round: Item {
+        id: round
+        property string icon
+        property string tip
+        property bool danger: false
+        signal clicked
+        width: 44
+        height: 44
+        Rectangle {
+            anchors.fill: parent
+            radius: roundMouse.pressed ? 14 : 22
+            Behavior on radius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 } }
+            color: round.danger ? win.m3.errorContainer : roundMouse.containsMouse ? Qt.tint(win.m3.surfaceContainerHigh, Qt.alpha(win.m3.onSurface, 0.08)) : win.m3.surfaceContainerHigh
+        }
+        Icon {
+            anchors.centerIn: parent
+            name: round.icon
+            size: 20
+            color: round.danger ? win.m3.onErrorContainer : win.m3.onSurfaceVariant
+        }
+        MouseArea {
+            id: roundMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: round.clicked()
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: tip
+        Accessible.onPressAction: round.clicked()
+    }
+}

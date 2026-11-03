@@ -35,6 +35,8 @@ test('one rule', () => {
 test('the small fixed jobs pass for an administrator at the computer', () => {
     assert.equal(decide(action('org.irice.root.wallpaper', HELPER, ['wallpaper', '/home/a/Pictures/b.jpg'])), 'yes');
     assert.equal(decide(action('org.irice.root.fix', HELPER, ['fix', 'avahi'])), 'yes');
+    assert.equal(decide(action('org.irice.root.login-look', HELPER, ['login-look', '{"style":"look"}'])), 'yes');
+    assert.equal(decide(action('org.irice.root.login-look', HELPER, ['wallpaper', '/x.jpg'])), null);
     assert.equal(decide(action('org.irice.root.wifi-helper', HELPER, ['wifi-helper'])), null); // (asks: it makes Wi-Fi networks)
     // a path with spaces is fine: only the first word after the program counts
     assert.equal(decide(action('org.irice.root.wallpaper', HELPER, ['wallpaper', '/home/a/My Pictures/b.jpg'])), 'yes');

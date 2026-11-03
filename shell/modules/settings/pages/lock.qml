@@ -369,6 +369,28 @@ Column {
         }
     }
 
+    // The iRice login screen (greetd): its style; the look's colours and
+    // clock follow yours (LoginScreen)
+    Group {
+        width: parent.width
+        title: "Login screen"
+        footer: !LoginScreen.installed ? "This computer signs in with another login screen. iRice's comes with ./install.sh --greeter; until then, Preview shows it."
+            : LoginScreen.status !== "" ? LoginScreen.status : "Your colours, light or dark and your clock go to the login screen by themselves."
+        Row {
+            label: "Style"
+            detail: ({ look: "Your look, the one you used last: Glass or Material, with your clock and colours", text: "Like ly: the session, your login and the password in a box of text, keyboard first", plain: "Black, your picture, your name and the field" })[Config.options.lock.loginStyle] ?? ""
+            Choice { key: "loginStyle"; values: ["look", "text", "plain"]; options: ["Your look", "Text", "Plain"] }
+        }
+        Row {
+            label: "Preview"
+            detail: "Shows it on this screen. The password there is irice; Esc closes it."
+            SettingsButton {
+                text: "Preview Login Screen"
+                onClicked: LoginScreen.preview()
+            }
+        }
+    }
+
     Group {
         width: parent.width
         Row {
