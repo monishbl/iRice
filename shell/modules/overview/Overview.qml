@@ -403,6 +403,12 @@ Variants {
                 anchors.fill: parent
                 opacity: Math.min(1, win.progress)
                 scale: 0.97 + 0.03 * win.progress
+                // (the glass under the search and its results follows the zoom:
+                // compositor blur doesn't see a parent's scale)
+                onScaleChanged: {
+                    fieldGlass.updatePosition();
+                    resultsGlass.updatePosition();
+                }
 
                 // Search
                 Item {
@@ -463,6 +469,7 @@ Variants {
                     width: 560 + 40
                     height: Math.min(resultList.contentHeight, 420) + 16 + 40
                     Glass {
+                        id: resultsGlass
                         anchors.fill: parent
                         radius: 22
                         shadowMargin: 20
