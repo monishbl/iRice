@@ -73,6 +73,7 @@ Item {
                 Text {
                     id: label
                     anchors.centerIn: parent
+                    textFormat: Text.PlainText
                     text: root.text
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }

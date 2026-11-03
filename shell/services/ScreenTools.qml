@@ -199,7 +199,10 @@ Singleton {
             }
             translation = Object.assign({}, translation, { source: src });
             const t = Config.options.sidebar.translateTarget;
-            run("translated", "trans -brief -no-ansi -t '" + t + "' " + "'" + src.replace(/'/g, "'\\''") + "'");
+            // (both quoted; "--": text read off the screen that starts with
+            // "-" is never an option, like -i=FILE, which would send a file)
+            const q = a => "'" + String(a).replace(/'/g, "'\\''") + "'";
+            run("translated", "trans -brief -no-ansi -t " + q(t) + " -- " + q(src));
         } else if (kind === "ask") {
             const nl = out.indexOf("\n");
             if (nl < 0)

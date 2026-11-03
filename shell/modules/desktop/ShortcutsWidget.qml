@@ -60,6 +60,7 @@ Item {
                     }
                     Text {
                         width: parent.width
+                        textFormat: Text.PlainText
                         text: root.shortNames[btn.modelData.title] ?? btn.modelData.title.replace(/…$/, "")
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2

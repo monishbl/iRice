@@ -110,6 +110,7 @@ Column {
         Text {
             width: parent.width
             elide: Text.ElideRight
+            textFormat: Text.PlainText
             text: root.hidden ? "Join other network" : root.ssid
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }

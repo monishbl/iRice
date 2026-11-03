@@ -52,6 +52,7 @@ Item {
         spacing: 2
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.player?.trackTitle || "Not Playing"
             elide: Text.ElideRight
             color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
@@ -59,6 +60,7 @@ Item {
         }
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.player?.trackArtist ?? ""
             elide: Text.ElideRight
             color: Theme.color.secondary

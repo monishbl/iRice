@@ -111,6 +111,34 @@ Singleton {
         return /\bincoming (voice |video |audio |group )?call\b|\bis calling\b|\bcalling you\b|\b(voice|video) call from\b|\bwants to (video )?call\b|\bstarted a (voice |video )?call\b/.test(text) && !/\bmissed\b|\bended\b/.test(text);
     }
 
+    // A notification body as markup a card can show safely. The spec's
+    // subset stays (bold, italic, underline, line breaks, links to web and
+    // mail); everything else goes, above all <img>, which Qt would fetch
+    // from the network the moment the card shows (a read receipt for
+    // whoever wrote the message).
+    function safeMarkup(body) {
+        return String(body ?? "").replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^<>]*)>/g, (tag, close, name, rest) => {
+            const n = name.toLowerCase();
+            if (n === "b" || n === "i" || n === "u")
+                return "<" + close + n + ">";
+            if (n === "br")
+                return close ? "" : "<br>";
+            if (n === "a") {
+                if (close)
+                    return "</a>";
+                const m = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(rest);
+                const href = m ? (m[1] ?? m[2] ?? "") : "";
+                return Launch.linkAllowed(href) ? "<a href=\"" + href.replace(/"/g, "%22") + "\">" : "<a>";
+            }
+            return "";
+        });
+    }
+    // A notification body as plain text (markup and entities gone)
+    function plainBody(body) {
+        return String(body ?? "").replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+            .replace(/&quot;/g, "\"").replace(/&apos;|&#39;/g, "'").replace(/&amp;/g, "&");
+    }
+
     function toIsland(n) {
         const words = (n.summary || n.appName || "").split(/\s+/).filter(w => w.length > 0 && w[0].toUpperCase() !== w[0].toLowerCase() || /^[0-9]/.test(w));
         const def = (n.actions ?? []).find(a => a.identifier === "default");
@@ -123,7 +151,7 @@ Singleton {
             card: {
                 name: n.summary || n.appName,
                 time: "now",
-                text: (n.body ?? "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
+                text: plainBody(n.body), // (shown as plain text)
                 initials: words.slice(0, 2).map(w => w[0].toUpperCase()).join(""),
                 avatar: n.image ? IconLookup.safe(n.image, []) : "",
                 appIcon: n.appIcon ? IconLookup.safe(n.appIcon, "dialog-information") : Apps.iconFor(n.desktopEntry || n.appName || ""),

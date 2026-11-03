@@ -337,6 +337,7 @@ Variants {
                                         anchors { top: sendBar.visible ? sendBar.bottom : avatar.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
                                         width: 88
                                         horizontalAlignment: Text.AlignHCenter
+                                        textFormat: Text.PlainText
                                         text: peer.modelData.name
                                         wrapMode: Text.Wrap
                                         maximumLineCount: 2

@@ -322,6 +322,7 @@ FocusScope {
                         Text {
                             width: parent.width
                             elide: Text.ElideRight
+                            textFormat: Text.PlainText
                             text: ev.modelData.title
                             color: Theme.m3.onSurface
                             font { family: Theme.font.family; pixelSize: 14; weight: Font.Medium }

@@ -29,6 +29,7 @@ Column {
                 spacing: 8
                 Text {
                     id: entryTitle
+                    textFormat: Text.PlainText
                     text: entry.modelData.title
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: 16; weight: Font.DemiBold }
@@ -49,7 +50,7 @@ Column {
                 color: Theme.color.label
                 linkColor: Theme.accent
                 font { family: Theme.font.family; pixelSize: 14 }
-                onLinkActivated: link => Launch.open(link)
+                onLinkActivated: link => Launch.openLink(link)
                 HoverHandler {
                     cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
                 }

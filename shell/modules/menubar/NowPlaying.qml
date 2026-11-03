@@ -77,6 +77,7 @@ Variants {
                         spacing: 2
                         Text {
                             width: parent.width
+                            textFormat: Text.PlainText
                             text: pop.player?.trackTitle || "Nothing playing"
                             elide: Text.ElideRight
                             color: Theme.color.label
@@ -84,6 +85,7 @@ Variants {
                         }
                         Text {
                             width: parent.width
+                            textFormat: Text.PlainText
                             text: [pop.player?.trackArtist, pop.player?.trackAlbum].filter(x => x).join(" — ")
                             elide: Text.ElideRight
                             color: Theme.color.secondary
@@ -161,6 +163,7 @@ Variants {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width - 16
                                 elide: Text.ElideRight
+                                textFormat: Text.PlainText
                                 text: parent.modelData.identity + (parent.modelData.trackTitle ? " · " + parent.modelData.trackTitle : "")
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }

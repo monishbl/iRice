@@ -37,6 +37,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import unicodedata
 
 GROUP, DISCOVERY = "224.0.0.167", 53317
 PORT = int(os.environ.get("IRICE_LOCALSEND_PORT", DISCOVERY))  # (another port only for testing two on one machine)
@@ -245,6 +246,25 @@ def listen():
 
 
 # ── Receiving ────────────────────────────────────────────────────────────
+MAX_NAME_BYTES = 200  # (room for " (99)" within a file system's 255)
+
+
+def clean_name(name):
+    """A sender's file name, safe to save and to show: its last part only, no
+    control or invisible formatting characters (a right-to-left override
+    makes "gpj.exe" read as "exe.jpg"), not hidden, not too long; "file" if
+    nothing is left. The same rules as Quick Share's (nearby/files.py)."""
+    name = str(name).replace("\\", "/").split("/")[-1]
+    name = "".join(c for c in name if unicodedata.category(c)[0] != "C")
+    name = name.strip().lstrip(".").strip()
+    if len(name.encode()) > MAX_NAME_BYTES:
+        stem, dot, ext = name.rpartition(".")
+        ext = ("." + ext) if dot and 0 < len(ext.encode()) <= 16 else ""
+        keep = MAX_NAME_BYTES - len(ext.encode())
+        name = (stem if dot and ext else name).encode()[:keep].decode("utf-8", "ignore") + ext
+    return name or "file"
+
+
 def unique(path):
     base, ext = os.path.splitext(path)
     n = 1
@@ -321,6 +341,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         or not 0 <= f["size"] <= 2**63 - 1 or not isinstance(f.get("fileName"), str)
                         or not f["fileName"] or len(f["fileName"]) > 4096):
                     raise ValueError()
+            # (shown and saved under the cleaned name: what you're asked
+            # about is what lands)
+            files = {fid: dict(f, fileName=clean_name(f["fileName"])) for fid, f in files.items()}
             total = sum(f["size"] for f in files.values())
             os.makedirs(DOWNLOADS, exist_ok=True)
             if total > shutil.disk_usage(DOWNLOADS).free:

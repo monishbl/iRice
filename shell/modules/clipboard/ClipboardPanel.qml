@@ -186,6 +186,7 @@ Variants {
             }
 
             component Heading: Text {
+                textFormat: Text.PlainText
                 property bool first: false
                 leftPadding: 10
                 topPadding: first ? 0 : 12
@@ -272,6 +273,7 @@ Variants {
                         Text {
                             visible: !rowItem.modelData.image
                             anchors { left: parent.left; leftMargin: 40; right: actions.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            textFormat: Text.PlainText
                             text: rowItem.modelData.text.replace(/\s+/g, " ").trim()
                             elide: Text.ElideRight
                             maximumLineCount: 1

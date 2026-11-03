@@ -95,6 +95,7 @@ Squircle {
         anchors { left: badge.right; leftMargin: 10; right: action.visible ? action.left : trailing.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.title
             elide: Text.ElideRight
             color: Theme.color.label
@@ -103,6 +104,7 @@ Squircle {
         Text {
             width: parent.width
             visible: text !== ""
+            textFormat: Text.PlainText
             text: root.status
             elide: Text.ElideRight
             color: Theme.color.secondary

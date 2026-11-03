@@ -20,6 +20,7 @@ Item {
     Text {
         id: probe
         visible: false
+        textFormat: Text.PlainText
         text: root.text
         font: root.font
     }
@@ -28,6 +29,7 @@ Item {
         // (the probe's width, not its own: its own changes as the elide
         // switches, which was a binding loop)
         width: root.overflow && root.scroll ? probe.implicitWidth : root.width
+        textFormat: Text.PlainText
         text: root.text
         color: root.color
         font: root.font

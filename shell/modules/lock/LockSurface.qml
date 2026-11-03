@@ -295,6 +295,7 @@ WlSessionLockSurface {
                 anchors { left: art.right; leftMargin: 12; right: buttons.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                 Text {
                     width: parent.width
+                    textFormat: Text.PlainText
                     text: player.p?.trackTitle ?? ""
                     elide: Text.ElideRight
                     color: surface.ink
@@ -302,6 +303,7 @@ WlSessionLockSurface {
                 }
                 Text {
                     width: parent.width
+                    textFormat: Text.PlainText
                     text: player.p?.trackArtist ?? ""
                     elide: Text.ElideRight
                     color: surface.ink2
@@ -398,6 +400,7 @@ WlSessionLockSurface {
                             Text {
                                 id: appText
                                 width: parent.width - when.implicitWidth - 8
+                                textFormat: Text.PlainText
                                 text: surface.cfg.previews ? (note.modelData.summary || note.modelData.appName) : (note.modelData.appName || "Notification")
                                 elide: Text.ElideRight
                                 color: surface.ink

@@ -118,6 +118,7 @@ Item {
                 Text {
                     anchors { left: bar.right; leftMargin: 8; right: time.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideRight
+                    textFormat: Text.PlainText
                     text: ev.modelData.title
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small }

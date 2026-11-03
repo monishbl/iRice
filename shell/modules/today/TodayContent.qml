@@ -166,6 +166,7 @@ FocusScope {
                 Text {
                     anchors { left: evBar.right; leftMargin: 10; right: parent.right; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideRight
+                    textFormat: Text.PlainText
                     text: ev.modelData.title
                     color: Theme.color.label
                     font { family: Theme.font.family; pixelSize: 14 }

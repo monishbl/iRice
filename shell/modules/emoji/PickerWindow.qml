@@ -648,6 +648,7 @@ GlassWindow {
                     Text {
                         visible: rowItem.modelData.type === "header"
                         anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: 6 }
+                        textFormat: Text.PlainText
                         text: rowItem.modelData.title ?? ""
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
@@ -655,6 +656,7 @@ GlassWindow {
                     Text {
                         visible: rowItem.modelData.type === "hint"
                         anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
+                        textFormat: Text.PlainText
                         text: rowItem.modelData.text ?? ""
                         color: Theme.color.tertiary
                         font { family: Theme.font.family; pixelSize: Theme.font.body }

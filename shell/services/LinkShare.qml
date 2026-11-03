@@ -80,7 +80,7 @@ Singleton {
         const first = paths[0];
         Island.post({ kind: "custom", icon: "check-circle", title: paths.length === 1 ? "Received “" + first.split("/").pop() + "”" : "Received " + paths.length + " files",
             subtitle: "From a phone's browser", color: Theme.accents.green,
-            action: paths.length === 1 ? "Open" : "Show in Folder", onAction: () => paths.length === 1 ? Launch.open("file://" + first) : Files.reveal(first),
+            action: paths.length === 1 ? "Open" : "Show in Folder", onAction: () => paths.length === 1 ? Files.open(first) : Files.reveal(first),
             action2: paths.length === 1 ? "Show in Folder" : "", onAction2: () => Files.reveal(first) }, 8000);
     }
 

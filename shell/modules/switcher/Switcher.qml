@@ -407,6 +407,7 @@ Scope {
                             Text {
                                 anchors { left: smallIcon.right; leftMargin: 6; right: place.visible ? place.left : parent.right; rightMargin: place.visible ? 6 : 0; verticalCenter: parent.verticalCenter }
                                 elide: Text.ElideRight
+                                textFormat: Text.PlainText
                                 text: tile.modelData.title || tile.entry?.name || tile.cls || "Window"
                                 color: Theme.color.label
                                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: tile.current ? Font.DemiBold : Font.Medium }

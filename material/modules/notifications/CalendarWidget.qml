@@ -380,6 +380,7 @@ Platter {
                                         Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: parent.modelData.color || Theme.accent }
                                         Text {
                                             width: weekCol.width - 12
+                                            textFormat: Text.PlainText
                                             text: (parent.modelData.allDay ? "" : Qt.formatTime(parent.modelData.start, TimeFormat.hm) + "  ") + parent.modelData.title
                                             elide: Text.ElideRight
                                             color: Theme.color.label
