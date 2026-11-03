@@ -10,7 +10,7 @@ anchor anchor
 angle architecture
 app-window web_asset
 arrow-circle-right arrow_circle_right
-arrow-circle-up arrow_circle_up
+arrow-circle-up upgrade
 arrow-clockwise refresh
 arrow-counter-clockwise undo
 arrow-down arrow_downward

@@ -11,7 +11,7 @@ var glyphs = {
     "angle": "\uea3b",
     "app-window": "\ue069",
     "arrow-circle-right": "\ueaaa",
-    "arrow-circle-up": "\uf182",
+    "arrow-circle-up": "\uf0fb",
     "arrow-clockwise": "\ue5d5",
     "arrow-counter-clockwise": "\ue166",
     "arrow-down": "\ue5db",
