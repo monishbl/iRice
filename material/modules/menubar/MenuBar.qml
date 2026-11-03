@@ -98,7 +98,14 @@ Variants {
         // the wallpaper unless Menu Bar → Background asks for one, like
         // Android's status bar)
         readonly property bool opaque: Theme.material ? cfg.background || autoHide : cfg.background || autoHide || Theme.glass.tier === "solid"
-        readonly property color fg: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
+        // Over the wallpaper: dark or light text as the wallpaper needs (the
+        // spaces and the island)
+        readonly property color wallInk: opaque ? Theme.color.label : Wallpaper.topIsLight ? Qt.rgba(0, 0, 0, 0.85) : Qt.rgba(1, 1, 1, 0.96)
+        // Material, without a bar background: the left and right groups sit
+        // in tonal pills (Material's chips, not macOS's bare titles), their
+        // text and icons in onSurface
+        readonly property bool pills: Theme.material && !opaque
+        readonly property color fg: pills ? Theme.m3.onSurface : wallInk
 
         IdleInhibitor {
             window: bar
@@ -144,11 +151,31 @@ Variants {
                 }
             }
 
+            // The groups' pills (behind the left and right rows)
+            Rectangle {
+                visible: bar.pills && bar.chromeShown && leftItems.width > 0
+                x: leftItems.x - 2
+                width: leftItems.width + 4
+                height: 28
+                anchors.verticalCenter: parent.verticalCenter
+                radius: height / 2
+                color: Theme.veil(Qt.alpha(Theme.m3.surfaceContainer, 1))
+            }
+            Rectangle {
+                visible: bar.pills && bar.chromeShown && rightItems.width > 0
+                x: rightItems.x - 2
+                width: rightItems.width + 4
+                height: 28
+                anchors.verticalCenter: parent.verticalCenter
+                radius: height / 2
+                color: Theme.veil(Qt.alpha(Theme.m3.surfaceContainer, 1))
+            }
+
             // ── Left ────────────────────────────────────────────────────
             Row {
                 id: leftItems
                 visible: bar.chromeShown
-                anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; leftMargin: bar.pills ? 6 : 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
                 // The system menu: iRice's drop, your distro's logo, Tux or a
@@ -201,7 +228,7 @@ Variants {
                 visible: bar.cfg.workspaces !== "off" && !Config.options.island.enabled // the island shows them instead
                 anchors.centerIn: parent
                 screen: bar.screen
-                fg: bar.fg
+                fg: bar.wallInk
             }
 
             // ── Centre: the dynamic island (it shows the spaces) ────────
@@ -211,7 +238,7 @@ Variants {
                 width: parent.width
                 height: 420
                 screen: bar.screen
-                fg: bar.fg
+                fg: bar.wallInk
                 pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
             }
             // Alerts that come while the island is open: a card under it
@@ -224,8 +251,9 @@ Variants {
 
             // ── Right ───────────────────────────────────────────────────
             Row {
+                id: rightItems
                 visible: bar.chromeShown
-                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                anchors { right: parent.right; rightMargin: bar.pills ? 6 : 8; verticalCenter: parent.verticalCenter }
                 spacing: 0
 
                 // Extra buttons (Settings → Menu Bar)
