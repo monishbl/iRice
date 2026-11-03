@@ -36,7 +36,7 @@ LazyLoader {
         // Material: a card in surfaceContainerHigh
         Rectangle {
             visible: Theme.material
-            anchors.fill: glass.shape
+            anchors { fill: parent; margins: glass.shadowMargin } // (the glass's shape)
             radius: glass.radius
             color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
         }

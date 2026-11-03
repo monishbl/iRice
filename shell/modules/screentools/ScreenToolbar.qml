@@ -370,7 +370,7 @@ Variants {
                     // primaryContainer (over the glass, which keeps the shadow)
                     Rectangle {
                         visible: Theme.material
-                        anchors.fill: glass.shape
+                        anchors { fill: parent; margins: glass.shadowMargin } // (the glass's shape)
                         radius: height / 2
                         color: Theme.material ? Theme.m3.primaryContainer : "transparent"
                     }

@@ -192,7 +192,7 @@ Scope {
                 // Material: a dialog is surfaceContainerHigh, a step above
                 // the surfaces it covers
                 Rectangle {
-                    anchors.fill: glass.shape
+                    anchors { fill: parent; margins: glass.shadowMargin } // (the glass's shape)
                     visible: Theme.material
                     radius: 28
                     color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"

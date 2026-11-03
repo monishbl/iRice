@@ -132,7 +132,7 @@ Scope {
                     shadowMargin: 20
                 }
                 Rectangle {
-                    anchors.fill: toolGlass.shape
+                    anchors { fill: parent; margins: toolGlass.shadowMargin } // (the glass's shape)
                     visible: Theme.material
                     radius: height / 2
                     color: Theme.material ? Theme.m3.primaryContainer : "transparent"
