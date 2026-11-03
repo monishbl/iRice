@@ -311,42 +311,6 @@ Column {
         }
     }
 
-    Group {
-        visible: page.view === "list"
-        width: parent.width
-        title: "Screenshots"
-        footer: Tools.has("swappy") ? "" : "Install swappy to use it as the markup editor."
-        Row {
-            label: "Markup editor"
-            EditorPicker {
-                width: 200
-                options: ["iRice", "Swappy"]
-                off: Tools.has("swappy") ? [] : [1]
-                current: Config.options.screenshot.editor === "swappy" ? 1 : 0
-                onSelected: i => Config.options.screenshot.editor = i === 1 ? "swappy" : "irice"
-            }
-        }
-        Row {
-            visible: Config.options.screenshot.editor !== "swappy"
-            label: "Show floating thumbnail"
-            detail: "Click it to mark up the screenshot; off shows a notification with Edit"
-            Switch {
-                checked: Config.options.screenshot.thumbnail
-                onToggled: Config.options.screenshot.thumbnail = !checked
-            }
-        }
-        Row {
-            visible: Config.options.screenshot.editor === "swappy"
-            label: "Open area screenshots in Swappy"
-            detail: "To crop, draw and add text, then save or copy"
-            Switch {
-                enabled: Tools.has("swappy")
-                checked: Config.options.screenshot.markup
-                onToggled: Config.options.screenshot.markup = !checked
-            }
-        }
-    }
-
     // ── Form ─────────────────────────────────────────────────────────────
     Item {
         id: form
@@ -736,5 +700,50 @@ Column {
 
     ActionMenu {
         id: pageMenu
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            visible: page.view === "list"
+            width: parent.width
+            title: "Screenshots"
+            footer: Tools.has("swappy") ? "" : "Install swappy to use it as the markup editor."
+            Row {
+                label: "Markup editor"
+                EditorPicker {
+                    width: 200
+                    options: ["iRice", "Swappy"]
+                    off: Tools.has("swappy") ? [] : [1]
+                    current: Config.options.screenshot.editor === "swappy" ? 1 : 0
+                    onSelected: i => Config.options.screenshot.editor = i === 1 ? "swappy" : "irice"
+                }
+            }
+            Row {
+                visible: Config.options.screenshot.editor !== "swappy"
+                label: "Show floating thumbnail"
+                detail: "Click it to mark up the screenshot; off shows a notification with Edit"
+                Switch {
+                    checked: Config.options.screenshot.thumbnail
+                    onToggled: Config.options.screenshot.thumbnail = !checked
+                }
+            }
+            Row {
+                visible: Config.options.screenshot.editor === "swappy"
+                label: "Open area screenshots in Swappy"
+                detail: "To crop, draw and add text, then save or copy"
+                Switch {
+                    enabled: Tools.has("swappy")
+                    checked: Config.options.screenshot.markup
+                    onToggled: Config.options.screenshot.markup = !checked
+                }
+            }
+        }
+    }
+
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Dictation"
+        source: Qt.resolvedUrl("dictation.qml")
     }
 }

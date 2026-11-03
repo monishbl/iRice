@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
 import qs.services
+import "../../common/SettingsMap.js" as SettingsMap
 
 // iRice Settings: a regular app window. Translucent sidebar of sections on the
 // left (the compositor blurs what's behind it), the selected pane on the right.
@@ -21,43 +22,12 @@ Scope {
             color: "transparent"
             onClosed: Panels.settingsOpen = false
 
-            // Sidebar sections, under group headings like System Settings.
-            // A page can open subpages (SubpageLink): "page/sub" is the file
-            // pages/page-sub.qml, whose pageTitle names it in the breadcrumb.
-            readonly property var sections: [
-                { id: "appearance", name: "Appearance", icon: "circle-half", color: "#5E5CE6", group: "Personalisation" },
-                { id: "wallpaper", name: "Wallpaper", icon: "image", color: "#32ADE6", group: "Personalisation" },
-                { id: "desktop", name: "Desktop & Widgets", icon: "squares-four", color: "#FF9F0A", group: "Personalisation" },
-                { id: "dock", name: "Dock", icon: "dots-three-outline", color: "#0A84FF", group: "Personalisation" },
-                { id: "menubar", name: "Menu Bar", icon: "list", color: "#8E8E93", group: "Personalisation" },
-                { id: "lock", name: "Lock Screen", icon: "lock", color: "#636366", group: "Personalisation" },
-                { id: "notifications", name: "Notifications", icon: "bell", color: "#FF453A", group: "Notifications & Focus" },
-                { id: "focus", name: "Focus", icon: "moon", color: "#5E5CE6", group: "Notifications & Focus" },
-                { id: "controlcenter", name: "Control Center", icon: "sliders-horizontal", color: "#64D2FF", group: "Notifications & Focus" },
-                { id: "windowrules", name: "Windows", icon: "app-window", color: "#FF375F", group: "Windows & Spaces" },
-                { id: "network", name: "Network", icon: "wifi-high", color: "#0A84FF", group: "Devices & Input" },
-                { id: "bluetooth", name: "Bluetooth", icon: "bluetooth", color: "#0A84FF", group: "Devices & Input" },
-                { id: "displays", name: "Displays", icon: "monitor", color: "#0A84FF", group: "Devices & Input" },
-                { id: "sound", name: "Sound", icon: "speaker-high", color: "#FF375F", group: "Devices & Input" },
-                { id: "mouse", name: "Mouse", icon: "mouse", color: "#636366", group: "Devices & Input" },
-                { id: "trackpad", name: "Trackpad", icon: "hand-swipe-right", color: "#636366", group: "Devices & Input" },
-                { id: "shortcuts", name: "Keyboard Shortcuts", icon: "keyboard", color: "#636366", group: "Devices & Input" },
-                { id: "dictation", name: "Dictation", icon: "microphone", color: "#FF453A", group: "Devices & Input" },
-                { id: "accessibility", name: "Accessibility", icon: "person-arms-spread", color: "#0A84FF", group: "Devices & Input" },
-                { id: "sharing", name: "Sharing", icon: "share-network", color: "#0A84FF", group: "Devices & Input" },
-                { id: "phone", name: "Phone", icon: "device-mobile", color: "#30D158", group: "Devices & Input" },
-                { id: "google", name: "Google", icon: "cloud", color: "#4285F4", group: "Apps" },
-                { id: "icloud", name: "iCloud", icon: "cloud", color: "#5AC8FA", group: "Apps" },
-                { id: "microsoft", name: "Microsoft 365", icon: "microsoft-outlook-logo", color: "#0078D4", group: "Apps" },
-                { id: "calendar", name: "Calendar", icon: "calendar-blank", color: "#FF453A", group: "Apps" },
-                { id: "ai", name: "AI", icon: "sparkle", color: "#BF5AF2", group: "Apps" },
-                { id: "sidebar", name: "Sidebar", icon: "sidebar-simple", color: "#FF9F0A", group: "Apps" },
-                { id: "power", name: "Battery & Power", icon: "battery-high", color: "#30D158", group: "System" },
-                { id: "loginitems", name: "Login Items", icon: "rocket-launch", color: "#8E8E93", group: "System" },
-                { id: "update", name: "Software Update", icon: "arrow-circle-up", color: "#8E8E93", group: "System" },
-                { id: "bugreport", name: "Report a Bug", icon: "bug", color: "#FF453A", group: "System" },
-                { id: "about", name: "About", icon: "info", color: "#30D158", group: "System" }
-            ]
+            // Sidebar sections, under group headings, the same in both looks
+            // (SettingsMap: the pages, the ones shown as a part of another,
+            // where older page ids go). A page can open subpages
+            // (SubpageLink): "page/sub" is the file pages/page-sub.qml, whose
+            // pageTitle names it in the breadcrumb.
+            readonly property var sections: SettingsMap.sections
             // The page on show: its section, and its subpage if any
             readonly property string sectionId: Panels.settingsPage.split("/")[0]
             readonly property var section: sections.find(x => x.id === sectionId) ?? null
@@ -74,11 +44,21 @@ Scope {
             Connections {
                 target: Panels
                 function onSettingsPageChanged() {
+                    if (SettingsMap.aliases[Panels.settingsPage])
+                        return; // (an older id: Panels sets where it is now)
                     if (!win.stepping && win.shown !== Panels.settingsPage) {
                         win.back = win.back.concat([win.shown]).slice(-50);
                         win.forward = [];
                     }
                     win.shown = Panels.settingsPage;
+                }
+            }
+            // Asked to show a row or part on the page already open
+            Connections {
+                target: Panels
+                function onSettingsTargetChanged() {
+                    if (Panels.settingsTarget !== "")
+                        Qt.callLater(win.reveal);
                 }
             }
             function goBack() {
@@ -157,7 +137,9 @@ Scope {
                                     last.detail = m[4];
                                 continue;
                             }
-                            last = { page: m[1].replace("-", "/"), line: +m[2], text: m[4], detail: "" };
+                            // (a page shown inside another: found there)
+                            const at = SettingsMap.pageOfFile(m[1]);
+                            last = { page: at.page, line: +m[2], text: m[4], detail: "" };
                             if (!out.some(e => e.page === last.page && e.text === last.text))
                                 out.push(last);
                         }
@@ -169,6 +151,11 @@ Scope {
             // Go to a page and, for a search result, scroll to its row and flash it
             property string target: ""
             function go(page, text) {
+                const old = SettingsMap.aliases[page];
+                if (old) {
+                    page = old.page;
+                    text = text || old.part || "";
+                }
                 target = text ?? "";
                 if (Panels.settingsPage === page)
                     Qt.callLater(reveal);
@@ -176,22 +163,36 @@ Scope {
                     Panels.settingsPage = page;
             }
             function reveal() {
+                if (target === "" && Panels.settingsTarget !== "") {
+                    target = Panels.settingsTarget;
+                    Panels.settingsTarget = "";
+                }
                 if (target === "" || !pageLoader.item)
                     return;
-                const find = it => {
+                // (a part's heading, or a row in a closed More options: that
+                // opens, and this runs again once it has)
+                const find = (it, hidden) => {
                     for (const c of it.children) {
-                        if ((c.label === target || c.title === target) && c.visible)
+                        if ((c.label === target || c.title === target) && (c.visible || hidden))
                             return c;
-                        const f = find(c);
+                        const f = find(c, hidden || (c.moreOptions === true && !c.expanded));
                         if (f)
                             return f;
                     }
                     return null;
                 };
                 const row = find(pageLoader.item);
-                target = "";
-                if (!row)
+                if (!row) {
+                    target = "";
                     return;
+                }
+                for (let up = row.parent; up; up = up.parent)
+                    if (up.moreOptions === true && !up.expanded) {
+                        up.expanded = true;
+                        Qt.callLater(reveal);
+                        return;
+                    }
+                target = "";
                 const p = row.mapToItem(scroller.contentItem, 0, 0);
                 scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, p.y - 80));
                 flash.x = p.x - 4;

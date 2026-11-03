@@ -84,14 +84,6 @@ Column {
         width: parent.width
         title: "Input"
         Row {
-            label: "Microphone in the Sound menu"
-            detail: "Its level and the inputs, under the outputs in Control Center's and the menu bar's Sound menu."
-            Switch {
-                checked: Config.options.controlCenter.micInSound
-                onToggled: Config.options.controlCenter.micInSound = !checked
-            }
-        }
-        Row {
             visible: page.inputs.length === 0
             label: "No microphone found"
             detail: "Connect one, or check that it's turned on"
@@ -123,53 +115,6 @@ Column {
         }
     }
 
-    // ── AirPlay ─────────────────────────────────────────────────────────
-    Group {
-        width: parent.width
-        title: "AirPlay"
-        footer: "HomePods, Apple TVs and AirPlay speakers on your network appear as outputs above. Some AirPlay 2-only speakers and ones with a password may not accept the sound."
-        Row {
-            visible: Needs.checked && !Needs.pipewire
-            label: "AirPlay needs PipeWire"
-            detail: "Your sound isn't going through PipeWire (Arch's default sound server), which AirPlay speakers come in through."
-        }
-        Row {
-            visible: Needs.checked && Needs.pipewire && !Needs.avahi
-            label: "Network discovery is off"
-            detail: "AirPlay speakers are found with avahi, which isn't running. It asks for your password once."
-            SettingsButton {
-                text: Needs.installing || Health.fixing === "avahi" ? "Turning on…" : "Turn On"
-                busy: Needs.installing || Health.fixing === "avahi"
-                onClicked: Needs.turnOnAvahi()
-            }
-        }
-        Row {
-            visible: !Needs.checked || Needs.pipewire
-            label: "AirPlay speakers"
-            detail: !AirPlay.checked ? ""
-                : AirPlay.installError !== "" ? AirPlay.installError
-                : !AirPlay.installed ? "Needs pipewire-zeroconf. Install it, then turn this on. It asks for your password once."
-                : AirPlay.error !== "" ? AirPlay.error
-                : !AirPlay.wanted ? "Off"
-                : AirPlay.speakers.length === 0 ? "Looking for speakers on your network…"
-                : AirPlay.speakers.length === 1 ? "1 speaker found" : AirPlay.speakers.length + " speakers found"
-            labelColor: AirPlay.installError !== "" || AirPlay.error !== "" ? Theme.color.danger : Theme.color.label
-            SettingsButton {
-                visible: AirPlay.checked && !AirPlay.installed
-                text: AirPlay.installing ? "Installing…" : "Install"
-                icon: "download-simple"
-                busy: AirPlay.installing
-                enabled: !Updates.running
-                onClicked: AirPlay.install()
-            }
-            Switch {
-                visible: AirPlay.installed
-                checked: Config.options.audio.airplay
-                onToggled: Config.options.audio.airplay = !checked
-            }
-        }
-    }
-
     Group {
         width: parent.width
         SubpageLink {
@@ -178,6 +123,68 @@ Column {
             detail: "Alerts, the startup sound, charging and more"
             value: Config.options.sounds.enabled ? "On" : "Off"
             page: "notifications"
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Input"
+            Row {
+                label: "Microphone in the Sound menu"
+                detail: "Its level and the inputs, under the outputs in Control Center's and the menu bar's Sound menu."
+                Switch {
+                    checked: Config.options.controlCenter.micInSound
+                    onToggled: Config.options.controlCenter.micInSound = !checked
+                }
+            }
+        }
+        // ── AirPlay ─────────────────────────────────────────────────────────
+        Group {
+            width: parent.width
+            title: "AirPlay"
+            footer: "HomePods, Apple TVs and AirPlay speakers on your network appear as outputs above. Some AirPlay 2-only speakers and ones with a password may not accept the sound."
+            Row {
+                visible: Needs.checked && !Needs.pipewire
+                label: "AirPlay needs PipeWire"
+                detail: "Your sound isn't going through PipeWire (Arch's default sound server), which AirPlay speakers come in through."
+            }
+            Row {
+                visible: Needs.checked && Needs.pipewire && !Needs.avahi
+                label: "Network discovery is off"
+                detail: "AirPlay speakers are found with avahi, which isn't running. It asks for your password once."
+                SettingsButton {
+                    text: Needs.installing || Health.fixing === "avahi" ? "Turning on…" : "Turn On"
+                    busy: Needs.installing || Health.fixing === "avahi"
+                    onClicked: Needs.turnOnAvahi()
+                }
+            }
+            Row {
+                visible: !Needs.checked || Needs.pipewire
+                label: "AirPlay speakers"
+                detail: !AirPlay.checked ? ""
+                    : AirPlay.installError !== "" ? AirPlay.installError
+                    : !AirPlay.installed ? "Needs pipewire-zeroconf. Install it, then turn this on. It asks for your password once."
+                    : AirPlay.error !== "" ? AirPlay.error
+                    : !AirPlay.wanted ? "Off"
+                    : AirPlay.speakers.length === 0 ? "Looking for speakers on your network…"
+                    : AirPlay.speakers.length === 1 ? "1 speaker found" : AirPlay.speakers.length + " speakers found"
+                labelColor: AirPlay.installError !== "" || AirPlay.error !== "" ? Theme.color.danger : Theme.color.label
+                SettingsButton {
+                    visible: AirPlay.checked && !AirPlay.installed
+                    text: AirPlay.installing ? "Installing…" : "Install"
+                    icon: "download-simple"
+                    busy: AirPlay.installing
+                    enabled: !Updates.running
+                    onClicked: AirPlay.install()
+                }
+                Switch {
+                    visible: AirPlay.installed
+                    checked: Config.options.audio.airplay
+                    onToggled: Config.options.audio.airplay = !checked
+                }
+            }
         }
     }
 }

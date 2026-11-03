@@ -14,8 +14,10 @@ import qs.common
 Singleton {
     id: root
 
-    // Settings page with the KLIPY key field (Panels.openSettings)
-    readonly property string settingsPage: "sidebar"
+    // Settings page with the KLIPY key field, and its group there
+    // (Panels.openSettings)
+    readonly property string settingsPage: "ai"
+    readonly property string settingsTarget: "GIFs"
 
     // ---- Data -----------------------------------------------------------
 

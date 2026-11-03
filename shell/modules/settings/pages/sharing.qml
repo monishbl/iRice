@@ -105,23 +105,14 @@ Column {
                 onSelected: i => Config.options.sharing.receiving = values[i]
             }
         }
+        // (a firewall in the way: Privacy & Security offers the fix)
         Row {
-            readonly property bool hotspotOnly: !(page.system.firewall?.blocks ?? false) && page.system.firewall?.hotspot === false
-            visible: (page.system.firewall?.blocks ?? false) || hotspotOnly
+            visible: (page.system.firewall?.blocks ?? false) || page.system.firewall?.hotspot === false
             label: "Firewall"
-            labelColor: hotspotOnly ? Theme.color.label : Theme.color.danger
-            detail: (hotspotOnly ? "Your firewall (" + page.system.firewall.kind + ") keeps phones from joining Quick Share's hotspot, so transfers without a shared Wi-Fi stay slow. Allowing DHCP (port 67) fixes it"
-                : (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
-                : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
-                + ": phones can't connect to this computer. Allowing ports 53317–53320, mDNS and DHCP fixes it")
-                + (page.system.passwordless ? "." : "; it asks for your password.")
-                + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
+            detail: "Your firewall keeps phones from connecting. Privacy & Security can allow them."
             SettingsButton {
-                text: "Allow through firewall"
-                icon: "shield-check"
-                busy: page.fixing === "firewall"
-                enabled: page.fixing === ""
-                onClicked: page.fixSystem("firewall")
+                text: "Show"
+                onClicked: Panels.openSettings("security", "Firewall")
             }
         }
         Row {
@@ -186,19 +177,6 @@ Column {
             Switch {
                 checked: Config.options.sharing.quickShareHotspot !== false
                 onToggled: Config.options.sharing.quickShareHotspot = !checked
-            }
-        }
-        Row {
-            visible: Config.options.sharing.quickShareHotspot !== false
-            label: "Fast transfers without asking"
-            detail: QuickShare.trustError !== "" ? QuickShare.trustError
-                : QuickShare.trusted ? "The direct Wi-Fi link is set up without your password. Any app running as you could set one up too; turn this off to be asked again."
-                : "Off: your password is asked each time a direct Wi-Fi link is set up. Changing this asks for it once."
-            labelColor: QuickShare.trustError !== "" ? Theme.color.danger : Theme.color.label
-            Switch {
-                enabled: !QuickShare.trustBusy
-                checked: QuickShare.trusted
-                onToggled: QuickShare.setTrusted(!checked)
             }
         }
         Row {

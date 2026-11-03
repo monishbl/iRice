@@ -72,28 +72,6 @@ Column {
                 onSelected: i => Captions.cfg.placement = ["bar", "video", "island", "strip"][i]
             }
         }
-        Row {
-            label: "Language"
-            detail: "Automatic suits videos in different languages; choosing one is more accurate"
-            Dropdown {
-                width: 220
-                options: [{ value: "auto", label: "Automatic" }].concat(Dictation.languages.filter(l => l.value !== "" && l.value !== "auto"))
-                value: Captions.cfg.language || "auto"
-                onChosen: v => Captions.cfg.language = v
-            }
-        }
-        Row {
-            visible: Captions.placement === "bar" && (Captions.cfg.barX >= 0 || Captions.cfg.barY >= 0)
-            label: "The bar's place"
-            detail: "Moved by you"
-            SettingsButton {
-                text: "Put It Back"
-                onClicked: {
-                    Captions.cfg.barX = -1;
-                    Captions.cfg.barY = -1;
-                }
-            }
-        }
     }
 
     // ── The pointer ─────────────────────────────────────────────────────
@@ -105,17 +83,51 @@ Column {
             detail: "Move the mouse quickly back and forth to see where the pointer is"
             Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
         }
-        Row {
-            visible: Config.options.findPointer.enabled
-            label: "Show it with"
-            detail: Config.options.findPointer.style === "grow" ? "The pointer grows big for a moment. A few apps draw their own pointer; over those it stays its size."
-                : Config.options.findPointer.style === "both" ? "A ring, and the pointer grows big for a moment (not over the few apps that draw their own)"
-                : "A ring that closes in on the pointer"
-            Segmented {
-                width: 280
-                options: ["Ring", "Bigger pointer", "Both"]
-                current: Math.max(0, ["ring", "grow", "both"].indexOf(Config.options.findPointer.style))
-                onSelected: i => Config.options.findPointer.style = ["ring", "grow", "both"][i]
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Live captions"
+            Row {
+                label: "Language"
+                detail: "Automatic suits videos in different languages; choosing one is more accurate"
+                Dropdown {
+                    width: 220
+                    options: [{ value: "auto", label: "Automatic" }].concat(Dictation.languages.filter(l => l.value !== "" && l.value !== "auto"))
+                    value: Captions.cfg.language || "auto"
+                    onChosen: v => Captions.cfg.language = v
+                }
+            }
+            Row {
+                visible: Captions.placement === "bar" && (Captions.cfg.barX >= 0 || Captions.cfg.barY >= 0)
+                label: "The bar's place"
+                detail: "Moved by you"
+                SettingsButton {
+                    text: "Put It Back"
+                    onClicked: {
+                        Captions.cfg.barX = -1;
+                        Captions.cfg.barY = -1;
+                    }
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Pointer"
+            Row {
+                visible: Config.options.findPointer.enabled
+                label: "Show it with"
+                detail: Config.options.findPointer.style === "grow" ? "The pointer grows big for a moment. A few apps draw their own pointer; over those it stays its size."
+                    : Config.options.findPointer.style === "both" ? "A ring, and the pointer grows big for a moment (not over the few apps that draw their own)"
+                    : "A ring that closes in on the pointer"
+                Segmented {
+                    width: 280
+                    options: ["Ring", "Bigger pointer", "Both"]
+                    current: Math.max(0, ["ring", "grow", "both"].indexOf(Config.options.findPointer.style))
+                    onSelected: i => Config.options.findPointer.style = ["ring", "grow", "both"][i]
+                }
             }
         }
     }

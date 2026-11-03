@@ -14,6 +14,7 @@ import qs.services
 // with Undo.
 Column {
     id: page
+    readonly property string pageTitle: "Login Items"
     width: parent?.width ?? 0
     spacing: 22
 
@@ -356,8 +357,8 @@ Column {
                 id: hit
                 required property var modelData
                 width: parent?.width ?? 0
-                height: 48
-                color: hitMouse.pressed ? Theme.color.fillPressed : hitMouse.containsMouse ? Theme.color.fill : "transparent"
+                height: Theme.material ? 56 : 48
+                color: Theme.material ? "transparent" : hitMouse.pressed ? Theme.color.fillPressed : hitMouse.containsMouse ? Theme.color.fill : "transparent"
                 AppIcon {
                     id: hitIcon
                     x: 14

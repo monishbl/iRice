@@ -26,14 +26,6 @@ Column {
             }
         }
         Row {
-            label: "Material pointer"
-            detail: "Bibata, a rounder pointer, in the Material look (when it's installed)"
-            Switch {
-                checked: Config.options.appearance.materialCursor
-                onToggled: Config.options.appearance.materialCursor = !checked
-            }
-        }
-        Row {
             visible: !Config.options.appearance.materialCursor
             label: "Pointer"
             detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
@@ -43,59 +35,6 @@ Column {
                 options: ["macOS", "Bibata"]
                 current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
                 onSelected: i => Config.options.appearance.cursor = values[i]
-            }
-        }
-        Row {
-            label: "Window transparency"
-            detail: Config.options.appearance.windowOpacity === "off" ? "Windows are fully opaque" : "Video, games and fullscreen stay opaque"
-            Segmented {
-                width: 300
-                readonly property var values: ["off", "subtle", "more", "custom"]
-                options: ["Off", "Subtle", "More", "Custom"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.windowOpacity))
-                onSelected: i => Config.options.appearance.windowOpacity = values[i]
-            }
-        }
-        Repeater {
-            model: Config.options.appearance.windowOpacity === "custom" ? [
-                { key: "windowOpacityActive", label: "Focused window" },
-                { key: "windowOpacityInactive", label: "Other windows" }
-            ] : []
-            Row {
-                required property var modelData
-                label: modelData.label
-                detail: Math.round(Config.options.appearance[modelData.key] * 100) + "% opaque"
-                Slider {
-                    width: 220
-                    from: 0.6
-                    to: 1
-                    value: Config.options.appearance[parent.parent.modelData.key]
-                    onMoved: v => Config.options.appearance[parent.parent.modelData.key] = Math.round(v * 100) / 100
-                }
-            }
-        }
-        Row {
-            label: "Window tabs"
-            detail: Config.options.appearance.windowTabs === "finder" ? "Finder-style tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
-            Segmented {
-                width: 300
-                readonly property var values: ["hyprland", "finder"]
-                options: ["Hyprland", "Finder"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
-                onSelected: i => Config.options.appearance.windowTabs = values[i]
-            }
-        }
-        Row {
-            visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
-            label: "hyprbars plugin"
-            detail: "Builds the official plugin with hyprpm in a terminal."
-            Rectangle { // (Material: a 40 px filled button)
-                width: instLabel.implicitWidth + (Theme.material ? 32 : 24)
-                height: Theme.material ? 40 : 28
-                radius: height / 2
-                color: Theme.accent
-                Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
-                MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
             }
         }
     }
@@ -109,15 +48,6 @@ Column {
             Switch {
                 checked: Config.options.stageManager.enabled
                 onToggled: Config.options.stageManager.enabled = !checked
-            }
-        }
-        Row {
-            visible: Config.options.stageManager.enabled
-            label: "Show recent stages"
-            detail: "Hide them to give windows the full width; switch with the dock or Mission Control."
-            Switch {
-                checked: Config.options.stageManager.strip
-                onToggled: Config.options.stageManager.strip = !checked
             }
         }
     }
@@ -137,31 +67,121 @@ Column {
                 onSelected: i => Config.options.overview.style = values[i]
             }
         }
-        Row {
-            label: "With several displays"
-            detail: Config.options.overview.displays === "each" ? "The Overview opens on every screen, each showing its own spaces" : "A row for each display, in the order they're arranged"
-            Segmented {
-                width: 260
-                readonly property var values: ["rows", "each"]
-                options: ["A row per display", "Each its own"]
-                current: Math.max(0, values.indexOf(Config.options.overview.displays))
-                onSelected: i => Config.options.overview.displays = values[i]
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Windows"
+            Row {
+                label: "Window transparency"
+                detail: Config.options.appearance.windowOpacity === "off" ? "Windows are fully opaque" : "Video, games and fullscreen stay opaque"
+                Segmented {
+                    width: 300
+                    readonly property var values: ["off", "subtle", "more", "custom"]
+                    options: ["Off", "Subtle", "More", "Custom"]
+                    current: Math.max(0, values.indexOf(Config.options.appearance.windowOpacity))
+                    onSelected: i => Config.options.appearance.windowOpacity = values[i]
+                }
+            }
+            Repeater {
+                model: Config.options.appearance.windowOpacity === "custom" ? [
+                    { key: "windowOpacityActive", label: "Focused window" },
+                    { key: "windowOpacityInactive", label: "Other windows" }
+                ] : []
+                Row {
+                    required property var modelData
+                    label: modelData.label
+                    detail: Math.round(Config.options.appearance[modelData.key] * 100) + "% opaque"
+                    Slider {
+                        width: 220
+                        from: 0.6
+                        to: 1
+                        value: Config.options.appearance[parent.parent.modelData.key]
+                        onMoved: v => Config.options.appearance[parent.parent.modelData.key] = Math.round(v * 100) / 100
+                    }
+                }
+            }
+            Row {
+                label: "Window tabs"
+                detail: Config.options.appearance.windowTabs === "finder" ? "Finder-style tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
+                Segmented {
+                    width: 300
+                    readonly property var values: ["hyprland", "finder"]
+                    options: ["Hyprland", "Finder"]
+                    current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
+                    onSelected: i => Config.options.appearance.windowTabs = values[i]
+                }
+            }
+            Row {
+                visible: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded
+                label: "hyprbars plugin"
+                detail: "Builds the official plugin with hyprpm in a terminal."
+                Rectangle { // (Material: a 40 px filled button)
+                    width: instLabel.implicitWidth + (Theme.material ? 32 : 24)
+                    height: Theme.material ? 40 : 28
+                    radius: height / 2
+                    color: Theme.accent
+                    Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold } }
+                    MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
+                }
             }
         }
-        Row {
-            label: "Show the wallpaper in spaces"
-            detail: "Behind the windows in each space's preview (Overview and Mission Control)"
-            Switch { checked: Config.options.overview.wallpapers; onToggled: Config.options.overview.wallpapers = !checked }
+        Group {
+            width: parent.width
+            title: "Stage Manager"
+            Row {
+                visible: Config.options.stageManager.enabled
+                label: "Show recent stages"
+                detail: "Hide them to give windows the full width; switch with the dock or Mission Control."
+                Switch {
+                    checked: Config.options.stageManager.strip
+                    onToggled: Config.options.stageManager.strip = !checked
+                }
+            }
         }
-        Row {
-            label: "Window previews"
-            detail: Config.options.overview.previews === "live" ? "Every window keeps updating, up to 30 frames a second" : Config.options.overview.previews === "hybrid" ? "Windows on the current space keep updating (up to 30 frames a second); the rest are pictures" : "A picture of each window, taken when the Overview opens"
-            Segmented {
-                width: 260
-                readonly property var values: ["snapshot", "hybrid", "live"]
-                options: ["Snapshot", "Hybrid", "Live"]
-                current: Math.max(0, values.indexOf(Config.options.overview.previews))
-                onSelected: i => Config.options.overview.previews = values[i]
+        Group {
+            width: parent.width
+            title: "Overview"
+            Row {
+                label: "With several displays"
+                detail: Config.options.overview.displays === "each" ? "The Overview opens on every screen, each showing its own spaces" : "A row for each display, in the order they're arranged"
+                Segmented {
+                    width: 260
+                    readonly property var values: ["rows", "each"]
+                    options: ["A row per display", "Each its own"]
+                    current: Math.max(0, values.indexOf(Config.options.overview.displays))
+                    onSelected: i => Config.options.overview.displays = values[i]
+                }
+            }
+            Row {
+                label: "Show the wallpaper in spaces"
+                detail: "Behind the windows in each space's preview (Overview and Mission Control)"
+                Switch { checked: Config.options.overview.wallpapers; onToggled: Config.options.overview.wallpapers = !checked }
+            }
+            Row {
+                label: "Window previews"
+                detail: Config.options.overview.previews === "live" ? "Every window keeps updating, up to 30 frames a second" : Config.options.overview.previews === "hybrid" ? "Windows on the current space keep updating (up to 30 frames a second); the rest are pictures" : "A picture of each window, taken when the Overview opens"
+                Segmented {
+                    width: 260
+                    readonly property var values: ["snapshot", "hybrid", "live"]
+                    options: ["Snapshot", "Hybrid", "Live"]
+                    current: Math.max(0, values.indexOf(Config.options.overview.previews))
+                    onSelected: i => Config.options.overview.previews = values[i]
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Windows"
+            Row {
+                label: "Material pointer"
+                detail: "Bibata, a rounder pointer, in the Material look (when it's installed)"
+                Switch {
+                    checked: Config.options.appearance.materialCursor
+                    onToggled: Config.options.appearance.materialCursor = !checked
+                }
             }
         }
     }

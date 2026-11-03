@@ -182,23 +182,32 @@ Column {
         }
     }
 
-    Group {
-        width: parent.width
-        title: "Options"
-        Row {
-            label: "Look for phones"
-            detail: "Off: phones aren't looked for, and the rest of this page waits"
-            Switch { checked: Phone.cfg.enabled; onToggled: Phone.cfg.enabled = !checked }
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Options"
+            Row {
+                label: "Look for phones"
+                detail: "Off: phones aren't looked for, and the rest of this page waits"
+                Switch { checked: Phone.cfg.enabled; onToggled: Phone.cfg.enabled = !checked }
+            }
+            Row {
+                label: "Show the phone in the Dock"
+                detail: "While it's connected: click it to see its screen"
+                Switch { checked: Phone.cfg.dock; onToggled: Phone.cfg.dock = !checked }
+            }
+            Row {
+                label: "Keep the phone's screen off"
+                detail: "While it's shown here (saves its battery; it comes back on when you disconnect)"
+                Switch { checked: Phone.cfg.screenOff; onToggled: Phone.cfg.screenOff = !checked }
+            }
         }
-        Row {
-            label: "Show the phone in the Dock"
-            detail: "While it's connected: click it to see its screen"
-            Switch { checked: Phone.cfg.dock; onToggled: Phone.cfg.dock = !checked }
-        }
-        Row {
-            label: "Keep the phone's screen off"
-            detail: "While it's shown here (saves its battery; it comes back on when you disconnect)"
-            Switch { checked: Phone.cfg.screenOff; onToggled: Phone.cfg.screenOff = !checked }
-        }
+    }
+
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Sharing"
+        source: Qt.resolvedUrl("sharing.qml")
     }
 }

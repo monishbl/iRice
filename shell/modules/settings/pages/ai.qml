@@ -253,10 +253,6 @@ Column {
             }
         }
         Row {
-            label: "Show reasoning summary"
-            Switch { checked: Config.options.ai.showThinking; onToggled: Config.options.ai.showThinking = !checked }
-        }
-        Row {
             label: "System prompt"
             detail: "Instructions included with each request"
         }
@@ -275,5 +271,23 @@ Column {
                 }
             }
         }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Conversation"
+            Row {
+                label: "Show reasoning summary"
+                Switch { checked: Config.options.ai.showThinking; onToggled: Config.options.ai.showThinking = !checked }
+            }
+        }
+    }
+
+    // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
+    PagePart {
+        title: "Sidebar"
+        source: Qt.resolvedUrl("sidebar.qml")
     }
 }

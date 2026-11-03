@@ -128,7 +128,7 @@ Column {
                 } });
         if (!root.inSettings) {
             items.push({ separator: true });
-            items.push({ text: "Bluetooth settings…", action: () => Panels.openSettings("bluetooth") });
+            items.push({ text: "Bluetooth settings…", action: () => Panels.openSettings("network", "Bluetooth") });
         }
         menu.open(items);
     }

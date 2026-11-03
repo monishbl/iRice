@@ -82,7 +82,7 @@ Singleton {
             Island.post({
                 kind: "custom", icon: "microphone-slash", title: "Dictation isn't set up",
                 subtitle: !hasBinary ? "Install speech recognition in Settings" : "Download a speech model in Settings",
-                color: Theme.color.secondary, action: "Open Settings", onAction: () => Panels.openSettings("dictation")
+                color: Theme.color.secondary, action: "Open Settings", onAction: () => Panels.openSettings("shortcuts", "Dictation")
             }, 6000);
             pressedAt = 0;
             return;

@@ -18,10 +18,12 @@ Column {
     }
     Group {
         width: parent.width
-        footer: "Without it, notifications and the calendar, to-do and focus widgets are each their own piece of glass, like Control Center's controls."
-        Row {
-            label: "Notification Center panel"
-            Switch { checked: Config.options.notificationCenter.background; onToggled: Config.options.notificationCenter.background = !checked }
+        SubpageLink {
+            icon: "pill"
+            label: "Dynamic island"
+            detail: "Live activities, alerts, the music player and what shows when you point at it"
+            value: Config.options.island.enabled ? "On" : "Off"
+            page: "notifications/island"
         }
     }
     // A sound event: switch, Play, and your own file instead of iRice's
@@ -50,27 +52,6 @@ Column {
                 onClicked: Config.options.sounds[srow.key + "File"] = ""
             }
             Switch { checked: Config.options.sounds[srow.key]; onToggled: Config.options.sounds[srow.key] = !checked }
-        }
-    }
-
-    // Logging in: its own sound, switch and volume, apart from the effects
-    Group {
-        width: parent.width
-        title: "Logging in"
-        footer: "Plays once when you log in, at its own volume, even with sound effects off."
-        SoundRow { key: "startup"; label: "Sound when you log in"; always: true }
-        Row {
-            visible: Config.options.sounds.startup
-            label: "Volume"
-            detail: Math.round(Config.options.sounds.startupVolume * 100) + "%"
-            Slider {
-                width: 220
-                from: 0
-                to: 1
-                value: Config.options.sounds.startupVolume
-                onMoved: v => Config.options.sounds.startupVolume = v
-                onPressedChanged: if (!pressed) Sounds.play("startup", true) // hear the level
-            }
         }
     }
 
@@ -115,18 +96,6 @@ Column {
                 }
             }
         }
-        SoundRow { key: "charging"; label: "Plugging in the charger" }
-        SoundRow { key: "displays"; label: "Connecting a display" }
-        SoundRow { key: "lock"; label: "Locking and unlocking"; custom: false }
-        SoundRow { key: "notifications"; label: "Notifications"; custom: false; detail: "Not in a Focus mode, and not for apps that ask for silence" }
-        SoundRow { key: "battery"; label: "Low battery"; custom: false }
-        SoundRow { key: "volumeKeys"; label: "Volume keys"; custom: false }
-        SoundRow { key: "usb"; label: "USB devices"; custom: false }
-        SoundRow { key: "received"; label: "Files received"; custom: false }
-        SoundRow { key: "recording"; label: "Screen recording"; custom: false }
-        SoundRow { key: "error"; label: "Wrong password"; custom: false }
-        SoundRow { key: "screenshot"; label: "Screenshots"; custom: false }
-        SoundRow { key: "trash"; label: "Emptying the Trash"; custom: false }
         Row {
             visible: Config.options.sounds.enabled
             label: "Volume"
@@ -154,6 +123,54 @@ Column {
                 opacity: Notifications.list.length > 0 ? 1 : 0.4
                 Text { id: clearText; anchors.centerIn: parent; text: "Clear all"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.Medium } }
                 MouseArea { anchors.fill: parent; enabled: Notifications.list.length > 0; onClicked: Notifications.clearAll() }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Sound effects"
+            SoundRow { key: "charging"; label: "Plugging in the charger" }
+            SoundRow { key: "displays"; label: "Connecting a display" }
+            SoundRow { key: "lock"; label: "Locking and unlocking"; custom: false }
+            SoundRow { key: "notifications"; label: "Notifications"; custom: false; detail: "Not in a Focus mode, and not for apps that ask for silence" }
+            SoundRow { key: "battery"; label: "Low battery"; custom: false }
+            SoundRow { key: "volumeKeys"; label: "Volume keys"; custom: false }
+            SoundRow { key: "usb"; label: "USB devices"; custom: false }
+            SoundRow { key: "received"; label: "Files received"; custom: false }
+            SoundRow { key: "recording"; label: "Screen recording"; custom: false }
+            SoundRow { key: "error"; label: "Wrong password"; custom: false }
+            SoundRow { key: "screenshot"; label: "Screenshots"; custom: false }
+            SoundRow { key: "trash"; label: "Emptying the Trash"; custom: false }
+        }
+        // Logging in: its own sound, switch and volume, apart from the effects
+        Group {
+            width: parent.width
+            title: "Logging in"
+            footer: "Plays once when you log in, at its own volume, even with sound effects off."
+            SoundRow { key: "startup"; label: "Sound when you log in"; always: true }
+            Row {
+                visible: Config.options.sounds.startup
+                label: "Volume"
+                detail: Math.round(Config.options.sounds.startupVolume * 100) + "%"
+                Slider {
+                    width: 220
+                    from: 0
+                    to: 1
+                    value: Config.options.sounds.startupVolume
+                    onMoved: v => Config.options.sounds.startupVolume = v
+                    onPressedChanged: if (!pressed) Sounds.play("startup", true) // hear the level
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            footer: "Without it, notifications and the calendar, to-do and focus widgets are each their own piece of glass, like Control Center's controls."
+            Row {
+                label: "Notification Center panel"
+                Switch { checked: Config.options.notificationCenter.background; onToggled: Config.options.notificationCenter.background = !checked }
             }
         }
     }

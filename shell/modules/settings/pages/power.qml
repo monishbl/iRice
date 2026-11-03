@@ -60,25 +60,6 @@ Column {
             }
         }
         Row {
-            visible: page.battery && Backends.ppd
-            label: "Offer Low Power when the battery is low"
-            detail: "At " + page.cfg.batterySaverLevel + "% on battery, once each time it runs down, the island asks"
-            Switch { checked: page.cfg.batterySaver; onToggled: Config.options.power.batterySaver = !checked }
-        }
-        Row {
-            visible: page.battery && page.cfg.batterySaver && Backends.ppd
-            label: "Turn it on automatically"
-            detail: "Low Power comes on by itself, and the island offers Undo"
-            Switch { checked: page.cfg.batterySaverAuto; onToggled: Config.options.power.batterySaverAuto = !checked }
-        }
-        Row {
-            visible: Backends.ppd
-            label: "Game Mode uses Performance"
-            detail: PowerProfiles.hasPerformanceProfile ? "While Game Mode is on (Control Center)" : "This computer has no Performance mode"
-            enabled: PowerProfiles.hasPerformanceProfile
-            Switch { checked: page.cfg.gamePerformance; onToggled: Config.options.power.gamePerformance = !checked }
-        }
-        Row {
             visible: System.keepAwake
             label: "Keeping awake"
             detail: "Caffeine is on · " + System.keepAwakeStatus.toLowerCase()
@@ -86,6 +67,17 @@ Column {
                 text: "Turn off Caffeine"
                 onClicked: System.setKeepAwake(false, 0)
             }
+        }
+    }
+
+    // Cool-down: what iRice turns down when it runs hot (a subpage)
+    Group {
+        width: parent.width
+        SubpageLink {
+            icon: "thermometer-simple"
+            label: "Cool-down and performance"
+            detail: "What iRice turns down when the machine runs hot, and what stays loaded"
+            page: "power/cooldown"
         }
     }
 
@@ -152,64 +144,91 @@ Column {
         }
     }
 
-    // ── Apps using significant energy ───────────────────────────────────
-    Group {
-        id: energy
-        width: parent.width
-        title: "Apps using significant energy"
-        footer: !page.cfg.appEnergy ? "Off: nothing is recorded." : "CPU time over the last " + (Power.energyMinutes > 0 && Power.energyMinutes < 60 ? Power.energyMinutes + " minutes" : "hour") + ". A look every 5 minutes; kept only on this computer."
-        // The report runs only while this shows
-        Component.onCompleted: Power.energyUsers++
-        Component.onDestruction: Power.energyUsers--
-        Row {
-            label: "Keep track"
-            Switch {
-                checked: page.cfg.appEnergy
-                onToggled: {
-                    Config.options.power.appEnergy = !checked;
-                    if (checked === false)
-                        Power.clearEnergy();
-                }
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            title: "Energy mode"
+            Row {
+                visible: page.battery && Backends.ppd
+                label: "Offer Low Power when the battery is low"
+                detail: "At " + page.cfg.batterySaverLevel + "% on battery, once each time it runs down, the island asks"
+                Switch { checked: page.cfg.batterySaver; onToggled: Config.options.power.batterySaver = !checked }
+            }
+            Row {
+                visible: page.battery && page.cfg.batterySaver && Backends.ppd
+                label: "Turn it on automatically"
+                detail: "Low Power comes on by itself, and the island offers Undo"
+                Switch { checked: page.cfg.batterySaverAuto; onToggled: Config.options.power.batterySaverAuto = !checked }
+            }
+            Row {
+                visible: Backends.ppd
+                label: "Game Mode uses Performance"
+                detail: PowerProfiles.hasPerformanceProfile ? "While Game Mode is on (Control Center)" : "This computer has no Performance mode"
+                enabled: PowerProfiles.hasPerformanceProfile
+                Switch { checked: page.cfg.gamePerformance; onToggled: Config.options.power.gamePerformance = !checked }
             }
         }
-        Row {
-            visible: page.cfg.appEnergy && Power.energyApps.length === 0
-            label: "Nothing has used much energy lately"
-            detail: "Apps show up here after they've kept the processor busy"
-        }
-        Repeater {
-            model: page.cfg.appEnergy ? Power.energyApps : []
+        // ── Apps using significant energy ───────────────────────────────────
+        Group {
+            id: energy
+            width: parent.width
+            title: "Apps using significant energy"
+            footer: !page.cfg.appEnergy ? "Off: nothing is recorded." : "CPU time over the last " + (Power.energyMinutes > 0 && Power.energyMinutes < 60 ? Power.energyMinutes + " minutes" : "hour") + ". A look every 5 minutes; kept only on this computer."
+            // The report runs only while this shows
+            Component.onCompleted: Power.energyUsers++
+            Component.onDestruction: Power.energyUsers--
             Row {
-                id: appRow
-                required property var modelData
-                readonly property string kind: modelData.key.split(":")[0]
-                readonly property string ident: modelData.key.slice(kind.length + 1)
-                readonly property var entry: kind === "proc" ? null : Apps.entryFor(ident)
-                readonly property real most: Power.energyApps[0]?.seconds || 1
-                label: entry?.name || ident
-                detail: Math.round(modelData.seconds / 60) >= 1 ? Math.round(modelData.seconds / 60) + " min of CPU" : Math.round(modelData.seconds) + " s of CPU"
-                QQ.Row {
-                    spacing: 12
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 120
-                        height: 6
-                        radius: 3
-                        color: Theme.color.fill
-                        Rectangle {
-                            width: Math.max(6, parent.width * appRow.modelData.seconds / appRow.most)
-                            height: parent.height
-                            radius: 3
-                            color: Theme.color.secondary
-                        }
+                label: "Keep track"
+                Switch {
+                    checked: page.cfg.appEnergy
+                    onToggled: {
+                        Config.options.power.appEnergy = !checked;
+                        if (checked === false)
+                            Power.clearEnergy();
                     }
-                    SettingsButton {
-                        visible: appRow.kind !== "proc"
-                        text: "Quit"
-                        onClicked: Apps.quit(appRow.ident)
+                }
+            }
+            Row {
+                visible: page.cfg.appEnergy && Power.energyApps.length === 0
+                label: "Nothing has used much energy lately"
+                detail: "Apps show up here after they've kept the processor busy"
+            }
+            Repeater {
+                model: page.cfg.appEnergy ? Power.energyApps : []
+                Row {
+                    id: appRow
+                    required property var modelData
+                    readonly property string kind: modelData.key.split(":")[0]
+                    readonly property string ident: modelData.key.slice(kind.length + 1)
+                    readonly property var entry: kind === "proc" ? null : Apps.entryFor(ident)
+                    readonly property real most: Power.energyApps[0]?.seconds || 1
+                    label: entry?.name || ident
+                    detail: Math.round(modelData.seconds / 60) >= 1 ? Math.round(modelData.seconds / 60) + " min of CPU" : Math.round(modelData.seconds) + " s of CPU"
+                    QQ.Row {
+                        spacing: 12
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 120
+                            height: 6
+                            radius: 3
+                            color: Theme.color.fill
+                            Rectangle {
+                                width: Math.max(6, parent.width * appRow.modelData.seconds / appRow.most)
+                                height: parent.height
+                                radius: 3
+                                color: Theme.color.secondary
+                            }
+                        }
+                        SettingsButton {
+                            visible: appRow.kind !== "proc"
+                            text: "Quit"
+                            onClicked: Apps.quit(appRow.ident)
+                        }
                     }
                 }
             }
         }
     }
+
 }

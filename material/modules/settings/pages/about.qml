@@ -39,21 +39,22 @@ Column {
             value: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "All good" : Health.attention.length + " to check"
             page: "about/health"
         }
+        SubpageLink {
+            icon: "rocket-launch"
+            label: "Login Items"
+            detail: "The apps that start when you log in"
+            page: "about/loginitems"
+        }
+        SubpageLink {
+            icon: "bug"
+            label: "Report a Bug"
+            detail: "Tell iRice what went wrong, with what helps fix it"
+            page: "about/bugreport"
+        }
     }
     Group {
         width: parent.width
         footer: "Settings live in ~/.config/irice/config.json and apply as you change them."
-        Row {
-            label: "Configuration file"
-            Rectangle { // (Material: a 40 px tonal button)
-                width: openText.implicitWidth + (Theme.material ? 32 : 24)
-                height: Theme.material ? 40 : 26
-                radius: height / 2
-                color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
-                Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.Medium } }
-                MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
-            }
-        }
         Row {
             label: "Welcome screen"
             detail: "Pick the look, light or dark, and a wallpaper again"
@@ -243,6 +244,24 @@ Column {
             enabled: pb.enabled
             cursorShape: Qt.PointingHandCursor
             onClicked: pb.clicked()
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                label: "Configuration file"
+                Rectangle { // (Material: a 40 px tonal button)
+                    width: openText.implicitWidth + (Theme.material ? 32 : 24)
+                    height: Theme.material ? 40 : 26
+                    radius: height / 2
+                    color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.fill
+                    Text { id: openText; anchors.centerIn: parent; text: "Open"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.Medium } }
+                    MouseArea { anchors.fill: parent; onClicked: Launch.open("file://" + Config.dir + "/config.json") }
+                }
+            }
         }
     }
 }

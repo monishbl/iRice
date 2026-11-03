@@ -163,18 +163,6 @@ Column {
             }
         }
         Row {
-            visible: Config.options.appearance.iconStyle === "clear" || Config.options.appearance.iconStyle === "tinted"
-            label: "Icon contrast"
-            detail: "How clearly each logo stands out from its tile; every logo is also evened out on its own"
-            Slider {
-                width: 220
-                from: 0
-                to: 1
-                value: Config.options.appearance.iconContrast
-                onMoved: v => Config.options.appearance.iconContrast = Math.round(v * 100) / 100
-            }
-        }
-        Row {
             visible: Theme.material
             label: "Colours from"
             detail: Config.options.appearance.materialSeed === "wallpaper" ? "Your wallpaper, like Material You" : "This colour"
@@ -272,135 +260,6 @@ Column {
                 }
             }
         }
-        Row {
-            label: "Emoji"
-            detail: EmojiFont.available ? "In the emoji picker (Super+.) and Spotlight" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Android's until it is"
-            Flow { // (Row here is the settings row)
-                spacing: 8
-                width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
-                Squircle { // (Material: a 40 px tonal button)
-                    visible: !EmojiFont.available
-                    width: emojiInstall.implicitWidth + (Theme.material ? 32 : 24)
-                    height: Theme.material ? 40 : 28
-                    radius: Theme.material ? height / 2 : Theme.radius.control
-                    color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, emojiInstallMouse.containsMouse ? 0.08 : 0)) : emojiInstallMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                    Text {
-                        id: emojiInstall
-                        anchors.centerIn: parent
-                        text: "Install font"
-                        color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium }
-                    }
-                    MouseArea {
-                        id: emojiInstallMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: EmojiFont.install(EmojiFont.style)
-                    }
-                }
-                Segmented {
-                    width: 300
-                    readonly property var values: ["android", "apple", "windows"]
-                    options: ["Android", "Apple", "Windows"]
-                    current: Math.max(0, values.indexOf(EmojiFont.style))
-                    onSelected: i => Config.options.emoji.style = values[i]
-                }
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        title: "Menu bar and shortcuts"
-        footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Command uses ⌘ ⌃ ⌥ ⇧, others Super Ctrl Alt." : ".")
-        Row {
-            label: "Menu icon"
-            Flow { // (Row here is the settings row)
-                spacing: 4
-                width: 8 * 40 + 7 * 4
-                Repeater {
-                    model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["circle", "circle-wavy", "Badge"]]
-                    Squircle {
-                        id: choice
-                        required property var modelData
-                        readonly property bool on: Config.options.appearance.menuIcon === modelData[0]
-                        readonly property string distroIcon: modelData[0] === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
-                        width: 40
-                        height: 32
-                        radius: Theme.radius.control
-                        color: on ? Theme.accentTint : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                        border.width: on ? 2 : 0
-                        border.color: Theme.accent
-                        Icon {
-                            anchors.centerIn: parent
-                            visible: choice.distroIcon === ""
-                            name: choice.modelData[1] || "linux-logo"
-                            fill: true
-                            size: 18
-                            color: Theme.color.label
-                        }
-                        Image {
-                            anchors.centerIn: parent
-                            visible: choice.distroIcon !== ""
-                            source: choice.distroIcon
-                            sourceSize: Qt.size(18, 18)
-                        }
-                        MouseArea {
-                            id: choiceMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: Config.options.appearance.menuIcon = choice.modelData[0]
-                        }
-                        QQC.ToolTip.text: modelData[2]
-                        QQC.ToolTip.visible: choiceMouse.containsMouse
-                        QQC.ToolTip.delay: 600
-                    }
-                }
-            }
-        }
-        Row {
-            id: iconThemeRow
-            label: "Icon theme"
-            detail: "App icons in the dock, App Library, Spotlight and Overview. Changing it restarts the shell; apps keep running."
-            // Installed icon themes (not cursor themes)
-            property var themes: []
-            Process {
-                running: true
-                command: ["sh", "-c", "for d in \"${XDG_DATA_HOME:-$HOME/.local/share}/icons\" \"$HOME/.icons\" /usr/local/share/icons /usr/share/icons; do for t in \"$d\"/*/index.theme; do [ -f \"$t\" ] && grep -q '^Directories=' \"$t\" && basename \"$(dirname \"$t\")\"; done; done | grep -vx hicolor | sort -u"]
-                stdout: StdioCollector {
-                    onStreamFinished: iconThemeRow.themes = text.split("\n").filter(x => x !== "")
-                }
-            }
-            Dropdown {
-                width: 220
-                options: [{ value: "", label: "Automatic" }].concat(iconThemeRow.themes.map(t => ({ value: t, label: t })))
-                value: Config.options.appearance.iconTheme
-                onChosen: v => {
-                    if (v === Config.options.appearance.iconTheme)
-                        return;
-                    Config.options.appearance.iconTheme = v;
-                    applyTheme.restart(); // after the setting is saved
-                }
-                Timer {
-                    id: applyTheme
-                    interval: 800
-                    onTriggered: System.repairShell()
-                }
-            }
-        }
-        Row {
-            label: "Shortcut symbols"
-            detail: "e.g. " + KeyNames.combo("SUPER CTRL F")
-            Segmented {
-                width: 300
-                readonly property var values: ["auto", "mac", "windows", "linux"]
-                options: ["Auto", "⌘ macOS", "Windows", "Linux"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.keySymbols))
-                onSelected: i => Config.options.appearance.keySymbols = values[i]
-            }
-        }
     }
 
     Group {
@@ -419,18 +278,6 @@ Column {
             label: "Match apps"
             detail: "Colour GTK and Qt apps, terminals and browsers to match"
             page: "appearance/glass"
-        }
-        SubpageLink {
-            icon: "app-window"
-            label: "Windows and Overview"
-            detail: "Window corners and borders, Stage Manager, Overview style"
-            page: "appearance/windows"
-        }
-        SubpageLink {
-            icon: "thermometer-simple"
-            label: "Cool-down and performance"
-            detail: "What iRice turns down when the machine runs hot, and what stays loaded"
-            page: "appearance/cooldown"
         }
     }
 
@@ -465,6 +312,153 @@ Column {
                 onSelected: i => {
                     Config.options.appearance.contrast = values[i];
                     Config.options.appearance.increaseContrast = false; // (the old switch)
+                }
+            }
+        }
+    }
+
+    // ── More options: the fine-tuning, folded away (MoreOptions) ───────
+    MoreOptions {
+        Group {
+            width: parent.width
+            Row {
+                visible: Config.options.appearance.iconStyle === "clear" || Config.options.appearance.iconStyle === "tinted"
+                label: "Icon contrast"
+                detail: "How clearly each logo stands out from its tile; every logo is also evened out on its own"
+                Slider {
+                    width: 220
+                    from: 0
+                    to: 1
+                    value: Config.options.appearance.iconContrast
+                    onMoved: v => Config.options.appearance.iconContrast = Math.round(v * 100) / 100
+                }
+            }
+            Row {
+                label: "Emoji"
+                detail: EmojiFont.available ? "In the emoji picker (Super+.) and Spotlight" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Android's until it is"
+                Flow { // (Row here is the settings row)
+                    spacing: 8
+                    width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
+                    Squircle { // (Material: a 40 px tonal button)
+                        visible: !EmojiFont.available
+                        width: emojiInstall.implicitWidth + (Theme.material ? 32 : 24)
+                        height: Theme.material ? 40 : 28
+                        radius: Theme.material ? height / 2 : Theme.radius.control
+                        color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, emojiInstallMouse.containsMouse ? 0.08 : 0)) : emojiInstallMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        Text {
+                            id: emojiInstall
+                            anchors.centerIn: parent
+                            text: "Install font"
+                            color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
+                            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium }
+                        }
+                        MouseArea {
+                            id: emojiInstallMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: EmojiFont.install(EmojiFont.style)
+                        }
+                    }
+                    Segmented {
+                        width: 300
+                        readonly property var values: ["android", "apple", "windows"]
+                        options: ["Android", "Apple", "Windows"]
+                        current: Math.max(0, values.indexOf(EmojiFont.style))
+                        onSelected: i => Config.options.emoji.style = values[i]
+                    }
+                }
+            }
+        }
+        Group {
+            width: parent.width
+            title: "Menu bar and shortcuts"
+            footer: "The icon opens the system menu. Shortcut symbols are how keys are written in menus, Settings and the cheatsheet" + (Config.options.appearance.keySymbols === "auto" ? "; Auto follows the icon: Command uses ⌘ ⌃ ⌥ ⇧, others Super Ctrl Alt." : ".")
+            Row {
+                label: "Menu icon"
+                Flow { // (Row here is the settings row)
+                    spacing: 4
+                    width: 8 * 40 + 7 * 4
+                    Repeater {
+                        model: [["irice", "drop", "iRice"], ["distro", "", (SystemInfo.osName || "Your distro")], ["linux", "linux-logo", "Linux"], ["command", "command", "Command"], ["terminal", "terminal-window", "Terminal"], ["cpu", "cpu", "Chip"], ["atom", "atom", "Atom"], ["planet", "planet", "Planet"], ["rocket", "rocket-launch", "Rocket"], ["star", "star-four", "Sparkle"], ["lightning", "lightning", "Bolt"], ["flame", "flame", "Flame"], ["leaf", "leaf", "Leaf"], ["snowflake", "snowflake", "Snowflake"], ["moon", "moon-stars", "Night"], ["cat", "cat", "Cat"], ["ghost", "ghost", "Ghost"], ["alien", "alien", "Alien"], ["circle", "circle-wavy", "Badge"]]
+                        Squircle {
+                            id: choice
+                            required property var modelData
+                            readonly property bool on: Config.options.appearance.menuIcon === modelData[0]
+                            readonly property string distroIcon: modelData[0] === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
+                            width: 40
+                            height: 32
+                            radius: Theme.radius.control
+                            color: on ? Theme.accentTint : choiceMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                            border.width: on ? 2 : 0
+                            border.color: Theme.accent
+                            Icon {
+                                anchors.centerIn: parent
+                                visible: choice.distroIcon === ""
+                                name: choice.modelData[1] || "linux-logo"
+                                fill: true
+                                size: 18
+                                color: Theme.color.label
+                            }
+                            Image {
+                                anchors.centerIn: parent
+                                visible: choice.distroIcon !== ""
+                                source: choice.distroIcon
+                                sourceSize: Qt.size(18, 18)
+                            }
+                            MouseArea {
+                                id: choiceMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Config.options.appearance.menuIcon = choice.modelData[0]
+                            }
+                            QQC.ToolTip.text: modelData[2]
+                            QQC.ToolTip.visible: choiceMouse.containsMouse
+                            QQC.ToolTip.delay: 600
+                        }
+                    }
+                }
+            }
+            Row {
+                id: iconThemeRow
+                label: "Icon theme"
+                detail: "App icons in the dock, App Library, Spotlight and Overview. Changing it restarts the shell; apps keep running."
+                // Installed icon themes (not cursor themes)
+                property var themes: []
+                Process {
+                    running: true
+                    command: ["sh", "-c", "for d in \"${XDG_DATA_HOME:-$HOME/.local/share}/icons\" \"$HOME/.icons\" /usr/local/share/icons /usr/share/icons; do for t in \"$d\"/*/index.theme; do [ -f \"$t\" ] && grep -q '^Directories=' \"$t\" && basename \"$(dirname \"$t\")\"; done; done | grep -vx hicolor | sort -u"]
+                    stdout: StdioCollector {
+                        onStreamFinished: iconThemeRow.themes = text.split("\n").filter(x => x !== "")
+                    }
+                }
+                Dropdown {
+                    width: 220
+                    options: [{ value: "", label: "Automatic" }].concat(iconThemeRow.themes.map(t => ({ value: t, label: t })))
+                    value: Config.options.appearance.iconTheme
+                    onChosen: v => {
+                        if (v === Config.options.appearance.iconTheme)
+                            return;
+                        Config.options.appearance.iconTheme = v;
+                        applyTheme.restart(); // after the setting is saved
+                    }
+                    Timer {
+                        id: applyTheme
+                        interval: 800
+                        onTriggered: System.repairShell()
+                    }
+                }
+            }
+            Row {
+                label: "Shortcut symbols"
+                detail: "e.g. " + KeyNames.combo("SUPER CTRL F")
+                Segmented {
+                    width: 300
+                    readonly property var values: ["auto", "mac", "windows", "linux"]
+                    options: ["Auto", "⌘ macOS", "Windows", "Linux"]
+                    current: Math.max(0, values.indexOf(Config.options.appearance.keySymbols))
+                    onSelected: i => Config.options.appearance.keySymbols = values[i]
                 }
             }
         }
