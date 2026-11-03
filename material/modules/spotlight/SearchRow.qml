@@ -17,7 +17,7 @@ Item {
     height: 56
 
     readonly property bool loading: !!result.loading
-    readonly property bool store: result.section === "App Store" && !loading
+    readonly property bool store: result.section === "Software" && !loading
     readonly property bool picture: !!result.icon && !loading
     readonly property color contentColor: selected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
 
@@ -155,7 +155,7 @@ Item {
             icon: "eye"
             iconSize: 20
             iconColor: root.selected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant
-            tooltip: "Quick Look"
+            tooltip: "Quick Preview"
             onClicked: Panels.quickLook(root.result.path)
         }
     }

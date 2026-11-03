@@ -88,16 +88,16 @@ Singleton {
     // ── Readable names ───────────────────────────────────────────────────
     // iRice actions (GlobalShortcut names, appid "irice")
     readonly property var shellActions: [
-        { name: "spotlight", label: "Spotlight" },
+        { name: "spotlight", label: "Search" },
         { name: "overview", label: "Overview" },
         { name: "superTap", label: "Tap Super (as set above)" },
-        { name: "missionControl", label: "Mission Control" },
-        { name: "appExpose", label: "App Exposé" },
-        { name: "launchpad", label: "App Library" },
+        { name: "missionControl", label: "All Windows" },
+        { name: "appExpose", label: "App Windows" },
+        { name: "launchpad", label: "App Drawer" },
         { name: "showDesktop", label: "Show desktop" },
         { name: "switcher", label: "Switch windows" },
         { name: "switcherBack", label: "Switch windows backwards" },
-        { name: "controlCenter", label: "Control Center" },
+        { name: "controlCenter", label: "Quick Settings" },
         { name: "notificationCenter", label: "Notification Center" },
         { name: "sidebar", label: "AI and tools sidebar" },
         { name: "clipboard", label: "Clipboard history" },

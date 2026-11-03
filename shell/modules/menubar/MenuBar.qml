@@ -615,7 +615,7 @@ Variants {
                         target: parent
                         hovered: parent.hovered && !parent.active
                         screen: bar.screen
-                        text: "Control Center"
+                        text: "Quick Settings"
                     }
                 }
                 MenuBarItem {

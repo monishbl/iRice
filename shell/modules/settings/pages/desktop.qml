@@ -70,7 +70,7 @@ Column {
         }
     }
 
-    readonly property var cornerActions: [{ value: "none", label: "None" }, { value: "overview", label: "Overview" }, { value: "missionControl", label: "Mission Control" }, { value: "desktop", label: "Show desktop" }, { value: "notificationCenter", label: "Notification Center" }, { value: "launchpad", label: "App Library" }, { value: "lock", label: "Lock screen" }, { value: "standby", label: "Start StandBy" }, { value: "quickNote", label: "Quick note" }]
+    readonly property var cornerActions: [{ value: "none", label: "None" }, { value: "overview", label: "Overview" }, { value: "missionControl", label: "All Windows" }, { value: "desktop", label: "Show desktop" }, { value: "notificationCenter", label: "Notification Center" }, { value: "launchpad", label: "App Drawer" }, { value: "lock", label: "Lock screen" }, { value: "standby", label: "Start Bedside Mode" }, { value: "quickNote", label: "Quick note" }]
     Group {
         width: parent.width
         title: "Hot corners"

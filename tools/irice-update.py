@@ -470,7 +470,7 @@ def rebuild(todo, base=45, span=40):
     steps = {"plugin": ["make", "-C", os.path.join(REPO, "hypr/plugin/irice-glass")],
              "native": [os.path.join(REPO, "shell/native/build.sh")],
              "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
-    names = {"plugin": "Building Liquid Glass", "native": "Building native helpers", "shaders": "Building shaders"}
+    names = {"plugin": "Building the glass plugin", "native": "Building native helpers", "shaders": "Building shaders"}
     for i, r in enumerate(todo):
         if r not in steps:
             continue

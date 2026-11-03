@@ -40,11 +40,11 @@ Column {
 
     Group {
         width: parent.width
-        title: "Stage Manager"
-        footer: "Keeps one group of windows in front and the others as thumbnails on the left. A new app opens in its own stage; Shift-click a thumbnail to add its windows to the stage in front. Also in Control Center."
+        title: "Stages"
+        footer: "Keeps one group of windows in front and the others as thumbnails on the left. A new app opens in its own stage; Shift-click a thumbnail to add its windows to the stage in front. Also in Quick Settings."
         Row {
-            label: "Stage Manager"
-            detail: !Config.options.stageManager.enabled ? "" : Config.options.stageManager.strip ? "Recent stages wait on the left" : "Windows get the full width; switch stages with the Dock or Mission Control"
+            label: "Stages"
+            detail: !Config.options.stageManager.enabled ? "" : Config.options.stageManager.strip ? "Recent stages wait on the left" : "Windows get the full width; switch stages with the Dock or All Windows"
             Segmented {
                 width: 300
                 // (one choice: off, or on with or without the recent stages;
@@ -65,14 +65,14 @@ Column {
     Group {
         width: parent.width
         title: "Overview"
-        footer: "Window previews apply to the Overview, Mission Control and the Stage Manager strip. Live previews update up to 30 times a second and use more power while those are open; nothing is captured while they're closed."
+        footer: "Window previews apply to the Overview, All Windows and the Stages strip. Live previews update up to 30 times a second and use more power while those are open; nothing is captured while they're closed."
         Row {
             label: "Style"
             detail: Config.options.overview.style === "macos" ? "Your spaces in a strip on top, a search in the middle" : "Your spaces as large previews, with a search on top"
             Segmented {
                 width: 260
                 readonly property var values: ["grid", "macos"]
-                options: ["Grid", "macOS"]
+                options: ["Grid", "Strip"]
                 current: Math.max(0, values.indexOf(Config.options.overview.style))
                 onSelected: i => Config.options.overview.style = values[i]
             }
@@ -115,11 +115,11 @@ Column {
             }
             Row {
                 label: "Window tabs"
-                detail: Config.options.appearance.windowTabs === "finder" ? "Finder-style tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
+                detail: Config.options.appearance.windowTabs === "finder" ? "Tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
                 Segmented {
                     width: 300
                     readonly property var values: ["hyprland", "finder"]
-                    options: ["Hyprland", "Finder"]
+                    options: ["Hyprland", "iRice"]
                     current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
                     onSelected: i => Config.options.appearance.windowTabs = values[i]
                 }
@@ -154,7 +154,7 @@ Column {
             }
             Row {
                 label: "Show the wallpaper in spaces"
-                detail: "Behind the windows in each space's preview (Overview and Mission Control)"
+                detail: "Behind the windows in each space's preview (Overview and All Windows)"
                 Switch { checked: Config.options.overview.wallpapers; onToggled: Config.options.overview.wallpapers = !checked }
             }
             Row {

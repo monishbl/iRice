@@ -130,7 +130,7 @@ Column {
     // Android's Quick Share, built in (services/QuickShare.qml)
     Group {
         width: parent.width
-        title: "Android Quick Share"
+        title: "Android phones (Quick Share)"
         footer: (!QuickShare.available ? "Quick Share needs Python 3 with python-cryptography and python-protobuf."
             : "Phones nearby find this computer in their Quick Share sheet as “" + QuickShare.name + "” (over the same Wi-Fi, or Bluetooth), and you're asked before anything is saved, with the PIN the phone shows. To send, use Share on a file and pick the phone (its Quick Share open, visible to Everyone).")
             + (QuickShare.error ? " " + QuickShare.error : "")

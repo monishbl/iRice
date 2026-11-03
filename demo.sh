@@ -86,8 +86,8 @@ fi
 cat <<'EOF'
 
 Starting iRice. In the demo:
-  Super+Space          Spotlight            Alt+Tab               switch windows
-  Super+Alt+C          Control Center       Click the menu bar    Wi-Fi, battery, Now Playing
+  Super+Space          Search               Alt+Tab               switch windows
+  Super+Alt+C          Quick Settings       Click the menu bar    Wi-Fi, battery, Now Playing
   Super+.              Emoji picker         Super+Return          terminal
   Super+Shift+Escape   end the demo
 EOF

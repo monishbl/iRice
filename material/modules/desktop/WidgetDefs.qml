@@ -20,7 +20,7 @@ QtObject {
         { id: "system", file: "SystemWidget.qml", label: "System", icon: "cpu", desc: "The last minute of CPU and memory; bigger sizes add temperature, network and more.", sizes: ["s", "m", "l"] },
         { id: "photos", file: "PhotosWidget.qml", label: "Photos", icon: "image", desc: "A picture from your Pictures folder (or one you choose: right-click, Widget Options), changing every 15 minutes.", sizes: ["s", "m", "l"], bleed: true },
         { id: "notes", file: "NotesWidget.qml", label: "Note", icon: "note-pencil", desc: "A note you can type into on the desktop.", sizes: ["s", "m", "l"], ownId: true },
-        { id: "stack", file: "StackWidget.qml", label: "Smart Stack", icon: "stack", desc: "Several widgets in one place: scroll to flip; it brings forward what matters now.", sizes: ["s", "m", "l"], ownId: true },
+        { id: "stack", file: "StackWidget.qml", label: "Widget Stack", icon: "stack", desc: "Several widgets in one place: scroll to flip; it brings forward what matters now.", sizes: ["s", "m", "l"], ownId: true },
         { id: "shortcuts", file: "ShortcutsWidget.qml", label: "Shortcuts", icon: "lightning", desc: "One-click buttons: screenshot, dark mode, lock... Right-click to choose.", sizes: ["s", "m"], ownId: true, bleed: true },
         { id: "screenTime", file: "ScreenTimeWidget.qml", label: "Screen Time", icon: "hourglass-medium", desc: "How long you've used the computer today, and on which apps.", sizes: ["s", "m"] },
         { id: "batteryHistory", file: "BatteryHistoryWidget.qml", label: "Battery History", icon: "battery-charging", desc: "Your battery over the last 24 hours.", sizes: ["s", "m"] },

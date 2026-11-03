@@ -48,15 +48,15 @@ def space(op, n=None, step=None):
 # A lone Super tap: Overview, or what Settings chose (the shell decides;
 # skipped when another key was pressed)
 b("spotlight-tap", "$MOD + $MODKEY", "Shell", "Tap Super (Overview, or as set in Settings)", shell("superTap"))
-b("spotlight", "$MOD + Space", "Shell", "Spotlight", shell("spotlight"))
+b("spotlight", "$MOD + Space", "Shell", "Search", shell("spotlight"))
 b("overview", "$MOD + Tab", "Shell", "Overview", shell("overview"))
 b("switcher", "ALT + Tab", "Shell", "Switch windows", shell("switcher"))
 b("switcher-back", "ALT + SHIFT + Tab", "Shell", "Switch windows backwards", shell("switcherBack"))
 # Finishes a quick Alt+Tab tap that ends before the switcher has the keyboard
 # (a release bind that lets apps still see Alt; does nothing otherwise)
 b("switcher-commit", "ALT + Alt_L", "Shell", "Switch windows (finish when Alt is let go)", shell("switcherCommit"), release=True, non_consuming=True, transparent=True, ignore_mods=True)
-b("mission-control", "$MOD + SHIFT + Tab", "Shell", "Mission Control", shell("missionControl"))
-b("launchpad", "$MOD + SHIFT + Space", "Shell", "App Library", shell("launchpad"))
+b("mission-control", "$MOD + SHIFT + Tab", "Shell", "All Windows", shell("missionControl"))
+b("launchpad", "$MOD + SHIFT + Space", "Shell", "App Drawer", shell("launchpad"))
 b("clipboard", "$MOD + V", "Shell", "Clipboard history", shell("clipboard"))
 b("shareSelection", "$MOD + CTRL + S", "Shell", "Share the selection", shell("shareSelection"))
 b("replyLatest", "$MOD + CTRL + N", "Shell", "Reply to the newest message", shell("replyLatest"))
@@ -65,7 +65,7 @@ b("sidebar", "$MOD + A", "Shell", "AI and tools sidebar", shell("sidebar"))
 b("sidebar-b", "$MOD + B", "Shell", "AI and tools sidebar (alternative)", shell("sidebar"))
 b("sidebar-o", "$MOD + O", "Shell", "AI and tools sidebar (alternative)", shell("sidebar"))
 b("notifications", "$MOD + N", "Shell", "Notification Center", shell("notificationCenter"))
-b("control-center", "$MOD + ALT + C", "Shell", "Control Center", shell("controlCenter"))
+b("control-center", "$MOD + ALT + C", "Shell", "Quick Settings", shell("controlCenter"))
 b("settings", "$MOD + I", "Shell", "Settings", shell("settings"))
 b("settings-comma", "$MOD + Comma", "Shell", "Settings (macOS key)", shell("settings"))
 b("cheatsheet", "$MOD + Slash", "Shell", "Keyboard shortcuts", shell("cheatsheet"))
@@ -192,7 +192,7 @@ gestures = [
     {"id": "workspaces", "fingers": 4, "direction": "horizontal", "label": "Switch workspace", "action": "workspace"},
     {"id": "overview-up", "fingers": 4, "direction": "up", "label": "Overview", "action": {"shell": "overview"}},
     {"id": "overview-down", "fingers": 4, "direction": "down", "label": "Overview", "action": {"shell": "overview"}},
-    {"id": "launchpad", "fingers": 4, "direction": "pinchin", "label": "App Library", "action": {"shell": "launchpad"}},
+    {"id": "launchpad", "fingers": 4, "direction": "pinchin", "label": "App Drawer", "action": {"shell": "launchpad"}},
     {"id": "show-desktop", "fingers": 4, "direction": "pinchout", "label": "Show desktop", "action": {"shell": "showDesktop"}},
 ]
 

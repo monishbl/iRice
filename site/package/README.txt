@@ -1,7 +1,7 @@
 iRice settings to try
 
   config.json   the settings: glass material, colours and contrast, menu bar,
-                dock, Control Center, cool-down and the rest. No personal
+                dock, Quick Settings, cool-down and the rest. No personal
                 data, keys or desktop widget layout. The wallpaper stays
                 iRice's own.
   import.sh     applies them.

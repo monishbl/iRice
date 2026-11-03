@@ -189,7 +189,7 @@ Singleton {
             Island.post({ kind: "custom", icon: "share-network", title: "Visible to phones for 10 minutes", subtitle: "In their Quick Share as " + QuickShare.name, color: Theme.accents.blue }, 4000);
         } },
         { title: "Toggle Dark Mode", glyph: "circle-half", keywords: "dark light appearance theme", run: () => Config.options.appearance.mode = Theme.dark ? "light" : "dark" },
-        { title: "Control Center", glyph: "sliders-horizontal", keywords: "control center settings toggles", run: () => Panels.show("controlCenter") },
+        { title: "Quick Settings", glyph: "sliders-horizontal", keywords: "control center quick settings toggles", run: () => Panels.show("controlCenter") },
         { title: "Notification Center", glyph: "bell", keywords: "notifications calendar", run: () => Panels.show("notificationCenter") },
         { title: "Ask AI", glyph: "sparkle", keywords: "ai chat claude assistant gpt gemini", run: () => Panels.show("sidebar") },
         { title: "Ask AI About the Screen", glyph: "sparkle", keywords: "ai ask screen screenshot explain what is this error", run: () => ScreenTools.select("ask") },
@@ -210,10 +210,10 @@ Singleton {
         { title: "Change Wallpaper", glyph: "image", keywords: "wallpaper background desktop picture", run: () => Panels.show("wallpaper") },
         { title: "Show Today", glyph: "sun-horizon", keywords: "today morning greeting day events to-dos weather options", run: () => { Panels.close(); Today.show(""); } },
         { title: "Screen Recording Options", glyph: "record", keywords: "record recording screen video frame rate fps format quality codec microphone sound countdown folder options", run: () => { Panels.close(); Recorder.openOptions(); } },
-        { title: "Stage Manager", glyph: "squares-four", keywords: "stage manager windows group strip", run: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
-        { title: "App Store", glyph: "storefront", keywords: "app store install apps software get download flathub aur packages", run: () => Panels.openAppStore() },
-        { title: "App Library", glyph: "squares-four", keywords: "apps launchpad library all applications grid", run: () => Panels.show("launchpad") },
-        { title: "Mission Control", glyph: "squares-four", keywords: "overview workspaces windows expose", run: () => Panels.show("missionControl") }
+        { title: "Stages", glyph: "squares-four", keywords: "stage manager stages windows group strip", run: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
+        { title: "Software", glyph: "storefront", keywords: "app store install apps software get download flathub aur packages", run: () => Panels.openAppStore() },
+        { title: "App Drawer", glyph: "squares-four", keywords: "apps launchpad app library app drawer all applications grid", run: () => Panels.show("launchpad") },
+        { title: "All Windows", glyph: "squares-four", keywords: "overview workspaces windows expose mission control all windows", run: () => Panels.show("missionControl") }
     ]
 
     // "Cast to <TV>" for each Chromecast nearby (what's playing goes there)
@@ -364,9 +364,9 @@ Singleton {
         if (wantStore) {
             AppStore.lookUp(raw);
             for (const a of AppStore.quick)
-                out.push({ section: "App Store", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) });
+                out.push({ section: "Software", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) });
             if (AppStore.quickLoading)
-                out.push({ section: "App Store", title: AppStore.quick.length > 0 ? "Looking on Flathub…" : "Looking for apps…", subtitle: "", glyph: "circle-notch", loading: true, run: () => Panels.openAppStore() });
+                out.push({ section: "Software", title: AppStore.quick.length > 0 ? "Looking on Flathub…" : "Looking for apps…", subtitle: "", glyph: "circle-notch", loading: true, run: () => Panels.openAppStore() });
         } else {
             AppStore.forget();
         }
@@ -416,7 +416,7 @@ Singleton {
                     top = i;
         // (nothing here matches, but the App Store has it: that's the top hit)
         if (top < 0)
-            top = out.findIndex(r => r.section === "App Store" && !r.loading);
+            top = out.findIndex(r => r.section === "Software" && !r.loading);
         if (top > 0 || (top === 0 && !answers.includes(out[0].section))) {
             const hit = Object.assign({}, out[top], { section: "Top Hit" });
             out.splice(top, 1);

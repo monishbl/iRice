@@ -26,7 +26,7 @@ Column {
         width: parent.width
         visible: Google.connected || page.cloud
         title: "From your accounts"
-        footer: "Shown calendars appear in Calendar, Today and Spotlight. Open an event in Notification Center's calendar to change it, or drag it to another day; calendars you can only view stay read-only. Repeating iCloud and Outlook events are changed on your iPhone, at icloud.com or in Outlook."
+        footer: "Shown calendars appear in Calendar, Today and Search. Open an event in Notification Center's calendar to change it, or drag it to another day; calendars you can only view stay read-only. Repeating iCloud and Outlook events are changed on your iPhone, at icloud.com or in Outlook."
         Row {
             visible: Google.calendars.length === 0 && CloudAccounts.calendars.length === 0
             label: "No calendars yet"
@@ -95,11 +95,11 @@ Column {
     Group {
         width: parent.width
         title: "Subscribed calendars"
-        footer: Calendar.lastError !== "" ? Calendar.lastError : "Events refresh every 15 minutes. Reminders you add in Notification Center or Spotlight are kept on this computer."
+        footer: Calendar.lastError !== "" ? Calendar.lastError : "Events refresh every 15 minutes. Reminders you add in Notification Center or Search are kept on this computer."
         Row {
             visible: Calendar.sources.length === 0
             label: "No subscriptions yet"
-            detail: "Add a link below to see its events in Notification Center and Spotlight."
+            detail: "Add a link below to see its events in Notification Center and Search."
         }
         Repeater {
             model: Calendar.sources

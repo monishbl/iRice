@@ -22,7 +22,7 @@ Column {
             property bool available: false
             visible: available
             label: "Look"
-            detail: Config.options.appearance.look === "material" ? "Material (experimental): Material 3 Expressive. Switching restarts the shell; apps keep running." : "Liquid Glass. Material (experimental) is Material 3 Expressive; switching restarts the shell, apps keep running."
+            detail: Config.options.appearance.look === "material" ? "Material (experimental), after Google's Material 3 Expressive. Switching restarts the shell; apps keep running." : "Glass. Material (experimental) follows Google's Material 3 Expressive; switching restarts the shell, apps keep running."
             function choose(look) {
                 if (look === Config.options.appearance.look)
                     return;
@@ -198,7 +198,7 @@ Column {
             }
             Row {
                 label: "Emoji"
-                detail: EmojiFont.available ? "In the emoji picker (Super+.) and Spotlight" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Android's until it is"
+                detail: EmojiFont.available ? "In the emoji picker (Super+.) and Search" : EmojiFont.packageFor(EmojiFont.style) + " isn't installed; showing Noto until it is"
                 Flow { // (Row here is the settings row)
                     spacing: 8
                     width: (EmojiFont.available ? 0 : emojiInstall.implicitWidth + 32) + 300
@@ -226,7 +226,7 @@ Column {
                     Segmented {
                         width: 300
                         readonly property var values: ["android", "apple", "windows"]
-                        options: ["Android", "Apple", "Windows"]
+                        options: ["Noto", "Apple", "Fluent"]
                         current: Math.max(0, values.indexOf(EmojiFont.style))
                         onSelected: i => Config.options.emoji.style = values[i]
                     }
@@ -286,7 +286,7 @@ Column {
             Row {
                 id: iconThemeRow
                 label: "Icon theme"
-                detail: "App icons in the dock, App Library, Spotlight and Overview. Changing it restarts the shell; apps keep running."
+                detail: "App icons in the dock, App Drawer, Search and Overview. Changing it restarts the shell; apps keep running."
                 // Installed icon themes (not cursor themes)
                 property var themes: []
                 Process {

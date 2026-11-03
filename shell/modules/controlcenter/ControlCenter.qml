@@ -243,7 +243,7 @@ Variants {
                     Text {
                         width: parent.width
                         wrapMode: Text.Wrap
-                        text: "Click a control to add it. In Control Center, click one to change its size, drag to move it, or use − to remove it."
+                        text: "Click a control to add it. In Quick Settings, click one to change its size, drag to move it, or use − to remove it."
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.caption }
                     }

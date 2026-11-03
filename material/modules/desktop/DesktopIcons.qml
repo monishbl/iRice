@@ -150,7 +150,7 @@ Item {
     }
     function trash(path) {
         const name = path.split("/").pop();
-        Quickshell.execDetached(["sh", "-c", "gio trash -- \"$1\" || exit; a=$(timeout 600 notify-send -a Finder -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"", "sh", path, name]);
+        Quickshell.execDetached(["sh", "-c", "gio trash -- \"$1\" || exit; a=$(timeout 600 notify-send -a Files -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"", "sh", path, name]);
         Sounds.play("trash");
     }
     function menuFor(it, x, y) {
@@ -163,7 +163,7 @@ Item {
             { text: "✓ Use Stacks", action: () => Config.options.desktop.useStacks = false }
         ] : [
             { text: "Open", action: () => root.open(p) },
-            { text: "Quick Look", action: () => Panels.quickLook(p) },
+            { text: "Quick Preview", action: () => Panels.quickLook(p) },
             { text: "Share…", action: () => Panels.share([p], desk.screen) },
             { text: "Show in Files", action: () => Files.reveal(p) },
             { text: "Copy Path", action: () => Quickshell.execDetached(["wl-copy", p]) },

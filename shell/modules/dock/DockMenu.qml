@@ -21,7 +21,7 @@ ContextMenu {
         switch (it.kind) {
         case "launcher":
             return [
-                { text: "Open App Library", action: () => Panels.show("launchpad", dock.screen) },
+                { text: "Open App Drawer", action: () => Panels.show("launchpad", dock.screen) },
                 { separator: true },
                 { text: "Remove from Dock", action: () => Config.options.dock.appsButton = false }
             ];

@@ -138,10 +138,10 @@ ShellRoot {
         name: panel
         onPressed: Panels.toggle(panel, Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name))
     }
-    Shortcut { panel: "spotlight"; description: "Open Spotlight" }
-    Shortcut { panel: "controlCenter"; description: "Open Control Center" }
+    Shortcut { panel: "spotlight"; description: "Open Search" }
+    Shortcut { panel: "controlCenter"; description: "Open Quick Settings" }
     Shortcut { panel: "notificationCenter"; description: "Open Notification Center" }
-    Shortcut { panel: "missionControl"; description: "Open Mission Control" }
+    Shortcut { panel: "missionControl"; description: "Open All Windows" }
     Shortcut { panel: "sidebar"; description: "Open the AI / tools sidebar" }
     Shortcut { panel: "wallpaper"; description: "Choose a wallpaper" }
     Shortcut { panel: "session"; description: "Power options" }
@@ -149,12 +149,12 @@ ShellRoot {
     Shortcut { panel: "overlay"; description: "Overlay widgets" }
     Shortcut { panel: "keyboard"; description: "On-screen keyboard" }
     Shortcut { panel: "clipboard"; description: "Clipboard history" }
-    Shortcut { panel: "launchpad"; description: "App Library" }
+    Shortcut { panel: "launchpad"; description: "App Drawer" }
     Shortcut { panel: "quickNote"; description: "Quick note" }
     GlobalShortcut {
         appid: "irice"
         name: "appExpose"
-        description: "App Exposé: the focused app's windows"
+        description: "App Windows: the focused app's windows"
         onPressed: {
             const t = Hyprland.activeToplevel;
             const cls = t?.lastIpcObject?.class ?? t?.wayland?.appId ?? "";

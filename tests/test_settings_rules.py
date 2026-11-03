@@ -2,7 +2,7 @@
 
 1. One control, not a switch plus an option: a Switch's setting never has a
    companion row that only shows (or only works) while the switch is on.
-   That pair is one choice with "Off" in it (Stage Manager: Off / On / On
+   That pair is one choice with "Off" in it (Stages: Off / On / On
    with recents; Dock magnification: a slider whose left end is Off).
 2. Each setting lives on one page: no config key is written from two page
    files. Another page that mentions it links there (SubpageLink with `page`
@@ -24,10 +24,10 @@ PAGES = 'modules/settings/pages'
 # Rule 1 exceptions: a switch for a whole feature, whose options are that
 # feature's own set (a subpage or group of them), not one companion choice
 FEATURE_SWITCHES = {
-    # The Dynamic island page: the switch, then everything the island does
+    # The Island page: the switch, then everything the island does
     'island.enabled': 'the island subpage is all its options',
-    # StandBy's group (burn-in, waking, clock, displays) dims while it's off
-    'lock.standby': "StandBy's own group of options",
+    # Bedside Mode's group (burn-in, waking, clock, displays) dims while it's off
+    'lock.standby': "Bedside Mode's own group of options",
     # Keep track: what shows while it's on is the record (apps), not an option
     'power.appEnergy': 'the energy list is a record, not an option',
 }

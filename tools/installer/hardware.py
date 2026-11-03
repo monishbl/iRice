@@ -191,7 +191,7 @@ def plan(f):
                         [], ["howdy-next"], ticked=False, ask=True))
 
     # What the installer builds here (always, in its Building step)
-    out.append(item("build-plugin", G[2], "Liquid Glass plugin for Hyprland " + (f.get("hyprland") or "(installed next)"),
+    out.append(item("build-plugin", G[2], "Glass plugin for Hyprland " + (f.get("hyprland") or "(installed next)"),
                     "Compiled against this Hyprland, so the glass and window controls match it exactly", locked=True))
     out.append(item("build-native", G[2], "Native helpers for this Qt",
                     "Faster glass sync and requests than the fall-backs; built for the Qt installed here", locked=True))

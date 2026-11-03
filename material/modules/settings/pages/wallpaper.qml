@@ -121,11 +121,11 @@ Column {
         Row {
             visible: Config.options.wallpaper.dynamic === "time"
             label: "Pictures"
-            detail: "A folder of pictures in name order: the first half spans the day, the rest the night. Empty uses the built-in Tahoe set."
+            detail: "A folder of pictures in name order: the first half spans the day, the rest the night. Empty uses the built-in set."
             PathField {
                 folder: true
                 value: Config.options.wallpaper.dynamicFolder
-                placeholder: "Built-in Tahoe set"
+                placeholder: "Built-in set"
                 start: "~/Pictures"
                 onPicked: p => Config.options.wallpaper.dynamicFolder = p
             }
@@ -135,7 +135,7 @@ Column {
             label: "Light picture"
             PathField {
                 value: Config.options.wallpaper.lightPath
-                placeholder: "Built-in Tahoe day"
+                placeholder: "Built-in day"
                 filter: "Images|*.jpg *.jpeg *.png *.webp"
                 start: "~/Pictures"
                 onPicked: p => Config.options.wallpaper.lightPath = p
@@ -146,7 +146,7 @@ Column {
             label: "Dark picture"
             PathField {
                 value: Config.options.wallpaper.darkPath
-                placeholder: "Built-in Tahoe dusk"
+                placeholder: "Built-in dusk"
                 filter: "Images|*.jpg *.jpeg *.png *.webp"
                 start: "~/Pictures"
                 onPicked: p => Config.options.wallpaper.darkPath = p

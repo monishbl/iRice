@@ -319,7 +319,7 @@ Variants {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Check the spelling, or search the web from Spotlight."
+                    text: "Check the spelling, or search the web in Search."
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.body }
                 }

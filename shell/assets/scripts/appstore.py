@@ -84,7 +84,7 @@ def cache_dir():
 
 def fetch_json(url, data=None, timeout=TIMEOUT):
     req = urllib.request.Request(url, data=json.dumps(data).encode() if data is not None else None,
-                                 headers={"User-Agent": "iRice App Store", "Content-Type": "application/json"})
+                                 headers={"User-Agent": "iRice Software", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 

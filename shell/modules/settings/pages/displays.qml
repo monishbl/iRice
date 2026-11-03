@@ -412,7 +412,7 @@ Column {
             : Mirroring.error !== "" ? Mirroring.error
             : Needs.checked && !Needs.networkManager ? "Miracast TVs need NetworkManager (for Wi-Fi Direct), which isn't running here. Chromecasts and Miracast over the network still work."
             : !Mirroring.p2p ? "This computer's Wi-Fi can't do Wi-Fi Direct, which Miracast TVs need. Chromecasts and network Miracast still work."
-            : "Turn on the TV's screen mirroring (Miracast, Screen Mirroring or Cast). Control Center's Screen Mirroring tile does the same."
+            : "Turn on the TV's screen mirroring (Miracast, Screen Mirroring or Cast). The Screen Mirroring tile in Quick Settings does the same."
         // (looks while the page is up: from the moment it's installed, too)
         property bool lookingHere: false
         function lookIfAvailable() {

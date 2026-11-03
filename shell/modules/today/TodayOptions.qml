@@ -74,7 +74,7 @@ FocusScope {
                     text: Today.mode === "ask" ? "Opens on your first unlock after 4 AM. Close it and it's gone until tomorrow; Pin for today keeps it on the desktop until the day ends."
                         : Today.mode === "widget" ? "No morning screen. The Today widget stays on your desktop; remove it and it comes back tomorrow."
                         : Today.mode === "both" ? "Opens on your first unlock after 4 AM, and the Today widget stays on your desktop."
-                        : "Today doesn't open by itself. Spotlight's Show Today opens it, and the Today widget is in the widget gallery."
+                        : "Today doesn't open by itself. Show Today in Search opens it, and the Today widget is in the widget gallery."
                 }
             }
 

@@ -107,7 +107,8 @@ Scope {
             property string query: ""
             property var index: [] // { page, text, detail }
             readonly property var results: {
-                const q = query.trim().toLowerCase();
+                // (an old name, e.g. Spotlight, finds what it's called now)
+                const q = SettingsMap.searchQuery(query.trim().toLowerCase());
                 if (q === "")
                     return [];
                 const words = q.split(/\s+/);

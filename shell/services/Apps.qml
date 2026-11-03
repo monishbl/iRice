@@ -51,7 +51,7 @@ Singleton {
         root.entriesGen; // (also when the first scan ends unannounced)
         return active ? entryFor(active.appId) : null;
     }
-    readonly property string activeName: active?.appId === "org.quickshell" ? (active?.title === "App Store" ? "App Store" : "System Settings") : activeEntry?.name ?? (active?.appId || "Desktop")
+    readonly property string activeName: active?.appId === "org.quickshell" ? (active?.title === "Software" ? "Software" : "System Settings") : activeEntry?.name ?? (active?.appId || "Desktop")
 
     // Every app lookup goes through these: they read entriesGen, so a
     // binding that looks an app up is re-run once the list has loaded

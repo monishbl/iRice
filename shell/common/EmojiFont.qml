@@ -4,16 +4,17 @@ import Quickshell
 import Quickshell.Io
 
 // The emoji style the shell draws with (Settings → Appearance → Emoji):
-// Android (Noto Color Emoji), Apple (Apple Color Emoji) or Windows (Microsoft
-// Fluent Emoji). Installed fonts are found once with fc-list; a style whose
+// Noto (Noto Color Emoji, Android's), Apple (Apple Color Emoji) or Fluent
+// (Microsoft's Fluent Emoji); the ids stay android, apple and windows, as
+// saved in settings. Installed fonts are found once with fc-list; a style whose
 // font isn't installed falls back to Noto, and Settings offers to install it.
 Singleton {
     id: root
 
     readonly property var styles: [
-        { id: "android", label: "Android", pkg: "noto-fonts-emoji", test: /^noto color emoji$/i },
+        { id: "android", label: "Noto", pkg: "noto-fonts-emoji", test: /^noto color emoji$/i },
         { id: "apple", label: "Apple", pkg: "ttf-apple-emoji", test: /^apple color emoji$/i },
-        { id: "windows", label: "Windows", pkg: "ttf-fluent-emoji", test: /^fluent ?emoji ?color$/i }
+        { id: "windows", label: "Fluent", pkg: "ttf-fluent-emoji", test: /^fluent ?emoji ?color$/i }
     ]
     property var installed: ({}) // style id -> its font family
     property var files: ({}) // style id -> its font file

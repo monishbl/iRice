@@ -168,7 +168,7 @@ ShellRoot {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.to === "material" ? "Material 3 Expressive · experimental" : "Liquid Glass"
+                        text: root.to === "material" ? "Material · experimental" : "Glass"
                         color: Qt.alpha(root.ink, 0.65)
                         font { family: root.to === "material" ? "iRice Sans Flex" : "Inter"; pixelSize: 16 }
                     }

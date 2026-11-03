@@ -21,7 +21,7 @@ Scope {
         active: Panels.appStoreOpen
         FloatingWindow {
             id: win
-            title: "App Store"
+            title: "Software"
             implicitWidth: Theme.material ? 1040 : 980
             implicitHeight: Theme.material ? 720 : 660
             minimumSize: Theme.material ? Qt.size(820, 640) : Qt.size(760, 500)
@@ -509,7 +509,7 @@ Scope {
                             Text {
                                 width: parent.width
                                 wrapMode: Text.Wrap
-                                text: win.view === "search" ? (win.filter === "aur" ? "Check the spelling, or try a shorter name." : "Check the spelling, or try a shorter name. Community packages are under AUR.") : win.view === "installed" ? "Apps you get from the App Store show here." : "The store couldn't reach Flathub. Check your connection."
+                                text: win.view === "search" ? (win.filter === "aur" ? "Check the spelling, or try a shorter name." : "Check the spelling, or try a shorter name. Community packages are under AUR.") : win.view === "installed" ? "Apps you install from Software show here." : "The store couldn't reach Flathub. Check your connection."
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.body }
                             }

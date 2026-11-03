@@ -32,7 +32,7 @@ Column {
         visible: !Theme.material
         width: parent.width
         title: "Glass"
-        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges, like Tahoe." : Theme.glass.material === "frosted" ? "Frost blurs what's behind, with a thin lens at the edges." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
+        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges." : Theme.glass.material === "frosted" ? "Frost blurs what's behind, with a thin lens at the edges." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
         Row {
             label: "Material"
             Flow { // (Row here is the settings row)

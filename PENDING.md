@@ -10,6 +10,9 @@ Updated 3 November 2026. Branch in progress: `quickshare-fast-first` (not merged
 - **Login manager**: switching from ly to iRice's own login screen (greetd) waits for your yes.
 - **ananicy rule**: installing iRice's process-priority rule waits for your yes.
 - **iPhone**: the QR code / browser link works with an Android phone and a phone-sized browser; try it once with a real iPhone.
+- **Material sound pack: source unrecorded.** The 21 sounds in `material/assets/sounds/material/` have no generator and no credit, so their licence is unknown (listed as such in THIRD_PARTY_NOTICES.md). Tell me where they came from (and their licence), or let me regenerate them with `tools/make-sounds.py` like the Glass ones. Until then they shouldn't go into a public release.
+- **Licence follow-ups (small):** check emojibase's exact copyright line against its LICENSE file (the notice says "Copyright (c) Miles Johnson"); record which Unsplash photo each website background is.
+- **Website media shows the old names:** the hero film (re-render `site/film/hero/film.html`: the Bedside Mode caption) and screenshots that show "App Store", "Spotlight Search" or "Control Center" in the UI. The page text and alt texts already use the new names.
 
 ## Quick Share (in progress)
 
@@ -36,14 +39,13 @@ Still to do:
 
 ## Approved, not started
 
-- **Settings sweep**: one control instead of a switch plus option (Stage Manager Off / On / On with recents; Dock magnification slider with Off at its left end; Cool-down Off / Ask / Automatic; Sounds with Off first). Each setting on one page with a link elsewhere (find the pointer → Mouse & Trackpad; calendars and task list → Calendar). A test that enforces both rules.
+- **Settings sweep**: one control instead of a switch plus option (Stages Off / On / On with recents; Dock magnification slider with Off at its left end; Cool-down Off / Ask / Automatic; Sounds with Off first). Each setting on one page with a link elsewhere (find the pointer → Mouse & Trackpad; calendars and task list → Calendar). A test that enforces both rules.
 - **Code structure**:
   - Phase 1: remove dead code.
   - Phase 6: efficiency fixes (wavy progress redraws, the hidden Glass UI in the Material lock screen, Resources history, live blur in popups, Mouse polling, island ink layer).
   - Phase 2: merge trivial Material copies back into the shared code (Glass stays pixel-identical).
   - Phase 3: shared components.
 - **Bug hunt and efficiency sweep**: both looks and the core.
-- **Security and legal audit**: licences of bundled fonts, icons and protocol code; trademark use in names; secure defaults; tests that hold them. Anything that would remove or rename a feature comes to you first.
 
 ## Built, waiting to merge
 

@@ -14,7 +14,7 @@ Column {
     Group {
         width: parent.width
         title: "Cool-down"
-        footer: "Less work for the processor and graphics, so the laptop runs cooler and lasts longer: all of this comes back when cool-down ends. Also in Control Center."
+        footer: "Less work for the processor and graphics, so the laptop runs cooler and lasts longer: all of this comes back when cool-down ends. Also in Quick Settings."
         Row {
             label: "Cool-down"
             detail: CoolDown.active ? "On · " + CoolDown.why : CoolDown.why !== "" ? CoolDown.why : "Off"
@@ -22,7 +22,7 @@ Column {
         }
         Row {
             label: "When the CPU is hot"
-            detail: !Config.options.cooling.whenHot ? "At the island's temperature alert (Notifications & Island → Dynamic island)"
+            detail: !Config.options.cooling.whenHot ? "At the island's temperature alert (Notifications & Island → Island)"
                 : Config.options.cooling.hotAction === "ask" ? "The island asks first; the question stays until you answer. Not now keeps it off until the laptop cools."
                 : "Starts by itself; ends after 3 minutes well below the alert temperature"
             Segmented {
@@ -86,7 +86,7 @@ Column {
             title: "Performance"
             Row {
                 label: "Keep panels loaded"
-                detail: "Spotlight, Control Center and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory"
+                detail: "Search, Quick Settings and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory"
                 Switch {
                     checked: Config.options.performance.keepPanelsLoaded
                     onToggled: Config.options.performance.keepPanelsLoaded = !checked

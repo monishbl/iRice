@@ -112,7 +112,7 @@ Scope {
         const w = [];
         w.push({ id: "time", name: "Through the day", preview: tahoeDir ? tahoeDir + "/tahoe-dawn.jpg" : "" });
         for (const n of ["day", "dusk", "night"])
-            w.push({ id: n, name: "Tahoe " + n[0].toUpperCase() + n.slice(1), preview: tahoeDir ? tahoeDir + "/tahoe-" + n + ".jpg" : "", path: tahoeDir ? tahoeDir + "/tahoe-" + n + ".jpg" : "" });
+            w.push({ id: n, name: n[0].toUpperCase() + n.slice(1), preview: tahoeDir ? tahoeDir + "/tahoe-" + n + ".jpg" : "", path: tahoeDir ? tahoeDir + "/tahoe-" + n + ".jpg" : "" });
         if (materialDir)
             w.push({ id: "material", name: "Material, light and dark", preview: materialDir + (Theme.dark ? "/material-dark.jpg" : "/material-light.jpg"), light: materialDir + "/material-light.jpg", dark: materialDir + "/material-dark.jpg" });
         return w;
@@ -317,7 +317,7 @@ Scope {
                                         }
                                         Text {
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            text: lookCard.modelData === "material" ? "Material 3 Expressive · experimental" : "Liquid glass, like macOS Tahoe"
+                                            text: lookCard.modelData === "material" ? "Material · experimental" : "Translucent glass, like macOS"
                                             color: root.ink2
                                             font { family: Theme.font.family; pixelSize: 13 }
                                         }

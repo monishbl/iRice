@@ -659,7 +659,7 @@ Column {
 
     // ── Parts: other pages shown here (SettingsMap.parts) ──────────────
     PagePart {
-        title: "Windows, Stage Manager and Overview"
+        title: "Windows, Stages and Overview"
         source: Qt.resolvedUrl("appearance-windows.qml")
     }
 }

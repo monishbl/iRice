@@ -36,8 +36,8 @@ var sections = [
 // part's heading). Search finds their rows under the page they're in.
 var parts = {
     "dock": { page: "menubar", part: "Dock" },
-    "controlcenter": { page: "menubar", part: "Control Center" },
-    "appearance-windows": { page: "windowrules", part: "Windows, Stage Manager and Overview" },
+    "controlcenter": { page: "menubar", part: "Quick Settings" },
+    "appearance-windows": { page: "windowrules", part: "Windows, Stages and Overview" },
     "bluetooth": { page: "network", part: "Bluetooth" },
     "trackpad": { page: "mouse", part: "Trackpad" },
     "dictation": { page: "shortcuts", part: "Dictation" },
@@ -53,9 +53,9 @@ var parts = {
 // they are now, and what to show there
 var aliases = {
     "dock": { page: "menubar", part: "Dock" },
-    "controlcenter": { page: "menubar", part: "Control Center" },
+    "controlcenter": { page: "menubar", part: "Quick Settings" },
     "menubar/island": { page: "notifications/island" },
-    "appearance/windows": { page: "windowrules", part: "Windows, Stage Manager and Overview" },
+    "appearance/windows": { page: "windowrules", part: "Windows, Stages and Overview" },
     "appearance/cooldown": { page: "power/cooldown" },
     "bluetooth": { page: "network", part: "Bluetooth" },
     "trackpad": { page: "mouse", part: "Trackpad" },
@@ -69,6 +69,34 @@ var aliases = {
     "loginitems": { page: "about/loginitems" },
     "bugreport": { page: "about/bugreport" }
 };
+
+// Names features had before (other companies' product names) -> their
+// names now, lower case: searching an old name finds the new one
+var formerNames = {
+    "spotlight": "search",
+    "mission control": "all windows",
+    "app exposé": "app windows",
+    "exposé": "app windows",
+    "app library": "app drawer",
+    "launchpad": "app drawer",
+    "stage manager": "stages",
+    "standby": "bedside mode",
+    "smart stack": "widget stack",
+    "quick look": "quick preview",
+    "app store": "software",
+    "control center": "quick settings",
+    "control centre": "quick settings",
+    "liquid glass": "glass",
+    "dynamic island": "island"
+};
+
+// A settings search with any former name swapped for today's
+function searchQuery(q) {
+    var keys = Object.keys(formerNames).sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < keys.length; i++)
+        q = q.split(keys[i]).join(formerNames[keys[i]]);
+    return q;
+}
 
 // The page a search hit in file `file` (no .qml) belongs to, and the part
 // heading it's under (or "")

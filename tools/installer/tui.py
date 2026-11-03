@@ -127,7 +127,7 @@ class Installer:
         have = set(facts.get("installed", ()))
         sysinfo = system or {}
         dm = facts.get("display_manager", "")
-        self.look = Radio([("glass", "Glass", "Translucent, like macOS Tahoe. App icons start Clear."),
+        self.look = Radio([("glass", "Glass", "Translucent glass, like macOS. App icons start Clear."),
                            ("material", "Material", "Android's Material You. App icons start Themed.")], "glass")
         self.mode = Radio([("auto", "Automatic", "Light by day, dark at night"),
                            ("light", "Light", ""), ("dark", "Dark", "")], "auto")
@@ -152,7 +152,7 @@ class Installer:
         if not {"ttf-apple-emoji", "ttf-fluent-emoji"} <= have:
             extras.append({"id": "emoji", "label": "Apple and Fluent emoji", "detail": "Noto emoji is the default (from the AUR)", "ticked": False})
         if not sysinfo.get("walls_ready", walls_ready()):
-            extras.append({"id": "wallpapers", "label": "macOS wallpapers", "detail": "Tahoe and earlier, about 10 MB", "ticked": True})
+            extras.append({"id": "wallpapers", "label": "macOS wallpapers", "detail": "Apple's, about 10 MB", "ticked": True})
         self.extras = Checks(extras)
         system_items = []
         if facts.get("pulseaudio"):

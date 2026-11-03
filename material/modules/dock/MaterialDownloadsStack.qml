@@ -189,7 +189,7 @@ PanelWindow {
                         Behavior on radius { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
                         color: Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, quickLook.pressed ? 0.1 : quickLook.containsMouse ? 0.08 : 0))
                         Accessible.role: Accessible.Button
-                        Accessible.name: "Quick Look"
+                        Accessible.name: "Quick Preview"
                         Icon {
                             anchors.centerIn: parent
                             name: "eye"

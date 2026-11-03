@@ -238,7 +238,7 @@ Column {
         SubpageLink {
             icon: "hand-swipe-right"
             label: "Gestures"
-            detail: "Swipe and pinch with several fingers: spaces, Mission Control, apps"
+            detail: "Swipe and pinch with several fingers: spaces, All Windows, apps"
             page: "mouse/gestures"
         }
     }

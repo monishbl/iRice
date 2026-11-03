@@ -156,7 +156,7 @@ Column {
             Segmented {
                 width: 260
                 readonly property var values: ["overview", "spotlight", "none"]
-                options: ["Overview", "Spotlight", "Nothing"]
+                options: ["Overview", "Search", "Nothing"]
                 current: Math.max(0, values.indexOf(Config.options.keyboard.superTap))
                 onSelected: i => Config.options.keyboard.superTap = values[i]
             }
