@@ -13,7 +13,6 @@ iRice is licensed under the GNU General Public License, version 3 or (at your op
 | emojibase-data shortcodes | MIT | below |
 | Geist and Geist Mono (website film only) | OFL-1.1 | `site/film/engine/fonts/OFL-Geist.txt` |
 | Film engine (website only) | MIT | `site/film/engine/LICENSE` |
-| Material sound pack | **source unrecorded** | none yet |
 
 ## Fonts and icons
 
@@ -86,7 +85,7 @@ Files: `site/film/engine/fonts/*.woff2`. Licence: `site/film/engine/fonts/OFL-Ge
 | `material/assets/wallpapers/*.jpg` | made by iRice, `tools/make-material-wallpapers.py` | iRice's |
 | `shell/assets/sounds/` | made by iRice, `tools/make-sounds.py` and `tools/make-directional-sounds.sh` | iRice's |
 | `shell/assets/devices/*.svg` | made by iRice, `tools/device-pictures.py` | iRice's |
-| `material/assets/sounds/material/*.ogg` (21 files) | **source unrecorded**: no generator and no credit in the repository | **unknown** until the source is found (see PENDING.md) |
+| `material/assets/sounds/material/*.ogg` | made by iRice, `tools/make-sounds.py material` and `tools/make-directional-sounds.sh` | iRice's |
 | `site/film/hero/assets/*.jpg` (website backgrounds) | photos from Unsplash (per-photo sources not recorded) | Unsplash License |
 
 ## Not shipped with iRice

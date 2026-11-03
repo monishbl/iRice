@@ -18,7 +18,7 @@ pan() {
     echo "aeval=$m*cos(($p+1)*PI/4)|$m*sin(($p+1)*PI/4):c=stereo"
 }
 
-for dir in "$SOUNDS"/*/; do
+for dir in "$SOUNDS"/*/ "$ROOT"/material/assets/sounds/*/; do
     for kind in connect disconnect; do
         src="$dir/display-$kind.ogg"
         [[ -f "$src" ]] || continue

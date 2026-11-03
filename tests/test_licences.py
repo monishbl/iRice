@@ -47,9 +47,10 @@ class Licence(unittest.TestCase):
             self.assertIn(part, text, part)
         # modified Apache-2.0 files say so (section 4(b))
         self.assertRegex(text, r"Changed by iRice[^\n]*subset")
-        # the sound pack nobody has a source for is listed as such, and pending
-        self.assertRegex(text, r"material/assets/sounds/material.*source unrecorded")
-        self.assertIn("Material sound pack", read("PENDING.md"))
+        # every bundled sound is iRice's, made by its generator (the Material
+        # set too, once of unknown source)
+        self.assertRegex(text, r"material/assets/sounds/material[^\n]*made by iRice[^\n]*make-sounds\.py material")
+        self.assertNotIn("source unrecorded", text)
 
     def test_licence_paths_named_in_files_exist(self):
         """A header that points at a licence file points at one that's there

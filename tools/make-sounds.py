@@ -12,6 +12,8 @@ is original. The packs:
   taps     short low "thocks" and ticks, almost no melody
   minimal  quiet ticks
   glass    the first set: glassy taps, sparkles and pops (the most playful)
+  material the Material look's (material/assets/sounds/material): soft, dark
+           sine notes in B-flat, short and round, with quiet low ticks
 Each pack has the same events (see EVENTS); Sounds.qml picks the folder.
 Logging in (startup) is one signature sound, the same in every pack.
 """
@@ -478,11 +480,86 @@ def today_glass():
     finish(buf, "today", -9)
 
 
+# ── Material: the Material look's own set ───────────────────────────────
+# Round and quiet, like Android's: pure sines with a breath of the octave,
+# short soft attacks, all in B-flat major (F, B-flat, D), so any two that
+# happen together agree. Clicks are low, pitch-dropping "tocks".
+MATERIAL_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "material", "assets", "sounds", "material")
+ROUND = ((1, 1), (2, 0.06))
+SHORT = 0.55  # (the set's notes die away quickly: each tau below, shortened)
+QUIET = -2  # dB under the other packs
+
+
+def material_note(buf, t, m, amp, pan=0.0, tau=0.16, attack=0.012):
+    tone(buf, t, hz(m), amp, attack=attack, tau=tau * SHORT, pan=pan, partials=ROUND)
+
+
+def material_tock(buf, t, m, amp, tau=0.035):
+    tone(buf, t, hz(m), amp, attack=0.002, tau=tau, partials=((1, 1), (2.4, 0.08)), glide=1.5, glide_time=0.012)
+
+
+def material_pack():
+    def notes(name, length, steps, peak, tau=0.16):
+        buf = buffer(length)
+        for t, m, amp, pan in steps:
+            material_note(buf, t, m, amp, pan, tau)
+        finish(buf, name, peak + QUIET)
+    signature_startup()
+    # charging: up a fourth, F to B-flat
+    notes("charging", 0.6, [(0, 77, 0.5, -0.1), (0.09, 82, 0.6, 0.1)], -9)
+    # displays: a fifth up, or down (B-flat and F)
+    notes("display-connect", 0.6, [(0, 70, 0.55, -0.15), (0.11, 77, 0.6, 0.15)], -9, tau=0.18)
+    notes("display-disconnect", 0.6, [(0, 77, 0.55, -0.15), (0.11, 70, 0.6, 0.15)], -9, tau=0.18)
+    # notification: B-flat, then the third below, softer
+    notes("notification", 0.8, [(0, 82, 0.6, -0.1), (0.12, 78, 0.42, 0.1)], -10, tau=0.24)
+    # low battery: D down to B, a minor third
+    notes("battery", 0.8, [(0, 74, 0.55, -0.1), (0.16, 71, 0.6, 0.1)], -9, tau=0.24)
+    # USB: like displays, higher and quicker
+    notes("usb-connect", 0.4, [(0, 82, 0.45, -0.1), (0.06, 89, 0.45, 0.1)], -12, tau=0.09)
+    notes("usb-disconnect", 0.4, [(0, 89, 0.45, -0.1), (0.06, 82, 0.45, 0.1)], -12, tau=0.09)
+    # received: up the chord, B-flat D F B-flat, settling
+    notes("received", 0.9, [(0.05 * k, m, 0.42, -0.3 + 0.2 * k) for k, m in enumerate((70, 74, 77, 82))], -10, tau=0.22)
+    # error: two low knocks on E-flat
+    buf = buffer(0.6)
+    for t in (0, 0.11):
+        material_note(buf, t, 63, 0.6, 0.0, tau=0.08, attack=0.004)
+    finish(buf, "error", -8 + QUIET)
+    # recording: a tock to start, B-flat to F to stop
+    buf = buffer(0.35)
+    material_tock(buf, 0, 70, 0.7)
+    finish(buf, "record-start", -11 + QUIET)
+    notes("record-stop", 0.45, [(0, 82, 0.5, 0), (0.09, 77, 0.55, 0)], -11, tau=0.12)
+    # lock lower, unlock higher; volume the quietest tick
+    for name, m, length, peak in (("lock", 62, 0.3, -8), ("unlock", 69, 0.3, -9), ("volume", 74, 0.2, -12)):
+        buf = buffer(length)
+        material_tock(buf, 0, m, 0.7, tau=0.03 if name == "volume" else 0.04)
+        finish(buf, name, peak + QUIET)
+    # ringtone: two rolls up and back, B-flat major
+    buf = buffer(1.5)
+    for r in range(2):
+        for k, m in enumerate((74, 77, 82, 77)):
+            material_note(buf, 0.6 * r + 0.1 * k, m, 0.4 + 0.06 * k, -0.2 + 0.15 * k, tau=0.16 + 0.04 * k)
+    finish(buf, "ringtone", -9 + QUIET)
+    # Today: climbs F A C F to the panel's peak, a soft swell beneath
+    buf = buffer(2.0)
+    tone(buf, 0.0, hz(53), 0.18, attack=TODAY_PEAK, tau=0.9, partials=((1, 1), (2, 0.1)))
+    for t, m, amp, pan, tau in ((0.0, 65, 0.3, -0.3, 0.3), (0.22, 69, 0.36, -0.12, 0.32), (0.44, 72, 0.43, 0.08, 0.36),
+                                (TODAY_PEAK, 77, 0.56, 0.0, 0.6), (0.86, 81, 0.16, 0.22, 0.3), (1.02, 84, 0.12, 0.34, 0.34)):
+        material_note(buf, t, m, amp, pan, tau)
+    finish(buf, "today", -9 + QUIET)
+
+
 if __name__ == "__main__":
     import sys
     only_today = sys.argv[1:] == ["today"]  # tools/make-sounds.py today: just today.ogg in every pack
     only_ring = sys.argv[1:] == ["ringtone"]  # tools/make-sounds.py ringtone: just ringtone.ogg
     only_startup = sys.argv[1:] == ["startup"]  # tools/make-sounds.py startup: just startup.ogg
+    if sys.argv[1:] == ["material"]:  # tools/make-sounds.py material: just the Material look's set
+        random.seed(7)
+        OUT = os.path.abspath(MATERIAL_OUT)
+        os.makedirs(OUT, exist_ok=True)
+        material_pack()
+        sys.exit(0)
     for pack in (Soft(), Marimba(), Keys(), Taps(), Minimal(), None):
         random.seed(7)  # the same files every run
         OUT = os.path.join(ROOT, pack.name if pack else "glass")
@@ -498,3 +575,8 @@ if __name__ == "__main__":
             build(pack)
         else:
             glass_pack()
+    if not (only_today or only_ring or only_startup):
+        random.seed(7)
+        OUT = os.path.abspath(MATERIAL_OUT)
+        print("── material")
+        material_pack()
