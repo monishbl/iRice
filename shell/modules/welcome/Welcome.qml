@@ -8,7 +8,7 @@ import qs.common
 import qs.services
 
 // The welcome screen, once, on a new setup (Config welcome.done; Settings →
-// About shows it again, so does `ipc call welcome show`): over your
+// About shows it again, so does `ipc call welcome open`): over your
 // wallpaper, blurred, a card that asks three things, one a step:
 //   1 the look: Glass or Material (experimental; only where its files are)
 //   2 light, dark, or auto (light from sunrise to sunset)
@@ -74,7 +74,7 @@ Scope {
     }
     IpcHandler {
         target: "welcome"
-        function show(): void { root.open(); }
+        function open(): void { root.open(); }
     }
     Connections {
         target: Panels
