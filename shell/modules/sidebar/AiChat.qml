@@ -26,7 +26,7 @@ Item {
             height: header.height
             width: pickerRow.implicitWidth + 24
             radius: Theme.material ? (modelMenu.visible ? height / 2 : 12) : 15
-            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+            Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
             color: Theme.material ? (modelMenu.visible ? Theme.m3.secondaryContainer : Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, pickerMouse.pressed ? 0.1 : pickerMouse.containsMouse ? 0.08 : 0)))
                 : pickerMouse.containsMouse || modelMenu.visible ? Theme.color.fillHover : Theme.color.fill
             Row {
@@ -58,7 +58,7 @@ Item {
             transform: Theme.material ? pressFx1.effects : []
             ElasticControl { id: pressFx1; pressed: newMouse.pressed; enabled: Theme.material }
             radius: Theme.material && newMouse.pressed ? 8 : height / 2
-            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+            Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
             visible: Ai.chat.count > 0
             color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, newMouse.pressed ? 0.1 : newMouse.containsMouse ? 0.08 : 0))
                 : newMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
@@ -274,7 +274,7 @@ Item {
             transform: Theme.material ? pressFx2.effects : []
             ElasticControl { id: pressFx2; pressed: sendMouse.pressed; enabled: Theme.material }
             radius: Theme.material && sendMouse.pressed ? 10 : width / 2
-            Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+            Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
             readonly property bool canSend: composer.text.trim() !== "" || Ai.attachment !== null
             color: Ai.busy || canSend ? (Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, sendMouse.pressed ? 0.1 : sendMouse.containsMouse ? 0.08 : 0)) : Theme.accent)
                 : Theme.material ? Qt.alpha(Theme.m3.onSurface, 0.12) : Theme.color.toggleOff

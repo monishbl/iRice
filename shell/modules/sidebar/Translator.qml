@@ -98,7 +98,7 @@ Item {
                 transform: Theme.material ? pressFx1.effects : []
                 ElasticControl { id: pressFx1; pressed: swapMouse.pressed; enabled: Theme.material }
                 radius: Theme.material && swapMouse.pressed ? 12 : height / 2
-                Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
                 opacity: root.source === "auto" ? (Theme.material ? 0.38 : 0.4) : 1
                 color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, swapMouse.pressed ? 0.1 : swapMouse.containsMouse ? 0.08 : 0))
                     : swapMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
@@ -173,7 +173,7 @@ Item {
                 transform: Theme.material ? pressFx2.effects : []
                 ElasticControl { id: pressFx2; pressed: copyMouse.pressed; enabled: Theme.material }
                 radius: Theme.material && copyMouse.pressed ? 8 : height / 2
-                Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
                 color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, copyMouse.pressed ? 0.1 : copyMouse.containsMouse ? 0.08 : 0))
                     : copyMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                 Text {

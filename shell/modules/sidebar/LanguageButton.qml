@@ -16,7 +16,7 @@ Rectangle {
     // (Material: a tonal button that turns a pill in secondary container
     // while its list is open; 12 px corners otherwise)
     radius: Theme.material ? (list.visible ? height / 2 : 12) : 15
-    Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+    Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
     color: Theme.material ? (list.visible ? Theme.m3.secondaryContainer : Qt.tint(Theme.m3.surfaceContainerHigh, Qt.alpha(Theme.m3.onSurface, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0)))
         : mouse.containsMouse || list.visible ? Theme.color.fillHover : Theme.color.fill
 

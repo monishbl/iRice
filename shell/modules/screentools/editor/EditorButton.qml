@@ -4,6 +4,10 @@ import qs.common
 // Toolbar button for the screenshot editor: icon, optional label, and a
 // tooltip after a hover. Variants: ghost (tools), secondary, primary, danger.
 // `selected` marks the active tool; `busy` swaps the icon for a spinner.
+// Material: Material 3 Expressive buttons: round, squaring off while pressed;
+// primary filled, secondary tonal (secondaryContainer), ghost a text or
+// standard icon button; a selected toggle squares off in secondaryContainer
+// (on a vibrant toolbar, `vibrant`: in primary).
 Squircle {
     id: root
 
@@ -15,16 +19,60 @@ Squircle {
     property bool selected: false
     property bool busy: false
     property bool tipBelow: true
+    property bool vibrant: false // (Material) sits on a primaryContainer toolbar
     signal clicked
 
     readonly property bool primary: variant === "primary"
     readonly property bool live: enabled && !busy
-    readonly property color fg: !enabled ? Theme.color.tertiary : primary ? Theme.color.onAccent : variant === "danger" ? Theme.color.danger : selected ? Theme.accent : Theme.color.label
+    readonly property color fg: Theme.material ? materialFg : !enabled ? Theme.color.tertiary : primary ? Theme.color.onAccent : variant === "danger" ? Theme.color.danger : selected ? Theme.accent : Theme.color.label
 
-    implicitHeight: 36
-    implicitWidth: label === "" ? 36 : row.implicitWidth + 28
-    radius: Theme.radius.control
+    // ── Material's colours: content, container, and the state layer over it ──
+    readonly property color materialFg: {
+        if (!Theme.material)
+            return "transparent";
+        if (!enabled)
+            return Qt.alpha(Theme.m3.onSurface, 0.38);
+        if (primary)
+            return Theme.m3.onPrimary;
+        if (variant === "danger")
+            return Theme.m3.error;
+        if (selected)
+            return vibrant ? Theme.m3.onPrimary : Theme.m3.onSecondaryContainer;
+        if (vibrant)
+            return Theme.m3.onPrimaryContainer;
+        if (variant === "secondary")
+            return Theme.m3.onSecondaryContainer;
+        // a ghost with a label is a text button (primary), without one a
+        // standard icon button
+        return label !== "" ? Theme.m3.primary : Theme.m3.onSurfaceVariant;
+    }
+    readonly property color materialColor: {
+        if (!Theme.material)
+            return "transparent";
+        const layer = !live ? 0 : mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0;
+        let base = "transparent";
+        if (primary || variant === "secondary" || selected) {
+            if (!enabled)
+                return Qt.alpha(Theme.m3.onSurface, 0.12);
+            base = primary || (selected && vibrant) ? Theme.m3.primary : Theme.m3.secondaryContainer;
+            return Qt.tint(base, Qt.alpha(materialFg, layer));
+        }
+        return Qt.alpha(materialFg, layer);
+    }
+
+    implicitHeight: Theme.material ? 40 : 36
+    implicitWidth: label === "" ? implicitHeight : row.implicitWidth + (Theme.material ? 32 : 28)
+    // (Material: round; a selected toggle squares off, a press more so)
+    transform: Theme.material ? pressFx1.effects : []
+    ElasticControl { id: pressFx1; pressed: mouse.pressed; enabled: Theme.material }
+    radius: Theme.material ? (mouse.pressed && live ? 8 : selected ? 12 : height / 2) : Theme.radius.control
+    Behavior on radius {
+        enabled: Theme.material
+        MaterialSpring { speed: "fast"; epsilon: 0.25 }
+    }
     color: {
+        if (Theme.material)
+            return materialColor;
         if (primary)
             return !enabled ? Theme.color.fill : mouse.pressed ? Qt.darker(Theme.accent, 1.25) : mouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent;
         if (selected)
@@ -38,17 +86,18 @@ Squircle {
         return variant === "secondary" ? Theme.color.fill : "transparent";
     }
     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-    scale: mouse.pressed && live ? 0.97 : 1
+    scale: mouse.pressed && live && !Theme.material ? 0.97 : 1
     Behavior on scale { ScaleAnimator { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
 
     // Keyboard focus ring
+    // (Material: 3 px in secondary, 2 px out)
     Squircle {
         anchors.fill: parent
-        anchors.margins: -4
-        radius: root.radius + 4
+        anchors.margins: Theme.material ? -5 : -4
+        radius: root.radius + (Theme.material ? 5 : 4)
         color: "transparent"
-        border.width: 2
-        border.color: Theme.accent
+        border.width: Theme.material ? 3 : 2
+        border.color: Theme.material ? Theme.m3.secondary : Theme.accent
         visible: root.activeFocus
     }
 
@@ -64,8 +113,10 @@ Squircle {
             Icon {
                 id: glyph
                 anchors.centerIn: parent
+                visible: !(Theme.material && root.busy)
                 name: root.busy ? "circle-notch" : root.icon
-                size: 16
+                fill: Theme.material && root.selected
+                size: Theme.material ? 18 : 16
                 color: root.fg
                 RotationAnimator on rotation {
                     running: root.busy
@@ -76,13 +127,22 @@ Squircle {
                 }
                 rotation: 0
             }
+            // (Material: its loading indicator)
+            Loader {
+                anchors.centerIn: parent
+                active: Theme.material && root.busy
+                sourceComponent: Spinner {
+                    size: 20
+                    color: root.fg
+                }
+            }
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.label !== ""
             text: root.label
             color: root.fg
-            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
+            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; weight: Font.Medium }
         }
     }
 
@@ -113,22 +173,23 @@ Squircle {
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.tipBelow ? parent.height + 8 : -height - 8
         width: tipRow.implicitWidth + 16
-        height: 26
-        radius: 8
-        color: Theme.dark ? "#3A3A3F" : "#1C1C1E"
+        height: Theme.material ? 24 : 26
+        // (Material: a plain tooltip, inverseSurface, corner 4)
+        radius: Theme.material ? 4 : 8
+        color: Theme.material ? Theme.m3.inverseSurface : Theme.dark ? "#3A3A3F" : "#1C1C1E"
         Row {
             id: tipRow
             anchors.centerIn: parent
             spacing: 6
             Text {
                 text: root.tooltip
-                color: "#F2F2F5"
+                color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5"
                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
             }
             Text {
                 visible: root.shortcut !== ""
                 text: root.shortcut
-                color: Qt.rgba(1, 1, 1, 0.55)
+                color: Theme.material ? Qt.alpha(Theme.m3.inverseOnSurface, 0.7) : Qt.rgba(1, 1, 1, 0.55)
                 font { family: Theme.font.family; pixelSize: Theme.font.small }
             }
         }

@@ -167,7 +167,7 @@ Item {
                 transform: Theme.material ? pressFx1.effects : []
                 ElasticControl { id: pressFx1; pressed: imgMouse.pressed; enabled: Theme.material }
                 radius: Theme.material ? (imgMouse.pressed ? 8 : 16) : 12
-                Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
                 color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
                 Image {
                     anchors.fill: parent
