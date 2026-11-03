@@ -37,15 +37,21 @@ Column {
             }
         }
         Row {
-            visible: !Config.options.appearance.materialCursor
+            id: pointerRow
             label: "Pointer"
-            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
+            // (one choice, as AppTheme picks it: the Material pointer, Bibata,
+            // or the shared `cursor` when that's off)
+            readonly property bool bibata: Config.options.appearance.materialCursor || Config.options.appearance.cursor === "bibata"
+            detail: bibata ? "Bibata Modern Classic, a rounder pointer" : "The macOS pointer"
             Segmented {
                 width: 300
-                readonly property var values: ["macos", "bibata"]
                 options: ["macOS", "Bibata"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
-                onSelected: i => Config.options.appearance.cursor = values[i]
+                current: pointerRow.bibata ? 1 : 0
+                onSelected: i => {
+                    Config.options.appearance.materialCursor = i === 1;
+                    if (i === 0)
+                        Config.options.appearance.cursor = "macos";
+                }
             }
         }
     }
@@ -56,9 +62,20 @@ Column {
         footer: "Keeps one group of windows in front and the others as thumbnails on the left. A new app opens in its own stage; Shift-click a thumbnail to add its windows to the stage in front. Also in Control Center."
         Row {
             label: "Stage Manager"
-            Switch {
-                checked: Config.options.stageManager.enabled
-                onToggled: Config.options.stageManager.enabled = !checked
+            detail: !Config.options.stageManager.enabled ? "" : Config.options.stageManager.strip ? "Recent stages wait on the left" : "Windows get the full width; switch stages with the Dock or Mission Control"
+            Segmented {
+                width: 300
+                // (one choice: off, or on with or without the recent stages;
+                // Control Center's toggle flips only `enabled`)
+                readonly property string now: !Config.options.stageManager.enabled ? "off" : Config.options.stageManager.strip ? "recents" : "on"
+                readonly property var values: ["off", "on", "recents"]
+                options: ["Off", "On", "On with recents"]
+                current: Math.max(0, values.indexOf(now))
+                onSelected: i => {
+                    if (values[i] !== "off")
+                        Config.options.stageManager.strip = values[i] === "recents";
+                    Config.options.stageManager.enabled = values[i] !== "off";
+                }
             }
         }
     }
@@ -141,19 +158,6 @@ Column {
         }
         Group {
             width: parent.width
-            title: "Stage Manager"
-            Row {
-                visible: Config.options.stageManager.enabled
-                label: "Show recent stages"
-                detail: "Hide them to give windows the full width; switch with the dock or Mission Control."
-                Switch {
-                    checked: Config.options.stageManager.strip
-                    onToggled: Config.options.stageManager.strip = !checked
-                }
-            }
-        }
-        Group {
-            width: parent.width
             title: "Overview"
             Row {
                 label: "With several displays"
@@ -180,18 +184,6 @@ Column {
                     options: ["Snapshot", "Hybrid", "Live"]
                     current: Math.max(0, values.indexOf(Config.options.overview.previews))
                     onSelected: i => Config.options.overview.previews = values[i]
-                }
-            }
-        }
-        Group {
-            width: parent.width
-            title: "Windows"
-            Row {
-                label: "Material pointer"
-                detail: "Bibata, a rounder pointer, in the Material look (when it's installed)"
-                Switch {
-                    checked: Config.options.appearance.materialCursor
-                    onToggled: Config.options.appearance.materialCursor = !checked
                 }
             }
         }

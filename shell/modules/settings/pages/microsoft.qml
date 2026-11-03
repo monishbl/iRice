@@ -81,51 +81,23 @@ Column {
     Group {
         width: parent.width
         visible: page.microsoft.length > 0
-        title: "Calendars"
-        footer: "Shown calendars appear in Calendar, Today and Spotlight. Repeating events show here but are changed in Outlook."
-        Row {
-            visible: !CloudAccounts.calendars.some(c => CloudAccounts.account(c.account)?.provider === "microsoft")
-            label: "No calendars yet"
-            detail: CloudAccounts.busy ? "Syncing…" : "They appear after the first sync"
-            labelColor: Theme.color.secondary
+        title: "Calendars and To Do"
+        footer: "Repeating events are changed in Outlook. Microsoft To Do tasks appear in To-do with your other reminders; deleting can be undone for 8 seconds."
+        // (which calendars show and where new to-dos go: set on the Calendar
+        // page, each setting's one home)
+        SubpageLink {
+            icon: "calendar-blank"
+            label: "Shown calendars"
+            detail: "Choose them on the Calendar page"
+            page: "calendar"
+            target: "From your accounts"
         }
-        Repeater {
-            model: CloudAccounts.calendars.filter(c => CloudAccounts.account(c.account)?.provider === "microsoft")
-            Row {
-                id: cal
-                required property var modelData
-                readonly property string ref: modelData.account + "|" + modelData.id
-                label: modelData.title
-                detail: modelData.writable ? "" : "View only"
-                Switch {
-                    checked: CloudAccounts.shown(cal.modelData)
-                    onToggled: {
-                        const hidden = (Config.options.cloud.hiddenCalendars ?? []).filter(x => x !== cal.ref);
-                        Config.options.cloud.hiddenCalendars = checked ? hidden.concat([cal.ref]) : hidden;
-                    }
-                }
-            }
-        }
-    }
-
-    Group {
-        width: parent.width
-        visible: page.microsoft.length > 0
-        title: "To Do"
-        footer: "Microsoft To Do tasks appear in To-do with your other reminders. Deleting can be undone for 8 seconds."
-        Row {
-            label: "New to-dos go to"
-            Dropdown {
-                width: 260
-                // (a Google list, chosen on the Google page, is named as such:
-                // not passed off as this computer)
-                readonly property string current: Config.options.google.taskListId
-                options: [{ value: "", label: "This computer only" }]
-                    .concat(current !== "" && !current.startsWith("cloud|") ? [{ value: current, label: "A Google Tasks list" }] : [])
-                    .concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
-                value: current
-                onChosen: v => Config.options.google.taskListId = v
-            }
+        SubpageLink {
+            icon: "list-checks"
+            label: "Where new to-dos go"
+            detail: "Choose a list on the Calendar page"
+            page: "calendar"
+            target: "To-dos"
         }
     }
 

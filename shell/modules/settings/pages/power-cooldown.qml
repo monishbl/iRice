@@ -22,19 +22,21 @@ Column {
         }
         Row {
             label: "When the CPU is hot"
-            detail: "At the island's temperature alert (Menu Bar → Dynamic Island)"
-            Switch { checked: Config.options.cooling.whenHot; onToggled: Config.options.cooling.whenHot = !checked }
-        }
-        Row {
-            visible: Config.options.cooling.whenHot
-            label: "When it gets hot"
-            detail: Config.options.cooling.hotAction === "ask" ? "The island asks first; the question stays until you answer. Not now keeps it off until the laptop cools." : "Starts by itself; ends after 3 minutes well below the alert temperature"
+            detail: !Config.options.cooling.whenHot ? "At the island's temperature alert (Notifications & Island → Dynamic island)"
+                : Config.options.cooling.hotAction === "ask" ? "The island asks first; the question stays until you answer. Not now keeps it off until the laptop cools."
+                : "Starts by itself; ends after 3 minutes well below the alert temperature"
             Segmented {
                 width: 240
-                readonly property var values: ["auto", "ask"]
-                options: ["Automatically", "Ask first"]
-                current: Math.max(0, values.indexOf(Config.options.cooling.hotAction))
-                onSelected: i => Config.options.cooling.hotAction = values[i]
+                // (one choice: off, or how it starts)
+                readonly property string now: !Config.options.cooling.whenHot ? "off" : Config.options.cooling.hotAction === "ask" ? "ask" : "auto"
+                readonly property var values: ["off", "ask", "auto"]
+                options: ["Off", "Ask", "Automatic"]
+                current: Math.max(0, values.indexOf(now))
+                onSelected: i => {
+                    if (values[i] !== "off")
+                        Config.options.cooling.hotAction = values[i];
+                    Config.options.cooling.whenHot = values[i] !== "off";
+                }
             }
         }
         Row {

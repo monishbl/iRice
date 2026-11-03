@@ -6,7 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.common
 
-// Shake to find the pointer (Settings → Accessibility): Hyprland notices the
+// Shake to find the pointer (Settings → Mouse & Trackpad): Hyprland notices the
 // shake (hypr/irice/findpointer.lua) and calls irice:findPointer. Then, as
 // findPointer.style says: a ring shrinks onto the pointer, following it
 // while it moves (ring); the pointer itself is big for a moment (grow,

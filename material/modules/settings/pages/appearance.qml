@@ -214,14 +214,19 @@ Column {
         Row {
             visible: Theme.material
             label: "Transparency"
-            detail: Config.options.appearance.reduceTransparency ? "Off while Reduce transparency is on" : Theme.transparency > 0 ? Math.round(Theme.transparency * 100) + "%: panels, menus, tiles and buttons show the blurred desktop behind them" : "Solid. Slide to let the blurred desktop show through panels, menus, tiles and buttons"
-            enabled: !Config.options.appearance.reduceTransparency
+            // (one control, its left end solid: Reduce transparency, a Glass
+            // switch hidden here, shows as solid, and sliding up ends it)
+            detail: Config.options.appearance.reduceTransparency ? "Solid: Reduce transparency is on. Slide to let the desktop show through." : Theme.transparency > 0 ? Math.round(Theme.transparency * 100) + "%: panels, menus, tiles and buttons show the blurred desktop behind them" : "Solid. Slide to let the blurred desktop show through panels, menus, tiles and buttons"
             Slider {
                 width: 220
                 from: 0
                 to: 1
-                value: Config.options.appearance.materialTransparency
-                onMoved: v => Config.options.appearance.materialTransparency = Math.round(v * 20) / 20
+                value: Config.options.appearance.reduceTransparency ? 0 : Config.options.appearance.materialTransparency
+                onMoved: v => {
+                    Config.options.appearance.materialTransparency = Math.round(v * 20) / 20;
+                    if (v > 0)
+                        Config.options.appearance.reduceTransparency = false;
+                }
             }
         }
         Row {
