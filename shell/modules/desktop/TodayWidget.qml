@@ -120,7 +120,7 @@ Item {
                 Text {
                     id: time
                     anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    text: ev.modelData.allDay ? "All day" : Qt.formatTime(ev.modelData.start, "h:mm AP")
+                    text: ev.modelData.allDay ? "All day" : Qt.formatTime(ev.modelData.start, TimeFormat.hm)
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                 }

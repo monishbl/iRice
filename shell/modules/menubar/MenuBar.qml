@@ -625,7 +625,7 @@ Variants {
                     onClicked: Panels.toggle("notificationCenter", bar.screen)
                     indicator: Focus.on ? "off" : bar.cfg.notificationIndicator
                     unread: Notifications.unread
-                    text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? "h:mm:ss AP" : "h:mm AP"))
+                    text: Qt.formatDateTime(clock.date, (bar.cfg.showDate ? "ddd d MMM  " : "") + (bar.cfg.showSeconds ? TimeFormat.hms : TimeFormat.hm))
                     HoverTip {
                         target: parent
                         hovered: parent.hovered && !parent.active

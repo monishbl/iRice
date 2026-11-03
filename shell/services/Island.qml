@@ -357,7 +357,7 @@ Singleton {
     // "now", "5m", "2h", then the time of day
     function ago(at, now) {
         const mins = Math.floor((now - at) / 60000);
-        return mins < 1 ? "now" : mins < 60 ? mins + "m" : mins < 360 ? Math.floor(mins / 60) + "h" : Qt.formatTime(new Date(at), "h:mm AP");
+        return mins < 1 ? "now" : mins < 60 ? mins + "m" : mins < 360 ? Math.floor(mins / 60) + "h" : Qt.formatTime(new Date(at), TimeFormat.hm);
     }
     PersistentProperties {
         id: kept

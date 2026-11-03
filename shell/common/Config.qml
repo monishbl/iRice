@@ -73,6 +73,7 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
+                property bool clock24: false // 24-hour time everywhere (TimeFormat)
                 // The look: glass (this shell) | material (experimental: Material 3
                 // Expressive, the material/ folder; switching restarts the shell,
                 // assets/scripts/switch-look.sh)

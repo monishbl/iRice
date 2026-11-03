@@ -26,7 +26,7 @@ Column {
         Text {
             id: time
             x: 12
-            text: Qt.formatTime(clock.date, "h:mm")
+            text: Qt.formatTime(clock.date, TimeFormat.hmShort)
             color: Theme.m3.onSurface
             font { family: Theme.font.family; pixelSize: 40; weight: Font.Medium; letterSpacing: -0.4; features: { "tnum": 1 } }
         }

@@ -69,7 +69,7 @@ Item {
     }
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
-    readonly property string time: ((clock.date.getHours() + 11) % 12 + 1) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
+    readonly property string time: TimeFormat.hour(clock.date) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
 
     // ── Burn-in protection ──────────────────────────────────────────────
     readonly property bool shift: cfg.standbyShift

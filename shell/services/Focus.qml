@@ -93,12 +93,12 @@ Singleton {
     }
 
     // "On until 7:00 PM" style status
-    readonly property string statusText: !on ? "Off" : until > 0 ? "On until " + Qt.formatTime(new Date(until), "h:mm AP") : source === "schedule" ? "On until " + fmt(mode.schedule.to) : "On"
+    readonly property string statusText: !on ? "Off" : until > 0 ? "On until " + Qt.formatTime(new Date(until), TimeFormat.hm) : source === "schedule" ? "On until " + fmt(mode.schedule.to) : "On"
     function fmt(hhmm) {
         const [h, m] = hhmm.split(":").map(Number);
         const d = new Date();
         d.setHours(h, m, 0, 0);
-        return Qt.formatTime(d, "h:mm AP");
+        return Qt.formatTime(d, TimeFormat.hm);
     }
 
     function applyEffects(m) {

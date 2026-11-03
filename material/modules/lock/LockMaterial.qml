@@ -180,6 +180,8 @@ Item {
                     anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 12
                     Text {
+                        // (the dynamic face shows the date itself with 24-hour time)
+                        visible: !(clock.face === "dynamic" && TimeFormat.h24 && root.smallT < 0.5)
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDate(wallClock.date, "dddd d MMMM")
                         color: root.ink
@@ -226,7 +228,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.min(implicitWidth, 320)
                             elide: Text.ElideRight
-                            text: !smartspace.next ? "" : (smartspace.next.title || "Event") + " · " + (smartspace.next.allDay ? "Today" : Qt.formatTime(smartspace.next.start, "h:mm AP"))
+                            text: !smartspace.next ? "" : (smartspace.next.title || "Event") + " · " + (smartspace.next.allDay ? "Today" : Qt.formatTime(smartspace.next.start, TimeFormat.hm))
                             color: root.ink2
                             font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
                         }

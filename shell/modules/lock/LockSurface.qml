@@ -198,7 +198,7 @@ WlSessionLockSurface {
                 // The morph to StandBy flies a copy of it (below)
                 opacity: surface.morphOn && surface.sb > 0 ? 0 : 1
                 // 12-hour, like the menu bar (no AM/PM at this size)
-                text: ((clock.date.getHours() + 11) % 12 + 1) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
+                text: TimeFormat.hour(clock.date) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
                 color: surface.darkInk ? Qt.rgba(0.09, 0.09, 0.11, 0.85) : Qt.rgba(1, 1, 1, 0.85)
                 font { family: Theme.font.family; pixelSize: surface.ios ? 168 : 150; weight: Font.Bold; letterSpacing: -5; features: { "tnum": 1 } }
                 layer.enabled: true
@@ -223,7 +223,7 @@ WlSessionLockSurface {
                 model: [
                     { icon: "", battery: true, text: Island.hasBattery ? Math.round(Island.level * 100) + "%" : "", on: Island.hasBattery },
                     { icon: Weather.icon, text: Weather.temp + "°", on: Weather.ready },
-                    { icon: "calendar-blank", text: complications.next ? (complications.next.allDay ? "Today" : Qt.formatTime(complications.next.start, "h:mm")) : "", on: !!complications.next },
+                    { icon: "calendar-blank", text: complications.next ? (complications.next.allDay ? "Today" : Qt.formatTime(complications.next.start, TimeFormat.hmShort)) : "", on: !!complications.next },
                     { icon: "list-checks", text: String(Todos.list.filter(t => !t.done).length), on: Todos.list.some(t => !t.done) }
                 ].filter(c => c.on)
                 Plate {

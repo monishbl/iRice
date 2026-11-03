@@ -34,7 +34,7 @@ Item {
         const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
         const diff = Math.round((day(e.start) - day(today)) / 86400000);
         const prefix = diff === 0 || size !== "s" ? "" : diff === 1 ? "Tomorrow " : Qt.formatDate(e.start, "ddd") + " ";
-        return e.allDay ? (prefix === "" ? "All day" : prefix + "all day") : prefix + Qt.formatTime(e.start, "h:mm AP");
+        return e.allDay ? (prefix === "" ? "All day" : prefix + "all day") : prefix + Qt.formatTime(e.start, TimeFormat.hm);
     }
 
     // ── Large: the full calendar ────────────────────────────────────────

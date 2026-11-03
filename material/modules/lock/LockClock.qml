@@ -14,7 +14,7 @@ import qs.services
 //   analog   hands on a 12-scallop dial
 //   weather  the time over the weather's icon and temperature, as large
 //   dynamic  the hours tall and narrow, the minutes smaller beside their
-//            top, AM or PM under the minutes
+//            top, AM or PM under the minutes (24-hour time: the date)
 //   LockClock { face: "stacked"; time: clock.date; size: 240; small: 0 }
 Item {
     id: root
@@ -34,7 +34,7 @@ Item {
     property real small: 0 // 0 large … 1 small
 
     readonly property string family: "Google Sans Flex"
-    readonly property int h12: (time.getHours() + 11) % 12 + 1
+    readonly property string hh: TimeFormat.hour(time) // (Settings → Appearance → 24-hour time)
     readonly property string mm: String(time.getMinutes()).padStart(2, "0")
     // (weight in steps: an animated weight makes a handful of font
     // instances, not one a frame)
@@ -77,7 +77,7 @@ Item {
         id: probe
         visible: false
         px: root.smallSize
-        text: root.h12 + ":" + root.mm
+        text: root.hh + ":" + root.mm
         wght: root.face === "overlap" ? Math.max(root.weight, 760) : root.weight
     }
 
@@ -132,7 +132,7 @@ Item {
                 id: hours
                 px: Math.round(root.size * 1.6)
                 wd: parent.wd
-                text: String(root.h12).padStart(2, "0")
+                text: root.hh.padStart(2, "0")
             }
             Ink {
                 id: minutes
@@ -142,12 +142,13 @@ Item {
                 tone: root.color2
                 text: root.mm
             }
-            // AM or PM, under the minutes, along the hours' foot
+            // AM or PM under the minutes, along the hours' foot; with
+            // 24-hour time, the day and month there instead
             Text {
                 id: half
                 x: minutes.x + Math.round((minutes.implicitWidth - implicitWidth) / 2)
                 y: hours.implicitHeight - Math.round(height * 0.8)
-                text: root.time.getHours() < 12 ? "AM" : "PM"
+                text: TimeFormat.h24 ? Qt.formatDate(root.time, "d MMM") : root.time.getHours() < 12 ? "AM" : "PM"
                 color: root.color2
                 font.family: root.family
                 font.pixelSize: Math.max(14, Math.round(root.size * 0.3))
@@ -161,7 +162,7 @@ Item {
         Ink {
             px: Math.round(root.size * 0.8)
             wd: Math.max(root.widthAxis, 140)
-            text: root.h12 + ":" + root.mm
+            text: root.hh + ":" + root.mm
         }
     }
 
@@ -176,7 +177,7 @@ Item {
                 px: Math.round(root.size * 0.95)
                 wght: parent.w
                 wd: Math.min(root.widthAxis, 100)
-                text: String(root.h12).padStart(2, "0")
+                text: root.hh.padStart(2, "0")
             }
             Ink {
                 id: minutes
@@ -269,7 +270,7 @@ Item {
                 id: clockLine
                 x: (parent.width - implicitWidth) / 2
                 px: Math.round(root.size * 0.78)
-                text: root.h12 + ":" + root.mm
+                text: root.hh + ":" + root.mm
             }
             Row {
                 id: sky
@@ -299,7 +300,7 @@ Item {
         Ink {
             px: root.smallSize
             wght: root.face === "overlap" ? Math.max(root.weight, 760) : root.weight
-            text: root.h12 + ":" + root.mm
+            text: root.hh + ":" + root.mm
         }
     }
 }

@@ -171,7 +171,7 @@ Singleton {
         const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
         const diff = Math.round((day(d) - day(now)) / 86400000);
         const date = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : diff > 1 && diff < 7 ? Qt.formatDate(d, "ddd") : Qt.formatDate(d, "d MMM");
-        return t.allDay ? date : date + " " + Qt.formatTime(d, "h:mm AP");
+        return t.allDay ? date : date + " " + Qt.formatTime(d, TimeFormat.hm);
     }
     function overdue(t) {
         return !!t?.due && !t.done && t.due < Date.now();

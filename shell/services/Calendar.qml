@@ -128,7 +128,7 @@ Singleton {
     function timeText(e) {
         if (e.allDay)
             return "All day";
-        return Qt.formatTime(e.start, "h:mm AP") + (e.end > e.start ? " – " + Qt.formatTime(e.end, "h:mm AP") : "");
+        return Qt.formatTime(e.start, TimeFormat.hm) + (e.end > e.start ? " – " + Qt.formatTime(e.end, TimeFormat.hm) : "");
     }
 
     // ---------- Local events ----------
@@ -257,7 +257,7 @@ Singleton {
                 const a = Object.assign({}, alerted);
                 a[e.key] = true;
                 alerted = a;
-                const when = e.alert === 0 || e.local && e.start <= now ? "Now" : e.allDay ? "Today" : "At " + Qt.formatTime(e.start, "h:mm AP") + (e.alert > 0 ? " · in " + e.alert + " min" : "");
+                const when = e.alert === 0 || e.local && e.start <= now ? "Now" : e.allDay ? "Today" : "At " + Qt.formatTime(e.start, TimeFormat.hm) + (e.alert > 0 ? " · in " + e.alert + " min" : "");
                 Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "-u", "normal", e.title, when + (e.location ? "\n" + e.location : "")]);
             }
         }

@@ -123,7 +123,7 @@ Item {
                 border.color: glassLayer.rim
                 Text {
                     anchors.centerIn: parent
-                    text: Qt.formatTime(clock.now, "h:mm")
+                    text: Qt.formatTime(clock.now, TimeFormat.hmShort)
                     color: glassLayer.ink
                     font { family: "Inter"; pixelSize: Math.max(8, 6.4 * root.u); weight: Font.DemiBold }
                 }
@@ -244,7 +244,7 @@ Item {
                     Text {
                         x: 2.4 * root.u
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatTime(clock.now, "h:mm")
+                        text: Qt.formatTime(clock.now, TimeFormat.hmShort)
                         color: Theme.dark ? "white" : root.m.onSurface
                         font { family: "Google Sans Flex"; pixelSize: Math.max(6, 2.6 * root.u); weight: Font.Medium }
                     }
@@ -275,7 +275,7 @@ Item {
                     color: root.m.primaryContainer ?? "#EADDFF"
                     Text {
                         anchors.centerIn: parent
-                        text: Qt.formatTime(clock.now, "h:mm")
+                        text: Qt.formatTime(clock.now, TimeFormat.hmShort)
                         color: root.m.onPrimaryContainer ?? "#21005D"
                         font { family: "Google Sans Flex"; pixelSize: Math.max(8, 6 * root.u); weight: Font.DemiBold }
                     }

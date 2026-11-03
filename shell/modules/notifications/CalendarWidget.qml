@@ -377,7 +377,7 @@ Platter {
                                         Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: parent.modelData.color || Theme.accent }
                                         Text {
                                             width: weekCol.width - 12
-                                            text: (parent.modelData.allDay ? "" : Qt.formatTime(parent.modelData.start, "h:mm AP") + "  ") + parent.modelData.title
+                                            text: (parent.modelData.allDay ? "" : Qt.formatTime(parent.modelData.start, TimeFormat.hm) + "  ") + parent.modelData.title
                                             elide: Text.ElideRight
                                             color: Theme.color.label
                                             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
@@ -542,7 +542,7 @@ Platter {
                                         }
                                         Text {
                                             width: parent.width
-                                            text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), "h:mm AP"))
+                                            text: row.isEvent ? Calendar.timeText(row.modelData.e) + (row.modelData.e.location ? " · " + row.modelData.e.location : "") + " · " + row.modelData.e.calendar : "To-do" + (row.modelData.t.allDay ? "" : " · " + Qt.formatTime(new Date(row.modelData.t.due), TimeFormat.hm))
                                             elide: Text.ElideRight
                                             color: Theme.color.secondary
                                             font { family: Theme.font.family; pixelSize: Theme.font.caption; features: { "tnum": 1 } }
@@ -746,7 +746,7 @@ Platter {
             notesField.text = "";
             title.text = "";
             allDay.checked = false;
-            startField.text = "9:00 AM";
+            startField.text = (TimeFormat.h24 ? "09:00" : "9:00 AM");
             endField.text = "10:00 AM";
             alertDrop.value = Calendar.defaultAlert;
             error = "";
@@ -766,8 +766,8 @@ Platter {
                 day = e.start;
                 title.text = e.title;
                 allDay.checked = e.allDay;
-                startField.text = Qt.formatTime(e.start, "h:mm AP");
-                endField.text = Qt.formatTime(e.end, "h:mm AP");
+                startField.text = Qt.formatTime(e.start, TimeFormat.hm);
+                endField.text = Qt.formatTime(e.end, TimeFormat.hm);
                 alertDrop.value = e.alert ?? Calendar.defaultAlert;
             } else {
                 const t = item.t;
@@ -776,7 +776,7 @@ Platter {
                 day = new Date(t.due);
                 title.text = t.text;
                 allDay.checked = !!t.allDay;
-                startField.text = t.allDay ? "" : Qt.formatTime(new Date(t.due), "h:mm AP");
+                startField.text = t.allDay ? "" : Qt.formatTime(new Date(t.due), TimeFormat.hm);
             }
             open = true;
         }
@@ -901,7 +901,7 @@ Platter {
                     current: editor.isTodo ? 1 : 0
                     onSelected: i => {
                         editor.isTodo = i === 1;
-                        startField.text = editor.isTodo ? "" : "9:00 AM";
+                        startField.text = editor.isTodo ? "" : (TimeFormat.h24 ? "09:00" : "9:00 AM");
                     }
                 }
                 Dropdown {
