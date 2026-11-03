@@ -164,13 +164,13 @@ ShellRoot {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.to === "material" ? "Material" : "Glass"
                         color: root.ink
-                        font { family: root.to === "material" ? "Google Sans Flex" : "Inter"; pixelSize: 40; weight: Font.DemiBold }
+                        font { family: root.to === "material" ? "iRice Sans Flex" : "Inter"; pixelSize: 40; weight: Font.DemiBold }
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.to === "material" ? "Material 3 Expressive · experimental" : "Liquid Glass"
                         color: Qt.alpha(root.ink, 0.65)
-                        font { family: root.to === "material" ? "Google Sans Flex" : "Inter"; pixelSize: 16 }
+                        font { family: root.to === "material" ? "iRice Sans Flex" : "Inter"; pixelSize: 16 }
                     }
                 }
             }

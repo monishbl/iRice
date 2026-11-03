@@ -33,7 +33,7 @@ Item {
     property bool ticks: false // the minutes dip as they change (stacked)
     property real small: 0 // 0 large … 1 small
 
-    readonly property string family: "Google Sans Flex"
+    readonly property string family: "iRice Sans Flex"
     readonly property string hh: TimeFormat.hour(time) // (Settings → Appearance → 24-hour time)
     readonly property string mm: String(time.getMinutes()).padStart(2, "0")
     // (weight in steps: an animated weight makes a handful of font

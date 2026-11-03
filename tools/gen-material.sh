@@ -19,7 +19,7 @@ GH=https://raw.githubusercontent.com
 curl -sfL -o "$T/msr.ttf" "$GH/google/material-design-icons/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf"
 curl -sfL -o "$T/msr.codepoints" "$GH/google/material-design-icons/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.codepoints"
 curl -sfL -o "$FONTS/LICENSE-material-symbols" "$GH/google/material-design-icons/master/LICENSE"
-curl -sfL -o "$FONTS/GoogleSansFlex.ttf" "$GH/google/fonts/main/ofl/googlesansflex/GoogleSansFlex%5BROND%2Copsz%2Cslnt%2Cwdth%2Cwght%5D.ttf"
+curl -sfL -o "$T/gsf.ttf" "$GH/google/fonts/main/ofl/googlesansflex/GoogleSansFlex%5BROND%2Copsz%2Cslnt%2Cwdth%2Cwght%5D.ttf"
 { curl -sfL "$GH/google/fonts/main/ofl/googlesansflex/OFL.txt"; echo; curl -sfL "$GH/google/fonts/main/ofl/googlesansflex/TRADEMARKS.md"; } > "$FONTS/LICENSE-google-sans-flex"
 
 # The map, checked against the font; the glyphs it needs
@@ -49,6 +49,19 @@ f = TTFont(sys.argv[1])
 for r in f["name"].names:
     if r.nameID in (1, 3, 4, 6, 16):
         r.string = r.toUnicode().replace("Material Symbols Rounded", "iRice Symbols").replace("MaterialSymbolsRounded", "iRiceSymbols")
+f.save(sys.argv[2])
+PY
+
+# Google Sans Flex under its own family name too, "iRice Sans Flex": another
+# copy installed with the same name (end4's has other axes) shaped text with
+# its glyph numbers and drew it with ours, garbling it
+uv run -q --with fonttools python3 -I - "$T/gsf.ttf" "$FONTS/GoogleSansFlex.ttf" <<'PY'
+import sys
+from fontTools.ttLib import TTFont
+f = TTFont(sys.argv[1])
+for r in f["name"].names:
+    if r.nameID in (1, 3, 4, 6, 16, 21, 25):
+        r.string = r.toUnicode().replace("Google Sans Flex", "iRice Sans Flex").replace("GoogleSansFlex", "iRiceSansFlex")
 f.save(sys.argv[2])
 PY
 

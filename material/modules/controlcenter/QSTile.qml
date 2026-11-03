@@ -135,7 +135,28 @@ Item {
     Behavior on corner {
         SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.25 }
     }
-    transform: tilePress.effects
+    // Switched on or off: a pop, out and back past its size on a bouncy
+    // spring, as Android's tiles do while their shape morphs
+    property real pop: 0
+    SpringAnimation {
+        id: popAnim
+        target: root
+        property: "pop"
+        from: 0.08
+        to: 0
+        spring: Theme.motion.springPress.spring
+        damping: Theme.motion.springPress.damping - 0.08
+        epsilon: 0.0005
+    }
+    readonly property bool lit: def.on ?? false // (not `on`: leaving Edit controls mustn't pop every tile)
+    onLitChanged: if (Theme.motion.pressBounce && !editing) popAnim.restart()
+    transform: tilePress.effects.concat([popScale])
+    property Scale popScale: Scale {
+        origin.x: root.width / 2
+        origin.y: root.height / 2
+        xScale: 1 + root.pop
+        yScale: 1 + root.pop
+    }
     ElasticControl {
         id: tilePress
         enabled: !root.editing

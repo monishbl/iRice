@@ -71,6 +71,12 @@ Singleton {
     function flush() {
         if (pending < 0)
             return;
+        // The dev sandbox shares the laptop's backlight: there the slider
+        // only moves (it must not dim the real screen)
+        if (System.sandboxed) {
+            pending = -1;
+            return;
+        }
         writer.command = ["brightnessctl", "-q"].concat(device !== "" ? ["-d", device] : [], ["set", Math.round(pending * 100) + "%"]);
         pending = -1;
         writer.running = true;
@@ -234,6 +240,8 @@ Singleton {
     function setDdc(output, v) {
         const x = Math.max(0, Math.min(1, v));
         ddcValues = Object.assign({}, ddcValues, { [output]: x });
+        if (System.sandboxed) // (real monitors: see flush())
+            return;
         ddcPending = Object.assign({}, ddcPending, { [output]: x });
         flushDdc();
     }

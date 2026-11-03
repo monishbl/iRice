@@ -84,7 +84,7 @@ Singleton {
     readonly property color accentTint: material ? m3.secondaryContainer : dark ? Qt.alpha(accent, 0.26) : Qt.alpha(accentRamp[1], 0.9)
 
     readonly property QtObject font: QtObject {
-        readonly property string family: root.material ? "Google Sans Flex" : "Inter"
+        readonly property string family: root.material ? "iRice Sans Flex" : "Inter"
         readonly property string mono: "JetBrains Mono"
         readonly property int caption: 11
         readonly property int small: 12
@@ -102,7 +102,7 @@ Singleton {
     readonly property real transparency: material && !reduceTransparency && CoolDown.glass !== "solid" ? Math.max(0, Math.min(1, Config.options.appearance.materialTransparency ?? 0)) : 0
     readonly property bool blur: transparency > 0
     readonly property real panelAlpha: 1 - 0.55 * transparency
-    readonly property real controlAlpha: 1 - 0.5 * transparency
+    readonly property real controlAlpha: 1 - 0.4 * transparency // (tiles and buttons a little more solid than their panel)
     // A panel's colour, see-through as far as Transparency says
     function veil(c) {
         return blur ? Qt.alpha(c, panelAlpha) : c;
@@ -191,7 +191,8 @@ Singleton {
         // Frosted sits over compositor-blurred windows, so it needs more body
         readonly property color frost: root.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.62) : Qt.rgba(0.97, 0.97, 0.98, 0.66)
         readonly property real saturation: 1.35
-        readonly property real rim: root.dark ? 0.5 : 0.65
+        // (Material: no rim; it read as a dark border round see-through panels)
+        readonly property real rim: root.material ? 0 : root.dark ? 0.5 : 0.65
         // Optics (Settings → Glass → Advanced), the same for every material:
         // how far the rim bends what's behind follows the index of
         // refraction like real glass, (1 − 1/IOR), relative to glass's 1.5;
@@ -203,7 +204,9 @@ Singleton {
         readonly property real dispersion: Math.max(0, Math.min(1, Config.options.appearance.glassDispersion ?? 0.35)) / 0.35
         readonly property real refraction: 36 * bend
         readonly property real chroma: 0.12 * dispersion
-        readonly property real shadow: root.material ? (root.dark ? 0.24 : 0.1) : root.dark ? 0.32 : 0.14
+        // (Material, see-through: none; Hyprland blurs a soft shadow into a
+        // blurred rim round each panel)
+        readonly property real shadow: root.material ? (root.blur ? 0 : root.dark ? 0.24 : 0.1) : root.dark ? 0.32 : 0.14
 
         function smooth(a, b, x) {
             const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -234,7 +237,7 @@ Singleton {
                 bevel: (thick ? 26 : 18) * (0.5 + 0.5 * l) * band,
                 frost: f,
                 chroma: (thick ? 0.28 : 0.18) * l * dispersion,
-                rim: (0.12 + 0.16 * l) * (1 - s),
+                rim: root.material ? 0 : (0.12 + 0.16 * l) * (1 - s),
                 gloss: gloss,
                 tint: t,
                 saturation: 1.35 + 0.15 * f - 0.5 * s
@@ -275,7 +278,9 @@ Singleton {
         // A press (Expressive): the control swells and its corners square
         // off, then it springs back past its size and settles (ζ ~0.35)
         readonly property var springPress: ({ spring: 7.5, damping: 0.3 })
-        readonly property bool pressBounce: root.material && CoolDown.motionScale >= 1 && Config.options.appearance.reduceMotion !== true
+        // (not tied to cool-down's slower motion: a press is cheap; only
+        // Reduce motion turns it off)
+        readonly property bool pressBounce: root.material && Config.options.appearance.reduceMotion !== true
         // How much a pressed control grows: ~6%, at most ~10 px for big ones
         function pressGrow(size) {
             return pressBounce ? Math.min(0.06, 10 / Math.max(1, size)) : 0;

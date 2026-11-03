@@ -60,8 +60,14 @@ Item {
         NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic }
     }
 
-    // Track corners: large 16, medium 12; 2 where it meets the handle's gap
-    readonly property real corner: trackHeight >= 52 ? 16 : 12
+    // Track corners: 2 where it meets the handle's gap
+    // Round ends at rest; pressed or dragged they square off (Expressive's
+    // shape change on press), springing back round on release
+    property real corner: drag.pressed ? 8 : trackHeight / 2
+    Behavior on corner {
+        enabled: Theme.motion.pressBounce
+        SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.2 }
+    }
     readonly property real gap: 6
     property real handleWidth: drag.pressed || root.activeFocus ? 2 : 4
     Behavior on handleWidth { NumberAnimation { duration: Theme.motion.press } }

@@ -12,7 +12,7 @@ Item {
 
     property date time: new Date()
     property int size: 200 // the digits' font size, px
-    property string family: "Google Sans Flex"
+    property string family: "iRice Sans Flex"
     property real weight: 640 // wght 1..1000
     property real widthAxis: 112 // wdth 25..151
     property real round: 100 // ROND 0..100
