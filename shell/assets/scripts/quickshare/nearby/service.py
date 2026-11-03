@@ -407,7 +407,7 @@ class QuickShareService:
                                                                          conn.remote_metadata.ip_address) else False
         # A hotspot through NetworkManager pauses this computer's own Wi-Fi:
         # only for shares worth it, and only if the phone can get an address
-        # from it (the firewall lets DHCP through, or its fix does now)
+        # from it (the firewall lets DHCP through: it does while visible)
         total = getattr(entry.get("session"), "total", 0) or 0
         nm_host = fw_blocked = False
         if self.pause_wifi and total >= wifi.NM_MIN_BYTES and not answers and await self.nm_can_host(net):
@@ -440,7 +440,7 @@ class QuickShareService:
         self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers}, {total} bytes)")
         if not tries and fw_blocked:
             self._warn(sid, f"{SLOW}: this computer's firewall would keep {sender} from joining its hotspot. "
-                            "Allow Quick Share in Settings → Sharing for full speed next time.")
+                            "Settings → Privacy & Security → Firewall says why.")
             return
         if not tries:
             why = wifi.no_direct_reason(net)
@@ -544,7 +544,7 @@ class QuickShareService:
                 return True, None
             if p == "lan" and self.firewall().get("blocks"):
                 return False, (f"this computer's firewall ({self.firewall()['kind']}) keeps {sender} from connecting. "
-                               "Allow it in Settings → Sharing")
+                               "Settings → Privacy & Security → Firewall says why")
             return False, f"{sender} couldn't join the {'shared network' if p == 'lan' else 'hotspot' if p == 'nm' else 'link'}"
         except wifi.WifiUnavailable as e:
             return False, str(e).rstrip(".")

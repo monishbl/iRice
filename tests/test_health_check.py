@@ -253,30 +253,34 @@ class HealthCheck(unittest.TestCase):
         (self.sysroot / "etc/bluetooth").mkdir(parents=True)
         (self.sysroot / "etc/bluetooth/main.conf").write_text("[General]\nExperimental = true\n")
         rows = self.rows()
+        # ufw on, and no root helper to open sharing's ports yet: only an update helps
         self.assertEqual(rows["firewall"]["status"], "warn")
-        self.assertIn("may block", rows["firewall"]["detail"])
-        self.assertTrue(rows["firewall"]["fixRoot"])
-        self.assertIn("ufw allow 53317:53320/tcp", rows["firewall"]["fixCommand"])
+        self.assertIn("isn't installed", rows["firewall"]["detail"])
+        self.assertEqual((rows["firewall"]["canFix"], rows["firewall"]["fixRoot"]), (False, False))
+        self.assertEqual(rows["firewall"]["fix"], "Run Software Update once")
         self.assertEqual(rows["btpairing"]["status"], "warn")
         self.assertIn("--noplugin=rap,vcp,micp,mcp,bass", rows["btpairing"]["fixCommand"])
-        # the fix: one pkexec of the fixed script, then the firewall counts as open
+        # The helper installed: the shell opens them while you're visible
+        helper = self.sysroot / "usr/lib/irice/irice-root"
+        helper.parent.mkdir(parents=True)
+        helper.write_text("#!/bin/sh\n")
+        helper.chmod(0o755)
+        sharing = ROOT / "shell/assets/scripts/sharing-check.py"
+        ports = lambda *a, **env: subprocess.run([sys.executable, "-I", str(sharing), "ports", *a], env=dict(self.env, **env),
+                                                 capture_output=True, text=True, timeout=20)
+        self.assertEqual(ports("mdns,quickshare", "visible to Everyone").returncode, 0)
+        self.assertIn(f"pkexec {helper} sharing-ports open mdns quickshare", self.log.read_text())
+        self.assertEqual(self.rows()["firewall"]["detail"], "ufw: open now (visible to Everyone)")
+        self.assertEqual(ports("none").returncode, 0)
+        self.assertEqual(self.rows()["firewall"]["detail"], "ufw: opened while you're visible to others; closed now")
+        # Refused: a warning, and the Fix button asks again
+        self.assertEqual(ports("localsend", "visible to Everyone", FAKE_DOWN="pkexec").returncode, 1)
+        row = self.rows()["firewall"]
+        self.assertEqual((row["status"], row["canFix"]), ("warn", True))
+        self.assertIn("didn't open", row["detail"])
         out = self.check("fix", "firewall")
         self.assertTrue(json.loads(out.stdout)["ok"], out.stdout)
-        self.assertIn("pkexec /bin/sh -c set -e", self.log.read_text())
-        self.assertEqual(self.rows()["firewall"]["status"], "ok")
-        # rules readable and without the ports: it blocks (no "may")
-        (self.home / ".local/state/irice/sharing-firewall").unlink()
-        (self.sysroot / "etc/ufw/user.rules").write_text("-A ufw-user-input -p tcp --dport 22 -j ACCEPT\n")
-        self.assertIn("and blocks", self.rows()["firewall"]["detail"])
-        # a range, as `ufw allow 53317:53319/tcp` writes it, lets it through;
-        # without DHCP, phones can't join Quick Share's hotspot (a warning of its own)
-        (self.sysroot / "etc/ufw/user.rules").write_text(
-            "-A ufw-user-input -p tcp -m multiport --dports 53317:53319 -j ACCEPT\n")
-        self.assertIn("hotspot", self.rows()["firewall"]["detail"])
-        self.assertEqual(self.rows()["firewall"]["status"], "warn")
-        (self.sysroot / "etc/ufw/user.rules").write_text(
-            "-A ufw-user-input -p tcp -m multiport --dports 53317:53319 -j ACCEPT\n"
-            "-A ufw-user-input -p udp --dport 67 -j ACCEPT\n")
+        self.assertTrue(self.log.read_text().rstrip().endswith(f"pkexec {helper} sharing-ports open localsend"))
         self.assertEqual(self.rows()["firewall"]["status"], "ok")
         (self.sysroot / "etc/systemd/system/bluetooth.service.d").mkdir(parents=True)
         dropin = self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"

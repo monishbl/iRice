@@ -19,9 +19,9 @@ Column {
         fmProc.running = true;
     }
     // What on this computer stands in sharing's way (sharing-check.py):
-    // a firewall, Bluetooth asking phones to pair
-    property var system: ({}) // { firewall: { kind, allowed, blocks }, pairing: { risk }, passwordless }
-    property string fixing: "" // "firewall" | "pairing" while its fix (and any password prompt) runs
+    // Bluetooth asking phones to pair (the firewall: SharingPorts)
+    property var system: ({}) // { pairing: { risk }, passwordless }
+    property string fixing: "" // "pairing" while its fix (and any password prompt) runs
     // Once an update installed iRice's root helper, the fixes don't ask
     readonly property string askNote: system.passwordless ? "" : " asks for your password and"
     property string fixError: ""
@@ -83,7 +83,7 @@ Column {
     Group {
         width: parent.width
         title: "Nearby sharing"
-        footer: !LocalSend.available ? "Sharing needs Python 3 and openssl (for encrypted transfers)." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. If devices don't find each other, allow port 53317 in your firewall (e.g. sudo ufw allow 53317)." + (LocalSend.error ? " " + LocalSend.error : "")
+        footer: !LocalSend.available ? "Sharing needs Python 3 and openssl (for encrypted transfers)." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. With a firewall on, iRice lets nearby devices through it only while you're visible or sharing, and closes it after." + (LocalSend.error ? " " + LocalSend.error : "")
         Row {
             label: "Send files"
             detail: "Choose files, then a nearby device: one running LocalSend, or an Android phone with Quick Share. Receiving can stay off."
@@ -105,11 +105,12 @@ Column {
                 onSelected: i => Config.options.sharing.receiving = values[i]
             }
         }
-        // (a firewall in the way: Privacy & Security offers the fix)
+        // (the firewall's ports didn't open or close as asked: Privacy &
+        // Security says why and tries again)
         Row {
-            visible: (page.system.firewall?.blocks ?? false) || page.system.firewall?.hotspot === false
+            visible: SharingPorts.error !== ""
             label: "Firewall"
-            detail: "Your firewall keeps phones from connecting. Privacy & Security can allow them."
+            detail: SharingPorts.error
             SettingsButton {
                 text: "Show"
                 onClicked: Panels.openSettings("security", "Firewall")

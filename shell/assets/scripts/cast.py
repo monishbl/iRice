@@ -18,9 +18,9 @@ so nothing extra needs installing.
 
 A local file is served to the device from this computer, over the local
 network only, for as long as the cast lasts: one file, at a random path, on
-port 53320 (Settings -> Sharing -> Allow through firewall opens it). A web
-page (a YouTube video) goes through yt-dlp, when it's installed, to the video
-itself; a direct media link goes as it is.
+port 53320 (a firewall lets it through meanwhile: services/SharingPorts.qml).
+A web page (a YouTube video) goes through yt-dlp, when it's installed, to
+the video itself; a direct media link goes as it is.
 """
 import http.server
 import json
@@ -337,7 +337,7 @@ class Session:
                     state = "ended"
                 elif s.get("playerState") == "IDLE" and s.get("idleReason") == "ERROR":
                     self.report(state="error", error="The device couldn't play it. "
-                                + ("Check that Settings -> Sharing -> Allow through firewall has been used." if self.server else ""))
+                                + ("If a firewall is on, Settings -> Privacy & Security -> Firewall says whether it let the TV in." if self.server else ""))
                     continue
                 dur = (s.get("media") or {}).get("duration")
                 self.report(state=state, time=round(float(s.get("currentTime", 0)), 1),

@@ -16,9 +16,18 @@ Without a password, for an administrator (wheel) at this computer
                      read (your home it can't): a style, the look, light or
                      dark, Material's colours and the clock's style, each
                      checked against its few values; nothing else is taken
-  fix <id>          one of the fixed fixes below (system services, the
-                     firewall, Bluetooth's pairing prompts); nothing
-                     free-form ever runs
+  fix <id>          one of the fixed fixes below (system services,
+                     Bluetooth's pairing prompts); nothing free-form ever
+                     runs. (fix firewall, from shells before sharing-ports:
+                     the same as sharing-ports open)
+  sharing-ports open [<set>...] | close
+                     the firewall's way in for nearby sharing, only while
+                     it's needed (services/SharingPorts.qml): open lets in
+                     exactly these of the fixed sets in PORT_SETS (all of
+                     them without one), close none. Runtime rules where the
+                     firewall has them, so a restart starts closed; both
+                     also take out the permanent rules the fix before this
+                     left
   wifi-helper        Quick Share's Wi-Fi helper (qs-wifi-helper.py, next to
                      this file): JSON on stdin and stdout
   priority on|off    the shell's priority with ananicy-cpp: its fixed rule
@@ -81,6 +90,7 @@ root: a symlink in your home can't make root read anything you can't.
 """
 import contextlib
 import glob
+import importlib.util
 import json
 import os
 import pwd
@@ -132,90 +142,6 @@ REFUSED_EXIT = 64  # (an older helper without that subcommand or fix: callers as
 
 
 # ── The fixes (System health, Settings → Sharing) ───────────────────────
-FIREWALL_SCRIPT = r'''set -e
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
-    ufw allow 53317:53320/tcp comment "iRice sharing"
-    ufw allow 53317/udp comment "iRice sharing (LocalSend)"
-    ufw allow 5353/udp comment "mDNS"
-    ufw allow 67/udp comment "iRice Quick Share hotspot (DHCP)"
-    echo "@@dhcp"
-elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port=53317-53320/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp
-    firewall-cmd --reload
-    echo "@@dhcp"
-elif command -v nft >/dev/null 2>&1 && systemctl is-active --quiet nftables; then
-    # An accept in a table of our own wouldn't do: nftables runs every base
-    # chain on the input hook, and a drop in any of them is final. So the
-    # rules go first in each input chain there is (iptables' own INPUT chains
-    # are left to iptables), replacing any earlier ones of ours.
-    chains=$(nft list chains | awk '$1 == "table" { f = $2; t = $3 } $1 == "chain" { c = $2 }
-        /hook input/ && (f == "inet" || f == "ip" || f == "ip6") && !((f == "ip" || f == "ip6") && t == "filter" && c == "INPUT") { print f, t, c }')
-    [ -n "$chains" ] || { echo "nftables has no input chain: nothing blocks sharing"; exit 0; }
-    # Kept as a drop-in only where nftables.conf reads one (Arch's doesn't)
-    persist=""
-    if [ -d /etc/nftables.d ]; then
-        if grep -qE '^[[:space:]]*include "/etc/nftables\.d/\*(\.nft)?"' /etc/nftables.conf 2>/dev/null; then
-            persist=/etc/nftables.d/irice.nft
-        elif grep -qE '^[[:space:]]*include "/etc/nftables\.d/\*\.conf"' /etc/nftables.conf 2>/dev/null; then
-            persist=/etc/nftables.d/irice.conf
-        fi
-    fi
-    echo "$chains" | while read -r f t c; do
-        for h in $(nft -a list chain "$f" "$t" "$c" | sed -n 's/.*comment "irice sharing".*# handle \([0-9]*\).*/\1/p'); do
-            nft delete rule "$f" "$t" "$c" handle "$h"
-        done
-        nft insert rule "$f" "$t" "$c" udp dport '{ 53317, 5353, 67 }' accept comment '"irice sharing"'
-        nft insert rule "$f" "$t" "$c" tcp dport 53317-53320 accept comment '"irice sharing"'
-    done
-    if [ -n "$persist" ]; then
-        {
-            echo "# iRice: lets LocalSend and Quick Share through (Settings → Sharing)"
-            echo "$chains" | while read -r f t c; do
-                echo "insert rule $f $t $c udp dport { 53317, 5353, 67 } accept comment \"irice sharing\""
-                echo "insert rule $f $t $c tcp dport 53317-53320 accept comment \"irice sharing\""
-            done
-        } >/etc/.irice-nftables.tmp
-        mv /etc/.irice-nftables.tmp "$persist"
-        # (a file nftables can't load at boot would leave no firewall at all)
-        if nft -c -f /etc/nftables.conf >/dev/null 2>&1; then
-            echo "@@dhcp"
-            echo "Saved in $persist: it stays after a restart"
-            exit 0
-        fi
-        rm -f "$persist"
-    fi
-    echo "@@dhcp"
-    echo "@@runtime"
-    echo "Allowed until the next restart: /etc/nftables.conf doesn't include /etc/nftables.d. To keep it, add the same rules to /etc/nftables.conf"
-elif command -v iptables >/dev/null 2>&1 && systemctl is-active --quiet iptables; then
-    for ipt in iptables ip6tables; do
-        [ "$ipt" = iptables ] || systemctl is-active --quiet ip6tables || continue
-        command -v "$ipt" >/dev/null 2>&1 || continue
-        for r in "-p udp --dport 5353" "-p udp --dport 53317" "-p udp --dport 67" "-p tcp --dport 53317:53320"; do
-            # ($r splits into its words)
-            $ipt -C INPUT $r -m comment --comment "irice sharing" -j ACCEPT 2>/dev/null ||
-                $ipt -I INPUT $r -m comment --comment "irice sharing" -j ACCEPT
-        done
-    done
-    echo "@@dhcp"
-    echo "@@runtime"
-    echo "Allowed until the next restart. To keep it: sudo iptables-save -f /etc/iptables/iptables.rules (and ip6tables-save -f /etc/iptables/ip6tables.rules)"
-else
-    echo "No firewall (ufw, firewalld, nftables or iptables) is turned on" >&2
-    exit 1
-fi
-'''
-FIREWALL_SHOWN = ("ufw allow 53317:53320/tcp; ufw allow 53317/udp; ufw allow 5353/udp; ufw allow 67/udp "
-                  "(or firewalld: --add-port=53317-53320/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp)")
-# What the page shows before the fix runs, by firewall (sharing-check.py's kind)
-FIREWALL_SHOWN_BY = {
-    "ufw": "ufw allow 53317:53320/tcp; ufw allow 53317/udp; ufw allow 5353/udp; ufw allow 67/udp",
-    "firewalld": "firewall-cmd --permanent --add-port=53317-53320/tcp --add-port=53317/udp --add-service=mdns --add-service=dhcp; firewall-cmd --reload",
-    "nftables": ("nft insert rule <each input chain> tcp dport 53317-53320 accept, and udp dport { 53317, 5353, 67 } accept "
-                 "(kept in /etc/nftables.d when nftables.conf includes it, else until the next restart)"),
-    "iptables": "iptables -I INPUT -p tcp --dport 53317:53320 -j ACCEPT, and udp 53317, 5353 and 67 (until the next restart)",
-}
-
 # BlueZ plugins that make phones ask to pair for Quick Share (sharing-check.py)
 # rap: Ranging; vcp: volume (with volume offset, audio input); micp: microphone;
 # mcp: media control; bass: broadcast audio scan
@@ -266,7 +192,6 @@ FIXES = {
     "avahi": ["systemctl", "enable", "--now", "avahi-daemon"],
     "upower": ["systemctl", "enable", "--now", "upower"],
     "profiles": ["systemctl", "enable", "--now", "power-profiles-daemon"],
-    "firewall": ["/bin/sh", "-c", FIREWALL_SCRIPT],
     "btpairing": ["/bin/sh", "-c", PAIRING_SCRIPT],
     "fprintd": ["/bin/sh", "-c", FPRINTD_SCRIPT],
 }
@@ -602,6 +527,188 @@ def priority(on, prefix=None, run=subprocess.run):
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             run(["systemctl", "try-restart", "ananicy-cpp.service"], timeout=20, check=False)
     return changed
+
+
+# ── sharing-ports (Settings → Sharing: while you're visible) ────────────
+# The firewall's way in for nearby sharing, open only while something needs
+# it (services/SharingPorts.qml), closed otherwise: never for good. Fixed
+# sets, asked for by name; each (protocol, first port, last port)
+PORT_SETS = {
+    # Quick Share's port and its faster link's (nearby/wifi.py UPGRADE_PORT),
+    # and DHCP for phones joining its hotspot
+    "quickshare": (("tcp", 53318, 53319), ("udp", 67, 67)),
+    # LocalSend's HTTPS port and its multicast discovery (devices answer an
+    # announcement on either)
+    "localsend": (("tcp", 53317, 53317), ("udp", 53317, 53317)),
+    # mDNS: phones find this computer, and it finds them, on the network
+    "mdns": (("udp", 5353, 5353),),
+    # A QR-code share (link-share.py: 53320, else 53319) and Cast's file (53320)
+    "links": (("tcp", 53319, 53320),),
+}
+PORTS_TAG = "irice sharing"  # (nftables' and iptables' comment on ours)
+# ufw keeps its rules through a restart (it has no runtime ones), so ours
+# carry a comment and close takes out exactly those. The fix before this
+# left the same "iRice sharing", and these
+UFW_TAG = "iRice sharing"
+UFW_OLD = ("iRice sharing (LocalSend)", "iRice Quick Share hotspot (DHCP)")
+UFW_RULE = re.compile(r"^\[\s*(\d+)\]\s+(\S+)(?: \(v6\))?\s+ALLOW(?: IN)?\s.*?(?:#\s*(.*?))?\s*$")
+# firewalld's ports have no comment: the ones we added, noted where a
+# restart clears it, as it clears them
+FIREWALLD_ADDED = "/run/irice/sharing-ports"
+# The fix before this, kept for good: firewalld's ports and services (the
+# services only where the zone doesn't come with them), nftables' drop-in
+FIREWALLD_OLD = ("53317-53320/tcp", "53317/udp")
+FIREWALLD_OLD_SERVICES = ("mdns", "dhcp")
+NFT_OLD = ("/etc/nftables.d/irice.nft", "/etc/nftables.d/irice.conf")
+
+
+def _cmd(run, *cmd):
+    """(exit code, output) of a command; (None, "") when it can't run."""
+    try:
+        p = run(list(cmd), capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None, ""
+    return p.returncode, p.stdout or ""
+
+
+def firewall_kind(run=subprocess.run):
+    """The firewall that's on: ufw, firewalld, nftables, iptables or None."""
+    if re.search(r"^Status: active", _cmd(run, "ufw", "status")[1], re.M):
+        return "ufw"
+    if _cmd(run, "firewall-cmd", "--state")[0] == 0:
+        return "firewalld"
+    for kind in ("nftables", "iptables"):
+        if _cmd(run, "systemctl", "is-active", "--quiet", kind)[0] == 0:
+            return kind
+    return None
+
+
+def _ports_ufw(wanted, run, did):
+    want = {f"{lo}:{hi}/{p}" if hi != lo else f"{lo}/{p}" for p, lo, hi in wanted}
+    rules = [(int(m[1]), m[2], m[3] or "") for m in map(UFW_RULE.match, _cmd(run, "ufw", "status", "numbered")[1].splitlines()) if m]
+    # Ours that aren't wanted, last first (the numbers after one move up)
+    for n, to, note in sorted(rules, reverse=True):
+        if (note in (UFW_TAG,) + UFW_OLD or (note == "mDNS" and to == "5353/udp")) and to not in want:
+            did(f"closed {to}", "ufw", "--force", "delete", str(n))
+    # (a port someone allowed already is left to them)
+    for to in sorted(want - {to for _n, to, _note in rules}):
+        did(f"opened {to}", "ufw", "allow", to, "comment", UFW_TAG)
+
+
+def _ports_firewalld(wanted, run, did, prefix):
+    want = {f"{lo}-{hi}/{p}" if hi != lo else f"{lo}/{p}" for p, lo, hi in wanted}
+    # The fix before this: out of the permanent set, and out of this boot's
+    if _cmd(run, "firewall-cmd", "--permanent", f"--query-port={FIREWALLD_OLD[0]}")[0] == 0:
+        zone = _cmd(run, "firewall-cmd", "--get-default-zone")[1].strip()
+        shipped = ""
+        if re.fullmatch(r"[\w-]+", zone):
+            with contextlib.suppress(OSError), open(os.path.join(prefix, f"usr/lib/firewalld/zones/{zone}.xml")) as f:
+                shipped = f.read()
+        old = [f"--remove-port={p}" for p in FIREWALLD_OLD] + \
+              [f"--remove-service={s}" for s in FIREWALLD_OLD_SERVICES if f'name="{s}"' not in shipped]
+        did("removed the permanent sharing rules", "firewall-cmd", "--permanent", *old)
+        did("closed the permanent sharing rules for now", "firewall-cmd", *old)
+    path = os.path.join(prefix, FIREWALLD_ADDED.lstrip("/"))
+    try:
+        with open(path) as f:
+            added = set(f.read().split())
+    except OSError:
+        added = set()
+    for port in sorted(added - want):
+        if did(f"closed {port}", "firewall-cmd", f"--remove-port={port}"):
+            added.discard(port)
+    for port in sorted(want):
+        # (one there already, ours or the zone's own, stays as it is)
+        if _cmd(run, "firewall-cmd", f"--query-port={port}")[0] != 0 and did(f"opened {port}", "firewall-cmd", f"--add-port={port}"):
+            added.add(port)
+    if added:
+        write_root(path, "".join(p + "\n" for p in sorted(added)).encode(), 0o644)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _nft_input_chains(text):
+    """qs-wifi-helper.py's list of nftables' input chains (next to this file
+    once installed; in quickshare/ in the shell's folder)."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    path = next(p for p in (os.path.join(here, "qs-wifi-helper.py"), os.path.join(here, "quickshare/qs-wifi-helper.py"))
+                if os.path.exists(p))
+    spec = importlib.util.spec_from_file_location("qs_wifi_helper", path)
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper.nft_input_chains(text)
+
+
+def _ports_nft(wanted, run, did):
+    # An accept in a table of our own wouldn't do: nftables runs every base
+    # chain on the input hook, and a drop in any of them is final. So ours go
+    # first in each input chain (iptables' own INPUT chains are left to it)
+    want = {f"{p} dport {lo}-{hi}" if hi != lo else f"{p} dport {lo}" for p, lo, hi in wanted}
+    for f, t, c in _nft_input_chains(_cmd(run, "nft", "list", "chains")[1]):
+        kept = set()
+        for line in _cmd(run, "nft", "-a", "list", "chain", f, t, c)[1].splitlines():
+            m = re.search(r'^\s*(.*?) accept comment "' + PORTS_TAG + r'" # handle (\d+)', line)
+            if m and (m[1] not in want or m[1] in kept):
+                did(f"closed {m[1]} ({f} {t} {c})", "nft", "delete", "rule", f, t, c, "handle", m[2])
+            elif m:
+                kept.add(m[1])
+        for rule in sorted(want - kept):
+            did(f"opened {rule} ({f} {t} {c})", "nft", "insert", "rule", f, t, c, *rule.split(), "accept", "comment", f'"{PORTS_TAG}"')
+
+
+def _ports_iptables(wanted, run, did):
+    want = {f"{p} {lo}:{hi}" if hi != lo else f"{p} {lo}" for p, lo, hi in wanted}
+    for ipt in ("iptables", "ip6tables"):
+        if ipt == "ip6tables" and _cmd(run, "systemctl", "is-active", "--quiet", "ip6tables")[0] != 0:
+            continue
+        ours = []
+        for line in _cmd(run, ipt, "-L", "INPUT", "-n", "--line-numbers")[1].splitlines():
+            m = re.match(r"^(\d+)\s.*\b(tcp|udp) dpts?:(\S+).*/\* " + PORTS_TAG + r" \*/", line)
+            if m:
+                ours.append((int(m[1]), f"{m[2]} {m[3]}"))
+        # Ours that aren't wanted, last first (the numbers after one move up)
+        for n, rule in sorted(ours, reverse=True):
+            if rule not in want:
+                did(f"closed {rule} ({ipt})", ipt, "-D", "INPUT", str(n))
+        for rule in sorted(want - {r for _n, r in ours}):
+            p, port = rule.split()
+            did(f"opened {rule} ({ipt})", ipt, "-I", "INPUT", "-p", p, "--dport", port,
+                "-m", "comment", "--comment", PORTS_TAG, "-j", "ACCEPT")
+
+
+def sharing_ports(sets, run=subprocess.run, prefix=None):
+    """Lets in exactly these sets' ports (none: closes them all), and takes
+    out what the permanent fix before this left. Returns (what it did, what
+    failed)."""
+    for s in sets:
+        if s not in PORT_SETS:
+            raise Refused("sharing-ports: " + " | ".join(PORT_SETS))
+    prefix = PREFIX if prefix is None else prefix
+    wanted = sorted({p for s in sets for p in PORT_SETS[s]})
+    done, failed = [], []
+
+    def did(what, *cmd):
+        ok = _cmd(run, *cmd)[0] == 0
+        (done if ok else failed).append(what)
+        return ok
+
+    for old in NFT_OLD:
+        path = os.path.join(prefix, old.lstrip("/"))
+        if os.path.exists(path):
+            os.remove(path)
+            done.append(f"removed {old}")
+    kind = firewall_kind(run)
+    if kind == "ufw":
+        _ports_ufw(wanted, run, did)
+    elif kind == "firewalld":
+        _ports_firewalld(wanted, run, did, prefix)
+    elif kind == "nftables":
+        _ports_nft(wanted, run, did)
+    elif kind == "iptables":
+        _ports_iptables(wanted, run, did)
+    else:
+        done.append("no firewall is turned on: nothing to open or close")
+    return done, failed
 
 
 # ── wallpaper ───────────────────────────────────────────────────────────
@@ -1113,6 +1220,15 @@ def main(argv):
         if cmd == "login-look" and len(args) == 1:
             login_look(args[0])
             return 0
+        if cmd == "fix" and args == ["firewall"]:
+            cmd, args = "sharing-ports", ["open"]  # (a shell from before sharing-ports: all of them, as before)
+        if cmd == "sharing-ports" and (args[:1] == ["open"] or args == ["close"]):
+            done, failed = sharing_ports((args[1:] or list(PORT_SETS)) if args[0] == "open" else [])
+            for d in done:
+                print(d)
+            for d in failed:
+                print(f"irice-root: couldn't: {d}", file=sys.stderr)
+            return 1 if failed else 0
         if cmd == "fix" and len(args) == 1:
             c = fix_command(args[0])
             os.execvp(c[0], c)
@@ -1147,7 +1263,7 @@ def main(argv):
                 print("installed", d)
             return 0
         raise Refused("usage: irice-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
-                      "quickshare-trust on|off | priority on|off | "
+                      "quickshare-trust on|off | priority on|off | sharing-ports open [<set>…]|close | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

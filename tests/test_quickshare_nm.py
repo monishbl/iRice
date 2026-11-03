@@ -188,24 +188,24 @@ class HotspotFirewall(unittest.TestCase):
         self.rules("-A ufw-user-input -p tcp --dport 67 -j ACCEPT")
         self.assertFalse(self.sc.firewall()["hotspot"])
 
-    def test_the_fixs_note_says_whether_it_opened_dhcp(self):
-        self.sc.remember("ufw", "@@dhcp\n")
+    def note(self, opened):
+        os.makedirs(os.path.dirname(self.sc.PORTS_NOTE), exist_ok=True)
+        with open(self.sc.PORTS_NOTE, "w") as f:
+            json.dump({"kind": "ufw", "want": opened, "open": opened, "why": "", "boot": "", "code": 0, "error": ""}, f)
+
+    def test_visible_lets_dhcp_through(self):
+        # (Quick Share's ports, open while visible, include DHCP: its
+        # receiving is the only time a phone joins its hotspot)
+        self.assertIn(("udp", 67, 67), self.sc.irice_root.PORT_SETS["quickshare"])
+        self.note(["mdns", "quickshare"])
         self.assertTrue(self.sc.firewall()["hotspot"])
-        self.sc.remember("ufw", "")  # (an older helper's fix)
+        self.note([])  # (closed: the rules readable say what's left)
         self.rules("-A ufw-user-input -p tcp --dport 53318 -j ACCEPT")
         self.assertFalse(self.sc.firewall()["hotspot"])
 
     def test_no_firewall_lets_it_through(self):
         (self.root / "etc/ufw/ufw.conf").write_text("ENABLED=no\n")
         self.assertTrue(self.sc.firewall()["hotspot"])
-
-    def test_every_fix_opens_dhcp(self):
-        script = self.sc.FIREWALL_SCRIPT
-        self.assertIn("ufw allow 67/udp", script)
-        self.assertIn("--add-service=dhcp", script)
-        self.assertIn("{ 53317, 5353, 67 }", script)
-        self.assertIn('"-p udp --dport 67"', script)
-        self.assertEqual(script.count('echo "@@dhcp"'), 5)
 
 
 if __name__ == "__main__":

@@ -162,7 +162,8 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 |---|---|---|---|
 | `wallpaper <path>` | no | active, local wheel session | absolute path; read as you; regular file; JPEG, PNG or WebP magic; 64 MB or less; fixed destination |
 | `login-look <json>` | no | same | exact keys and values, 2 KB or less |
-| `fix <id>` | no | same | one of 8 fixed scripts (firewall: see H2) |
+| `fix <id>` | no | same | one of 7 fixed scripts (`fix firewall`, for older shells, is `sharing-ports open`) |
+| `sharing-ports open [<set>…] \| close` | no | same | fixed set names only (PORT_SETS); runtime rules (ufw: comment-tagged, removed on close) |
 | `wifi-helper` | yes, or no with "Fast transfers without asking" for that user | that user, active and local | JSON verbs host, join, stop; SSID, passphrase, channel and ifname checked; lease checked (new) |
 | `fingerprint`, `face`, `phonecam`, `bootmenu`, `quickshare-trust`, `setup`, `update` | yes | admin | fixed values; camera path regex; package names and files checked; pacman broker allow-list |
 
@@ -181,7 +182,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 
 **Firewall changes.**
 
-- `fix firewall` opens 53317–53320/tcp, 53317/udp, 5353/udp and 67/udp, from anywhere, permanently (H2).
+- `fix firewall` opened 53317–53320/tcp, 53317/udp, 5353/udp and 67/udp, from anywhere, permanently (H2). **Since 2026-11-04:** `sharing-ports` opens only the sets needed while you're visible or sharing and closes them after; runtime rules where the firewall has them; every run removes the old permanent rules.
 - The Wi-Fi helper adds a runtime accept-everything for its own link interface, removed afterwards (M5).
 
 ---

@@ -52,7 +52,7 @@ MAX_UPLOAD = 4 * 1024 ** 3
 MAX_FILES = 200
 MAX_STRANGERS = 20
 KEEP_FREE = 512 * 1024 ** 2  # receiving: never fills the disk past this
-PORTS = (53320, 53319)  # (in the firewall rule's 53317-53320)
+PORTS = (53320, 53319)  # (the firewall lets them in while the card shows: SharingPorts.qml)
 CHUNK = 256 * 1024
 VIRTUAL = re.compile(r"^(lo|docker|br-|virbr|veth|tailscale|wg|tun|tap|zt|vnet|vmnet|podman|cni|flannel|cali)")
 
@@ -426,7 +426,7 @@ def main(argv):
         return 1
     token = secrets.token_urlsafe(16)
     share = Share(mode, token, computer=name or socket.gethostname(), **share_args)
-    # Ports the sharing firewall rule opens (Settings → Phone & Sharing):
+    # Ports the firewall lets in meanwhile (SharingPorts.qml, "links"):
     # Cast's file port when it isn't casting, the faster-link one, else any
     server = None
     for port in (0,) if os.environ.get("IRICE_LINKSHARE_HOST") else PORTS + (0,):

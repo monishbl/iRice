@@ -7,28 +7,20 @@ import qs.services
 
 // Privacy & Security: fingerprint and face unlock (biometrics.qml, a part),
 // what shows when your screen is shared, and what may run without your
-// password: iRice's root helper, Quick Share's direct link, the sharing
-// firewall's fix
+// password: iRice's root helper, Quick Share's direct link, the firewall's
+// ports for sharing (SharingPorts)
 Column {
     id: page
     width: parent?.width ?? 0
     spacing: 22
 
-    // What on this computer stands in sharing's way, and whether iRice's
-    // root helper is there (sharing-check.py, as on Phone & Sharing)
-    property var system: ({}) // { firewall: { kind, allowed, blocks, hotspot }, passwordless }
-    property string fixing: ""
-    property string fixError: ""
+    // Which firewall is on, and whether iRice's root helper is there
+    // (sharing-check.py, as on Phone & Sharing)
+    property var system: ({}) // { firewall: { kind, open, why, error }, passwordless }
     readonly property string checkScript: decodeURIComponent(Qt.resolvedUrl("../../../assets/scripts/sharing-check.py").toString().replace("file://", ""))
     function checkSystem() {
         checkProc.command = ["python3", "-I", checkScript, "status"];
         checkProc.running = true;
-    }
-    function fixSystem(what) {
-        fixing = what;
-        fixError = "";
-        fixProc.command = ["python3", "-I", checkScript, "fix", what];
-        fixProc.running = true;
     }
     Process {
         id: checkProc
@@ -40,22 +32,15 @@ Column {
             }
         }
     }
-    Process {
-        id: fixProc
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const r = JSON.parse(text);
-                    page.fixError = r.ok ? "" : r.error;
-                } catch (e) {
-                    page.fixError = "It didn't work; try again.";
-                }
-                page.fixing = "";
+    Component.onCompleted: checkSystem()
+    // (the ports opened or closed while the page shows)
+    Connections {
+        target: SharingPorts
+        function onBusyChanged() {
+            if (!SharingPorts.busy)
                 page.checkSystem();
-            }
         }
     }
-    Component.onCompleted: checkSystem()
 
     // Fingerprint and Face (both shown only with a reader or an IR camera)
     PagePart {
@@ -100,26 +85,23 @@ Column {
                 onToggled: QuickShare.setTrusted(!checked)
             }
         }
+        // Sharing's ports: open only while you're visible to others or
+        // sharing, closed otherwise (SharingPorts)
         Row {
-            id: firewallRow
-            readonly property bool hotspotOnly: !(page.system.firewall?.blocks ?? false) && page.system.firewall?.hotspot === false
-            readonly property bool trouble: (page.system.firewall?.blocks ?? false) || hotspotOnly
+            readonly property string kind: page.system.firewall?.kind ?? ""
+            readonly property var fw: page.system.firewall ?? ({})
             label: "Firewall"
-            labelColor: trouble && !hotspotOnly ? Theme.color.danger : Theme.color.label
-            detail: !trouble ? (page.system.firewall?.kind ? "Your firewall (" + page.system.firewall.kind + ") lets Quick Share and LocalSend through." : "No firewall stands in sharing's way.")
-                : (hotspotOnly ? "Your firewall (" + page.system.firewall.kind + ") keeps phones from joining Quick Share's hotspot, so transfers without a shared Wi-Fi stay slow. Allowing DHCP (port 67) fixes it"
-                : (page.system.firewall?.allowed === false ? "Your firewall (" + page.system.firewall.kind + ") blocks Quick Share and LocalSend"
-                : "Your firewall (" + (page.system.firewall?.kind ?? "") + ") may block Quick Share and LocalSend")
-                + ": phones can't connect to this computer. Allowing ports 53317–53320, mDNS and DHCP fixes it")
-                + (page.system.passwordless ? "." : "; it asks for your password.")
-                + (page.fixError !== "" && page.fixing === "" ? " " + page.fixError : "")
+            labelColor: SharingPorts.error !== "" ? Theme.color.danger : Theme.color.label
+            detail: SharingPorts.error !== "" ? SharingPorts.error
+                : kind === "" ? "No firewall stands in sharing's way."
+                : (fw.open ?? []).length > 0 ? "Your firewall (" + kind + ") lets Quick Share and LocalSend through now, while you're " + (fw.why || "sharing") + ", and closes again after."
+                : "Your firewall (" + kind + ") lets Quick Share and LocalSend through only while you're visible to others or sharing." + (fw.asked ? " Closed now." : "")
             SettingsButton {
-                visible: firewallRow.trouble
-                text: "Allow through firewall"
-                icon: "shield-check"
-                busy: page.fixing === "firewall"
-                enabled: page.fixing === ""
-                onClicked: page.fixSystem("firewall")
+                visible: SharingPorts.error !== ""
+                text: SharingPorts.failedWith === 64 ? "Open Software Update" : "Try again"
+                icon: SharingPorts.failedWith === 64 ? "arrow-circle-up" : "shield-check"
+                busy: SharingPorts.busy
+                onClicked: SharingPorts.failedWith === 64 ? Panels.openSettings("update") : SharingPorts.retry()
             }
         }
     }

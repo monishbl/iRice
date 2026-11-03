@@ -45,11 +45,14 @@ PLUGIN_VERSION = 4  # what `hyprctl irice-glass ping` answers when current
 GROUPS = ("Sound", "Network & sharing", "Power", "Desktop", "iRice itself")
 
 # The fixes this script will run, and nothing else: user services directly,
-# root ones (ROOT_FIXES, below) through pkexec
+# root ones (ROOT_FIXES, below) through pkexec. The firewall's: sharing's
+# ports asked for again, as they were last (sharing-check.py, which asks the
+# root helper's fixed sharing-ports job)
 FIXES = {
     "pipewire": ["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"],
     "wireplumber": ["systemctl", "--user", "restart", "wireplumber"],
     "portal": ["systemctl", "--user", "restart", "xdg-desktop-portal", "xdg-desktop-portal-hyprland"],
+    "firewall": [sys.executable, "-I", os.path.join(HERE, "sharing-check.py"), "ports", "again"],
 }
 # Sharing's own checks (firewall, Bluetooth pairing prompts), and the root
 # fixes: the fixed list in the root helper (irice-root.py)
@@ -57,8 +60,7 @@ _spec = importlib.util.spec_from_file_location("sharing_check", os.path.join(HER
 sharing = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sharing)
 ROOT_FIXES = sharing.irice_root.FIXES
-SHOWN = {"firewall": sharing.FIREWALL_SHOWN, "btpairing": sharing.PAIRING_SHOWN,  # (what the page shows for these)
-         "networkmanager": sharing.irice_root.NETWORK_SHOWN}
+SHOWN = {"btpairing": sharing.PAIRING_SHOWN, "networkmanager": sharing.irice_root.NETWORK_SHOWN}  # (what the page shows for these)
 SYSTEM = os.environ.get("IRICE_SYSTEM_ROOT", "/")  # where /usr is looked for (tests)
 
 _local = threading.local() # per check: whether something it asked hung
@@ -196,24 +198,28 @@ def check_avahi(_):
 
 
 def check_firewall(_):
+    # Sharing's ports open only while you're visible to others or sharing
+    # (services/SharingPorts.qml): a warning only when they didn't open (or
+    # close) as asked, or can't yet
     f = sharing.firewall()
     name = "Firewall lets sharing through"
-    if f["kind"] is None:
+    kind = f["kind"]
+    if kind is None:
         return result("firewall", name, "Network & sharing", "ok", "No firewall turned on")
-    if not f["blocks"] and f.get("hotspot") is not False:
-        return result("firewall", name, "Network & sharing", "ok", f"{f['kind']}: sharing's ports are open" +
-                      (" until the next restart (the Fix button opens them again)" if f.get("runtime") else ""))
-    if not f["blocks"]:
-        detail = (f"{f['kind']} keeps phones from joining Quick Share's hotspot (DHCP, port 67): "
-                  "transfers without a shared Wi-Fi stay slow")
-    else:
-        detail = (f"{f['kind']} is on" + (" and blocks" if f["allowed"] is False else " and may block") +
-                  " LocalSend and Quick Share (ports 53317-53320, mDNS, DHCP)")
-    r = result("firewall", name, "Network & sharing", "warn", detail,
-               "Allow them: Settings → Sharing, or the Fix button here")
-    if r["fixRoot"] and f["kind"] in sharing.FIREWALL_SHOWN_BY:
-        r["fixCommand"] = sharing.FIREWALL_SHOWN_BY[f["kind"]]
-    return r
+    if f["error"] or (not f["asked"] and not sharing.helper_installed()):
+        closing = bool(f["error"]) and not f["want"]
+        older = not f["error"] or f["code"] == sharing.irice_root.REFUSED_EXIT
+        r = result("firewall", name, "Network & sharing", "warn",
+                   f"{kind}: sharing's ports didn't {'close' if closing else 'open'}: " +
+                   (f["error"] or "iRice's system helper isn't installed yet.") +
+                   ("" if closing else " Phones can't reach this computer while it's visible."),
+                   "Run Software Update once" if older else "Try again: the Fix button here")
+        r["canFix"] = not older  # (an older helper: only an update helps)
+        return r
+    if f["open"]:
+        return result("firewall", name, "Network & sharing", "ok", f"{kind}: open now ({f['why'] or 'sharing'})")
+    return result("firewall", name, "Network & sharing", "ok",
+                  f"{kind}: opened while you're visible to others" + ("; closed now" if f["asked"] else ""))
 
 
 def check_btpairing(_):
@@ -568,25 +574,20 @@ def main(argv):
             return 1
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if cmd[1:2] == [sharing.HELPER] and (p.returncode == sharing.irice_root.REFUSED_EXIT or
-                                                 (opts.id == "firewall" and sharing.older_firewall_fix(p))):
+            if cmd[1:2] == [sharing.HELPER] and p.returncode == sharing.irice_root.REFUSED_EXIT:
                 # (an older helper without this fix: the command itself, with the password)
                 cmd = ["pkexec"] + ROOT_FIXES[opts.id]
                 p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            code, out, said = p.returncode, (p.stderr or p.stdout or ""), p.stdout or ""
+            code, out = p.returncode, (p.stderr or p.stdout or "")
         except FileNotFoundError:
-            code, out, said = None, f"{cmd[0]} isn't installed", ""
+            code, out = None, f"{cmd[0]} isn't installed"
         except subprocess.TimeoutExpired:
-            code, out, said = None, "It took too long; try the command in a terminal", ""
+            code, out = None, "It took too long; try the command in a terminal"
         if cmd[0] == "pkexec" and code in (126, 127):
             err = "Cancelled: no password was given" if code == 126 else "Not allowed: your account can't do this; try the command in a terminal"
         else:
             err = "" if code == 0 else (out.strip()[:200] or "It didn't work; try the command in a terminal")
-        note = ""
-        if code == 0 and opts.id == "firewall":
-            # (the rules can't be read without root: remember they're in, and for how long)
-            note = sharing.remember(sharing.firewall()["kind"], said)
-        print(json.dumps({"ok": code == 0, "error": err, "note": note}))
+        print(json.dumps({"ok": code == 0, "error": err}))
         return 0 if code == 0 else 1
     rows = check_all(opts)
     print(as_text(rows) if opts.cmd == "text" else json.dumps(rows))
