@@ -24,3 +24,38 @@ test('half-pixel edges cannot round into the adjacent monitor', () => {
     assert.equal(r.x+r.width,1920);
     assert.equal(r.y+r.height,1080);
 });
+
+// Circle to search: strokes
+const circle = (cx, cy, r, n = 48, turns = 1) => Array.from({length: n + 1}, (_, i) => ({x: cx + r * Math.cos(2 * Math.PI * turns * i / n), y: cy + r * Math.sin(2 * Math.PI * turns * i / n)}));
+const line = (x0, y0, x1, y1, n = 20, wobble = 0) => Array.from({length: n + 1}, (_, i) => ({x: x0 + (x1 - x0) * i / n + (i % 2 ? wobble : -wobble), y: y0 + (y1 - y0) * i / n}));
+const box = (...args) => JSON.parse(JSON.stringify(context.strokeBox(...args)));
+
+test('a straight (or slightly shaky) drag is a box from end to end', () => {
+    assert.equal(context.strokeKind(line(100, 100, 400, 300)), 'box');
+    assert.equal(context.strokeKind(line(100, 100, 400, 300, 30, 5)), 'box');
+    assert.deepEqual(box(line(400, 300, 100, 100), 12, 1920, 1080), {x: 100, y: 100, width: 300, height: 200});
+});
+
+test('a circle, an open loop or a scribble is a shape: its bounding box, padded', () => {
+    assert.equal(context.strokeKind(circle(500, 400, 100)), 'circle');
+    assert.equal(context.strokeKind(circle(500, 400, 100, 40, 0.8)), 'circle'); // (not quite closed)
+    const scribble = [{x: 100, y: 100}, {x: 300, y: 120}, {x: 110, y: 160}, {x: 310, y: 190}, {x: 120, y: 230}];
+    assert.equal(context.strokeKind(scribble), 'circle');
+    assert.deepEqual(box(circle(500, 400, 100), 12, 1920, 1080), {x: 388, y: 288, width: 224, height: 224});
+    // An L along two edges of a rectangle: the rectangle
+    const ell = line(100, 100, 400, 100).concat(line(400, 100, 400, 300));
+    assert.equal(context.strokeKind(ell), 'circle');
+    assert.deepEqual(box(ell, 0, 1920, 1080), {x: 100, y: 100, width: 300, height: 200});
+});
+
+test('a shape padded past the edge stays on its screen', () => {
+    assert.deepEqual(box(circle(30, 1060, 40), 12, 1920, 1080), {x: 0, y: 1008, width: 82, height: 72});
+    assert.deepEqual(box(circle(1900, 20, 50), 12, 1920, 1080), {x: 1838, y: 0, width: 82, height: 82});
+});
+
+test('a click or a tiny wiggle selects nothing', () => {
+    assert.equal(context.strokeKind([]), 'none');
+    assert.equal(context.strokeKind([{x: 5, y: 5}]), 'none');
+    assert.equal(context.strokeKind([{x: 5, y: 5}, {x: 8, y: 7}, {x: 6, y: 9}]), 'none');
+    assert.deepEqual(box([{x: 5, y: 5}, {x: 7, y: 6}], 12, 1920, 1080), {x: 0, y: 0, width: 0, height: 0});
+});

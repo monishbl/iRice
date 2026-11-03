@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
@@ -9,6 +10,9 @@ import "../../common/ScreenGeometry.js" as ScreenGeometry
 // Region picker: dims the screen, drag to select (live size readout), or
 // click a highlighted window to take all of it. Space toggles window mode
 // off; Esc cancels. Hides itself before the capture happens.
+// Circle to search (mode "circle"): circle or scribble round anything (its
+// bounding box, padded a little, is taken; the stroke shows as it's drawn),
+// or drag a box, which a roughly straight drag is (ScreenGeometry.strokeKind).
 Scope {
     id: root
 
@@ -18,6 +22,23 @@ Scope {
         if (mode === "") {
             captureDelay.stop();
             hiding = false;
+        }
+    }
+
+    component Stroke: Shape {
+        id: stroke
+        property var points: []
+        property real weight: 5
+        property color color: Theme.accent
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            strokeColor: stroke.color
+            strokeWidth: stroke.weight
+            fillColor: "transparent"
+            capStyle: ShapePath.RoundCap
+            joinStyle: ShapePath.RoundJoin
+            PathPolyline { path: stroke.points }
         }
     }
 
@@ -53,8 +74,12 @@ Scope {
             property point end
             property bool dragging: false
             property var hovered: null // window rect under the pointer
+            // Circle to search: the path drawn so far, and what it is
+            readonly property bool circling: root.mode === "circle"
+            property var stroke: []
+            readonly property string kind: circling && dragging ? ScreenGeometry.strokeKind(stroke) : "box"
             readonly property rect selection: {
-                const r = ScreenGeometry.clip(dragging ? {x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y)} : (hovered ?? Qt.rect(0, 0, 0, 0)), width, height);
+                const r = ScreenGeometry.clip(dragging ? (circling ? ScreenGeometry.strokeBox(stroke, 12, width, height) : {x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y)}) : (hovered ?? Qt.rect(0, 0, 0, 0)), width, height);
                 return Qt.rect(r.x, r.y, r.width, r.height);
             }
             readonly property string verb: ({ screenshot: "capture", ocr: "copy text", translate: "translate", record: "record", "record-window": "record", ask: "ask AI about" })[root.mode] ?? ""
@@ -83,7 +108,7 @@ Scope {
                     y: parent.s.y - 1
                     width: parent.s.width + 2
                     height: parent.s.height + 2
-                    visible: parent.s.width > 0
+                    visible: parent.s.width > 0 && win.kind === "box" // (a circle shows its stroke instead)
                     color: "transparent"
                     // (Material: a 2 px primary outline)
                     border.width: Theme.material ? 2 : 1
@@ -92,9 +117,26 @@ Scope {
                 }
             }
 
+            // Circle to search: the stroke, in the accent with a soft light
+            // glow that keeps it apart from a background of the same colour
+            // (drawn whole, then faded, so it doesn't build up where the
+            // stroke crosses itself)
+            Item {
+                anchors.fill: parent
+                visible: win.kind === "circle"
+                opacity: 0.45
+                layer.enabled: visible
+                Stroke { points: win.stroke; weight: 14; color: "white" }
+            }
+            Stroke {
+                visible: win.kind === "circle"
+                points: win.stroke
+                weight: 5
+            }
+
             // Size readout
             Rectangle {
-                visible: win.selection.width > 0
+                visible: win.selection.width > 0 && !win.circling
                 x: Math.min(win.selection.x + win.selection.width + 8, win.width - width - 8)
                 y: Math.min(win.selection.y + win.selection.height + 8, win.height - height - 8)
                 width: sizeText.implicitWidth + 16
@@ -122,7 +164,7 @@ Scope {
                 Text {
                     id: hint
                     anchors.centerIn: parent
-                    text: root.mode === "record-window" ? "Click a window to record it. Esc to cancel." : "Drag to select an area to " + win.verb + ", or click a window. Esc to cancel."
+                    text: root.mode === "record-window" ? "Click a window to record it. Esc to cancel." : win.circling ? "Circle or scribble over anything to search it. Esc to cancel." : "Drag to select an area to " + win.verb + ", or click a window. Esc to cancel."
                     color: Theme.material ? Theme.m3.inverseOnSurface : "white"
                     font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Font.Medium }
                 }
@@ -143,6 +185,11 @@ Scope {
                 onPositionChanged: m => {
                     if (win.dragging) {
                         win.end = Qt.point(Math.max(0, Math.min(win.width, m.x)), Math.max(0, Math.min(win.height, m.y)));
+                        // (a point every 2 px is smooth enough; copies: a
+                        // point read from a property stays tied to it)
+                        const last = win.stroke[win.stroke.length - 1];
+                        if (win.circling && Math.hypot(win.end.x - last.x, win.end.y - last.y) >= 2)
+                            win.stroke = win.stroke.concat([Qt.point(win.end.x, win.end.y)]);
                     } else {
                         win.hovered = win.windows.find(r => m.x >= r.x && m.x <= r.x + r.width && m.y >= r.y && m.y <= r.y + r.height) ?? null;
                     }
@@ -154,12 +201,14 @@ Scope {
                     }
                     win.start = Qt.point(Math.max(0, Math.min(win.width, m.x)), Math.max(0, Math.min(win.height, m.y)));
                     win.end = win.start;
+                    win.stroke = [Qt.point(win.start.x, win.start.y)];
                     win.dragging = true;
                 }
                 onReleased: m => {
                     if (!win.dragging)
                         return;
-                    const moved = Math.abs(win.end.x - win.start.x) > 4 || Math.abs(win.end.y - win.start.y) > 4;
+                    // (circling: back where it began still counts as drawn)
+                    const moved = win.circling ? win.kind !== "none" : Math.abs(win.end.x - win.start.x) > 4 || Math.abs(win.end.y - win.start.y) > 4;
                     // A copy: a rect read from a property stays tied to it,
                     // and the selection empties once dragging ends
                     const s = moved ? win.selection : win.hovered;

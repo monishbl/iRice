@@ -7,8 +7,9 @@ import qs.common
 import "../common/ScreenGeometry.js" as ScreenGeometry
 import "OcrLangs.js" as OcrLangs
 
-// Screenshots, OCR, screen translation and recording. Region picking happens
-// in RegionSelector; this service does the capturing and the follow-up.
+// Screenshots, OCR, screen translation, recording and circle to search.
+// Region picking happens in RegionSelector; this service does the capturing
+// and the follow-up.
 Singleton {
     id: root
 
@@ -16,7 +17,8 @@ Singleton {
     readonly property string videosDir: Quickshell.env("HOME") + "/Videos"
     readonly property string tmp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-capture.png"
 
-    // Region selection request: "" when idle, else screenshot | ocr | translate | record | ask
+    // Region selection request: "" when idle, else screenshot | ocr | translate | record | ask | circle
+    // (circle: circle to search, drawn freehand or as a box)
     property string selecting: ""
     property var selectingScreen: null
 
@@ -100,15 +102,33 @@ Singleton {
             run("translate", ocrCommand(geo));
         } else if (mode === "record" || mode === "record-window")
             startRecording(geo);
-        else if (mode === "ask")
-            askAbout(["-g", geo]);
+        else if (mode === "ask" || mode === "circle")
+            askAbout(["-g", geo], mode);
     }
 
-    // Ask AI about the screen: capture as JPEG, attach to the next chat message
-    function askAbout(args) {
-        const file = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-ask-" + Date.now() + ".jpg";
+    // Ask AI about the screen: capture as JPEG, attach to the next chat
+    // message (`kind` circle: and ask what it is). The pictures stay
+    // owner-only in the runtime folder; ones over a day old go.
+    function askAbout(args, kind) {
+        const dir = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-ai";
+        const file = dir + "/shot-" + Date.now() + ".jpg";
         const q = a => "'" + a.replace(/'/g, "'\\''") + "'";
-        run("ask", "grim -t jpeg -q 85 " + args.map(q).join(" ") + " " + q(file) + " && echo " + q(file) + " && base64 -w0 " + q(file));
+        run(kind ?? "ask", "umask 077; mkdir -p " + q(dir) + " && find " + q(dir) + " -name 'shot-*.jpg' -mmin +1440 -delete; grim -t jpeg -q 85 " + args.map(q).join(" ") + " " + q(file) + " && echo " + q(file) + " && base64 -w0 " + q(file));
+    }
+
+    // Circle to search's "Search the web": only now does the picture leave
+    // the computer, to Google Lens (lens-upload.py); its results open in the
+    // browser. lensBusy: the picture on its way; lensDone: how the last one
+    // went, { path, ok, text }, for the chat row that asked.
+    property string lensBusy: ""
+    property var lensDone: null
+    function searchWeb(path) {
+        if (lensBusy !== "" || path === "")
+            return;
+        lensBusy = path;
+        lensDone = null;
+        const q = a => "'" + a.replace(/'/g, "'\\''") + "'";
+        run("lens", "exec python3 -I " + q(Quickshell.shellDir + "/assets/scripts/lens-upload.py") + " " + q(path));
     }
     function askScreen() {
         Panels.close();
@@ -203,13 +223,35 @@ Singleton {
             // "-" is never an option, like -i=FILE, which would send a file)
             const q = a => "'" + String(a).replace(/'/g, "'\\''") + "'";
             run("translated", "trans -brief -no-ansi -t " + q(t) + " -- " + q(src));
-        } else if (kind === "ask") {
+        } else if (kind === "ask" || kind === "circle") {
             const nl = out.indexOf("\n");
             if (nl < 0)
                 return;
-            Ai.attach({ path: out.slice(0, nl), data: out.slice(nl + 1).trim(), mediaType: "image/jpeg" });
+            const picture = { path: out.slice(0, nl), data: out.slice(nl + 1).trim(), mediaType: "image/jpeg" };
             Panels.sidebarTab = 0;
-            Panels.show("sidebar", focusedScreen());
+            // (circle: in the sidebar of the screen it was drawn on)
+            Panels.show("sidebar", kind === "circle" ? selectingScreen : focusedScreen());
+            if (kind === "circle")
+                Ai.searchPicture(picture);
+            else
+                Ai.attach(picture);
+        } else if (kind === "lens") {
+            const path = lensBusy;
+            lensBusy = "";
+            let r = null;
+            try {
+                r = JSON.parse(out);
+            } catch (e) {}
+            if (r?.ok && Launch.openLink(r.url)) {
+                lensDone = { path: path, ok: true, text: "Opened in your browser" };
+            } else if (r?.fallback) {
+                // (Lens changed how it takes pictures: paste it there instead)
+                Quickshell.execDetached(["sh", "-c", "wl-copy --type image/jpeg < \"$1\"", "sh", path]);
+                Launch.open("https://lens.google.com/");
+                lensDone = { path: path, ok: true, text: "Paste the picture into Lens with Ctrl+V: it's on the clipboard." };
+            } else {
+                lensDone = { path: path, ok: false, text: r?.error || "Couldn't search the picture. Try again." };
+            }
         } else if (kind === "translated") {
             translation = Object.assign({}, translation, { text: out.trim(), busy: false });
         }
@@ -224,7 +266,11 @@ Singleton {
     function failed(kind) {
         if (kind === "translate")
             translation = Object.assign({}, translation, { busy: false, error: "Could not read text from the screen." });
-        if (kind === "shot" || kind === "shotMarkup" || kind === "ask")
+        if (kind === "lens" && lensBusy !== "") { // (unless its output already said)
+            lensDone = { path: lensBusy, ok: false, text: "Couldn't start the search. Make sure python3 is installed, then try again." };
+            lensBusy = "";
+        }
+        if (kind === "shot" || kind === "shotMarkup" || kind === "ask" || kind === "circle")
             Quickshell.execDetached(["notify-send", "-a", "Screenshot", "Couldn't take the screenshot", "Make sure grim is installed."]);
         else if (kind === "ocr" || kind === "translate")
             Quickshell.execDetached(["notify-send", "-a", "Text Capture", "Couldn't read the screen", "Install tesseract and tesseract-data-eng, then try again." + missingHint()]);
@@ -237,6 +283,8 @@ Singleton {
         function screenshot(): void { root.screenshotScreen(); }
         function region(mode: string): void { root.select(mode || "screenshot"); }
         function ask(): void { root.askScreen(); }
+        // Circle to search: circle (or box) anything on the focused screen
+        function circle(): void { root.select("circle"); }
         function stop(): void { root.stopRecording(); }
         // qs ipc call screen ocrLanguages  (e.g. "deu+eng; missing: fra")
         function ocrLanguages(): string { return root.ocrLangs + "; missing: " + (root.ocrMissing.join(",") || "none"); }

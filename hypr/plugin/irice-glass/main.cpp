@@ -21,6 +21,7 @@
 // hyprctl irice-glass pointer-confine <monitor|-> (1.5-second lease)
 // hyprctl irice-glass controls on|off [dark|light]   (see controls.cpp)
 // hyprctl irice-glass window-frost <0..1>  extra frost where glass covers windows
+// (and, on its own, trackpad long presses: hold.cpp)
 //
 // Shape floats (layer-local logical px): x y w h radius mode refraction depth
 // bevel frost chroma rim tintR tintG tintB tintA saturation opacity
@@ -63,6 +64,8 @@ bool        pointerReady();
 std::string pointerCommand(const std::string&, std::istringstream&);
 void        controlsInit(HANDLE);
 void        controlsExit();
+void        holdInit();
+void        holdExit();
 std::string controlsCommand(const std::string& state, const std::string& theme);
 std::string controlsStyleCommand(const std::string& style, const std::string& bg, const std::string& ink);
 
@@ -764,6 +767,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     pointerInit(handle);
     controlsInit(handle);
     dragInit(handle);
+    holdInit(); // (trackpad long presses: hold.cpp)
     g_frameListener = Event::bus()->m_events.render.pre.listen([](PHLMONITOR m) {
         if (!m)
             return;
@@ -790,6 +794,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     g_dragButton.reset();
     pointerExit();
     controlsExit();
+    holdExit();
     if (g_cmd)
         HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_cmd);
     // Free our GL objects (the plugin can be reloaded many times)

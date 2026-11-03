@@ -55,5 +55,14 @@
   "action": {
    "shell": "showDesktop"
   }
+ },
+ {
+  "id": "circle-search",
+  "fingers": 3,
+  "direction": "hold",
+  "label": "Circle to search",
+  "action": {
+   "shell": "circleSearch"
+  }
  }
 ]

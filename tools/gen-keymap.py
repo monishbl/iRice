@@ -56,7 +56,8 @@ b("switcher-back", "ALT + SHIFT + Tab", "Shell", "Switch windows backwards", she
 # (a release bind that lets apps still see Alt; does nothing otherwise)
 b("switcher-commit", "ALT + Alt_L", "Shell", "Switch windows (finish when Alt is let go)", shell("switcherCommit"), release=True, non_consuming=True, transparent=True, ignore_mods=True)
 b("mission-control", "$MOD + SHIFT + Tab", "Shell", "All Windows", shell("missionControl"))
-b("launchpad", "$MOD + SHIFT + Space", "Shell", "App Drawer", shell("launchpad"))
+# (Super+Shift+Space is circle to search, below: the user's choice)
+b("launchpad", "$MOD + CTRL + Space", "Shell", "App Drawer", shell("launchpad"))
 b("clipboard", "$MOD + V", "Shell", "Clipboard history", shell("clipboard"))
 b("shareSelection", "$MOD + CTRL + S", "Shell", "Share the selection", shell("shareSelection"))
 b("replyLatest", "$MOD + CTRL + N", "Shell", "Reply to the newest message", shell("replyLatest"))
@@ -82,9 +83,14 @@ b("repair-escape", "$MOD + CTRL + Escape", "Shell", "Restart the shell (alternat
 # ── Screen ─────────────────────────────────────────────────────────────────
 b("snip", "$MOD + SHIFT + S", "Screen", "Screenshot of an area", shell("screenshotRegion"))
 b("lens", "$MOD + SHIFT + A", "Screen", "Search an area with Google Lens", shell("lens"))
+# (held down, Dictation listens until the key is let go: keybinds.lua binds the release too)
+b("dictate", "$MOD + H", "Shell", "Dictation (tap to start and stop, or hold while you speak)", {"shell": "dictate", "release": "dictateRelease"})
+b("captions", "$MOD + CTRL + L", "Shell", "Live captions on or off", shell("captions"))
+b("shelf", "$MOD + ALT + D", "Shell", "Drop shelf", shell("shelf"))
 b("ocr", "$MOD + SHIFT + X", "Screen", "Copy text from the screen", shell("ocr"))
 b("translate", "$MOD + SHIFT + T", "Screen", "Translate text on the screen", shell("screenTranslate"))
 b("ask-screen", "$MOD + ALT + A", "Screen", "Ask AI about part of the screen", shell("askScreen"))
+b("circle-search", "$MOD + SHIFT + Space", "Screen", "Circle to search", shell("circleSearch"))
 b("color-picker", "$MOD + SHIFT + C", "Screen", "Pick a colour", {"exec": "hyprpicker -a"})
 b("record", "$MOD + SHIFT + R", "Screen", "Record an area (again to stop)", shell("record"), locked=True)
 b("record-alt", "$MOD + ALT + R", "Screen", "Record an area (alternative)", shell("record"), locked=True)
@@ -194,6 +200,9 @@ gestures = [
     {"id": "overview-down", "fingers": 4, "direction": "down", "label": "Overview", "action": {"shell": "overview"}},
     {"id": "launchpad", "fingers": 4, "direction": "pinchin", "label": "App Drawer", "action": {"shell": "launchpad"}},
     {"id": "show-desktop", "fingers": 4, "direction": "pinchout", "label": "Show desktop", "action": {"shell": "showDesktop"}},
+    # A long press (fingers resting still): the irice-glass plugin sees it
+    # (hold.cpp), gestures.lua runs it; iRice actions only
+    {"id": "circle-search", "fingers": 3, "direction": "hold", "label": "Circle to search", "action": {"shell": "circleSearch"}},
 ]
 
 ids = [x["id"] for x in binds]
