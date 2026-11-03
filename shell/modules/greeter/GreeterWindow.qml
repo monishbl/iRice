@@ -64,6 +64,15 @@ PanelWindow {
             powerChoice = action;
         passwordField?.forceActiveFocus();
     }
+    // Escape: drops a power choice, else quits a preview, else clears the field
+    function cancel() {
+        if (powerChoice !== "")
+            powerChoice = "";
+        else if (auth.mock)
+            auth.quitPreview();
+        else
+            clearField();
+    }
     onPrimaryChanged: if (primary) passwordField?.forceActiveFocus()
     Connections {
         target: win.auth

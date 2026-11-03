@@ -139,14 +139,7 @@ GreeterWindow {
                         else if (win.row === 1) win.nextUser(1);
                         else event.accepted = false;
                     }
-                    Keys.onEscapePressed: {
-                        if (win.powerChoice !== "")
-                            win.powerChoice = "";
-                        else if (win.auth.mock)
-                            win.auth.quitPreview();
-                        else
-                            text = "";
-                    }
+                    Keys.onEscapePressed: win.cancel()
                     Keys.onPressed: event => {
                         const actions = { [Qt.Key_F1]: "poweroff", [Qt.Key_F2]: "reboot", [Qt.Key_F3]: "suspend" };
                         if (actions[event.key] && !win.auth.busy) {

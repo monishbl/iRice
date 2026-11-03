@@ -115,14 +115,7 @@ GreeterWindow {
                 Keys.onUpPressed: win.nextUser(-1)
                 Keys.onDownPressed: win.nextUser(1)
                 Keys.onTabPressed: win.nextSession()
-                Keys.onEscapePressed: {
-                    if (win.powerChoice !== "")
-                        win.powerChoice = "";
-                    else if (win.auth.mock)
-                        win.auth.quitPreview();
-                    else
-                        text = "";
-                }
+                Keys.onEscapePressed: win.cancel()
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === ""
