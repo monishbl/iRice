@@ -32,7 +32,7 @@
 - **Window gaps are a setting.** Settings → Windows & Spaces: None, Compact (the default, tighter than before) or Comfortable.
 - **Shake to find the pointer: one control.** Off, Bigger or Ring, and the bigger pointer shrinks back reliably and quickly.
 - **Menus stay on screen.** A right-click menu near the bottom of the screen opens upward, and a long one scrolls; Settings' drop-down lists fit inside the window and scroll, starting at the current choice.
-- **Pinch and spread were swapped** on the trackpad: pinch opens the App Library and spread shows the desktop again.
+- **Pinch and spread were swapped** on the trackpad: pinch opens the App Drawer and spread shows the desktop again.
 
 ## Material 3 Expressive, round two; welcome, backups, 24-hour time · 2026-11-03
 
