@@ -52,7 +52,10 @@ json.dump(c, open(p, "w"), indent=4)
 PY
 }
 look_now() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look"))' "$CFG"; }
-ipc() { ./dev.sh ipc "$@" >/dev/null 2>&1; }
+# (this checkout's shell-ipc.sh: main's only finds a Glass shell started from
+# main's own shell/ folder, so from a worktree no Glass panel ever opened)
+shell_ipc() { timeout 20 ./dev.sh run env QS=qs "$ROOT/shell/assets/scripts/shell-ipc.sh" call "$@"; }
+ipc() { shell_ipc "$@" >/dev/null 2>&1; }
 
 # What's stuck when the shell stops answering or drawing: the compositor or
 # the shell, and what the shell's threads are doing
@@ -112,7 +115,7 @@ for look in "${LOOKS[@]}"; do
     ipc panels close
     # (a shell that died on the way logs no QML error: it must still answer,
     # and its screenshots mustn't be blank)
-    if [[ "$(timeout 20 ./dev.sh ipc show 2>&1 | grep -c '^target')" -lt 5 ]]; then
+    if [[ "$(shell_ipc show 2>&1 | grep -c '^target')" -lt 5 ]]; then
         echo "FAIL $look: the shell stopped answering during the run"
         stuck_report
         failed=1
