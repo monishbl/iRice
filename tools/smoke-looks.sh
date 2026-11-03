@@ -79,6 +79,30 @@ for look in "${LOOKS[@]}"; do
         [[ -n "${SMOKE_SHOTS:-}" ]] && ./dev.sh shot "$SMOKE_SHOTS/$look-settings-$page.png" >/dev/null 2>&1
     done
     ipc panels close
+    # (a shell that died on the way logs no QML error: it must still answer,
+    # and its screenshots mustn't be blank)
+    if [[ "$(./dev.sh ipc show 2>&1 | grep -c '^target')" -lt 5 ]]; then
+        echo "FAIL $look: the shell stopped answering during the run"
+        failed=1
+        continue
+    fi
+    if [[ -n "${SMOKE_SHOTS:-}" ]]; then
+        blank=$(python3 -I - "$SMOKE_SHOTS" "$look" <<'PY'
+import sys, pathlib
+from PIL import Image
+n = 0
+for f in sorted(pathlib.Path(sys.argv[1]).glob(sys.argv[2] + "-*.png")):
+    lo, hi = Image.open(f).convert("L").getextrema()
+    n += hi < 16  # (nothing drawn: all near black)
+print(n)
+PY
+)
+        if [[ "$blank" -gt 0 ]]; then
+            echo "FAIL $look: $blank screenshots are blank (nothing drawn)"
+            failed=1
+            continue
+        fi
+    fi
     found=$(sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E "$ERRORS" | grep -v -E 'greeter.json|matugen' | sed -E 's/0x[0-9a-f]+/0x…/g' | sort | uniq -c | sort -rn)
     if [[ -n "$found" ]]; then
         echo "FAIL $look:"
