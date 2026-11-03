@@ -407,6 +407,7 @@ Scope {
                                 width: listCol.width
                                 spacing: 12
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: sectionCol.modelData.title
                                     color: Theme.color.label
                                     font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
@@ -487,6 +488,7 @@ Scope {
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
                                     elide: Text.ElideRight
+                                    textFormat: Text.PlainText
                                     text: page.app?.summary ?? ""
                                     color: Theme.color.secondary
                                     font { family: Theme.font.family; pixelSize: Theme.font.title }
@@ -577,6 +579,7 @@ Scope {
                             visible: text !== ""
                             width: parent.width
                             wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
                             text: page.app?.description && page.app.description !== page.app.summary ? page.app.description : ""
                             color: Theme.color.label
                             lineHeight: 1.25
@@ -601,7 +604,7 @@ Scope {
                                     anchors { fill: parent; margins: -4 }
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: Launch.open(page.app.homepage)
+                                    onClicked: Launch.openLink(page.app.homepage)
                                 }
                             }
                         }
@@ -699,6 +702,7 @@ Scope {
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
+                        textFormat: Text.PlainText
                         text: card.modelData.summary || " "
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.font.small }

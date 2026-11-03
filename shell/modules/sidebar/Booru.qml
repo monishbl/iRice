@@ -179,7 +179,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Launch.open(cell.modelData.page)
+                    onClicked: Launch.openLink(cell.modelData.page)
                 }
             }
         }

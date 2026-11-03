@@ -17,6 +17,7 @@ DetailPage {
         rightPadding: 6
         bottomPadding: 4
         wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
         text: Cast.active ? "Playing on " + (Cast.device?.name ?? "") + ": " + Cast.title
             : !Media.player ? "Play something first, then choose where it goes."
             : Cast.canCastPlaying ? "Cast “" + (Media.player.trackTitle || Media.player.identity) + "” to:"

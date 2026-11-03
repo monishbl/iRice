@@ -96,6 +96,7 @@ Item {
         }
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.player?.trackTitle || "Not playing"
             elide: Text.ElideRight
             color: root.ink
@@ -104,6 +105,7 @@ Item {
         Text {
             width: parent.width
             visible: text !== ""
+            textFormat: Text.PlainText
             text: root.player?.trackArtist ?? ""
             elide: Text.ElideRight
             color: Qt.alpha(root.ink, 0.8)

@@ -167,6 +167,7 @@ Variants {
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: Math.min(implicitWidth, tab.width - 60)
+                                        textFormat: Text.PlainText
                                         text: tab.modelData.title || (tab.modelData.lastIpcObject?.class ?? "")
                                         elide: Text.ElideRight
                                         color: tab.front ? (Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label) : Theme.color.secondary

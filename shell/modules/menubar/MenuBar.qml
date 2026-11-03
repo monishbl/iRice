@@ -187,6 +187,7 @@ Variants {
                     leftPadding: 6
                     width: Math.min(implicitWidth, bar.width / 2 - leftItems.x - 360)
                     elide: Text.ElideRight
+                    textFormat: Text.PlainText
                     text: Apps.active?.title ?? ""
                     color: Qt.alpha(bar.fg, 0.65)
                     font { family: Theme.font.family; pixelSize: Theme.font.body }

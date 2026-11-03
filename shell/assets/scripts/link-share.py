@@ -51,10 +51,12 @@ LIFETIME = 10 * 60
 MAX_UPLOAD = 4 * 1024 ** 3
 MAX_FILES = 200
 MAX_STRANGERS = 20
+KEEP_FREE = 512 * 1024 ** 2  # receiving: never fills the disk past this
 PORTS = (53320, 53319)  # (in the firewall rule's 53317-53320)
 CHUNK = 256 * 1024
 VIRTUAL = re.compile(r"^(lo|docker|br-|virbr|veth|tailscale|wg|tun|tap|zt|vnet|vmnet|podman|cni|flannel|cali)")
 
+LAN = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 _out = threading.Lock()
 
 
@@ -73,7 +75,10 @@ def private(addr):
         ip = ipaddress.ip_address(addr)
     except ValueError:
         return False
-    return ip.version == 4 and ip.is_private and not ip.is_loopback and not ip.is_link_local
+    # A home or office network's (RFC 1918; an iPhone's hotspot is 172.20.10.x).
+    # Not ipaddress's wider "private", which takes 0.0.0.0 (listening there
+    # means every network) and the documentation and benchmark ranges.
+    return ip.version == 4 and any(ip in n for n in LAN)
 
 
 def pick_address(ip_json, wireless=lambda name: os.path.exists(f"/sys/class/net/{name}/wireless")):
@@ -125,6 +130,24 @@ def unique_path(folder, name):
         path = os.path.join(folder, f"{stem} ({n})" + ("." + ext if ext else ""))
         n += 1
     return path
+
+
+def publish(tmp, folder, name):
+    """Gives a finished upload its name: a free one, never replacing a file
+    (a hard link only succeeds on a free name; a drive without them, such
+    as FAT, gets a rename to the name just found free)."""
+    for _ in range(100):
+        path = unique_path(folder, name)
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            continue  # (taken meanwhile: the next free one)
+        except OSError:
+            os.rename(tmp, path)
+            return path
+        os.unlink(tmp)
+        return path
+    raise OSError("no free name to save the file under")
 
 
 def size_text(n):
@@ -183,6 +206,7 @@ class Share:
         self.computer = computer
         self.strangers = 0
         self.received = 0
+        self.incoming = 0  # bytes of uploads under way (counted against the free space)
         self.stop = threading.Event()
         self.lock = threading.Lock()
 
@@ -323,11 +347,14 @@ def handler_for(share):
             with share.lock:
                 if share.received >= MAX_FILES:
                     return self._text(429, "That's enough files for one go. Open the link again for more.")
-                share.received += 1
                 os.makedirs(share.folder, exist_ok=True)
-                path = unique_path(share.folder, name)
+                # (the disk keeps room to spare: a phone never fills it)
+                if length + share.incoming + KEEP_FREE > shutil.disk_usage(share.folder).free:
+                    return self._text(507, "That computer doesn't have room for this file. Free some space on it, then try again.")
                 tmp = os.path.join(share.folder, f".irice-incoming-{secrets.token_hex(6)}.part")
-                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+                share.received += 1
+                share.incoming += length
             done = 0
             try:
                 with os.fdopen(fd, "wb") as out:
@@ -339,8 +366,7 @@ def handler_for(share):
                         done += len(chunk)
                         emit({"ev": "progress", "dir": "in", "name": name, "done": done, "total": length})
                 with share.lock:
-                    path = unique_path(share.folder, name)  # (another one may have taken the name meanwhile)
-                    os.rename(tmp, path)
+                    path = publish(tmp, share.folder, name)
             except (OSError, ConnectionError):
                 try:
                     os.unlink(tmp)
@@ -348,6 +374,9 @@ def handler_for(share):
                     pass
                 self.close_connection = True
                 return
+            finally:
+                with share.lock:
+                    share.incoming -= length
             emit({"ev": "received", "paths": [path]})
             self._text(200, "OK")
 

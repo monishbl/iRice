@@ -390,6 +390,7 @@ Variants {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: Math.min(implicitWidth, tile.width + 40 - 24 - 28)
                                         elide: Text.ElideRight
+                                        textFormat: Text.PlainText
                                         text: tile.modelData.title || tile.ipc.class
                                         color: hover.containsMouse ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
                                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }

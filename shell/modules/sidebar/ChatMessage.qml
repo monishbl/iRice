@@ -148,7 +148,7 @@ Item {
             color: Theme.color.label
             selectionColor: Theme.accentAlpha(0.4)
             font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Launch.open(link)
+            onLinkActivated: link => Launch.openLink(link)
         }
 
         // Error / refusal

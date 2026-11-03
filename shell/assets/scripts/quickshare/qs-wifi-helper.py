@@ -396,6 +396,52 @@ def prefix_len(mask):
     return sum(bin(int(x)).count("1") for x in mask.split("."))
 
 
+MIN_PREFIX = 24  # (a phone's group or hotspot is a /24: Android's 192.168.49.x, its tethering's)
+
+
+def lease_network(ip, mask, others=()):
+    """The phone's DHCP answer, checked before it becomes an address (and a
+    route) on this computer: (address, prefix length). The phone is a
+    stranger here: a wide mask (/1, /0) or an address on a network this
+    computer already uses would send its other traffic (the internet, the
+    home network, a VPN) to the phone. So: a private IPv4 address, at most a
+    /24, on no network another interface has (`others`: ip_network
+    objects). Refused otherwise."""
+    import ipaddress
+    try:
+        addr = ipaddress.IPv4Address(ip)
+        prefix = max(prefix_len(mask), MIN_PREFIX)
+        net = ipaddress.IPv4Network(f"{addr}/{prefix}", strict=False)
+    except (ValueError, TypeError):
+        raise Refused("the phone's Wi-Fi gave an unusable address") from None
+    if not addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified \
+            or addr in (net.network_address, net.broadcast_address):
+        raise Refused(f"the phone's Wi-Fi gave an address that isn't a local one ({addr})")
+    for other in others:
+        if other.version == 4 and net.overlaps(other):
+            raise Refused(f"the phone's Wi-Fi ({net}) overlaps a network this computer is on ({other})")
+    return str(addr), prefix
+
+
+def networks_in_use(skip):
+    """The IPv4 networks on this computer's other interfaces (`skip`: ours)."""
+    import ipaddress
+    try:
+        links = json.loads(run("ip", "-j", "-4", "addr", "show", check=False) or "[]")
+    except ValueError:
+        return []
+    out = []
+    for link in links:
+        if link.get("ifname") in skip or link.get("ifname") == "lo":
+            continue
+        for a in link.get("addr_info", []):
+            try:
+                out.append(ipaddress.IPv4Network(f"{a['local']}/{a['prefixlen']}", strict=False))
+            except (KeyError, ValueError):
+                pass
+    return out
+
+
 # ── The links ────────────────────────────────────────────────────────────
 def run(*cmd, check=True):
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
@@ -818,15 +864,7 @@ class Links:
             if time.monotonic() > end:
                 raise Refused("couldn't join the phone's Wi-Fi")
             time.sleep(0.2)
-        lease = dhcp_client(JOIN_IFACE, mac)
-        if lease:
-            ip, mask, gateway = lease
-            run("ip", "addr", "add", f"{ip}/{prefix_len(mask)}", "dev", JOIN_IFACE)
-        else:
-            # (no DHCP answer: an address the phone's group won't hand out soon)
-            gateway = GO_IP
-            ip = f"192.168.49.{random.randint(200, 250)}"
-            run("ip", "addr", "add", f"{ip}/24", "dev", JOIN_IFACE)
+        ip, gateway = self._lease_address(JOIN_IFACE, mac)
         self.undo.append(lambda: run("ip", "addr", "flush", "dev", JOIN_IFACE, check=False))
         return {"ip": ip, "gateway": gateway, "iface": JOIN_IFACE}
 
@@ -864,15 +902,21 @@ class Links:
                 mac = f.read().strip()
         except OSError:
             mac = random_mac()
-        lease = dhcp_client(ifname, mac)
+        ip, gateway = self._lease_address(ifname, mac)
+        return {"ip": ip, "gateway": gateway, "iface": ifname}
+
+    @staticmethod
+    def _lease_address(iface, mac):
+        """An address on the phone's network, from its DHCP server (checked:
+        lease_network), else one its group won't hand out soon: (ip, gateway)."""
+        lease = dhcp_client(iface, mac)
         if lease:
             ip, mask, gateway = lease
-            run("ip", "addr", "add", f"{ip}/{prefix_len(mask)}", "dev", ifname)
         else:
-            gateway = GO_IP
-            ip = f"192.168.49.{random.randint(200, 250)}"
-            run("ip", "addr", "add", f"{ip}/24", "dev", ifname)
-        return {"ip": ip, "gateway": gateway, "iface": ifname}
+            gateway, ip, mask = GO_IP, f"192.168.49.{random.randint(200, 250)}", "255.255.255.0"
+        ip, prefix = lease_network(ip, mask, networks_in_use({iface}))
+        run("ip", "addr", "add", f"{ip}/{prefix}", "dev", iface)
+        return ip, gateway
 
     def teardown(self):
         while self.undo:

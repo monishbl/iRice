@@ -195,6 +195,7 @@ Scope {
                     Text {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
+                        textFormat: Text.PlainText
                         text: root.req?.from ?? ""
                         elide: Text.ElideRight
                         color: Theme.color.label
@@ -206,6 +207,7 @@ Scope {
                         wrapMode: Text.Wrap
                         maximumLineCount: 3
                         elide: Text.ElideRight
+                        textFormat: Text.PlainText
                         text: root.state_ === "asking" ? "would like to share " + root.what + (root.req?.total > 0 ? " (" + Transfers.size(root.req.total) + ")" : "") + "."
                             : root.state_ === "receiving" ? (root.item?.waiting ? "Starting…" : "Receiving " + root.what + "… " + Math.round(100 * root.frac) + "%")
                             : root.state_ === "done" ? (root.count === 1 ? root.what + " is in " : root.what + " are in ") + (Config.options.sharing.folder ? Config.options.sharing.folder.split("/").pop() : "Downloads") + "."
@@ -256,7 +258,7 @@ Scope {
                                 { label: "Hide", primary: false, act: () => Sharing.updateRequest(root.req.id, { hidden: true }) }
                             ] : root.state_ === "done" ? (root.req.paths.length === 1 ? [
                                 { label: "Show in Files", primary: false, act: () => { Files.reveal(root.req.paths[0]); Sharing.dropRequest(root.req.id); } },
-                                { label: "Open", primary: true, act: () => { Launch.open("file://" + root.req.paths[0]); Sharing.dropRequest(root.req.id); } }
+                                { label: "Open", primary: true, act: () => { Files.open(root.req.paths[0]); Sharing.dropRequest(root.req.id); } }
                             ] : [
                                 { label: "Done", primary: false, act: () => Sharing.dropRequest(root.req.id) },
                                 { label: "Show in Files", primary: true, act: () => { Files.reveal(root.req.paths[0] ?? ""); Sharing.dropRequest(root.req.id); } }

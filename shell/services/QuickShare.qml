@@ -309,14 +309,14 @@ Singleton {
             const where = root.folder ? root.folder.split("/").pop() : "Downloads";
             Island.post({ kind: "custom", icon: "check-circle", title: "Received from " + ev.from,
                 subtitle: paths.length === 1 ? first.split("/").pop() : paths.length + " files in " + where, color: Theme.accents.green,
-                action: paths.length === 1 ? "Open" : "Show in Folder", onAction: () => paths.length === 1 ? Launch.open("file://" + first) : Files.reveal(first),
+                action: paths.length === 1 ? "Open" : "Show in Folder", onAction: () => paths.length === 1 ? Files.open(first) : Files.reveal(first),
                 action2: paths.length === 1 ? "Show in Folder" : "", onAction2: () => Files.reveal(first) }, 8000);
         }
         for (const t of texts) {
             const link = t.kind === "url" && /^https?:\/\//i.test(t.text);
             Island.post({ kind: "custom", icon: link ? "link" : "text-aa", title: (link ? "Link from " : "Text from ") + ev.from,
                 subtitle: t.text.length > 80 ? t.text.slice(0, 79) + "…" : t.text, color: Theme.accents.green,
-                action: link ? "Open" : "Copy", onAction: () => link ? Launch.open(t.text) : Quickshell.execDetached(["wl-copy", "--", t.text]),
+                action: link ? "Open" : "Copy", onAction: () => link ? Launch.openLink(t.text) : Quickshell.execDetached(["wl-copy", "--", t.text]),
                 action2: link ? "Copy" : "", onAction2: () => Quickshell.execDetached(["wl-copy", "--", t.text]) }, 10000);
         }
         for (const w of wifi)

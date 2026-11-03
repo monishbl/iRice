@@ -32,6 +32,19 @@ Singleton {
     function open(url) {
         run(["xdg-open", url.toString()], "open");
     }
+    // A link that came from outside (a notification, a chat reply, a
+    // package's homepage, a phone): only web and mail links open. Anything
+    // else (file:, smb:, a scheme some app registered) could start a
+    // program, so it doesn't. Returns whether it opened.
+    function linkAllowed(url) {
+        return /^(https?:\/\/|mailto:)/i.test(String(url ?? "").trim());
+    }
+    function openLink(url) {
+        if (!linkAllowed(url))
+            return false;
+        open(String(url).trim());
+        return true;
+    }
     // A command in a terminal: the one chosen in Settings → Default apps,
     // else $TERMINAL, else the first installed (kitty, foot, alacritty,
     // wezterm, ghostty, konsole, …), each started its own way

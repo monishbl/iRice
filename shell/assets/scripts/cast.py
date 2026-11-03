@@ -150,7 +150,17 @@ class OneFile(http.server.ThreadingHTTPServer):
         self.path_ = path
         self.token = secrets.token_urlsafe(16)
         self.route = "/" + self.token + "/" + urllib.parse.quote(os.path.basename(path))
-        super().__init__((bind, port), _FileHandler)
+        if ":" in bind:
+            self.address_family = socket.AF_INET6
+        try:
+            super().__init__((bind, port), _FileHandler)
+        except (OSError, socket.gaierror):
+            if not bind:
+                raise
+            # (an address it can't listen on, an IPv6 one with a zone:
+            # every address, as before; the secret still guards it)
+            self.address_family = socket.AF_INET
+            super().__init__(("", port), _FileHandler)
 
 
 class _FileHandler(http.server.BaseHTTPRequestHandler):
@@ -215,7 +225,10 @@ def resolve(url, run=subprocess.run):
         return url, mimetypes.guess_type(urllib.parse.urlparse(url).path)[0] or "video/mp4"
     if not shutil.which("yt-dlp") and run is subprocess.run:
         raise CastError("Casting web videos needs yt-dlp. Install it, then try again.")
-    r = run(["yt-dlp", "-g", "--no-playlist", "-f", "best[ext=mp4][protocol^=http]/best[protocol^=http]/best", url],
+    if not re.match(r"^https?://", url, re.I):
+        raise CastError("Only web links (http or https) can be cast.")
+    # ("--": a link is never read as one of yt-dlp's options, such as --exec)
+    r = run(["yt-dlp", "-g", "--no-playlist", "-f", "best[ext=mp4][protocol^=http]/best[protocol^=http]/best", "--", url],
             capture_output=True, text=True, timeout=60)
     media = (r.stdout or "").strip().splitlines()
     if r.returncode != 0 or not media:
@@ -350,9 +363,11 @@ class Session:
             path = cmd["file"]
             if not os.path.isfile(path):
                 raise CastError("That file isn't there any more.")
-            self.server = OneFile(path, port=int(cmd.get("filePort") or FILE_PORT))
-            threading.Thread(target=self.server.serve_forever, daemon=True).start()
             ip = cmd.get("selfHost") or local_ip(host)
+            # (on the address the device reaches us at, not every network
+            # this computer is on; the link holds a 128-bit secret besides)
+            self.server = OneFile(path, port=int(cmd.get("filePort") or FILE_PORT), bind=ip)
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
             url = f"http://{'[' + ip + ']' if ':' in ip else ip}:{self.server.server_address[1]}{self.server.route}"
             ctype = mimetypes.guess_type(path)[0] or "video/mp4"
         else:

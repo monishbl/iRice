@@ -324,6 +324,7 @@ Item {
             spacing: 2
             Text {
                 width: parent.width
+                textFormat: Text.PlainText
                 text: root.event?.title ?? ""
                 elide: Text.ElideRight
                 color: root.ink
@@ -334,6 +335,7 @@ Item {
             Text {
                 width: parent.width
                 visible: text !== ""
+                textFormat: Text.PlainText
                 text: root.event?.subtitle ?? ""
                 elide: Text.ElideRight
                 color: root.event?.subtitleColor ?? root.ink2
@@ -608,6 +610,7 @@ Item {
                         Text {
                             id: nameText
                             width: parent.width - timeText.implicitWidth - 8
+                            textFormat: Text.PlainText
                             text: root.event?.card?.name ?? ""
                             elide: Text.ElideRight
                             color: root.ink
@@ -623,6 +626,7 @@ Item {
                     }
                     Text {
                         width: parent.width
+                        textFormat: Text.PlainText
                         text: root.event?.card?.text ?? ""
                         wrapMode: Text.Wrap
                         maximumLineCount: 3

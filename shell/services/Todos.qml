@@ -194,7 +194,7 @@ Singleton {
                 if (t.due && !t.done && !t.allDay && !t.notified && t.due <= now) {
                     changed = true;
                     if (now - t.due < 3600000) // not for ones long past
-                        Quickshell.execDetached(["notify-send", "-a", "Reminders", "-i", "checkbox", t.text, "Due now"]);
+                        Quickshell.execDetached(["notify-send", "-a", "Reminders", "-i", "checkbox", "--", t.text, "Due now"]);
                     return Object.assign({}, t, { notified: true });
                 }
                 return t;

@@ -113,6 +113,7 @@ Item {
         }
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.notification?.summary
             visible: text !== ""
             elide: Text.ElideRight
@@ -121,7 +122,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: root.notification?.body
+            text: Notifications.safeMarkup(root.notification?.body)
             visible: text !== ""
             textFormat: Text.StyledText
             wrapMode: Text.Wrap
@@ -130,7 +131,7 @@ Item {
             color: Theme.color.label
             opacity: 0.85
             font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Launch.open(link)
+            onLinkActivated: link => Launch.openLink(link)
         }
 
         Row {

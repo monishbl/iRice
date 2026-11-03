@@ -227,6 +227,7 @@ Column {
                             id: what
                             anchors { left: badge.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
                             width: Math.min(implicitWidth, (trail.x - x - 8) * 0.6)
+                            textFormat: Text.PlainText
                             text: line.modelData.title
                             elide: Text.ElideRight
                             color: root.ink

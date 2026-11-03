@@ -47,7 +47,7 @@ Item {
             return;
         }
         const request = requestComponent.createObject(root, { version: version, requestedText: input.text,
-            command: ["trans", "-brief", "-no-ansi", "-s", source, "-t", target, input.text] });
+            command: ["trans", "-brief", "-no-ansi", "-s", source, "-t", target, "--", input.text] });
         activeRequest = request;
         request.running = true;
     }

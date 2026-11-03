@@ -10,11 +10,25 @@ described, not dumped). Off, every call is a no-op.
 import os
 import time
 
-_dir = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+def _private_dir():
+    """$XDG_RUNTIME_DIR when it's ours and private, else None: never the
+    shared /tmp, where anyone could leave the switch file (turning the log
+    on) or a link in place of the log (writing through it)."""
+    d = os.environ.get("XDG_RUNTIME_DIR") or ""
+    try:
+        st = os.stat(d) if d else None
+    except OSError:
+        return None
+    if st is None or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        return None
+    return d
+
+
+_dir = _private_dir()
 _path = None
 # (or `touch $XDG_RUNTIME_DIR/irice-quickshare.debug`: the shell starts the
 # helper, so its environment is the shell's; the next start picks it up)
-if os.environ.get("IRICE_QS_DEBUG") == "1" or os.path.exists(os.path.join(_dir, "irice-quickshare.debug")):
+if _dir and (os.environ.get("IRICE_QS_DEBUG") == "1" or os.path.exists(os.path.join(_dir, "irice-quickshare.debug"))):
     _path = os.path.join(_dir, "irice-quickshare.log")
 
 
@@ -26,7 +40,7 @@ def log(where, what):
     if _path is None:
         return
     try:
-        fd = os.open(_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        fd = os.open(_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
         with os.fdopen(fd, "a") as f:
             f.write(f"{time.strftime('%H:%M:%S')}.{int(time.time() * 1000) % 1000:03d} {where}: {what}\n")
     except OSError:

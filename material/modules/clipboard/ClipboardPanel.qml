@@ -187,6 +187,7 @@ Variants {
 
             // (Material: a list's section label, in primary)
             component Heading: Text {
+                textFormat: Text.PlainText
                 property bool first: false
                 leftPadding: Theme.material ? 16 : 10
                 topPadding: first ? 0 : Theme.material ? 16 : 12
@@ -297,6 +298,7 @@ Variants {
                         Text {
                             visible: !rowItem.modelData.image
                             anchors { left: parent.left; leftMargin: 40; right: actions.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            textFormat: Text.PlainText
                             text: rowItem.modelData.text.replace(/\s+/g, " ").trim()
                             elide: Text.ElideRight
                             maximumLineCount: 1

@@ -135,6 +135,7 @@ Item {
                         width: parent.width - 9
                         Text {
                             width: parent.width
+                            textFormat: Text.PlainText
                             text: ev.modelData.title
                             elide: Text.ElideRight
                             color: Theme.color.label

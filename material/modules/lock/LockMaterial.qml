@@ -386,6 +386,7 @@ Item {
                                 Text {
                                     id: noteTitle
                                     width: parent.width - noteWhen.implicitWidth - 8
+                                    textFormat: Text.PlainText
                                     text: (root.cfg.previews ? note.modelData.summary : "") || note.modelData.appName || "Notification"
                                     elide: Text.ElideRight
                                     color: root.m3.onSurface
@@ -852,6 +853,7 @@ Item {
                     spacing: 2
                     Text {
                         width: parent.width
+                        textFormat: Text.PlainText
                         text: lp.p?.trackTitle ?? ""
                         elide: Text.ElideRight
                         color: root.m3.onSurface
@@ -859,6 +861,7 @@ Item {
                     }
                     Text {
                         width: parent.width
+                        textFormat: Text.PlainText
                         text: lp.p?.trackArtist ?? ""
                         elide: Text.ElideRight
                         color: root.m3.onSurfaceVariant

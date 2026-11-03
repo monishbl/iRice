@@ -36,6 +36,7 @@ Column {
         }
         Text {
             anchors { left: back.right; leftMargin: 6; right: parent.right; verticalCenter: parent.verticalCenter }
+            textFormat: Text.PlainText
             text: "Share “" + WifiShare.ssid + "”"
             elide: Text.ElideRight
             color: Theme.color.label

@@ -258,7 +258,7 @@ Singleton {
                 a[e.key] = true;
                 alerted = a;
                 const when = e.alert === 0 || e.local && e.start <= now ? "Now" : e.allDay ? "Today" : "At " + Qt.formatTime(e.start, TimeFormat.hm) + (e.alert > 0 ? " · in " + e.alert + " min" : "");
-                Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "-u", "normal", e.title, when + (e.location ? "\n" + e.location : "")]);
+                Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "-u", "normal", "--", e.title, when + (e.location ? "\n" + e.location : "")]);
             }
         }
     }

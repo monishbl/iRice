@@ -281,6 +281,7 @@ Item {
                 }
                 Text {
                     width: parent.width
+                    textFormat: Text.PlainText
                     text: [root.player?.trackArtist, root.player?.trackAlbum].filter(x => !!x).join(" · ")
                     elide: Text.ElideRight
                     color: Qt.rgba(1, 1, 1, 0.75)
@@ -389,6 +390,7 @@ Item {
             spacing: 2
             Text {
                 width: parent.width
+                textFormat: Text.PlainText
                 text: root.player?.trackTitle || "Not Playing"
                 elide: Text.ElideRight
                 color: root.ink
@@ -396,6 +398,7 @@ Item {
             }
             Text {
                 width: parent.width
+                textFormat: Text.PlainText
                 text: [root.player?.trackArtist, root.player?.trackAlbum].filter(x => !!x).join(" · ")
                 elide: Text.ElideRight
                 color: root.ink2

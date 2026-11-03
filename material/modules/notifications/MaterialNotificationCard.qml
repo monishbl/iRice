@@ -176,6 +176,7 @@ Item {
         }
         Text {
             width: parent.width
+            textFormat: Text.PlainText
             text: root.notification?.summary ?? ""
             visible: text !== ""
             elide: Text.ElideRight
@@ -184,7 +185,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: root.notification?.body ?? ""
+            text: Notifications.safeMarkup(root.notification?.body)
             visible: text !== ""
             textFormat: Text.StyledText
             wrapMode: Text.Wrap
@@ -195,7 +196,7 @@ Item {
             lineHeight: 20
             lineHeightMode: Text.FixedHeight
             font { family: Theme.font.family; pixelSize: 14 }
-            onLinkActivated: link => Launch.open(link)
+            onLinkActivated: link => Launch.openLink(link)
         }
         // Progress the app reports (downloads, copies)
         Item {

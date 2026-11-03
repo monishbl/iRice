@@ -524,6 +524,7 @@ Scope {
                                 width: listCol.width
                                 spacing: 12
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: sectionCol.modelData.title
                                     color: Theme.color.label
                                     font { family: Theme.font.family; pixelSize: Theme.material ? 22 : Theme.font.title; weight: Theme.material ? Font.Medium : Font.DemiBold }
@@ -607,6 +608,7 @@ Scope {
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
                                     elide: Text.ElideRight
+                                    textFormat: Text.PlainText
                                     text: page.app?.summary ?? ""
                                     color: Theme.color.secondary
                                     font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.title }
@@ -640,7 +642,7 @@ Scope {
                                     busy: page.busyWith !== ""
                                     onClicked: page.app?.installed ? AppStore.open(page.app) : AppStore.install(page.app)
                                     menu: (page.app?.installed ? [{ text: "Remove", icon: "trash", danger: true, enabled: page.busyWith === "", action: () => AppStore.remove(page.app) }] : [])
-                                        .concat(page.app?.homepage ? [{ text: "Open the website", icon: "globe", action: () => Launch.open(page.app.homepage) }] : [])
+                                        .concat(page.app?.homepage ? [{ text: "Open the website", icon: "globe", action: () => Launch.openLink(page.app.homepage) }] : [])
                                         .concat([{ text: "Copy the name", icon: "copy", action: () => Quickshell.clipboardText = page.app?.name ?? "" }])
                                 }
                                 SettingsButton {
@@ -705,6 +707,7 @@ Scope {
                             visible: text !== ""
                             width: parent.width
                             wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
                             text: page.app?.description && page.app.description !== page.app.summary ? page.app.description : ""
                             color: Theme.color.label
                             lineHeight: Theme.material ? 1.3 : 1.25
@@ -740,7 +743,7 @@ Scope {
                                 SettingsButton {
                                     minor: true
                                     text: "Open"
-                                    onClicked: Launch.open(page.app.homepage)
+                                    onClicked: Launch.openLink(page.app.homepage)
                                 }
                             }
                         }
@@ -762,7 +765,7 @@ Scope {
                                     anchors { fill: parent; margins: -4 }
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: Launch.open(page.app.homepage)
+                                    onClicked: Launch.openLink(page.app.homepage)
                                 }
                             }
                         }
@@ -865,6 +868,7 @@ Scope {
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
+                        textFormat: Text.PlainText
                         text: card.modelData.summary || " "
                         color: Theme.color.secondary
                         font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small }

@@ -529,6 +529,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 300)
                         elide: Text.ElideRight
+                        textFormat: Text.PlainText
                         text: {
                             const e = pillBox.ev;
                             if (!e)

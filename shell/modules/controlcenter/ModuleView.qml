@@ -274,6 +274,7 @@ Item {
             y: root.rows === 2 ? art.y + art.height + 8 : (parent.height - height) / 2
             Text {
                 width: parent.width
+                textFormat: Text.PlainText
                 text: parent.parent.player?.trackTitle || "Not Playing"
                 elide: Text.ElideRight
                 color: Theme.color.label
@@ -281,6 +282,7 @@ Item {
             }
             Text {
                 width: parent.width
+                textFormat: Text.PlainText
                 text: parent.parent.player?.trackArtist ?? ""
                 elide: Text.ElideRight
                 color: Theme.color.secondary

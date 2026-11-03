@@ -369,6 +369,7 @@ Variants {
                                 anchors.centerIn: parent
                                 width: Math.min(implicitWidth, parent.width - 20)
                                 elide: Text.ElideRight
+                                textFormat: Text.PlainText
                                 text: tile.modelData.title || tile.ipc.class
                                 color: "white"
                                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
