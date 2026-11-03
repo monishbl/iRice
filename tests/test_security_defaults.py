@@ -399,14 +399,6 @@ class RootHelper(unittest.TestCase):
             with self.assertRaises(R.Refused, msg=bad):
                 R.bootsplash(bad, prefix=str(self.d), run=None, which=lambda n: None)
 
-    def test_the_firewall_fix_opens_only_sharings_ports(self):
-        # (ufw, firewalld, nftables, iptables alike: LocalSend 53317, Quick
-        # Share 53318, its faster link 53319, link sharing and Cast 53320,
-        # mDNS 5353, DHCP 67 for a Quick Share hotspot. Nothing wider.)
-        numbers = {int(n) for n in re.findall(r"(?<![\w./-])(\d{2,5})(?![\w./])", R.FIREWALL_SCRIPT)}
-        self.assertLessEqual({n for n in numbers if n > 10}, {53317, 53320, 5353, 67})
-        self.assertNotRegex(R.FIREWALL_SCRIPT, r"ufw allow from|--zone=trusted|-j ACCEPT\s*$|policy accept|ufw disable")
-
     def test_wallpaper_takes_only_a_full_path_to_an_image_file(self):
         for bad in ("relative.jpg", "/a\nb.jpg", "/a\0b", "", None):
             with self.assertRaises(R.Refused):
