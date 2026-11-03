@@ -92,29 +92,6 @@ Scope {
             }
         });
     }
-    // ── Glass ───────────────────────────────────────────────────────────
-    Variants {
-        model: Quickshell.screens
-
-    }
-
-    Variants {
-        model: Quickshell.screens
-
-    }
-
-    Variants {
-        model: Quickshell.screens
-
-    }
-
-    // Tray menus. Submenus drill down in place.
-    Variants {
-        model: Quickshell.screens
-
-    }
-
-    // ── Material ────────────────────────────────────────────────────────
     Variants {
         model: Quickshell.screens
 

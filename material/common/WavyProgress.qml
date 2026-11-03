@@ -69,24 +69,53 @@ Item {
                     color: root.color
                 }
             }
-            Shape {
-                anchors.fill: parent
-                preferredRendererType: Shape.CurveRenderer
-                visible: m.end - m.start > 1
-                ShapePath {
-                    strokeColor: root.color
-                    strokeWidth: m.stroke
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    PathPolyline {
-                        path: {
-                            const pts = [], h = m.height / 2, wl = 40, a = m.amplitude;
-                            const x0 = m.start + m.stroke / 2, x1 = Math.max(x0 + 0.5, m.end - m.stroke / 2);
-                            for (let x = x0; x <= x1 + 0.01; x += 2)
-                                pts.push(Qt.point(x, h + a * Math.sin(2 * Math.PI * (x / wl - m.phase))));
-                            return pts;
+            // The wave: drawn once, a wavelength longer than the bar, and slid
+            // sideways inside the visible stretch (rebuilding the path every
+            // frame cost a re-triangulation 60 times a second wherever music
+            // played); only a new width or height redraws it
+            readonly property real wl: 40
+            Item {
+                id: strip
+                x: m.start
+                width: Math.max(0, m.end - m.start)
+                height: m.height
+                visible: width > 1
+                clip: true
+                Shape {
+                    // (the same wave as before at every point on screen: y = sin(2π(x/wl − phase)))
+                    x: -((((m.start - m.phase * m.wl) % m.wl) + m.wl) % m.wl)
+                    width: strip.width + m.wl
+                    height: m.height
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: root.color
+                        strokeWidth: m.stroke
+                        fillColor: "transparent"
+                        capStyle: ShapePath.FlatCap
+                        PathPolyline {
+                            path: {
+                                const pts = [], h = m.height / 2, a = m.amplitude, w = strip.width + m.wl;
+                                for (let x = 0; x <= w + 0.01; x += 2)
+                                    pts.push(Qt.point(x, h + a * Math.sin(2 * Math.PI * x / m.wl)));
+                                return pts;
+                            }
                         }
                     }
+                }
+            }
+            // (round ends, as the clip cuts the stroke's own caps)
+            Repeater {
+                model: 2
+                Rectangle {
+                    required property int index
+                    visible: strip.visible
+                    readonly property real at: index === 0 ? m.start + m.stroke / 2 : m.end - m.stroke / 2
+                    width: m.stroke
+                    height: m.stroke
+                    radius: m.stroke / 2
+                    color: root.color
+                    x: at - m.stroke / 2
+                    y: m.height / 2 + m.amplitude * Math.sin(2 * Math.PI * (at / m.wl - m.phase)) - m.stroke / 2
                 }
             }
         }
