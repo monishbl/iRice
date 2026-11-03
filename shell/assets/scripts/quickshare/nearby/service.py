@@ -7,10 +7,15 @@
   discover   browse mDNS, and scan Bluetooth LE, for devices visible now
   send       connect to one (over the network when it's there, Bluetooth
              otherwise), introduce the files, stream them on accept
-Which link a transfer uses, like Android: on the same network it stays
-there; a connection that starts over Bluetooth moves to the same network, or
-else to Wi-Fi Direct (wifi.py), after the receiver accepts; if that can't
-happen it carries on over Bluetooth (slow) with a warning.
+Which link a transfer uses: the fastest first, falling back only when it
+fails. On the same network it stays there; a connection that starts over
+Bluetooth moves, once the receiver accepts, to the same network, else to
+Wi-Fi Direct or a hotspot (wifi.py); if none works it carries on over
+Bluetooth (slow). The cheap links
+get a second try before falling back, and links.LinkMemory remembers what
+failed with which phone: a link that keeps failing is skipped for it for a
+day. How it goes shows quietly in the transfer ("link" events), never as
+alerts.
 Everything the shell needs to show goes through emit(dict) (the daemon
 prints it as a JSON line). Discovery is a pluggable object with publish /
 unpublish / browse / stop_browsing (avahi.Avahi), Bluetooth one with the
@@ -20,7 +25,7 @@ import asyncio
 import os
 import socket
 
-from . import ble_format, debuglog, endpoint, wifi
+from . import ble_format, debuglog, endpoint, links, wifi
 from .connection import Connection, ProtocolError
 from .sharing import Cancelled, Declined, Receive, Send
 from .transport import StreamTransport, TransportClosed
@@ -30,12 +35,19 @@ MAX_INCOMING = 3  # at once; more are refused (a flood shouldn't fill the disk o
 UPGRADE_WAIT = 10  # sending over Bluetooth: how long the files wait for a faster link
 MEDIUM_NAMES = {"wifi_lan": "Wi-Fi", "wifi_direct": "Wi-Fi Direct", "wifi_hotspot": "Wi-Fi hotspot", "ble": "Bluetooth"}
 SLOW = "Staying on Bluetooth, which is slow"
+RETRY = {"lan", "direct"}  # links worth a second try in the same transfer (nothing pauses for them)
+RETRY_TIMEOUT = 12  # (the second try waits less)
+PATH_MEDIUMS = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot", "nm": "wifi_hotspot"}
+JOIN_KEYS = {wifi.CR.WIFI_LAN: "join-lan", wifi.CR.WIFI_DIRECT: "join-direct", wifi.CR.WIFI_HOTSPOT: "join-hotspot"}
+OFFER_KEYS = {wifi.PATH.WIFI_LAN: "join-lan", wifi.PATH.WIFI_DIRECT: "join-direct", wifi.PATH.WIFI_HOTSPOT: "join-hotspot"}
 ADV_REFRESH = 120  # seconds between fresh advertisements while visible
 
 
 class QuickShareService:
-    def __init__(self, emit, discovery=None, folder=None, name=None, ble=None, helper=None, net_probe=None):
+    def __init__(self, emit, discovery=None, folder=None, name=None, ble=None, helper=None, net_probe=None,
+                 memory=None):
         self.emit = emit
+        self.memory = memory if memory is not None else links.LinkMemory(path="")  # (the daemon's is kept on disk)
         self.discovery = discovery
         self.ble = ble
         self.helper = helper  # wifi.WifiHelper: root for Wi-Fi Direct, asked for on demand
@@ -318,7 +330,12 @@ class QuickShareService:
             await conn.handshake()
             sender = (conn.remote or {}).get("name") or sender
             self._transport_event(sid, conn.medium)
-            conn.on_upgraded = lambda medium: self._transport_event(sid, medium)
+
+            def upgraded(medium):
+                self._transport_event(sid, medium)
+                if entry.get("offering"):  # (remembered the moment it moves: a short transfer may end first)
+                    self.memory.worked(sender, entry["offering"])
+            conn.on_upgraded = upgraded
 
             async def ask(offer):
                 entry["answer"] = asyncio.get_running_loop().create_future()
@@ -349,7 +366,8 @@ class QuickShareService:
             await self._release_links(entry)
 
     async def _upgrade_in(self, conn, sid, entry, sender):
-        """Receiving over Bluetooth, accepted: offer the phone a faster link."""
+        """Receiving over Bluetooth, accepted: offer the phone a faster link,
+        fastest first."""
         net = await self.net_probe()
         helper_ok = self.helper is not None and self.can_host(net)
         ip = wifi.phone_address(conn)
@@ -369,6 +387,12 @@ class QuickShareService:
             if not nm_host:
                 self._log(f"{sid}: no hotspot: the firewall ({fw.get('kind')}) would keep the phone from getting an address")
         tries = wifi.host_paths(conn, net, helper_ok, reachable=answers, nm_host=nm_host)
+        if tries and tries[0][0] == "lan" and len(tries) > 1 and self.firewall().get("blocks"):
+            # (a firewall that may drop the phone's connection costs ~10 s of
+            # its waiting; a Wi-Fi Direct link opens its own way in)
+            self._log(f"{sid}: skipping the shared network: the firewall may block it")
+            tries = tries[1:]
+        tries = self.memory.order(sender, tries, key=lambda t: t[0])
         self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers}, {total} bytes)")
         if not tries and fw_blocked:
             self._warn(sid, f"{SLOW}: this computer's firewall would keep {sender} from joining its hotspot. "
@@ -380,61 +404,72 @@ class QuickShareService:
                             "For full speed, put both on the same Wi-Fi.")
             return
         reasons = []
-        if tries[0][0] == "lan" and len(tries) > 1 and self.firewall().get("blocks"):
-            # (a firewall that may drop the phone's connection costs ~10 s of
-            # its waiting; a Wi-Fi Direct link opens its own way in)
-            self._log(f"{sid}: skipping the shared network: the firewall may block it")
-            tries = tries[1:]
         for p, mine in tries:
-            if conn._closed:
-                return
-            medium = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot", "nm": "wifi_hotspot"}[p]
-            listener = wifi.Listener(medium)
-            nm = None
-            try:
-                if p == "lan":
-                    port = await listener.open(port=self.upgrade_port)
-                    info = wifi.lan_path(mine, port)
-                elif p == "nm":
-                    nm = entry["nm"] = self.nm_link()
-                    self.emit({"ev": "note", "session": sid,
-                               "message": "This computer's Wi-Fi pauses for the transfer and comes back after"})
-                    group = await nm.host(net)
-                    port = await listener.open(port=self.upgrade_port)
-                    info = wifi.hotspot_path(group, port)
-                else:
-                    self.helper.on_auth = lambda: self.emit({
-                        "ev": "auth", "session": sid,
-                        "message": f"Enter your password to make a direct Wi-Fi link with {sender}. "
-                                   "Without it, the transfer stays on Bluetooth (slow)."})
-                    entry["links"] = True
-                    group = await self.helper.request({"cmd": "host", "mode": "p2p" if p == "direct" else "ap",
-                                                       "freq": wifi.group_frequency(net, conn.remote_metadata) or 0})
-                    port = await listener.open(port=self.upgrade_port)
-                    info = (wifi.direct_path if p == "direct" else wifi.hotspot_path)(group, port)
-                if await conn.offer_upgrade(info, listener.accept, timeout=30):
-                    nm = None  # (in use: it goes when the transfer ends)
+            # Fastest first; the cheap links get a second try before falling back
+            for n in range(2 if p in RETRY else 1):
+                if conn._closed or conn._upgraded.is_set():
                     return
-                reason = f"{sender} couldn't join the {'shared network' if p == 'lan' else 'hotspot' if p == 'nm' else 'link'}"
-                if p == "lan" and self.firewall().get("blocks"):
-                    reason = (f"this computer's firewall ({self.firewall()['kind']}) keeps {sender} from connecting. "
-                              "Allow it in Settings → Sharing")
+                entry["offering"] = p
+                ok, reason = await self._offer(conn, sid, entry, sender, p, mine, net, RETRY_TIMEOUT if n else 30)
+                if ok or conn._upgraded.is_set():
+                    return
                 reasons.append(reason)
-            except wifi.WifiUnavailable as e:
-                reasons.append(str(e).rstrip("."))
-            except (OSError, ValueError) as e:
-                reasons.append(f"the link couldn't be set up ({e})")
-            finally:
-                await listener.close()
-                if nm is not None:
-                    entry.pop("nm", None)
-                    await nm.restore()
-        if not conn._closed:
+                self._log(f"{sid}: {p} failed ({reason})")
+            entry.pop("offering", None)
+            self.memory.failed(sender, p)
+        if not conn._closed and not conn._upgraded.is_set():
             self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
 
-    def _warn(self, sid, message):
+    async def _offer(self, conn, sid, entry, sender, p, mine, net, timeout):
+        """Offers the phone one link; (True, None) once it moved there, else
+        (False, why)."""
+        listener = wifi.Listener(PATH_MEDIUMS[p])
+        nm = None
+        try:
+            if p == "lan":
+                port = await listener.open(port=self.upgrade_port)
+                info = wifi.lan_path(mine, port)
+            elif p == "nm":
+                nm = entry["nm"] = self.nm_link()
+                self._note(sid, "This computer's Wi-Fi pauses for the transfer and comes back after")
+                group = await nm.host(net)
+                port = await listener.open(port=self.upgrade_port)
+                info = wifi.hotspot_path(group, port)
+            else:
+                self.helper.on_auth = lambda: self._note(
+                    sid, f"Enter your password to make a direct Wi-Fi link with {sender}", auth=True)
+                entry["links"] = True
+                group = await self.helper.request({"cmd": "host", "mode": "p2p" if p == "direct" else "ap",
+                                                   "freq": wifi.group_frequency(net, conn.remote_metadata) or 0})
+                port = await listener.open(port=self.upgrade_port)
+                info = (wifi.direct_path if p == "direct" else wifi.hotspot_path)(group, port)
+            if await conn.offer_upgrade(info, listener.accept, timeout=timeout):
+                nm = None  # (in use: it goes when the transfer ends)
+                return True, None
+            if p == "lan" and self.firewall().get("blocks"):
+                return False, (f"this computer's firewall ({self.firewall()['kind']}) keeps {sender} from connecting. "
+                               "Allow it in Settings → Sharing")
+            return False, f"{sender} couldn't join the {'shared network' if p == 'lan' else 'hotspot' if p == 'nm' else 'link'}"
+        except wifi.WifiUnavailable as e:
+            return False, str(e).rstrip(".")
+        except (OSError, ValueError) as e:
+            return False, f"the link couldn't be set up ({e})"
+        finally:
+            await listener.close()
+            if nm is not None:
+                entry.pop("nm", None)
+                await nm.restore()
+
+    def _note(self, sid, message, auth=False):
+        """How the transfer is going, for its live activity (no alert)."""
         self._log(f"{sid}: {message}")
-        self.emit({"ev": "warning", "session": sid, "message": message})
+        self.emit({"ev": "link", "session": sid, "message": message, "slow": False, "auth": auth})
+
+    def _warn(self, sid, message):
+        """It stays on slow Bluetooth: why and how to fix it, shown with the
+        transfer (no alert)."""
+        self._log(f"{sid}: {message}")
+        self.emit({"ev": "link", "session": sid, "message": message, "slow": True, "auth": False})
 
     async def _release_links(self, entry):
         nm = entry.pop("nm", None)
@@ -473,11 +508,19 @@ class QuickShareService:
         return twin.get("ble") if twin else None
 
     async def _connect(self, dev):
-        if dev.get("host"):
+        """The network first; Bluetooth when that fails, or straight away
+        when the network keeps failing with this phone (and Bluetooth
+        reaches it)."""
+        name = dev.get("name")
+        twin = self.ble is not None and self._ble_twin(dev)
+        if dev.get("host") and not (twin and self.memory.skip(name, "connect-lan")):
             try:
-                return await StreamTransport.connect(dev["host"], dev["port"])
+                t = await StreamTransport.connect(dev["host"], dev["port"], timeout=6 if twin else 10)
+                self.memory.worked(name, "connect-lan")
+                return t
             except (OSError, asyncio.TimeoutError):
-                if not (self.ble is not None and self._ble_twin(dev)):
+                self.memory.failed(name, "connect-lan")
+                if not twin:
                     raise
                 self._log("couldn't connect over the network: trying Bluetooth")
         path = self._ble_twin(dev)
@@ -500,7 +543,11 @@ class QuickShareService:
                 # Tell the phone where it can move us: it hosts, we follow
                 net = await self.net_probe()
                 nm_ok = self.pause_wifi and await self.nm_usable(net)
-                conn.mediums = wifi.mediums_we_join(self.helper is not None and self.can_host(net), nm_ok)
+                # (the links that keep failing with this phone left out: it
+                # offers the next one instead)
+                conn.mediums = self.memory.order(
+                    name, wifi.mediums_we_join(self.helper is not None and self.can_host(net), nm_ok),
+                    key=lambda m: JOIN_KEYS.get(m, ""))
                 conn.medium_metadata = wifi.medium_metadata(net)
                 conn.on_upgrade_offer = lambda info: self._join(sid, entry, info, net, name)
             conn.on_upgraded = lambda medium: self._transport_event(sid, medium)
@@ -545,6 +592,13 @@ class QuickShareService:
             await self._release_links(entry)
 
     async def _join(self, sid, entry, info, net, name):
+        key = OFFER_KEYS.get(info.medium)
+        new = await self._join_path(sid, entry, info, net, name)
+        if key:
+            (self.memory.worked if new is not None else self.memory.failed)(name, key)
+        return new
+
+    async def _join_path(self, sid, entry, info, net, name):
         """The phone offers a link (sending over Bluetooth): follow it. Next
         to this computer's own Wi-Fi when the chip allows it (the root
         helper's Wi-Fi Direct client interface: nothing pauses; a password),
@@ -552,10 +606,8 @@ class QuickShareService:
         meanwhile), else the root helper."""
         if info.medium != wifi.PATH.WIFI_LAN and self.helper is not None and self.can_host(net) \
                 and wifi.join_beside_possible(net):
-            self.helper.on_auth = lambda: self.emit({
-                "ev": "auth", "session": sid,
-                "message": f"Enter your password to join {name}'s direct Wi-Fi link next to your Wi-Fi. "
-                           "Without it, your Wi-Fi pauses for the transfer."})
+            self.helper.on_auth = lambda: self._note(
+                sid, f"Enter your password to join {name}'s direct Wi-Fi link next to your Wi-Fi", auth=True)
             entry["links"] = True
             try:
                 return await wifi.join(info, self.helper, net, helper_ok=True)
@@ -564,16 +616,13 @@ class QuickShareService:
         try:
             if info.medium != wifi.PATH.WIFI_LAN and self.pause_wifi and await self.nm_usable(net):
                 nm = entry["nm"] = self.nm_link()
-                self.emit({"ev": "note", "session": sid,
-                           "message": "This computer's Wi-Fi pauses for the transfer and comes back after"})
+                self._note(sid, "This computer's Wi-Fi pauses for the transfer and comes back after")
                 return await wifi.join(info, None, net, nm=nm)
             if info.medium != wifi.PATH.WIFI_LAN:
                 if self.helper is None:
                     raise wifi.WifiUnavailable("joining the phone's Wi-Fi Direct link isn't available here")
-                self.helper.on_auth = lambda: self.emit({
-                    "ev": "auth", "session": sid,
-                    "message": f"Enter your password to join {name}'s direct Wi-Fi link. "
-                               "Without it, the files go over Bluetooth (slow)."})
+                self.helper.on_auth = lambda: self._note(
+                    sid, f"Enter your password to join {name}'s direct Wi-Fi link", auth=True)
                 entry["links"] = True
             return await wifi.join(info, self.helper, net, helper_ok=self.can_host(net))
         except wifi.WifiUnavailable as e:

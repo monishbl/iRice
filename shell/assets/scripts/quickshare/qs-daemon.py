@@ -10,9 +10,10 @@ Commands, one JSON object per line on stdin:
   {"cmd": "bluetooth_on"}   the user's "Turn on Bluetooth" (nothing else powers it)
 Events, one per line on stdout: status, devices, incoming, connected,
 progress, finished, declined, ended, failed, error, bluetooth (adapter
-state), transport (which link a session uses, as it changes), warning (a
-transfer stays on slow Bluetooth: why), auth (a password prompt is coming,
-and what for) — see nearby/service.py.
+state), transport (which link a session uses, as it changes), link (how
+the link is going, shown quietly with the transfer: "slow" when it stays on
+Bluetooth, "auth" when a password prompt is coming) — see
+nearby/service.py.
 
 IRICE_QS_DEBUG=1 logs what happens (frames by kind and size, no secrets) to
 $XDG_RUNTIME_DIR/irice-quickshare.log (nearby/debuglog.py).
@@ -84,7 +85,8 @@ async def main():
     from nearby.wifi import NmWifi, WifiHelper
     # (a run that ended mid-transfer may have left the Wi-Fi on its link)
     await NmWifi.recover()
-    service = QuickShareService(emit, discovery, ble=ble, helper=WifiHelper())
+    from nearby.links import LinkMemory
+    service = QuickShareService(emit, discovery, ble=ble, helper=WifiHelper(), memory=LinkMemory())
     service.emit_bluetooth()
 
     reader = asyncio.StreamReader()

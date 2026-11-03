@@ -104,6 +104,7 @@ ShellRoot {
     QuickLook {}
     ShareSheet {}
     IncomingCard {}
+    LinkShareCard {}
     WidgetGallery {}
     Sidebar {}
     Polkit {}

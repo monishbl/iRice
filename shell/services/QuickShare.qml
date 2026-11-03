@@ -17,8 +17,13 @@ import qs.common
 // Wi-Fi link: through NetworkManager without a password (this computer's
 // Wi-Fi pauses for the transfer: a hotspot of its own, or the phone's group;
 // Settings → Sharing can turn that off), else Wi-Fi Direct through the root
-// helper (a password prompt), else it stays on slow Bluetooth with a warning. Bluetooth is never turned on from here except by the
-// user's own "Turn on Bluetooth".
+// helper (a password prompt), else it stays on slow Bluetooth. Fastest first:
+// a link gets a second try before the next, and one that keeps failing with
+// a phone is skipped for it for a day (nearby/links.py). Alerts only for a
+// request, a finished transfer and a failure; how the link is going (the
+// PIN, Bluetooth, a Wi-Fi pause, a password coming) shows quietly in the
+// transfer's live activity. Bluetooth is never turned on from here except by
+// the user's own "Turn on Bluetooth".
 // The helper only runs while visible, while the share sheet looks for
 // devices, or while a transfer is going.
 Singleton {
@@ -73,6 +78,21 @@ Singleton {
     function transportOf(session) {
         return transports[session] ?? "";
     }
+    // session -> { pin, note, slow }: shown with the transfer, not as alerts
+    property var links: ({})
+    function setLink(session, change) {
+        links = Object.assign({}, links, { [session]: Object.assign({}, links[session] ?? {}, change) });
+        if (active[session])
+            active = Object.assign({}, active, { [session]: Object.assign({}, active[session], links[session]) });
+    }
+    // A short line for it: "on Bluetooth (slow)", "Wi-Fi paused"…
+    function noteOf(ev) {
+        if (ev.slow)
+            return "on Bluetooth (slow)";
+        if (ev.auth)
+            return "password for a faster link";
+        return /pauses/.test(ev.message ?? "") ? "Wi-Fi paused for it" : "";
+    }
     readonly property bool needed: available && (visible || looking || sendPending || items.length > 0)
     readonly property bool running: helper.running
 
@@ -107,7 +127,8 @@ Singleton {
         active = Object.assign({}, active, { [ev.session]: {
             id: ev.session, kind: incoming ? "receive" : "send", via: "quickshare",
             name: prev?.name ?? (incoming ? ev.name : sendingName), peer: incoming ? (prev?.peer ?? ev.name) : ev.name,
-            done: ev.done, total: ev.total, speed: speed, at: now, waiting: !!ev.waiting, transport: transportOf(ev.session)
+            done: ev.done, total: ev.total, speed: speed, at: now, waiting: !!ev.waiting, transport: transportOf(ev.session),
+            pin: links[ev.session]?.pin ?? "", note: links[ev.session]?.note ?? "", slow: !!links[ev.session]?.slow
         } });
     }
     function finish(session) {
@@ -117,6 +138,9 @@ Singleton {
         const t = Object.assign({}, transports);
         delete t[session];
         transports = t;
+        const l = Object.assign({}, links);
+        delete l[session];
+        links = l;
     }
     // "photo.jpg", "3 photos", "a link and 2 files"…
     function describe(ev) {
@@ -205,8 +229,8 @@ Singleton {
                     break;
                 }
                 case "connected":
-                    // The PIN the phone shows too, while it decides
-                    Island.post({ kind: "custom", icon: "share-network", title: "Waiting for " + ev.to, subtitle: "PIN " + ev.pin + " · they're asked to accept", color: Theme.accents.blue }, 8000);
+                    // The PIN the phone shows too, in the live activity while it decides
+                    root.setLink(ev.session, { pin: ev.pin ?? "" });
                     break;
                 case "progress":
                     root.track(ev);
@@ -265,16 +289,8 @@ Singleton {
                 case "transport":
                     root.transports = Object.assign({}, root.transports, { [ev.session]: ev.name });
                     break;
-                case "warning": // a transfer stays on slow Bluetooth: why, and how to fix it
-                    Island.post({ kind: "custom", icon: "warning-circle", title: "Slow transfer", subtitle: ev.message, color: Theme.accents.orange }, 8000);
-                    break;
-                case "note": // this computer's Wi-Fi pauses for a fast link
-                    Island.post({ kind: "custom", icon: "wifi-high", title: "Switching to Wi-Fi", subtitle: ev.message, color: Theme.accents.blue }, 5000);
-                    break;
-                case "auth": // pkexec is about to ask for the password: say what for
-                    if (root.trusted)
-                        break; // (it won't ask: Fast transfers without asking)
-                    Island.post({ kind: "custom", icon: "lock", title: "Password for a faster link", subtitle: ev.message, color: Theme.accents.blue }, 10000);
+                case "link": // how the link is going: quietly, with the transfer
+                    root.setLink(ev.session, { note: root.noteOf(ev), slow: !!ev.slow, message: ev.message ?? "" });
                     break;
                 }
             }

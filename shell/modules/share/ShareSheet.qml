@@ -381,7 +381,9 @@ Variants {
                                     { label: "Copy", icon: "copy", act: () => Clipboard.copyText(win.note) }
                                 ] : [
                                     { label: "Copy", icon: "copy", act: () => Quickshell.execDetached(["sh", "-c", "printf '%s\\n' \"$@\" | sed 's|^|file://|' | wl-copy -t text/uri-list", "sh"].concat(win.paths)) },
-                                    { label: "Show in Files", icon: "folder-open", act: () => Files.reveal(win.paths[0] ?? "") }
+                                    { label: "Show in Files", icon: "folder-open", act: () => Files.reveal(win.paths[0] ?? "") },
+                                    // (an iPhone, or any phone's browser: a QR code on this network)
+                                    { label: "Share with a QR code", icon: "qr-code", act: () => LinkShare.send(win.paths) }
                                 ]
                                 Item {
                                     id: other

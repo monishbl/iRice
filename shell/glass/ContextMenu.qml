@@ -74,12 +74,17 @@ GlassWindow {
         id: body
         readonly property int m: glass.shadowMargin
         width: root.menuWidth + 2 * m
-        height: list.implicitHeight + 10 + 2 * m
+        // On screen whatever the pointer: it opens the other way when that
+        // side has more room, and scrolls when it's taller than the screen
+        readonly property real natural: list.implicitHeight + 10 + 2 * m
+        readonly property real below: root.height - root.pointY
+        readonly property bool up: root.upward ? (natural - m <= root.pointY || root.pointY >= below) : (natural - m > below && root.pointY > below)
+        height: Math.min(natural, root.height - 16 + 2 * m)
         x: Math.max(0, Math.min(root.width - width, root.pointX - width / 2))
-        y: root.upward ? root.pointY - height + m : root.pointY - m
+        y: Math.max(8 - m, Math.min(root.height - 8 + m - height, up ? root.pointY - height + m : root.pointY - m))
         opacity: Math.min(1, root.progress)
         scale: 0.94 + 0.06 * root.progress
-        transformOrigin: root.upward ? Item.Bottom : Item.Top
+        transformOrigin: up ? Item.Bottom : Item.Top
         transform: [pull.translate, pull.stretch]
         onScaleChanged: glass.updatePosition()
         focus: true
@@ -90,6 +95,10 @@ GlassWindow {
                 const it = root.items[i];
                 if (it && !it.separator && it.enabled !== false) {
                     root.current = i;
+                    // (scrolled to it when the menu scrolls)
+                    const r = rows.itemAt(i);
+                    if (r && scroller.interactive)
+                        scroller.contentY = Math.max(Math.min(scroller.contentY, r.y), r.y + r.height - scroller.height);
                     return;
                 }
             }
@@ -121,12 +130,21 @@ GlassWindow {
         }
         MouseArea { anchors.fill: parent; anchors.margins: body.m }
 
-        Column {
-            id: list
+        Flickable {
+            id: scroller
             x: body.m + 5
             y: body.m + 5
             width: root.menuWidth - 10
+            height: body.height - 2 * body.m - 10
+            contentHeight: list.implicitHeight
+            interactive: contentHeight > height
+            clip: interactive
+            boundsBehavior: Flickable.StopAtBounds
+        Column {
+            id: list
+            width: root.menuWidth - 10
             Repeater {
+                id: rows
                 model: root.items
                 Item {
                     id: row
@@ -183,6 +201,7 @@ GlassWindow {
                     }
                 }
             }
+        }
         }
     }
 }

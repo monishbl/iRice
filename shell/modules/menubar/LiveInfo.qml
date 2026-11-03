@@ -97,8 +97,11 @@ Singleton {
             if (!f)
                 return "";
             const what = f.kind === "copy" ? (f.cmd === "mv" ? "Moving" : "Copying") : f.kind === "send" ? (f.waiting ? "Waiting for " + f.peer : "Sending to " + f.peer) : f.kind === "receive" ? "Receiving from " + f.peer : "Downloading";
+            // (Quick Share: the PIN while they decide, how the link is going)
+            if (f.waiting && f.pin)
+                return what + " · PIN " + f.pin;
             const amount = f.total > 0 ? Transfers.size(f.done) + " of " + Transfers.size(f.total) : Transfers.size(f.done);
-            return what + " · " + amount + (Transfers.speed > 0 ? " · " + Transfers.size(Transfers.speed) + "/s" : "");
+            return what + " · " + amount + (Transfers.speed > 0 ? " · " + Transfers.size(Transfers.speed) + "/s" : "") + (f.note ? " · " + f.note : "");
         }
         case "call":
             return since(Calls.started) + (Audio.micMuted ? " · Muted" : "");

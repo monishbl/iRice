@@ -213,7 +213,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(self.p.w, asyncio.StreamWriter)  # the phone is on TCP now
         await self.finish(data, start=30000)
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_lan"])
-        self.assertEqual(self.events.of("warning"), [])
+        self.assertEqual([e for e in self.events.of("link") if e["slow"]], [])
         self.assertEqual(self.helper.requests, [])  # (no root needed on a shared network)
 
     async def test_a_lookalike_network_isnt_offered(self):
@@ -247,7 +247,10 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         _, offer = await read_until_offer(self.p)
         self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
         await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
-        warning = await self.events.wait("warning")
+        _, again = await read_until_offer(self.p)  # (a second try first)
+        self.assertEqual(again.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("firewall (ufw)", warning["message"])
         self.assertIn("Settings → Sharing", warning["message"])
         await self.finish(data)
@@ -259,11 +262,27 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         _, offer = await read_until_offer(self.p)
         self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
         await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
-        _, offer = await read_until_offer(self.p)  # the next path, at once
+        _, again = await read_until_offer(self.p)  # the fastest gets a second try
+        self.assertEqual(again.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_LAN)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
+        _, offer = await read_until_offer(self.p)  # then the next path, at once
         self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
         await bp.respond_to_offer(self.p, offer, [])
         await self.finish(data)
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_direct"])
+        self.assertEqual(self.svc.memory.peers["Pixel 9"]["lan"]["fails"], 1)
+        self.assertEqual(self.svc.memory.peers["Pixel 9"]["direct"]["fails"], 0)
+
+    async def test_a_link_that_keeps_failing_is_skipped_for_that_phone(self):
+        self.net = net(shared=True)
+        self.svc.memory.failed("Pixel 9", "lan")
+        self.svc.memory.failed("Pixel 9", "lan")  # (two transfers in a row)
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_LAN, CR.WIFI_DIRECT], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
 
     async def test_upgrades_to_a_wifi_direct_group_it_hosts(self):
         data = os.urandom(50_000)
@@ -274,7 +293,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         c = info.wifi_direct_credentials
         self.assertEqual((c.ssid, c.password, c.gateway, c.frequency), ("DIRECT-iR-TEST", "s3cretpass", "127.0.0.1", 5180))
         self.assertEqual(self.helper.requests[0], {"cmd": "host", "mode": "p2p", "freq": 5180})
-        self.assertTrue(self.events.of("auth"))  # the password prompt was announced
+        self.assertTrue([e for e in self.events.of("link") if e["auth"]])  # the password prompt was announced
         await bp.respond_to_offer(self.p, offer, [])
         await self.finish(data)
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_direct"])
@@ -302,7 +321,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         c = info.wifi_hotspot_credentials
         self.assertEqual((c.ssid, c.password, c.gateway, c.frequency), ("DIRECT-iR-NMNM", "nmpass1234", "127.0.0.1", 2437))
         self.assertEqual(self.helper.requests, [])  # no root, no password
-        self.assertTrue(self.events.of("note"))  # the Wi-Fi pause is said
+        self.assertTrue([e for e in self.events.of("link") if "pauses" in e["message"]])  # the Wi-Fi pause is said
         await bp.respond_to_offer(self.p, offer, [])
         await self.finish(data)
         self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["ble", "wifi_hotspot"])
@@ -316,7 +335,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.nm_ready()
         data = os.urandom(3000)
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("Bluetooth", warning["message"])
         await self.p.recv_sharing()  # the accept
         await self.finish(data)
@@ -328,7 +347,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
         _, offer = await read_until_offer(self.p)
         await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_HOTSPOT)))
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("hotspot", warning["message"])
         self.assertEqual(FakeNm.made[0].restored, 1)  # before the rest goes over Bluetooth
         await self.finish(data)
@@ -348,7 +367,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.nm_ready(hotspot=False, fixed=False)
         data = os.urandom(300_000)
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("firewall", warning["message"])
         self.assertIn("Settings → Sharing", warning["message"])
         self.assertEqual(FakeNm.made, [])  # the Wi-Fi was never touched
@@ -381,15 +400,21 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         _, offer = await read_until_offer(self.p)
         failure = BWU.UpgradePathInfo(medium=offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium)
         await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=failure))
-        warning = await self.events.wait("warning")
+        # Wi-Fi Direct gets a second try before it falls back
+        _, again = await read_until_offer(self.p)
+        self.assertEqual(again.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, failure.medium)
+        await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=failure))
+        warning = await self.events.wait("link", slow=True)
+        self.assertTrue(warning["slow"])
         self.assertIn("Bluetooth", warning["message"])
+        self.assertEqual(self.svc.memory.peers["Pixel 9"]["direct"]["fails"], 1)  # (remembered)
         await self.finish(data)  # all of it over the weave link
 
     async def test_no_way_up_says_how_to_fix_it(self):
         self.svc.can_host = lambda n: False
         data = b"small"
         await self.offer_file(data, [CR.WIFI_LAN])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("same Wi-Fi", warning["message"])
         await self.p.recv_sharing()  # the accept
         await self.finish(data)
@@ -400,7 +425,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.net = dict(net(), nm=True, driver="iwlwifi", frequency=5180)
         data = b"small"
         await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("NetworkManager ends Wi-Fi Direct", warning["message"])
         self.assertIn("same Wi-Fi", warning["message"])
         self.assertEqual(self.helper.requests, [])  # no password asked
@@ -412,7 +437,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.net = dict(net(), iwd=True)
         data = b"small"
         await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("iwd runs the Wi-Fi here", warning["message"])
         self.assertIn("same Wi-Fi", warning["message"])
         self.assertEqual(self.helper.requests, [])  # no password asked
@@ -448,7 +473,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.helper.fail = True
         data = os.urandom(5000)
         await self.offer_file(data, [CR.WIFI_DIRECT])
-        warning = await self.events.wait("warning")
+        warning = await self.events.wait("link", slow=True)
         self.assertIn("password", warning["message"])
         await self.finish(data)
 

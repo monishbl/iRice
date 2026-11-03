@@ -23,13 +23,18 @@ local function actionOf(a)
     return nil
 end
 
+-- Hyprland's "pinchin" runs on a spread and "pinchout" on a pinch (seen on
+-- a real trackpad): swapped here, so a gesture named Pinch (fingers
+-- together) is one
+local FINGERS = { pinchin = "pinchout", pinchout = "pinchin" }
+
 local function add(g)
     local action = actionOf(g.action)
     if not action or not g.fingers or not g.direction then
         log("skipped " .. tostring(g.id))
         return
     end
-    local ok, err = pcall(hl.gesture, { fingers = g.fingers, direction = g.direction, action = action })
+    local ok, err = pcall(hl.gesture, { fingers = g.fingers, direction = FINGERS[g.direction] or g.direction, action = action })
     if not ok then log("couldn't add " .. tostring(g.id) .. ": " .. tostring(err)) end
 end
 

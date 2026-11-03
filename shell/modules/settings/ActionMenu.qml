@@ -13,15 +13,18 @@ Item {
     property var items: []
     property Item anchor: null
     property int current: -1
+    readonly property int itemHeight: 32
+    readonly property int maxHeight: 320
     // The keyboard's choice stays in view
     onCurrentChanged: if (current >= 0) {
-        const top = current * 32, bottom = top + 32;
+        const top = current * itemHeight, bottom = top + itemHeight;
         if (top < flick.contentY)
             flick.contentY = top;
         else if (bottom > flick.contentY + flick.height)
             flick.contentY = bottom - flick.height;
     }
     readonly property bool shown: menu.visible
+    property real menuHeight: maxHeight // (what fits in the window, set as it opens)
 
     width: parent?.width ?? 0
     // (not 0: Qt skips drawing a zero-size item, children and all)
@@ -32,14 +35,22 @@ Item {
         anchor = anchorItem;
         items = list;
         current = -1;
-        flick.contentY = Math.max(0, Math.min(list.findIndex(it => it.checked === true) * 32 - 120, list.length * 32 - 310));
         const p = anchorItem.mapToItem(root, 0, 0);
-        const page = root.parent;
-        const below = p.y + anchorItem.height + 4;
-        const h = Math.min(320, list.length * 32 + 10);
-        // Below the anchor, or above it when there's no room under it
-        const roomBelow = page ? page.height - root.y - below : 1e6;
-        menu.y = roomBelow < h + 8 && p.y - h - 4 > -root.y ? p.y - h - 4 : below;
+        // Room in the window, not the page (the page is taller than what
+        // shows, inside a scroller): below the anchor, else above it when
+        // that has more; the list scrolls inside what fits
+        let top = anchorItem;
+        while (top.parent)
+            top = top.parent;
+        const a = anchorItem.mapToItem(top, 0, 0);
+        const roomBelow = top.height - (a.y + anchorItem.height + 4) - 8;
+        const roomAbove = a.y - 4 - 8;
+        const full = Math.min(maxHeight, list.length * itemHeight + 10);
+        const up = roomBelow < full && roomAbove > roomBelow;
+        const h = Math.max(Math.min(full, 2 * itemHeight + 10), Math.min(full, up ? roomAbove : roomBelow));
+        menuHeight = h;
+        menu.y = up ? p.y - h - 4 : p.y + anchorItem.height + 4;
+        flick.contentY = Math.max(0, Math.min(list.findIndex(it => it.checked === true) * itemHeight - (h - 10) / 2 + itemHeight / 2, list.length * itemHeight - (h - 10)));
         menu.x = Math.max(0, Math.min(root.width - menu.width, p.x + anchorItem.width - menu.width));
         menu.visible = true;
         menu.forceActiveFocus();
@@ -76,7 +87,7 @@ Item {
         width: Math.max(220, list.implicitWidth + 10)
         // (from the item count: every entry is 32 high, and the list's own
         // height isn't known yet while the menu first appears)
-        height: Math.min(320, root.items.length * 32 + 10)
+        height: Math.min(root.menuHeight, root.items.length * root.itemHeight + 10)
         padding: 0
         closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
         background: GlassPopupBackground { radius: Theme.radius.menu }

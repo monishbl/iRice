@@ -189,6 +189,16 @@ Column {
                 onPicked: p => Config.options.sharing.quickShareFolder = p
             }
         }
+        // (no Quick Share there: its browser, through a QR code)
+        Row {
+            label: "iPhone and other phones"
+            detail: "Show a QR code their camera opens: they send photos and files from the browser, on the same Wi-Fi. To send to them, use Share on a file → Share with a QR code."
+            SettingsButton {
+                text: "Receive from iPhone"
+                icon: "qr-code"
+                onClicked: LinkShare.receive()
+            }
+        }
     }
 
     // Sending from anywhere: file managers' menus, the selection
