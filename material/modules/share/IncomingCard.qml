@@ -295,6 +295,8 @@ Scope {
                                 // Material: filled primary for the one to do, tonal
                                 // (secondaryContainer) for the rest, squaring off
                                 // while pressed
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: btnMouse.pressed }
                                 radius: Theme.material && btnMouse.pressed ? 12 : 20
                                 Behavior on radius {
                                     enabled: Theme.material

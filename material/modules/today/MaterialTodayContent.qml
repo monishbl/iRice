@@ -62,6 +62,8 @@ FocusScope {
         signal activated
         implicitWidth: buttonRow.implicitWidth + 48
         implicitHeight: 40
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: buttonMouse.pressed }
         radius: buttonMouse.pressed ? 12 : 20
         Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
         readonly property color base: primary ? Theme.m3.primary : Theme.m3.secondaryContainer

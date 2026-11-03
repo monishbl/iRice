@@ -339,6 +339,8 @@ Scope {
                                 readonly property color base: !Theme.material ? "transparent" : off ? Qt.alpha(Theme.m3.onSurface, 0.12) : modelData.primary ? Theme.m3.primary : Theme.m3.secondaryContainer
                                 width: root.fingerWait ? parent.width : (parent.width - parent.spacing) / 2
                                 height: Theme.material ? 40 : 34
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: btnMouse.pressed }
                                 radius: Theme.material ? (btnMouse.pressed && !off ? 8 : height / 2) : 17
                                 Behavior on radius {
                                     enabled: Theme.material

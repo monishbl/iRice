@@ -15,6 +15,8 @@ Squircle {
     readonly property color m3Content: Theme.material ? (primary ? Theme.m3.onPrimary : Theme.m3.onSecondaryContainer) : "transparent"
     width: label.implicitWidth + (Theme.material ? 40 : 32)
     height: Theme.material ? 40 : 36
+    transform: pressFx1.effects
+    ElasticControl { id: pressFx1; pressed: mouse.pressed }
     radius: Theme.material ? (mouse.pressed ? 12 : height / 2) : Theme.radius.control
     Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
     color: Theme.material ? Qt.tint(primary ? Theme.m3.primary : Theme.m3.secondaryContainer, Qt.alpha(m3Content, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))

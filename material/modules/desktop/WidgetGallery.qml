@@ -133,6 +133,8 @@ Variants {
                         height: Theme.material ? 40 : 32
                         // (Material: a filled primary button, its state layers in
                         // the label's colour, its corners tightening while pressed)
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: doneMouse.pressed }
                         radius: Theme.material && doneMouse.pressed ? 8 : height / 2
                         Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                         color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, doneMouse.pressed ? 0.1 : doneMouse.containsMouse ? 0.08 : 0))
@@ -156,6 +158,8 @@ Variants {
                                     width: sizeCol.px.width * win.previewScale
                                     height: sizeCol.px.height * win.previewScale
                                     anchors.horizontalCenter: parent.horizontalCenter
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: addMouse.pressed }
                                     scale: addMouse.pressed ? 0.95 : addMouse.containsMouse ? 1.04 : 1
                                     Behavior on scale { SpringAnimation { spring: 5; damping: 0.35; epsilon: 0.002 } }
                                     Squircle {

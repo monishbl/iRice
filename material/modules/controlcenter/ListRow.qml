@@ -110,6 +110,8 @@ Squircle {
         active: Theme.material
         sourceComponent: Rectangle {
             readonly property color ink: root.highlighted ? Theme.m3.onPrimaryContainer : Theme.m3.onSurface
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: mouse.pressed }
             property real inner: root.highlighted || mouse.pressed ? 16 : mouse.containsMouse ? 12 : 4
             Behavior on inner {
                 SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 }

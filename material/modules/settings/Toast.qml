@@ -93,6 +93,8 @@ Item {
                 radius: Theme.material ? 20 : Theme.radius.control
                 color: Theme.material ? Qt.alpha(Theme.m3.inversePrimary, undoMouse.pressed ? 0.1 : undoMouse.containsMouse ? 0.08 : 0)
                     : undoMouse.pressed ? Qt.rgba(1, 1, 1, 0.2) : undoMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: undoMouse.pressed }
                 scale: undoMouse.pressed && !Theme.material ? 0.97 : 1
                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                 Accessible.role: Accessible.Button

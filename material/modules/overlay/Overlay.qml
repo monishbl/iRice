@@ -149,6 +149,8 @@ Scope {
                             readonly property bool on: UiState.widget(modelData).open
                             width: Theme.material ? 48 : 40
                             height: width
+                            transform: pressFx1.effects
+                            ElasticControl { id: pressFx1; pressed: tMouse.pressed }
                             radius: Theme.material ? (tMouse.pressed ? 8 : on ? 16 : height / 2) : 20
                             Behavior on radius {
                                 enabled: Theme.material
@@ -298,6 +300,8 @@ Scope {
                                     readonly property color mInk: !Theme.material ? "transparent" : !modelData.primary ? Theme.m3.onSecondaryContainer : ScreenTools.recording ? Theme.m3.onError : Theme.m3.onPrimary
                                     width: rText.implicitWidth + (Theme.material ? 32 : 24)
                                     height: Theme.material ? 36 : 30
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: recMouse.pressed }
                                     radius: Theme.material ? (recMouse.pressed ? 8 : height / 2) : 15
                                     Behavior on radius {
                                         enabled: Theme.material

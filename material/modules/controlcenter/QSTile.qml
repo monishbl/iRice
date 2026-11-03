@@ -129,9 +129,17 @@ Item {
     }
 
     // ── The tile ────────────────────────────────────────────────────────
+    // A press (Expressive): it swells, its corners square off, and both
+    // spring back with a small bounce
     property real corner: pressed ? 12 : on ? height / 2 : 20
     Behavior on corner {
-        SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
+        SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.25 }
+    }
+    transform: tilePress.effects
+    ElasticControl {
+        id: tilePress
+        enabled: !root.editing
+        pressed: root.pressed && !root.editing
     }
     HoverHandler {
         id: hover
@@ -172,7 +180,7 @@ Item {
         visible: root.large
         x: Math.round((root.height - height) / 2) // concentric with the pill's round end
         anchors.verticalCenter: parent.verticalCenter
-        width: root.height - 24
+        width: Math.min(root.height, 72) - 24 // (a tall tile keeps a row's icon)
         height: width
         property real corner: iconMouse.pressed ? 12 : root.on ? width / 2 : 16
         Behavior on corner {

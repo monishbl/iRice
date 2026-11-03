@@ -162,6 +162,8 @@ Variants {
                             anchors { right: parent.right; top: parent.top }
                             width: Theme.material ? 40 : 30
                             height: width
+                            transform: pressFx1.effects
+                            ElasticControl { id: pressFx1; pressed: closeMouse.pressed }
                             radius: Theme.material && closeMouse.pressed ? 12 : width / 2
                             color: closeMouse.pressed ? Theme.color.fillPressed : closeMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                             activeFocusOnTab: true
@@ -232,7 +234,9 @@ Variants {
                                         y: 4
                                         width: 68
                                         height: 68
-                                        scale: peerMouse.pressed ? 0.94 : 1
+                                        transform: pressFx2.effects
+                                        ElasticControl { id: pressFx2; pressed: peerMouse.pressed }
+                                        // (Material: grows on press: the ElasticControl above)
                                         Behavior on scale { NumberAnimation { duration: 100 } }
                                         FocusRing { radius: 38; visible: peer.activeFocus }
                                         // Material: the device on a shape, its kind

@@ -163,6 +163,8 @@ Variants {
                         // (12% / 38% of onSurface) with nothing to save
                         width: saveLabel.implicitWidth + (Theme.material ? 48 : 28)
                         height: Theme.material ? 40 : 32
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: saveMouse.pressed }
                         radius: Theme.material ? (saveMouse.pressed ? 8 : height / 2) : Theme.radius.control
                         Behavior on radius {
                             enabled: Theme.material

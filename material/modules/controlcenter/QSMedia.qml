@@ -14,7 +14,16 @@ Item {
 
     property bool active: true // false in Edit controls: shown, not used
     property bool shown: true // the panel is open (the position ticks only then)
-    readonly property var player: Media.player
+    property var player: Media.player // (the carousel gives each card its own)
+    // Its forms, by the room it has (Edit controls: 4×1 or 2×2):
+    //   wide     the art, the text and play on top, then previous, the
+    //            position and next under the text
+    //   slim     one row (4×1 in a short grid row): art, text, then previous,
+    //            play and next
+    //   compact  half width (2×2): art and text on top, previous, play and
+    //            next along the bottom
+    readonly property bool slim: height < 100
+    readonly property bool compact: !slim && width < 300
     readonly property bool playing: player?.isPlaying ?? false
     readonly property color ink: Theme.m3.onSecondaryContainer
 
@@ -43,9 +52,9 @@ Item {
     // Album art in a cookie (a circle while paused); a note without art
     Item {
         id: art
-        x: 16
-        y: 16
-        width: root.height - 32
+        x: root.slim ? 12 : 16
+        y: root.slim ? (root.height - height) / 2 : 16
+        width: root.slim ? root.height - 24 : root.compact ? 56 : root.height - 32
         height: width
         Image {
             id: artImage
@@ -74,8 +83,8 @@ Item {
 
     // The app, title and artist
     Column {
-        anchors { left: art.right; leftMargin: 16; right: play.left; rightMargin: 12 }
-        y: 16
+        anchors { left: art.right; leftMargin: root.compact ? 12 : 16; right: root.slim ? controls.left : root.compact ? parent.right : play.left; rightMargin: root.compact ? 16 : 12 }
+        y: root.slim ? (root.height - height) / 2 : 16
         spacing: 0
         Text {
             width: parent.width
@@ -106,11 +115,13 @@ Item {
     // squares it further (fast spatial spring)
     Rectangle {
         id: play
-        anchors { right: parent.right; rightMargin: 16 }
-        y: 16
+        x: root.compact ? (root.width - width) / 2 : root.slim ? controls.x + (controls.width - width) / 2 : root.width - width - 16
+        y: root.compact ? controls.y + (controls.height - height) / 2 : root.slim ? (root.height - height) / 2 : 16
         width: 48
         height: 48
         readonly property bool can: root.active && (root.player?.canTogglePlaying ?? false)
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: playMouse.pressed }
         property real corner: playMouse.pressed ? 10 : root.playing ? 16 : 24
         Behavior on corner {
             SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.2 }
@@ -150,8 +161,11 @@ Item {
 
     // Previous · position · next (· cast)
     Item {
-        anchors { left: art.right; leftMargin: 8; right: parent.right; rightMargin: 8 }
-        y: art.y + art.height - height + 4
+        id: controls
+        // (slim and compact: previous and next either side of play)
+        x: root.slim ? root.width - 12 - width : root.compact ? 12 : art.x + art.width + 8
+        width: root.slim ? 40 + 4 + 48 + 4 + 40 : root.compact ? root.width - 24 : root.width - x - 8
+        y: root.compact ? root.height - height - 12 : root.slim ? (root.height - height) / 2 : art.y + art.height - height + 4
         height: 40
         enabled: root.active && !!root.player
 
@@ -172,6 +186,7 @@ Item {
         // (seeks on a click, where the player allows it)
         Item {
             id: bar
+            visible: !root.slim && !root.compact
             anchors { left: prev.right; leftMargin: 4; right: next.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
             height: 20
             WavyProgress {
@@ -229,7 +244,7 @@ Item {
         // To a Chromecast or Google TV: the Cast page
         IconButton {
             id: cast
-            visible: Cast.devices.length > 0 || Cast.active
+            visible: (Cast.devices.length > 0 || Cast.active) && !root.slim && !root.compact
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             width: visible ? 40 : 0
             height: 40

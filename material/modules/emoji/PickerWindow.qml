@@ -691,6 +691,8 @@ GlassWindow {
                         width: rowItem.cellW - 2
                         height: rowItem.height - 2
                         // (Material: secondary container, rounder while pressed)
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: rowMouse.pressed }
                         radius: Theme.material && rowMouse.pressed && rowMouse.pressCol === col ? height / 2 : Theme.radius.control
                         Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                         color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, rowMouse.pressed && rowMouse.pressCol === col ? 0.1 : 0))
@@ -719,6 +721,8 @@ GlassWindow {
                                     color: Theme.material && root.sel === rowItem.modelData.start + cellItem.index ? Theme.m3.onSecondaryContainer : Theme.color.label
                                     font.family: cellItem.isEmoji ? EmojiFont.family : Theme.font.family
                                     font.pixelSize: cellItem.isEmoji ? 28 : cellItem.modelData.kind === "kaomoji" ? Theme.font.body : 20
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: rowMouse.pressed }
                                     scale: rowMouse.pressed && rowMouse.pressCol === cellItem.index ? 0.9 : 1
                                 }
                                 // Has skin tones (right-click or hold)

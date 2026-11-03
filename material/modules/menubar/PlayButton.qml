@@ -40,7 +40,9 @@ Item {
         shape: root.playing ? "square" : "circle"
         // (a state layer of the icon's colour on hover and press)
         color: Qt.tint(root.color, Qt.alpha(root.iconColor, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
-        scale: mouse.pressed ? 0.94 : 1
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: mouse.pressed }
+        // (Material: grows on press: the ElasticControl above)
         Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
     }
     Icon {

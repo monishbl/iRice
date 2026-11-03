@@ -50,6 +50,8 @@ Item {
                 // tightening while pressed
                 readonly property var m3Role: [["primaryContainer", "onPrimaryContainer"], ["secondaryContainer", "onSecondaryContainer"], ["tertiaryContainer", "onTertiaryContainer"]][index % 3]
                 readonly property color m3Ink: Theme.material ? Theme.m3[m3Role[1]] : "transparent"
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: mouse.pressed }
                 radius: Theme.material ? (mouse.pressed ? 12 : 20) : 12
                 Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                 color: Theme.material ? Qt.tint(Theme.m3[m3Role[0]], Qt.alpha(m3Ink, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))

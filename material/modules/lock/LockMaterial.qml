@@ -406,7 +406,9 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 44
                         height: 44
-                        scale: playMouse.pressed ? 0.92 : 1
+                        transform: pressFx1.effects
+                        ElasticControl { id: pressFx1; pressed: playMouse.pressed }
+                        // (Material: grows on press: the ElasticControl above)
                         Behavior on scale { SpringAnimation { spring: 12.8; damping: 0.54; epsilon: 0.005 } }
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Button

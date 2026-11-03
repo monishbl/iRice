@@ -601,6 +601,8 @@ Variants {
                                             Item {
                                                 width: strip.tileW
                                                 height: Math.round(strip.tileW * macRow.aspect)
+                                                transform: pressFx2.effects
+                                                ElasticControl { id: pressFx2; pressed: thumbMouse.pressed }
                                                 scale: thumbMouse.pressed && !tile.dragged ? 0.97 : thumbMouse.containsMouse ? 1.03 : 1
                                                 Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
                                                 ClippingRectangle {
@@ -716,6 +718,8 @@ Variants {
                                     y: strip.y + Math.round(strip.tileW * macRow.aspect) / 2 - height / 2
                                     width: Theme.material ? 40 : 36
                                     height: width
+                                    transform: pressFx1.effects
+                                    ElasticControl { id: pressFx1; pressed: plusMouse.pressed }
                                     radius: Theme.material && plusMouse.pressed ? 12 : width / 2
                                     Behavior on radius { enabled: Theme.material; NumberAnimation { duration: Theme.motion.press } }
                                     color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, plusMouse.pressed ? 0.1 : plusMouse.containsMouse ? 0.08 : 0))
@@ -861,6 +865,8 @@ Variants {
                                             // (Material: drawn over its windows instead, below)
                                             border.width: Theme.material ? 0 : space.wsId === win.picked || dropArea.containsDrag || target || edgeHot || (space.current && win.rowsMode) ? 2 : 1
                                             border.color: dropArea.containsDrag || target || edgeHot || space.wsId === win.picked ? Theme.accent : space.current ? (win.rowsMode ? Theme.accentAlpha(0.55) : (Theme.dark ? "#36363C" : "#D4D4D8")) : (Theme.dark ? "#26262A" : "#E4E4E7")
+                                            transform: pressFx3.effects
+                                            ElasticControl { id: pressFx3; pressed: spaceMouse.pressed }
                                             scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                             Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
 

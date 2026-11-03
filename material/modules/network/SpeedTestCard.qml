@@ -68,6 +68,8 @@ Column {
             readonly property color mInk: !Theme.material ? "transparent" : root.running ? Theme.m3.onSecondaryContainer : Theme.m3.onPrimary
             width: actionText.implicitWidth + (Theme.material ? 32 : 24)
             height: Theme.material ? 32 : 28
+            transform: pressFx1.effects
+            ElasticControl { id: pressFx1; pressed: actionMouse.pressed }
             radius: Theme.material ? (actionMouse.pressed ? 8 : height / 2) : 14
             Behavior on radius {
                 enabled: Theme.material

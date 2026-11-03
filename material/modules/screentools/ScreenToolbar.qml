@@ -313,6 +313,8 @@ Variants {
                                     // the picked one filled in primary, the rest a
                                     // state layer of the toolbar's content colour
                                     readonly property bool active: toolMouse.pressed || (!!tool.modelData.options && win.optionsOpen)
+                                    transform: pressFx1.effects
+                                    ElasticControl { id: pressFx1; pressed: toolMouse.pressed }
                                     radius: Theme.material ? (toolMouse.pressed ? 16 : tool.picked ? 20 : height / 2) : 12
                                     Behavior on radius {
                                         enabled: Theme.material
@@ -388,6 +390,8 @@ Variants {
                                 height: Theme.material ? 40 : 36
                                 // (Material: the toolbar's key action, a filled
                                 // primary button, squaring off while pressed)
+                                transform: pressFx2.effects
+                                ElasticControl { id: pressFx2; pressed: recordMouse.pressed }
                                 radius: Theme.material && recordMouse.pressed ? 12 : height / 2
                                 Behavior on radius {
                                     enabled: Theme.material

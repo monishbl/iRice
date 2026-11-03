@@ -164,6 +164,8 @@ Item {
             // while pressed, and a state layer over the picture)
             ClippingRectangle {
                 anchors { fill: parent; margins: Theme.material ? 2 : 4 }
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: imgMouse.pressed }
                 radius: Theme.material ? (imgMouse.pressed ? 8 : 16) : 12
                 Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                 color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill

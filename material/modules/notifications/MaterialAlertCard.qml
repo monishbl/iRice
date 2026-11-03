@@ -130,6 +130,8 @@ Item {
                 anchors.bottom: parent.bottom
                 width: actLabel.implicitWidth + 32
                 height: 32
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: actMouse.pressed }
                 radius: actMouse.pressed ? 8 : 16
                 Behavior on radius { NumberAnimation { duration: Theme.motion.press; easing.type: Easing.OutCubic } }
                 color: actMouse.pressed ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.1)) : actMouse.containsMouse ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, 0.08)) : Theme.m3.secondaryContainer

@@ -150,7 +150,11 @@ Item {
     }
     // On the black island when open; collapsed it's just the dots on the bar
     // (Material: always on its own surface)
-    readonly property color ink: Theme.material ? IslandInk.ink(inverse) : filled || Island.showHot ? "#F5F5F7" : fg
+    // Material, idle (only the spaces' dots): no pill, the dots straight on
+    // the bar in its text colour, as iOS's status bar; the pill comes for an
+    // activity, an alert or a hover
+    readonly property bool bare: Theme.material && !filled && !compact
+    readonly property color ink: Theme.material ? (bare ? fg : IslandInk.ink(inverse)) : filled || Island.showHot ? "#F5F5F7" : fg
     // Material: an alert in it raises it a tonal step (not the volume and
     // brightness HUD, which stays as it is, like Android's)
     readonly property bool inverse: Theme.material && eventInside && (Island.event?.kind ?? "") !== "hud"
@@ -263,6 +267,8 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: root.r
+                    opacity: root.bare ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                     // Running hot while open: tinted with error
                     color: Island.showHot && root.expanded ? Qt.tint(IslandInk.surface(root.inverse), Qt.alpha(Theme.m3.error, 0.14)) : IslandInk.surface(root.inverse)
                     Behavior on color { ColorAnimation { duration: Theme.motion.popover } }

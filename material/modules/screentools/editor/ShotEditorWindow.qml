@@ -1030,7 +1030,9 @@ GlassWindow {
                                 height: 16
                                 radius: 8
                                 color: swatch.modelData
-                                scale: swatchMouse.pressed ? 0.9 : 1
+                                transform: pressFx1.effects
+                                ElasticControl { id: pressFx1; pressed: swatchMouse.pressed }
+                                // (Material: grows on press: the ElasticControl above)
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                             }
                             MouseArea {

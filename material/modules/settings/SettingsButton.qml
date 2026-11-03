@@ -24,6 +24,8 @@ Squircle {
     readonly property real m3Layer: mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0
     implicitWidth: inner.implicitWidth + (Theme.material ? (minor ? 24 : 32) : 24)
     implicitHeight: Theme.material ? 40 : 28
+    transform: pressFx1.effects
+    ElasticControl { id: pressFx1; pressed: mouse.pressed }
     radius: Theme.material ? (mouse.pressed ? 8 : height / 2) : Theme.radius.control
     Behavior on radius {
         enabled: Theme.material

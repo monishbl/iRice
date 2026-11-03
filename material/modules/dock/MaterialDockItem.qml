@@ -71,7 +71,9 @@ Item {
             anchors.centerIn: parent
             width: root.dock.glyph
             height: root.dock.glyph
-            scale: root.pressed ? 0.9 : 1
+            transform: pressFx2.effects
+            ElasticControl { id: pressFx2; pressed: root.pressed }
+            // (Material: grows on press: the ElasticControl above)
             Behavior on scale {
                 SpringAnimation {
                     spring: Theme.motion.springFast.spring
@@ -85,6 +87,8 @@ Item {
             Rectangle {
                 visible: root.kind === "launcher"
                 anchors.fill: parent
+                transform: pressFx1.effects
+                ElasticControl { id: pressFx1; pressed: root.pressed }
                 radius: root.pressed ? 16 : width / 2
                 Behavior on radius { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
                 color: Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, root.pressed ? 0.1 : root.hot ? 0.08 : 0))

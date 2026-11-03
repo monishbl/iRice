@@ -464,7 +464,9 @@ Variants {
                                     y: 12
                                     size: 56
                                     source: win.showingApps ? Apps.iconFor(cell.modelData) : ""
-                                    scale: appMouse.pressed ? 0.88 : 1
+                                    transform: pressFx1.effects
+                                    ElasticControl { id: pressFx1; pressed: appMouse.pressed }
+                                    // (Material: grows on press: the ElasticControl above)
                                     Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
                                 }
                                 Text {
@@ -508,7 +510,9 @@ Variants {
                                     radius: Math.max(0, corner)
                                     color: cell.isSelected ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHigh
                                     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                                    scale: folderMouse.pressed ? 0.95 : 1
+                                    transform: pressFx2.effects
+                                    ElasticControl { id: pressFx2; pressed: folderMouse.pressed }
+                                    // (Material: grows on press: the ElasticControl above)
                                     Behavior on scale { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.005 } }
                                     Accessible.role: Accessible.Button
                                     Accessible.name: win.showingApps ? "" : cell.modelData.name + ", " + cell.modelData.apps.length + " apps"

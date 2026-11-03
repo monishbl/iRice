@@ -47,6 +47,8 @@ PanelWindow {
         signal clicked
         implicitWidth: label.implicitWidth + (filled ? 48 : 24)
         implicitHeight: 40
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: mouse.pressed }
         radius: mouse.pressed ? 12 : height / 2
         Behavior on radius { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
         readonly property color content: filled ? Theme.m3.onPrimary : Theme.m3.primary

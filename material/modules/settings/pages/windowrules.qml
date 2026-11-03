@@ -58,6 +58,8 @@ Column {
         readonly property color m3Content: !Theme.material ? "transparent" : primary ? Theme.m3.onPrimary : danger ? Theme.m3.onErrorContainer : Theme.m3.onSecondaryContainer
         width: tbRow.implicitWidth + (Theme.material ? 32 : 24)
         height: Theme.material ? 40 : 28
+        transform: pressFx1.effects
+        ElasticControl { id: pressFx1; pressed: tbMouse.pressed }
         radius: Theme.material ? (tbMouse.pressed ? 8 : height / 2) : Theme.radius.control
         Behavior on radius {
             enabled: Theme.material
