@@ -1,11 +1,12 @@
 import QtQuick
-import "phosphor.js" as Phosphor
+import "material-symbols.js" as Symbols
 
-// The battery, drawn like iOS 27: a solid capsule with no outline. The charge
-// fills it from the left in the icon's colour; the rest is the same colour,
-// faint. Red at 20% and below, yellow in Low Power. Charging cuts a bolt out
-// of it (a plug when it's on power but not charging), and the percentage can
-// be cut out of it too. One Canvas: repaints only when something changes.
+// The battery in the Material look, as Android 16/17 draws it: a rounded
+// horizontal block, the charge filling it from the left over a faint
+// empty part, the percentage inside in bold (written, not cut out), a
+// small terminal, and a bolt beside it while charging (a plug when on power
+// but not charging). Green while charging, yellow in battery saver, red at
+// 20% and below. One Canvas: repaints only when something changes.
 //   BatteryGlyph { level: 0.64; charging: true; color: bar.fg }
 Canvas {
     id: root
@@ -14,21 +15,21 @@ Canvas {
     property bool charging: false
     property bool plugged: false // on power, not charging (full, or holding)
     property bool lowPower: false
-    property bool showPercent: false // the number inside, cut out
+    property bool showPercent: false // the number inside
     property color color: "white"
-    property real size: 12 // capsule height; everything else follows
+    property real size: 12 // the block's height; everything else follows
 
-    readonly property real capsuleW: Math.round(size * (showPercent ? 2.3 : 2.05))
-    readonly property real nubW: Math.max(2, Math.round(size * 0.17))
-    readonly property color fillColor: lowPower ? Theme.accents.yellow : !charging && !plugged && level <= 0.2 ? Theme.color.danger : color
+    readonly property real blockW: Math.round(size * (showPercent ? 2.3 : 1.9))
+    readonly property real nubW: Math.max(2, Math.round(size * 0.16))
+    readonly property color green: Theme.dark ? "#6DD58C" : "#1E8E3E"
+    readonly property color fillColor: lowPower ? Theme.accents.yellow : charging || plugged ? green : level <= 0.2 ? Theme.color.danger : color
+    // The number: dark on a light fill, light on a dark one
+    readonly property color textColor: (0.2126 * fillColor.r + 0.7152 * fillColor.g + 0.0722 * fillColor.b) > 0.55 ? "#1A1C1E" : "#FFFFFF"
     readonly property string mark: charging ? "lightning" : plugged ? "plug" : ""
-    readonly property real markSize: Math.round(size * 1.3) // a little taller than the capsule, like iOS
-    // With the number inside, the mark goes beside the battery instead
-    readonly property bool markBeside: showPercent && mark !== ""
-    readonly property real besideSize: Math.round(size * 0.95)
+    readonly property real markSize: Math.round(size * 1.15)
 
-    implicitWidth: capsuleW + 1 + nubW + (markBeside ? 2 + besideSize : 0)
-    implicitHeight: mark !== "" && !markBeside ? markSize : Math.round(size)
+    implicitWidth: blockW + 1 + nubW + (mark !== "" ? 2 + markSize : 0)
+    implicitHeight: Math.max(Math.round(size), mark !== "" ? markSize : 0)
 
     onLevelChanged: requestPaint()
     onChargingChanged: requestPaint()
@@ -39,8 +40,7 @@ Canvas {
     onFillColorChanged: requestPaint()
     onWidthChanged: requestPaint()
     onHeightChanged: requestPaint()
-    // The number's font follows the look; a look's font loads a moment
-    // after the switch, so paint again once it's there
+    // The fonts load a moment after the shell starts: paint again then
     readonly property string family: Theme.font.family
     onFamilyChanged: {
         requestPaint();
@@ -51,67 +51,54 @@ Canvas {
         interval: 600
         onTriggered: root.requestPaint()
     }
+    Component.onCompleted: fontSettle.restart()
 
     onPaint: {
         const ctx = getContext("2d");
         ctx.reset();
-        const h = Math.round(size), y0 = Math.round((height - h) / 2), w = capsuleW, r = Math.round(h * 0.32);
-        const capsule = () => {
+        const h = Math.round(size), y0 = Math.round((height - h) / 2), w = blockW, r = Math.round(h * 0.36);
+        const block = () => {
             ctx.beginPath();
             ctx.roundedRect(0, y0, w, h, r, r);
         };
-        // Empty part, then the charge, clipped to the capsule
+        // The empty part, then the charge, inside the block
         ctx.save();
-        capsule();
+        block();
         ctx.clip();
-        ctx.fillStyle = Qt.alpha(color, 0.35);
+        ctx.fillStyle = Qt.alpha(color, 0.3);
         ctx.fillRect(0, y0, w, h);
         ctx.fillStyle = fillColor;
         ctx.fillRect(0, y0, Math.round(w * Math.max(0, Math.min(1, level))), h);
         ctx.restore();
-        // The terminal nub
-        const nh = Math.round(h * 0.38);
-        ctx.fillStyle = Qt.alpha(color, 0.35);
+        // The terminal
+        const nh = Math.round(h * 0.42);
+        ctx.fillStyle = Qt.alpha(color, 0.3);
         ctx.beginPath();
         ctx.roundedRect(w + 1, y0 + Math.round((h - nh) / 2), nubW, nh, nubW / 2, nubW / 2);
         ctx.fill();
 
-        const cx = w / 2, cy = height / 2;
-        ctx.textAlign = "center";
+        const cy = height / 2;
         ctx.textBaseline = "middle";
         if (showPercent) {
-            // (as large as fits: some fonts' digits are wider than others')
+            // (as large as fits)
             const text = String(Math.round(level * 100));
-            let px = Math.round(h * 0.82);
+            let px = Math.round(h * 0.78);
             ctx.font = "bold " + px + "px '" + family + "'";
-            const room = w - 3;
+            const room = w - 4;
             const tw = ctx.measureText(text).width;
             if (tw > room) {
                 px = Math.max(6, Math.floor(px * room / tw));
                 ctx.font = "bold " + px + "px '" + family + "'";
             }
-            ctx.globalCompositeOperation = "destination-out";
-            ctx.fillStyle = "black";
-            ctx.fillText(text, cx, cy + 0.5);
-            ctx.globalCompositeOperation = "source-over";
-            if (markBeside) {
-                ctx.font = besideSize + "px 'Phosphor-Fill'";
-                ctx.fillStyle = color;
-                ctx.fillText(Phosphor.glyphs[mark] ?? "", w + 1 + nubW + 2 + besideSize / 2, cy);
-            }
-        } else if (mark !== "") {
-            // A gap round the mark (cut out), then the mark in the icon's colour
-            ctx.font = markSize + "px 'Phosphor-Fill'";
-            const g = Phosphor.glyphs[mark] ?? "";
-            ctx.globalCompositeOperation = "destination-out";
-            ctx.lineWidth = 2.5;
-            ctx.lineJoin = "round";
-            ctx.strokeStyle = "black";
-            ctx.strokeText(g, cx, cy);
-            ctx.fillText(g, cx, cy);
-            ctx.globalCompositeOperation = "source-over";
-            ctx.fillStyle = color;
-            ctx.fillText(g, cx, cy);
+            ctx.textAlign = "center";
+            ctx.fillStyle = textColor;
+            ctx.fillText(text, w / 2, cy + 0.5);
+        }
+        if (mark !== "") {
+            ctx.textAlign = "center";
+            ctx.font = markSize + "px 'iRice Symbols'";
+            ctx.fillStyle = charging || plugged ? fillColor : color;
+            ctx.fillText(Symbols.glyphs[mark] ?? "", w + 1 + nubW + 2 + markSize / 2, cy);
         }
     }
 }
