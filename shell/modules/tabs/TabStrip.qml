@@ -121,12 +121,12 @@ Variants {
                     opacity: win.settled ? 1 : 0
                     Behavior on opacity { OpacityAnimator { duration: win.settled ? 150 : 60 } }
 
-                    // The well the tabs sit in
+                    // The well the tabs sit in (Material: a surfaceContainer pill)
                     Squircle {
                         anchors.fill: parent
-                        radius: 10
-                        color: Theme.dark ? Qt.rgba(0.1, 0.1, 0.11, 0.82) : Qt.rgba(0.93, 0.93, 0.94, 0.88)
-                        border.width: 1
+                        radius: Theme.material ? height / 2 : 10
+                        color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.1, 0.1, 0.11, 0.82) : Qt.rgba(0.93, 0.93, 0.94, 0.88)
+                        border.width: Theme.material ? 0 : 1
                         border.color: Theme.dark ? "#26262A" : "#E4E4E7"
                     }
                     Row {
@@ -144,16 +144,20 @@ Variants {
                                 readonly property bool front: addr === strip.modelData.current
                                 width: tabs.tabW
                                 height: win.barHeight - 6
+                                // (Material: the front tab a secondaryContainer pill,
+                                // the others a state layer on hover)
                                 Squircle {
                                     anchors.fill: parent
-                                    radius: 7
-                                    color: tab.front ? (Theme.dark ? "#2C2C31" : "#FFFFFF") : tabMouse.containsMouse ? (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
-                                    border.width: tab.front ? 1 : 0
+                                    radius: Theme.material ? height / 2 : 7
+                                    color: Theme.material ? (tab.front ? Theme.m3.secondaryContainer : tabMouse.pressed ? Qt.alpha(Theme.m3.onSurface, 0.1) : tabMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
+                                        : tab.front ? (Theme.dark ? "#2C2C31" : "#FFFFFF") : tabMouse.containsMouse ? (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.05)) : "transparent"
+                                    border.width: tab.front && !Theme.material ? 1 : 0
                                     border.color: Theme.dark ? "#36363C" : "#E4E4E7"
+                                    Behavior on color { enabled: Theme.material; ColorAnimation { duration: Theme.motion.hover } }
                                 }
-                                // A thin divider between back tabs
+                                // A thin divider between back tabs (not in Material)
                                 Rectangle {
-                                    visible: tab.index > 0 && !tab.front && strip.modelData.windows[tab.index - 1] && ("0x" + strip.modelData.windows[tab.index - 1].address.replace(/^0x/, "")) !== strip.modelData.current
+                                    visible: !Theme.material && tab.index > 0 && !tab.front && strip.modelData.windows[tab.index - 1] && ("0x" + strip.modelData.windows[tab.index - 1].address.replace(/^0x/, "")) !== strip.modelData.current
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 1
                                     height: parent.height * 0.5
@@ -174,7 +178,7 @@ Variants {
                                         textFormat: Text.PlainText
                                         text: tab.modelData.title || (tab.modelData.lastIpcObject?.class ?? "")
                                         elide: Text.ElideRight
-                                        color: tab.front ? Theme.color.label : Theme.color.secondary
+                                        color: tab.front ? (Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label) : Theme.color.secondary
                                         font { family: Theme.font.family; pixelSize: Theme.font.small; weight: tab.front ? Font.Medium : Font.Normal }
                                     }
                                 }
@@ -193,9 +197,10 @@ Variants {
                                     anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
                                     width: 16
                                     height: 16
-                                    radius: 4
-                                    color: closeMouse.containsMouse ? Theme.color.fillHover : "transparent"
-                                    Icon { anchors.centerIn: parent; name: "x"; bold: true; size: 10; color: Theme.color.secondary }
+                                    radius: Theme.material ? 8 : 4
+                                    color: Theme.material ? (closeMouse.pressed ? Qt.alpha(tab.front ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant, 0.1) : closeMouse.containsMouse ? Qt.alpha(tab.front ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant, 0.08) : "transparent")
+                                        : closeMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                                    Icon { anchors.centerIn: parent; name: "x"; bold: true; size: 10; color: Theme.material && tab.front ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
                                     MouseArea {
                                         id: closeMouse
                                         anchors.fill: parent
@@ -212,8 +217,8 @@ Variants {
                         anchors { right: parent.right; rightMargin: 3; verticalCenter: parent.verticalCenter }
                         width: 24
                         height: 24
-                        radius: 7
-                        color: plusMouse.containsMouse ? Theme.color.fill : "transparent"
+                        radius: Theme.material ? 12 : 7
+                        color: Theme.material ? (plusMouse.pressed ? Qt.alpha(Theme.m3.onSurfaceVariant, 0.1) : plusMouse.containsMouse ? Qt.alpha(Theme.m3.onSurfaceVariant, 0.08) : "transparent") : plusMouse.containsMouse ? Theme.color.fill : "transparent"
                         Icon { anchors.centerIn: parent; name: "plus"; bold: true; size: 12; color: Theme.color.secondary }
                         MouseArea {
                             id: plusMouse

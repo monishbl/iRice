@@ -85,7 +85,7 @@ Variants {
                 Glass {
                     id: glass
                     anchors.fill: parent
-                    radius: 26
+                    radius: Theme.material ? Theme.radius.panel : 26
                     bevel: 20
                     shadowMargin: win.m
                 }
@@ -112,15 +112,18 @@ Variants {
                     }
                     Rectangle {
                         anchors { right: parent.right; verticalCenter: title.verticalCenter }
-                        width: openLabel.implicitWidth + 24
-                        height: 26
-                        radius: 13
-                        color: openMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                        width: openLabel.implicitWidth + (Theme.material ? 32 : 24)
+                        height: Theme.material ? 32 : 26
+                        // (Material: a tonal button, the secondary container
+                        // with state layers)
+                        radius: height / 2
+                        color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, openMouse.pressed ? 0.1 : openMouse.containsMouse ? 0.08 : 0))
+                            : openMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                         Text {
                             id: openLabel
                             anchors.centerIn: parent
                             text: "Open folder"
-                            color: Theme.color.label
+                            color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
                         }
                         MouseArea {
@@ -162,16 +165,20 @@ Variants {
                                 y: 4
                                 width: parent.width
                                 height: win.thumbH
-                                radius: 12
-                                color: Theme.color.fill
+                                // (Material: corner 16, the chosen one rounder in
+                                // a 3 px primary outline; keyboard focus in secondary)
+                                radius: Theme.material ? (cell.current ? 28 : 16) : 12
+                                Behavior on radius { enabled: Theme.material; M3Spring { speed: "default"; epsilon: 0.1 } }
+                                color: Theme.material && cell.current ? Theme.m3.surfaceContainer : Theme.color.fill
                                 border.width: cell.current ? 3 : list.currentIndex === cell.index ? 2 : 0
-                                border.color: cell.current ? Theme.accent : Theme.color.label
+                                border.color: cell.current ? Theme.accent : Theme.material ? Theme.m3.secondary : Theme.color.label
                                 scale: thumbMouse.containsMouse ? 1.03 : 1
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.hover } }
 
                                 Image {
                                     anchors.fill: parent
-                                    anchors.margins: thumb.border.width
+                                    // (Material: a gap inside the chosen one's outline)
+                                    anchors.margins: Theme.material && cell.current ? 6 : thumb.border.width
                                     source: Wallpaper.fileUrl(cell.modelData)
                                     fillMode: Image.PreserveAspectCrop
                                     sourceSize: Qt.size(win.thumbW * 2, win.thumbH * 2)

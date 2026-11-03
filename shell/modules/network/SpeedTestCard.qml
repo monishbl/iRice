@@ -62,29 +62,41 @@ Column {
         Rectangle {
             id: action
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            width: actionText.implicitWidth + 24
-            height: 28
-            radius: 14
+            // Material: an extra-small button, filled primary to start, tonal
+            // to cancel, with state layers; its corners tighten while pressed
+            readonly property color mBase: !Theme.material ? "transparent" : root.running ? Theme.m3.secondaryContainer : Theme.m3.primary
+            readonly property color mInk: !Theme.material ? "transparent" : root.running ? Theme.m3.onSecondaryContainer : Theme.m3.onPrimary
+            width: actionText.implicitWidth + (Theme.material ? 32 : 24)
+            height: Theme.material ? 32 : 28
+            // (Material's press swell; Glass shrinks by scale instead)
+            transform: Theme.material ? pressFx1.effects : []
+            ElasticControl { id: pressFx1; enabled: Theme.material; pressed: Theme.material && actionMouse.pressed }
+            radius: Theme.material ? (actionMouse.pressed ? 8 : height / 2) : 14
+            Behavior on radius {
+                enabled: Theme.material
+                M3Spring { speed: "fast"; epsilon: 0.25 }
+            }
             activeFocusOnTab: true
-            color: root.running ? (actionMouse.pressed ? Theme.color.fillPressed : actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill)
+            color: Theme.material ? Qt.tint(mBase, Qt.alpha(mInk, actionMouse.pressed ? 0.1 : actionMouse.containsMouse ? 0.08 : 0))
+                : root.running ? (actionMouse.pressed ? Theme.color.fillPressed : actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill)
                 : (actionMouse.pressed ? Qt.darker(Theme.accent, 1.2) : actionMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent)
-            scale: actionMouse.pressed ? 0.97 : 1
+            scale: actionMouse.pressed && !Theme.material ? 0.97 : 1
             Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
             Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
             Text {
                 id: actionText
                 anchors.centerIn: parent
                 text: root.running ? "Cancel" : SpeedTest.stage === "done" || SpeedTest.stage === "error" ? "Test again" : "Test speed"
-                color: root.running ? Theme.color.label : Theme.color.onAccent
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                color: Theme.material ? action.mInk : root.running ? Theme.color.label : Theme.color.onAccent
+                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
             }
-            Rectangle { // focus ring
-                anchors { fill: parent; margins: -3 }
+            Rectangle { // focus ring (Material: 3 px in secondary, 2 px out)
+                anchors { fill: parent; margins: Theme.material ? -5 : -3 }
                 visible: action.activeFocus
                 radius: height / 2
                 color: "transparent"
-                border.width: 2
-                border.color: Theme.accent
+                border.width: Theme.material ? 3 : 2
+                border.color: Theme.material ? Theme.m3.secondary : Theme.accent
             }
             function press() {
                 if (root.running)
@@ -115,6 +127,7 @@ Column {
             font { family: Theme.font.family; pixelSize: Theme.font.display; weight: Font.DemiBold; features: { "tnum": 1 } }
         }
         Rectangle {
+            visible: !Theme.material
             width: parent.width
             height: 4
             radius: 2
@@ -125,6 +138,15 @@ Column {
                 radius: 2
                 color: Theme.accent
                 Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            }
+        }
+        // (Material: its wavy progress bar)
+        Loader {
+            active: Theme.material
+            visible: active
+            width: parent.width
+            sourceComponent: WavyProgress {
+                value: Math.max(0.02, Math.min(1, SpeedTest.progress))
             }
         }
     }

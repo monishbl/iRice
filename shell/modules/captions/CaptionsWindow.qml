@@ -89,14 +89,17 @@ Scope {
             readonly property real bx: Math.max(0, Math.min(drag.rx, sw - w))
             readonly property real by: Math.max(0, Math.min(drag.ry, sh - h))
 
+            // (Material: the same dark box, which has to read over any
+            // picture, at Material's extra-large corner and without the
+            // hairline, as Android's Live Caption box)
             Rectangle {
                 x: bar.full ? bar.bx : 0
                 y: bar.full ? bar.by : 0
                 width: bar.w
                 height: bar.h
-                radius: 14
+                radius: Theme.material ? 24 : 14
                 color: Qt.rgba(0.07, 0.07, 0.08, 0.82)
-                border.width: 1
+                border.width: Theme.material ? 0 : 1
                 border.color: Qt.rgba(1, 1, 1, 0.08)
                 opacity: root.dim ? 0.35 : 1
                 Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
@@ -228,7 +231,7 @@ Scope {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width, lines.contentW + 32)
                 height: lines.implicitHeight + 16
-                radius: 10
+                radius: Theme.material ? 12 : 10
                 color: Qt.rgba(0, 0, 0, 0.62)
                 opacity: root.dim ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
