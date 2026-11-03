@@ -13,6 +13,8 @@ import qs.services
 //   overlap  heavy two-tone pairs, the minutes over the hours' corner
 //   analog   hands on a 12-scallop dial
 //   weather  the time over the weather's icon and temperature, as large
+//   dynamic  the hours large, the minutes smaller beside their top, the date
+//            under the minutes
 //   LockClock { face: "stacked"; time: clock.date; size: 240; small: 0 }
 Item {
     id: root
@@ -55,7 +57,7 @@ Item {
         opacity: Math.max(0, 1 - root.k * 1.7)
         scale: 1 - (1 - root.ratio) * root.k
         transformOrigin: Item.TopLeft
-        sourceComponent: root.face === "wide" ? wide : root.face === "overlap" ? overlap : root.face === "analog" ? analog : root.face === "weather" ? weatherFace : stacked
+        sourceComponent: root.face === "dynamic" ? dynamicFace : root.face === "wide" ? wide : root.face === "overlap" ? overlap : root.face === "analog" ? analog : root.face === "weather" ? weatherFace : stacked
         readonly property real w: item?.implicitWidth ?? 0
         readonly property real h: item?.implicitHeight ?? 0
     }
@@ -115,6 +117,37 @@ Item {
             ticks: root.ticks
             width: implicitWidth
             height: implicitHeight
+        }
+    }
+
+    Component {
+        id: dynamicFace
+        Item {
+            readonly property real gapX: Math.round(root.size * 0.12)
+            implicitWidth: hours.implicitWidth + gapX + Math.max(minutes.implicitWidth, date.implicitWidth)
+            implicitHeight: Math.max(hours.implicitHeight, date.y + date.implicitHeight)
+            Ink {
+                id: hours
+                px: Math.round(root.size * 1.3)
+                text: String(root.h12)
+            }
+            Ink {
+                id: minutes
+                x: hours.implicitWidth + parent.gapX
+                px: Math.round(root.size * 0.6)
+                tone: root.color2
+                text: root.mm
+            }
+            Text {
+                id: date
+                x: minutes.x + 2
+                y: minutes.implicitHeight + Math.round(root.size * 0.14)
+                text: Qt.formatDate(root.time, "ddd d MMM")
+                color: root.color3
+                font.family: root.family
+                font.pixelSize: Math.max(14, Math.round(root.size * 0.17))
+                font.variableAxes: root.axes(560, Math.max(14, Math.round(root.size * 0.17)), 100)
+            }
         }
     }
 
