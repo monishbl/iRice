@@ -166,6 +166,22 @@ Scope {
                 else
                     Panels.settingsPage = page;
             }
+            property int revealTries: 0
+            property bool revealSettling: false
+            property string revealAgain: ""
+            Timer {
+                id: revealSettle
+                interval: 300
+                onTriggered: {
+                    win.target = win.revealAgain;
+                    win.reveal();
+                }
+            }
+            Timer {
+                id: revealRetry
+                interval: 60
+                onTriggered: win.reveal()
+            }
             function reveal() {
                 const ui = win.ui;
                 if (target === "" && Panels.settingsTarget !== "") {
@@ -188,8 +204,26 @@ Scope {
                 };
                 const row = find(ui.pages.item);
                 if (!row) {
+                    // (a merged page's parts load a moment after the page:
+                    // look again a few times before giving up)
+                    if (revealTries < 12) {
+                        revealTries++;
+                        revealRetry.restart();
+                        return;
+                    }
+                    revealTries = 0;
                     target = "";
                     return;
+                }
+                revealTries = 0;
+                // (and once more when the parts above it have settled: a part
+                // loading late moves everything under it)
+                if (!revealSettling) {
+                    revealSettling = true;
+                    revealAgain = target;
+                    revealSettle.restart();
+                } else {
+                    revealSettling = false;
                 }
                 for (let up = row.parent; up; up = up.parent)
                     if (up.moreOptions === true && !up.expanded) {

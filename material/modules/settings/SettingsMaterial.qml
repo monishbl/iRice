@@ -156,8 +156,8 @@ Rectangle {
                     property bool placed: false
                     visible: at !== null && root.win.query.trim() === ""
                     width: list.width
-                    height: 56
-                    radius: 28
+                    height: 48
+                    radius: 24
                     y: at ? at.parent.y + at.y : 0
                     color: Theme.m3.secondaryContainer
                     Behavior on y {
@@ -196,7 +196,7 @@ Rectangle {
                                 readonly property bool current: root.win.sectionId === modelData.id
                                 readonly property string tone: root.tone(modelData.id)
                                 width: entries.width
-                                height: 56
+                                height: 48 // (compact: Material's list item, one line)
                                 // (the pill moves on a spring when you change page,
                                 // and is simply put there when the list is built)
                                 onCurrentChanged: {
@@ -232,43 +232,58 @@ Rectangle {
                                 Accessible.checked: current
                                 Accessible.onPressAction: root.win.go(modelData.id)
                                 FocusRing {
-                                    radius: 32
+                                    radius: 28
                                 }
 
                                 // State layer
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: 28
+                                    radius: 24
                                     color: Qt.alpha(item.current ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0)
                                     Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                                 }
                                 // The icon in its tonal circle; the open page's
-                                // turns primary and squares off (Expressive's
-                                // selected shape)
-                                Rectangle {
+                                // turns primary and becomes a cookie that turns
+                                // slowly (Expressive's selected shape)
+                                Item {
                                     id: tile
                                     x: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: 40
-                                    height: 40
-                                    radius: item.current ? 14 : 20
-                                    color: item.current ? Theme.m3.primary : Theme.m3[item.tone.toLowerCase() + "Container"]
-                                    Behavior on radius { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping } }
-                                    Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                                    width: 34
+                                    height: 34
+                                    property real angle: 0
+                                    MaterialShape {
+                                        anchors.fill: parent
+                                        shape: item.current ? "cookie9" : "circle"
+                                        color: item.current ? Theme.m3.primary : Theme.m3[item.tone.toLowerCase() + "Container"]
+                                        spin: item.current ? tile.angle : 0
+                                        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
+                                    }
+                                    // (a slow turn, 24 s a round, only on the open
+                                    // page's cookie and not with Reduce motion)
+                                    NumberAnimation {
+                                        target: tile
+                                        property: "angle"
+                                        from: 0
+                                        to: 360
+                                        duration: 24000
+                                        loops: Animation.Infinite
+                                        running: item.current && Theme.motion.pressBounce && root.visible
+                                    }
                                     Icon {
                                         anchors.centerIn: parent
                                         name: item.modelData.icon
                                         fill: true
-                                        size: 22
+                                        size: 19
                                         color: item.current ? Theme.m3.onPrimary : Theme.m3["on" + item.tone + "Container"]
                                     }
                                 }
                                 Text {
-                                    anchors { left: tile.right; leftMargin: 16; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                                    anchors { left: tile.right; leftMargin: 14; right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                                     text: item.modelData.name
                                     elide: Text.ElideRight
                                     color: item.current ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
-                                    font { family: Theme.font.family; pixelSize: 16; weight: item.current ? Font.DemiBold : Font.Normal }
+                                    font { family: Theme.font.family; pixelSize: 15; weight: item.current ? Font.DemiBold : Font.Normal }
                                 }
                                 MouseArea {
                                     id: mouse
