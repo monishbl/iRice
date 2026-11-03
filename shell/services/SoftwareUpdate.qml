@@ -249,8 +249,8 @@ Singleton {
         const after = { irice: p.irice, rebuild: p.rebuild, at: Date.now() / 1000 };
         // (the root helper's setup rides along with an iRice update too, so
         // its one password comes when you asked for an update)
-        // (and an outdated helper on its own: the fixes that need it, like the
-        // firewall's, use the old ones until it's installed)
+        // (and an outdated helper on its own: what needs its newer jobs, like
+        // sharing's ports, waits until it's installed)
         const rootPart = p.system || p.aur || p.install.length > 0 || p.remove.length > 0 || p.setup;
         if (p.setup && root.incoming !== "")
             args.push("--incoming", root.incoming);

@@ -1,5 +1,11 @@
 # iRice changelog
 
+## Sharing's firewall ports open only while you're visible · 2026-11-04
+
+- **With a firewall on, sharing's ports are open only while they're needed:** while you're visible to others in Quick Share or receiving with LocalSend, while the share sheet looks for devices, and while a QR-code share or a cast serves a file. They close a few seconds after. Only what's needed opens (Quick Share's ports, DHCP and mDNS; LocalSend's 53317; 53319–53320 for QR-code shares and casting).
+- **Nothing stays open for good.** The rules last until the next restart (firewalld, nftables, iptables), and the shell opens them again if you're still visible. ufw has no such rules, so iRice removes its own when you stop being visible. The permanent rules from the old **Allow through firewall** button are removed automatically.
+- **No password for an administrator at the computer**, as with the other fixed system jobs. System health and Settings → Privacy & Security → Firewall show what's open now, and why. They warn only when the ports didn't open (or close) as asked.
+
 ## One codebase for both looks · 2026-11-03
 
 - **Glass and Material are now one codebase.** Material used to copy 151 of Glass's files and change a few lines in each (31,938 lines repeated). Now each screen exists once, and where the looks differ it says so in place or picks its look's own view; Material shares 55 lines with Glass, in 2 files kept apart on purpose. A fix made once now reaches both looks, and a test keeps new copies out.

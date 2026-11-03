@@ -421,7 +421,7 @@ Variants {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
-                            text: "Phones show up with Quick Share open and visible to everyone; computers with LocalSend open. Nobody after a while? Allow Quick Share through the firewall in Settings → Sharing."
+                            text: "Phones show up with Quick Share open and visible to everyone; computers with LocalSend open." + (SharingPorts.error !== "" ? " " + SharingPorts.error : "")
                             color: Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
                         }

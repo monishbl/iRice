@@ -252,7 +252,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.p.send(bp.bwu(BWU.UPGRADE_FAILURE, upgrade_path_info=BWU.UpgradePathInfo(medium=PATH.WIFI_LAN)))
         warning = await self.events.wait("link", slow=True)
         self.assertIn("firewall (ufw)", warning["message"])
-        self.assertIn("Settings → Sharing", warning["message"])
+        self.assertIn("Settings → Privacy & Security → Firewall", warning["message"])
         await self.finish(data)
 
     async def test_network_refused_then_wifi_direct(self):
@@ -368,7 +368,8 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_transfer_never_changes_the_firewall_for_good(self):
         # (the user's rule: ports open only for a transfer, on its own link,
-        # by the root helper; the permanent fix is Settings' alone)
+        # by the root helper; the sharing ports, while visible, are the
+        # shell's: SharingPorts.qml)
         await self.nm_ready(hotspot=False, fixed=True)
         data = os.urandom(300_000)
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
@@ -385,7 +386,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await self.offer_file(data, [CR.WIFI_HOTSPOT])
         warning = await self.events.wait("link", slow=True)
         self.assertIn("firewall", warning["message"])
-        self.assertIn("Settings → Sharing", warning["message"])
+        self.assertIn("Settings → Privacy & Security → Firewall", warning["message"])
         self.assertEqual(FakeNm.made, [])  # the Wi-Fi was never touched
         await self.p.recv_sharing()  # the accept
         await self.finish(data)

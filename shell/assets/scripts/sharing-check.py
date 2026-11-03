@@ -3,14 +3,15 @@
 working, and the fixed fixes for it. Used by Settings → Sharing, System
 health (health-check.py) and the Quick Share helper (why a link failed).
 
-  firewall   ufw, firewalld, nftables or iptables turned on, without iRice's
-             ports: phones can't reach this computer (LocalSend 53317, Quick
-             Share 53318 and its faster-link port 53319, mDNS 5353/udp to be
-             found). Unprivileged programs can't read the rules, so "allowed"
-             is known when the rules file is readable (or firewalld answers),
-             or after iRice's own fix ran (a note in ~/.local/state/irice;
-             a fix that only lasts until the next restart, nftables without
-             a drop-in folder or iptables, notes this boot too).
+  firewall   ufw, firewalld, nftables or iptables turned on: phones reach
+             this computer (LocalSend 53317, Quick Share 53318 and its
+             faster-link port 53319, mDNS 5353/udp to be found, DHCP for its
+             hotspot) only through the ports iRice opens while you're
+             visible to others or sharing (`ports`, below). Unprivileged
+             programs can't read the rules, so what's open is known from
+             `ports`' own note (~/.local/state/irice/sharing-ports.json:
+             this boot's, except ufw's, which stay through a restart), or
+             when the rules file is readable (or firewalld answers).
   pairing    BlueZ's experimental features on (iRice's setup turns them on
              for headphone batteries) bring profiles that need encryption the
              moment a phone connects for Quick Share, so the phone asks to
@@ -24,12 +25,21 @@ health (health-check.py) and the Quick Share helper (why a link failed).
              headphone batteries keep working.
 
   sharing-check.py status          JSON {"firewall": {...}, "pairing": {...}}
-  sharing-check.py fix firewall|pairing
+  sharing-check.py fix pairing
         runs the fixed script (irice-root.py) through pkexec: the installed
         root helper, without a password (/usr/lib/irice/irice-root fix …),
         or before it's installed the script itself, after iRice's password
-        dialog; nothing from the command line reaches it. JSON {"ok", "error",
-        "note"}: note says how long the firewall fix lasts, when it says.
+        dialog; nothing from the command line reaches it. JSON {"ok", "error"}.
+  sharing-check.py ports <set>[,<set>…]|none [why]
+        lets in exactly these of the root helper's fixed sets (PORT_SETS),
+        or none (services/SharingPorts.qml): `irice-root sharing-ports
+        open|close` through pkexec, no password for an administrator at this
+        computer. Asks nothing with no firewall on, or when they're so
+        already. Notes what's open, and why (for System health). JSON {"ok",
+        "error", "kind"}; the exit code is pkexec's (64: the installed
+        helper is older, or missing; 126 cancelled; 127 not allowed).
+  sharing-check.py ports again
+        the last ones asked for, asked again (System health's Fix button)
 IRICE_SYSTEM_ROOT (tests) is where /etc and /usr are looked for.
 """
 import importlib.util
@@ -42,7 +52,7 @@ import sys
 
 ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
-MARKER = os.path.join(STATE, "sharing-firewall")
+PORTS_NOTE = os.path.join(STATE, "sharing-ports.json")
 # The fixed scripts live in the root helper (irice-root.py), which runs them
 # without a password once installed; until then they go through pkexec here
 _spec = importlib.util.spec_from_file_location("irice_root", os.path.join(os.path.dirname(os.path.abspath(__file__)), "irice-root.py"))
@@ -50,8 +60,6 @@ irice_root = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(irice_root)
 DROPIN = irice_root.DROPIN
 PLUGINS = irice_root.PLUGINS
-FIREWALL_SCRIPT, FIREWALL_SHOWN = irice_root.FIREWALL_SCRIPT, irice_root.FIREWALL_SHOWN
-FIREWALL_SHOWN_BY = irice_root.FIREWALL_SHOWN_BY
 PAIRING_SCRIPT, PAIRING_SHOWN = irice_root.PAIRING_SCRIPT, irice_root.PAIRING_SHOWN
 # The installed helper (/usr/lib/irice/irice-root): its fixes don't ask
 HELPER = os.path.join(ROOT, "usr/lib/irice/irice-root")
@@ -124,36 +132,50 @@ def _accepts_all(rules):
     return not re.search(r"\b(drop|reject|DROP|REJECT)\b", rules)
 
 
-def firewall():
-    """{"kind": "ufw" | "firewalld" | "nftables" | "iptables" | None,
-    "allowed": True | False | None, "blocks": bool (on, and not known to let
-    sharing through), "runtime": bool (allowed only until the next restart),
-    "hotspot": True | False | None (DHCP, 67/udp, gets through: phones joining
-    Quick Share's hotspot need an address from it)}."""
-    kind = None
+def firewall_kind():
     conf = _read("/etc/ufw/ufw.conf")
     if conf is not None and re.search(r"^\s*ENABLED\s*=\s*yes", conf, re.M) and _active("ufw"):
-        kind = "ufw"
-    elif os.path.exists(_path("/usr/bin/firewall-cmd")) and _active("firewalld"):
-        kind = "firewalld"
-    elif os.path.exists(_path("/usr/bin/nft")) and _active("nftables"):
-        kind = "nftables"
-    elif os.path.exists(_path("/usr/bin/iptables")) and _active("iptables"):
-        kind = "iptables"
-    if kind is None:
-        return {"kind": None, "allowed": None, "blocks": False, "runtime": False, "hotspot": True}
-    allowed, runtime, hotspot = None, False, None
+        return "ufw"
+    for kind, tool in (("firewalld", "firewall-cmd"), ("nftables", "nft"), ("iptables", "iptables")):
+        if os.path.exists(_path("/usr/bin/" + tool)) and _active(kind):
+            return kind
+    return None
+
+
+def ports_note():
+    """What `ports` last asked for and got: {"kind", "want", "open", "why",
+    "boot", "code", "error"}, or {} before it ever ran."""
     try:
-        with open(MARKER) as f:
-            # "kind", or "kind boot=<id>" for a fix that lasts until a restart
-            words = f.read().split()
-        boot = next((w[5:] for w in words[1:] if w.startswith("boot=")), None)
-        if words[:1] == [kind] and (boot is None or boot == _boot()):
-            allowed, runtime = True, boot is not None
-            if "dhcp" in words[1:]:
-                hotspot = True
-    except OSError:
-        pass
+        with open(PORTS_NOTE) as f:
+            note = json.load(f)
+        return note if isinstance(note, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _current(note, kind):
+    """The note is about this firewall's rules as they are now (ufw keeps
+    them through a restart; the others' go with it)."""
+    return bool(note) and note.get("kind") == kind and (kind == "ufw" or note.get("boot") == _boot())
+
+
+def firewall():
+    """{"kind": "ufw" | "firewalld" | "nftables" | "iptables" | None,
+    "allowed": True | False | None (Quick Share's port gets through now),
+    "blocks": bool (on, and not known to let it through), "hotspot": True |
+    False | None (DHCP, 67/udp, gets through: phones joining Quick Share's
+    hotspot need an address from it), "open": the sets iRice has open now,
+    and why; "want" (what was last asked for), "error" and "code" (how that
+    went), "asked": bool (ever)}."""
+    kind = firewall_kind()
+    note = ports_note()
+    mine = note.get("kind") == kind
+    opened = note.get("open", []) if kind and _current(note, kind) else []
+    out = {"kind": kind, "open": opened, "why": note.get("why", "") if opened else "", "want": note.get("want", []) if mine else [],
+           "error": note.get("error", "") if mine else "", "code": note.get("code", 0) if mine else 0, "asked": bool(note)}
+    if kind is None:
+        return dict(out, allowed=None, blocks=False, hotspot=True)
+    allowed = hotspot = True if "quickshare" in opened else None
     if allowed is None and kind == "ufw":
         rules = _read("/etc/ufw/user.rules")
         if rules is not None:
@@ -163,7 +185,7 @@ def firewall():
         allowed = {0: True, 1: False}.get(code)
     elif allowed is None and kind == "nftables":
         if _read("/etc/nftables.d/irice.nft") is not None or _read("/etc/nftables.d/irice.conf") is not None:
-            allowed = True  # (iRice's own drop-in)
+            allowed = True  # (the drop-in iRice's earlier, permanent fix kept: sharing-ports takes it out)
         else:
             rules = _read("/etc/nftables.conf")
             if rules is not None and _accepts_all(rules) and "include" not in rules:
@@ -187,21 +209,7 @@ def firewall():
         rules = _read("/etc/iptables/iptables.rules")
         if rules is not None:
             hotspot = _accepts_all(rules) or _opens(rules, 67, "udp")
-    return {"kind": kind, "allowed": allowed, "blocks": allowed is not True, "runtime": runtime, "hotspot": hotspot}
-
-
-def remember(kind, out):
-    """After the firewall fix: the rules can't be read without root, so a note
-    says they're in (with this boot's id when they last only until a restart:
-    the fix said "@@runtime"). Returns what the fix said, for the person."""
-    if not kind:
-        return ""
-    os.makedirs(STATE, exist_ok=True)
-    lines = (out or "").splitlines()
-    runtime = "@@runtime" in lines
-    with open(MARKER, "w") as f:
-        f.write(kind + (f" boot={_boot()}" if runtime else "") + (" dhcp" if "@@dhcp" in lines else "") + "\n")
-    return " ".join(l for l in (out or "").splitlines() if l.strip() and not l.startswith("@@"))[:300]
+    return dict(out, allowed=allowed, blocks=allowed is not True, hotspot=hotspot)
 
 
 def pairing():
@@ -223,28 +231,19 @@ def status():
     return {"firewall": firewall(), "pairing": pairing(), "passwordless": helper_installed() and helper_current()}
 
 
-def older_firewall_fix(p):
-    """An installed helper from before nftables and iptables were fixed (an
-    update replaces it): the script here does it instead, with the password."""
-    return p.returncode == 1 and "(ufw or firewalld)" in (p.stderr or "")
-
-
 def fix(what):
-    script = {"firewall": FIREWALL_SCRIPT, "pairing": PAIRING_SCRIPT}.get(what)
+    script = {"pairing": PAIRING_SCRIPT}.get(what)
     if script is None:
         return {"ok": False, "error": "There's no fix for that."}
     if not shutil.which("pkexec"):
         return {"ok": False, "error": "pkexec (from polkit) is needed to ask for your password."}
-    kind = firewall()["kind"] if what == "firewall" else None
     try:
         p = None
-        # (an older installed helper has older fixes: its firewall fix said
-        # "done" while adding none of the newer rules, so the button seemed
-        # to do nothing. This folder's script then, with the password)
+        # (an older installed helper may have older fixes: this folder's
+        # script then, with the password)
         if helper_installed() and helper_current():
-            p = subprocess.run(["pkexec", HELPER, "fix", "btpairing" if what == "pairing" else what],
-                               capture_output=True, text=True, timeout=120)
-            if p.returncode == irice_root.REFUSED_EXIT or older_firewall_fix(p):  # (an older helper without this fix: ask as before)
+            p = subprocess.run(["pkexec", HELPER, "fix", "btpairing"], capture_output=True, text=True, timeout=120)
+            if p.returncode == irice_root.REFUSED_EXIT:  # (an older helper without this fix: ask as before)
                 p = None
         if p is None:
             p = subprocess.run(["pkexec", "/bin/sh", "-c", script], capture_output=True, text=True, timeout=120)
@@ -254,8 +253,38 @@ def fix(what):
         return {"ok": False, "error": "Cancelled: no password was given"}
     if p.returncode != 0:
         return {"ok": False, "error": (p.stderr or p.stdout).strip()[:200] or "It didn't work."}
-    note = remember(kind, p.stdout) if what == "firewall" else ""
-    return {"ok": True, "error": "", "note": note}
+    return {"ok": True, "error": ""}
+
+
+def ports(sets, why=""):
+    """Lets in exactly these of the root helper's sets (none: closes), and
+    notes what's open. Asks nothing with no firewall on, or when they're so
+    already and that went well. Returns (exit code, error, kind)."""
+    note, kind = ports_note(), firewall_kind()
+    sets = sorted(set(sets))
+    code, error = 0, ""
+    if kind and not (_current(note, kind) and note.get("open") == sets and note.get("code") == 0):
+        if not helper_installed():
+            code, error = irice_root.REFUSED_EXIT, "iRice's system helper isn't installed yet. Run Software Update once."
+        elif not shutil.which("pkexec"):
+            code, error = 1, "pkexec (from polkit) is needed to open the firewall's ports."
+        else:
+            try:
+                p = subprocess.run(["pkexec", HELPER, "sharing-ports"] + (["open"] + sets if sets else ["close"]),
+                                   capture_output=True, text=True, timeout=120)
+                code = p.returncode
+                error = "" if code == 0 else {
+                    irice_root.REFUSED_EXIT: "iRice's system helper is from before this. Run Software Update once.",
+                    126: "Cancelled: no password was given.", 127: "Not allowed: it needs an administrator's password.",
+                }.get(code) or (p.stderr or p.stdout).replace("irice-root: ", "").strip()[:300] or "It didn't work."
+            except subprocess.TimeoutExpired:
+                code, error = 1, "The firewall took too long to answer."
+    # (what didn't change stays as it was: open until a close went through)
+    opened = [] if not kind else sets if code == 0 else note.get("open", []) if _current(note, kind) else []
+    os.makedirs(STATE, exist_ok=True)
+    with open(PORTS_NOTE, "w") as f:
+        json.dump({"kind": kind, "want": sets, "open": opened, "why": why, "boot": _boot(), "code": code, "error": error}, f)
+    return code, error, kind
 
 
 def main(argv):
@@ -266,7 +295,17 @@ def main(argv):
         r = fix(argv[1])
         print(json.dumps(r))
         return 0 if r["ok"] else 1
-    print(json.dumps({"ok": False, "error": "usage: sharing-check.py status | fix firewall|pairing"}))
+    if argv == ["ports", "again"]:
+        note = ports_note()
+        argv = ["ports", ",".join(note.get("want", [])) or "none", note.get("why", "")]
+    sets = ([] if argv[1] == "none" else argv[1].split(",")) if argv[:1] == ["ports"] and len(argv) in (2, 3) else None
+    if sets is not None and set(sets) <= set(irice_root.PORT_SETS):
+        code, error, kind = ports(sets, argv[2] if len(argv) == 3 else "")
+        print(json.dumps({"ok": code == 0, "error": error, "kind": kind}))
+        if error:
+            print(error, file=sys.stderr)
+        return code
+    print(json.dumps({"ok": False, "error": "usage: sharing-check.py status | fix pairing | ports <set>[,<set>…]|none [why] | ports again"}))
     return 2
 
 

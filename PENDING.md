@@ -10,6 +10,7 @@ Updated 3 November 2026, late. The refactor is merged to main and applied to the
 - **Login manager**: switching from ly to iRice's own login screen (greetd) waits for your yes.
 - **ananicy rule**: installing iRice's process-priority rule waits for your yes.
 - **iPhone**: the QR code / browser link works with an Android phone and a phone-sized browser; try it once with a real iPhone.
+- **Sharing's firewall ports**: run Software Update once, or `pkexec /usr/lib/irice/irice-root setup ~/iRice/shell`, to install the new root helper and polkit rule. Until then, Settings → Privacy & Security → Firewall says "Run Software Update once". The first run then removes the old permanent ufw rules.
 - **Licence follow-ups (small):** check emojibase's exact copyright line against its LICENSE file (the notice says "Copyright (c) Miles Johnson"); record which Unsplash photo each website background is.
 - **Website media shows the old names:** the hero film (re-render `site/film/hero/film.html`: the Bedside Mode caption) and screenshots that show "App Store", "Spotlight Search" or "Control Center" in the UI. The page text and alt texts already use the new names.
 

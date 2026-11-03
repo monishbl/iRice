@@ -83,6 +83,9 @@ Singleton {
     property real duration: 0
     property real volume: 1
     property string error: ""
+    // A file goes to it from this computer (cast.py's file server, port
+    // 53320): the firewall lets it through meanwhile (SharingPorts)
+    property bool servesFile: false
 
     function castPlaying(dev) {
         if (!canCastPlaying) {
@@ -109,6 +112,7 @@ Singleton {
             return;
         }
         device = dev;
+        servesFile = !!cmd.file;
         title = cmd.title;
         time = cmd.start ?? 0;
         duration = 0;
@@ -164,6 +168,7 @@ Singleton {
             }
         }
         onExited: {
+            root.servesFile = false;
             if (root.state_ !== "error")
                 root.state_ = "";
             if (root.pendingCast) {

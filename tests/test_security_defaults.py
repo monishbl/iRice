@@ -18,6 +18,7 @@ the guards that keep it that way (SECURITY-AUDIT.md).
 Nothing here asks for a password, changes the system or touches the network
 beyond 127.0.0.1.
 """
+import contextlib
 import importlib.util
 import io
 import json
@@ -38,6 +39,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "shell/assets/scripts"
@@ -316,10 +318,17 @@ class RootHelper(unittest.TestCase):
 
     def test_only_fixed_jobs_run_without_a_password(self):
         # (each takes nothing free-form: fixed fixes, a checked image, a
-        # checked look, the shell's priority on or off with a fixed rule)
+        # checked look, the shell's priority on or off with a fixed rule, and
+        # sharing's ports: only the fixed sets in PORT_SETS (sharing's own
+        # ports, nothing wider), runtime rules where the firewall has them,
+        # opened while you're visible and closed after. The shell asks for
+        # it by itself as visibility changes, so a password each time would
+        # be asked again and again; at worst it opens what Settings → Sharing
+        # opens anyway, and closes it)
         rules = (ROOT / "shell/assets/polkit/49-irice.rules").read_text()
         silent = re.search(r"var silent = \{(.*?)\};", rules, re.S).group(1)
-        self.assertEqual(sorted(re.findall(r'"org\.irice\.root\.([a-z-]+)"', silent)), ["fix", "login-look", "priority", "wallpaper"])
+        self.assertEqual(sorted(re.findall(r'"org\.irice\.root\.([a-z-]+)"', silent)),
+                         ["fix", "login-look", "priority", "sharing-ports", "wallpaper"])
         self.assertIn('subject.active && subject.local && subject.isInGroup("wheel")', rules)
         # Every action asks for an administrator by default
         tree = ET.parse(ROOT / "shell/assets/polkit/org.irice.root.policy")
@@ -330,19 +339,56 @@ class RootHelper(unittest.TestCase):
             self.assertEqual(ann["org.freedesktop.policykit.exec.path"], "/usr/lib/irice/irice-root")
 
     def test_the_fixes_are_fixed(self):
-        self.assertEqual(set(R.FIXES), {"networkmanager", "bluetooth", "avahi", "upower", "profiles", "firewall",
+        self.assertEqual(set(R.FIXES), {"networkmanager", "bluetooth", "avahi", "upower", "profiles",
                                         "btpairing", "fprintd"})
         for bad in ("firewall; reboot", "../firewall", "", "FIREWALL"):
             with self.assertRaises(R.Refused):
                 R.fix_command(bad)
 
-    def test_the_firewall_fix_opens_only_sharings_ports(self):
-        # (ufw, firewalld, nftables, iptables alike: LocalSend 53317, Quick
-        # Share 53318, its faster link 53319, link sharing and Cast 53320,
-        # mDNS 5353, DHCP 67 for a Quick Share hotspot. Nothing wider.)
-        numbers = {int(n) for n in re.findall(r"(?<![\w./-])(\d{2,5})(?![\w./])", R.FIREWALL_SCRIPT)}
-        self.assertLessEqual({n for n in numbers if n > 10}, {53317, 53320, 5353, 67})
-        self.assertNotRegex(R.FIREWALL_SCRIPT, r"ufw allow from|--zone=trusted|-j ACCEPT\s*$|policy accept|ufw disable")
+    def test_sharing_ports_are_only_sharings_and_never_kept(self):
+        # (LocalSend 53317, Quick Share 53318, its faster link 53319, link
+        # sharing and Cast 53320, mDNS 5353, DHCP 67 for a Quick Share
+        # hotspot. Nothing wider.)
+        ports = {n for sets in R.PORT_SETS.values() for _p, lo, hi in sets for n in range(lo, hi + 1)}
+        self.assertLessEqual(ports, {53317, 53318, 53319, 53320, 5353, 67})
+        # With every firewall, everything open: nothing is made to last
+        # (ufw's rules last by themselves: close takes them out again)
+        for kind in ("ufw", "firewalld", "nftables", "iptables"):
+            calls = []
+
+            def run(cmd, **kw):
+                calls.append(" ".join(cmd))
+                out, code = "", 0
+                if cmd[:2] == ["ufw", "status"]:
+                    out = "Status: active\n" if kind == "ufw" else ""
+                elif cmd[:2] == ["firewall-cmd", "--state"]:
+                    code = 0 if kind == "firewalld" else 252
+                elif cmd[:2] == ["systemctl", "is-active"]:
+                    code = 0 if cmd[-1] == kind else 3
+                elif any(a.startswith("--query-port") for a in cmd):
+                    code = 1
+                elif cmd == ["nft", "list", "chains"]:
+                    out = "table inet filter {\n\tchain input {\n\t\ttype filter hook input priority filter; policy drop;\n\t}\n}\n"
+                return subprocess.CompletedProcess(cmd, code, out, "")
+            R.sharing_ports(list(R.PORT_SETS), run=run, prefix=str(self.d))
+            self.assertTrue([c for c in calls if re.search(r"ufw allow|--add-port|nft insert|tables -I ", c)], kind)
+            for c in calls:
+                self.assertNotRegex(c, r"--permanent --add|--reload|ufw allow from|--zone=trusted|policy accept|ufw disable|nft -f|-save", c)
+
+    def test_sharing_ports_takes_only_open_or_close_and_fixed_names(self):
+        # (main, as root: the job and the old fix's id; anything else refused)
+        asked = []
+        with mock.patch.object(R, "sharing_ports", lambda sets: (asked.append(sets), ([], []))[1]), \
+                mock.patch.object(R.os, "geteuid", return_value=0), contextlib.redirect_stdout(io.StringIO()):
+            for argv, want in ((["sharing-ports", "open", "quickshare", "mdns"], ["quickshare", "mdns"]),
+                               (["sharing-ports", "open"], list(R.PORT_SETS)), (["sharing-ports", "close"], []),
+                               (["fix", "firewall"], list(R.PORT_SETS))):
+                self.assertEqual(R.main(argv), 0, argv)
+                self.assertEqual(asked.pop(), want, argv)
+            for bad in (["sharing-ports"], ["sharing-ports", "close", "quickshare"], ["sharing-ports", "on"]):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(R.main(bad), R.REFUSED_EXIT, bad)
+        self.assertEqual(asked, [])
 
     def test_wallpaper_takes_only_a_full_path_to_an_image_file(self):
         for bad in ("relative.jpg", "/a\nb.jpg", "/a\0b", "", None):

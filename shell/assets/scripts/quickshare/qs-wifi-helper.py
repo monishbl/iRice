@@ -653,8 +653,8 @@ class Links:
         """Lets the phone reach us on our own link, whatever the firewall
         says, for as long as the link exists and nowhere else: runtime only,
         on this one interface, and (nftables, iptables) only DHCP and the
-        transfer port (firewalld: its trusted zone for the interface). Never
-        the permanent sharing rules (Settings asks for those)."""
+        transfer port (firewalld: its trusted zone for the interface). (The
+        sharing ports, open while you're visible, are SharingPorts.qml's.)"""
         if have("firewall-cmd") and subprocess.run(["firewall-cmd", "--state"], capture_output=True).returncode == 0:
             run("firewall-cmd", "--zone=trusted", f"--add-interface={iface}", check=False)
             self.undo.append(lambda: run("firewall-cmd", "--zone=trusted", f"--remove-interface={iface}", check=False))
