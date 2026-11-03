@@ -1,5 +1,12 @@
 # iRice changelog
 
+## One codebase for both looks · 2026-11-03
+
+- **Glass and Material are now one codebase.** Material used to copy 151 of Glass's files and change a few lines in each (31,938 lines repeated). Now each screen exists once, and where the looks differ it says so in place or picks its look's own view; Material shares 55 lines with Glass, in 2 files kept apart on purpose. A fix made once now reaches both looks, and a test keeps new copies out.
+- **Material fixes that came with it:** the screen tools bar, the password prompt, the translation card and the overlay toolbar drew their Material background in the wrong place (nothing at all); Settings search in Material no longer lists rows Material doesn't show.
+- **Old compiled shaders are cleaned up** on update, so a stale copy can't shadow the shared one.
+- **For development:** `IRICE_ARENA=2 ./dev.sh up` runs another identical sandbox beside the first (up to 9), and `tools/smoke-looks.sh` uses whichever is free, so checks run side by side. It now also fails when the shell stops drawing or answering, and says whether the compositor or the shell was stuck.
+
 ## Licence, and names of our own · 2026-11-03
 
 - **iRice is GPL-3.0-or-later.** The licence is in LICENSE; THIRD_PARTY_NOTICES.md lists the fonts, icons, protocol definitions and data that come from others, with their licence texts in LICENSES/.

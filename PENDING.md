@@ -1,6 +1,6 @@
 # What's pending
 
-Updated 3 November 2026. Branch in progress: `quickshare-fast-first` (not merged to main yet).
+Updated 3 November 2026, late. The refactor is merged to main and applied to the laptop.
 
 ## Needs you
 
@@ -37,9 +37,13 @@ Still to do:
 
 - [ ] Quick Settings (Material): right-clicking the volume slider leaves the panel faded and slid left, the sound page never showing. First in the full bug sweep.
 
-## In progress
+## Done: full refactor, no duplicated code
 
-- **Full refactor, no duplicated code** (six agents, one area each): Material copies merged into the shared code, Material's genuinely different screens split into shared logic + a small view per look. Each lands only after my own test run, duplication measurement, smoke check in both looks and before/after screenshot comparison.
+- Material's copies of Glass files: 151 → 2 (both kept on purpose), repeated lines 31,938 → 55. 664 tests pass; both looks pass the smoke check in two sandboxes side by side; the screens the smoke check doesn't open (lock, share sheet, banners, OSD, island, password prompt, Quick Preview, screen tools, shelf, captions, welcome, widgets, Software, screenshot editor) checked by hand in both looks.
+
+## Watch
+
+- **Glass shell froze in the sandbox** (stopped drawing and answering for minutes) in 2 smoke runs this evening, before the refactor merged too; it hasn't come back in 4 runs since, including two side by side under load, nor in 135 panel opens with diagnostics. The smoke check now fails on it and reports whether the compositor or the shell was stuck. If you see the desktop freeze, note the time.
 
 ## Next, after the refactor
 
