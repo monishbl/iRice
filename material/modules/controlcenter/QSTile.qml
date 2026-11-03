@@ -131,7 +131,9 @@ Item {
     // ── The tile ────────────────────────────────────────────────────────
     // A press (Expressive): it swells, its corners square off, and both
     // spring back with a small bounce
-    property real corner: pressed ? 12 : on ? height / 2 : 20
+    // (pressed: a little squarer than at rest, not square)
+    readonly property real restCorner: on ? Math.min(height, 72) / 2 : 20
+    property real corner: pressed ? restCorner * 0.7 : restCorner
     Behavior on corner {
         SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.25 }
     }
@@ -176,7 +178,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: Math.min(root.height, 72) - 24 // (a tall tile keeps a row's icon)
         height: width
-        property real corner: iconMouse.pressed ? 12 : root.on ? width / 2 : 16
+        property real corner: (root.on ? width / 2 : 16) * (iconMouse.pressed ? 0.7 : 1)
         Behavior on corner {
             SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.25 }
         }
