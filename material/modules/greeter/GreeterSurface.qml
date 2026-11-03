@@ -33,7 +33,7 @@ GreeterWindow {
     readonly property bool open: typing || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
     property real openT: open ? 1 : 0
     Behavior on openT {
-        M3Spring { epsilon: 0.002 }
+        MaterialSpring { epsilon: 0.002 }
     }
     function wake() {
         typing = true;
@@ -348,7 +348,7 @@ GreeterWindow {
         Rectangle {
             anchors.fill: parent
             radius: roundMouse.pressed ? 14 : 22
-            Behavior on radius { M3Spring { speed: "fast"; epsilon: 0.2 } }
+            Behavior on radius { MaterialSpring { speed: "fast"; epsilon: 0.2 } }
             color: round.danger ? win.m3.errorContainer : roundMouse.containsMouse ? Qt.tint(win.m3.surfaceContainerHigh, Qt.alpha(win.m3.onSurface, 0.08)) : win.m3.surfaceContainerHigh
         }
         Icon {

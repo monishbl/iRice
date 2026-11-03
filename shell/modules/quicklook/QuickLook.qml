@@ -217,7 +217,7 @@ Scope {
                         radius: Theme.material ? (openMouse.pressed ? 8 : height / 2) : Theme.radius.control
                         Behavior on radius {
                             enabled: Theme.material
-                            M3Spring { speed: "fast"; epsilon: 0.25 }
+                            MaterialSpring { speed: "fast"; epsilon: 0.25 }
                         }
                         color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, openMouse.pressed ? 0.1 : openMouse.containsMouse ? 0.08 : 0))
                             : openMouse.pressed ? Qt.darker(Theme.accent, 1.2) : openMouse.containsMouse ? Qt.darker(Theme.accent, 1.1) : Theme.accent

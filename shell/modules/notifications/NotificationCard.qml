@@ -19,49 +19,19 @@ Item {
     signal acted // one of its buttons was used
 
     // The composer: open, sent (briefly), or what went wrong
-    property bool replying: false
-    property bool sent: false
-    property string replyError: ""
-    readonly property bool canReply: Notifications.canReply(notification)
-    function openReply() {
-        if (!canReply)
-            return;
-        replyError = "";
-        sent = false;
-        replying = true;
-        Qt.callLater(() => replyField.focusInput());
+    NotificationReply {
+        id: reply
+        notification: root.notification
+        text: replyField.text
+        onFocusField: replyField.focusInput()
     }
-    function cancelReply() {
-        replying = false;
-        replyError = "";
-    }
-    function sendReply() {
-        const err = Notifications.reply(notification, replyField.text);
-        if (err !== "") {
-            replyError = err;
-            return;
-        }
-        replying = false;
-        sent = true;
-    }
-    onSentChanged: if (sent) sentTimer.restart()
-    Timer {
-        id: sentTimer
-        interval: 2500
-        onTriggered: root.sent = false
-    }
-    // Opened from the island's Reply (Notification Center shows this card)
-    Connections {
-        target: Notifications
-        function onReplyTargetChanged() { root.takeTarget(); }
-    }
-    Component.onCompleted: takeTarget()
-    function takeTarget() {
-        if (notification && Notifications.replyTarget === notification.id) {
-            Notifications.replyTarget = -1;
-            openReply();
-        }
-    }
+    readonly property alias replying: reply.replying
+    readonly property alias sent: reply.sent
+    readonly property alias replyError: reply.error
+    readonly property alias canReply: reply.canReply
+    function openReply() { reply.open(); }
+    function cancelReply() { reply.cancel(); }
+    function sendReply() { reply.send(); }
 
     implicitHeight: column.implicitHeight + 24
 
@@ -247,26 +217,8 @@ Item {
     }
 
     // Close button, top left like macOS
-    Rectangle {
-        x: -6
-        y: -6
-        width: 22
-        height: 22
-        radius: 11
+    CloseBadge {
         visible: root.hovered
-        color: Theme.dark ? Qt.rgba(0.22, 0.22, 0.25, 1) : "white"
-        border.width: 1
-        border.color: Theme.color.separator
-        Icon {
-            anchors.centerIn: parent
-            name: "x"
-            bold: true
-            size: 11
-            color: Theme.color.secondary
-        }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: root.closeRequested()
-        }
+        onClicked: root.closeRequested()
     }
 }

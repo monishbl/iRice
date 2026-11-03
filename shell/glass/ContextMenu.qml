@@ -6,6 +6,7 @@ import qs.common
 // A glass menu at any point on screen (dock right-click and the like). It's a
 // full-screen overlay, so a click anywhere else or Escape closes it. Items:
 //   { text, action, enabled?, danger?, confirm? }  or  { separator: true }
+//   or { header: "Shortcuts" } (a section's name, as Android 17's app menu)
 // `confirm: "Empty Trash (12 items)"` turns the first click into a second,
 // red "are you sure" row; only that one acts. Create it with a Loader and
 // clear it from onDismissed.
@@ -36,7 +37,7 @@ GlassWindow {
 
     function activate(i) {
         const it = items[i];
-        if (!it || it.separator || it.enabled === false)
+        if (!it || it.separator || it.header || it.enabled === false)
             return;
         if (it.confirm && armed !== i) {
             armed = i;
@@ -46,28 +47,16 @@ GlassWindow {
         it.action?.();
     }
 
-    ElasticPull {
-        id: pull
+    // Elastic pull while the button is held (press and drag anywhere)
+    ElasticGrab {
+        id: grab
         target: body
-        active: grab.active && Panels.holdPull === 0 && !Panels.ccEditing
-        from: grab.point.scenePressPosition
-        pointer: grab.point.scenePosition
     }
-    // Elastic pull: only while the button is held (press and drag anywhere)
-    Item {
-        anchors.fill: parent
-        z: 1000
-        PointHandler { id: grab; acceptedButtons: Qt.LeftButton }
-    }
-    // A drag that ends outside the panel isn't a click to close it
-    readonly property bool dragged: grab.active && Math.hypot(grab.point.scenePosition.x - grab.point.scenePressPosition.x, grab.point.scenePosition.y - grab.point.scenePressPosition.y) > 8
-    property bool wasDragged: false
-    onDraggedChanged: if (dragged) wasDragged = true
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
-        onPressed: root.wasDragged = false
-        onClicked: if (!root.wasDragged) root.dismissed()
+        onPressed: grab.wasDragged = false
+        onClicked: if (!grab.wasDragged) root.dismissed()
     }
 
     Item {
@@ -85,7 +74,7 @@ GlassWindow {
         opacity: Math.min(1, root.progress)
         scale: 0.94 + 0.06 * root.progress
         transformOrigin: up ? Item.Bottom : Item.Top
-        transform: [pull.translate, pull.stretch]
+        transform: [grab.pull.translate, grab.pull.stretch]
         onScaleChanged: glass.updatePosition()
         focus: true
         Keys.onEscapePressed: root.dismissed()
@@ -93,7 +82,7 @@ GlassWindow {
         function step(d) {
             for (let i = root.current + d; i >= 0 && i < root.items.length; i += d) {
                 const it = root.items[i];
-                if (it && !it.separator && it.enabled !== false) {
+                if (it && !it.separator && !it.header && it.enabled !== false) {
                     root.current = i;
                     // (scrolled to it when the menu scrolls)
                     const r = rows.itemAt(i);
@@ -123,7 +112,7 @@ GlassWindow {
             radius: Theme.radius.menu + 2
             // Follow the elastic pull (the plugin draws the glass from its position)
             Connections {
-                target: pull
+                target: grab.pull
                 function onLxChanged() { glass.updatePosition(); }
                 function onLyChanged() { glass.updatePosition(); }
             }
@@ -154,8 +143,8 @@ GlassWindow {
                     readonly property bool enabled_: modelData.enabled !== false
                     readonly property bool hot: (rowMouse.containsMouse || root.current === index) && enabled_
                     width: parent.width
-                    height: modelData.separator ? 11 : 28
-                    Accessible.role: modelData.separator ? Accessible.Separator : Accessible.MenuItem
+                    height: modelData.separator ? 11 : modelData.header ? 26 : 28
+                    Accessible.role: modelData.separator ? Accessible.Separator : modelData.header ? Accessible.StaticText : Accessible.MenuItem
                     Accessible.name: modelData.text ?? ""
                     Accessible.checkable: modelData.checked !== undefined
                     Accessible.checked: !!modelData.checked
@@ -167,11 +156,20 @@ GlassWindow {
                         height: 1
                         color: Theme.color.separator
                     }
+                    Text {
+                        visible: !!row.modelData.header
+                        x: 12
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        text: row.modelData.header ?? ""
+                        color: Theme.material ? Theme.m3.primary : Theme.color.secondary
+                        font { family: Theme.font.family; pixelSize: 12; weight: Font.Medium }
+                    }
                     Squircle {
-                        visible: !row.modelData.separator
+                        visible: !row.modelData.separator && !row.modelData.header
                         anchors.fill: parent
                         radius: Theme.radius.item + 2
-                        color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
+                        color: row.armedRow ? Theme.color.danger : row.hot ? (row.modelData.danger && !Theme.material ? Theme.color.danger : Theme.color.highlight) : "transparent"
                         // A choice among several (checked: true/false): a tick
                         // beside the current one, every label indented alike
                         Icon {
@@ -181,13 +179,13 @@ GlassWindow {
                             name: "check"
                             bold: true
                             size: 12
-                            color: row.hot ? "white" : Theme.color.label
+                            color: !row.hot ? Theme.color.label : Theme.material ? Theme.color.onHighlight : "white"
                         }
                         Text {
                             x: row.modelData.checked !== undefined ? 28 : 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.armedRow ? row.modelData.confirm : (row.modelData.text ?? "")
-                            color: row.armedRow || row.hot ? "white" : !row.enabled_ ? Theme.color.tertiary : row.modelData.danger ? Theme.color.danger : Theme.color.label
+                            color: row.armedRow ? (Theme.material ? Theme.m3.onError : "white") : row.hot && !(Theme.material && row.modelData.danger) ? (Theme.material ? Theme.color.onHighlight : "white") : !row.enabled_ ? Theme.color.tertiary : row.modelData.danger ? Theme.color.danger : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: row.armedRow ? Font.DemiBold : Font.Normal }
                         }
                         MouseArea {

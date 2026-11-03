@@ -117,7 +117,7 @@ Scope {
                                 radius: Theme.material ? (keyMouse.pressed || latched ? height / 2 : 12) : 10
                                 Behavior on radius {
                                     enabled: Theme.material
-                                    M3Spring { speed: "fast"; epsilon: 0.25 }
+                                    MaterialSpring { speed: "fast"; epsilon: 0.25 }
                                 }
                                 color: Theme.material ? Qt.tint(mBase, Qt.alpha(mInk, keyMouse.pressed ? 0.1 : keyMouse.containsMouse ? 0.08 : 0))
                                     : latched ? Theme.accent : keyMouse.pressed ? Theme.color.fillPressed : keyMouse.containsMouse ? Theme.color.fillHover : (isMod || (modelData[3] ?? 1) > 1 ? Theme.color.toggleOff : Theme.color.fill)

@@ -191,7 +191,7 @@ Variants {
                         radius: Theme.material ? (saveMouse.pressed ? 8 : height / 2) : Theme.radius.control
                         Behavior on radius {
                             enabled: Theme.material
-                            M3Spring { speed: "fast"; epsilon: 0.25 }
+                            MaterialSpring { speed: "fast"; epsilon: 0.25 }
                         }
                         readonly property bool enabledNow: dialog.savingPath === "" && editor.text.trim() !== ""
                         color: Theme.material ? (!enabledNow ? Qt.alpha(Theme.m3.onSurface, 0.12) : Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, saveMouse.pressed ? 0.1 : saveMouse.containsMouse ? 0.08 : 0)))

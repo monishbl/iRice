@@ -124,7 +124,7 @@ Variants {
                             radius: Theme.material ? (table.hovered === modelData ? width / 2 : 8) : 6
                             Behavior on radius {
                                 enabled: Theme.material
-                                M3Spring { speed: "fast"; epsilon: 0.25 }
+                                MaterialSpring { speed: "fast"; epsilon: 0.25 }
                             }
                             color: Qt.alpha(tint, table.hovered === modelData ? 0.45 : 0.18)
                             border.width: table.hovered === modelData ? (Theme.material ? 2 : 1) : 0

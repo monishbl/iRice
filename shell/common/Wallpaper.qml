@@ -10,12 +10,17 @@ Singleton {
 
     readonly property string bundledDir: decodeURIComponent(Qt.resolvedUrl("../assets/wallpapers").toString().replace("file://", ""))
     readonly property var cfg: Config.options.wallpaper
-    readonly property string stillPath: cfg.path || bundledDir + "/tahoe-dusk.jpg"
+    // The bundled default: Tahoe dusk, or in the Material look its own
+    // light and dark pair (tools/make-material-wallpapers.py). Only while
+    // no picture is chosen; a chosen one always stays.
+    readonly property string defaultDark: bundledDir + (Theme.material ? "/material-dark.jpg" : "/tahoe-dusk.jpg")
+    readonly property string defaultLight: bundledDir + (Theme.material ? "/material-light.jpg" : "/tahoe-day.jpg")
+    readonly property string stillPath: cfg.path || (Theme.material ? (Theme.dark ? defaultDark : defaultLight) : bundledDir + "/tahoe-dusk.jpg")
     // The picture showing now: the chosen one, or the dynamic one for this time
     // of day / appearance. A live wallpaper uses its first frame here (for glass).
     // Nothing until your settings are read: before that the defaults
     // (the bundled picture) would show for a moment at every start
-    readonly property string path: !Config.ready ? "" : livePoster !== "" ? livePoster : cfg.dynamic === "time" ? timePicture : cfg.dynamic === "appearance" ? (Theme.dark ? (cfg.darkPath || bundledDir + "/tahoe-dusk.jpg") : (cfg.lightPath || bundledDir + "/tahoe-day.jpg")) : stillPath
+    readonly property string path: !Config.ready ? "" : livePoster !== "" ? livePoster : cfg.dynamic === "time" ? timePicture : cfg.dynamic === "appearance" ? (Theme.dark ? (cfg.darkPath || defaultDark) : (cfg.lightPath || defaultLight)) : stillPath
     // Each path segment encoded, so names with # % ? still load
     readonly property url source: fileUrl(path)
     function fileUrl(p) {
@@ -213,6 +218,29 @@ Singleton {
     Process {
         running: true
         command: ["mkdir", "-p", root.cacheDir]
+    }
+
+    // The Material look's seed: the colour Android picks from the picture
+    // (matugen ranks it as Material You does), else the tone above. Read only
+    // while the Material look follows the wallpaper (never in Glass).
+    property string seedFromPicture: ""
+    readonly property string seed: seedFromPicture !== "" ? seedFromPicture : String(tone).slice(0, 7)
+    Process {
+        id: seedProc
+        readonly property string picture: root.path // (a live wallpaper: its poster)
+        running: Theme.material && Config.ready && Config.options.appearance.look === "material" && Config.options.appearance.materialSeed === "wallpaper" && picture !== "" // (no matugen: the tone)
+        command: ["matugen", "image", picture, "--json", "hex", "--dry-run", "--source-color-index", "0"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const c = JSON.parse(text).colors.source_color;
+                    root.seedFromPicture = c.default?.color ?? c.dark?.color ?? "";
+                } catch (e) {
+                    root.seedFromPicture = "";
+                }
+            }
+        }
+        onPictureChanged: root.seedFromPicture = ""
     }
 
     ColorQuantizer {

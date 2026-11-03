@@ -44,11 +44,13 @@ and switched live; it broke Control Center on real hardware and was reverted
   `materialStyle`, `materialSounds`, `materialCursor`), an "experimental"
   Look row in Settings → Appearance, and the scripts below.
 - **`material/`** holds only the Material look's own files, in the same
-  layout as `shell/`: its Theme and controls (`common/`), surfaces
-  (`glass/`), the panels it redesigns or restyles (`modules/`), its own
-  versions of a few services (sounds, app colours, pointer, window corners),
-  fonts, sounds, wallpapers. Many are copies of Glass files with Material
-  branches (`Theme.material` is always true there).
+  layout as `shell/`: its look switch (`common/Look.js`, which makes
+  `Theme.material` true), its entry point (`shell.qml`, which starts the
+  same `shell/IriceShell.qml`), the panels it still redesigns
+  (`modules/`), fonts, sounds, wallpapers. The Theme, controls, surfaces
+  and services are one set of files in `shell/` that branch on
+  `Theme.material`; with it the one Theme answers with Material's colour
+  roles (`Theme.m3`), type, shapes and motion.
 - **The Material root** is assembled at every start by
   `shell/assets/scripts/material-root.py` into
   `$XDG_CACHE_HOME/irice/material-shell`: a link for every file of

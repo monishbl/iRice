@@ -391,7 +391,7 @@ Variants {
             // Dim the screen behind
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(0, 0, 0, (win.mac ? 0.18 : 0.35) * Math.min(1, win.progress))
+                color: Theme.material ? Qt.alpha(Theme.m3.scrim, (win.mac ? 0.24 : 0.4) * Math.min(1, win.progress)) : Qt.rgba(0, 0, 0, (win.mac ? 0.18 : 0.35) * Math.min(1, win.progress))
                 MouseArea {
                     anchors.fill: parent
                     onClicked: Panels.close()
@@ -406,25 +406,40 @@ Variants {
                 // (the glass under the search and its results follows the zoom:
                 // compositor blur doesn't see a parent's scale)
                 onScaleChanged: {
-                    fieldGlass.updatePosition();
+                    fieldGlass.item?.updatePosition();
                     resultsGlass.updatePosition();
                 }
 
                 // Search
                 Item {
                     id: searchBox
-                    width: 560 + 2 * fieldGlass.shadowMargin
-                    height: 52 + 2 * fieldGlass.shadowMargin
+                    readonly property int m: 20 // (room round the field for the glass's shadow)
+                    width: 560 + 2 * m
+                    height: 52 + 2 * m
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: win.mac ? Math.round(parent.height * 0.36) : 64
-                    Glass {
+                    // The field's glass (Material draws a pill instead, below)
+                    Loader {
                         id: fieldGlass
                         anchors.fill: parent
-                        radius: 26
-                        shadowMargin: 20
+                        active: !Theme.material
+                        sourceComponent: Glass {
+                            radius: 26
+                            shadowMargin: searchBox.m
+                        }
+                    }
+                    // Material: the search bar, a pill in surfaceContainerHigh
+                    Rectangle {
+                        visible: Theme.material
+                        x: searchBox.m
+                        y: searchBox.m
+                        width: 560
+                        height: 52
+                        radius: height / 2
+                        color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
                     }
                     Icon {
-                        x: fieldGlass.shadowMargin + 18
+                        x: searchBox.m + 18
                         anchors.verticalCenter: parent.verticalCenter
                         name: "magnifying-glass"
                         bold: true
@@ -433,7 +448,7 @@ Variants {
                     }
                     TextInput {
                         id: field
-                        x: fieldGlass.shadowMargin + 50
+                        x: searchBox.m + 50
                         width: 560 - 70
                         anchors.verticalCenter: parent.verticalCenter
                         color: Theme.color.label
@@ -471,7 +486,7 @@ Variants {
                     Glass {
                         id: resultsGlass
                         anchors.fill: parent
-                        radius: 22
+                        radius: Theme.material ? Theme.radius.panel : 22
                         shadowMargin: 20
                     }
                     MouseArea { anchors.fill: parent; anchors.margins: 20 }
@@ -513,8 +528,12 @@ Variants {
                     y: -(1 - Math.min(1, win.progress)) * 40
                     Rectangle {
                         anchors.fill: parent
-                        color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.6) : Qt.rgba(1, 1, 1, 0.5)
+                        // (Material: an opaque surface, rounded off at the bottom, no hairline)
+                        color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.6) : Qt.rgba(1, 1, 1, 0.5)
+                        bottomLeftRadius: Theme.material ? Theme.radius.panel : 0
+                        bottomRightRadius: Theme.material ? Theme.radius.panel : 0
                         Rectangle {
+                            visible: !Theme.material
                             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                             height: 1
                             color: Theme.color.separator
@@ -594,13 +613,15 @@ Variants {
                                             Item {
                                                 width: strip.tileW
                                                 height: Math.round(strip.tileW * macRow.aspect)
+                                                transform: Theme.material ? pressFx2.effects : []
+                                                ElasticControl { id: pressFx2; enabled: Theme.material; pressed: thumbMouse.pressed }
                                                 scale: thumbMouse.pressed && !tile.dragged ? 0.97 : thumbMouse.containsMouse ? 1.03 : 1
                                                 Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
                                                 ClippingRectangle {
                                                     anchors.fill: parent
-                                                    radius: 10
-                                                    color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
-                                                    border.width: 1
+                                                    radius: Theme.material ? 16 : 10
+                                                    color: Theme.material ? (tile.current ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHighest) : Theme.dark ? "#1A1A1D" : "#F4F4F5"
+                                                    border.width: Theme.material ? 0 : 1
                                                     border.color: Theme.dark ? "#36363C" : "#D4D4D8"
                                                     Image {
                                                         anchors.fill: parent
@@ -621,10 +642,10 @@ Variants {
                                                             y: r.y * tile.s
                                                             width: Math.max(4, r.w * tile.s)
                                                             height: Math.max(4, r.h * tile.s)
-                                                            radius: 3
-                                                            color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                                                            radius: Theme.material ? 6 : 3
+                                                            color: Theme.material ? Theme.m3.surfaceContainerLow : Theme.dark ? "#2C2C31" : "#FFFFFF"
                                                             border.width: 1
-                                                            border.color: Theme.dark ? "#36363C" : "#E4E4E7"
+                                                            border.color: Theme.material ? Theme.m3.outlineVariant : Theme.dark ? "#36363C" : "#E4E4E7"
                                                             IconImage {
                                                                 anchors.centerIn: parent
                                                                 implicitSize: Math.min(18, parent.height * 0.6)
@@ -635,8 +656,8 @@ Variants {
                                                 }
                                                 // The current space, or where a dragged one would land
                                                 Squircle {
-                                                    anchors { fill: parent; margins: -3 }
-                                                    radius: 13
+                                                    anchors { fill: parent; margins: Theme.material ? -5 : -3 }
+                                                    radius: Theme.material ? 21 : 13
                                                     color: "transparent"
                                                     border.width: 3
                                                     border.color: Theme.accent
@@ -703,21 +724,26 @@ Variants {
                                 }
 
                                 // + a new empty space on this display, after the last one in use
+                                // (Material: a tonal round button, squaring off while pressed)
                                 Rectangle {
                                     anchors { right: parent.right; rightMargin: 28 }
                                     y: strip.y + Math.round(strip.tileW * macRow.aspect) / 2 - height / 2
-                                    width: 36
-                                    height: 36
-                                    radius: 18
-                                    color: plusMouse.pressed ? Theme.color.fillHover : plusMouse.containsMouse ? Theme.color.fill : Qt.rgba(0, 0, 0, 0)
-                                    border.width: 1
+                                    width: Theme.material ? 40 : 36
+                                    height: width
+                                    transform: Theme.material ? pressFx1.effects : []
+                                    ElasticControl { id: pressFx1; enabled: Theme.material; pressed: plusMouse.pressed }
+                                    radius: Theme.material && plusMouse.pressed ? 12 : width / 2
+                                    Behavior on radius { enabled: Theme.material; NumberAnimation { duration: Theme.motion.press } }
+                                    color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, plusMouse.pressed ? 0.1 : plusMouse.containsMouse ? 0.08 : 0))
+                                        : plusMouse.pressed ? Theme.color.fillHover : plusMouse.containsMouse ? Theme.color.fill : Qt.rgba(0, 0, 0, 0)
+                                    border.width: Theme.material ? 0 : 1
                                     border.color: Theme.color.separator
                                     Icon {
                                         anchors.centerIn: parent
                                         name: "plus"
                                         bold: true
-                                        size: 18
-                                        color: Theme.color.label
+                                        size: Theme.material ? 20 : 18
+                                        color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
                                     }
                                     MouseArea {
                                         id: plusMouse
@@ -759,9 +785,18 @@ Variants {
 
                             Text {
                                 visible: win.rowsMode
+                                x: Theme.material ? 12 : 0
                                 text: Spaces.labelForName(gridRow.row)
-                                color: Qt.rgba(1, 1, 1, 0.85)
+                                color: Theme.material ? Theme.m3.onSurface : Qt.rgba(1, 1, 1, 0.85)
                                 font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                                // Material: on a chip (no light text on the scrim)
+                                Rectangle {
+                                    visible: Theme.material
+                                    z: -1
+                                    anchors { fill: parent; leftMargin: -12; rightMargin: -12; topMargin: -5; bottomMargin: -5 }
+                                    radius: height / 2
+                                    color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
+                                }
                             }
 
                             Grid {
@@ -824,20 +859,26 @@ Variants {
                                         transform: Translate { x: space.dragged ? win.dragD.x : 0; y: space.dragged ? win.dragD.y : 0 }
 
                                         // The space: a plain neutral container
+                                        // (Material: a card in surfaceContainer, the current
+                                        // space in secondaryContainer, extra-large corners)
                                         Rectangle {
                                             id: screenRect
                                             width: win.cellW
                                             height: gridRow.cellH
-                                            radius: 14
+                                            radius: Theme.material ? Theme.radius.tile : 14
                                             clip: !win.dragging // let a dragged tile leave its space
                                             z: win.dragging ? 1 : 0
-                                            color: Theme.dark ? "#1A1A1D" : "#F4F4F5"
+                                            color: Theme.material ? (space.current ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainer) : Theme.dark ? "#1A1A1D" : "#F4F4F5"
                                             readonly property bool target: win.dragSpace > 0 && win.dropOn === space.wsId && !space.dragged
                                             // a drag pushed toward this display's edge lands on its current space
                                             readonly property bool edgeHot: space.current && (win.edgeZone || win.spaceZone) !== "" && (win.edgeZone || win.spaceZone) === win.hostOf[space.wsId]
+                                            readonly property bool picked: space.wsId === win.picked || dropArea.containsDrag || target || edgeHot
                                             // picked (pointer, arrows): accent; each display's current space: a softer accent
-                                            border.width: space.wsId === win.picked || dropArea.containsDrag || target || edgeHot || (space.current && win.rowsMode) ? 2 : 1
+                                            // (Material: drawn over its windows instead, below)
+                                            border.width: Theme.material ? 0 : space.wsId === win.picked || dropArea.containsDrag || target || edgeHot || (space.current && win.rowsMode) ? 2 : 1
                                             border.color: dropArea.containsDrag || target || edgeHot || space.wsId === win.picked ? Theme.accent : space.current ? (win.rowsMode ? Theme.accentAlpha(0.55) : (Theme.dark ? "#36363C" : "#D4D4D8")) : (Theme.dark ? "#26262A" : "#E4E4E7")
+                                            transform: Theme.material ? pressFx3.effects : []
+                                            ElasticControl { id: pressFx3; enabled: Theme.material; pressed: spaceMouse.pressed }
                                             scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                             Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
 
@@ -865,9 +906,9 @@ Variants {
 
                                             // The wallpaper behind the windows (overview.wallpapers)
                                             ClippingRectangle {
-                                                anchors { fill: parent; margins: 1 }
+                                                anchors { fill: parent; margins: Theme.material ? 0 : 1 }
                                                 visible: Config.options.overview.wallpapers
-                                                radius: 13
+                                                radius: Theme.material ? parent.radius : 13
                                                 color: "transparent"
                                                 Image {
                                                     anchors.fill: parent
@@ -882,7 +923,7 @@ Variants {
                                                 anchors.centerIn: parent
                                                 visible: space.wins.length === 0
                                                 text: "No windows"
-                                                color: Theme.dark ? "#94949D" : "#6B6B74"
+                                                color: Theme.material ? (space.current ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : Theme.dark ? "#94949D" : "#6B6B74"
                                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                                             }
                                             MouseArea {
@@ -937,13 +978,13 @@ Variants {
                                                     readonly property int stack: fsMode > 0 ? 3000 : o.floating ? 2000 - Math.max(0, Math.min(999, o.focusHistoryID ?? 999)) : 1
                                                     // Fullscreen fills the miniature, inside its 1px border
                                                     readonly property var r: win.placeIn(o, space.geo)
-                                                    readonly property real homeX: full ? 1 : r.x * space.k
-                                                    readonly property real homeY: full ? 1 : r.y * space.k
+                                                    readonly property real homeX: full ? (Theme.material ? 0 : 1) : r.x * space.k
+                                                    readonly property real homeY: full ? (Theme.material ? 0 : 1) : r.y * space.k
                                                     property bool gone: false // dropped on another space, until the move lands
                                                     x: homeX
                                                     y: homeY
-                                                    width: full ? screenRect.width - 2 : Math.max(16, r.w * space.k)
-                                                    height: full ? screenRect.height - 2 : Math.max(12, r.h * space.k)
+                                                    width: full ? screenRect.width - 2 * homeX : Math.max(16, r.w * space.k)
+                                                    height: full ? screenRect.height - 2 * homeY : Math.max(12, r.h * space.k)
                                                     opacity: gone ? 0 : 1
                                                     Drag.active: thumbDrag.active
                                                     Drag.source: thumb
@@ -985,7 +1026,7 @@ Variants {
                                                         id: preview
                                                         anchors.fill: parent
                                                         toplevel: thumb.modelData
-                                                        radius: thumb.full ? 13 : 4 // the space's 14 minus its border
+                                                        radius: Theme.material ? (thumb.full ? Theme.radius.tile : 12) : thumb.full ? 13 : 4 // the space's 14 minus its border
                                                         capture: win.capturing
                                                         live: space.live
                                                         hovered: tileMouse.containsMouse || thumbDrag.active
@@ -1058,12 +1099,34 @@ Variants {
                                                     }
                                                 }
                                             }
+
+                                            // Material: the picked space (or where a drop lands)
+                                            // outlined in primary, over its wallpaper and windows;
+                                            // each display's current one in secondary
+                                            Rectangle {
+                                                visible: Theme.material && (screenRect.picked || (space.current && win.rowsMode))
+                                                anchors.fill: parent
+                                                z: 4000 // (over fullscreen and floating miniatures, under a dragged one)
+                                                radius: parent.radius
+                                                color: "transparent"
+                                                border.width: screenRect.picked ? 3 : 2
+                                                border.color: !Theme.material ? "transparent" : screenRect.picked ? Theme.m3.primary : Theme.m3.secondary
+                                            }
                                         }
                                         Text {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: Spaces.title(space.wsId, gridRow.row) + (space.wins.length > 0 ? " · " + space.wins.length + (space.wins.length === 1 ? " window" : " windows") : "")
-                                            color: Qt.rgba(1, 1, 1, space.wsId === win.picked || space.current ? 0.95 : 0.7)
+                                            color: Theme.material ? (space.current ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface) : Qt.rgba(1, 1, 1, space.wsId === win.picked || space.current ? 0.95 : 0.7)
                                             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: space.current ? Font.DemiBold : Font.Medium }
+                                            // Material: on a chip (no light text on the scrim),
+                                            // the current space's in secondaryContainer
+                                            Rectangle {
+                                                visible: Theme.material
+                                                z: -1
+                                                anchors { fill: parent; leftMargin: -10; rightMargin: -10; topMargin: -4; bottomMargin: -4 }
+                                                radius: height / 2
+                                                color: Theme.material ? (space.current ? Theme.m3.secondaryContainer : space.wsId === win.picked ? Theme.m3.surfaceContainerHighest : Theme.m3.surfaceContainerHigh) : "transparent"
+                                            }
                                             // The title is a handle too (a space full of windows has no empty area)
                                             MouseArea {
                                                 id: titleMouse
@@ -1152,18 +1215,20 @@ Variants {
                             Glass {
                                 id: zoneGlass
                                 anchors.fill: parent
-                                radius: zone.expanded || zone.vertical ? 18 : 22
+                                radius: Theme.material ? (zone.expanded || zone.vertical ? 28 : zone.pillH / 2) : zone.expanded || zone.vertical ? 18 : 22
                                 shadowMargin: 16
                             }
-                            // Highlight while something is over it
+                            // Highlight while something is over it (Material:
+                            // secondaryContainer outlined in primary; a state layer on hover)
                             Squircle {
                                 x: zone.m
                                 y: zone.m
                                 width: zone.pillW
                                 height: zone.pillH
                                 radius: zoneGlass.radius
-                                color: zone.hot ? Theme.accentAlpha(0.22) : zoneMouse.containsMouse ? Theme.color.fill : "transparent"
-                                border.width: zone.hot ? 2 : 0
+                                color: Theme.material ? (zone.hot ? Theme.m3.secondaryContainer : zoneMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
+                                    : zone.hot ? Theme.accentAlpha(0.22) : zoneMouse.containsMouse ? Theme.color.fill : "transparent"
+                                border.width: zone.hot ? (Theme.material ? 3 : 2) : 0
                                 border.color: Theme.accent
                             }
                             MouseArea {
@@ -1204,14 +1269,14 @@ Variants {
                                 Icon {
                                     name: "monitor"
                                     size: 20
-                                    color: zone.hot ? Theme.accentInk : Theme.color.secondary
+                                    color: zone.hot ? (Theme.material ? Theme.m3.onSecondaryContainer : Theme.accentInk) : Theme.color.secondary
                                 }
                                 Text {
                                     width: zone.vertical ? Math.min(implicitWidth, 84) : implicitWidth
                                     horizontalAlignment: Text.AlignHCenter
                                     elide: Text.ElideRight
                                     text: Spaces.labelForName(zone.target)
-                                    color: zone.hot || win.anyDrag ? Theme.color.label : Theme.color.secondary
+                                    color: Theme.material && zone.hot ? Theme.m3.onSecondaryContainer : zone.hot || win.anyDrag ? Theme.color.label : Theme.color.secondary
                                     font { family: Theme.font.family; pixelSize: zone.vertical ? Theme.font.small : Theme.font.body; weight: Font.DemiBold }
                                 }
                             }
@@ -1231,17 +1296,19 @@ Variants {
                                         readonly property bool current: Spaces.active[zone.target] === modelData
                                         width: 36
                                         height: 36
+                                        // (Material: square-ish, turning round and primary under a window)
                                         Squircle {
                                             anchors.fill: parent
-                                            radius: 10
-                                            color: chipDrop.containsDrag ? Theme.accent : Theme.color.fill
-                                            border.width: chip.current && !chipDrop.containsDrag ? 2 : 0
+                                            radius: Theme.material ? (chipDrop.containsDrag ? width / 2 : 12) : 10
+                                            Behavior on radius { enabled: Theme.material; NumberAnimation { duration: Theme.motion.press } }
+                                            color: chipDrop.containsDrag ? Theme.accent : Theme.material && chip.current ? Theme.m3.secondaryContainer : Theme.color.fill
+                                            border.width: chip.current && !chipDrop.containsDrag && !Theme.material ? 2 : 0
                                             border.color: Theme.accentAlpha(0.55)
                                         }
                                         Text {
                                             anchors.centerIn: parent
                                             text: Spaces.numberOf(chip.modelData)
-                                            color: chipDrop.containsDrag ? "white" : Theme.color.label
+                                            color: chipDrop.containsDrag ? (Theme.material ? Theme.m3.onPrimary : "white") : Theme.material && chip.current ? Theme.m3.onSecondaryContainer : Theme.color.label
                                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: chip.current ? Font.DemiBold : Font.Medium; features: { "tnum": 1 } }
                                         }
                                         DropArea {

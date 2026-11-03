@@ -78,7 +78,7 @@ Variants {
         readonly property bool hidden: logic.hidden
         property real slide: hidden ? 1 : 0
         Behavior on slide {
-            M3Spring { epsilon: 0.002 }
+            MaterialSpring { epsilon: 0.002 }
         }
 
         exclusionMode: cfg.autoHide === "off" ? ExclusionMode.Normal : ExclusionMode.Ignore

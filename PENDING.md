@@ -37,24 +37,21 @@ Still to do:
 
 - [ ] Quick Settings (Material): right-clicking the volume slider leaves the panel faded and slid left, the sound page never showing. First in the full bug sweep.
 
-## Approved, not started
+## In progress
 
-- **Settings sweep**: one control instead of a switch plus option (Stages Off / On / On with recents; Dock magnification slider with Off at its left end; Cool-down Off / Ask / Automatic; Sounds with Off first). Each setting on one page with a link elsewhere (find the pointer → Mouse & Trackpad; calendars and task list → Calendar). A test that enforces both rules.
-- **Code structure**:
-  - Phase 1: remove dead code.
-  - Phase 6: efficiency fixes (wavy progress redraws, the hidden Glass UI in the Material lock screen, Resources history, live blur in popups, Mouse polling, island ink layer).
-  - Phase 2: merge trivial Material copies back into the shared code (Glass stays pixel-identical).
-  - Phase 3: shared components.
-- **Bug hunt and efficiency sweep**: both looks and the core.
+- **Full refactor, no duplicated code** (six agents, one area each): Material copies merged into the shared code, Material's genuinely different screens split into shared logic + a small view per look. Each lands only after my own test run, duplication measurement, smoke check in both looks and before/after screenshot comparison.
 
-## Built, waiting to merge
+## Next, after the refactor
 
-- **Installer**: merged into main (586 tests pass). Was the branch `worktree-agent-a030afe4e31ec7a9c`: interactive TUI plus classic CLI, hardware-aware plan, snapshot first, optional icon themes. To do: review, merge, and verify in a container. Small follow-ups:
-  - README still mentions MacTahoe and the macOS pointer.
-  - `dev.sh` still lists papirus.
-  - Dropped AUR packages aren't in Software Update's removal list.
-  - `site/public/get` isn't deployed.
-- **CHANGELOG**: entries for the latest work (icons, gaps, Settings restructure, battery, captions, overview, find pointer, Adwaita and Bibata, Quick Share, QR sharing, menus, gestures).
+- **Full Material walkthrough against Glass** (the bug sweep, both looks and the core): every panel, page, menu, right-click, slider and gesture side by side; each difference fixed and tested. Known: the volume right-click (check after the reboot), a blank icon in the Material dock.
+- **Efficiency**: the 33 small watcher processes (one supervisor instead).
+- **Later, when you say go**: the Rust rewrite, benchmarked against docs/benchmarks-baseline.md.
+
+## Housekeeping
+
+- Website: re-render the hero film and the screenshots that show old names; `site/public/get` isn't deployed (pushing site/ deploys: ask first).
+- `dev.sh` still lists papirus.
+- Needs you as well: run `pkexec /usr/lib/irice/irice-root setup ~/iRice/shell` once (the Wi-Fi helper's firewall change).
 
 ## Done today (for reference)
 

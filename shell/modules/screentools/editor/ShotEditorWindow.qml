@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -25,7 +26,7 @@ GlassWindow {
 
     readonly property int m: 24 // shadow room
     readonly property int pad: 12
-    readonly property int bar: 36
+    readonly property int bar: Theme.material ? 48 : 36 // (Material: room for a 48 high toolbar)
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
 
     function fileUrl(p) {
@@ -407,32 +408,65 @@ GlassWindow {
             height: win.bar
 
             Row {
+                anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 EditorButton {
+                    anchors.verticalCenter: parent.verticalCenter
                     icon: "x"
                     tooltip: "Close editor"
                     shortcut: "Esc"
                     onClicked: win.requestClose()
                 }
                 Rectangle { width: 1; height: 20; anchors.verticalCenter: parent.verticalCenter; color: Theme.color.separator }
-                Row {
-                    spacing: 4
-                    Repeater {
-                        model: win.tools
-                        EditorButton {
-                            required property var modelData
-                            icon: modelData.icon
-                            tooltip: modelData.label
-                            shortcut: modelData.key
-                            selected: win.s.tool === modelData.id
-                            enabled: win.ready && win.busy === ""
-                            onClicked: win.setTool(modelData.id)
+                // The tools. Material: a vibrant toolbar, a primaryContainer
+                // pill, the chosen tool filled in primary
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: toolRow.width + 2 * toolRow.x
+                    height: toolRow.height + 2 * toolRow.y
+                    // (floating: an elevation 3 shadow under it)
+                    Loader {
+                        active: Theme.material
+                        anchors.fill: parent
+                        sourceComponent: Item {
+                            RectangularShadow {
+                                anchors.fill: parent
+                                radius: height / 2
+                                offset.y: 3
+                                blur: 10
+                                color: Qt.alpha(Theme.m3.shadow, Theme.dark ? 0.45 : 0.18)
+                            }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: height / 2
+                                color: Theme.m3.primaryContainer
+                            }
+                        }
+                    }
+                    Row {
+                        id: toolRow
+                        x: Theme.material ? 4 : 0
+                        y: Theme.material ? 4 : 0
+                        spacing: Theme.material ? 2 : 4
+                        Repeater {
+                            model: win.tools
+                            EditorButton {
+                                required property var modelData
+                                icon: modelData.icon
+                                tooltip: modelData.label
+                                shortcut: modelData.key
+                                selected: win.s.tool === modelData.id
+                                vibrant: true
+                                enabled: win.ready && win.busy === ""
+                                onClicked: win.setTool(modelData.id)
+                            }
                         }
                     }
                 }
             }
             Row {
                 anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
                 EditorButton {
                     icon: "arrow-counter-clockwise"
@@ -555,8 +589,8 @@ GlassWindow {
                         width: cropFrame.r.width
                         height: cropFrame.r.height
                         color: "transparent"
-                        border.width: 1
-                        border.color: "white"
+                        border.width: Theme.material ? 2 : 1
+                        border.color: Theme.material ? Theme.m3.primary : "white"
                         // Thirds while adjusting
                         Repeater {
                             model: input.pressed ? 4 : 0
@@ -582,10 +616,11 @@ GlassWindow {
                             y: (atBottom ? cropFrame.r.y + cropFrame.r.height : cropFrame.r.y) - 6
                             width: 12
                             height: 12
-                            radius: 3
-                            color: "white"
-                            border.width: 1
-                            border.color: Qt.rgba(0, 0, 0, 0.3)
+                            // (Material: round handles in primary)
+                            radius: Theme.material ? 6 : 3
+                            color: Theme.material ? Theme.m3.primary : "white"
+                            border.width: Theme.material ? 2 : 1
+                            border.color: Theme.material ? Theme.m3.onPrimary : Qt.rgba(0, 0, 0, 0.3)
                         }
                     }
                 }
@@ -754,12 +789,25 @@ GlassWindow {
                 anchors.centerIn: parent
                 visible: base.status === Image.Loading || (base.status === Image.Null && win.s.path !== "")
                 spacing: 8
-                Icon {
+                Loader {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    name: "circle-notch"
-                    size: 24
-                    color: Theme.color.tertiary
-                    RotationAnimator on rotation { running: parent.visible; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
+                    active: !Theme.material
+                    visible: active
+                    sourceComponent: Icon {
+                        name: "circle-notch"
+                        size: 24
+                        color: Theme.color.tertiary
+                        RotationAnimator on rotation { running: parent.visible; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
+                    }
+                }
+                // (Material: its loading indicator)
+                Loader {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    active: Theme.material
+                    visible: active
+                    sourceComponent: Spinner {
+                        size: 48
+                    }
                 }
                 Text {
                     text: "Opening screenshot…"
@@ -774,7 +822,20 @@ GlassWindow {
                 visible: base.status === Image.Error
                 width: Math.min(360, parent.width - 48)
                 spacing: 8
-                Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "image"; size: 32; color: Theme.color.tertiary }
+                Icon { anchors.horizontalCenter: parent.horizontalCenter; visible: !Theme.material; name: "image"; size: 32; color: Theme.color.tertiary }
+                // (Material: the empty state's icon on a shape)
+                Loader {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    active: Theme.material
+                    visible: active
+                    sourceComponent: MaterialShape {
+                        width: 72
+                        height: 72
+                        shape: "cookie9"
+                        color: Theme.m3.secondaryContainer
+                        Icon { anchors.centerIn: parent; name: "image"; size: 32; color: Theme.m3.onSecondaryContainer }
+                    }
+                }
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
@@ -807,8 +868,9 @@ GlassWindow {
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                 height: bannerRow.implicitHeight + 24
                 radius: Theme.radius.menu
-                color: error ? (Theme.dark ? "#3A1F1E" : "#FDECEA") : (Theme.dark ? "#2C2C31" : "#FFFFFF")
-                border.width: 1
+                // (Material: errorContainer, or a raised surfaceContainerHigh card, no border)
+                color: Theme.material ? (error ? Theme.m3.errorContainer : Theme.m3.surfaceContainerHigh) : error ? (Theme.dark ? "#3A1F1E" : "#FDECEA") : (Theme.dark ? "#2C2C31" : "#FFFFFF")
+                border.width: Theme.material ? 0 : 1
                 border.color: error ? Qt.alpha(Theme.color.danger, 0.4) : Theme.color.separator
                 MouseArea { anchors.fill: parent } // keep clicks off the canvas
 
@@ -821,7 +883,7 @@ GlassWindow {
                     Icon {
                         name: bannerBox.error ? "warning-circle" : "floppy-disk"
                         size: 20
-                        color: bannerBox.error ? Theme.color.danger : Theme.color.secondary
+                        color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : bannerBox.error ? Theme.color.danger : Theme.color.secondary
                     }
                     Column {
                         width: parent.width - 32 - bannerActions.width - 12
@@ -831,14 +893,14 @@ GlassWindow {
                             width: parent.width
                             wrapMode: Text.Wrap
                             text: win.banner?.title ?? ""
-                            color: Theme.color.label
+                            color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
                         }
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
                             text: win.banner?.body ?? ""
-                            color: Theme.color.secondary
+                            color: Theme.material && bannerBox.error ? Theme.m3.onErrorContainer : Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small }
                         }
                     }
@@ -892,9 +954,10 @@ GlassWindow {
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 16 }
                 width: toastLabel.implicitWidth + 32
-                height: 32
-                radius: 16
-                color: Theme.dark ? "#3A3A3F" : "#1C1C1E"
+                // (Material: a snackbar, inverseSurface, corner 4)
+                height: Theme.material ? 48 : 32
+                radius: Theme.material ? 4 : 16
+                color: Theme.material ? Theme.m3.inverseSurface : Theme.dark ? "#3A3A3F" : "#1C1C1E"
                 opacity: win.toast !== "" ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: win.toast !== "" ? 200 : 140 } }
@@ -902,11 +965,11 @@ GlassWindow {
                     id: toastLabel
                     anchors.centerIn: parent
                     spacing: 8
-                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "check"; bold: true; size: 14; color: "#F2F2F5" }
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "check"; bold: true; size: 14; color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5" }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: win.toast
-                        color: "#F2F2F5"
+                        color: Theme.material ? Theme.m3.inverseOnSurface : "#F2F2F5"
                         font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                     }
                 }
@@ -970,7 +1033,7 @@ GlassWindow {
                             required property string modelData
                             required property int index
                             readonly property bool current: win.s.colorIndex === index
-                            width: 26
+                            width: Theme.material ? 24 : 26 // (Material's buttons are wider: room for them)
                             height: 36
                             Rectangle {
                                 anchors.centerIn: parent
@@ -987,7 +1050,10 @@ GlassWindow {
                                 height: 16
                                 radius: 8
                                 color: swatch.modelData
-                                scale: swatchMouse.pressed ? 0.9 : 1
+                                // (Glass shrinks on press; Material grows: the ElasticControl)
+                                scale: !Theme.material && swatchMouse.pressed ? 0.9 : 1
+                                transform: Theme.material ? pressFx1.effects : []
+                                ElasticControl { id: pressFx1; pressed: swatchMouse.pressed; enabled: Theme.material }
                                 Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
                             }
                             MouseArea {
@@ -1093,28 +1159,53 @@ GlassWindow {
                     busy: win.busy === "copy"
                     onClicked: win.copy()
                 }
-                // Save, with Save as copy beside it
-                Row {
-                    spacing: 2
-                    EditorButton {
-                        variant: "primary"
-                        label: win.s.dirty ? "Save" : "Done"
-                        tipBelow: false
-                        tooltip: win.s.dirty ? "Save over the original" : "Close the editor"
-                        shortcut: win.s.dirty ? "Ctrl+S" : ""
-                        enabled: win.ready && (win.busy === "" || win.busy === "save")
-                        busy: win.busy === "save"
-                        onClicked: win.save()
+                // Save, with Save as copy beside it (Material: a split button, Save
+                // as a copy, Copy and Share in its menu, Material 3 Expressive's)
+                Loader {
+                    anchors.verticalCenter: Theme.material ? parent.verticalCenter : undefined
+                    sourceComponent: Theme.material ? materialSave : glassSave
+                }
+                Component {
+                    id: glassSave
+                    Row {
+                        spacing: 2
+                        EditorButton {
+                            variant: "primary"
+                            label: win.s.dirty ? "Save" : "Done"
+                            tipBelow: false
+                            tooltip: win.s.dirty ? "Save over the original" : "Close the editor"
+                            shortcut: win.s.dirty ? "Ctrl+S" : ""
+                            enabled: win.ready && (win.busy === "" || win.busy === "save")
+                            busy: win.busy === "save"
+                            onClicked: win.save()
+                        }
+                        EditorButton {
+                            variant: "secondary"
+                            icon: "files"
+                            tipBelow: false
+                            tooltip: "Save as a copy"
+                            shortcut: "Ctrl+Shift+S"
+                            enabled: win.ready && (win.busy === "" || win.busy === "saveCopy")
+                            busy: win.busy === "saveCopy"
+                            onClicked: win.saveCopy()
+                        }
                     }
-                    EditorButton {
-                        variant: "secondary"
-                        icon: "files"
-                        tipBelow: false
-                        tooltip: "Save as a copy"
-                        shortcut: "Ctrl+Shift+S"
-                        enabled: win.ready && (win.busy === "" || win.busy === "saveCopy")
-                        busy: win.busy === "saveCopy"
-                        onClicked: win.saveCopy()
+                }
+                Component {
+                    id: materialSave
+                    SplitButton {
+                        upward: true
+                        text: win.s.dirty ? "Save" : "Done"
+                        icon: win.s.dirty ? "floppy-disk" : "check"
+                        tooltip: win.s.dirty ? "Save over the original (Ctrl+S)" : "Close the editor"
+                        enabled: win.ready && (win.busy === "" || win.busy === "save" || win.busy === "saveCopy")
+                        busy: win.busy === "save" || win.busy === "saveCopy"
+                        onClicked: win.save()
+                        menu: [
+                            { text: "Save as a copy", icon: "files", action: () => win.saveCopy() },
+                            { text: "Copy image", icon: "copy", action: () => win.copy() },
+                            { text: "Send to a nearby device", icon: "export", action: () => win.share() }
+                        ]
                     }
                 }
             }

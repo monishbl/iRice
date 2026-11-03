@@ -245,10 +245,10 @@ Variants {
                                 bottomLeftRadius: bottomCorner
                                 bottomRightRadius: bottomCorner
                                 color: rowItem.isSelected ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, rowMouse.pressed ? 0.1 : 0)) : Theme.m3.surfaceContainerHigh
-                                Behavior on topLeftRadius { M3Spring { speed: "fast"; epsilon: 0.1 } }
-                                Behavior on topRightRadius { M3Spring { speed: "fast"; epsilon: 0.1 } }
-                                Behavior on bottomLeftRadius { M3Spring { speed: "fast"; epsilon: 0.1 } }
-                                Behavior on bottomRightRadius { M3Spring { speed: "fast"; epsilon: 0.1 } }
+                                Behavior on topLeftRadius { MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                                Behavior on topRightRadius { MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                                Behavior on bottomLeftRadius { MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                                Behavior on bottomRightRadius { MaterialSpring { speed: "fast"; epsilon: 0.1 } }
                                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                             }
                         }

@@ -1,6 +1,8 @@
 import QtQuick
 
-// Thin macOS-style slider with a round knob. Emits moved() while dragging.
+// Slider: macOS's thin track with a round knob, or Material 3 Expressive's in
+// the Material look (a 16 px track split by a thin handle with a gap on each
+// side, and a stop dot at the end). Emits moved() while dragging.
 Item {
     id: root
 
@@ -43,11 +45,13 @@ Item {
     }
 
     implicitWidth: 180
-    implicitHeight: 22
+    implicitHeight: Theme.material ? 32 : 22
 
     readonly property real ratio: Math.max(0, Math.min(1, (value - from) / (to - from)))
 
+    // ── Glass ──
     Rectangle {
+        visible: !Theme.material
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width
         height: 4
@@ -61,6 +65,7 @@ Item {
         }
     }
     Rectangle {
+        visible: !Theme.material
         x: root.ratio * (root.width - width)
         anchors.verticalCenter: parent.verticalCenter
         width: 18
@@ -69,6 +74,63 @@ Item {
         color: "white"
         border.width: 1
         border.color: Qt.rgba(0, 0, 0, 0.15)
+    }
+
+    // ── Material ──
+    Loader {
+        anchors.fill: parent
+        active: Theme.material
+        sourceComponent: Item {
+            id: m
+            readonly property real track: 16
+            readonly property real gap: 6
+            property real handleWidth: area.pressed || root.activeFocus ? 2 : 4
+            readonly property real hx: root.ratio * (width - handleWidth) // the handle's left edge
+            Behavior on handleWidth { NumberAnimation { duration: 100 } }
+            // done part
+            Rectangle {
+                visible: width > 0
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, m.hx - m.gap)
+                height: m.track
+                topLeftRadius: 8
+                bottomLeftRadius: 8
+                topRightRadius: 2
+                bottomRightRadius: 2
+                color: root.enabled ? Theme.m3.primary : Qt.alpha(Theme.m3.onSurface, 0.38)
+            }
+            // the rest, with its stop dot
+            Rectangle {
+                visible: width > 0
+                x: m.hx + m.handleWidth + m.gap
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, m.width - x)
+                height: m.track
+                topLeftRadius: 2
+                bottomLeftRadius: 2
+                topRightRadius: 8
+                bottomRightRadius: 8
+                color: root.enabled ? Theme.m3.secondaryContainer : Qt.alpha(Theme.m3.onSurface, 0.12)
+                Rectangle {
+                    visible: parent.width > 12
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 4
+                    height: 4
+                    radius: 2
+                    color: Theme.m3.primary
+                }
+            }
+            Rectangle {
+                x: m.hx
+                anchors.verticalCenter: parent.verticalCenter
+                width: m.handleWidth
+                height: m.height
+                radius: width / 2
+                color: root.enabled ? Theme.m3.primary : Qt.alpha(Theme.m3.onSurface, 0.38)
+            }
+        }
     }
     MouseArea {
         id: area

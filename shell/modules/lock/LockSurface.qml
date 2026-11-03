@@ -2,19 +2,14 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Widgets
 import qs.common
 import qs.glass
 import qs.services
 
-// One screen of the lock (Settings → Lock Screen):
-//   iOS    the date and a large clock, a row of small widgets (battery,
-//          weather, next event), Now Playing with controls, recent
-//          notifications, and the password field at the bottom
-//   macOS  the date and a large clock up top; avatar, name and the password
-//          field at the bottom (Now Playing above them while music plays)
-// Cards and the field are glass, frost or solid (or follow the system), and
-// the text is light, dark, or picked from the wallpaper.
+// One screen of the lock (Settings → Lock Screen): the wallpaper, the lock
+// itself as each look draws it (LockGlass, LockMaterial), StandBy over them,
+// and the rules for both: lock and unlock transitions, StandBy and the
+// morph into it, what wakes it, where the keyboard goes.
 WlSessionLockSurface {
     id: surface
 
@@ -26,15 +21,8 @@ WlSessionLockSurface {
 
     readonly property var cfg: Config.options.lock
     readonly property bool ios: cfg.layout !== "macos"
-    // Notifications and Now Playing (lock.notifications): shelf (the apps'
-    // icons and the newest under the clock, the player over the sign-in),
-    // column (beside the clock, on a wide screen) or icons (only the icons)
-    readonly property string style: cfg.notifications ?? "shelf"
-    readonly property bool split: style === "column" && width > height
     readonly property string material: cfg.material === "system" ? (Theme.glass.tier === "liquid" ? "glass" : Theme.glass.tier === "frosted" ? "frost" : "solid") : cfg.material
     readonly property bool darkInk: cfg.text === "dark" || (cfg.text === "auto" && Wallpaper.topIsLight)
-    readonly property color ink: darkInk ? "#18181B" : "#FFFFFF"
-    readonly property color ink2: darkInk ? Qt.rgba(0.09, 0.09, 0.11, 0.66) : Qt.rgba(1, 1, 1, 0.72)
 
     color: "black"
 
@@ -56,7 +44,7 @@ WlSessionLockSurface {
         enabled: surface.sbMode !== "none"
         NumberAnimation { duration: surface.sbMode === "morph" ? 650 : 400; easing.type: Easing.InOutCubic }
     }
-    readonly property bool morphOn: sbMode === "morph" && standbyHere && standbyView.view === 0
+    readonly property bool morphOn: sbMode === "morph" && standbyHere && standbyView.view === 0 && (lockView.item?.morphable ?? true)
     readonly property bool morphing: morphOn && sb > 0 && sb < 1
     function ramp(a, b) { // sb mapped to 0..1 over [a, b], smoothstepped
         const t = Math.max(0, Math.min(1, (sb - a) / (b - a)));
@@ -91,15 +79,16 @@ WlSessionLockSurface {
         sourceSize: Qt.size(width, height)
         asynchronous: true
     }
-    // Frost: the wallpaper blurred once, shown through the cards
+    // Frost (Glass): the wallpaper blurred once, shown through the cards
+    readonly property Item frost: frosted
     Item {
         id: frosted
         anchors.fill: parent
         visible: false
-        layer.enabled: surface.material === "frost"
+        layer.enabled: surface.material === "frost" && !Theme.material
         Image {
             anchors.fill: parent
-            source: surface.material === "frost" ? Wallpaper.source : ""
+            source: surface.material === "frost" && !Theme.material ? Wallpaper.source : ""
             fillMode: Image.PreserveAspectCrop
             sourceSize: Qt.size(parent.width / 4, parent.height / 4)
             asynchronous: true
@@ -134,456 +123,27 @@ WlSessionLockSurface {
         NumberAnimation { duration: Theme.motion.large; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized }
     }
 
-    SystemClock { id: clock; precision: SystemClock.Minutes }
-
-    // A card's background in the chosen material
-    component Plate: Item {
-        id: plate
-        property real radius: 20
-        Glass {
-            visible: surface.material === "glass"
-            anchors.fill: parent
-            anchors.margins: -shadowMargin
-            shadowMargin: 14
-            radius: plate.radius
-            forceLiquid: true
-        }
-        ClippingRectangle {
-            visible: surface.material !== "glass"
-            anchors.fill: parent
-            radius: plate.radius
-            color: surface.material === "solid" ? (surface.darkInk ? "#FFFFFF" : "#232327") : "transparent"
-            border.width: 1
-            border.color: surface.darkInk ? Qt.rgba(0, 0, 0, 0.08) : Qt.rgba(1, 1, 1, 0.12)
-            ShaderEffectSource {
-                visible: surface.material === "frost"
-                anchors.fill: parent
-                sourceItem: frosted
-                readonly property point at: plate.mapToItem(frosted, 0, 0)
-                sourceRect: Qt.rect(at.x, at.y, plate.width, plate.height)
-                live: false
-            }
-            Rectangle {
-                visible: surface.material === "frost"
-                anchors.fill: parent
-                color: surface.darkInk ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.28)
-            }
+    // Each look draws its own lock over the same wallpaper and under the
+    // same StandBy (LockGlass, LockMaterial: Android's); this file keeps
+    // every rule about what shows when
+    function focusField() {
+        lockView.item?.focusField();
+    }
+    Loader {
+        id: lockView
+        anchors.fill: parent
+        sourceComponent: Theme.material ? materialLock : glassLock
+    }
+    Component {
+        id: glassLock
+        LockGlass {
+            host: surface
         }
     }
-
-    // Everything but the wallpaper and StandBy (lifts away on unlock)
-    Item {
-        id: content
-        anchors.fill: parent
-        opacity: 1 - surface.exit
-        scale: surface.zoomOut ? 1 + 0.08 * surface.exit : 1
-        visible: !(surface.standby && surface.sb >= 1)
-
-        // ── Date and time ───────────────────────────────────────────────────
-        Column {
-            id: header
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height * (surface.ios ? 0.07 : 0.1) + (surface.lockFx === "zoom" ? (1 - surface.reveal) * -20 : 0)
-            opacity: surface.reveal
-            spacing: 0
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: Qt.formatDate(clock.date, "dddd d MMMM")
-                color: surface.ink2
-                font { family: Theme.font.family; pixelSize: 24; weight: Font.DemiBold }
-            }
-            Text {
-                id: lockClock
-                anchors.horizontalCenter: parent.horizontalCenter
-                // The morph to StandBy flies a copy of it (below)
-                opacity: surface.morphOn && surface.sb > 0 ? 0 : 1
-                // 12-hour, like the menu bar (no AM/PM at this size)
-                text: TimeFormat.hour(clock.date) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
-                color: surface.darkInk ? Qt.rgba(0.09, 0.09, 0.11, 0.85) : Qt.rgba(1, 1, 1, 0.85)
-                font { family: Theme.font.family; pixelSize: surface.ios ? 168 : 150; weight: Font.Bold; letterSpacing: -5; features: { "tnum": 1 } }
-                layer.enabled: true
-                layer.effect: MultiEffect {
-                    shadowEnabled: !surface.darkInk
-                    shadowColor: Qt.rgba(0, 0, 0, 0.3)
-                    shadowBlur: 0.6
-                    shadowVerticalOffset: 2
-                }
-            }
-        }
-
-        // ── iOS: small widgets under the clock ──────────────────────────────
-        Row {
-            id: complications
-            visible: surface.ios
-            anchors { horizontalCenter: parent.horizontalCenter; top: header.bottom; topMargin: 4 }
-            opacity: surface.reveal
-            spacing: 16
-            readonly property var next: Calendar.upcoming(1)[0] ?? null
-            Repeater {
-                model: [
-                    { icon: "", battery: true, text: Island.hasBattery ? Math.round(Island.level * 100) + "%" : "", on: Island.hasBattery },
-                    { icon: Weather.icon, text: Weather.temp + "°", on: Weather.ready },
-                    { icon: "calendar-blank", text: complications.next ? (complications.next.allDay ? "Today" : Qt.formatTime(complications.next.start, TimeFormat.hmShort)) : "", on: !!complications.next },
-                    { icon: "list-checks", text: String(Todos.list.filter(t => !t.done).length), on: Todos.list.some(t => !t.done) }
-                ].filter(c => c.on)
-                Plate {
-                    required property var modelData
-                    width: 64
-                    height: 64
-                    radius: 32
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 1
-                        Icon {
-                            visible: !parent.parent.modelData.battery
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            name: parent.parent.modelData.icon
-                            fill: true
-                            size: 18
-                            color: surface.ink
-                        }
-                        BatteryGlyph {
-                            visible: !!parent.parent.modelData.battery
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            size: 11
-                            level: Island.level
-                            charging: Island.charging && Island.level < 1
-                            plugged: Island.charging && Island.level >= 1
-                            color: surface.ink
-                        }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: parent.parent.modelData.text
-                            color: surface.ink
-                            font { family: Theme.font.family; pixelSize: 13; weight: Font.DemiBold; features: { "tnum": 1 } }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Notifications ───────────────────────────────────────────────────
-        // Now Playing: in the column beside the clock, or over the sign-in
-        Plate {
-            id: player
-            readonly property var p: Island.player
-            visible: !!p && (p.trackTitle ?? "") !== ""
-            width: cards.width
-            x: cards.x
-            y: surface.split ? header.y : login.y - height - 24
-            opacity: surface.reveal
-            height: 84
-            radius: 22
-            ClippingRectangle {
-                id: art
-                x: 12
-                anchors.verticalCenter: parent.verticalCenter
-                width: 60
-                height: 60
-                radius: 12
-                color: Qt.rgba(1, 1, 1, 0.12)
-                Image {
-                    anchors.fill: parent
-                    source: Media.artUrl(player.p)
-                    retainWhileLoading: true
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize: Qt.size(120, 120)
-                    asynchronous: true
-                }
-            }
-            Column {
-                anchors { left: art.right; leftMargin: 12; right: buttons.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                Text {
-                    width: parent.width
-                    textFormat: Text.PlainText
-                    text: player.p?.trackTitle ?? ""
-                    elide: Text.ElideRight
-                    color: surface.ink
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-                }
-                Text {
-                    width: parent.width
-                    textFormat: Text.PlainText
-                    text: player.p?.trackArtist ?? ""
-                    elide: Text.ElideRight
-                    color: surface.ink2
-                    font { family: Theme.font.family; pixelSize: Theme.font.small }
-                }
-            }
-            Row {
-                id: buttons
-                anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                IconButton { icon: "skip-back"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.previous() }
-                IconButton { icon: Island.musicPlaying ? "pause" : "play"; fill: true; iconColor: surface.ink; width: 40; height: 40; iconSize: 22; onClicked: player.p?.togglePlaying() }
-                IconButton { icon: "skip-forward"; fill: true; iconColor: surface.ink; width: 36; height: 36; iconSize: 18; onClicked: player.p?.next() }
-            }
-        }
-
-        Column {
-            id: cards
-            x: surface.split ? Math.round(parent.width * 0.74 - width / 2) : Math.round((parent.width - width) / 2)
-            y: surface.split ? header.y + (player.visible ? player.height + 10 : 0) : (surface.ios ? complications.y + complications.height : header.y + header.height) + 40
-            width: surface.split ? Math.min(420, parent.width * 0.3) : 420
-            spacing: 10
-            opacity: surface.reveal
-
-            // Who sent them, as a row of app icons (shelf, icons)
-            Plate {
-                id: shelf
-                visible: !surface.split && cards.all.length > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: shelfRow.implicitWidth + 20
-                height: 48
-                radius: 24
-                Accessible.role: Accessible.StaticText
-                Accessible.name: cards.all.length + (cards.all.length === 1 ? " notification" : " notifications")
-                Row {
-                    id: shelfRow
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Repeater {
-                        model: shelf.visible ? cards.apps : []
-                        AppIcon {
-                            required property var modelData
-                            anchors.verticalCenter: parent.verticalCenter
-                            size: 30
-                            styled: false
-                            source: Notifications.iconFor(modelData)
-                        }
-                    }
-                    Text {
-                        visible: cards.all.length > cards.apps.length
-                        anchors.verticalCenter: parent.verticalCenter
-                        leftPadding: 4
-                        text: "+" + (cards.all.length - cards.apps.length)
-                        color: surface.ink2
-                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold; features: { "tnum": 1 } }
-                    }
-                }
-            }
-            readonly property var all: Notifications.list.slice().reverse()
-            readonly property var apps: {
-                const seen = {}, out = [];
-                for (let i = 0; i < all.length && out.length < 6; i++) {
-                    const key = all[i].appName || all[i].desktopEntry || String(all[i].id);
-                    if (!seen[key]) {
-                        seen[key] = true;
-                        out.push(all[i]);
-                    }
-                }
-                return out;
-            }
-
-            // The newest (shelf) or the latest three (column): who and what;
-            // the text only with "Show previews" on
-            readonly property var recent: surface.style === "icons" ? [] : all.slice(0, surface.split ? 3 : 1)
-            Repeater {
-                model: cards.recent
-                Plate {
-                    id: note
-                    required property var modelData
-                    width: cards.width
-                    height: 64
-                    radius: 18
-                    AppIcon {
-                        x: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        size: 34
-                        styled: false
-                        source: Notifications.iconFor(note.modelData)
-                    }
-                    Column {
-                        anchors { left: parent.left; leftMargin: 56; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                        Item {
-                            width: parent.width
-                            height: appText.implicitHeight
-                            Text {
-                                id: appText
-                                width: parent.width - when.implicitWidth - 8
-                                textFormat: Text.PlainText
-                                text: surface.cfg.previews ? (note.modelData.summary || note.modelData.appName) : (note.modelData.appName || "Notification")
-                                elide: Text.ElideRight
-                                color: surface.ink
-                                font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
-                            }
-                            Text {
-                                id: when
-                                anchors.right: parent.right
-                                text: Notifications.timeLabel(note.modelData, clock.date)
-                                color: surface.ink2
-                                font { family: Theme.font.family; pixelSize: Theme.font.small }
-                            }
-                        }
-                        Text {
-                            width: parent.width
-                            text: surface.cfg.previews ? (note.modelData.body ?? "").replace(/<[^>]*>/g, "") : "Notification"
-                            elide: Text.ElideRight
-                            maximumLineCount: 1
-                            color: surface.ink2
-                            font { family: Theme.font.family; pixelSize: Theme.font.small }
-                        }
-                    }
-                }
-            }
-            Text {
-                visible: surface.split && Notifications.list.length > 3
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: (Notifications.list.length - 3) + " more"
-                color: surface.ink2
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-            }
-        }
-
-        // ── Sign in ─────────────────────────────────────────────────────────
-        Column {
-            id: login
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: parent.height * (surface.ios ? 0.06 : 0.1)
-            opacity: surface.reveal
-            spacing: 10
-
-            Rectangle {
-                visible: !surface.ios
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 64
-                height: 64
-                radius: 32
-                color: surface.darkInk ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.18)
-                Icon { anchors.centerIn: parent; name: "user"; fill: true; size: 32; color: surface.ink }
-            }
-            Text {
-                visible: !surface.ios
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: Quickshell.env("USER") ?? ""
-                color: surface.ink
-                font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
-            }
-
-            Item {
-                id: fieldBox
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 240
-                height: 36
-
-                property real shake: 0
-                SequentialAnimation {
-                    id: shakeAnim
-                    NumberAnimation { target: fieldBox; property: "shake"; to: 10; duration: 50 }
-                    NumberAnimation { target: fieldBox; property: "shake"; to: -10; duration: 80 }
-                    NumberAnimation { target: fieldBox; property: "shake"; to: 6; duration: 70 }
-                    NumberAnimation { target: fieldBox; property: "shake"; to: 0; duration: 60 }
-                }
-                Connections {
-                    target: surface.lockScope
-                    function onErrorChanged() {
-                        if (surface.lockScope.error !== "")
-                            shakeAnim.restart();
-                    }
-                }
-
-                Plate {
-                    id: field
-                    x: fieldBox.shake
-                    width: parent.width
-                    height: parent.height
-                    radius: 18
-
-                    TextInput {
-                        id: input
-                        x: 16
-                        width: parent.width - 32 - 24
-                        height: parent.height
-                        verticalAlignment: TextInput.AlignVCenter
-                        echoMode: TextInput.Password
-                        passwordCharacter: "●"
-                        enabled: !surface.lockScope.busy
-                        focus: true
-                        color: surface.ink
-                        font { family: Theme.font.family; pixelSize: Theme.font.title; letterSpacing: 1 }
-                        text: surface.lockScope.password
-                        onTextChanged: surface.lockScope.password = text
-                        onAccepted: surface.lockScope.submit()
-                        Component.onCompleted: forceActiveFocus()
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: input.text === ""
-                            // (a finger works too: the fingerprint in the field says so)
-                            text: surface.lockScope.fingerState !== "" ? "Fingerprint or Password" : "Enter Password"
-                            color: surface.ink2
-                            font { family: Theme.font.family; pixelSize: Theme.font.body }
-                        }
-                    }
-                    // The reader, in the field while it's empty (as on a Mac);
-                    // typing brings the arrow back
-                    readonly property bool fingerInField: surface.lockScope.fingerState !== "" && input.text === "" && !surface.lockScope.busy
-                    FingerGlyph {
-                        x: parent.width - 30
-                        y: 6
-                        width: 24
-                        height: 24
-                        visible: parent.fingerInField
-                        phase: surface.lockScope.fingerState
-                        size: 22
-                        color: surface.ink
-                    }
-                    Icon {
-                        x: parent.width - 30
-                        y: 6
-                        width: 24
-                        height: 24
-                        visible: !surface.lockScope.busy && !parent.fingerInField
-                        name: "arrow-circle-right"
-                        fill: true
-                        size: 22
-                        color: surface.ink
-                        opacity: input.text === "" ? 0.4 : 1
-                        MouseArea { anchors.fill: parent; onClicked: surface.lockScope.submit() }
-                    }
-                    Icon {
-                        x: parent.width - 30
-                        y: 6
-                        width: 24
-                        height: 24
-                        visible: surface.lockScope.busy
-                        name: "circle-notch"
-                        size: 22
-                        color: surface.ink
-                        RotationAnimation on rotation { running: surface.lockScope.busy; from: 0; to: 360; duration: 800; loops: Animation.Infinite }
-                    }
-                }
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: surface.lockScope.error
-                visible: text !== ""
-                color: surface.ink
-                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-            }
-            // What the fingerprint reader or the face camera wants
-            // (Lock.qml), under a wrong-password message too: the finger
-            // still works then
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 6
-                readonly property bool isFace: surface.lockScope.faceText !== "" && surface.lockScope.fingerText === ""
-                visible: surface.lockScope.fingerText !== "" || surface.lockScope.faceText !== ""
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: parent.isFace ? "smiley" : "fingerprint"
-                    size: 14
-                    color: surface.ink
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: surface.lockScope.fingerText || surface.lockScope.faceText
-                    color: surface.ink
-                    opacity: 0.85
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                }
-            }
+    Component {
+        id: materialLock
+        LockMaterial {
+            host: surface
         }
     }
 
@@ -605,7 +165,7 @@ WlSessionLockSurface {
                 standbyView.step(e.key === Qt.Key_Right ? 1 : -1);
             } else {
                 surface.woke();
-                input.forceActiveFocus();
+                surface.focusField();
             }
             e.accepted = true;
         }
@@ -622,45 +182,83 @@ WlSessionLockSurface {
                     from = Qt.point(m.x, m.y);
                 } else if (Math.hypot(m.x - from.x, m.y - from.y) > 24) {
                     surface.woke();
-                    input.forceActiveFocus();
+                    surface.focusField();
                 }
             }
             onClicked: {
                 surface.woke();
-                input.forceActiveFocus();
+                surface.focusField();
             }
             onWheel: w => standbyView.step(w.angleDelta.x + w.angleDelta.y < 0 ? 1 : -1)
         }
     }
 
     // ── The morph's flying clock ────────────────────────────────────────
-    // Centre and size go from the lock's clock to StandBy's; the bold copy
-    // hands over to one in StandBy's weight and brightness, which ends
-    // exactly where (and as) StandBy's own clock is, so nothing pops.
-    readonly property point flyFrom: Qt.point(header.x + lockClock.x + lockClock.width / 2, header.y + lockClock.y + lockClock.height / 2)
+    // Glass: centre and size go from the lock's clock to StandBy's; the
+    // bold copy hands over to one in StandBy's weight and brightness, which
+    // ends exactly where (and as) StandBy's own clock is, so nothing pops.
+    // Material: the lock's big clock itself flies to StandBy's, thinning
+    // through the font's weight axis on the way (as a Pixel's clock does
+    // going always-on) and dimming to StandBy's colour and brightness.
     readonly property point flyTo: Qt.point(standbyView.clockTarget.x + standbyView.clockTarget.width / 2, standbyView.clockTarget.y + standbyView.clockTarget.height / 2)
-    readonly property real flyX: flyFrom.x + (flyTo.x - flyFrom.x) * sb
-    readonly property real flyY: flyFrom.y + (flyTo.y - flyFrom.y) * sb
-    readonly property real sizeRatio: standbyView.clockSize / lockClock.font.pixelSize
-    Text {
-        visible: surface.morphing
-        x: surface.flyX - width / 2
-        y: surface.flyY - height / 2
-        scale: 1 + (surface.sizeRatio - 1) * surface.sb
-        opacity: 1 - surface.ramp(0.3, 0.8)
-        text: lockClock.text
-        color: lockClock.color
-        font: lockClock.font
+    Loader {
+        anchors.fill: parent
+        active: !Theme.material && lockView.item !== null
+        sourceComponent: Item {
+            readonly property Item lockClock: lockView.item.bigClock
+            readonly property point flyFrom: lockView.item.clockCentre
+            readonly property real flyX: flyFrom.x + (surface.flyTo.x - flyFrom.x) * surface.sb
+            readonly property real flyY: flyFrom.y + (surface.flyTo.y - flyFrom.y) * surface.sb
+            readonly property real sizeRatio: standbyView.clockSize / lockClock.font.pixelSize
+            Text {
+                visible: surface.morphing
+                x: parent.flyX - width / 2
+                y: parent.flyY - height / 2
+                scale: 1 + (parent.sizeRatio - 1) * surface.sb
+                opacity: 1 - surface.ramp(0.3, 0.8)
+                text: parent.lockClock.text
+                color: parent.lockClock.color
+                font: parent.lockClock.font
+            }
+            Text {
+                visible: surface.morphing
+                x: parent.flyX - width / 2
+                y: parent.flyY - height / 2
+                scale: 1 / parent.sizeRatio + (1 - 1 / parent.sizeRatio) * surface.sb
+                opacity: surface.ramp(0.2, 0.75) * standbyView.clockOpacity
+                text: parent.lockClock.text
+                color: standbyView.ink
+                font { family: Theme.font.family; pixelSize: standbyView.clockSize; weight: standbyView.clockWeight; letterSpacing: -standbyView.clockSize * 0.03; features: { "tnum": 1 } }
+            }
+        }
     }
-    Text {
-        visible: surface.morphing
-        x: surface.flyX - width / 2
-        y: surface.flyY - height / 2
-        scale: 1 / surface.sizeRatio + (1 - 1 / surface.sizeRatio) * surface.sb
-        opacity: surface.ramp(0.2, 0.75) * standbyView.clockOpacity
-        text: lockClock.text
-        color: standbyView.ink
-        font { family: Theme.font.family; pixelSize: standbyView.clockSize; weight: standbyView.clockWeight; letterSpacing: -standbyView.clockSize * 0.03; features: { "tnum": 1 } }
+    function mix(a, b, t) {
+        return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+    }
+    Loader {
+        active: Theme.material && surface.morphing && lockView.item !== null
+        sourceComponent: Component {
+            MaterialClock {
+                readonly property var lock: lockView.item
+                readonly property rect from: lock.clockRect
+                readonly property rect to: standbyView.clockTarget
+                readonly property real t: surface.sb
+                readonly property real ratio: lock.clockSize > 0 ? standbyView.mClockSize / lock.clockSize : 1
+                x: from.x + from.width / 2 + (to.x + to.width / 2 - from.x - from.width / 2) * t - width / 2
+                y: from.y + from.height / 2 + (to.y + to.height / 2 - from.y - from.height / 2) * t - height / 2
+                width: implicitWidth
+                height: implicitHeight
+                scale: 1 + (ratio - 1) * t
+                time: lock.now
+                size: lock.clockSize
+                weight: lock.clockWeight + (standbyView.mClockWeight - lock.clockWeight) * t
+                widthAxis: lock.clockWidth + (standbyView.mClockWidth - lock.clockWidth) * t
+                color: surface.mix(lock.clockInk, standbyView.mInk, t)
+                color2: surface.mix(lock.clockInk2, standbyView.mInk2, t)
+                opacity: 1 + (standbyView.clockOpacity - 1) * t
+                align: lock.split ? Text.AlignLeft : Text.AlignHCenter
+            }
+        }
     }
     // Any use of the lock screen keeps StandBy away
     Connections {

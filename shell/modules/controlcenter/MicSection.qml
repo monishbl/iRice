@@ -21,10 +21,10 @@ Column {
         visible: root.showTitle
         text: "Microphone"
         leftPadding: 6
-        topPadding: 8
-        bottomPadding: 4
-        color: Theme.color.tertiary
-        font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+        topPadding: Theme.material ? 12 : 8
+        bottomPadding: Theme.material ? 6 : 4
+        color: Theme.material ? Theme.m3.primary : Theme.color.tertiary
+        font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption; weight: Theme.material ? Font.Medium : Font.DemiBold }
     }
     CCSlider {
         width: parent.width

@@ -178,7 +178,7 @@ LazyLoader {
         radius: Theme.material ? (over ? 28 : 20) : 20
         Behavior on radius {
             enabled: Theme.material
-            M3Spring { speed: "fast"; epsilon: 0.25 }
+            MaterialSpring { speed: "fast"; epsilon: 0.25 }
         }
         color: Theme.material ? (over ? Theme.m3.primaryContainer : Theme.m3.surfaceContainerHighest) : over ? Qt.alpha(Theme.accent, 0.38) : Qt.rgba(1, 1, 1, 0.08)
         border.width: Theme.material ? (over ? 2 : 0) : 1

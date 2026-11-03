@@ -345,7 +345,7 @@ Scope {
                                 radius: Theme.material ? (btnMouse.pressed && !off ? 8 : height / 2) : 17
                                 Behavior on radius {
                                     enabled: Theme.material
-                                    M3Spring { speed: "fast"; epsilon: 0.25 }
+                                    MaterialSpring { speed: "fast"; epsilon: 0.25 }
                                 }
                                 color: Theme.material ? (off ? base : Qt.tint(base, Qt.alpha(ink, btnMouse.pressed ? 0.1 : btnMouse.containsMouse ? 0.08 : 0)))
                                     : modelData.primary ? Theme.accent : btnMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill

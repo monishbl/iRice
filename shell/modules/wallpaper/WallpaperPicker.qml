@@ -168,7 +168,7 @@ Variants {
                                 // (Material: corner 16, the chosen one rounder in
                                 // a 3 px primary outline; keyboard focus in secondary)
                                 radius: Theme.material ? (cell.current ? 28 : 16) : 12
-                                Behavior on radius { enabled: Theme.material; M3Spring { speed: "default"; epsilon: 0.1 } }
+                                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "default"; epsilon: 0.1 } }
                                 color: Theme.material && cell.current ? Theme.m3.surfaceContainer : Theme.color.fill
                                 border.width: cell.current ? 3 : list.currentIndex === cell.index ? 2 : 0
                                 border.color: cell.current ? Theme.accent : Theme.material ? Theme.m3.secondary : Theme.color.label

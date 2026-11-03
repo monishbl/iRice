@@ -27,29 +27,38 @@ LazyLoader {
         implicitHeight: content.implicitHeight + 28 + 2 * m
 
         Glass {
+            id: glass
             anchors.fill: parent
-            radius: 20
+            radius: Theme.material ? 24 : 20
             bevel: 16
             shadowMargin: win.m
+        }
+        // Material: a card in surfaceContainerHigh
+        Rectangle {
+            visible: Theme.material
+            anchors.fill: glass.shape
+            radius: glass.radius
+            color: Theme.material ? Theme.m3.surfaceContainerHigh : "transparent"
         }
 
         Column {
             id: content
-            x: win.m + 14
-            y: win.m + 14
-            width: win.cardWidth - 28
+            x: win.m + (Theme.material ? 20 : 14)
+            y: win.m + (Theme.material ? 16 : 14)
+            width: win.cardWidth - (Theme.material ? 40 : 28)
             spacing: 8
             focus: true
             Keys.onEscapePressed: ScreenTools.translation = null
 
             Item {
                 width: parent.width
-                height: 22
+                height: Theme.material ? 32 : 22
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Translation"
-                    color: Theme.color.secondary
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold; capitalization: Font.AllUppercase }
+                    // (Material: a label in primary, sentence case)
+                    color: Theme.material ? Theme.m3.primary : Theme.color.secondary
+                    font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.small : Theme.font.caption; weight: Font.DemiBold; capitalization: Theme.material ? Font.MixedCase : Font.AllUppercase }
                 }
                 Row {
                     anchors.right: parent.right
@@ -58,11 +67,15 @@ LazyLoader {
                         model: [{ icon: "copy", act: () => Quickshell.execDetached(["wl-copy", win.t?.text ?? ""]) }, { icon: "x", act: () => ScreenTools.translation = null }]
                         Rectangle {
                             required property var modelData
-                            width: 22
-                            height: 22
-                            radius: 11
-                            color: m2.containsMouse ? Theme.color.fillHover : "transparent"
-                            Icon { anchors.centerIn: parent; name: parent.modelData.icon; bold: true; size: 12; color: Theme.color.secondary }
+                            width: Theme.material ? 32 : 22
+                            height: width
+                            transform: Theme.material ? pressFx1.effects : []
+                            ElasticControl { id: pressFx1; pressed: m2.pressed; enabled: Theme.material }
+                            radius: Theme.material && m2.pressed ? 8 : width / 2
+                            // (Material: a tonal icon button, its state layer over it)
+                            color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, m2.pressed ? 0.1 : m2.containsMouse ? 0.08 : 0))
+                                : m2.containsMouse ? Theme.color.fillHover : "transparent"
+                            Icon { anchors.centerIn: parent; name: parent.modelData.icon; bold: !Theme.material; size: Theme.material ? 16 : 12; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
                             MouseArea { id: m2; anchors.fill: parent; hoverEnabled: true; onClicked: parent.modelData.act() }
                         }
                     }

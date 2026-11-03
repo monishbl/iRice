@@ -74,7 +74,7 @@ Column {
             radius: Theme.material ? (actionMouse.pressed ? 8 : height / 2) : 14
             Behavior on radius {
                 enabled: Theme.material
-                M3Spring { speed: "fast"; epsilon: 0.25 }
+                MaterialSpring { speed: "fast"; epsilon: 0.25 }
             }
             activeFocusOnTab: true
             color: Theme.material ? Qt.tint(mBase, Qt.alpha(mInk, actionMouse.pressed ? 0.1 : actionMouse.containsMouse ? 0.08 : 0))
