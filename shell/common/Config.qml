@@ -122,7 +122,7 @@ Singleton {
                 property bool screenCorners: true
                 property string decorations: "none" // none | controls | titlebars
                 property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by iRice)
-                property string iconStyle: "default" // default | dark | clear | tinted | auto (dark in dark mode)
+                property string iconStyle: "default" // default | dark | clear | tinted | themed (Material: in Material You colours) | auto (dark in dark mode)
                 property string iconShape: "squircle" // squircle (every icon on the same tile) | original
                 property real iconContrast: 0.6 // clear and tinted icons: how far the logo stands apart from its tile (0 .. 1)
                 property string iconTile: "auto" // tile behind transparent logos: auto (from the logo) | neutral | accent

@@ -5,7 +5,9 @@
 //   square icons (they already have a background) are zoomed slightly and
 //   clipped, with their own background filling the gaps; transparent logos
 //   are scaled down onto a tile of tileColor.
-// mode 0 default, 1 dark, 2 clear, 3 tinted. Clear and tinted draw a
+// mode 0 default, 1 dark, 2 clear, 3 tinted, 4 themed (the Material look's,
+//   as Android's themed icons: a round tile in tileColor, the logo in one
+//   tone, `tint`, its detail as shades of it). Clear and tinted draw a
 //   translucent glass tile with a specular rim, like Tahoe, and the logo on
 //   it as one tone (light on dark glass, dark on light glass, or the accent):
 //   the logo is what differs from the background it sits on (a tile, or a
@@ -105,7 +107,7 @@ void main() {
 
     // Continuous-corner (superellipse) tile with a 1px-ish antialiased edge
     vec2 p = uv * 2.0 - 1.0;
-    const float n = 5.0;
+    float n = mode > 3.5 ? 2.0 : 5.0; // (themed: a circle)
     float d = pow(pow(abs(p.x), n) + pow(abs(p.y), n), 1.0 / n);
     float aa = max(fwidth(d), 1e-3);
     float shape = 1.0 - smoothstep(1.0 - aa * 1.5, 1.0, d);
@@ -153,6 +155,14 @@ void main() {
         float keep = square > 0.5 ? clamp(glyph * 1.4, 0.0, 1.0) : art.a; // (transparent icons keep all their art, plates too)
         rgb = mix(tileDark, min(art.rgb * 1.1 + 0.04, vec3(1.0)), keep);
         rgb += rim * 0.10;
+    } else if (mode > 3.5) {
+        // Themed: an opaque tile, the logo in the tint, darker where its
+        // own detail is
+        float g = glyph * mix(0.85, 1.0, contrast);
+        vec3 ink = tint.rgb * mix(0.72, 1.0, lumN);
+        rgb = mix(tileColor.rgb, ink, g);
+        fragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0) * shape * qt_Opacity;
+        return;
     } else if (mode > 1.5) {
         // Clear and tinted: a translucent glass tile (what's behind shows
         // through) with the logo on it in one tone; tinted washes the tile

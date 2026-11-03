@@ -153,11 +153,11 @@ Column {
         }
         Row {
             label: "App icons"
-            detail: ({ dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
+            detail: ({ themed: "In your colours, like Android's themed icons", dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
             Segmented {
-                width: 340
-                readonly property var values: ["default", "dark", "clear", "tinted", "auto"]
-                options: ["Default", "Dark", "Clear", "Tinted", "Auto"]
+                width: 400
+                readonly property var values: ["default", "themed", "dark", "clear", "tinted", "auto"]
+                options: ["Default", "Themed", "Dark", "Clear", "Tinted", "Auto"]
                 current: Math.max(0, values.indexOf(Config.options.appearance.iconStyle))
                 onSelected: i => Config.options.appearance.iconStyle = values[i]
             }
@@ -428,7 +428,7 @@ Column {
                 property var themes: []
                 Process {
                     running: true
-                    command: ["sh", "-c", "for d in \"${XDG_DATA_HOME:-$HOME/.local/share}/icons\" \"$HOME/.icons\" /usr/local/share/icons /usr/share/icons; do for t in \"$d\"/*/index.theme; do [ -f \"$t\" ] && grep -q '^Directories=' \"$t\" && basename \"$(dirname \"$t\")\"; done; done | grep -vx hicolor | sort -u"]
+                    command: ["sh", "-c", "for d in \"${XDG_DATA_HOME:-$HOME/.local/share}/icons\" \"$HOME/.local/share/icons\" \"$HOME/.icons\" /usr/local/share/icons /usr/share/icons; do for t in \"$d\"/*/index.theme; do [ -f \"$t\" ] && grep -q '^Directories=' \"$t\" && basename \"$(dirname \"$t\")\"; done; done | grep -vx hicolor | sort -u"]
                     stdout: StdioCollector {
                         onStreamFinished: iconThemeRow.themes = text.split("\n").filter(x => x !== "")
                     }

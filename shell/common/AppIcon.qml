@@ -21,8 +21,10 @@ IconImage {
         const s = cfg.iconStyle;
         return s === "auto" ? (Theme.dark ? "dark" : "default") : s;
     }
-    readonly property int mode: styled ? (({ dark: 1, clear: 2, tinted: 3 })[style] ?? 0) : 0
-    readonly property bool tiled: styled && cfg.iconShape === "squircle"
+    // (themed: the Material look's, Android's themed icons; Glass has no
+    // Material colours, so it shows the default there)
+    readonly property int mode: styled ? (({ dark: 1, clear: 2, tinted: 3, themed: Theme.material ? 4 : 0 })[style] ?? 0) : 0
+    readonly property bool tiled: styled && (cfg.iconShape === "squircle" || mode === 4)
     // (measured for tiles, and for clear/tinted logos: their brightness and detail)
     readonly property var info: tiled || mode >= 2 ? IconInfo.get(source.toString()) : null
 
@@ -85,8 +87,8 @@ IconImage {
         property real logoPol: root.info?.pol ?? 1
         property real bgFloor: root.info?.floor ?? 0.15
         property real bgEdge: root.info?.edge ?? 0.3
-        property color tint: Theme.accent
-        property color tileColor: root.tileFor(root.info?.dominant ?? "#808080")
+        property color tint: root.mode === 4 ? Theme.m3.onPrimaryContainer : Theme.accent
+        property color tileColor: root.mode === 4 ? Qt.alpha(Theme.m3.primaryContainer, 1) : root.tileFor(root.info?.dominant ?? "#808080")
         property color bgColor: root.info?.bgTop ?? root.info?.bg ?? "#808080"
         property color bgColor2: root.info?.bgBottom ?? root.info?.bg ?? "#808080"
         fragmentShader: Qt.resolvedUrl("icon.frag.qsb")
