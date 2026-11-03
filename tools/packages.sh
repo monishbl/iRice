@@ -27,8 +27,8 @@ PACKAGES=(
     hyprpm meson cpio
     # Spotlight, Quick Look, sharing, widgets, privacy dots, updates
     libqalculate ripgrep plocate poppler ffmpegthumbnailer file psmisc python jq curl translate-shell pacman-contrib matugen
-    # Fonts and icons
-    inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji papirus-icon-theme
+    # Fonts
+    inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji
 )
 # Video decoding and recording on the GPU (VA-API) for the GPUs found: Intel's and
 # NVIDIA's drivers (AMD's is in mesa). install.sh adds them; left out where a
@@ -43,7 +43,14 @@ EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
 # Quickshell (yours is missing, or older than compat.json's minimum)
 QUICKSHELL_BUILD=(git cmake ninja qt6-base qt6-declarative qt6-svg qt6-wayland qt6-shadertools spirv-tools
     wayland wayland-protocols cli11 cpptrace jemalloc libdrm libglvnd libpipewire libxcb mesa pam polkit glib2)
-AUR=(colloid-icon-theme-git tela-circle-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
+# The pointer, in both looks (GTK apps use Adwaita, which comes with gtk3)
+AUR=(bibata-cursor-theme-bin)
+# Icon themes, optional: iRice styles the apps' own icons without one (Glass
+# clear, Material themed). name:package; Papirus is in the repositories, the
+# others in the AUR. install.sh --icons=colloid,papirus… or its question
+ICON_THEMES=(colloid:colloid-icon-theme-git tela-circle:tela-circle-icon-theme-git numix-circle:numix-circle-icon-theme-git
+    flat-remix:flat-remix papirus:papirus-icon-theme)
+ICON_THEMES_REPO=(papirus-icon-theme)
 # Packages iRice used to need and no longer does. Software Update offers to
 # remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.
 DROPPED=()

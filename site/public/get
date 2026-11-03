@@ -1,26 +1,35 @@
 # iRice online setup.
 #
 #   bash <(curl -fsSL https://irice.monishbl.in/get) [folder] [--with-settings] [--yes]
+#   bash <(curl -fsSL https://irice.monishbl.in/get) --install [--tui|--cli] [--yes]
 #
 #   folder            where iRice goes (default ~/iRice)
 #   --with-settings   also apply the shared iRice look (irice.monishbl.in/config)
 #   --yes             don't ask before installing packages
+#   --install         install iRice as your desktop (./install.sh: interactive
+#                     or classic prompts, the whole plan shown first)
+#   --tui, --cli      with --install: which installer, without asking
 #
 # Gets iRice from GitHub (or updates a copy already there) and sets it up to
 # run on its own console, next to your usual desktop: your ~/.config and your
-# session aren't touched. Arch Linux and Arch-based systems only.
+# session aren't touched. Asked in a terminal, it offers the full install
+# instead. Arch Linux and Arch-based systems only.
 set -euo pipefail
 
 repo=https://github.com/monishbl/iRice.git
 site=https://irice.monishbl.in
 dest="$HOME/iRice"
 settings=0
+install=ask
 pass=()
+ui=()
 for a in "$@"; do
     case "$a" in
         --with-settings) settings=1 ;;
         --yes) pass+=(--yes) ;;
-        -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --install) install=1 ;;
+        --tui|--cli) ui+=("$a") ;;
+        -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "Unknown option: $a"; exit 1 ;;
         *) dest="$a" ;;
     esac
@@ -44,6 +53,25 @@ elif [[ -e "$dest" ]]; then
 else
     say "Getting iRice into $dest…"
     git clone --depth 50 "$repo" "$dest"
+fi
+
+# Try it (default) or install it: asked only in a terminal, without --yes
+if [[ $install == ask ]]; then
+    install=0
+    if [[ ${#pass[@]} == 0 && -r /dev/tty ]] && { : </dev/tty; } 2>/dev/null; then
+        printf '\n  1  Try iRice on its own console, next to your desktop (nothing of yours changes)\n'
+        printf '  2  Install iRice as your desktop (shows the whole plan first)\n'
+        read -r -p "  Which one? [1/2] " reply </dev/tty || reply=1
+        [[ "$reply" == 2* ]] && install=1
+    fi
+fi
+if [[ $install == 1 ]]; then
+    # (install.sh asks interactive or classic itself, unless --tui or --cli
+    # says; given the terminal even when this script came through a pipe)
+    if [[ -t 0 ]] || ! { : </dev/tty; } 2>/dev/null; then
+        exec "$dest/install.sh" "${ui[@]}" "${pass[@]}"
+    fi
+    exec "$dest/install.sh" "${ui[@]}" "${pass[@]}" </dev/tty
 fi
 
 "$dest/tools/setup-tty.sh" "${pass[@]}"

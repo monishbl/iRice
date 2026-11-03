@@ -2,21 +2,31 @@
 # iRice installer for Arch Linux. Installs everything iRice needs, builds it,
 # sets it up and checks the result. Safe to run again (it updates).
 #
-#   ./install.sh               ask before each choice (sensible defaults)
+#   ./install.sh               interactive (full screen) or classic prompts: it asks which
+#   ./install.sh --tui         the interactive installer (tools/installer/tui.py)
+#   ./install.sh --cli         the classic prompts, one question at a time
 #   ./install.sh --yes         no questions: recommended choices
+#   ./install.sh --plan        show the whole plan (packages, files, services), change nothing
+#   ./install.sh --dry-run     the plan and each step's commands, change nothing
 #   ./install.sh --dev         link the shell to this folder instead of copying it
 #   ./install.sh --no-deps     skip installing packages
 #   ./install.sh --no-greeter  don't set up the iRice login screen
-#   ./install.sh --no-extras   skip the optional extras (apps, AUR themes, wallpapers)
+#   ./install.sh --no-extras   skip the optional extras (apps, pointer, icon themes, emoji, wallpapers)
+#   ./install.sh --no-snapshot no snapper or Timeshift snapshot before starting
 #   ./install.sh --verify      only check an existing install (same as: irice doctor)
-#   ./install.sh --dry-run     show what would happen, change nothing
+# Choices (the interactive installer passes these; with --yes, unset ones are
+# the recommended ones, and nothing asked by name is done):
+#   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
+#   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
+#   --extras=apps,pointer,emoji,wallpapers|none  --hardware=ID,…|none (see --plan)
+#   --replace-pulseaudio  --network=networkmanager|keep
 #
 # Your Hyprland config is backed up once (~/.config/hypr.pre-irice) and
 # `irice uninstall` puts it back. Other Quickshell configs are left alone.
 # Everything is logged to ~/.cache/irice/install.log.
 set -Euo pipefail
-# Some builds (the MacTahoe GTK theme) fail without a terminal type, which
-# serial consoles and non-interactive runs leave unset
+# Some AUR builds fail without a terminal type, which serial consoles and
+# non-interactive runs leave unset
 export TERM="${TERM:-xterm-256color}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +37,9 @@ BIN="$HOME/.local/bin"
 LOG="$CACHE/irice/install.log"
 
 YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0
+# (lists: "-" until chosen, then names separated by spaces; "" for none)
+UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask
+list() { [[ $1 == none ]] && return 0; printf '%s' "${1//,/ }"; }
 for a in "$@"; do
     case "$a" in
         --yes|-y) YES=1 ;;
@@ -37,13 +50,56 @@ for a in "$@"; do
         --no-greeter) GREETER=no ;;
         --no-extras) EXTRAS=0 ;;
         --verify) VERIFY_ONLY=1 ;;
-        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --tui) UI=tui ;;
+        --cli) UI=cli ;;
+        --plan) PLAN_ONLY=1 ;;
+        --no-snapshot) SNAPSHOT=0 ;;
+        --look=glass|--look=material) LOOK=${a#*=} ;;
+        --mode=auto|--mode=light|--mode=dark) MODE=${a#*=} ;;
+        --login=keep) GREETER=no ;;
+        --login=look|--login=text|--login=plain) GREETER=yes LOGIN_STYLE=${a#*=} ;;
+        --icons=*) ICONS=$(list "${a#*=}") ;;
+        --extras=*) EXTRAS_LIST=$(list "${a#*=}") ;;
+        --hardware=*) HW=$(list "${a#*=}") ;;
+        --replace-pulseaudio) PULSE=yes ;;
+        --network=networkmanager) NETWORK=yes ;;
+        --network=keep) NETWORK=no ;;
+        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
 
+# ── Which installer ─────────────────────────────────────────────────────
+# The interactive one (tools/installer/tui.py: full screen, with rich)
+# decides everything first, shows the plan, then runs this script with the
+# choices as flags (--cli --yes …): this script is the only one that installs.
+# Without python-rich it offers to install it, else these prompts go on.
+with_rich() {
+    python3 -I -c 'import rich' 2>/dev/null && return 0
+    local reply
+    printf '  The interactive installer needs python-rich.\n'
+    read -r -p "  Install it now (sudo pacman -S python-rich)? [Y/n] " reply </dev/tty || reply=n
+    if [[ -z "$reply" || "$reply" == [yY]* ]] && sudo pacman -S --needed --noconfirm python-rich && python3 -I -c 'import rich' 2>/dev/null; then
+        return 0
+    fi
+    printf '  Using the classic prompts instead.\n\n'
+    return 1
+}
+if [[ $UI != cli && $VERIFY_ONLY == 0 && $PLAN_ONLY == 0 && -t 0 && -t 1 ]] && [[ $UI == tui || $YES == 0 ]]; then
+    if [[ $UI == ask ]]; then
+        printf '\n\033[1miRice setup\033[0m\n'
+        printf '  1  Interactive: pick with the arrow keys and see the whole plan first (recommended)\n'
+        printf '  2  Classic: one question at a time\n'
+        read -r -p "  Which one? [1/2] " reply </dev/tty || reply=2
+        [[ "$reply" == 2* ]] || UI=tui
+    fi
+    if [[ $UI == tui ]] && command -v python3 >/dev/null && with_rich; then
+        exec python3 -I "$ROOT/tools/installer/tui.py" "$@"
+    fi
+fi
+
 # ── Output ──────────────────────────────────────────────────────────────
-if [[ $VERIFY_ONLY == 0 && $DRY == 0 ]]; then
+if [[ $VERIFY_ONLY == 0 && $DRY == 0 && $PLAN_ONLY == 0 ]]; then
     mkdir -p "$(dirname "$LOG")"
     exec > >(tee -a "$LOG") 2>&1
     echo "=== $(date '+%F %T') iRice install from $ROOT ($*)"
@@ -62,14 +118,14 @@ run() {
 }
 ask() { # question, default (y|n) -> 0 for yes
     local def="${2:-y}" reply
-    [[ $YES == 1 || $DRY == 1 ]] && [[ $def == y ]] && return 0
-    [[ $YES == 1 || $DRY == 1 ]] && return 1
+    [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && [[ $def == y ]] && return 0
+    [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && return 1
     read -r -p "  $1 [$([[ $def == y ]] && echo Y/n || echo y/N)] " reply </dev/tty || reply=""
     [[ -z "$reply" ]] && reply=$def
     [[ "$reply" == [yY]* ]]
 }
 
-STEP=0 TOTAL=10
+STEP=0 TOTAL=14
 # step "Title" function [optional]: runs it; on failure, offer Retry / Skip / Abort
 step() {
     local title="$1" fn="$2" optional="${3:-}"
@@ -258,6 +314,216 @@ gpu_lua() { # vendors (gpu_vendors' output)
 # The AUR helper there is (yay or paru), or nothing
 aur_helper() { command -v yay || command -v paru || true; }
 
+# ── Choices ─────────────────────────────────────────────────────────────
+# Everything is asked before anything is done, so the plan shown is the whole
+# plan. With --yes: the recommended answers, but never one that removes or
+# turns off something of yours (PulseAudio, another network service, another
+# login screen) or that is asked by name (an NVIDIA driver, biometrics).
+WANT_APPS=0 WANT_POINTER=0 WANT_EMOJI=0 WANT_WALLS=0 HW_PLAN="" HW_LATER=0 OTHER_NET="" OTHER_DM=""
+unattended() { [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]]; }
+want_extra() { # name question default
+    [[ $EXTRAS == 0 ]] && return 1
+    if [[ $EXTRAS_LIST != - ]]; then [[ " $EXTRAS_LIST " == *" $1 "* ]]; return; fi
+    ask "$2" "$3"
+}
+missing_of() { # packages… -> the ones not installed, one a line
+    local p
+    for p; do [[ -n "$p" ]] && ! pkg_installed "$p" && printf '%s\n' "$p"; done
+    return 0
+}
+icon_package() { # name -> its package (ICON_THEMES)
+    local t
+    for t in "${ICON_THEMES[@]}"; do [[ ${t%%:*} == "$1" ]] && { printf '%s\n' "${t#*:}"; return 0; }; done
+    return 1
+}
+walls_dir() { printf '%s/Wallpapers/macOS\n' "$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")"; }
+# No terminal, file manager or browser yet
+apps_missing() {
+    local t f b
+    t=$(command -v foot kitty alacritty wezterm konsole gnome-terminal ghostty 2>/dev/null | head -1)
+    f=$(command -v thunar nautilus dolphin nemo pcmanfm 2>/dev/null | head -1)
+    b=$(command -v firefox chromium google-chrome-stable brave zen-browser librewolf 2>/dev/null | head -1)
+    [[ -z "$t" || -z "$f" || -z "$b" ]]
+}
+# The hardware plan (tools/installer/hardware.py: only reads), and the items
+# you want from it. Without Python yet, after the packages (it comes with them)
+decide_hardware() {
+    HW_LATER=0
+    if ! command -v python3 >/dev/null; then
+        HW_LATER=1
+        return 0
+    fi
+    HW_PLAN=$(python3 -I "$ROOT/tools/installer/hardware.py" plan 2>/dev/null || true)
+    [[ $HW != - ]] && return 0
+    HW=""
+    local id ticked asked locked group title why pkgs aur shown=0
+    while IFS=$'\t' read -r id ticked asked locked group title why pkgs aur; do
+        [[ -z "$id" || $locked == 1 ]] && continue
+        [[ $asked == 1 ]] && unattended && continue
+        [[ $shown == 0 ]] && { say "  ${B}For this computer${R}"; shown=1; }
+        note "$why"
+        ask "$title?" "$([[ $ticked == 1 ]] && echo y || echo n)" && HW+=" $id"
+    done <<<"$HW_PLAN"
+    return 0
+}
+hw_line() { [[ -n "$HW_PLAN" ]] && awk -F'\t' -v id="$1" '$1 == id' <<<"$HW_PLAN"; }
+decide() {
+    VIRT=$(systemd-detect-virt --vm 2>/dev/null || true)
+    VIRT=${VIRT:-none}
+    if [[ $EXTRAS == 1 ]]; then
+        if [[ $DEPS == 1 ]]; then
+            apps_missing && want_extra apps "Install basic apps (kitty terminal, Files, Firefox, mpv, image viewer)?" y && WANT_APPS=1
+            [[ -n "$(missing_of "${AUR[@]}")" ]] && want_extra pointer "Install the Bibata pointer (from the AUR)?" y && WANT_POINTER=1
+            [[ -n "$(missing_of "${EMOJI_AUR[@]}")" ]] &&
+                want_extra emoji "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n && WANT_EMOJI=1
+        fi
+        [[ ! -f "$(walls_dir)/Tahoe Light.jpg" ]] && want_extra wallpapers "Download macOS wallpapers (Tahoe and earlier, about 10 MB)?" y && WANT_WALLS=1
+    fi
+    # Icon themes: none unless chosen (iRice styles the apps' own icons)
+    local t
+    if [[ $ICONS == - ]]; then
+        ICONS=""
+        if [[ $EXTRAS == 1 && $DEPS == 1 ]] && ask "Install extra icon themes (iRice styles the apps' own icons without one)?" n; then
+            for t in "${ICON_THEMES[@]}"; do ask "  ${t%%:*}?" n && ICONS+=" ${t%%:*}"; done
+        fi
+    fi
+    for t in $ICONS; do
+        icon_package "$t" >/dev/null || die "No icon theme called $t (there are: $(for t in "${ICON_THEMES[@]}"; do printf '%s ' "${t%%:*}"; done))"
+    done
+    # PipeWire replaces PulseAudio: removed only when you say so
+    if [[ $DEPS == 1 && $PULSE == ask ]] && pkg_installed pulseaudio; then
+        if [[ $YES == 1 || $PLAN_ONLY == 1 ]]; then
+            PULSE=no
+        else
+            warn "PulseAudio is installed; iRice uses PipeWire, which replaces it."
+            ask "Replace PulseAudio with PipeWire?" y && PULSE=yes || PULSE=no
+        fi
+    fi
+    # Another network service: switched to NetworkManager only when you say so
+    if systemctl is-active --quiet systemd-networkd || systemctl is-active --quiet dhcpcd || systemctl is-active --quiet iwd; then
+        if ! systemctl is-enabled --quiet NetworkManager 2>/dev/null; then
+            OTHER_NET=$(for t in systemd-networkd dhcpcd iwd; do systemctl is-active --quiet $t && echo $t && break; done)
+            if [[ $NETWORK == ask ]]; then
+                if [[ $YES == 1 || $PLAN_ONLY == 1 ]]; then
+                    NETWORK=no
+                else
+                    warn "Your network is run by $OTHER_NET."
+                    ask "Switch it to NetworkManager (iRice's Wi-Fi menus use it; takes effect after a reboot)?" y && NETWORK=yes || NETWORK=no
+                fi
+            fi
+        fi
+    fi
+    # The login screen: another one is only replaced when you say so
+    OTHER_DM=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null || true)
+    [[ "$OTHER_DM" == greetd ]] && OTHER_DM=""
+    if [[ $GREETER == ask ]]; then
+        if [[ -n "$OTHER_DM" ]]; then
+            ask "Use the iRice login screen instead of $OTHER_DM?" n && GREETER=yes || GREETER=no
+        else
+            ask "Set up the iRice login screen (recommended)?" y && GREETER=yes || GREETER=no
+        fi
+    fi
+    decide_hardware
+}
+
+# Where a snapshot can be taken before anything changes (set up already)
+snapshot_tool() {
+    if command -v snapper >/dev/null && [[ -f /etc/snapper/configs/root ]]; then
+        echo snapper
+    elif command -v timeshift >/dev/null && [[ -f /etc/timeshift/timeshift.json ]]; then
+        echo timeshift
+    fi
+}
+
+# Everything the install will do, before it does any of it
+plan_row() { # label text: wrapped under the label, your home as ~
+    local text=${2//"$HOME"/"~"} line first=1 w
+    w=${COLUMNS:-$( [[ -t 1 ]] && tput cols 2>/dev/null || echo 100)}
+    w=$((w - 16))
+    (( w < 40 )) && w=40
+    while IFS= read -r line; do
+        if [[ $first == 1 ]]; then printf '  %s%-12s%s %s\n' "$DIM" "$1" "$R" "$line"; else printf '  %-12s %s\n' "" "$line"; fi
+        first=0
+    done < <(fold -s -w "$w" <<<"$text")
+}
+show_plan() {
+    local want=() need=() aur=() p t id line title pkgs paur first gpus pm tool
+    printf '\n%sThe plan%s\n' "$B" "$R"
+    tool=$(snapshot_tool)
+    if [[ $SNAPSHOT == 0 ]]; then plan_row Snapshot "none (--no-snapshot)"
+    elif [[ -n "$tool" ]]; then plan_row Snapshot "a $tool snapshot of the system first, to go back to"
+    else plan_row Snapshot "none (no snapper or Timeshift set up); what's replaced is backed up as it goes"
+    fi
+    if [[ $DEPS == 1 ]]; then
+        for p in "${PACKAGES[@]}"; do want+=("$p"); done
+        pm=$(power_manager) && want=("${want[@]/power-profiles-daemon/}")
+        gpus=$(gpu_vendors)
+        grep -qx intel <<<"$gpus" && want+=("${GPU_INTEL[@]}")
+        grep -qx nvidia <<<"$gpus" && want+=("${GPU_NVIDIA[@]}")
+        [[ $WANT_APPS == 1 ]] && want+=("${APPS[@]}")
+        case "$VIRT" in
+            kvm|qemu) want+=(qemu-guest-agent spice-vdagent) ;;
+            oracle) want+=(virtualbox-guest-utils) ;;
+            vmware) want+=(open-vm-tools) ;;
+        esac
+        mapfile -t need < <(missing_of "${want[@]}")
+        plan_row Packages "updates the system (pacman -Syu)$( ((${#need[@]})) && printf ' and installs %d: %s' ${#need[@]} "${need[*]}")"
+        if [[ $PULSE == yes ]]; then
+            plan_row "" "removes $(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null | xargs): PipeWire replaces it"
+        elif [[ $PULSE == no ]]; then
+            plan_row "" "${YEL}keeps PulseAudio, so PipeWire can't be installed: the install stops there${R} (--replace-pulseaudio)"
+        fi
+        [[ -z "$(aur_helper)" ]] && aur+=(yay)
+        [[ $WANT_POINTER == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${AUR[@]}")
+        [[ $WANT_EMOJI == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${EMOJI_AUR[@]}")
+        (( ${#aur[@]} )) && plan_row AUR "${aur[*]}"
+        if [[ -n "${ICONS// /}" ]]; then
+            need=()
+            for t in $ICONS; do p=$(icon_package "$t"); pkg_installed "$p" || need+=("$p"); done
+            plan_row "Icon themes" "${need[*]:-installed}"
+        else
+            plan_row "Icon themes" "none: the apps' own icons, styled by iRice"
+        fi
+    else
+        plan_row Packages "none (--no-deps)"
+    fi
+    if [[ $HW_LATER == 1 ]]; then
+        plan_row Hardware "asked after the packages (the check needs Python, which comes with them)"
+    elif [[ -n "${HW// /}" ]]; then
+        first=Hardware
+        for id in $HW; do
+            line=$(hw_line "$id")
+            [[ -z "$line" ]] && { plan_row "$first" "($id: nothing to do on this computer)"; first=""; continue; }
+            IFS=$'\t' read -r _ _ _ _ _ title _ pkgs paur <<<"$line"
+            if [[ $id == scale-* ]]; then pkgs="writes $CONFIG/irice/monitors.lua"; fi
+            plan_row "$first" "$title: ${pkgs}${paur:+${pkgs:+, }AUR: $paur}"
+            first=""
+        done
+    else
+        plan_row Hardware "nothing chosen"
+    fi
+    plan_row Builds "shaders, the Liquid Glass plugin and native helpers, for this machine ($DATA/irice)"
+    plan_row Files "$CONFIG/quickshell/irice and $CONFIG/hypr (the current ones copied to $DATA/irice/backups first;"
+    plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-irice), $BIN/irice"
+    [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
+    [[ $WANT_WALLS == 1 ]] && plan_row "" "macOS wallpapers into $(walls_dir)"
+    if [[ $GREETER == yes ]]; then
+        plan_row Login "the iRice login screen (greetd): /etc/greetd/config.toml (kept as .pre-irice), /usr/share/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (irice uninstall turns it back on)")"
+    elif [[ -n "$OTHER_DM" ]]; then
+        plan_row Login "keeps $OTHER_DM (pick Hyprland there)"
+    else
+        plan_row Login "Hyprland starts when you log in on tty1 ($(login_profile))"
+    fi
+    plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-irice)"
+    p="NetworkManager"
+    if [[ -n "$OTHER_NET" ]]; then
+        [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: iRice's Wi-Fi menus won't work)"
+    fi
+    pm=$(power_manager) || pm=""
+    plan_row Services "$p, bluetooth, avahi-daemon$([[ -z $pm ]] && echo ", power-profiles-daemon"), plocate-updatedb.timer, iRice's root helper and polkit rule"
+    say "  Nothing else of yours is changed or removed."
+}
+
 # ── Steps ───────────────────────────────────────────────────────────────
 VIRT=none
 preflight() {
@@ -312,14 +578,16 @@ install_packages() {
     local want=("${PACKAGES[@]}")
     # Things that would conflict with what iRice uses
     if pkg_installed pulseaudio; then
-        warn "PulseAudio is installed; iRice uses PipeWire, which replaces it."
-        if ask "Replace PulseAudio with PipeWire?" y; then
-            # (only the ones installed: pacman stops at a name it doesn't have)
-            local pa=()
-            mapfile -t pa < <(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null)
-            run sudo pacman -Rdd --noconfirm "${pa[@]}" ||
-                { say "  PulseAudio wasn't removed (see above), and PipeWire can't be installed next to it."; return 1; }
+        if [[ $PULSE != yes ]]; then
+            say "  PulseAudio is installed, and PipeWire (what iRice uses) can't be installed next to it."
+            say "  Nothing was removed. Run the installer again and say yes to replacing it (or pass --replace-pulseaudio)."
+            return 1
         fi
+        # (only the ones installed: pacman stops at a name it doesn't have)
+        local pa=()
+        mapfile -t pa < <(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null)
+        run sudo pacman -Rdd --noconfirm "${pa[@]}" ||
+            { say "  PulseAudio wasn't removed (see above), and PipeWire can't be installed next to it."; return 1; }
     fi
     local pm
     if pm=$(power_manager); then
@@ -344,15 +612,7 @@ install_packages() {
         vmware) avail+=(open-vm-tools) ;;
     esac
     # A terminal, file manager, browser, player and viewer if there aren't any
-    if [[ $EXTRAS == 1 ]]; then
-        local have_term have_files have_browser
-        have_term=$(command -v foot kitty alacritty wezterm konsole gnome-terminal ghostty 2>/dev/null | head -1)
-        have_files=$(command -v thunar nautilus dolphin nemo pcmanfm 2>/dev/null | head -1)
-        have_browser=$(command -v firefox chromium google-chrome-stable brave zen-browser librewolf 2>/dev/null | head -1)
-        if [[ -z "$have_term" || -z "$have_files" || -z "$have_browser" ]] && ask "Install basic apps (foot terminal, Files, Firefox, mpv, image viewer)?" y; then
-            avail+=("${APPS[@]}")
-        fi
-    fi
+    [[ $WANT_APPS == 1 ]] && avail+=("${APPS[@]}")
     say "  Updating the system and installing ${#avail[@]} packages (already installed ones are kept)…"
     note "Arch needs the system up to date for new packages (pacman -Syu)."
     run sudo pacman -Syu --needed --noconfirm "${avail[@]}" || return 1
@@ -422,38 +682,142 @@ install_yay() {
     command -v yay >/dev/null || [[ $DRY == 1 ]]
 }
 
-aur_extras() {
-    [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    local missing=() p
-    for p in "${AUR[@]}"; do pkg_installed "$p" || missing+=("$p"); done
-    [[ ${#missing[@]} == 0 ]] && { note "Tahoe icons, cursors and GTK theme are installed."; return 0; }
-    local helper
+# AUR packages, when chosen (want: 1 or 0): missing ones only; with pamac
+# and no yay or paru, how to build them yourself
+aur_install() { # want "what" packages…
+    local want=$1 what=$2 missing=() helper
+    shift 2
+    mapfile -t missing < <(missing_of "$@")
+    [[ ${#missing[@]} == 0 ]] && { note "$what: installed."; return 0; }
+    [[ $want == 1 ]] || { note "Skipped."; return 0; }
     helper=$(aur_helper)
     if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
         note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"
         return 0
     fi
-    ask "Install the Tahoe-like icons, macOS and Bibata cursors and GTK theme (from the AUR)?" y || { note "Skipped."; return 0; }
-    [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the step before installs it)."; return 1; }
-    # The GTK theme's own script needs sassc, which its package doesn't list
-    run sudo pacman -S --needed --noconfirm sassc || return 1
+    [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the AUR helper step installs it)."; return 1; }
     run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
 }
-
+# The Bibata pointer (default: yes)
+aur_extras() {
+    [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
+    aur_install "$WANT_POINTER" "The Bibata pointer" "${AUR[@]}"
+}
 # Optional emoji styles (default: no)
 emoji_extras() {
     [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    local missing=() p helper
-    for p in "${EMOJI_AUR[@]}"; do pkg_installed "$p" || missing+=("$p"); done
-    [[ ${#missing[@]} == 0 ]] && { note "Apple and Fluent emoji are installed."; return 0; }
-    helper=$(aur_helper)
-    if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
-        note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"
-        return 0
+    aur_install "$WANT_EMOJI" "Apple and Fluent emoji" "${EMOJI_AUR[@]}"
+}
+# Icon themes, only the ones chosen: iRice styles the apps' own icons without
+# one. Papirus from the repositories, the others from the AUR
+icon_themes() {
+    [[ $DEPS == 0 ]] && { note "Skipped."; return 0; }
+    [[ -z "${ICONS// /}" ]] && { note "None chosen: the apps' own icons, styled by iRice."; return 0; }
+    local t p repo=() aur=()
+    for t in $ICONS; do
+        p=$(icon_package "$t") || continue
+        if [[ " ${ICON_THEMES_REPO[*]} " == *" $p "* ]]; then repo+=("$p"); else aur+=("$p"); fi
+    done
+    mapfile -t repo < <(missing_of "${repo[@]}")
+    if (( ${#repo[@]} )); then run sudo pacman -S --needed --noconfirm "${repo[@]}" || return 1; fi
+    (( ${#aur[@]} == 0 )) || aur_install 1 "The icon themes from the AUR" "${aur[@]}"
+}
+
+# What's chosen from the hardware plan (tools/installer/hardware.py), each
+# item on its own: one that fails is reported and the rest go on
+hardware() {
+    [[ $HW_LATER == 1 ]] && decide_hardware
+    [[ -z "${HW// /}" ]] && { note "Nothing chosen."; return 0; }
+    local id line title failed=()
+    for id in $HW; do
+        line=$(hw_line "$id")
+        [[ -z "$line" ]] && { note "$id: nothing to do on this computer."; continue; }
+        IFS=$'\t' read -r _ _ _ _ _ title _ <<<"$line"
+        say "  $title"
+        hardware_item "$id" || { warn "$title didn't finish (see above); the rest goes on."; failed+=("$id"); }
+    done
+    (( ${#failed[@]} == 0 )) || note "To try again: ./install.sh --hardware=$(IFS=,; echo "${failed[*]}")"
+    return 0
+}
+hardware_item() { # id
+    local kind name value pkgs=() aur=() svcs=() s
+    while read -r kind name value; do
+        case "$kind" in
+            pkg) pkgs+=("$name") ;;
+            aur) aur+=("$name") ;;
+            svc) svcs+=("$name") ;;
+            scale) write_scale "$name" "$value" || return 1 ;;
+        esac
+    done < <(python3 -I "$ROOT/tools/installer/hardware.py" apply "$1")
+    mapfile -t pkgs < <(missing_of "${pkgs[@]}")
+    if (( ${#pkgs[@]} )); then run sudo pacman -S --needed --noconfirm "${pkgs[@]}" || return 1; fi
+    if (( ${#aur[@]} )); then aur_install 1 "Its AUR packages" "${aur[@]}" || return 1; fi
+    for s in "${svcs[@]}"; do svc_on "$s" || return 1; done
+    return 0
+}
+# A display's scale (the hardware plan's suggestion), only while Settings →
+# Displays hasn't saved its own (monitors.lua is then its)
+write_scale() { # output scale
+    local f="$CONFIG/irice/monitors.lua"
+    [[ -e "$f" ]] && { note "Settings → Displays has your displays' settings: the scale is left to it."; return 0; }
+    if [[ $DRY == 1 ]]; then note "would write scale $2 for $1 to $f"; return 0; fi
+    mkdir -p "$CONFIG/irice"
+    printf -- '-- Written by the iRice installer: a scale for this screen. Settings → Displays replaces this file.\nhl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' "$1" "$2" >"$f"
+    note "Scale $2 for $1 (Settings → Displays changes it)"
+}
+
+# A snapper or Timeshift snapshot of the system before anything changes,
+# when one of them is set up (nothing is set up for you)
+snapshot() {
+    [[ $SNAPSHOT == 0 ]] && { note "Skipped (--no-snapshot)."; return 0; }
+    case "$(snapshot_tool)" in
+        snapper) run sudo snapper -c root create --description "Before the iRice install" --cleanup-algorithm number ;;
+        timeshift)
+            note "Timeshift's first snapshot can take a while."
+            run sudo timeshift --create --comments "Before the iRice install" --scripted
+            ;;
+        *) note "No snapper or Timeshift set up: no snapshot (what iRice replaces is backed up as it goes)." ;;
+    esac
+}
+
+# The look, light or dark and the login screen's style you chose, into your
+# settings (only those; the file is backed up first, and left alone if it
+# isn't valid JSON)
+settings() {
+    [[ -z "$LOOK$MODE$LOGIN_STYLE" ]] && { note "Kept as they are."; return 0; }
+    local cfg="$CONFIG/irice/config.json"
+    if [[ $DRY == 1 ]]; then note "would set${LOOK:+ look=$LOOK}${MODE:+ mode=$MODE}${LOGIN_STYLE:+ loginStyle=$LOGIN_STYLE} in $cfg"; return 0; fi
+    mkdir -p "$CONFIG/irice"
+    if [[ -f "$cfg" ]]; then
+        mkdir -p "$DATA/irice/backups"
+        cp -a "$cfg" "$DATA/irice/backups/config-$(date +%Y%m%d-%H%M%S).json" || return 1
     fi
-    ask "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n || { note "Skipped (Settings can install them later)."; return 0; }
-    [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the step before installs it)."; return 1; }
-    run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
+    python3 -I - "$cfg" "$LOOK" "$MODE" "$LOGIN_STYLE" <<'PY'
+import json, os, sys
+path, look, mode, style = sys.argv[1:5]
+try:
+    with open(path) as f:
+        c = json.load(f)
+except FileNotFoundError:
+    c = {"welcome": {"done": False}}
+except (OSError, ValueError) as e:
+    sys.exit(f"  {path} couldn't be read ({e}): left as it is")
+if not isinstance(c, dict):
+    sys.exit(f"  {path} isn't iRice's settings: left as it is")
+def part(k):
+    if not isinstance(c.get(k), dict):
+        c[k] = {}
+    return c[k]
+if look:
+    part("appearance")["look"] = look
+if mode:
+    part("appearance")["mode"] = mode
+if style:
+    part("lock")["loginStyle"] = style
+with open(path + ".tmp", "w") as f:
+    json.dump(c, f, indent=4)
+os.replace(path + ".tmp", path)
+PY
 }
 
 build() {
@@ -599,10 +963,10 @@ install_files() {
 extras() {
     [[ $EXTRAS == 0 ]] && { note "Skipped."; return 0; }
     local walls
-    walls="$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Wallpapers/macOS"
+    walls=$(walls_dir)
     if [[ -f "$walls/Tahoe Light.jpg" ]]; then
         note "macOS wallpapers are in $walls"
-    elif ask "Download macOS wallpapers (Tahoe and earlier, about 10 MB)?" y; then
+    elif [[ $WANT_WALLS == 1 ]]; then
         run "$ROOT/tools/get-wallpapers.sh" || warn "Some wallpapers didn't download; the bundled ones still work."
     fi
     # First install: start on the Tahoe pictures, light by day and dark at night
@@ -629,11 +993,13 @@ svc_on() {
 
 services() {
     local s
-    # Networking: NetworkManager, unless something else already runs the network
+    # Networking: NetworkManager, unless something else already runs the
+    # network (then only if you chose to switch: decide)
     if systemctl is-active --quiet systemd-networkd || systemctl is-active --quiet dhcpcd || systemctl is-active --quiet iwd; then
         if ! systemctl is-enabled --quiet NetworkManager 2>/dev/null; then
-            warn "Your network is run by $(for s in systemd-networkd dhcpcd iwd; do systemctl is-active --quiet $s && echo $s && break; done)."
-            if ask "Switch it to NetworkManager (iRice's Wi-Fi menus use it; takes effect after a reboot)?" y; then
+            if [[ $NETWORK != yes ]]; then
+                warn "Your network stays with ${OTHER_NET:-its own service}: iRice's Wi-Fi menus need NetworkManager (./install.sh --network=networkmanager)."
+            else
                 for s in systemd-networkd dhcpcd; do systemctl is-enabled --quiet $s 2>/dev/null && run sudo systemctl disable $s; done
                 # iwd stays and NetworkManager drives it (instead of its own
                 # wpa_supplicant fighting iwd for the Wi-Fi): saved networks are kept
@@ -701,19 +1067,11 @@ keyring_at_login() { # pam file
     printf '%s\n' "$new" | sudo tee "$1" >/dev/null && note "Your keyring unlocks with your login password ($1)"
 }
 
-GREETER_DONE=0 OTHER_DM="" OLD_CONFIG=""
+GREETER_DONE=0 OLD_CONFIG=""
+# (GREETER and OTHER_DM come from decide: another login screen is only
+# replaced when you chose to)
 login() {
-    OTHER_DM=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null || true)
-    [[ "$OTHER_DM" == greetd ]] && OTHER_DM=""
-    local want=$GREETER
-    if [[ $want == ask ]]; then
-        if [[ -n "$OTHER_DM" ]]; then
-            ask "Use the iRice login screen instead of $OTHER_DM?" n && want=yes || want=no
-        else
-            ask "Set up the iRice login screen (recommended)?" y && want=yes || want=no
-        fi
-    fi
-    if [[ $want == yes ]]; then
+    if [[ $GREETER == yes ]]; then
         if ! pkg_installed greetd; then run sudo pacman -S --needed --noconfirm greetd || return 1; fi
         # The greeter user can't read your home, so it gets its own copy
         local wall
@@ -863,11 +1221,13 @@ verify() {
     # (no grep -q in these pipelines: it stops reading early, and pipefail
     # would count the writer's broken pipe as a failure)
     [[ -n "$(fc-list : family 2>/dev/null | grep -i '^Inter')" ]] && ok "Inter font" || bad "The Inter font is missing" "sudo pacman -S inter-font"
+    # (an icon theme is optional: without one, the apps' own icons, styled by iRice)
     icons=""
-    for t in Colloid Tela-circle Papirus; do
-        [[ -d /usr/share/icons/$t || -d "$DATA/icons/$t" ]] && { icons=$t; break; }
+    for t in Colloid Tela-circle Numix-Circle Flat-Remix-Blue-Light Papirus; do
+        [[ -d /usr/share/icons/$t || -d "$DATA/icons/$t" ]] && icons+="${icons:+, }$t"
     done
-    [[ -n $icons ]] && ok "Icon theme ($icons)" || meh "No full icon theme; some app icons may be missing" "install colloid-icon-theme-git (Glass) or tela-circle-icon-theme-git (Material)"
+    [[ -n $icons ]] || icons="the apps' own, styled by iRice"
+    ok "App icons: $icons"
     systemctl is-enabled --quiet NetworkManager 2>/dev/null && ok "NetworkManager on" || meh "NetworkManager isn't on (Wi-Fi menus won't work)" "sudo systemctl enable --now NetworkManager"
     systemctl is-enabled --quiet bluetooth 2>/dev/null && ok "Bluetooth service on" || meh "Bluetooth service isn't on" "sudo systemctl enable --now bluetooth"
     systemctl is-enabled --quiet avahi-daemon 2>/dev/null && ok "mDNS (avahi) on" || meh "avahi-daemon isn't on (phones on the same Wi-Fi won't find this computer)" "sudo systemctl enable --now avahi-daemon"
@@ -918,23 +1278,35 @@ cat <<EOF
 ${B}iRice${R}  macOS Tahoe for Hyprland
 
 This sets up iRice on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
+  • takes a snapshot first, when snapper or Timeshift is set up
   • installs Hyprland, Quickshell and everything iRice uses (pacman; updates the system)
-  • builds the Liquid Glass plugin and shaders
+  • what this computer's hardware is missing, if you like (firmware, drivers, biometrics)
+  • builds the Liquid Glass plugin and shaders for this machine
   • installs the shell and its Hyprland config (yours is backed up first)
-  • sets up the login screen, services and, if you like, apps, themes and wallpapers
+  • sets up the login screen, services and, if you like, apps, icons and wallpapers
   • checks that everything works
+First the questions, then the whole plan; nothing changes until you say start.
 EOF
-[[ $DRY == 1 ]] && say "${YEL}Dry run: nothing will change.${R}"
+[[ $DRY == 1 || $PLAN_ONLY == 1 ]] && say "${YEL}Nothing will change.${R}"
+say ""
+decide
+show_plan
+[[ $PLAN_ONLY == 1 ]] && exit 0
+say ""
 ask "Start?" y || { say "Nothing changed."; exit 0; }
 
 step "Checking your system" preflight
+step "Safety snapshot" snapshot optional
 step "Installing packages" install_packages
 step "AUR helper (yay)" install_yay optional
-step "Tahoe themes (optional)" aur_extras optional
+step "Pointer (optional)" aur_extras optional
 step "Emoji styles (optional)" emoji_extras optional
+step "Icon themes (optional)" icon_themes optional
+step "For this computer (optional)" hardware optional
 step "Building iRice" build optional
 step "Installing iRice" install_files
 step "Wallpapers (optional)" extras optional
+step "Your settings" settings optional
 step "Starting services" services optional
 step "Login" login optional
 printf '\n%s[✓]%s %sChecking the result%s\n' "$BLU" "$R" "$B" "$R"
