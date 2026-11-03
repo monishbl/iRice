@@ -16,7 +16,6 @@
  "common/Wallpaper.qml": 223,
  "glass/ContextMenu.qml": 200,
  "glass/MenuPopover.qml": 179,
- "modules/appstore/AppStoreWindow.qml": 585,
  "modules/captions/CaptionsWindow.qml": 251,
  "modules/cheatsheet/Cheatsheet.qml": 166,
  "modules/clipboard/ClipboardPanel.qml": 494,
