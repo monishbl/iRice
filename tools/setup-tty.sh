@@ -29,12 +29,12 @@ fi
 # Your keyboard layout (localectl) for the test session (sandbox/hypr/tty.lua)
 "$ROOT/tools/keyboard-lua.sh" "$ROOT/.sandbox/keyboard.lua"
 
-# The Tahoe icons, cursors and GTK theme (from the AUR, through yay): without
-# them apps fall back to plain icons and the default GTK look
+# The Bibata pointer (from the AUR, through yay): without it apps fall back
+# to the default pointer
 missing=()
 for p in "${AUR[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if (( ${#missing[@]} > 0 )); then
-    say "Tahoe icons, cursors and GTK theme (AUR): ${missing[*]}"
+    say "The Bibata pointer (AUR): ${missing[*]}"
     a=y
     [[ $YES == 0 ]] && read -rp "Install them now with yay? [Y/n] " a
     if [[ "${a,,}" != n* ]]; then
@@ -46,12 +46,10 @@ if (( ${#missing[@]} > 0 )); then
         fi
         helper=$(command -v yay || command -v paru || true)
         if [[ -n "$helper" ]]; then
-            # The GTK theme's own script needs sassc, which its package doesn't list
-            sudo pacman -S --needed --noconfirm sassc
             TERM=${TERM:-xterm} "$helper" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}" ||
-                echo "Some themes didn't install: see above. iRice works without them; run this again to retry."
+                echo "The pointer didn't install: see above. iRice works without it; run this again to retry."
         else
-            echo "yay didn't install: see above. iRice works without the themes; run this again to retry."
+            echo "yay didn't install: see above. iRice works without the pointer; run this again to retry."
         fi
     fi
 fi

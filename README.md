@@ -99,18 +99,20 @@ On Arch Linux (a fresh install or your current one), one line does everything:
 bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
 ```
 
-It downloads iRice to `~/.local/share/irice/repo` and runs the installer, which:
+It downloads iRice to `~/.local/share/irice/repo` and runs the installer. It asks which way you'd like: **interactive** (full screen, arrow keys and space to tick, with live progress and a summary; it needs `python-rich` and offers to install it) or **classic** (one question at a time). Either way every question comes first, then the whole plan (each package, file and service), and nothing changes until you start. The installer then:
 1. checks your system (Arch, sudo, internet, disk space, a GPU render device, virtual machine)
-2. updates the system and installs Hyprland, Quickshell and everything iRice uses (all from the official repositories)
-3. optionally installs the Tahoe icons, macOS cursor and GTK theme from the AUR (it sets up `yay` if you have no AUR helper), and, if you say yes (default no), the Apple and Fluent emoji styles (Noto emoji is the default)
-4. compiles the shaders and builds the Liquid Glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
-5. installs the shell (`~/.config/quickshell/irice`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-irice`)
-6. optionally downloads macOS wallpapers and starts you on Tahoe (light by day, dark at night)
-7. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools
-8. sets up the iRice login screen (greetd), or starts Hyprland when you log in on tty1
-9. checks the result and tells you how to fix anything that's off
+2. takes a snapshot first when snapper or Timeshift is set up
+3. updates the system and installs Hyprland, Quickshell and everything iRice uses (all from the official repositories)
+4. optionally installs the Bibata pointer from the AUR (it sets up `yay` if you have no AUR helper), the Apple and Fluent emoji styles (default no), and icon themes (Colloid, Tela circle, Numix Circle, Flat Remix, Papirus; default none: iRice styles the apps' own icons)
+5. installs what this computer's hardware is missing, as you choose: firmware (Intel SOF sound, Broadcom Wi-Fi), video decoding and Vulkan for each GPU, NVIDIA's driver (only when you tick it), the fingerprint reader's and face camera's drivers (each asked), and a display scale for a sharp screen. See it with `./install.sh --plan`
+6. compiles the shaders and builds the Liquid Glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
+7. installs the shell (`~/.config/quickshell/irice`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-irice`)
+8. optionally downloads macOS wallpapers and starts you on Tahoe (light by day, dark at night), and saves the look, light or dark and login style you picked
+9. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools
+10. sets up the iRice login screen (greetd), or starts Hyprland when you log in on tty1
+11. checks the result and tells you how to fix anything that's off
 
-Each step can be retried or skipped if it fails, the installer can be run again at any time (it updates), and everything is logged to `~/.cache/irice/install.log`. From a clone: `./install.sh`. Options: `--yes` (no questions), `--dry-run`, `--dev` (link the shell to the clone), `--no-deps`, `--no-greeter`, `--no-extras`, `--verify`.
+Nothing of yours is removed or turned off unless you chose it: PulseAudio, another network service or another login screen is only replaced when you say so (with `--yes`, never). An optional step that fails is reported and skipped. The installer can be run again at any time (it updates), and everything is logged to `~/.cache/irice/install.log`. From a clone: `./install.sh`. Options: `--tui` or `--cli` (which installer), `--yes` (no questions), `--plan` (show the plan only), `--dry-run`, `--dev` (link the shell to the clone), `--no-deps`, `--no-greeter`, `--no-extras`, `--no-snapshot`, `--verify`; the choices as flags are in `./install.sh --help`.
 
 Afterwards the `irice` command looks after it:
 
