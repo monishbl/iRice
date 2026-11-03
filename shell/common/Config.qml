@@ -176,9 +176,6 @@ Singleton {
                 // pill) | column (beside the clock, like a tablet) | icons
                 // (only the apps' icons)
                 property string notifications: "shelf"
-                // plain (no wallpaper: a clean background in the look's
-                // colour) | wallpaper
-                property string background: "plain"
                 property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
                 property int clockWidth: 112 // wdth, 25 .. 151
                 property bool clockRound: true // rounded digits (else sharp)

@@ -95,17 +95,11 @@ PanelWindow {
         onTriggered: win.typing = false
     }
 
-    // The wallpaper, as on the lock screen
-    Image {
-        anchors.fill: parent
-        source: "file://" + win.wallpaper
-        fillMode: Image.PreserveAspectCrop
-        sourceSize: Qt.size(win.width, win.height)
-        asynchronous: true
-    }
+    // No wallpaper: a clean background in Material's colours (the lock
+    // screen, once you're in, keeps your wallpaper)
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.12)
+        color: Qt.alpha(Theme.dark ? win.m3.surfaceContainerLowest : win.m3.surfaceContainer, 1)
     }
     HoverHandler {
         // (the first position isn't a move)
@@ -120,7 +114,7 @@ PanelWindow {
 
     // The clock and the date
     Column {
-        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(win.height * 0.1) }
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(win.height * 0.18) }
         spacing: 20
         LockUi.LockClock {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -132,16 +126,16 @@ PanelWindow {
             weight: win.cfg.clockWeight ?? 640
             widthAxis: win.cfg.clockWidth ?? 112
             round: win.cfg.clockRound ?? true
-            color: win.m3.primaryFixed
-            color2: win.m3.primaryFixedDim
-            color3: win.m3.tertiaryFixed
+            color: Theme.dark ? win.m3.primaryFixed : win.m3.primary
+            color2: Theme.dark ? win.m3.primaryFixedDim : win.m3.onPrimaryFixedVariant
+            color3: Theme.dark ? win.m3.tertiaryFixed : win.m3.tertiary
         }
         Text {
             // (the dynamic face shows the date itself with 24-hour time)
             visible: !((win.cfg.clockFace ?? "") === "dynamic" && TimeFormat.h24)
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(clock.date, "dddd d MMMM")
-            color: win.m3.secondaryFixed
+            color: Theme.dark ? win.m3.secondaryFixed : win.m3.onSurfaceVariant
             font { family: Theme.font.family; pixelSize: 18; weight: Font.Medium }
         }
     }

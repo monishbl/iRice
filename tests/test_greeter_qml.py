@@ -36,7 +36,7 @@ class GreeterLoads(unittest.TestCase):
             if f.name == "GreeterAuth.qml":
                 continue
             text = f.resolve().read_text()
-            text = text.replace("PanelWindow {", "FloatingWindow {").replace("anchors { top: true; bottom: true; left: true; right: true }", "implicitWidth: 1280; implicitHeight: 800")
+            text = text.replace("PanelWindow {", "FloatingWindow {").replace("anchors { top: true; bottom: true; left: true; right: true }", "implicitWidth: 1280; implicitHeight: 800").replace("exclusionMode: ExclusionMode.Ignore", "")
             text = "\n".join(l for l in text.splitlines() if not l.strip().startswith("WlrLayershell."))
             f.unlink()
             f.write_text(text)

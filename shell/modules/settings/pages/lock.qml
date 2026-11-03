@@ -29,11 +29,6 @@ Column {
             Choice { key: "layout"; values: ["ios", "macos"]; options: ["iOS", "macOS"] }
         }
         Row {
-            label: "Background"
-            detail: Config.options.lock.background === "wallpaper" ? "Your wallpaper behind the clock" : "No wallpaper: a clean background in light or dark"
-            Choice { key: "background"; values: ["plain", "wallpaper"]; options: ["Plain", "Wallpaper"] }
-        }
-        Row {
             label: "Notifications"
             detail: ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over the sign-in.", column: "Beside the clock on a wide screen: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications" })[Config.options.lock.notifications] ?? ""
             Choice { key: "notifications"; values: ["shelf", "column", "icons"]; options: ["Newest", "Beside", "Icons"] }

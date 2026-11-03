@@ -78,33 +78,16 @@ PanelWindow {
     }
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
-    // The wallpaper, softly blurred and a little darker
-    Image {
-        id: wall
-        anchors.fill: parent
-        source: "file://" + win.wallpaper
-        fillMode: Image.PreserveAspectCrop
-        sourceSize: Qt.size(Math.round(win.width / 2), Math.round(win.height / 2))
-        asynchronous: true
-        visible: false
-    }
-    MultiEffect {
-        anchors.fill: parent
-        source: wall
-        visible: wall.status === Image.Ready
-        blurEnabled: true
-        blur: 0.6
-        blurMax: 48
-        brightness: -0.08
-    }
+    // No wallpaper: a clean dark background (the lock screen, once you're
+    // in, keeps your wallpaper)
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.18)
+        color: "#0E0E10"
     }
 
     // The date and the time
     Column {
-        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(win.height * 0.08) }
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(win.height * 0.16) }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(clock.date, "dddd d MMMM")
