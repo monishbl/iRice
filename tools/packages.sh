@@ -43,7 +43,7 @@ EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
 # Quickshell (yours is missing, or older than compat.json's minimum)
 QUICKSHELL_BUILD=(git cmake ninja qt6-base qt6-declarative qt6-svg qt6-wayland qt6-shadertools spirv-tools
     wayland wayland-protocols cli11 cpptrace jemalloc libdrm libglvnd libpipewire libxcb mesa pam polkit glib2)
-AUR=(mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
+AUR=(colloid-icon-theme-git tela-circle-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme bibata-cursor-theme-bin)
 # Packages iRice used to need and no longer does. Software Update offers to
 # remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.
 DROPPED=()

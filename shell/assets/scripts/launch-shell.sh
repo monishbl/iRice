@@ -21,7 +21,7 @@ if [[ -z "${QT_QPA_PLATFORMTHEME:-}" ]]; then
     if qt6ct_chosen; then export QT_QPA_PLATFORMTHEME=qt6ct; else export QT_QPA_PLATFORMTHEME=kde; fi
 fi
 
-themes_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons" /usr/local/share/icons /usr/share/icons)
+themes_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.local/share/icons" "$HOME/.icons" /usr/local/share/icons /usr/share/icons) # (the tty session moves XDG_DATA_HOME; icons installed for you stay in ~/.local/share)
 installed() {
     local d
     for d in "${themes_dirs[@]}"; do
@@ -35,10 +35,17 @@ cfg="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
 if [[ -f "$cfg" ]]; then
     pick="$(sed -n 's/.*"iconTheme"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)"
 fi
-# Tahoe-like default: MacTahoe icons when installed (light or dark with iRice)
-if [[ -z "$pick" ]] && installed MacTahoe; then
-    if [[ -f "$cfg" ]] && grep -q '"mode"[[:space:]]*:[[:space:]]*"light"' "$cfg"; then pick=MacTahoe; else pick=MacTahoe-dark; fi
-    installed "$pick" || pick=MacTahoe
+# The look's own icons when installed: Colloid with Glass, Tela circle with
+# Material, light or dark with iRice
+if [[ -z "$pick" ]]; then
+    dark=1
+    [[ -f "$cfg" ]] && grep -q '"mode"[[:space:]]*:[[:space:]]*"light"' "$cfg" && dark=0
+    if [[ -f "$cfg" ]] && grep -q '"look"[[:space:]]*:[[:space:]]*"material"' "$cfg"; then
+        base=Tela-circle; if [[ $dark == 1 ]]; then v=Tela-circle-dark; else v=Tela-circle-light; fi
+    else
+        base=Colloid; if [[ $dark == 1 ]]; then v=Colloid-Dark; else v=Colloid-Light; fi
+    fi
+    if installed "$v"; then pick=$v; elif installed "$base"; then pick=$base; fi
 fi
 if [[ -z "$pick" && -f "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" ]]; then
     pick="$(sed -n '/^\[Icons\]/,/^\[/{s/^Theme=//p}' "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" | head -1)"

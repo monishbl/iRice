@@ -863,7 +863,11 @@ verify() {
     # (no grep -q in these pipelines: it stops reading early, and pipefail
     # would count the writer's broken pipe as a failure)
     [[ -n "$(fc-list : family 2>/dev/null | grep -i '^Inter')" ]] && ok "Inter font" || bad "The Inter font is missing" "sudo pacman -S inter-font"
-    [[ -d /usr/share/icons/Papirus || -d /usr/share/icons/MacTahoe ]] && ok "Icon theme ($( [[ -d /usr/share/icons/MacTahoe ]] && echo MacTahoe || echo Papirus))" || meh "No full icon theme; some app icons may be missing" "sudo pacman -S papirus-icon-theme"
+    icons=""
+    for t in Colloid Tela-circle Papirus; do
+        [[ -d /usr/share/icons/$t || -d "$DATA/icons/$t" ]] && { icons=$t; break; }
+    done
+    [[ -n $icons ]] && ok "Icon theme ($icons)" || meh "No full icon theme; some app icons may be missing" "install colloid-icon-theme-git (Glass) or tela-circle-icon-theme-git (Material)"
     systemctl is-enabled --quiet NetworkManager 2>/dev/null && ok "NetworkManager on" || meh "NetworkManager isn't on (Wi-Fi menus won't work)" "sudo systemctl enable --now NetworkManager"
     systemctl is-enabled --quiet bluetooth 2>/dev/null && ok "Bluetooth service on" || meh "Bluetooth service isn't on" "sudo systemctl enable --now bluetooth"
     systemctl is-enabled --quiet avahi-daemon 2>/dev/null && ok "mDNS (avahi) on" || meh "avahi-daemon isn't on (phones on the same Wi-Fi won't find this computer)" "sudo systemctl enable --now avahi-daemon"
