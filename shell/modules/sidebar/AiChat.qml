@@ -175,7 +175,7 @@ Item {
         id: list
 
         Momentum {}
-        anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: pictures.visible ? pictures.top : composerBox.top; bottomMargin: 10 }
+        anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: blind.visible ? blind.top : pictures.visible ? pictures.top : composerBox.top; bottomMargin: 10 }
         clip: true
         spacing: 14
         model: Ai.chat
@@ -185,6 +185,46 @@ Item {
 
         delegate: ChatMessage {
             width: list.width
+        }
+    }
+
+    // Pictures waiting, but the model can't read them: which of theirs can,
+    // a tap away (the pictures stay: Send asks once they've switched), or
+    // the web for a circled one
+    Column {
+        id: blind
+        readonly property var canSee: Ai.visionModels.find(m => Ai.hasCredential(m)) ?? Ai.visionModels[0] ?? null
+        readonly property string lensPicture: Ai.attachments.find(a => a.lens)?.path ?? ""
+        visible: Ai.attachments.length > 0 && (!Ai.configured || !Ai.model.vision)
+        anchors { left: parent.left; right: parent.right; bottom: pictures.top; bottomMargin: 10 }
+        spacing: 8
+        Text {
+            width: parent.width
+            wrapMode: Text.Wrap
+            text: !Ai.configured ? "Add an AI model that reads pictures to ask about this." : Ai.model.name + " can't read pictures. " + (blind.canSee ? blind.canSee.name + " can." : "Add one that can (Claude, Gemini or another vision model) in Settings → AI.")
+            color: Theme.color.secondary
+            font { family: Theme.font.family; pixelSize: Theme.font.small }
+        }
+        Flow {
+            width: parent.width
+            spacing: 8
+            ChatButton {
+                id: switchButton
+                primary: true
+                icon: blind.canSee ? "swap" : "plus"
+                label: blind.canSee ? "Switch to " + blind.canSee.name : "Add a model"
+                onClicked: {
+                    if (!blind.canSee)
+                        return Panels.openSettings("ai");
+                    Ai.setModel(blind.canSee.key);
+                    composer.forceActiveFocus();
+                }
+            }
+            LensButton {
+                visible: blind.lensPicture !== ""
+                width: Math.max(160, blind.width - switchButton.width - 8) // (beside it, its note wrapping under it)
+                picture: blind.lensPicture
+            }
         }
     }
 
@@ -313,6 +353,15 @@ Item {
                 height: Theme.material ? 36 : 28
                 enabled: Ai.attachments.length < Ai.maxImages
                 onClicked: shotMenu.visible = !shotMenu.visible
+            }
+            // Circle to search: circle anything on the screen, and it's asked about
+            IconButton {
+                icon: "lasso"
+                tooltip: "Circle to search"
+                width: Theme.material ? 36 : 28
+                height: width
+                enabled: Ai.attachments.length < Ai.maxImages
+                onClicked: ScreenTools.select("circle")
             }
         }
 

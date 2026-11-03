@@ -34,7 +34,7 @@ A glass desktop shell for Hyprland, after macOS, with everything end4's illogica
 - **Stages:** one group of windows in front, the rest as thumbnails on the left. New apps open in their own stage; Shift-click a thumbnail to merge it into the front one. Turn it on in Quick Settings.
 
 **Apps**
-- **App Drawer** (Super+Shift+Space or the dock's Apps button): every app in category folders or A–Z, with search and keyboard navigation.
+- **App Drawer** (Super+Ctrl+Space or the dock's Apps button): every app in category folders or A–Z, with search and keyboard navigation.
 - **App icon styles** (Settings → Appearance): Default, Dark, Clear, Tinted, or Auto (dark in dark mode), like macOS.
 
 **Panels**
@@ -58,6 +58,7 @@ A glass desktop shell for Hyprland, after macOS, with everything end4's illogica
 **Tools**
 - Screenshots of the screen, a window or a selection; Super+Shift+5 opens a toolbar like macOS. Area screenshots open in Swappy to crop, draw and annotate (Settings → Keyboard Shortcuts).
 - **Ask about the screen** (Super+Shift+A): select part of the screen and ask the AI about it ("what's this error?").
+- **Circle to search** (Super+Shift+Space, a 3-finger long press, or the circle button in the AI sidebar): circle, scribble over or box anything on the screen and the AI says what it is. **Search the web** under the answer sends the picture to Google Lens (only when you click it) and opens the results.
 - Copy text from the screen (OCR), translate text on screen, record the screen.
 - Overlay widgets (Super+G): notes, resources, recorder, volume mixer, floating image, crosshair, MangoHud FPS limit. Widgets can be pinned and made click-through.
 - On-screen keyboard, colour picker, keyboard-shortcut cheatsheet, periodic table.
@@ -146,7 +147,7 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 |---|---|
 | Super (tap) | Overview of spaces, with search |
 | Super+Space | Search |
-| Super+Shift+Space | App Drawer |
+| Super+Ctrl+Space | App Drawer |
 | Super+V | Clipboard history |
 | Super+Tab | All Windows |
 | Super+A | AI and tools sidebar |
@@ -159,6 +160,7 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | Super+Ctrl+Escape | Repair the shell: duplicated bars or a frozen shell. Restarts only the shell; apps and windows keep running (also in the system menu) |
 | Super+Shift+T / Y | Copy text from screen / translate screen |
 | Super+Shift+A | Ask AI about part of the screen |
+| Super+Shift+Space | Circle to search |
 | Super+Shift+R | Start or stop recording |
 | Super+G / Super+K | Overlay widgets / on-screen keyboard |
 | Super+Ctrl+Q | Lock |
@@ -178,6 +180,7 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | 3 fingers up / down | Overview / App Windows |
 | 4 fingers left / right | Sidebar / Notification Center |
 | Pinch / spread 4 fingers | App Drawer / Show Desktop |
+| 3 fingers, long press | Circle to search (needs iRice's glass plugin) |
 | Three-finger drag (Settings → Trackpad) | Move the window under your fingers; the swipes above move to 4 fingers |
 | Touchscreen: pull down from the menu bar | Quick Settings (right third) or Notification Center |
 | Touchscreen: swipe up from the bottom edge | Show a hidden dock |

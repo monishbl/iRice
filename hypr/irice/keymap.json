@@ -70,7 +70,7 @@
  },
  {
   "id": "launchpad",
-  "keys": "$MOD + SHIFT + Space",
+  "keys": "$MOD + CTRL + Space",
   "group": "Shell",
   "label": "App Drawer",
   "action": {
@@ -337,6 +337,15 @@
   "label": "Ask AI about part of the screen",
   "action": {
    "shell": "askScreen"
+  }
+ },
+ {
+  "id": "circle-search",
+  "keys": "$MOD + SHIFT + Space",
+  "group": "Screen",
+  "label": "Circle to search",
+  "action": {
+   "shell": "circleSearch"
   }
  },
  {

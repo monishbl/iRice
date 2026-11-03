@@ -28,10 +28,27 @@ end
 -- together) is one
 local FINGERS = { pinchin = "pinchout", pinchout = "pinchin" }
 
+-- Long presses ("hold": fingers resting still) aren't Hyprland gestures:
+-- the irice-glass plugin sees them and calls IRICE_HOLD(fingers) (its
+-- hold.cpp). Only iRice actions: Hyprland's own need a swipe.
+IRICE_HOLDS = {}
+function IRICE_HOLD(fingers)
+    local run = IRICE_HOLDS[tonumber(fingers)]
+    if run then run() end
+end
+
 local function add(g)
     local action = actionOf(g.action)
     if not action or not g.fingers or not g.direction then
         log("skipped " .. tostring(g.id))
+        return
+    end
+    if g.direction == "hold" then
+        if type(action) ~= "function" then
+            log("skipped " .. tostring(g.id) .. ": a long press runs iRice actions only")
+        else
+            IRICE_HOLDS[g.fingers] = action
+        end
         return
     end
     local ok, err = pcall(hl.gesture, { fingers = g.fingers, direction = FINGERS[g.direction] or g.direction, action = action })

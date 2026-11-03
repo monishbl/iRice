@@ -107,7 +107,8 @@ Singleton {
             AiKeys.clear(key);
     }
 
-    // UI rows: { role: "user"|"assistant"|"note", text, thinking, status, model, image (preview path) }
+    // UI rows: { role: "user"|"assistant"|"note", text, thinking, status, model, image (preview path),
+    //   search (an answer to circle to search: its picture, for "Search the web") }
     property alias chat: chatModel
     ListModel { id: chatModel }
 
@@ -146,7 +147,7 @@ Singleton {
         for (let i = 0; i < chatModel.count; i++) {
             const r = chatModel.get(i);
             if (r.status !== "streaming")
-                rows.push({ role: r.role, text: r.text, thinking: r.thinking, status: r.status, model: r.model, image: r.image });
+                rows.push({ role: r.role, text: r.text, thinking: r.thinking, status: r.status, model: r.model, image: r.image, search: r.search });
         }
         // Image data stays in memory only; a saved chat remembers that there was one
         const pics = h => (h.images ?? (h.image ? [h.image] : [])).length;
@@ -170,9 +171,10 @@ Singleton {
         onLoaded: {
             try {
                 const j = JSON.parse(text());
-                for (const r of j.rows ?? [])
-                    chatModel.append(Object.assign({ image: "" }, r));
-                root.history = j.history ?? [];
+                // (above anything already there: circle to search can send
+                // its first message before this has loaded)
+                (j.rows ?? []).forEach((r, i) => chatModel.insert(i, Object.assign({ image: "", search: "" }, r)));
+                root.history = (j.history ?? []).concat(root.history);
             } catch (e) {}
         }
     }
@@ -187,12 +189,24 @@ Singleton {
     }
 
     function note(text) {
-        chatModel.append({ role: "note", text: text, thinking: "", status: "done", model: "", image: "" });
+        chatModel.append({ role: "note", text: text, thinking: "", status: "done", model: "", image: "", search: "" });
+    }
+
+    // Circle to search: the circled picture, asked about at once. (A model
+    // that can't read pictures keeps it attached: once they've switched,
+    // Send asks the same question.)
+    readonly property string circleQuestion: "What is this? Identify it and tell me the most useful things about it."
+    function searchPicture(picture) {
+        if (busy)
+            stop();
+        attach(Object.assign({ lens: true }, picture));
+        if (attachments.some(a => a.path === picture.path))
+            submit("");
     }
 
     // Slash commands: /clear, /model <id>, /key <key>
     function submit(text) {
-        const t = text.trim() || (attachments.length === 1 ? "What's in this picture?" : attachments.length > 1 ? "What's in these pictures?" : "");
+        const t = text.trim() || (attachments.some(a => a.lens) ? circleQuestion : attachments.length === 1 ? "What's in this picture?" : attachments.length > 1 ? "What's in these pictures?" : "");
         if (t === "" || busy)
             return;
         if (t === "/clear")
@@ -297,8 +311,8 @@ Singleton {
             turn.images = imgs.map(i => ({ data: i.data, mediaType: i.mediaType }));
         history = history.concat([turn]);
         // (row image: the previews' paths, one per line)
-        chatModel.append({ role: "user", text: text, thinking: "", status: "done", model: "", image: imgs.map(i => i.path).join("\n") });
-        chatModel.append({ role: "assistant", text: "", thinking: "", status: "streaming", model: model.name, image: "" });
+        chatModel.append({ role: "user", text: text, thinking: "", status: "done", model: "", image: imgs.map(i => i.path).join("\n"), search: "" });
+        chatModel.append({ role: "assistant", text: "", thinking: "", status: "streaming", model: model.name, image: "", search: imgs.find(i => i.lens)?.path ?? "" });
 
         const req = buildRequest(model, history, {});
         const x = new XMLHttpRequest();
@@ -475,8 +489,8 @@ Singleton {
         if (quick.answer === "" || busy)
             return;
         history = history.concat([{ role: "user", text: quick.question }, { role: "assistant", text: quick.answer }]);
-        chatModel.append({ role: "user", text: quick.question, thinking: "", status: "done", model: "", image: "" });
-        chatModel.append({ role: "assistant", text: quick.answer, thinking: "", status: "done", model: model.name, image: "" });
+        chatModel.append({ role: "user", text: quick.question, thinking: "", status: "done", model: "", image: "", search: "" });
+        chatModel.append({ role: "assistant", text: quick.answer, thinking: "", status: "done", model: model.name, image: "", search: "" });
         save();
         Panels.sidebarTab = 0;
         Panels.show("sidebar");

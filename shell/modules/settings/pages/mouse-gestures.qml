@@ -26,7 +26,12 @@ Column {
 
     readonly property var fingerOptions: [3, 4, 5].map(n => ({ value: n, label: n + " fingers" }))
     readonly property var directionOptions: Keymap.directions.map(d => ({ value: d.name, label: d.label }))
-    readonly property var actionOptions: Keymap.gestureActions.map(a => ({ value: a.name, label: a.label })).concat(Keymap.shellActions.map(a => ({ value: { shell: a.name }, label: a.label })))
+    readonly property var shellActionOptions: Keymap.shellActions.map(a => ({ value: { shell: a.name }, label: a.label }))
+    readonly property var actionOptions: Keymap.gestureActions.map(a => ({ value: a.name, label: a.label })).concat(shellActionOptions)
+    // (a long press runs iRice actions only: Hyprland's own need a swipe)
+    function actionsFor(direction) {
+        return direction === "hold" ? shellActionOptions : actionOptions;
+    }
 
     // A free spot for a new gesture
     function freeSpot() {
@@ -107,7 +112,7 @@ Column {
                 Choice {
                     menu: pageMenu
                     width: 200
-                    options: page.actionOptions
+                    options: page.actionsFor(gr.gesture.direction)
                     value: gr.gesture.action
                     placeholder: Keymap.describeGesture(gr.gesture.action)
                     onChosen: v => Keymap.setGesture(gr.gesture.id, { action: v })
@@ -115,11 +120,11 @@ Column {
             }
             Text {
                 width: parent.width
-                readonly property string what: gr.gesture.disabled ? "Off" : gr.others.length > 0 ? "Clashes with " + gr.others[0].text + " (" + gr.others[0].actionText + "). Change the fingers or direction." : gr.gesture.changed && gr.def ? "Changed · was " + gr.def.fingers + " fingers, " + Keymap.directionLabel(gr.def.direction).toLowerCase() + " → " + Keymap.describeGesture(gr.def.action) : ""
+                readonly property string what: gr.gesture.disabled ? "Off" : gr.gesture.direction === "hold" && typeof gr.gesture.action === "string" ? "A long press runs iRice actions only. Choose one on the right." : gr.others.length > 0 ? "Clashes with " + gr.others[0].text + " (" + gr.others[0].actionText + "). Change the fingers or direction." : gr.gesture.changed && gr.def ? "Changed · was " + gr.def.fingers + " fingers, " + Keymap.directionLabel(gr.def.direction).toLowerCase() + " → " + Keymap.describeGesture(gr.def.action) : ""
                 visible: what !== ""
                 text: what
                 wrapMode: Text.Wrap
-                color: gr.others.length > 0 && !gr.gesture.disabled ? Theme.color.warning : Theme.color.secondary
+                color: (gr.others.length > 0 || gr.gesture.direction === "hold" && typeof gr.gesture.action === "string") && !gr.gesture.disabled ? Theme.color.warning : Theme.color.secondary
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
         }
@@ -217,7 +222,7 @@ Column {
                     Choice { menu: pageMenu; width: 104; options: page.fingerOptions; value: draft.fingers; onChosen: v => draft.fingers = v }
                     Choice { menu: pageMenu; width: 136; options: page.directionOptions; value: draft.direction; onChosen: v => draft.direction = v }
                     Icon { height: 28; name: "arrow-right"; size: 14; color: Theme.color.tertiary }
-                    Choice { menu: pageMenu; width: 200; options: page.actionOptions; value: draft.action; onChosen: v => draft.action = v }
+                    Choice { menu: pageMenu; width: 200; options: page.actionsFor(draft.direction); value: draft.action; onChosen: v => draft.action = v }
                 }
                 Text {
                     visible: draft.others.length > 0
@@ -260,7 +265,7 @@ Column {
         visible: Keymap.ready
         width: parent.width
         title: "Gestures"
-        footer: "“Left or right” covers both directions, “Any direction” every swipe, “Pinch or spread” both pinches."
+        footer: "“Left or right” covers both directions, “Any direction” every swipe, “Pinch or spread” both pinches. A long press (fingers resting still) needs iRice's glass plugin."
         Row {
             visible: Keymap.gestures.length === 0
             label: "No gestures"

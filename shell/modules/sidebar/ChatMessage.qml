@@ -15,6 +15,7 @@ Item {
     required property string status
     required property string model
     required property string image
+    required property string search // (an answer to circle to search: its picture)
 
     property bool showThinking: false
     // The reply in parts: prose and code blocks (a Repeater over the count
@@ -272,6 +273,13 @@ Item {
                 }
                 Timer { id: copyReset; interval: 1500; onTriggered: copyIcon.name = "copy" }
             }
+        }
+
+        // Circle to search: the picture on the web too, when asked
+        LensButton {
+            visible: root.search !== "" && root.status !== "streaming"
+            width: parent.width
+            picture: root.search
         }
     }
 }

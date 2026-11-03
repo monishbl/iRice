@@ -188,6 +188,7 @@ ShellRoot {
     GlobalShortcut { appid: "irice"; name: "dictate"; description: "Dictation"; onPressed: Dictation.pressed() }
     GlobalShortcut { appid: "irice"; name: "dictateRelease"; description: "Dictation (key let go)"; onPressed: Dictation.released() }
     GlobalShortcut { appid: "irice"; name: "askScreen"; description: "Ask AI about part of the screen"; onPressed: ScreenTools.select("ask") }
+    GlobalShortcut { appid: "irice"; name: "circleSearch"; description: "Circle to search"; onPressed: ScreenTools.select("circle") }
     component Snap: GlobalShortcut {
         required property string layout
         appid: "irice"

@@ -124,6 +124,7 @@ Singleton {
         { name: "screenTranslate", label: "Translate text on the screen" },
         { name: "lens", label: "Search an area with Google Lens" },
         { name: "askScreen", label: "Ask AI about part of the screen" },
+        { name: "circleSearch", label: "Circle to search" },
         { name: "volumeUp", label: "Volume up" },
         { name: "volumeDown", label: "Volume down" },
         { name: "volumeMute", label: "Mute sound" },
@@ -168,7 +169,9 @@ Singleton {
         { name: "swipe", label: "Any direction" },
         { name: "pinch", label: "Pinch or spread" },
         { name: "pinchin", label: "Pinch" },
-        { name: "pinchout", label: "Spread" }
+        { name: "pinchout", label: "Spread" },
+        // (fingers resting still: the irice-glass plugin's, gestures.lua)
+        { name: "hold", label: "Long press" }
     ]
 
     function shellLabel(name) {

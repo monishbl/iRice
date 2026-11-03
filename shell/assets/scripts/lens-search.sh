@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 # Select an area of the screen and search it with Google Lens (like end4).
-# Lens needs the picture at a public address: it's uploaded to uguu.se, a
-# temporary file host (files are deleted after a few hours), then Lens opens
-# in the browser. Nothing is uploaded if the selection is cancelled.
+# The picture goes straight to Lens (lens-upload.py, as circle to search's
+# "Search the web" does), then its results open in the browser. Nothing is
+# uploaded if the selection is cancelled.
 set -uo pipefail
-for c in grim slurp curl jq; do
+for c in grim slurp jq python3; do
     command -v "$c" >/dev/null || { notify-send -a "Screen search" "Can't search the screen" "Install $c first." ; exit 1; }
 done
 area=$(slurp) || exit 0
-img=$(mktemp --suffix=.png)
+umask 077
+img=$(mktemp --suffix=.jpg)
 trap 'rm -f "$img"' EXIT
-grim -g "$area" "$img" || { notify-send -a "Screen search" "Couldn't capture the area" "Try again."; exit 1; }
-url=$(curl -sf --max-time 30 -F "files[]=@$img" https://uguu.se/upload | jq -r '.files[0].url // empty')
-if [[ -z "$url" ]]; then
-    notify-send -a "Screen search" "Couldn't upload the picture" "Check your internet connection and try again."
-    exit 1
+grim -t jpeg -q 90 -g "$area" "$img" || { notify-send -a "Screen search" "Couldn't capture the area" "Try again."; exit 1; }
+out=$(python3 -I "$(dirname "$0")/lens-upload.py" "$img")
+url=$(jq -r 'select(.ok) | .url' <<<"$out")
+if [[ -n "$url" ]]; then
+    exec xdg-open "$url"
 fi
-exec xdg-open "https://lens.google.com/uploadbyurl?url=$(jq -rn --arg u "$url" '$u|@uri')"
+# Lens changed how it takes pictures: paste it there instead
+if [[ $(jq -r '.fallback' <<<"$out") == true ]]; then
+    wl-copy --type image/jpeg <"$img"
+    notify-send -a "Screen search" "Paste the picture into Lens" "It's on the clipboard: press Ctrl+V on the page that opens."
+    exec xdg-open "https://lens.google.com/"
+fi
+notify-send -a "Screen search" "Couldn't search the picture" "$(jq -r '.error // "Try again."' <<<"$out")"
+exit 1

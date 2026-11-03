@@ -4,7 +4,7 @@ import qs.common
 import qs.glass
 import qs.services
 
-// App Library (Super+Shift+Space, or the Apps button in the dock): every app,
+// App Library (Super+Ctrl+Space, or the Apps button in the dock): every app,
 // grouped into category folders or listed A–Z. Typing searches; arrow keys
 // move; Enter opens; Escape steps back out of a folder, then closes.
 Variants {
