@@ -429,8 +429,8 @@ Column {
             height: 240
             Squircle {
                 anchors { fill: parent; margins: 10 }
-                radius: 8
-                color: Theme.dark ? "#0E0E10" : "#18181B"
+                radius: Theme.material ? 16 : 8
+                color: Theme.material ? Theme.m3.inverseSurface : Theme.dark ? "#0E0E10" : "#18181B"
                 Flickable {
                     id: logView
                     Momentum {}
@@ -448,7 +448,7 @@ Column {
                         text: Updates.log === "" ? "Waiting for output…" : Updates.log.replace(/^@@step .*\n/gm, "")
                         wrapMode: Text.WrapAnywhere
                         textFormat: Text.PlainText
-                        color: "#D4D4D8"
+                        color: Theme.material ? Theme.m3.inverseOnSurface : "#D4D4D8"
                         font { family: Theme.font.mono; pixelSize: 11 }
                     }
                 }

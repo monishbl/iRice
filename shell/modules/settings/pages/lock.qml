@@ -18,16 +18,50 @@ Column {
         onSelected: i => Config.options.lock[key] = values[i]
     }
 
+    // Material: the clock, Android 17's styles picked from a carousel
+    // (ClockFaces), its size and thickness
+    Group {
+        visible: Theme.material
+        width: parent.width
+        title: "Clock"
+        Loader {
+            width: parent.width
+            active: Theme.material
+            sourceComponent: Component {
+                ClockFaces {}
+            }
+        }
+        Row {
+            label: "Size"
+            Choice { key: "clockSize"; values: ["large", "small"]; options: ["Large", "Small"] }
+        }
+        Row {
+            label: "Thickness"
+            Slider {
+                width: 220
+                from: 100
+                to: 1000
+                stepSize: 20
+                value: Config.options.lock.clockWeight
+                onMoved: v => Config.options.lock.clockWeight = Math.round(v)
+            }
+        }
+    }
+
+    // (Material's lock screen has one layout; what its notifications do is
+    // the footer)
     Group {
         width: parent.width
-        footer: Config.options.lock.layout === "macos" ? "The clock up top; your picture, name and the password field at the bottom." : "A large clock with small widgets, Now Playing and your notifications, like iPhone."
+        footer: Theme.material ? ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over your account.", column: "Beside the clock, like a tablet: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications. Now Playing sits over your account." })[Config.options.lock.notifications] ?? ""
+            : Config.options.lock.layout === "macos" ? "The clock up top; your picture, name and the password field at the bottom." : "A large clock with small widgets, Now Playing and your notifications, like iPhone."
         Row {
+            visible: !Theme.material
             label: "Layout"
             Choice { key: "layout"; values: ["ios", "macos"]; options: ["Widgets", "Classic"] }
         }
         Row {
             label: "Notifications"
-            detail: ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over the sign-in.", column: "Beside the clock on a wide screen: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications" })[Config.options.lock.notifications] ?? ""
+            detail: Theme.material ? "" : ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over the sign-in.", column: "Beside the clock on a wide screen: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications" })[Config.options.lock.notifications] ?? ""
             Choice { key: "notifications"; values: ["shelf", "column", "icons"]; options: ["Newest", "Beside", "Icons"] }
         }
         Row {
@@ -74,12 +108,12 @@ Column {
         Row {
             label: "Preview"
             detail: "Locks the screen now"
-            Squircle {
-                width: lockText.implicitWidth + 28
-                height: 28
-                radius: Theme.radius.control
-                color: lockMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                Text { id: lockText; anchors.centerIn: parent; text: "Lock Screen"; color: Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
+            Squircle { // (Material: a 40 px tonal button)
+                width: lockText.implicitWidth + (Theme.material ? 32 : 28)
+                height: Theme.material ? 40 : 28
+                radius: Theme.material ? height / 2 : Theme.radius.control
+                color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, lockMouse.containsMouse ? 0.08 : 0)) : lockMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                Text { id: lockText; anchors.centerIn: parent; text: "Lock Screen"; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Font.Medium } }
                 MouseArea { id: lockMouse; anchors.fill: parent; hoverEnabled: true; onClicked: System.power("lock") }
             }
         }
@@ -192,6 +226,33 @@ Column {
                             Config.options.lock.standbyScreens = next;
                         }
                     }
+                }
+            }
+        }
+        Group {
+            visible: Theme.material // (the Material lock clock's axes)
+            width: parent.width
+            title: "Clock"
+            Row {
+                label: "Width"
+                visible: Config.options.lock.clockFace !== "analog"
+                Slider {
+                    width: 220
+                    from: 25
+                    to: 151
+                    stepSize: 1
+                    value: Config.options.lock.clockWidth
+                    onMoved: v => Config.options.lock.clockWidth = Math.round(v)
+                }
+            }
+            Row {
+                label: "Digits"
+                visible: Config.options.lock.clockFace !== "analog"
+                Segmented {
+                    width: 200
+                    options: ["Rounded", "Sharp"]
+                    current: Config.options.lock.clockRound ? 0 : 1
+                    onSelected: i => Config.options.lock.clockRound = i === 0
                 }
             }
         }

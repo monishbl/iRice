@@ -7,14 +7,16 @@ import qs.common
 // the page's Column, then call open(anchorItem, items) with
 //   [{ text, icon?, danger?, checked?, enabled?, action: function }]
 // Keyboard: ↑ ↓ to move, Enter to choose, Esc to close.
+// Material: a Material menu, 44 px items, a state layer on the one under the
+// pointer or keys, the checked one in the tertiary container.
 Item {
     id: root
 
     property var items: []
     property Item anchor: null
     property int current: -1
-    readonly property int itemHeight: 32
-    readonly property int maxHeight: 320
+    readonly property int itemHeight: Theme.material ? 44 : 32
+    readonly property int maxHeight: Theme.material ? 360 : 320
     // The keyboard's choice stays in view
     onCurrentChanged: if (current >= 0) {
         const top = current * itemHeight, bottom = top + itemHeight;
@@ -84,9 +86,9 @@ Item {
 
     QQC.Popup {
         id: menu
-        width: Math.max(220, list.implicitWidth + 10)
-        // (from the item count: every entry is 32 high, and the list's own
-        // height isn't known yet while the menu first appears)
+        width: Math.max(Theme.material ? 240 : 220, list.implicitWidth + 10)
+        // (from the item count: every entry is itemHeight high, and the
+        // list's own height isn't known yet while the menu first appears)
         height: Math.min(root.menuHeight, root.items.length * root.itemHeight + 10)
         padding: 0
         closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
@@ -134,32 +136,35 @@ Item {
                             required property int index
                             readonly property bool usable: modelData.enabled !== false
                             readonly property bool lit: usable && (itemMouse.containsMouse || root.current === index)
+                            readonly property bool checked: modelData.checked === true
                             width: list.width
-                            implicitWidth: label.implicitWidth + 44
-                            height: 32
-                            radius: Theme.radius.item + 2
-                            color: lit ? (modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
+                            implicitWidth: label.implicitWidth + (Theme.material ? 60 : 44)
+                            height: root.itemHeight
+                            radius: Theme.material ? (checked ? 12 : 8) : Theme.radius.item + 2
+                            color: Theme.material ? (checked ? Qt.tint(Theme.m3.tertiaryContainer, Qt.alpha(Theme.m3.onTertiaryContainer, lit ? 0.08 : 0)) : lit ? Qt.alpha(modelData.danger ? Theme.m3.error : Theme.m3.onSurface, 0.08) : "transparent")
+                                : lit ? (modelData.danger ? Theme.color.danger : Theme.accent) : "transparent"
                             Accessible.role: Accessible.MenuItem
                             Accessible.name: modelData.text ?? ""
                             Accessible.checkable: modelData.checked !== undefined
                             Accessible.checked: modelData.checked === true
                             Accessible.onPressAction: root.choose(index)
                             Icon {
-                                x: 8
+                                x: Theme.material ? 12 : 8
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: entry.modelData.checked === true || (entry.modelData.icon ?? "") !== ""
                                 name: entry.modelData.checked === true ? "check" : (entry.modelData.icon ?? "")
-                                bold: entry.modelData.checked === true
-                                size: 12
+                                bold: entry.modelData.checked === true && !Theme.material
+                                size: Theme.material ? 20 : 12
                                 color: label.color
                             }
                             Text {
                                 id: label
-                                x: 28
+                                x: Theme.material ? 44 : 28
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: entry.modelData.text
-                                color: entry.lit ? Theme.color.onAccent : !entry.usable ? Theme.color.tertiary : entry.modelData.danger ? Theme.color.danger : Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                                color: Theme.material ? (!entry.usable ? Qt.alpha(Theme.m3.onSurface, 0.38) : entry.checked ? Theme.m3.onTertiaryContainer : entry.modelData.danger ? Theme.m3.error : Theme.m3.onSurface)
+                                    : entry.lit ? Theme.color.onAccent : !entry.usable ? Theme.color.tertiary : entry.modelData.danger ? Theme.color.danger : Theme.color.label
+                                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.body; letterSpacing: Theme.material ? 0.1 : 0 }
                             }
                             MouseArea {
                                 id: itemMouse

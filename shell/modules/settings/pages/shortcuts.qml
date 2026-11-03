@@ -83,8 +83,9 @@ Column {
         id: br
         required property var bind
         width: parent?.width ?? 0
-        height: Math.max(44, brText.implicitHeight + 20)
-        color: brMouse.pressed ? Theme.color.fillPressed : brMouse.containsMouse || br.activeFocus ? Theme.color.fill : "transparent"
+        height: Math.max(Theme.material ? 56 : 44, brText.implicitHeight + 20)
+        // (Material: the Group's tile shows the hover)
+        color: Theme.material ? "transparent" : brMouse.pressed ? Theme.color.fillPressed : brMouse.containsMouse || br.activeFocus ? Theme.color.fill : "transparent"
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: bind.label + ", " + bind.keyText + (bind.disabled ? ", off" : "")
@@ -283,7 +284,7 @@ Column {
             width: ep.segment
             height: ep.height - 4
             radius: height / 2
-            color: Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : "white"
+            color: Theme.material ? Theme.m3.secondaryContainer : Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : "white"
             Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
         }
         Repeater {
@@ -578,8 +579,9 @@ Column {
                 required property var modelData
                 readonly property bool chosen: modelData.id === form.appId
                 width: parent?.width ?? 0
-                height: 40
-                color: chosen ? Theme.accentTint : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
+                height: Theme.material ? 48 : 40
+                radius: Theme.material ? 4 : 0
+                color: chosen ? Theme.accentTint : Theme.material ? "transparent" : appMouse.pressed ? Theme.color.fillPressed : appMouse.containsMouse ? Theme.color.fill : "transparent"
                 activeFocusOnTab: true
                 function choose() {
                     form.appId = modelData.id;
