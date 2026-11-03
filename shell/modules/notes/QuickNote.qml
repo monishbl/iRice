@@ -21,7 +21,7 @@ Variants {
             screen: slot.modelData
             dialogName: "quickNote"
             contentWidth: 440
-            padding: 16
+            padding: Theme.material ? 24 : 16
 
             // The draft survives closing (Escape), not saving
             property string draft: ""
@@ -38,6 +38,13 @@ Variants {
                 draft = editor.text;
             }
             property string savingPath: ""
+            // Text into the note at the cursor
+            function put(t) {
+                if (!t)
+                    return;
+                editor.insert(editor.cursorPosition, t);
+                editor.forceActiveFocus();
+            }
             function save() {
                 if (savingPath !== "" || editor.text.trim() === "")
                     return;
@@ -63,25 +70,42 @@ Variants {
 
                 Row {
                     width: parent.width
-                    spacing: 8
-                    Icon {
+                    spacing: Theme.material ? 12 : 8
+                    // (Material: the icon on a tertiary shape, and the
+                    // dialog's headline)
+                    Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        name: "note-pencil"
-                        size: 18
-                        color: Theme.accents.yellow
+                        width: Theme.material ? 40 : noteIcon.width
+                        height: Theme.material ? 40 : noteIcon.height
+                        Loader {
+                            anchors.fill: parent
+                            active: Theme.material
+                            sourceComponent: MaterialShape {
+                                shape: "cookie9"
+                                color: Theme.m3.tertiaryContainer
+                            }
+                        }
+                        Icon {
+                            id: noteIcon
+                            anchors.centerIn: parent
+                            name: "note-pencil"
+                            fill: Theme.material
+                            size: Theme.material ? 20 : 18
+                            color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.accents.yellow
+                        }
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Quick note"
                         color: Theme.color.label
-                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                        font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.large : Theme.font.body; weight: Theme.material ? Font.Normal : Font.DemiBold }
                     }
                 }
 
                 Squircle {
                     width: parent.width
                     height: 196
-                    radius: Theme.radius.control
+                    radius: Theme.material ? 16 : Theme.radius.control
                     color: Theme.color.fill
                     border.width: editor.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -89,7 +113,7 @@ Variants {
                         id: flick
                         Momentum {}
                         anchors.fill: parent
-                        anchors.margins: 10
+                        anchors.margins: Theme.material ? 16 : 10
                         contentHeight: editor.height
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
@@ -125,11 +149,26 @@ Variants {
                             font: editor.font
                         }
                     }
+                    // More to put in (Material: Material 3 Expressive's FAB menu)
+                    Loader {
+                        anchors { right: parent.right; bottom: parent.bottom; margins: 12 }
+                        active: Theme.material
+                        sourceComponent: FabMenu {
+                            icon: "plus"
+                            label: "Add to the note"
+                            items: [
+                                { text: "Checklist item", icon: "list-checks", action: () => dialog.put((editor.cursorPosition > 0 && editor.text[editor.cursorPosition - 1] !== "\n" ? "\n" : "") + "- [ ] ") },
+                                { text: "Paste what you copied", icon: "clipboard-text", action: () => dialog.put(Quickshell.clipboardText) },
+                                { text: "Today's date", icon: "calendar-blank", action: () => dialog.put(Qt.formatDate(new Date(), "dddd d MMMM yyyy")) },
+                                { text: "Open the Notes folder", icon: "folder-open", action: () => { Panels.close(); Notes.openFolder(); } }
+                            ]
+                        }
+                    }
                 }
 
                 Item {
                     width: parent.width
-                    height: 32
+                    height: Theme.material ? 40 : 32
                     Text {
                         anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                         text: "Saved to " + Notes.folder.replace(Quickshell.env("HOME"), "~")
@@ -141,19 +180,30 @@ Variants {
                     Squircle {
                         id: saveButton
                         anchors.right: parent.right
-                        width: saveLabel.implicitWidth + 28
-                        height: 32
-                        radius: Theme.radius.control
+                        // Material: a filled primary pill with state layers,
+                        // its corners tightening while pressed; greyed out
+                        // (12% / 38% of onSurface) with nothing to save
+                        width: saveLabel.implicitWidth + (Theme.material ? 48 : 28)
+                        height: Theme.material ? 40 : 32
+                        // (Material's press swell)
+                        transform: Theme.material ? pressFx1.effects : []
+                        ElasticControl { id: pressFx1; enabled: Theme.material; pressed: Theme.material && saveMouse.pressed }
+                        radius: Theme.material ? (saveMouse.pressed ? 8 : height / 2) : Theme.radius.control
+                        Behavior on radius {
+                            enabled: Theme.material
+                            M3Spring { speed: "fast"; epsilon: 0.25 }
+                        }
                         readonly property bool enabledNow: dialog.savingPath === "" && editor.text.trim() !== ""
-                        color: !enabledNow ? Theme.color.fill : saveMouse.pressed ? Qt.darker(Theme.accent, 1.15) : saveMouse.containsMouse ? Qt.lighter(Theme.accent, 1.08) : Theme.accent
-                        scale: saveMouse.pressed ? 0.97 : 1
+                        color: Theme.material ? (!enabledNow ? Qt.alpha(Theme.m3.onSurface, 0.12) : Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, saveMouse.pressed ? 0.1 : saveMouse.containsMouse ? 0.08 : 0)))
+                            : !enabledNow ? Theme.color.fill : saveMouse.pressed ? Qt.darker(Theme.accent, 1.15) : saveMouse.containsMouse ? Qt.lighter(Theme.accent, 1.08) : Theme.accent
+                        scale: saveMouse.pressed && !Theme.material ? 0.97 : 1
                         Behavior on scale { ScaleAnimator { duration: 100 } }
                         Text {
                             id: saveLabel
                             anchors.centerIn: parent
                             text: dialog.savingPath !== "" ? "Saving…" : "Save note  ⌃↵"
-                            color: saveButton.enabledNow ? "white" : Theme.color.tertiary
-                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
+                            color: Theme.material ? (saveButton.enabledNow ? Theme.m3.onPrimary : Qt.alpha(Theme.m3.onSurface, 0.38)) : saveButton.enabledNow ? "white" : Theme.color.tertiary
+                            font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
                         }
                         MouseArea {
                             id: saveMouse
