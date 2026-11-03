@@ -26,16 +26,13 @@ Variants {
             readonly property bool shown: Panels.isOpen("spotlight", screen)
             readonly property int panelWidth: 680
             readonly property int m: 24 // glass shadow margin
-            property var results: []
-            property int selected: 0
-            property bool answering: false // showing an AI answer instead of results
 
             // Starts at 0 so the window animates in when it is created
             property real progress: 0
             Component.onCompleted: {
                 progress = Qt.binding(() => shown ? 1 : 0);
                 if (shown)
-                    reset();
+                    search.reset();
             }
             Behavior on progress {
                 NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: win.shown ? Theme.motion.emphasized : Theme.motion.exit }
@@ -51,45 +48,12 @@ Variants {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-            onShownChanged: if (shown) reset()
-            function reset() {
-                answering = false;
-                Ai.stopQuick();
-                field.text = "";
-                results = [];
-                selected = 0;
-                field.forceActiveFocus();
-                Search.refreshClipboard();
-            }
-
-            // Files, conversions and definitions arrive later
-            Connections {
-                target: Search
-                function onRevisionChanged() {
-                    if (!win.shown || win.answering)
-                        return;
-                    // Keep the row you moved to; otherwise the new answer leads
-                    const keep = win.selected > 0 ? win.results[win.selected]?.title : undefined;
-                    win.results = Search.query(field.text);
-                    const i = win.results.findIndex(r => r.title === keep);
-                    win.selected = i >= 0 ? i : 0;
-                }
-            }
-
-            function run(i) {
-                const r = results[i];
-                if (!r)
-                    return;
-                if (r.ai) {
-                    answering = true;
-                    r.run();
-                    return;
-                }
-                Panels.close();
-                r.run();
-            }
-            function continueInChat() {
-                Ai.continueQuick();
+            onShownChanged: if (shown) search.reset()
+            // The results, the chosen row and running it: SearchModel
+            SearchModel {
+                id: search
+                searchField: field
+                shown: win.shown
             }
 
             // Click outside closes
@@ -140,28 +104,14 @@ Variants {
                     font { family: Theme.font.family; pixelSize: 22; weight: Font.Normal }
                     clip: true
 
-                    onTextChanged: {
-                        if (win.answering) {
-                            win.answering = false;
-                            Ai.stopQuick();
-                        }
-                        win.results = Search.query(text);
-                        win.selected = 0;
-                    }
+                    onTextChanged: search.typed(text)
                     Keys.onEscapePressed: Panels.close()
-                    Keys.onReturnPressed: win.answering ? win.continueInChat() : win.run(win.selected)
-                    Keys.onEnterPressed: win.answering ? win.continueInChat() : win.run(win.selected)
-                    Keys.onDownPressed: win.selected = Math.min(win.results.length - 1, win.selected + 1)
-                    Keys.onUpPressed: win.selected = Math.max(0, win.selected - 1)
-                    Keys.onTabPressed: win.selected = (win.selected + 1) % Math.max(1, win.results.length)
-                    // Quick Look the selected file: Shift+Space or Ctrl+Y
-                    Keys.onPressed: e => {
-                        const r = win.results[win.selected];
-                        if (r?.path && ((e.key === Qt.Key_Space && (e.modifiers & Qt.ShiftModifier)) || (e.key === Qt.Key_Y && (e.modifiers & Qt.ControlModifier)))) {
-                            Panels.quickLook(r.path);
-                            e.accepted = true;
-                        }
-                    }
+                    Keys.onReturnPressed: search.accept()
+                    Keys.onEnterPressed: search.accept()
+                    Keys.onDownPressed: search.down()
+                    Keys.onUpPressed: search.up()
+                    Keys.onTabPressed: search.next()
+                    Keys.onPressed: e => search.quickLookKey(e)
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -175,7 +125,7 @@ Variants {
                 Glass {
                     id: resultsGlass
                     y: fieldGlass.height - 2 * win.m + 8
-                    visible: win.results.length > 0 && !win.answering
+                    visible: search.results.length > 0 && !search.answering
                     width: parent.width
                     height: Math.min(list.contentHeight, 440) + 16 + 2 * win.m
                     radius: 24
@@ -194,8 +144,8 @@ Variants {
                         width: win.panelWidth - 16
                         height: parent.height - 2 * win.m - 16
                         clip: true
-                        model: win.results
-                        currentIndex: win.selected
+                        model: search.results
+                        currentIndex: search.selected
                         boundsBehavior: Flickable.StopAtBounds
                         highlightMoveDuration: 0
                         delegate: Column {
@@ -209,8 +159,8 @@ Variants {
                                 visible: parent.big
                                 width: parent.width
                                 result: parent.modelData
-                                selected: parent.index === win.selected
-                                onActivated: win.run(parent.index)
+                                selected: parent.index === search.selected
+                                onActivated: search.run(parent.index)
                             }
                             Item {
                                 visible: parent.big
@@ -218,7 +168,7 @@ Variants {
                                 height: 6
                             }
                             Text {
-                                visible: !parent.big && (parent.index === 0 || win.results[parent.index - 1].section !== parent.modelData.section)
+                                visible: !parent.big && (parent.index === 0 || search.results[parent.index - 1].section !== parent.modelData.section)
                                 leftPadding: 10
                                 topPadding: parent.index === 0 ? 2 : 10
                                 bottomPadding: 4
@@ -230,8 +180,8 @@ Variants {
                                 visible: !parent.big
                                 width: parent.width
                                 result: parent.modelData
-                                selected: parent.index === win.selected
-                                onActivated: win.run(parent.index)
+                                selected: parent.index === search.selected
+                                onActivated: search.run(parent.index)
                             }
                         }
                     }
@@ -241,7 +191,7 @@ Variants {
                 Glass {
                     id: answerGlass
                     y: fieldGlass.height - 2 * win.m + 8
-                    visible: win.answering
+                    visible: search.answering
                     width: parent.width
                     height: answerBody.implicitHeight + 32 + 2 * win.m
                     radius: 24
@@ -309,7 +259,7 @@ Variants {
                             spacing: 8
                             Repeater {
                                 model: [
-                                    { label: "Continue in chat", primary: true, run: () => win.continueInChat() },
+                                    { label: "Continue in chat", primary: true, run: () => search.continueInChat() },
                                     { label: "Copy answer", primary: false, run: () => { Quickshell.execDetached(["wl-copy", Ai.quick.answer]); Panels.close(); } }
                                 ]
                                 Squircle {
