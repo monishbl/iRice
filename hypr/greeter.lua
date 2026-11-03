@@ -17,6 +17,8 @@ hl.layer_rule({ match = { namespace = "irice:.*" }, blur = true })
 hl.layer_rule({ match = { namespace = "irice:.*" }, ignore_alpha = 0.4 })
 hl.layer_rule({ match = { namespace = "irice:wallpaper" }, blur = false })
 
+-- The login screen in its style (greeter-start.sh reads greeter.json; a copy
+-- from before it had one starts the shell's greeter as it is)
 hl.on("hyprland.start", function()
-    hl.exec_cmd("sh -c 'IRICE_GREETER_WALLPAPER=/usr/share/irice/wallpaper.jpg qs -p /usr/share/irice/shell/greeter.qml; hyprctl dispatch \"hl.dsp.exit()\"'")
+    hl.exec_cmd("sh -c 'S=/usr/share/irice/shell/assets/scripts/greeter-start.sh; if [ -f \"$S\" ]; then bash \"$S\"; else IRICE_GREETER_WALLPAPER=/usr/share/irice/wallpaper.jpg qs -p /usr/share/irice/shell/greeter.qml; fi; hyprctl dispatch \"hl.dsp.exit()\"'")
 end)

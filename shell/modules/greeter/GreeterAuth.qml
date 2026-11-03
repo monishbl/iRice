@@ -5,9 +5,14 @@ import "session-exec.js" as SessionExec
 import Quickshell.Services.Greetd
 
 // Login logic for the greeter: users from /etc/passwd, sessions from
-// wayland-sessions, and the greetd conversation. Without greetd (or with
+// wayland-sessions, and the greetd conversation. The conversation starts as
+// soon as a user is chosen, not when Enter is pressed, so a fingerprint
+// reader (pam_fprintd in greetd's PAM file: irice-root fingerprint on login)
+// listens straight away: its words ("Place your finger…") are `message`,
+// and a finger logs in by itself. A password typed meanwhile waits for
+// PAM to ask for it; typing is never held up. Without greetd (or with
 // IRICE_GREETER_MOCK=1) it runs a mock that accepts the password "irice",
-// for trying the greeter in a normal session.
+// for trying the greeter in a normal session (Escape quits it there).
 QtObject {
     id: root
 
@@ -21,6 +26,13 @@ QtObject {
     property string prompt: "Password"
     property bool success: false
     property string pending: "" // password waiting for greetd's prompt
+    // The conversation: open (a user's chosen), and asked for the password
+    property bool open: false
+    property bool asked: false
+    // What PAM says that isn't a question (the fingerprint reader's words)
+    property string message: ""
+    // The reader: "" (none heard of) | waiting | miss
+    property string finger: ""
 
     readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice-greeter.json"
 
@@ -34,8 +46,38 @@ QtObject {
             mockTimer.restart();
             return;
         }
-        pending = password;
+        if (asked) {
+            asked = false;
+            Greetd.respond(password);
+        } else {
+            pending = password;
+            begin();
+        }
+    }
+    // Opens the conversation for the chosen user (again after a failure, so
+    // the reader listens again)
+    function begin() {
+        if (mock || open || users.length === 0)
+            return;
+        open = true;
+        asked = false;
         Greetd.createSession(users[user].name);
+    }
+    function restart() {
+        if (mock)
+            return;
+        if (open)
+            Greetd.cancelSession();
+        open = false;
+        asked = false;
+        message = "";
+        finger = "";
+        beginTimer.restart();
+    }
+    onUserChanged: restart()
+    property Timer beginTimer: Timer {
+        interval: 300
+        onTriggered: root.begin()
     }
 
     function launch() {
@@ -46,8 +88,7 @@ QtObject {
             console.warn("greeter:", e);
             error = "This session's launch command isn't supported. Choose another with Tab.";
             busy = false;
-            if (!mock)
-                Greetd.cancelSession();
+            restart();
             return;
         }
         remember.setText(JSON.stringify({ user: users[user]?.name ?? "", session: s?.name ?? "" }));
@@ -63,24 +104,39 @@ QtObject {
         target: root.mock ? null : Greetd
         function onAuthMessage(message, isError, responseRequired, echoResponse) {
             if (responseRequired) {
-                Greetd.respond(root.pending);
-                root.pending = "";
+                if (root.pending !== "") {
+                    Greetd.respond(root.pending);
+                    root.pending = "";
+                } else {
+                    root.asked = true;
+                    root.prompt = message || "Password";
+                }
+            } else if (/finger|swipe|touch/i.test(message)) {
+                // (pam_fprintd: listening, or the finger didn't match)
+                root.finger = isError ? "miss" : "waiting";
+                root.message = message;
             } else if (isError) {
                 root.error = message;
+            } else {
+                root.message = message;
             }
         }
         function onAuthFailure(message) {
             root.busy = false;
+            root.pending = "";
             root.error = "Incorrect password. Try again.";
-            Greetd.cancelSession();
+            root.restart();
         }
         function onReadyToLaunch() {
             root.busy = false;
+            root.open = false;
             root.launch();
         }
         function onError(message) {
             root.busy = false;
+            root.pending = "";
             root.error = message || "Login failed. Try again.";
+            root.restart();
         }
     }
 
@@ -95,6 +151,16 @@ QtObject {
                 root.error = "Incorrect password. Try again.";
         }
     }
+    // A preview (mock) ends with Escape, or a moment after a "login"
+    function quitPreview() {
+        if (mock)
+            Qt.quit();
+    }
+    property Timer mockDone: Timer {
+        running: root.mock && root.success
+        interval: 1200
+        onTriggered: Qt.quit()
+    }
 
     // Users with a login shell and a normal uid
     property FileView passwd: FileView {
@@ -102,6 +168,7 @@ QtObject {
         onLoaded: {
             root.users = text().split("\n").map(l => l.split(":")).filter(f => f.length >= 7 && +f[2] >= 1000 && +f[2] < 60000 && !/(nologin|false)$/.test(f[6])).map(f => ({ name: f[0], full: (f[4] ?? "").split(",")[0] || f[0] }));
             root.restoreLast();
+            root.beginTimer.restart();
         }
     }
 
@@ -118,6 +185,18 @@ QtObject {
                 root.restoreLast();
             }
         }
+    }
+
+    // This computer's name (the text style's title)
+    property string hostname: ""
+    property FileView hostFile: FileView {
+        path: "/etc/hostname"
+        onLoaded: root.hostname = text().trim()
+    }
+    // A user's picture the greeter may read: AccountsService's (your
+    // ~/.face it can't)
+    function avatar(name) {
+        return name ? "file:///var/lib/AccountsService/icons/" + name : "";
     }
 
     property FileView remember: FileView {

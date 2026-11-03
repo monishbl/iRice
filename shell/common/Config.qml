@@ -159,6 +159,10 @@ Singleton {
                 property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
                 property int clockWidth: 112 // wdth, 25 .. 151
                 property bool clockRound: true // rounded digits (else sharp)
+                // The iRice login screen (greetd, ./install.sh --greeter): look
+                // (Glass or Material, the look you last used) | text (ly's) |
+                // plain (black, your picture and the field)
+                property string loginStyle: "look"
             }
 
             property JsonObject notificationCenter: JsonObject {
