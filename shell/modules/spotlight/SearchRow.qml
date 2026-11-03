@@ -76,6 +76,12 @@ Item {
         styled: false
         source: root.picture ? root.result.icon : ""
     }
+    // (a screenshot found by its words: the shot itself, round)
+    ResultPicture {
+        visible: !!root.result.picture
+        anchors.fill: lead
+        path: root.result.picture ?? ""
+    }
     Text {
         visible: !!root.result.emoji
         anchors.centerIn: lead
@@ -83,7 +89,7 @@ Item {
         font { family: EmojiFont.family; pixelSize: 22 }
     }
     Icon {
-        visible: !root.picture && !root.result.emoji && !root.loading
+        visible: !root.picture && !root.result.emoji && !root.result.picture && !root.loading
         anchors.centerIn: lead
         name: root.result.glyph ?? "circle"
         fill: root.selected
@@ -103,6 +109,7 @@ Item {
         Text {
             width: parent.width
             text: root.result.title
+            textFormat: Text.PlainText // (a clipboard entry's, a screenshot's words)
             elide: Text.ElideRight
             color: root.contentColor
             // (emphasized type for the selection)
@@ -113,6 +120,7 @@ Item {
             visible: body !== ""
             width: parent.width
             text: body
+            textFormat: Text.PlainText
             elide: Text.ElideRight
             color: Theme.m3.onSurfaceVariant
             font { family: Theme.font.family; pixelSize: 14 }

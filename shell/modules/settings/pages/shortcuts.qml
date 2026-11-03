@@ -741,6 +741,57 @@ Column {
                 }
             }
         }
+
+        // Live Text: selecting the text in screenshots and pictures, Search
+        // by it, and the languages it reads (ScreenTools, LiveText)
+        Group {
+            id: textGroup
+            visible: page.view === "list"
+            width: parent.width
+            title: "Text in screenshots"
+            readonly property bool installing: Updates.running && ScreenTools.ocrInstalling.length > 0
+            footer: ScreenTools.ocrInstallError !== "" ? "Couldn't install: " + ScreenTools.ocrInstallError + " Check your connection, then try again."
+                : "Text is read on this computer with Tesseract; nothing is uploaded. It reads your system's and your keyboard layouts' languages, plus English."
+            Row {
+                visible: !ScreenTools.hasTesseract
+                label: "Text recognition isn't installed"
+                detail: "Install Tesseract to select and copy the text in screenshots and pictures, and to find screenshots by their text."
+                SettingsButton {
+                    text: textGroup.installing ? "Installing…" : "Install"
+                    icon: "download-simple"
+                    busy: textGroup.installing
+                    enabled: !Updates.running
+                    onClicked: ScreenTools.installOcr("")
+                }
+            }
+            Row {
+                label: "Find screenshots by their text"
+                detail: "Search finds a screenshot by the words in it. They're read in the background, not on battery below 30% or in power saver; turning this off deletes them."
+                Switch {
+                    enabled: ScreenTools.hasTesseract
+                    checked: Config.options.screenshot.textSearch
+                    onToggled: Config.options.screenshot.textSearch = !checked
+                }
+            }
+            Repeater {
+                model: ScreenTools.hasTesseract ? ScreenTools.ocrLanguages : []
+                Row {
+                    id: langRow
+                    required property var modelData
+                    readonly property bool installingThis: textGroup.installing && ScreenTools.ocrInstalling.includes("tesseract-data-" + modelData.code)
+                    label: modelData.name
+                    detail: modelData.installed ? "Installed" : "Not installed yet"
+                    SettingsButton {
+                        visible: !langRow.modelData.installed
+                        text: langRow.installingThis ? "Installing…" : "Install"
+                        icon: "download-simple"
+                        busy: langRow.installingThis
+                        enabled: !Updates.running
+                        onClicked: ScreenTools.installOcr(langRow.modelData.code)
+                    }
+                }
+            }
+        }
     }
 
     // ── Parts: other pages shown here (SettingsMap.parts) ──────────────

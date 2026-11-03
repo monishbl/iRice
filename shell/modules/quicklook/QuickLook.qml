@@ -8,12 +8,15 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.common
 import qs.glass
+import qs.modules.screentools.editor
 import qs.services
 
 // Quick Look (Panels.quickLook(path)): a preview of a file over whatever is
 // open: images, video and audio, the first page of a PDF, text and code, a
 // folder's contents, or the file's details. Space or Esc closes it, Return
-// opens the file in its app.
+// opens the file in its app. A picture's Text button (T) turns on Live Text:
+// its words to select and copy, links and numbers as chips (the screenshot
+// editor's LiveTextLayer and LiveTextBar).
 Scope {
     id: scope
 
@@ -62,11 +65,26 @@ Scope {
             readonly property string fileName: (path || Panels.quickLookPath).split("/").pop()
             readonly property string ext: fileName.includes(".") ? fileName.split(".").pop().toLowerCase() : ""
 
+            // Live Text on a picture, and what Search found it by (opened
+            // from Search by the words in it: those, selected)
+            property bool textMode: false
+            property string textQuery: ""
+            function takeQuery() {
+                const q = LiveText.takeQuery(path);
+                if (q !== "") {
+                    textQuery = q;
+                    textMode = true;
+                }
+            }
+
             // What it is: from the file's own type (mime), else its extension
             property string mime: ""
             property var info: ({ size: 0, modified: "" })
             Component.onDestruction: player.stop()
             onPathChanged: if (path) {
+                textMode = false;
+                textQuery = "";
+                takeQuery();
                 mime = "";
                 probe.running = false;
                 Qt.callLater(() => probe.running = true); // (a restart in the same tick is ignored)
@@ -106,7 +124,10 @@ Scope {
 
             // Starts at 0 so it animates in when created
             property real progress: 0
-            Component.onCompleted: progress = Qt.binding(() => shown ? 1 : 0)
+            Component.onCompleted: {
+                progress = Qt.binding(() => shown ? 1 : 0);
+                takeQuery(); // (the first file: no change of path)
+            }
             Behavior on progress { NumberAnimation { duration: win.shown ? 200 : 140; easing.type: win.shown ? Easing.OutCubic : Easing.InCubic } }
             visible: progress > 0.01 || shown
             // Input only while shown: during the closing fade (or if it ever
@@ -134,6 +155,30 @@ Scope {
                 id: card
                 focus: true
                 Keys.onPressed: e => {
+                    // Live Text: copy, select all, clear the selection first; T turns it on or off
+                    const ctrl = e.modifiers & Qt.ControlModifier;
+                    if (win.kind === "image" && e.key === Qt.Key_T && !ctrl) {
+                        win.textMode = !win.textMode;
+                        e.accepted = true;
+                        return;
+                    }
+                    if (win.textMode && liveText.status === "ready") {
+                        if (ctrl && e.key === Qt.Key_C) {
+                            liveBar.say(liveText.copy());
+                            e.accepted = true;
+                            return;
+                        }
+                        if (ctrl && e.key === Qt.Key_A) {
+                            liveText.selectAll();
+                            e.accepted = true;
+                            return;
+                        }
+                        if (e.key === Qt.Key_Escape && liveText.hasSelection) {
+                            liveText.clear();
+                            e.accepted = true;
+                            return;
+                        }
+                    }
                     if (e.key === Qt.Key_Space || e.key === Qt.Key_Escape) {
                         win.close();
                         e.accepted = true;
@@ -144,7 +189,9 @@ Scope {
                 }
                 // Size: the preview's own shape, within 80% of the screen
                 readonly property real maxW: win.width * 0.8
-                readonly property real maxH: win.height * 0.8 - header.height
+                readonly property real maxH: win.height * 0.8 - header.height - footer
+                // (Live Text's bar, under the picture)
+                readonly property real footer: win.textMode && win.kind === "image" ? liveBar.height + 12 : 0
                 readonly property size natural: win.kind === "image" && image.status === Image.Ready ? Qt.size(image.implicitWidth, image.implicitHeight)
                     : win.kind === "video" ? Qt.size(1280, 720)
                     : win.kind === "pdf" ? Qt.size(page.implicitWidth || 850, page.implicitHeight || 1100)
@@ -152,7 +199,7 @@ Scope {
                     : Qt.size(420, 260)
                 readonly property real k: Math.min(1, maxW / Math.max(1, natural.width), maxH / Math.max(1, natural.height))
                 width: Math.max(360, natural.width * k)
-                height: natural.height * k + header.height
+                height: natural.height * k + header.height + footer
                 anchors.centerIn: parent
                 opacity: win.progress
                 scale: 0.94 + 0.06 * win.progress
@@ -176,7 +223,7 @@ Scope {
                         onClicked: win.close()
                     }
                     Column {
-                        anchors { left: closeBtn.right; leftMargin: 10; right: shareBtn.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                        anchors { left: closeBtn.right; leftMargin: 10; right: textBtn.visible ? textBtn.left : shareBtn.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
                         Text {
                             width: parent.width
                             text: win.fileName
@@ -191,6 +238,19 @@ Scope {
                             color: Theme.color.secondary
                             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                         }
+                    }
+                    // A picture: Live Text on or off
+                    EditorButton {
+                        id: textBtn
+                        anchors { right: shareBtn.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                        visible: win.kind === "image"
+                        icon: "text-aa"
+                        label: "Text"
+                        selected: win.textMode
+                        tooltip: win.textMode ? "Stop selecting text" : "Select the text in this picture"
+                        shortcut: "T"
+                        enabled: image.status === Image.Ready
+                        onClicked: win.textMode = !win.textMode
                     }
                     IconButton {
                         id: shareBtn
@@ -238,10 +298,19 @@ Scope {
                     }
                 }
 
+                // Live Text: what it found, chips and copying
+                LiveTextBar {
+                    id: liveBar
+                    live: liveText
+                    maxWidth: card.width - 24
+                    visible: win.textMode && win.kind === "image" && status !== ""
+                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
+                }
+
                 // The preview
                 Item {
                     id: body
-                    anchors { left: parent.left; right: parent.right; top: header.bottom; bottom: parent.bottom; margins: 12; topMargin: 0 }
+                    anchors { left: parent.left; right: parent.right; top: header.bottom; bottom: parent.bottom; margins: 12; topMargin: 0; bottomMargin: 12 + card.footer }
                     clip: true
 
                     Image {
@@ -253,7 +322,18 @@ Scope {
                         asynchronous: true
                         smooth: true
                         mipmap: true
-                        sourceSize: Qt.size(card.maxW * 1.5, card.maxH * 1.5)
+                        sourceSize: Qt.size(card.maxW * 1.5, (card.maxH + card.footer) * 1.5) // (the same with Live Text on: not loaded again)
+                    }
+                    // Live Text over the picture as drawn
+                    LiveTextLayer {
+                        id: liveText
+                        x: (image.width - image.paintedWidth) / 2
+                        y: (image.height - image.paintedHeight) / 2
+                        width: image.paintedWidth
+                        height: image.paintedHeight
+                        active: win.textMode && win.kind === "image" && image.status === Image.Ready
+                        path: win.path
+                        highlight: win.textQuery
                     }
 
                     // PDF: the first page, rendered once into the cache

@@ -52,26 +52,63 @@ Singleton {
         return Math.round((mon?.x ?? 0) + r.x) + "," + Math.round((mon?.y ?? 0) + r.y) + " " + Math.round(r.width) + "x" + Math.round(r.height);
     }
 
-    // Text Capture's languages: the system's (whose tesseract-data-* is
-    // installed) plus English, e.g. "deu+eng" (OcrLangs.js)
+    // Text Capture's and Live Text's languages: the system's and the keyboard
+    // layouts' (whose tesseract-data-* is installed) plus English, e.g.
+    // "deu+eng" (OcrLangs.js)
     property string ocrLangs: "eng"
-    property var ocrMissing: [] // system languages without tesseract data
+    readonly property string ocrLangArg: ocrLangs.replace(/[^a-z_+]/g, "") || "eng" // (for -l)
+    property var ocrMissing: [] // wanted languages without tesseract data
+    // Settings' list: [{ code, name, installed }], English first
+    property var ocrLanguages: []
     readonly property bool hasTesseract: Tools.has("tesseract")
     onHasTesseractChanged: if (hasTesseract)
         langList.running = true
+    function listLanguages() {
+        if (hasTesseract)
+            langList.running = true;
+    }
+    Connections {
+        target: KeyboardLayout
+        function onVariantsChanged() { root.listLanguages(); }
+    }
+    // Tesseract or a language through Software Update's job (never pacman
+    // here): Settings' Install buttons, Live Text's
+    property var ocrInstalling: [] // the packages asked for, until the job ends
+    property string ocrInstallError: ""
+    function installOcr(code) {
+        if (Updates.running)
+            return;
+        ocrInstalling = /^[a-z_]+$/.test(code ?? "") ? ["tesseract-data-" + code] : ["tesseract", "tesseract-data-eng"];
+        ocrInstallError = "";
+        Needs.install(ocrInstalling);
+    }
+    Connections {
+        target: Updates
+        function onFinished(j) {
+            if (root.ocrInstalling.length > 0)
+                root.ocrInstallError = j.state === "done" ? "" : (j.error || j.text || "The install didn't finish.");
+            root.ocrInstalling = [];
+            root.listLanguages(); // (what's there now)
+        }
+    }
     Process {
         id: langList
         command: ["tesseract", "--list-langs"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const p = OcrLangs.pick({ LC_ALL: Quickshell.env("LC_ALL") ?? "", LC_MESSAGES: Quickshell.env("LC_MESSAGES") ?? "", LANG: Quickshell.env("LANG") ?? "", LANGUAGE: Quickshell.env("LANGUAGE") ?? "" }, text);
+                const env = { LC_ALL: Quickshell.env("LC_ALL") ?? "", LC_MESSAGES: Quickshell.env("LC_MESSAGES") ?? "", LANG: Quickshell.env("LANG") ?? "", LANGUAGE: Quickshell.env("LANGUAGE") ?? "" };
+                const layouts = KeyboardLayout.layouts.map((l, i) => ({ layout: l, variant: KeyboardLayout.variants[i] ?? "" }));
+                const p = OcrLangs.pick(env, text, layouts);
+                const have = OcrLangs.installedSet(text);
                 root.ocrLangs = p.langs.join("+");
                 root.ocrMissing = p.missing;
+                const w = OcrLangs.wanted(env, layouts);
+                root.ocrLanguages = ["eng"].concat(w.filter(c => c !== "eng")).map(c => ({ code: c, name: OcrLangs.nameOf(c), installed: !!have[c] }));
             }
         }
     }
     function ocrCommand(geo) {
-        return "grim -g '" + geo + "' - | tesseract stdin stdout -l '" + ocrLangs.replace(/[^a-z_+]/g, "") + "' 2>/dev/null";
+        return "grim -g '" + geo + "' - | tesseract stdin stdout -l '" + ocrLangArg + "' 2>/dev/null";
     }
 
     function select(mode) {
@@ -191,6 +228,7 @@ Singleton {
             const file = out.trim();
             Sounds.play("screenshot");
             WifiShare.scan(file); // (a Wi-Fi code in it: the island offers to join)
+            LiveText.indexSoon(); // (its words, for Search: in the background, later)
             if (hasEditor) {
                 shot(file); // floating thumbnail; click it to mark up
                 return;

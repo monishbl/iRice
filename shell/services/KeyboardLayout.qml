@@ -10,6 +10,7 @@ Singleton {
 
     property string name: "" // e.g. "English (US)"
     property var layouts: [] // configured layout codes, e.g. ["us", "de"]
+    property var variants: [] // and their variants, e.g. ["", "nodeadkeys"] (Live Text reads their languages)
     readonly property bool multiple: layouts.length > 1
     readonly property string short: {
         const n = name.toLowerCase();
@@ -32,6 +33,8 @@ Singleton {
         function onRawEvent(event) {
             if (event.name === "activelayout")
                 root.name = event.data.split(",").slice(1).join(",");
+            else if (event.name === "configreloaded")
+                root.refresh(); // (the layouts may have changed)
         }
     }
 
@@ -46,7 +49,9 @@ Singleton {
                     if (!main)
                         return;
                     root.name = main.active_keymap ?? "";
-                    root.layouts = (main.layout ?? "").split(",").filter(x => x);
+                    const names = (main.layout ?? "").split(","), vars = (main.variant ?? "").split(",");
+                    root.layouts = names.filter(x => x);
+                    root.variants = names.map((x, i) => vars[i] ?? "").filter((v, i) => names[i]);
                 } catch (e) {}
             }
         }

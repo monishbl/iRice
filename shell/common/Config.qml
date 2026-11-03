@@ -265,6 +265,7 @@ Singleton {
                 property string editor: "irice" // irice (floating thumbnail, click to mark up) | swappy
                 property bool thumbnail: true // iRice editor: floating thumbnail after a screenshot; off = a notification with Edit
                 property bool markup: true // Swappy only: area screenshots open in Swappy to crop, draw and annotate
+                property bool textSearch: true // Search finds screenshots by their words (read and kept on this computer; off deletes the index)
             }
 
             property JsonObject wallpaper: JsonObject {

@@ -1,5 +1,12 @@
 # iRice changelog
 
+## Live Text · 2026-11-04
+
+- **Select the text in a screenshot or picture**, like on a phone: the screenshot editor's Select text tool (S) and Quick Preview's Text button (T) let you drag across words, double-click a line, copy with Ctrl+C or Copy text, or take everything with Copy all text. The floating thumbnail has Copy text too. Tesseract reads it on this computer; nothing is uploaded.
+- **One-tap chips for what's in it:** links open in your browser (web links only), addresses start an email, numbers are copied (or called, when an app handles phone links), a Wi-Fi code offers to join. Nothing found in a picture ever runs as a command.
+- **Search finds screenshots by their words**, with the shot as the row's picture and the words around the match; opening one shows it in Quick Preview with those words selected. The words are read in the background, one low-priority job at a time, only for new screenshots, and not on battery below 30% or in power saver; they're kept owner-only in `~/.local/state/irice`, and turning it off (Settings → Keyboard → More options → Text in screenshots) deletes them.
+- **Your languages:** besides the system's, text is read in your keyboard layouts' languages (German for `de`, Hindi for `in`, …) once their data is installed. The same settings group lists them with Install buttons, through Software Update.
+
 ## Sharing's firewall ports open only while you're visible · 2026-11-04
 
 - **With a firewall on, sharing's ports are open only while they're needed:** while you're visible to others in Quick Share or receiving with LocalSend, while the share sheet looks for devices, and while a QR-code share or a cast serves a file. They close a few seconds after. Only what's needed opens (Quick Share's ports, DHCP and mDNS; LocalSend's 53317; 53319–53320 for QR-code shares and casting).

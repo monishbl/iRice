@@ -8,10 +8,11 @@ import qs.glass
 import qs.services
 
 // Markup editor: a floating glass window sized to the screenshot. Tools on
-// top (crop, pen, highlighter, arrow, rectangle, ellipse, text, redact) with
-// undo/redo; colours and stroke widths, and Delete / Share / Copy / Save at
-// the bottom. Markup is vector items over the image, flattened with
-// grabToImage at the image's native resolution when it leaves the editor.
+// top (crop, pen, highlighter, arrow, rectangle, ellipse, text, redact, and
+// Live Text: select the text in the screenshot) with undo/redo; colours and
+// stroke widths, and Delete / Share / Copy / Save at the bottom. Markup is
+// vector items over the image, flattened with grabToImage at the image's
+// native resolution when it leaves the editor.
 GlassWindow {
     id: win
 
@@ -341,7 +342,9 @@ GlassWindow {
     readonly property bool typing: editText !== null
     Shortcut { sequences: [StandardKey.Undo]; enabled: !win.typing && win.busy === ""; onActivated: win.s.undo() }
     Shortcut { sequences: ["Ctrl+Shift+Z", StandardKey.Redo]; enabled: !win.typing && win.busy === ""; onActivated: win.s.redo() }
-    Shortcut { sequences: [StandardKey.Copy]; enabled: !win.typing; onActivated: win.copy() }
+    // (Live Text with a selection: the text; otherwise the image)
+    Shortcut { sequences: [StandardKey.Copy]; enabled: !win.typing; onActivated: liveText.hasSelection ? liveBar.say(liveText.copy()) : win.copy() }
+    Shortcut { sequences: [StandardKey.SelectAll]; enabled: win.s.tool === "livetext"; onActivated: liveText.selectAll() }
     Shortcut { sequences: [StandardKey.Save]; enabled: !win.typing; onActivated: win.save() }
     Shortcut { sequences: ["Ctrl+Shift+S"]; enabled: !win.typing; onActivated: win.saveCopy() }
     Repeater {
@@ -361,7 +364,8 @@ GlassWindow {
         { id: "rect", icon: "square", label: "Rectangle", key: "R" },
         { id: "ellipse", icon: "circle", label: "Ellipse", key: "O" },
         { id: "text", icon: "text-t", label: "Text", key: "T" },
-        { id: "pixelate", icon: "checkerboard", label: "Redact", key: "B" }
+        { id: "pixelate", icon: "checkerboard", label: "Redact", key: "B" },
+        { id: "livetext", icon: "text-aa", label: "Select text", key: "S" }
     ]
 
     // ---- Layout --------------------------------------------------------------------
@@ -389,6 +393,8 @@ GlassWindow {
                         win.banner.kind === "prompt" ? win.keepEditing() : (win.banner = null);
                     else if (win.draft)
                         win.draft = null;
+                    else if (liveText.hasSelection)
+                        liveText.clear();
                     else if (win.s.tool === "crop")
                         win.cancelCrop();
                     else
@@ -630,7 +636,7 @@ GlassWindow {
                     id: input
                     anchors.fill: parent
                     anchors.margins: win.s.tool === "crop" ? -8 : 0 // reach the handles on the edge
-                    enabled: win.ready && win.busy === "" && !win.leaving && !(win.banner?.kind === "prompt")
+                    enabled: win.ready && win.busy === "" && !win.leaving && !(win.banner?.kind === "prompt") && win.s.tool !== "livetext"
                     hoverEnabled: win.s.tool === "crop"
                     acceptedButtons: Qt.LeftButton
                     cursorShape: win.s.tool === "text" ? Qt.IBeamCursor : win.s.tool === "crop" ? cropCursor : Qt.CrossCursor
@@ -781,6 +787,16 @@ GlassWindow {
                         win.draft = null;
                         grab = "";
                     }
+                }
+
+                // Live Text: the screenshot's words to select (the part shown)
+                LiveTextLayer {
+                    id: liveText
+                    anchors.fill: parent
+                    active: win.s.tool === "livetext" && win.ready
+                    path: win.s.path
+                    revision: String(win.s.serial)
+                    region: win.shown
                 }
             }
 
@@ -976,7 +992,7 @@ GlassWindow {
             }
         }
 
-        // -- Bottom bar: tool options on the left, actions on the right
+        // -- Bottom bar: tool options (or Live Text's) on the left, actions on the right
         Item {
             id: bottomBar
             x: win.m + win.pad
@@ -1016,7 +1032,7 @@ GlassWindow {
 
             // Colour and width
             Row {
-                visible: win.s.tool !== "crop"
+                visible: win.s.tool !== "crop" && win.s.tool !== "livetext"
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
                 opacity: win.ready ? 1 : 0.5
@@ -1125,8 +1141,17 @@ GlassWindow {
                 }
             }
 
+            // Live Text: what it found, chips and copying
+            LiveTextBar {
+                id: liveBar
+                live: liveText
+                maxWidth: parent.width - editorActions.width - 24
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
             // Actions
             Row {
+                id: editorActions
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8

@@ -23,6 +23,10 @@ Singleton {
         target: AppStore
         function onQuickRevisionChanged() { root.revision++; }
     }
+    Connections {
+        target: LiveText
+        function onShotsChanged() { root.revision++; } // (the screenshot index, read on first use)
+    }
 
     // Conversions: "10 km to mi", "$20 in eur", "72 f to c"
     property string convQuery: ""
@@ -397,6 +401,13 @@ Singleton {
         if (q.length >= 3)
             for (const n of Notes.search(raw, 4))
                 out.push({ section: "Notes", title: n.name.replace(/^\d{4}-\d{2}-\d{2} \d{4} /, ""), subtitle: Qt.formatDate(n.modified, "d MMM yyyy"), glyph: "note", run: () => Notes.open(n.path) });
+
+        // Screenshots by the words in them (Live Text's index): the words
+        // around the match, the shot as the row's picture; Quick Preview
+        // opens it with them selected
+        if (q.length >= 3)
+            for (const s of LiveText.search(raw, 4))
+                out.push({ section: "Screenshots", title: s.snippet, subtitle: Qt.formatDateTime(new Date(s.modified * 1000), "d MMM yyyy, " + TimeFormat.hm), picture: s.path, glyph: "image", path: s.path, run: () => LiveText.preview(s.path, raw) });
 
         // Plain-language actions ("remind me…", "timer 5 min", "wifi off")
         // come first; otherwise the best app or action becomes the top hit

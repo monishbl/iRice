@@ -157,6 +157,9 @@ Squircle {
     Keys.onSpacePressed: if (live) clicked()
     Keys.onReturnPressed: if (live) clicked()
     activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: label || tooltip || icon
+    Accessible.onPressAction: if (live) clicked()
 
     // Tooltip after a short hover
     Timer {

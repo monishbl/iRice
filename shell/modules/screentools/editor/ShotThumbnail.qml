@@ -4,11 +4,14 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.common
 import qs.glass
+import qs.services
+import "../../../common/LiveTextLogic.js" as Logic
 
 // The floating thumbnail after a screenshot, bottom right. It slides in,
 // waits 5 s (paused while hovered), then slides out. Click to mark it up,
 // drag it out to drop the file into an app, swipe right (or the close
-// button) to dismiss. After Delete it becomes the Undo toast instead.
+// button) to dismiss; Copy text copies the text in it (Live Text). After
+// Delete it becomes the Undo toast instead.
 GlassWindow {
     id: win
 
@@ -94,7 +97,7 @@ GlassWindow {
     Timer {
         id: life
         interval: win.deleted ? 8000 : 5000
-        running: !win.leaving && !hover.hovered && win.mode === ""
+        running: !win.leaving && !hover.hovered && win.mode === "" && win.said === ""
         onTriggered: win.leave()
     }
     Component.onCompleted: enter()
@@ -103,6 +106,35 @@ GlassWindow {
         // A newer screenshot (or a fresh save) replaces this one
         function onSerialChanged() { win.enter(); }
         function onThumbChanged() { if (win.session.thumb !== "") win.enter(); }
+    }
+
+    // ---- Copy text: all the text in it (Live Text, read on this computer) ----
+    property string said: "" // what it's doing, or did (in the hint, a moment)
+    property bool reading: false
+    readonly property string textKey: LiveText.keyOf(file, String(session.serial))
+    function copyText() {
+        reading = true;
+        said = "Reading text…";
+        saidTimer.stop();
+        LiveText.read(file, String(session.serial));
+    }
+    Connections {
+        target: LiveText
+        function onDone(k, r) {
+            if (k !== win.textKey || !win.reading)
+                return;
+            win.reading = false;
+            win.said = r.status === "ready" ? LiveText.copy(Logic.allText(r.words), "Text copied")
+                : r.status === "none" ? "No text found"
+                : r.status === "missing" ? "Install Tesseract to copy text"
+                : "Couldn't read the text";
+            saidTimer.restart();
+        }
+    }
+    Timer {
+        id: saidTimer
+        interval: 2500
+        onTriggered: win.said = ""
     }
 
     // While the card is moving, only it takes input
@@ -188,7 +220,7 @@ GlassWindow {
                 }
             }
 
-            // Hint while hovered: what a click does
+            // Hint while hovered: what a click does (or what Copy text did)
             Rectangle {
                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
                 width: hintText.implicitWidth + 16
@@ -196,12 +228,12 @@ GlassWindow {
                 // (Material: a plain tooltip)
                 radius: Theme.material ? 4 : 11
                 color: Theme.material ? Theme.m3.inverseSurface : Qt.rgba(0.1, 0.1, 0.12, 0.78)
-                opacity: hover.hovered && win.mode === "" && preview.status === Image.Ready ? 1 : 0
+                opacity: (hover.hovered && win.mode === "" && preview.status === Image.Ready) || win.said !== "" ? 1 : 0
                 Behavior on opacity { OpacityAnimator { duration: Theme.motion.hover } }
                 Text {
                     id: hintText
                     anchors.centerIn: parent
-                    text: "Click to mark up"
+                    text: win.said || "Click to mark up"
                     color: Theme.material ? Theme.m3.inverseOnSurface : "white"
                     font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
                 }
@@ -251,6 +283,32 @@ GlassWindow {
                         win.mode = "";
                         backAnim.restart();
                     }
+                }
+            }
+
+            // Copy the text in it, top right (like the close button: on hover)
+            Rectangle {
+                id: textButton
+                anchors { right: parent.right; top: parent.top; margins: 12 }
+                width: 28
+                height: 28
+                radius: 14
+                color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, textMouse.pressed ? 0.1 : 0))
+                    : textMouse.pressed ? Theme.color.fillPressed : Theme.dark ? "#3A3A3F" : "#FFFFFF"
+                border.width: Theme.material ? 0 : 1
+                border.color: Theme.color.separator
+                opacity: hover.hovered && win.mode === "" && preview.status === Image.Ready && !win.reading ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                Icon { anchors.centerIn: parent; name: "text-aa"; size: Theme.material ? 15 : 14; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.secondary }
+                Accessible.role: Accessible.Button
+                Accessible.name: "Copy text"
+                MouseArea {
+                    id: textMouse
+                    anchors.fill: parent
+                    anchors.margins: -8
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.copyText()
                 }
             }
 
