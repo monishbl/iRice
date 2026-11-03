@@ -54,6 +54,21 @@ PY
 look_now() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look"))' "$CFG"; }
 ipc() { ./dev.sh ipc "$@" >/dev/null 2>&1; }
 
+# What's stuck when the shell stops answering or drawing: the compositor or
+# the shell, and what the shell's threads are doing
+stuck_report() {
+    local pid
+    pid="$(pgrep -a -x irice-shell | awk -v rt="$IRICE_RT/" 'index($2, rt) == 1 {print $1}' | head -1)"
+    echo "     compositor answers: $(timeout 10 ./dev.sh hyprctl monitors >/dev/null 2>&1 && echo yes || echo no)"
+    if [[ -n "$pid" ]]; then
+        echo "     shell $pid, threads (count, state, cpu, waiting in, name):"
+        ps -L -o stat=,pcpu=,wchan:28=,comm= -p "$pid" | sort | uniq -c | sort -rn | head -8 | sed 's/^/       /'
+    else
+        echo "     no shell running"
+    fi
+    sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -v -E 'INFO|DEBUG|textinput' | tail -6 | sed 's/^/     log: /'
+}
+
 failed=0
 for look in "${LOOKS[@]}"; do
     set_look "$look"
@@ -97,8 +112,9 @@ for look in "${LOOKS[@]}"; do
     ipc panels close
     # (a shell that died on the way logs no QML error: it must still answer,
     # and its screenshots mustn't be blank)
-    if [[ "$(./dev.sh ipc show 2>&1 | grep -c '^target')" -lt 5 ]]; then
+    if [[ "$(timeout 20 ./dev.sh ipc show 2>&1 | grep -c '^target')" -lt 5 ]]; then
         echo "FAIL $look: the shell stopped answering during the run"
+        stuck_report
         failed=1
         continue
     fi
@@ -125,6 +141,7 @@ PY
         fi
         if [[ "$frozen" -gt 0 ]]; then
             echo "FAIL $look: $frozen screenshots repeat the one before (the shell stopped drawing)"
+            stuck_report
             failed=1
             continue
         fi
