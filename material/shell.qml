@@ -50,6 +50,8 @@ import qs.modules.welcome
 
 ShellRoot {
     id: root
+    // (keeps the view of Hyprland live: recovers from a dropped event socket)
+    readonly property bool hyprlandLinked: HyprlandLink.linked
 
     // Don't restart the whole shell whenever a file in its folder changes
     // (a session running straight from the repo would reload on every edit);
