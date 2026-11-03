@@ -29,52 +29,22 @@ Item {
     signal groupToggled
 
     // The composer: open, sent (briefly), or what went wrong
-    property bool replying: false
-    property bool sent: false
-    property string replyError: ""
-    readonly property bool canReply: Notifications.canReply(notification)
-    function openReply() {
-        if (!canReply)
-            return;
-        replyError = "";
-        sent = false;
-        replying = true;
-        Qt.callLater(() => {
+    NotificationReply {
+        id: reply
+        notification: root.notification
+        text: replyInput.text
+        onFocusField: {
             replyInput.cursorPosition = replyInput.length;
             replyInput.forceActiveFocus();
-        });
-    }
-    function cancelReply() {
-        replying = false;
-        replyError = "";
-    }
-    function sendReply() {
-        const err = Notifications.reply(notification, replyInput.text);
-        if (err !== "") {
-            replyError = err;
-            return;
-        }
-        replying = false;
-        sent = true;
-    }
-    onSentChanged: if (sent) sentTimer.restart()
-    Timer {
-        id: sentTimer
-        interval: 2500
-        onTriggered: root.sent = false
-    }
-    // Opened from the island's Reply (Notification Center shows this card)
-    Connections {
-        target: Notifications
-        function onReplyTargetChanged() { root.takeTarget(); }
-    }
-    Component.onCompleted: takeTarget()
-    function takeTarget() {
-        if (notification && Notifications.replyTarget === notification.id) {
-            Notifications.replyTarget = -1;
-            openReply();
         }
     }
+    readonly property alias replying: reply.replying
+    readonly property alias sent: reply.sent
+    readonly property alias replyError: reply.error
+    readonly property alias canReply: reply.canReply
+    function openReply() { reply.open(); }
+    function cancelReply() { reply.cancel(); }
+    function sendReply() { reply.send(); }
 
     // Progress reported by the app (the "value" hint, 0 to 100)
     readonly property real progress: {
@@ -133,26 +103,15 @@ Item {
     }
 
     // Top right: close (on hover) and the stack's count and chevron
-    Row {
+    MaterialCardCorner {
         id: corner
         anchors { right: parent.right; rightMargin: 12; top: parent.top; topMargin: 12 }
-        spacing: 4
-        IconButton {
-            width: 28
-            height: 28
-            visible: root.hovered || activeFocus
-            icon: "x"
-            iconSize: 16
-            iconColor: Theme.m3.onSurfaceVariant
-            accessibleName: "Dismiss " + (root.notification?.summary || "notification")
-            onClicked: root.closeRequested()
-        }
-        MaterialExpander {
-            visible: root.groupCount > 1
-            count: root.groupCount
-            open: root.groupOpen
-            onClicked: root.groupToggled()
-        }
+        hovered: root.hovered
+        closeName: "Dismiss " + (root.notification?.summary || "notification")
+        groupCount: root.groupCount
+        groupOpen: root.groupOpen
+        onCloseClicked: root.closeRequested()
+        onGroupToggled: root.groupToggled()
     }
 
     Column {

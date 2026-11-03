@@ -29,6 +29,9 @@ Item {
         return l.slice(0, 4);
     }
     function colorFor(it) {
+        // (Material: the scheme's primary, error when low)
+        if (Theme.material)
+            return it.icon !== "lightning" && it.value <= 0.2 ? Theme.m3.error : Theme.m3.primary;
         return it.icon === "lightning" ? Theme.accents.green : it.value <= 0.2 ? Theme.accents.red : Theme.accents.green;
     }
 
@@ -52,7 +55,7 @@ Item {
             value: root.items[0]?.value ?? 0
             icon: root.items[0]?.icon ?? ""
             picture: root.items[0]?.picture ?? ""
-            color: root.items[0] ? root.colorFor(root.items[0]) : Theme.accents.green
+            color: root.items[0] ? root.colorFor(root.items[0]) : Theme.material ? Theme.m3.primary : Theme.accents.green
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter

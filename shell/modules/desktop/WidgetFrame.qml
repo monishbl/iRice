@@ -33,15 +33,15 @@ Item {
     y: homeY - m
     z: drag.active ? 10 : 0
     // Snap back (or into the new cell) with a little spring
-    Behavior on x { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.38; epsilon: 0.3 } }
-    Behavior on y { enabled: !drag.active; SpringAnimation { spring: 5; damping: 0.38; epsilon: 0.3 } }
+    Behavior on x { enabled: !drag.active; SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.38; epsilon: 0.3 } }
+    Behavior on y { enabled: !drag.active; SpringAnimation { spring: Theme.material ? Theme.motion.springDefault.spring : 5; damping: Theme.material ? Theme.motion.springDefault.damping : 0.38; epsilon: 0.3 } }
     onXChanged: {
-        glass.updatePosition();
+        glass.item?.updatePosition();
         if (drag.active)
             root.dragging(root.index, x + m, y + m, true);
     }
     onYChanged: {
-        glass.updatePosition();
+        glass.item?.updatePosition();
         if (drag.active)
             root.dragging(root.index, x + m, y + m, true);
     }
@@ -70,13 +70,31 @@ Item {
         NumberAnimation { target: content; property: "scale"; from: 0.9; to: 1; duration: 420; easing.type: Easing.OutBack }
     }
 
-    Glass {
+    // (Material: the card below instead)
+    Loader {
         id: glass
         anchors.fill: parent
-        radius: Theme.radius.tile // iOS corners (continuous, like the glass)
-        bevel: 20
-        shadowMargin: root.m
-        forceLiquid: true
+        active: !Theme.material
+        sourceComponent: Glass {
+            radius: Theme.radius.tile // iOS corners (continuous, like the glass)
+            bevel: 20
+            shadowMargin: root.m
+            forceLiquid: true
+        }
+    }
+    // Material: a flat tonal card (no rim, no shadow), its container chosen
+    // per kind (WidgetDefs.materialCard), or none for widgets that are a
+    // shape of their own
+    readonly property var card: Theme.material ? defs.materialCard(widget.kind, widget.size) : null
+    Rectangle {
+        visible: Theme.material && root.card?.bg !== ""
+        x: root.m
+        y: root.m
+        width: root.px.width
+        height: root.px.height
+        radius: root.card?.pill ? height / 2 : Theme.radius.tile
+        color: visible && root.card ? Theme.m3[root.card.bg] : "transparent"
+        scale: content.scale
     }
 
     Item {
@@ -88,7 +106,9 @@ Item {
         Loader {
             id: loader
             anchors.fill: parent
-            anchors.margins: root.def?.bleed ? 0 : 16
+            anchors.margins: root.def?.bleed ? 0 : Theme.material ? (root.card?.pad ?? 16) : 16
+            anchors.leftMargin: root.def?.bleed ? 0 : Theme.material ? (root.card?.padX ?? 16) : 16
+            anchors.rightMargin: root.def?.bleed ? 0 : Theme.material ? (root.card?.padX ?? 16) : 16
             source: root.def ? Qt.resolvedUrl(root.def.file) : ""
             onLoaded: {
                 item.size = Qt.binding(() => root.widget.size);
@@ -124,8 +144,8 @@ Item {
         width: 24
         height: 24
         radius: 12
-        color: Theme.dark ? "#3A3A40" : "#E4E4E7"
-        border.width: 1
+        color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#3A3A40" : "#E4E4E7"
+        border.width: Theme.material ? 0 : 1
         border.color: Theme.color.separator
         scale: root.editing ? 1 : 0
         Behavior on scale { SpringAnimation { spring: 5; damping: 0.35; epsilon: 0.01 } }

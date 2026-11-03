@@ -47,7 +47,7 @@ Item {
             width: parent.width
             elide: Text.ElideRight
             text: root.preview ? "Good morning" : Today.greeting(clock.now)
-            color: Theme.color.label
+            color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.label
             font { family: Theme.font.family; pixelSize: root.large ? 18 : 16; weight: Font.DemiBold }
             MouseArea {
                 anchors.fill: parent
@@ -148,17 +148,29 @@ Item {
                 required property var modelData
                 width: parent.width
                 height: 18
+                // (Material: a checkbox, square with small corners, and a
+                // round state layer)
                 Rectangle {
                     id: tick
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 14
-                    height: 14
-                    radius: 7
+                    width: Theme.material ? 16 : 14
+                    height: width
+                    radius: Theme.material ? 2 : 7
                     color: "transparent"
-                    border.width: 1.5
-                    border.color: Theme.color.tertiary
+                    border.width: Theme.material ? 2 : 1.5
+                    border.color: Theme.material ? Theme.m3.onSurfaceVariant : Theme.color.tertiary
+                    Rectangle {
+                        visible: Theme.material && tickMouse.containsMouse
+                        anchors.centerIn: parent
+                        width: 30
+                        height: 30
+                        radius: 15
+                        color: Theme.material ? Qt.alpha(Theme.m3.onSurface, tickMouse.pressed ? 0.1 : 0.08) : "transparent"
+                    }
                     MouseArea {
+                        id: tickMouse
                         anchors { fill: parent; margins: -6 }
+                        hoverEnabled: Theme.material
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.toggle(todo.modelData)
                     }

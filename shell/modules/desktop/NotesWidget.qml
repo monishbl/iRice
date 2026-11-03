@@ -22,14 +22,15 @@ Item {
         Squircle {
             width: 26
             height: 26
-            radius: 7
-            color: Theme.accents.yellow
-            Icon { anchors.centerIn: parent; name: "note-pencil"; fill: true; size: 15; color: "#3A2E00" }
+            // (Material: on its tertiary container card, a tertiary circle)
+            radius: Theme.material ? 13 : 7
+            color: Theme.material ? Theme.m3.tertiary : Theme.accents.yellow
+            Icon { anchors.centerIn: parent; name: "note-pencil"; fill: true; size: 15; color: Theme.material ? Theme.m3.onTertiary : "#3A2E00" }
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "Note"
-            color: Theme.color.label
+            color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
         }
     }
@@ -47,8 +48,8 @@ Item {
             width: parent.width
             text: root.savedText
             wrapMode: TextEdit.Wrap
-            color: Theme.color.label
-            selectionColor: Theme.accentAlpha(0.4)
+            color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.color.label
+            selectionColor: Theme.material ? Qt.alpha(Theme.m3.tertiary, 0.3) : Theme.accentAlpha(0.4)
             readOnly: root.preview
             font { family: Theme.font.family; pixelSize: Theme.font.body }
             onTextChanged: if (activeFocus) saveTimer.restart()
@@ -56,7 +57,7 @@ Item {
             Text {
                 visible: edit.text === "" && !edit.activeFocus
                 text: "Click to write a note"
-                color: Theme.color.tertiary
+                color: Theme.material ? Qt.alpha(Theme.m3.onTertiaryContainer, 0.6) : Theme.color.tertiary
                 font: edit.font
             }
         }

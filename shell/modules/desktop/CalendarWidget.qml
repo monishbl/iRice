@@ -77,11 +77,30 @@ Item {
                 color: Theme.accentInk
                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Bold; letterSpacing: 0.5 }
             }
-            Text {
+            // (Material: the date on a primary cookie, as Android's
+            // calendar widget marks today)
+            Item {
                 visible: root.size === "s" || root.onToday
-                text: root.today.getDate()
-                color: Theme.color.label
-                font { family: Theme.font.family; pixelSize: 40; weight: Font.Normal; features: { "tnum": 1 } }
+                width: Theme.material ? 64 : dateText.implicitWidth
+                height: Theme.material ? 68 : dateText.implicitHeight
+                Loader {
+                    y: 4
+                    width: 64
+                    height: 64
+                    active: Theme.material
+                    sourceComponent: MaterialShape {
+                        shape: "cookie9"
+                        color: Theme.m3.primary
+                    }
+                }
+                Text {
+                    id: dateText
+                    anchors.centerIn: Theme.material ? parent : undefined
+                    anchors.verticalCenterOffset: Theme.material ? 2 : 0
+                    text: root.today.getDate()
+                    color: Theme.material ? Theme.m3.onPrimary : Theme.color.label
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 30 : 40; weight: Theme.material ? Font.Medium : Font.Normal; features: { "tnum": 1 } }
+                }
             }
         }
 
@@ -196,12 +215,14 @@ Item {
                         height: width
                         radius: width / 2
                         visible: dayCell.isToday || dayCell.isSelected || dayMouse.containsMouse
-                        color: dayCell.isToday ? Theme.accent : dayCell.isSelected ? Theme.color.fillPressed : Theme.color.fill
+                        // (Material: today in primary, the chosen day in the
+                        // secondary container, a state layer on hover)
+                        color: dayCell.isToday ? Theme.accent : Theme.material ? (dayCell.isSelected ? Theme.m3.secondaryContainer : Qt.alpha(Theme.m3.onSurface, 0.08)) : dayCell.isSelected ? Theme.color.fillPressed : Theme.color.fill
                     }
                     Text {
                         anchors.centerIn: parent
                         text: dayCell.index + 1
-                        color: dayCell.isToday ? Theme.color.onAccent : Theme.color.label
+                        color: dayCell.isToday ? Theme.color.onAccent : Theme.material && dayCell.isSelected ? Theme.m3.onSecondaryContainer : Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: dayCell.isToday ? Font.Bold : Font.Medium; features: { "tnum": 1 } }
                     }
                     // Something on this day

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.common
 import qs.services
+import "NotificationGroups.js" as NotificationGroups
 
 // IslandHistoryCard in the Material look, laid out like
 // MaterialNotificationCard: the alert's icon on a tonal circle (a device's
@@ -21,8 +22,6 @@ Item {
     signal groupToggled
     readonly property var act: Island.historyActs[alert?.hid ?? 0] ?? null
 
-    // What kind of alert, as the small caption
-    readonly property var kinds: ({ device: "Bluetooth", usb: "USB", display: "Display", audio: "Sound output", charging: "Power", battery: "Battery", temperature: "Temperature", resources: "System", network: "Network", transfer: "Downloads", timer: "Timer", recording: "Screen recording", focus: "Focus", sysupdate: "Software update", custom: "iRice" })
 
     implicitHeight: column.implicitHeight + 32
 
@@ -64,26 +63,15 @@ Item {
         }
     }
 
-    Row {
+    MaterialCardCorner {
         id: corner
         anchors { right: parent.right; rightMargin: 12; top: parent.top; topMargin: 12 }
-        spacing: 4
-        IconButton {
-            width: 28
-            height: 28
-            visible: root.hovered || activeFocus
-            icon: "x"
-            iconSize: 16
-            iconColor: Theme.m3.onSurfaceVariant
-            accessibleName: "Remove " + (root.alert?.title ?? "alert")
-            onClicked: root.closeRequested()
-        }
-        MaterialExpander {
-            visible: root.groupCount > 1
-            count: root.groupCount
-            open: root.groupOpen
-            onClicked: root.groupToggled()
-        }
+        hovered: root.hovered
+        closeName: "Remove " + (root.alert?.title ?? "alert")
+        groupCount: root.groupCount
+        groupOpen: root.groupOpen
+        onCloseClicked: root.closeRequested()
+        onGroupToggled: root.groupToggled()
     }
 
     Column {
@@ -97,7 +85,7 @@ Item {
             verticalAlignment: Text.AlignVCenter
             text: {
                 const a = Island.ago(root.alert?.at ?? 0, clock.date.getTime());
-                return (root.kinds[root.alert?.kind ?? ""] ?? "iRice") + " · " + (a === "now" ? "now" : /^\d+[mh]$/.test(a) ? a + " ago" : a);
+                return NotificationGroups.kindOf(root.alert) + " · " + (a === "now" ? "now" : /^\d+[mh]$/.test(a) ? a + " ago" : a);
             }
             elide: Text.ElideRight
             color: Theme.m3.onSurfaceVariant

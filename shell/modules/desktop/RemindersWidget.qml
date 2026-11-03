@@ -61,16 +61,28 @@ Item {
                 required property var modelData
                 spacing: 8
                 width: parent.width
+                // (Material: a checkbox, square with small corners, and a
+                // round state layer)
                 Rectangle {
                     width: 16
                     height: 16
-                    radius: 8
+                    radius: Theme.material ? 2 : 8
                     color: "transparent"
-                    border.width: 1.5
-                    border.color: Theme.color.tertiary
+                    border.width: Theme.material ? 2 : 1.5
+                    border.color: Theme.material ? Theme.m3.onSurfaceVariant : Theme.color.tertiary
                     anchors.verticalCenter: parent.verticalCenter
+                    Rectangle {
+                        visible: Theme.material && tickMouse.containsMouse
+                        anchors.centerIn: parent
+                        width: 32
+                        height: 32
+                        radius: 16
+                        color: Theme.material ? Qt.alpha(Theme.m3.onSurface, tickMouse.pressed ? 0.1 : 0.08) : "transparent"
+                    }
                     MouseArea {
+                        id: tickMouse
                         anchors { fill: parent; margins: -6 }
+                        hoverEnabled: Theme.material
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.toggle(item.modelData)
                     }
@@ -106,7 +118,7 @@ Item {
         visible: root.size === "l"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: 32
-        radius: 10
+        radius: Theme.material ? height / 2 : 10 // (Material: a pill field)
         color: Theme.color.fill
         Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "plus"; bold: true; size: 12; color: Theme.color.secondary }
         TextInput {

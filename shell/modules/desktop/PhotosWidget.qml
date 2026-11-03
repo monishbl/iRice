@@ -72,17 +72,32 @@ Item {
         visible: false
         layer.enabled: true
     }
+    // Material, small: the picture cut to a clover, straight on the wallpaper
+    // (Android's photo widget shapes); bigger sizes keep the card's corners
+    readonly property bool shaped: Theme.material && size === "s"
     MultiEffect {
         anchors.fill: parent
+        visible: !root.shaped
         source: photos
         maskEnabled: true
         maskSource: mask
+    }
+    Loader {
+        anchors.centerIn: parent
+        width: Math.min(parent.width, parent.height)
+        height: width
+        active: root.shaped
+        sourceComponent: MaterialShape {
+            shape: "clover4"
+            color: Theme.m3.surfaceContainer
+            source: files.count > 0 ? photos : null
+        }
     }
 
     // Empty state
     Column {
         anchors.centerIn: parent
-        width: parent.width - 32
+        width: parent.width - (root.shaped ? 56 : 32)
         visible: files.count === 0
         spacing: 6
         Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "image"; size: 28; color: Theme.color.tertiary }
