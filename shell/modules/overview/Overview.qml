@@ -286,6 +286,17 @@ Variants {
                 Spaces.sendWindow(t.address, id);
                 afterMove();
             }
+            // A window dropped on a space (either style): moved there; on its
+            // own space it springs back
+            function dropWindow(drop, id) {
+                const t = drop.source?.toplevel;
+                if (t && (t.workspace?.id ?? 0) !== id) {
+                    drop.accept(Qt.MoveAction);
+                    moveWindow(t, id);
+                } else {
+                    drop.accepted = false;
+                }
+            }
             // To another display's current space
             function moveWindowToDisplay(t, name) {
                 Spaces.sendWindowToDisplay(t.address, name);
@@ -517,9 +528,11 @@ Variants {
 
                 // macOS style: the spaces in a strip on a glass bar at the top
                 // (the compositor blurs what's behind it), a strip per display
-                // with several. Drag a space sideways to put it elsewhere
-                // (Spaces.move: it takes the place of the one it's dropped on);
-                // click to go there; + adds a new empty space after the last
+                // with several. Drag a space sideways (by its wallpaper or its
+                // name) to put it elsewhere (Spaces.move: it takes the place of
+                // the one it's dropped on); drag a window onto another space to
+                // move it there; click to go there; + adds a new empty space
+                // after the last
                 Item {
                     id: macBar
                     visible: win.mac
@@ -540,6 +553,36 @@ Variants {
                         }
                     }
                     MouseArea { anchors.fill: parent } // (a click on the bar doesn't close)
+
+                    // A window being dragged to another space: its app's icon
+                    // follows the pointer (the miniature stays in its space)
+                    Rectangle {
+                        id: winProxy
+                        property var toplevel: null
+                        property string icon: ""
+                        function follow(scene) {
+                            const p = macBar.mapFromItem(null, scene.x, scene.y);
+                            x = p.x - width / 2;
+                            y = p.y - height / 2;
+                        }
+                        visible: toplevel !== null
+                        z: 100
+                        width: 48
+                        height: 48
+                        radius: Theme.material ? 16 : 12
+                        color: Theme.material ? Theme.m3.surfaceContainerHighest : Theme.dark ? "#2C2C31" : "#FFFFFF"
+                        border.width: 2
+                        border.color: Theme.accent
+                        Drag.active: toplevel !== null
+                        Drag.source: winProxy
+                        Drag.hotSpot.x: width / 2
+                        Drag.hotSpot.y: height / 2
+                        IconImage {
+                            anchors.centerIn: parent
+                            implicitSize: 30
+                            source: winProxy.icon
+                        }
+                    }
 
                     Column {
                         id: macRows
@@ -610,6 +653,43 @@ Variants {
                                             opacity: dragged ? 0.85 : win.spaceGone === wsId ? 0 : 1
                                             transform: Translate { x: tile.dragged ? strip.dragDx : 0; y: tile.dragged ? strip.dragDy : 0 }
 
+                                            // Dragging the space (its wallpaper, or its name), along the strip
+                                            property real pressX: 0
+                                            property real pressY: 0
+                                            function dragStart(item, m) {
+                                                const p = item.mapToItem(null, m.x, m.y); // (in the window: the tile moves with the drag)
+                                                pressX = p.x;
+                                                pressY = p.y;
+                                            }
+                                            function dragMove(item, m) {
+                                                const p = item.mapToItem(null, m.x, m.y);
+                                                // (the tile stops at the screen's edge; the pointer can go on)
+                                                const dx = Math.max(0, Math.min(win.width - 1, p.x)) - pressX;
+                                                const dy = win.zones.length > 0 ? Math.max(0, Math.min(win.height - 1, p.y)) - pressY : 0;
+                                                if (strip.dragSpace === 0 && Math.hypot(dx, dy) > 8)
+                                                    strip.dragSpace = tile.wsId;
+                                                if (strip.dragSpace === tile.wsId) {
+                                                    strip.dragDx = dx;
+                                                    strip.dragDy = dy;
+                                                    win.spaceZone = win.zoneAt(p.x, p.y) || win.edgeAt(p.x, p.y);
+                                                    strip.dropOn = win.spaceZone !== "" ? 0 : strip.spaceAt(tile.x + tile.width / 2 + dx);
+                                                }
+                                            }
+                                            function dragEnd() { // true if it was a drag, not a click
+                                                if (strip.dragSpace !== tile.wsId)
+                                                    return false;
+                                                if (win.spaceZone !== "")
+                                                    win.moveSpace(tile.wsId, win.spaceZone);
+                                                else if (strip.dropOn > 0 && strip.dropOn !== tile.wsId)
+                                                    Spaces.move(macRow.rowIdList, tile.wsId, strip.dropOn);
+                                                strip.dragSpace = 0;
+                                                strip.dragDx = 0;
+                                                strip.dragDy = 0;
+                                                strip.dropOn = 0;
+                                                win.spaceZone = "";
+                                                return true;
+                                            }
+
                                             Item {
                                                 width: strip.tileW
                                                 height: Math.round(strip.tileW * macRow.aspect)
@@ -618,6 +698,7 @@ Variants {
                                                 scale: thumbMouse.pressed && !tile.dragged ? 0.97 : thumbMouse.containsMouse ? 1.03 : 1
                                                 Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
                                                 ClippingRectangle {
+                                                    id: tileClip
                                                     anchors.fill: parent
                                                     radius: Theme.material ? 16 : 10
                                                     color: Theme.material ? (tile.current ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHighest) : Theme.dark ? "#1A1A1D" : "#F4F4F5"
@@ -633,11 +714,14 @@ Variants {
                                                     }
                                                     // Its windows, at their places
                                                     Repeater {
+                                                        id: miniWins
                                                         model: ScriptModel { values: Windows.on(tile.wsId).filter(t => t.lastIpcObject?.at && t.lastIpcObject?.size && !t.lastIpcObject.hidden) }
                                                         Rectangle {
+                                                            id: miniWin
                                                             required property var modelData
                                                             readonly property var ipc: modelData.lastIpcObject
                                                             readonly property var r: win.placeIn(ipc, tile.geo)
+                                                            opacity: winProxy.toplevel === modelData ? 0.4 : 1
                                                             x: r.x * tile.s
                                                             y: r.y * tile.s
                                                             width: Math.max(4, r.w * tile.s)
@@ -654,14 +738,19 @@ Variants {
                                                         }
                                                     }
                                                 }
-                                                // The current space, or where a dragged one would land
+                                                // The current space, or where a dragged one (or a window) would land
                                                 Squircle {
                                                     anchors { fill: parent; margins: Theme.material ? -5 : -3 }
                                                     radius: Theme.material ? 21 : 13
                                                     color: "transparent"
                                                     border.width: 3
                                                     border.color: Theme.accent
-                                                    visible: tile.current || tile.target
+                                                    visible: tile.current || tile.target || tileDrop.containsDrag
+                                                }
+                                                DropArea {
+                                                    id: tileDrop
+                                                    anchors.fill: parent
+                                                    onDropped: drop => win.dropWindow(drop, tile.wsId)
                                                 }
                                                 MouseArea {
                                                     id: thumbMouse
@@ -669,47 +758,60 @@ Variants {
                                                     hoverEnabled: true
                                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                                     cursorShape: strip.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-                                                    property real pressX: 0
-                                                    property real pressY: 0
+                                                    // Pressed on a window: it drags (a stand-in follows
+                                                    // the pointer; the miniature stays clipped in its
+                                                    // space) or, clicked, gets the focus. Elsewhere the
+                                                    // space drags, or is gone to.
+                                                    property var onWindow: null
+                                                    function windowAt(x, y) {
+                                                        for (let i = miniWins.count - 1; i >= 0; i--) { // (the topmost first)
+                                                            const w = miniWins.itemAt(i);
+                                                            if (w && x >= w.x && x < w.x + w.width && y >= w.y && y < w.y + w.height)
+                                                                return w;
+                                                        }
+                                                        return null;
+                                                    }
                                                     onPressed: m => {
-                                                        const p = thumbMouse.mapToItem(null, m.x, m.y); // (in the window: the tile moves with the drag)
-                                                        pressX = p.x;
-                                                        pressY = p.y;
+                                                        onWindow = m.button === Qt.LeftButton ? windowAt(m.x, m.y) : null;
+                                                        tile.dragStart(thumbMouse, m);
                                                         if (m.button === Qt.RightButton)
                                                             win.openMenu(win.spaceMenu(tile.wsId), thumbMouse, m.x, m.y);
                                                     }
                                                     onPositionChanged: m => {
                                                         if (!(pressedButtons & Qt.LeftButton))
                                                             return;
-                                                        const p = thumbMouse.mapToItem(null, m.x, m.y);
-                                                        // (the tile stops at the screen's edge; the pointer can go on)
-                                                        const dx = Math.max(0, Math.min(win.width - 1, p.x)) - pressX;
-                                                        const dy = win.zones.length > 0 ? Math.max(0, Math.min(win.height - 1, p.y)) - pressY : 0;
-                                                        if (strip.dragSpace === 0 && Math.hypot(dx, dy) > 8)
-                                                            strip.dragSpace = tile.wsId;
-                                                        if (strip.dragSpace === tile.wsId) {
-                                                            strip.dragDx = dx;
-                                                            strip.dragDy = dy;
-                                                            win.spaceZone = win.zoneAt(p.x, p.y) || win.edgeAt(p.x, p.y);
-                                                            strip.dropOn = win.spaceZone !== "" ? 0 : strip.spaceAt(tile.x + tile.width / 2 + dx);
+                                                        if (!onWindow) {
+                                                            tile.dragMove(thumbMouse, m);
+                                                            return;
                                                         }
+                                                        const p = thumbMouse.mapToItem(null, m.x, m.y);
+                                                        if (winProxy.toplevel === null && Math.hypot(p.x - tile.pressX, p.y - tile.pressY) > 8) {
+                                                            winProxy.icon = Apps.iconFor(onWindow.ipc.class);
+                                                            winProxy.follow(p);
+                                                            winProxy.toplevel = onWindow.modelData;
+                                                        }
+                                                        if (winProxy.toplevel !== null)
+                                                            winProxy.follow(p);
                                                     }
                                                     onReleased: m => {
                                                         if (m.button !== Qt.LeftButton)
                                                             return;
-                                                        if (strip.dragSpace === tile.wsId) {
-                                                            if (win.spaceZone !== "")
-                                                                win.moveSpace(tile.wsId, win.spaceZone);
-                                                            else if (strip.dropOn > 0 && strip.dropOn !== tile.wsId)
-                                                                Spaces.move(macRow.rowIdList, tile.wsId, strip.dropOn);
-                                                            strip.dragSpace = 0;
-                                                            strip.dragDx = 0;
-                                                            strip.dragDy = 0;
-                                                            strip.dropOn = 0;
-                                                            win.spaceZone = "";
-                                                        } else {
+                                                        if (winProxy.toplevel !== null) {
+                                                            winProxy.Drag.drop();
+                                                            winProxy.toplevel = null;
+                                                        } else if (onWindow) {
+                                                            win.focusWindow(onWindow.modelData);
+                                                        } else if (!tile.dragEnd()) {
                                                             win.go(tile.wsId);
                                                         }
+                                                        onWindow = null;
+                                                    }
+                                                    onCanceled: { // (nothing moves)
+                                                        winProxy.toplevel = null;
+                                                        onWindow = null;
+                                                        strip.dropOn = 0;
+                                                        win.spaceZone = "";
+                                                        tile.dragEnd();
                                                     }
                                                 }
                                             }
@@ -718,6 +820,18 @@ Variants {
                                                 text: Spaces.title(tile.wsId, macRow.row, "Desktop")
                                                 color: Theme.color.label
                                                 font { family: Theme.font.family; pixelSize: Theme.font.small; weight: tile.current ? Font.DemiBold : Font.Normal }
+                                                // (the space drags by its name too: windows can fill its miniature)
+                                                MouseArea {
+                                                    id: nameMouse
+                                                    anchors { fill: parent; margins: -8 }
+                                                    cursorShape: strip.dragSpace > 0 ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                                    onPressed: m => tile.dragStart(nameMouse, m)
+                                                    onPositionChanged: m => tile.dragMove(nameMouse, m)
+                                                    onReleased: m => {
+                                                        if (!tile.dragEnd())
+                                                            win.go(tile.wsId);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -951,15 +1065,7 @@ Variants {
                                             DropArea {
                                                 id: dropArea
                                                 anchors.fill: parent
-                                                onDropped: drop => {
-                                                    const t = drop.source?.toplevel;
-                                                    if (t && (t.workspace?.id ?? 0) !== space.wsId) {
-                                                        drop.accept(Qt.MoveAction);
-                                                        win.moveWindow(t, space.wsId);
-                                                    } else {
-                                                        drop.accepted = false; // its own space: it springs back
-                                                    }
-                                                }
+                                                onDropped: drop => win.dropWindow(drop, space.wsId)
                                             }
 
                                             // A preview per window, at its real place and size
