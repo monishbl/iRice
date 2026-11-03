@@ -729,13 +729,14 @@ async def reachable(ip):
 
 
 def group_frequency(net, meta):
-    """A channel hint for the group: ours if we're on Wi-Fi (the radio stays
-    on one channel), else the phone's (it can stay on its network)."""
-    if net.get("frequency"):
-        return net["frequency"]
-    if meta is not None and meta.ap_frequency and meta.ap_frequency > 0:
-        return meta.ap_frequency
-    return None
+    """A channel hint for the group: ours if we're on 5 GHz Wi-Fi (the radio
+    stays on one channel); the phone's 5 GHz one if we're on 2.4 GHz (the
+    chip runs two channels; the phone needn't hop); else whichever is known."""
+    ours = net.get("frequency") or 0
+    theirs = meta.ap_frequency if meta is not None and meta.ap_frequency and meta.ap_frequency > 0 else 0
+    if ours and ours < 5000 and theirs >= 5000:
+        return theirs  # (we're on 2.4 GHz: a group on the phone's 5 GHz channel, the helper permitting)
+    return ours or theirs or None
 
 
 # ── Paths: joining (the phone offers) ────────────────────────────────────

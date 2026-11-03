@@ -107,10 +107,18 @@ def parse_iw_phy(text):
 
 
 def go_freq(station, hint, chans):
-    """A group owner's channel. Next to a connected station: the station's
-    (a GO may start on a "no IR" channel the station is on), unless it needs
-    radar detection; else the hint or a preferred channel that's freely
-    usable. 0: let wpa_supplicant choose."""
+    """A group owner's channel. Next to a station on 2.4 GHz: a freely usable
+    5 GHz channel (the hint, the phone's own, first: it needn't hop), since
+    the chip runs two channels at once and a 2.4 GHz group is several times
+    slower (host_p2p falls back to the station's channel if the driver ends
+    it). Next to a 5 GHz station: its channel (a GO may start on a "no IR"
+    channel the station is on), unless it needs radar detection; else the
+    hint or a preferred channel that's freely usable. 0: let wpa_supplicant
+    choose."""
+    if station and station < 5000:
+        fast = [f for f in [hint] + PREFERRED if f and f >= 5000 and chans.get(f) == "ok"]
+        if fast:
+            return fast[0]
     if station and chans.get(station, "ok") in ("ok", "no-ir"):
         return station
     if hint and chans.get(hint) == "ok":
@@ -738,7 +746,9 @@ class Links:
         # if the driver ends that group as it starts (Intel, next to a 5 GHz
         # connection: AP-DISABLED 2 ms after P2P-GROUP-STARTED), 2.4 GHz
         chans = self.usable()
-        tries = [(freq, True)] + [(f, False) for f in (2437, 2412, 2462) if f != freq and chans.get(f, "ok") == "ok"]
+        station_freq = self.station_freq(sta)
+        tries = [(freq, True)] + ([(station_freq, True)] if station_freq and station_freq != freq else []) \
+            + [(f, False) for f in (2437, 2412, 2462) if f not in (freq, station_freq) and chans.get(f, "ok") == "ok"]
         failed = []
         for f, anywhere in tries:
             try:

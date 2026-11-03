@@ -34,6 +34,9 @@ DECISION_TIMEOUT = 60  # Android gives up waiting for an answer at about a minut
 MAX_ITEMS = 1000
 
 
+STALL_TIMEOUT = 120  # seconds without a byte before a transfer gives up
+
+
 class Cancelled(Exception):
     """The other side cancelled, or we did."""
 
@@ -202,14 +205,27 @@ class Receive(Session):
             self._expected_bytes = {t.payload_id for t in texts} | {w.payload_id for w in wifi}
             pending = set(sinks) | set(self._expected_bytes)
             done = {}
-            self.conn.on_file_progress = lambda pid, d, t: self.progress(sum(s.written for s in sinks.values()), total)
+            loop = asyncio.get_running_loop()
+            heard = [loop.time()]
+
+            def file_progress(pid, d, t):
+                heard[0] = loop.time()
+                self.progress(sum(s.written for s in sinks.values()), total)
+            self.conn.on_file_progress = file_progress
             self.conn.on_file_done = lambda pid: (done.__setitem__(pid, True), self.frames.put_nowait(("payload", pid)))
             self.conn.on_payload_cancelled = lambda pid: self.frames.put_nowait(("error", Cancelled("the sender cancelled")))
             await self._respond(RESP.ACCEPT)
             if self.on_accepted:
                 self.on_accepted()
             while pending:
-                kind, value = await asyncio.wait_for(self.frames.get(), 120)
+                # (silence, not the whole file, is what times out: a 5 GB
+                # file takes minutes and is fine while it keeps arriving)
+                try:
+                    kind, value = await asyncio.wait_for(self.frames.get(), STALL_TIMEOUT)
+                except asyncio.TimeoutError:
+                    if loop.time() - heard[0] < STALL_TIMEOUT:
+                        continue
+                    raise TransportClosed(f"nothing arrived for {STALL_TIMEOUT} seconds") from None
                 if kind == "payload":
                     pending.discard(value)
                 elif kind == "frame":

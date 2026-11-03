@@ -376,6 +376,11 @@ class QuickShareService:
 
             if conn.medium == "ble":
                 receive.on_accepted = lambda: conn._spawn(self._upgrade_in(conn, sid, entry, sender))
+            elif conn.medium == "wifi_lan":
+                # The phone chose the shared network: if that's a slow one,
+                # offer Wi-Fi Direct as the files start (the same rule as
+                # from Bluetooth)
+                receive.on_accepted = lambda: conn._spawn(self._check_lan(conn, sid, entry, sender))
             entry["session"] = receive
             result = await receive.run()
             self.emit(dict({"ev": "finished", "session": sid, "dir": "in", "from": sender}, **result))
@@ -476,6 +481,16 @@ class QuickShareService:
                 last = done
         except asyncio.CancelledError:
             pass
+
+    async def _check_lan(self, conn, sid, entry, sender):
+        total = getattr(entry.get("session"), "total", 0) or 0
+        if total < wifi.NM_MIN_BYTES:
+            return  # (a photo or a link: not worth a new link)
+        net = await self.net_probe()
+        band24 = 0 < (net.get("frequency") or 0) < 3000
+        rtt = None if band24 else await self.latency(conn.transport.peer.rsplit(":", 1)[0])
+        if band24 or (rtt is not None and rtt > SLOW_RTT):
+            await self._faster(conn, sid, entry, sender, f"the shared network looks slow ({'2.4 GHz' if band24 else f'{rtt:.0f} ms'})")
 
     def _direct_beside(self, net, joining):
         """Whether a Wi-Fi Direct link can be made next to the Wi-Fi without

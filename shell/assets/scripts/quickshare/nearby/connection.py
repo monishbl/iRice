@@ -49,7 +49,8 @@ IDLE_TIMEOUT = 45  # no frame at all for this long: the other side is gone
 BWU = offline.BandwidthUpgradeNegotiationFrame
 PATH = BWU.UpgradePathInfo
 UPGRADE_INTRO_TIMEOUT = 10  # the new channel's introduction, once connected
-UPGRADE_DRAIN_TIMEOUT = 20  # LAST_WRITE … SAFE_TO_CLOSE on the old channel
+UPGRADE_DRAIN_TIMEOUT = 20  # LAST_WRITE … SAFE_TO_CLOSE: how long the old channel may stay *quiet*
+# (a slow old channel still delivering what was in flight keeps the switch alive)
 
 
 class ProtocolError(Exception):
@@ -126,6 +127,7 @@ class Connection:
         self._peer_last_write = False
         self._plain = set()  # channels without Nearby's encryption (see _seal)
         self._upgrading = False
+        self._old_heard = self._switched_at = 0.0
         self._upgrade_failed = asyncio.Event()
         self._upgraded = asyncio.Event()
         self._tasks = set()
@@ -255,6 +257,8 @@ class Connection:
                 raw = await self._reader.read_frame(IDLE_TIMEOUT)
             except asyncio.TimeoutError as e:
                 raise ProtocolError("the other device stopped responding") from e
+            if self._old is not None:
+                self._old_heard = asyncio.get_running_loop().time()  # (still draining: not stuck)
             try:
                 frame = _parse_offline(self._open(self._reader, raw))
             except ChannelError as e:
@@ -418,7 +422,7 @@ class Connection:
             self._log(f"→ CLIENT_INTRODUCTION_ACK [{new.medium}]")
             await self._switch(new)
             new = None
-            await asyncio.wait_for(self._upgraded.wait(), UPGRADE_DRAIN_TIMEOUT)
+            await self._drained()
             return not self._closed
         except (ProtocolError, TransportClosed, OSError, asyncio.TimeoutError, ValueError) as e:
             self._log(f"upgrade failed: {e}")
@@ -436,6 +440,8 @@ class Connection:
         async with self._send_lock:
             self._resumed.clear()
             self._old, self.transport = self.transport, new
+            self._switched_at = asyncio.get_running_loop().time()
+            self._upgraded.clear()  # (set again once the old channel closes: a second move waits for its own)
         self._log(f"switching {self._old.medium} → {new.medium}")
         await self._send_on(self._old, bwu_frame(BWU.LAST_WRITE_TO_PRIOR_CHANNEL))
         if self._peer_last_write:
@@ -443,8 +449,24 @@ class Connection:
             await self._send_on(self._old, bwu_frame(BWU.SAFE_TO_CLOSE_PRIOR_CHANNEL))
         self._spawn(self._drain_deadline())
 
+    async def _drained(self):
+        """Waits for the switch to finish while the old channel is still
+        delivering; TimeoutError once it has been quiet too long."""
+        loop = asyncio.get_running_loop()
+        while not self._upgraded.is_set():
+            quiet = loop.time() - max(self._old_heard, self._switched_at)
+            if quiet >= UPGRADE_DRAIN_TIMEOUT:
+                raise asyncio.TimeoutError
+            try:
+                await asyncio.wait_for(self._upgraded.wait(), UPGRADE_DRAIN_TIMEOUT - quiet)
+            except asyncio.TimeoutError:
+                pass
+
     async def _drain_deadline(self):
-        await asyncio.sleep(UPGRADE_DRAIN_TIMEOUT)
+        try:
+            await self._drained()
+        except asyncio.TimeoutError:
+            pass
         if self._old is not None and not self._closed:
             self._log("the old channel never closed: giving up")
             await self.close(say_goodbye=False)

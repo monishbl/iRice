@@ -685,3 +685,35 @@ class SlowSharedNetwork(unittest.IsolatedAsyncioTestCase):
         await self.p.chunk(21, FILE, len(data), len(data), b"", True, "video.mp4")
         await self.events.wait("finished")
         self.assertEqual(self.helper.requests, [])
+
+    async def test_a_file_longer_than_the_stall_limit_is_fine_while_it_arrives(self):
+        from nearby import sharing
+        saved = sharing.STALL_TIMEOUT
+        sharing.STALL_TIMEOUT = 0.5  # (a 5 GB file takes minutes: only silence counts)
+        try:
+            data = os.urandom(20_000)
+            await self.start(data)
+            for off in range(0, len(data), 1000):  # 2 s in all, never silent for 0.5 s
+                await self.p.chunk(21, FILE, len(data), off, data[off:off + 1000], False, "video.mp4")
+                await asyncio.sleep(0.1)
+            await self.p.chunk(21, FILE, len(data), len(data), b"", True, "video.mp4")
+            done = await self.events.wait("finished")
+            self.assertEqual(Path(done["paths"][0]).read_bytes(), data)
+        finally:
+            sharing.STALL_TIMEOUT = saved
+
+    async def test_a_slow_network_the_phone_chose_moves_as_the_files_start(self):
+        async def probe():
+            return dict(net(shared=True), frequency=2422)  # (on 2.4 GHz)
+        self.svc.net_probe = probe
+        data = os.urandom(300_000)
+        sid = await self.start(data)
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        for off in range(0, len(data), 50000):
+            await self.p.chunk(21, FILE, len(data), off, data[off:off + 50000], False, "video.mp4")
+        await self.p.chunk(21, FILE, len(data), len(data), b"", True, "video.mp4")
+        done = await self.events.wait("finished")
+        self.assertEqual(Path(done["paths"][0]).read_bytes(), data)
+        self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["wifi_lan", "wifi_direct"])

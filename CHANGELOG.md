@@ -1,5 +1,17 @@
 # iRice changelog
 
+## Faster Quick Share, iPhones by QR code, apps' own logos · 2026-11-03
+
+- **Quick Share takes the fastest way first.** Before any file moves it checks the link: a shared Wi-Fi that's on the busy 2.4 GHz band or answers slowly gives way to a direct Wi-Fi link (Wi-Fi Direct, next to your own Wi-Fi). A link that fails gets a second try before the next one, and one that keeps failing with a phone is skipped for that phone for a day. Tested with a phone on a router that keeps devices apart: 500 MB in under a minute one way and about ten seconds the other, where it crawled at 0.3 MB/s before.
+- **It keeps going when the network won't.** A phone the Wi-Fi can't reach is found over Bluetooth instead; when the phone asks for a faster link mid-transfer, iRice now gives it one; a phone that's also plugged in by USB isn't sent files over the slow cable.
+- **Fewer alerts.** You hear from Quick Share when someone wants to send you something, when it's done, and when it fails (saying how to fix it). Switching links, a Wi-Fi pause and the PIN while they decide show quietly in the transfer's line in the island.
+- **iPhones and any other phone, by QR code.** Share → Share with a QR code: the iPhone's camera opens a page that saves the files. Settings → Phone & Sharing → Receive from iPhone: the page takes photos and files from it. Only on your own network, with a secret link that stops working after 10 minutes or when you close the card.
+- **Apps' own logos.** Icons are each app's original logo, restyled to match: clear glass in the Glass look, Material You themed in the Material look. Icon themes (Colloid, Tela circle, Papirus and others) are optional, in Settings → Appearance. GTK apps use Adwaita, and the pointer is Bibata in both looks.
+- **Window gaps are a setting.** Settings → Windows & Spaces: None, Compact (the default, tighter than before) or Comfortable.
+- **Shake to find the pointer: one control.** Off, Bigger or Ring, and the bigger pointer shrinks back reliably and quickly.
+- **Menus stay on screen.** A right-click menu near the bottom of the screen opens upward, and a long one scrolls; Settings' drop-down lists fit inside the window and scroll, starting at the current choice.
+- **Pinch and spread were swapped** on the trackpad: pinch opens the App Library and spread shows the desktop again.
+
 ## Material 3 Expressive, round two; welcome, backups, 24-hour time · 2026-11-03
 
 - **Transparency, as much as you like.** Settings → Appearance → Transparency (Material look) replaces the Blur switch: 0% is solid, the default; slide it up and panels, menus, tiles and tonal buttons let the blurred desktop through. Text and filled buttons stay solid so they stay readable.

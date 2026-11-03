@@ -702,7 +702,11 @@ class WifiHelper(unittest.TestCase):
                                  5865: "disabled"})
         # next to a connected station: its channel, even "no IR" (the connection lifts it)
         self.assertEqual(helper.go_freq(5745, 5180, chans), 5745)
-        self.assertEqual(helper.go_freq(2467, 0, chans), 2467)
+        # next to a 2.4 GHz station: a free 5 GHz channel (two channels at
+        # once; several times faster), the hint first when it's free
+        self.assertEqual(helper.go_freq(2412, 0, chans), 5180)
+        self.assertEqual(helper.go_freq(2412, 5745, chans), 5745)
+        self.assertEqual(helper.go_freq(2467, 0, {2467: "no-ir"}), 2467)  # (no free 5 GHz: the station's)
         self.assertEqual(helper.go_freq(5500, 0, chans), 5180)  # radar: a free channel instead
         self.assertEqual(helper.go_freq(0, 5745, chans), 5745)  # alone: the hint when it's free
         self.assertEqual(helper.go_freq(0, 2467, chans), 5180)
