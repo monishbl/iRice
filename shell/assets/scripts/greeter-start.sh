@@ -19,7 +19,7 @@ T="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/irice-greeter.XXXXXX")" || T=""
 [[ -n $T ]] && trap 'rm -rf "$T"' EXIT
 
 # The look, and a config.json for it (unknown or missing: the text one)
-read -r STYLE LOOK < <(python3 -I - "$SHARE/greeter.json" "${T:-/nonexistent}" "$SHARE/wallpaper.jpg" <<'PY' 2>/dev/null || echo "text glass"
+read -r STYLE LOOK CLOCK24 < <(python3 -I - "$SHARE/greeter.json" "${T:-/nonexistent}" "$SHARE/wallpaper.jpg" <<'PY' 2>/dev/null || echo "text glass 0"
 import json, os, sys
 src, out, wall = sys.argv[1:]
 try:
@@ -29,7 +29,7 @@ except (OSError, ValueError):
 style = g.get("style") if g.get("style") in ("look", "text", "plain") else "look"
 look = g.get("look") if g.get("look") in ("glass", "material") else "glass"
 config = {
-    "appearance": {k: v for k, v in (("look", look), ("mode", g.get("mode")), ("materialSeed", g.get("seed")), ("materialStyle", g.get("materialStyle"))) if isinstance(v, str)},
+    "appearance": {**{k: v for k, v in (("look", look), ("mode", g.get("mode")), ("materialSeed", g.get("seed")), ("materialStyle", g.get("materialStyle"))) if isinstance(v, str)}, **({"clock24": g["clock24"]} if isinstance(g.get("clock24"), bool) else {})},
     "lock": {k: g[k] for k in ("clockFace", "clockWeight", "clockWidth", "clockRound") if k in g},
     "wallpaper": {"path": wall},
 }
@@ -37,7 +37,7 @@ if os.path.isdir(out):
     os.makedirs(os.path.join(out, "config", "irice"), exist_ok=True)
     with open(os.path.join(out, "config", "irice", "config.json"), "w") as f:
         json.dump(config, f)
-print(style, look)
+print(style, look, "1" if g.get("clock24") is True else "0")
 PY
 )
 
@@ -48,7 +48,7 @@ if [[ $STYLE == look && $LOOK == material && -f "$SHARE/material/shell.qml" && -
 fi
 
 run() { # style, root
-    local env=(IRICE_GREETER_STYLE="$1" IRICE_GREETER_WALLPAPER="$SHARE/wallpaper.jpg")
+    local env=(IRICE_GREETER_STYLE="$1" IRICE_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" IRICE_GREETER_CLOCK24="${CLOCK24:-0}")
     [[ -n $T ]] && env+=(XDG_CONFIG_HOME="$T/config" XDG_CACHE_HOME="$T/cache")
     env "${env[@]}" "$QS" -p "$2/greeter.qml"
 }

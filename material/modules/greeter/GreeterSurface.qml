@@ -20,7 +20,8 @@ PanelWindow {
     property bool primary: false
     color: "black"
     WlrLayershell.namespace: "irice-greeter"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: auth.mock ? WlrLayer.Overlay : WlrLayer.Top // (a preview covers the menu bar too)
+    exclusionMode: ExclusionMode.Ignore
     WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     anchors { top: true; bottom: true; left: true; right: true }
 
@@ -136,6 +137,8 @@ PanelWindow {
             color3: win.m3.tertiaryFixed
         }
         Text {
+            // (the dynamic face shows the date itself with 24-hour time)
+            visible: !((win.cfg.clockFace ?? "") === "dynamic" && TimeFormat.h24)
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(clock.date, "dddd d MMMM")
             color: win.m3.secondaryFixed

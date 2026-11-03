@@ -603,6 +603,7 @@ LOOK_CHOICES = {
 }
 LOOK_RANGES = {"clockWeight": (100, 1000), "clockWidth": (25, 151)}
 LOOK_KEYS = set(LOOK_CHOICES) | set(LOOK_RANGES) | {"seed", "clockRound"}
+LOOK_OPTIONAL = {"clock24"}  # (true or false; a shell from before it sends none)
 SEED = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -614,8 +615,8 @@ def check_login_look(text):
         d = json.loads(text)
     except ValueError:
         raise Refused("that isn't JSON") from None
-    if not isinstance(d, dict) or set(d) != LOOK_KEYS:
-        raise Refused("give exactly: " + ", ".join(sorted(LOOK_KEYS)))
+    if not isinstance(d, dict) or not LOOK_KEYS <= set(d) <= LOOK_KEYS | LOOK_OPTIONAL:
+        raise Refused("give exactly: " + ", ".join(sorted(LOOK_KEYS)) + " (and clock24)")
     for k, values in LOOK_CHOICES.items():
         if not isinstance(d[k], str) or d[k] not in values:
             raise Refused(f"{k} is one of: " + ", ".join(values))
@@ -624,8 +625,9 @@ def check_login_look(text):
             raise Refused(f"{k} is a whole number from {lo} to {hi}")
     if not isinstance(d["seed"], str) or not SEED.match(d["seed"]):
         raise Refused("seed is a colour as #rrggbb")
-    if type(d["clockRound"]) is not bool:
-        raise Refused("clockRound is true or false")
+    for k in ("clockRound", "clock24"):
+        if k in d and type(d[k]) is not bool:
+            raise Refused(f"{k} is true or false")
     return d
 
 

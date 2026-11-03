@@ -29,6 +29,7 @@ Singleton {
         const a = Config.options.appearance, l = Config.options.lock;
         const s = Theme.materialSeed ?? (/^#[0-9a-fA-F]{6}$/.test(a.materialSeed) ? a.materialSeed : String(Wallpaper.tone).slice(0, 7));
         return JSON.stringify({
+            clock24: a.clock24 === true,
             clockFace: l.clockFace,
             clockRound: l.clockRound,
             clockWeight: Math.round(l.clockWeight),
@@ -83,6 +84,6 @@ Singleton {
     // (Glass, or the Material root), so "look" shows the look you're in.
     function preview() {
         const s = Config.options.lock.loginStyle ?? "look";
-        Quickshell.execDetached(["sh", "-c", "QS=qs; for d in \"${XDG_DATA_HOME:-}\" \"$HOME/.local/share\"; do if [ -n \"$d\" ] && [ -x \"$d/irice/quickshell/bin/qs\" ]; then QS=\"$d/irice/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/irice/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; IRICE_GREETER_MOCK=1 IRICE_GREETER_STYLE=\"$1\" IRICE_GREETER_WALLPAPER=\"$2\" exec \"$QS\" -p \"$3/greeter.qml\"", "sh", s, Wallpaper.path, Quickshell.shellDir]);
+        Quickshell.execDetached(["sh", "-c", "QS=qs; for d in \"${XDG_DATA_HOME:-}\" \"$HOME/.local/share\"; do if [ -n \"$d\" ] && [ -x \"$d/irice/quickshell/bin/qs\" ]; then QS=\"$d/irice/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/irice/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; IRICE_GREETER_MOCK=1 IRICE_GREETER_STYLE=\"$1\" IRICE_GREETER_WALLPAPER=\"$2\" IRICE_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"", "sh", s, Wallpaper.path, Quickshell.shellDir, Config.options.appearance.clock24 ? "1" : "0"]);
     }
 }

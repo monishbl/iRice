@@ -15,11 +15,14 @@ import "../../common/phosphor.js" as Phosphor
 // Authentication goes through greetd (GreeterAuth).
 PanelWindow {
     id: win
+    // 24-hour time (Settings → Appearance), passed in by greeter-start.sh
+    readonly property bool h24: Quickshell.env("IRICE_GREETER_CLOCK24") === "1"
     required property var auth
     property bool primary: false
     color: "black"
     WlrLayershell.namespace: "irice-greeter"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: auth.mock ? WlrLayer.Overlay : WlrLayer.Top // (a preview covers the menu bar too)
+    exclusionMode: ExclusionMode.Ignore
     WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     anchors { top: true; bottom: true; left: true; right: true }
 
@@ -110,7 +113,7 @@ PanelWindow {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: ((clock.date.getHours() + 11) % 12 + 1) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
+            text: (win.h24 ? String(clock.date.getHours()).padStart(2, "0") : (clock.date.getHours() + 11) % 12 + 1) + ":" + String(clock.date.getMinutes()).padStart(2, "0")
             color: Qt.rgba(1, 1, 1, 0.85)
             font { family: win.sans; pixelSize: win.primary ? 150 : 120; weight: Font.Bold; letterSpacing: -5; features: { "tnum": 1 } }
         }

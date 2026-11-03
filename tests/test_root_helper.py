@@ -202,12 +202,18 @@ class LoginLook(unittest.TestCase):
             json.dumps({**self.GOOD, "seed": "red"}), json.dumps({**self.GOOD, "seed": "#12345"}),
             json.dumps({**self.GOOD, "clockWeight": 2000}), json.dumps({**self.GOOD, "clockWeight": 640.5}),
             json.dumps({**self.GOOD, "clockWidth": True}), json.dumps({**self.GOOD, "clockRound": 1}),
-            json.dumps({**self.GOOD, "clockFace": "digital"}), "x" * 5000,
+            json.dumps({**self.GOOD, "clockFace": "digital"}), json.dumps({**self.GOOD, "clock24": "yes"}), "x" * 5000,
         ]
         for b in bad:
             with self.assertRaises(R.Refused, msg=b[:60]):
                 R.login_look(b, dest=str(self.dest))
         self.assertFalse(self.dest.exists())
+
+    def test_24_hour_time_is_optional(self):
+        R.login_look(json.dumps({**self.GOOD, "clock24": True}), dest=str(self.dest))
+        self.assertTrue(json.loads(self.dest.read_text())["clock24"])
+        R.login_look(json.dumps(self.GOOD), dest=str(self.dest))  # (a shell from before it)
+        self.assertNotIn("clock24", json.loads(self.dest.read_text()))
 
     def test_not_without_the_login_screen(self):
         with self.assertRaises(R.Refused):
