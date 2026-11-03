@@ -22,10 +22,20 @@ class HyprlandLink(unittest.TestCase):
             self.assertIn(f"Hyprland.{f}()", LINK)
 
     def test_repairs_are_rare_and_never_in_the_sandbox(self):
-        self.assertRegex(LINK, r'Quickshell\.env\("IRICE_SANDBOX"\) !== "1"')
+        self.assertRegex(LINK, r'Quickshell\.env\("IRICE_SANDBOX"\) === "1"')
         every = int(re.search(r"repairEvery:\s*(\d+)", LINK).group(1))
-        self.assertGreaterEqual(every, 120000)
+        self.assertGreaterEqual(every, 600000)
         self.assertIn("repair-shell.sh", LINK)
+
+    def test_no_false_alarms(self):
+        # (seen live: comparing the space's last window with the focused one
+        # restarted the shell every minute; and the limit must survive the
+        # restarts it causes, and not fire as the shell starts)
+        self.assertNotIn("lastwindow", LINK)
+        self.assertNotIn("activeToplevel", LINK)
+        self.assertIn("drifted", LINK)  # (a first mismatch only re-reads the state)
+        self.assertIn("irice-hyprland-link-repair", LINK)  # (the limit kept in a file)
+        self.assertRegex(LINK, r"if \(!asking\)\s*return")
 
 
 if __name__ == "__main__":
