@@ -20,7 +20,17 @@ end
 
 local function keysOf(k)
     k = k:gsub("%$MODKEY", MOD == "SUPER" and "Super_L" or "Alt_L"):gsub("%$MOD", MOD)
-    return k
+    -- (with ALT as the main key, "$MOD + ALT + D" would name ALT twice, which
+    -- Hyprland refuses: each key once)
+    local seen, keys = {}, {}
+    for part in k:gmatch("[^+]+") do
+        local key = part:match("^%s*(.-)%s*$")
+        if key ~= "" and not seen[key:upper()] then
+            seen[key:upper()] = true
+            keys[#keys + 1] = key
+        end
+    end
+    return table.concat(keys, " + ")
 end
 
 -- A bind's action as a Hyprland dispatcher (or function)
