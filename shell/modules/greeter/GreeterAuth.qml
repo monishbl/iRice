@@ -179,8 +179,10 @@ QtObject {
         stdout: StdioCollector {
             onStreamFinished: {
                 const list = text.split("\n").filter(l => l.includes("\t")).map(l => ({ name: l.split("\t")[0], exec: l.split("\t")[1] }));
-                // Hyprland first: it's what iRice runs on
-                list.sort((a, b) => (/hyprland/i.test(b.name) - /hyprland/i.test(a.name)) || a.name.localeCompare(b.name));
+                // iRice's own session first, then Hyprland (what iRice runs
+                // on): a first login starts iRice, not a bare Hyprland
+                const rank = s => /irice/i.test(s.name) ? 0 : /hyprland/i.test(s.name) ? 1 : 2;
+                list.sort((a, b) => (rank(a) - rank(b)) || a.name.localeCompare(b.name));
                 root.sessions = list.length > 0 ? list : [{ name: "Hyprland", exec: "Hyprland" }];
                 root.restoreLast();
             }

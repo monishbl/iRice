@@ -14,6 +14,8 @@
 #   ./install.sh --no-extras   skip the optional extras (apps, pointer, icon themes, emoji)
 #   ./install.sh --no-snapshot no snapper or Timeshift snapshot before starting
 #   ./install.sh --verify      only check an existing install (same as: irice doctor)
+#   ./install.sh --only=login  only switch to the iRice login screen (greetd), from the
+#                              settings in $XDG_CONFIG_HOME/irice; nothing else changes
 # Choices (the interactive installer passes these; with --yes, unset ones are
 # the recommended ones, and nothing asked by name is done):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
@@ -36,7 +38,7 @@ CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 BIN="$HOME/.local/bin"
 LOG="$CACHE/irice/install.log"
 
-YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0
+YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
 UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask
 list() { [[ $1 == none ]] && return 0; printf '%s' "${1//,/ }"; }
@@ -50,6 +52,7 @@ for a in "$@"; do
         --no-greeter) GREETER=no ;;
         --no-extras) EXTRAS=0 ;;
         --verify) VERIFY_ONLY=1 ;;
+        --only=login) ONLY=login ;;
         --tui) UI=tui ;;
         --cli) UI=cli ;;
         --plan) PLAN_ONLY=1 ;;
@@ -366,6 +369,13 @@ decide_hardware() {
     return 0
 }
 hw_line() { [[ -n "$HW_PLAN" ]] && awk -F'\t' -v id="$1" '$1 == id' <<<"$HW_PLAN"; }
+# The login manager in use now, when it isn't greetd (ly, SDDM, GDM…)
+other_login_manager() {
+    local dm
+    dm=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null || true)
+    [[ "$dm" == greetd ]] || printf '%s' "$dm"
+}
+
 decide() {
     VIRT=$(systemd-detect-virt --vm 2>/dev/null || true)
     VIRT=${VIRT:-none}
@@ -412,8 +422,7 @@ decide() {
         fi
     fi
     # The login screen: another one is only replaced when you say so
-    OTHER_DM=$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null || true)
-    [[ "$OTHER_DM" == greetd ]] && OTHER_DM=""
+    OTHER_DM=$(other_login_manager)
     if [[ $GREETER == ask ]]; then
         if [[ -n "$OTHER_DM" ]]; then
             ask "Use the iRice login screen instead of $OTHER_DM?" n && GREETER=yes || GREETER=no
@@ -1249,6 +1258,19 @@ if [[ $VERIFY_ONLY == 1 ]]; then
     printf '%siRice check%s\n' "$B" "$R"
     verify
     exit $?
+fi
+
+if [[ $ONLY == login ]]; then
+    printf '%siRice login screen%s\n' "$B" "$R"
+    VIRT=$(systemd-detect-virt --vm 2>/dev/null || true)
+    VIRT=${VIRT:-none}
+    OTHER_DM=$(other_login_manager) GREETER=yes
+    say "  Settings from $CONFIG/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM is turned off (irice uninstall turns it back on)")"
+    ask "Switch to the iRice login screen?" y || { say "Nothing changed."; exit 0; }
+    mkdir -p "$DATA/irice"
+    login || die "The login screen couldn't be set up (see above)"
+    say "${GRN}Done.${R} Restart to begin at the iRice login screen."
+    exit 0
 fi
 
 cat <<EOF
