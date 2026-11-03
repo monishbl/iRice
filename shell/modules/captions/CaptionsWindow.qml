@@ -63,21 +63,37 @@ Scope {
             id: bar
             screen: root.screen
             readonly property int w: Math.min(760, (root.screen?.width ?? 1280) - 64)
+            readonly property int h: body.implicitHeight + 28
+            readonly property real sw: root.screen?.width ?? 1280
+            readonly property real sh: root.screen?.height ?? 800
             implicitWidth: w
-            implicitHeight: body.implicitHeight + 28
+            implicitHeight: h
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "irice:captions"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-            anchors { left: true; bottom: true }
             // Its place (kept), or centred above the Dock
-            readonly property real cx: Captions.cfg.barX >= 0 ? Captions.cfg.barX : ((root.screen?.width ?? 1280) - w) / 2
-            readonly property real cy: Captions.cfg.barY >= 0 ? Captions.cfg.barY : 112
-            margins { left: Math.max(0, Math.min(cx + drag.dx, (root.screen?.width ?? 1280) - w)); bottom: Math.max(0, Math.min(cy - drag.dy, (root.screen?.height ?? 800) - implicitHeight)) }
+            readonly property real cx: Math.max(0, Math.min(Captions.cfg.barX >= 0 ? Captions.cfg.barX : (sw - w) / 2, sw - w))
+            readonly property real cy: Math.max(0, Math.min(Captions.cfg.barY >= 0 ? Captions.cfg.barY : 112, sh - h))
+            // Moving it: the window covers the screen while the bar is
+            // dragged, and the bar is drawn where the pointer takes it (a
+            // layer can't know where it is on screen, so moving the window
+            // under the pointer fed back into the drag: it jumped about).
+            // `full`: the window has actually grown (until then, and after
+            // letting go until it has shrunk, positions are the bar's own)
+            readonly property bool full: width > w + 1
+            anchors { left: true; bottom: true; top: drag.pressed; right: drag.pressed }
+            margins { left: drag.pressed ? 0 : cx; bottom: drag.pressed ? 0 : cy }
+            // Where the bar is drawn on the full window (screen coordinates)
+            readonly property real bx: Math.max(0, Math.min(drag.rx, sw - w))
+            readonly property real by: Math.max(0, Math.min(drag.ry, sh - h))
 
             Rectangle {
-                anchors.fill: parent
+                x: bar.full ? bar.bx : 0
+                y: bar.full ? bar.by : 0
+                width: bar.w
+                height: bar.h
                 radius: 14
                 color: Qt.rgba(0.07, 0.07, 0.08, 0.82)
                 border.width: 1
@@ -95,27 +111,32 @@ Scope {
                     anchors.fill: parent
                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     hoverEnabled: true
-                    property real sx: 0
-                    property real sy: 0
-                    property real dx: 0
-                    property real dy: 0
+                    // The bar's top-left on screen, and where the pointer
+                    // held it (in the bar)
+                    property real rx: 0
+                    property real ry: 0
+                    property real gx: 0
+                    property real gy: 0
                     onPressed: e => {
-                        const g = mapToGlobal(e.x, e.y);
-                        sx = g.x;
-                        sy = g.y;
+                        rx = bar.cx;
+                        ry = bar.sh - bar.cy - bar.h;
+                        gx = e.x;
+                        gy = e.y;
                     }
                     onPositionChanged: e => {
                         if (!pressed)
                             return;
-                        const g = mapToGlobal(e.x, e.y);
-                        dx = g.x - sx;
-                        dy = g.y - sy;
+                        // (the area moves with the bar, so the pointer's
+                        // place on screen is the bar's plus its own)
+                        const p = mapToItem(null, e.x, e.y);
+                        const sx = bar.full ? p.x : bar.cx + p.x;
+                        const sy = bar.full ? p.y : bar.sh - bar.cy - bar.h + p.y;
+                        rx = sx - gx;
+                        ry = sy - gy;
                     }
                     onReleased: {
-                        Captions.cfg.barX = bar.margins.left;
-                        Captions.cfg.barY = bar.margins.bottom;
-                        dx = 0;
-                        dy = 0;
+                        Captions.cfg.barX = bar.bx;
+                        Captions.cfg.barY = bar.sh - bar.by - bar.h;
                     }
                 }
                 // Off, from the bar itself (shown while the pointer is over it)
