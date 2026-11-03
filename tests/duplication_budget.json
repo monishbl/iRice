@@ -45,8 +45,6 @@
  "modules/emoji/PickerWindow.qml": 1114,
  "modules/greeter/GreeterSurface.qml": 104,
  "modules/launchpad/AppLibrary.qml": 8,
- "modules/lock/LockSurface.qml": 562,
- "modules/lock/StandBy.qml": 251,
  "modules/menubar/HoverTip.qml": 77,
  "modules/menubar/IslandActivity.qml": 121,
  "modules/menubar/IslandAlertStack.qml": 144,
