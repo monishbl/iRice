@@ -96,15 +96,16 @@ Item {
         Row {
             width: parent.width
             spacing: 8
+            // (Material: a search bar, a pill in surface container high)
             Rectangle {
                 width: parent.width - nsfwRow.width - 8
-                height: 32
-                radius: 16
-                color: Theme.color.fill
-                Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "magnifying-glass"; size: 14; color: Theme.color.secondary }
+                height: Theme.material ? 40 : 32
+                radius: height / 2
+                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
+                Icon { x: Theme.material ? 14 : 10; anchors.verticalCenter: parent.verticalCenter; name: "magnifying-glass"; size: Theme.material ? 18 : 14; color: Theme.color.secondary }
                 TextInput {
                     id: tags
-                    anchors { fill: parent; leftMargin: 32; rightMargin: 12 }
+                    anchors { fill: parent; leftMargin: Theme.material ? 44 : 32; rightMargin: Theme.material ? 16 : 12 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.color.label
                     clip: true
@@ -159,10 +160,15 @@ Item {
             width: grid.cellWidth
             height: grid.cellHeight
 
+            // (Material: tiles 2 px apart with 16 px corners that tighten
+            // while pressed, and a state layer over the picture)
             ClippingRectangle {
-                anchors { fill: parent; margins: 4 }
-                radius: 12
-                color: Theme.color.fill
+                anchors { fill: parent; margins: Theme.material ? 2 : 4 }
+                transform: Theme.material ? pressFx1.effects : []
+                ElasticControl { id: pressFx1; pressed: imgMouse.pressed; enabled: Theme.material }
+                radius: Theme.material ? (imgMouse.pressed ? 8 : 16) : 12
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                color: Theme.material ? Theme.m3.surfaceContainerHigh : Theme.color.fill
                 Image {
                     anchors.fill: parent
                     source: cell.modelData.preview
@@ -171,8 +177,13 @@ Item {
                     sourceSize: Qt.size(width, height)
                     opacity: status === Image.Ready ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
-                    scale: imgMouse.containsMouse ? 1.04 : 1
+                    scale: imgMouse.containsMouse && !Theme.material ? 1.04 : 1
                     Behavior on scale { NumberAnimation { duration: Theme.motion.hover } }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    visible: Theme.material && imgMouse.containsMouse
+                    color: Theme.material ? Qt.alpha(Theme.m3.onSurface, imgMouse.pressed ? 0.1 : 0.08) : "transparent"
                 }
                 MouseArea {
                     id: imgMouse
@@ -186,9 +197,16 @@ Item {
 
         footer: Item {
             width: grid.width
-            height: 40
+            height: Theme.material && root.loading ? 64 : 40
+            // (Material: its loading indicator instead of the words)
+            Loader {
+                anchors.centerIn: parent
+                active: Theme.material && root.loading
+                sourceComponent: Spinner { size: 40 }
+            }
             Text {
                 anchors.centerIn: parent
+                visible: !(Theme.material && root.loading)
                 text: root.loading ? "Loading…" : root.error ? root.error : root.exhausted && root.posts.length === 0 ? "No results. Try different tags." : ""
                 width: parent.width - 20
                 horizontalAlignment: Text.AlignHCenter

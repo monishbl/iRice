@@ -78,24 +78,31 @@ Item {
 
         // Language bar
         Item {
+            id: langBar
             width: parent.width
-            height: 30
+            height: Theme.material ? 40 : 30
             LanguageButton {
                 id: fromButton
                 anchors.left: parent.left
-                width: (parent.width - 44) / 2
+                height: parent.height
+                width: (parent.width - (Theme.material ? 56 : 44)) / 2
                 label: root.name(root.source)
                 options: root.languages
                 onChosen: code => { root.source = code; root.translate(); }
             }
+            // (Material: a tonal icon button, squaring while pressed)
             Rectangle {
                 anchors.centerIn: parent
-                width: 30
-                height: 30
-                radius: 15
-                opacity: root.source === "auto" ? 0.4 : 1
-                color: swapMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                Icon { anchors.centerIn: parent; name: "arrows-left-right"; size: 14 }
+                width: parent.height
+                height: parent.height
+                transform: Theme.material ? pressFx1.effects : []
+                ElasticControl { id: pressFx1; pressed: swapMouse.pressed; enabled: Theme.material }
+                radius: Theme.material && swapMouse.pressed ? 12 : height / 2
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                opacity: root.source === "auto" ? (Theme.material ? 0.38 : 0.4) : 1
+                color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, swapMouse.pressed ? 0.1 : swapMouse.containsMouse ? 0.08 : 0))
+                    : swapMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                Icon { anchors.centerIn: parent; name: "arrows-left-right"; size: Theme.material ? 18 : 14; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label }
                 MouseArea {
                     id: swapMouse
                     anchors.fill: parent
@@ -111,7 +118,8 @@ Item {
             }
             LanguageButton {
                 anchors.right: parent.right
-                width: (parent.width - 44) / 2
+                height: parent.height
+                width: (parent.width - (Theme.material ? 56 : 44)) / 2
                 label: root.name(root.target)
                 options: root.languages.slice(1)
                 onChosen: code => { Config.options.sidebar.translateTarget = code; root.translate(); }
@@ -120,10 +128,10 @@ Item {
 
         Platter {
             width: parent.width
-            height: (parent.height - 40 - 10) / 2
-            radius: 18
+            height: (parent.height - langBar.height - 20) / 2
+            radius: Theme.material ? 24 : 18
             ScrollView {
-                anchors { fill: parent; margins: 12 }
+                anchors { fill: parent; margins: Theme.material ? 16 : 12 }
                 TextArea {
                     id: input
                     padding: 0
@@ -138,34 +146,41 @@ Item {
             }
         }
 
+        // (Material: the result in a secondary container, the copy button a
+        // filled tonal one)
         Platter {
             width: parent.width
-            height: (parent.height - 40 - 10) / 2
-            radius: 18
+            height: (parent.height - langBar.height - 20) / 2
+            radius: Theme.material ? 24 : 18
+            color: Theme.material ? Theme.m3.secondaryContainer : Theme.color.platter
             ScrollView {
-                anchors { fill: parent; margins: 12; bottomMargin: 40 }
+                anchors { fill: parent; margins: Theme.material ? 16 : 12; bottomMargin: Theme.material ? 56 : 40 }
                 TextEdit {
                     width: parent.width
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
                     text: root.error || root.result
-                    color: root.error ? Theme.color.danger : Theme.color.label
+                    color: root.error ? Theme.color.danger : Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.title }
                 }
             }
             Rectangle {
-                anchors { right: parent.right; bottom: parent.bottom; margins: 10 }
+                anchors { right: parent.right; bottom: parent.bottom; margins: Theme.material ? 12 : 10 }
                 visible: root.result !== "" && root.error === ""
-                width: copyLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: copyMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                width: copyLabel.implicitWidth + (Theme.material ? 32 : 24)
+                height: Theme.material ? 36 : 28
+                transform: Theme.material ? pressFx2.effects : []
+                ElasticControl { id: pressFx2; pressed: copyMouse.pressed; enabled: Theme.material }
+                radius: Theme.material && copyMouse.pressed ? 8 : height / 2
+                Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+                color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, copyMouse.pressed ? 0.1 : copyMouse.containsMouse ? 0.08 : 0))
+                    : copyMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
                 Text {
                     id: copyLabel
                     anchors.centerIn: parent
                     text: copied.running ? "Copied" : "Copy"
-                    color: Theme.color.label
+                    color: Theme.material ? Theme.m3.onPrimary : Theme.color.label
                     font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
                 }
                 MouseArea {

@@ -27,14 +27,28 @@ Item {
     readonly property var cfg: Config.options.lock
     readonly property int clockWeight: cfg.standbyClockWeight === "bold" ? Font.DemiBold : cfg.standbyClockWeight === "regular" ? Font.Normal : Font.ExtraLight
     readonly property real clockOpacity: Math.max(0.2, Math.min(1, cfg.standbyClockOpacity))
-    readonly property int clockSize: clockView.size
+    readonly property int clockSize: Math.round(Math.min(height * 0.16, width * 0.14))
     // Where the big clock's time sits once the content has settled, in this
-    // item's coordinates (the owner's morph flies to it)
+    // item's coordinates (the owner's morph flies to it); each look's clock
+    // view says where its time is in it (clockX, clockY, clockW, clockH)
     readonly property rect clockTarget: {
-        const w = timeText.implicitWidth, h = timeText.implicitHeight;
-        const cy = (height - clockView.implicitHeight) / 2 + dy;
-        return Qt.rect((width - w) / 2 + dx, cy, w, h);
+        const it = clockView.item;
+        if (!it)
+            return Qt.rect(width / 2, height / 2, 0, 0);
+        const lx = (width - clockView.width) / 2 + dx, ly = (height - clockView.height) / 2 + dy;
+        return Qt.rect(lx + it.clockX, ly + it.clockY, it.clockW, it.clockH);
     }
+
+    // The Material look: Android's big two-line clock (MaterialClock), thin
+    // in the font's weight axis, with the battery and the weather beside it
+    // in shapes; the widgets view puts the calendar on a big rounded tile
+    // next to the cookie clock. The same views, rules and burn-in moves.
+    readonly property int mClockSize: Math.round(Math.min(height * 0.3, width * 0.17))
+    readonly property real mClockWeight: cfg.standbyClockWeight === "bold" ? 600 : cfg.standbyClockWeight === "regular" ? 400 : 200
+    readonly property real mClockWidth: 100
+    readonly property color mInk: night || !Theme.material ? ink : Theme.m3.primaryFixed // the hours
+    readonly property color mInk2: night || !Theme.material ? ink : Theme.m3.primaryFixedDim // the minutes
+    readonly property color mInk3: night || !Theme.material ? ink2 : Theme.m3.secondaryFixedDim // the line under it
 
     property int view: 0 // 0 clock, 1 widgets, 2 photos
     readonly property int views: photos.count > 0 ? 3 : 2
@@ -145,58 +159,218 @@ Item {
         opacity: root.resting ? 0 : 1
         Behavior on opacity { OpacityAnimator { duration: 2000; easing.type: Easing.InOutQuad } }
 
-        // Clock
-        Column {
+        // Clock (Material: Android's big two-line clock, and the battery and
+        // weather in shapes)
+        Loader {
             id: clockView
             anchors.centerIn: parent
             visible: root.view === 0
-            readonly property int size: Math.round(Math.min(root.height * 0.16, root.width * 0.14))
-            spacing: -Math.round(size * 0.06)
-            Text {
-                id: timeText
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: root.time
-                color: root.ink
-                opacity: root.clockOpacity * root.clockFade
-                font { family: Theme.font.family; pixelSize: clockView.size; weight: root.clockWeight; letterSpacing: -clockView.size * 0.03; features: { "tnum": 1 } }
+            sourceComponent: Theme.material ? materialClock : glassClockView
+        }
+        Component {
+            id: glassClockView
+            Column {
+                id: glassClock
+                readonly property int size: root.clockSize
+                // (where its time is in it: StandBy's clockTarget)
+                readonly property real clockX: timeText.x
+                readonly property real clockY: timeText.y
+                readonly property real clockW: timeText.implicitWidth
+                readonly property real clockH: timeText.implicitHeight
+                spacing: -Math.round(size * 0.06)
+                Text {
+                    id: timeText
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.time
+                    color: root.ink
+                    opacity: root.clockOpacity * root.clockFade
+                    font { family: Theme.font.family; pixelSize: glassClock.size; weight: root.clockWeight; letterSpacing: -glassClock.size * 0.03; features: { "tnum": 1 } }
+                }
+                Text {
+                    opacity: root.clockOpacity * root.dateFade
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Qt.formatDate(clock.date, "dddd d MMMM") + (Weather.ready ? "   " + Weather.temp + "° " + Weather.condition : "")
+                    color: root.ink2
+                    font { family: Theme.font.family; pixelSize: Math.max(16, Math.round(glassClock.size * 0.14)); weight: Font.Medium }
+                }
             }
-            Text {
-                opacity: root.clockOpacity * root.dateFade
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: Qt.formatDate(clock.date, "dddd d MMMM") + (Weather.ready ? "   " + Weather.temp + "° " + Weather.condition : "")
-                color: root.ink2
-                font { family: Theme.font.family; pixelSize: Math.max(16, Math.round(clockView.size * 0.14)); weight: Font.Medium }
+        }
+        Component {
+            id: materialClock
+            Row {
+                spacing: Math.round(root.mClockSize * 0.3)
+                readonly property real clockX: clockCol.x + bigClock.x
+                readonly property real clockY: clockCol.y + bigClock.y
+                readonly property real clockW: bigClock.width
+                readonly property real clockH: bigClock.height
+                Column {
+                    id: clockCol
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Math.round(root.mClockSize * 0.14)
+                    MaterialClock {
+                        id: bigClock
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: implicitWidth
+                        height: implicitHeight
+                        time: clock.date
+                        size: root.mClockSize
+                        weight: root.mClockWeight
+                        widthAxis: root.mClockWidth
+                        color: root.mInk
+                        color2: root.mInk2
+                        opacity: root.clockOpacity * root.clockFade
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        opacity: root.clockOpacity * root.dateFade
+                        text: Qt.formatDate(clock.date, "dddd d MMMM") + (Weather.ready && root.night ? "   " + Weather.temp + "° " + Weather.condition : "")
+                        color: root.mInk3
+                        font { family: Theme.font.family; pixelSize: Math.max(18, Math.round(root.mClockSize * 0.09)); weight: Font.Medium }
+                    }
+                }
+                // (not at night: then only the dim red clock)
+                Column {
+                    id: shapes
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !root.night && (Island.hasBattery || Weather.ready)
+                    spacing: 24
+                    opacity: root.clockOpacity * root.dateFade
+                    readonly property int side: Math.round(root.mClockSize * 0.66)
+                    Item {
+                        id: batteryShape
+                        visible: Island.hasBattery
+                        width: shapes.side
+                        height: shapes.side
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: "cookie9"
+                            color: Theme.m3.primaryContainer
+                            animated: false
+                        }
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 2
+                            Icon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                name: Island.charging ? "lightning" : "battery-high"
+                                fill: true
+                                size: Math.round(shapes.side * 0.16)
+                                color: Theme.m3.onPrimaryContainer
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: Math.round(Island.level * 100) + "%"
+                                color: Theme.m3.onPrimaryContainer
+                                font.family: Theme.font.family
+                                font.pixelSize: Math.round(shapes.side * 0.2)
+                                font.features: { "tnum": 1 }
+                                font.variableAxes: { "wght": 600, "wdth": 110, "ROND": 100 }
+                            }
+                        }
+                    }
+                    Item {
+                        id: weatherShape
+                        visible: Weather.ready
+                        width: shapes.side
+                        height: shapes.side
+                        MaterialShape {
+                            anchors.fill: parent
+                            shape: "sunny"
+                            color: Theme.m3.tertiaryContainer
+                            animated: false
+                        }
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 2
+                            Icon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                name: Weather.icon
+                                fill: true
+                                size: Math.round(shapes.side * 0.16)
+                                color: Theme.m3.onTertiaryContainer
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: Weather.temp + "°"
+                                color: Theme.m3.onTertiaryContainer
+                                font.family: Theme.font.family
+                                font.pixelSize: Math.round(shapes.side * 0.2)
+                                font.features: { "tnum": 1 }
+                                font.variableAxes: { "wght": 600, "wdth": 110, "ROND": 100 }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Widgets: an analog clock and the calendar
-        Row {
+        // Widgets: an analog clock and the calendar (Material: the cookie
+        // analog clock and the calendar on a big rounded tile)
+        Loader {
             id: widgetsView
             anchors.centerIn: parent
+            active: !Theme.material || root.view === 1
             visible: root.view === 1
-            spacing: root.width * 0.03
-            readonly property real side: Math.min(root.height * 0.38, root.width * 0.26)
-            AnalogClock {
-                width: parent.side
-                height: parent.side
-                hours: clock.date.getHours()
-                minutes: clock.date.getMinutes()
-                night: true
+            sourceComponent: Theme.material ? materialWidgets : glassWidgets
+        }
+        Component {
+            id: glassWidgets
+            Row {
+                spacing: root.width * 0.03
+                readonly property real side: Math.min(root.height * 0.38, root.width * 0.26)
+                AnalogClock {
+                    width: parent.side
+                    height: parent.side
+                    hours: clock.date.getHours()
+                    minutes: clock.date.getMinutes()
+                    night: true
+                }
+                Squircle {
+                    width: parent.side
+                    height: parent.side
+                    radius: 28
+                    color: "#1C1C1E"
+                    Loader {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        active: root.view === 1
+                        source: Qt.resolvedUrl("../desktop/CalendarWidget.qml")
+                        onLoaded: {
+                            item.size = "l";
+                            if (item.preview !== undefined)
+                                item.preview = true;
+                        }
+                    }
+                }
             }
-            Squircle {
-                width: parent.side
-                height: parent.side
-                radius: 28
-                color: "#1C1C1E"
-                Loader {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    active: root.view === 1
-                    source: Qt.resolvedUrl("../desktop/CalendarWidget.qml")
-                    onLoaded: {
-                        item.size = "l";
-                        if (item.preview !== undefined)
-                            item.preview = true;
+        }
+        Component {
+            id: materialWidgets
+            Row {
+                id: mWidgets
+                spacing: Math.round(root.width * 0.03)
+                readonly property real side: Math.min(root.height * 0.38, root.width * 0.26)
+                AnalogClock {
+                    width: mWidgets.side
+                    height: mWidgets.side
+                    hours: clock.date.getHours()
+                    minutes: clock.date.getMinutes()
+                    night: true
+                }
+                Rectangle {
+                    width: mWidgets.side
+                    height: mWidgets.side
+                    radius: 48
+                    color: Theme.m3.surfaceContainer
+                    Loader {
+                        anchors.fill: parent
+                        anchors.margins: 28
+                        source: Qt.resolvedUrl("../desktop/CalendarWidget.qml")
+                        onLoaded: {
+                            item.size = "l";
+                            if (item.preview !== undefined)
+                                item.preview = true;
+                        }
                     }
                 }
             }
@@ -244,10 +418,11 @@ Item {
             model: root.views
             Rectangle {
                 required property int index
-                width: 7
+                // (Material: the current page a longer pill)
+                width: Theme.material && index === root.view ? 20 : 7
                 height: 7
                 radius: 3.5
-                color: root.ink
+                color: Theme.material ? root.mInk : root.ink
                 opacity: index === root.view ? 0.9 : 0.3
             }
         }

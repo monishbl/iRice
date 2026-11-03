@@ -58,7 +58,7 @@ Item {
     // `openPage` opens the module's page
     PointerMenu { id: choices }
     function openMenu() {
-        choices.open(def.menu().map(it => it.openPage ? Object.assign({}, it, { action: () => root.openPage(it.openPage) }) : it));
+        choices.open(defs.menuItems(moduleId, root.openPage));
     }
 
     // ── Keyboard ────────────────────────────────────────────────────────
@@ -95,21 +95,7 @@ Item {
     // The nearest module whose centre lies that way (rows first for up and
     // down, columns for left and right)
     function moveFocus(dx, dy) {
-        const cx = x + width / 2, cy = y + height / 2;
-        let best = null, bestD = Infinity;
-        for (const m of parent?.children ?? []) {
-            if (m === root || m.moduleId === undefined || !m.visible)
-                continue;
-            const mx = m.x + m.width / 2 - cx, my = m.y + m.height / 2 - cy;
-            if ((dx !== 0 && Math.sign(mx) !== dx) || (dy !== 0 && Math.sign(my) !== dy))
-                continue;
-            const d = dx !== 0 ? Math.abs(mx) + 2 * Math.abs(my) : Math.abs(my) + 2 * Math.abs(mx);
-            if (d < bestD) {
-                bestD = d;
-                best = m;
-            }
-        }
-        best?.takeFocus();
+        defs.nearestToward(root, dx, dy)?.takeFocus();
     }
     function takeFocus() {
         const t = ownKeys ? (slider.visible ? slider : nextItemInFocusChain(true)) : root;
@@ -211,9 +197,9 @@ Item {
         accessibleName: root.def.label ?? root.moduleId
         anchors.fill: parent
         icon: root.def.icon
-        value: root.moduleId === "display" ? Brightness.value : root.moduleId === "micLevel" ? (Audio.micMuted ? 0 : Audio.micVolume) : (Audio.muted ? 0 : Audio.volume)
+        value: root.defs.sliderValue(root.moduleId)
         hasMore: !!root.def.page && !root.editing
-        onMoved: v => { if (root.preview || root.editing) return; root.moduleId === "display" ? Brightness.set(v, true) : root.moduleId === "micLevel" ? Audio.setMicVolume(v, true) : Audio.setVolume(v, true); }
+        onMoved: v => { if (!root.preview && !root.editing) root.defs.setSlider(root.moduleId, v); }
         onMore: root.openPage(root.def.page)
         enabled: !root.editing && !root.preview
     }

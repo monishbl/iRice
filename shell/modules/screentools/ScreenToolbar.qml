@@ -35,23 +35,27 @@ Variants {
         property bool checked
         signal clicked
         width: parent?.width ?? 0
-        height: 32
-        radius: 8
-        color: optionMouse.pressed ? Theme.color.fillPressed : optionMouse.containsMouse ? Theme.color.fill : "transparent"
+        height: Theme.material ? 40 : 32
+        // (Material: a menu item, its state layer over it, the chosen one in
+        // tertiaryContainer)
+        radius: Theme.material ? 12 : 8
+        color: Theme.material ? (optionRow.checked ? Qt.tint(Theme.m3.tertiaryContainer, Qt.alpha(Theme.m3.onTertiaryContainer, optionMouse.pressed ? 0.1 : optionMouse.containsMouse ? 0.08 : 0))
+                : optionMouse.pressed ? Qt.alpha(Theme.m3.onSurface, 0.1) : optionMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, 0.08) : "transparent")
+            : optionMouse.pressed ? Theme.color.fillPressed : optionMouse.containsMouse ? Theme.color.fill : "transparent"
         Icon {
             id: tick
-            anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: Theme.material ? 12 : 8; verticalCenter: parent.verticalCenter }
             name: "check"
             bold: true
             size: 14
-            color: Theme.accentInk
+            color: Theme.material ? Theme.m3.onTertiaryContainer : Theme.accentInk
             opacity: optionRow.checked ? 1 : 0
         }
         Text {
             anchors { left: tick.right; leftMargin: 8; right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
             text: optionRow.text
             elide: Text.ElideRight
-            color: Theme.color.label
+            color: Theme.material && optionRow.checked ? Theme.m3.onTertiaryContainer : Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body }
         }
         MouseArea {
@@ -182,7 +186,7 @@ Variants {
             anchors.bottom: true
             margins.bottom: (Config.options.dock.enabled ? Config.options.dock.iconSize + 14 + 6 + 14 : 14) - m
             implicitWidth: Math.max(row.implicitWidth + 24, 340) + 2 * m
-            implicitHeight: 64 + 2 * m + (optionsOpen ? options.height - 2 * m + 8 : 0)
+            implicitHeight: 64 + 2 * m + (optionsOpen ? options.height - 2 * m + 8 : 0) + (Theme.material && recordButton.item?.open ? recordButton.item.menuHeight : 0)
 
             Item {
                 anchors.fill: parent
@@ -358,9 +362,17 @@ Variants {
                     Glass {
                         id: glass
                         anchors.fill: parent
-                        radius: 22
+                        radius: Theme.material ? 32 : 22
                         bevel: 18
                         shadowMargin: win.m
+                    }
+                    // Material: a vibrant floating toolbar, a pill in
+                    // primaryContainer (over the glass, which keeps the shadow)
+                    Rectangle {
+                        visible: Theme.material
+                        anchors.fill: glass.shape
+                        radius: height / 2
+                        color: Theme.material ? Theme.m3.primaryContainer : "transparent"
                     }
 
                     Row {
@@ -381,14 +393,26 @@ Variants {
                                     visible: !!tool.modelData.sep
                                     anchors.centerIn: parent
                                     width: 1
-                                    height: 36
-                                    color: Theme.color.separator
+                                    height: Theme.material ? 32 : 36
+                                    color: Theme.material ? Qt.alpha(Theme.m3.onPrimaryContainer, 0.24) : Theme.color.separator
                                 }
                                 Squircle {
+                                    id: toolFace
                                     visible: !tool.modelData.sep
                                     anchors.fill: parent
-                                    radius: 12
-                                    color: tool.picked ? Theme.accentAlpha(0.22) : toolMouse.pressed || (tool.modelData.options && win.optionsOpen) ? Theme.color.fillPressed : toolMouse.containsMouse ? Theme.color.fill : "transparent"
+                                    // Material: round, squaring off while pressed;
+                                    // the picked one filled in primary, the rest a
+                                    // state layer of the toolbar's content colour
+                                    readonly property bool active: toolMouse.pressed || (!!tool.modelData.options && win.optionsOpen)
+                                    transform: Theme.material ? pressFx1.effects : []
+                                    ElasticControl { id: pressFx1; pressed: toolMouse.pressed; enabled: Theme.material }
+                                    radius: Theme.material ? (toolMouse.pressed ? 16 : tool.picked ? 20 : height / 2) : 12
+                                    Behavior on radius {
+                                        enabled: Theme.material
+                                        MaterialSpring { speed: "fast"; epsilon: 0.25 }
+                                    }
+                                    color: Theme.material ? (tool.picked ? Theme.m3.primary : Qt.alpha(Theme.m3.onPrimaryContainer, toolFace.active ? 0.1 : toolMouse.containsMouse ? 0.08 : 0))
+                                        : tool.picked ? Theme.accentAlpha(0.22) : toolFace.active ? Theme.color.fillPressed : toolMouse.containsMouse ? Theme.color.fill : "transparent"
                                     Column {
                                         visible: !tool.modelData.options
                                         anchors.centerIn: parent
@@ -396,13 +420,15 @@ Variants {
                                         Icon {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             name: tool.modelData.icon ?? ""
+                                            fill: Theme.material && (tool.picked || (tool.modelData.icon === "record" && Recorder.recording))
                                             size: 22
-                                            color: tool.modelData.icon === "record" && Recorder.recording ? Theme.color.danger : tool.picked ? Theme.accent : Theme.color.label
+                                            color: tool.modelData.icon === "record" && Recorder.recording ? Theme.color.danger
+                                                : Theme.material ? (tool.picked ? Theme.m3.onPrimary : Theme.m3.onPrimaryContainer) : tool.picked ? Theme.accent : Theme.color.label
                                         }
                                         Text {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: tool.modelData.label ?? ""
-                                            color: tool.picked ? Theme.color.label : Theme.color.secondary
+                                            color: Theme.material ? (tool.picked ? Theme.m3.onPrimary : Theme.m3.onPrimaryContainer) : tool.picked ? Theme.color.label : Theme.color.secondary
                                             font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
                                         }
                                     }
@@ -414,7 +440,7 @@ Variants {
                                             id: optionsLabel
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: "Options"
-                                            color: Theme.color.label
+                                            color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.label
                                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                                         }
                                         Icon {
@@ -422,7 +448,7 @@ Variants {
                                             name: win.optionsOpen ? "caret-down" : "caret-up"
                                             bold: true
                                             size: 11
-                                            color: Theme.color.secondary
+                                            color: Theme.material ? Theme.m3.onPrimaryContainer : Theme.color.secondary
                                         }
                                     }
                                     MouseArea {
@@ -444,33 +470,56 @@ Variants {
                             }
                         }
 
-                        // Recording only: the Record button
+                        // Recording only: the Record button (Material: a split button whose
+                        // menu records the other areas straight away)
                         Item {
                             visible: win.recordOnly
-                            width: recordLabel.implicitWidth + 40
+                            width: recordButton.implicitWidth + (Theme.material ? 16 : 0)
                             height: 56
-                            Rectangle {
+                            Loader {
+                                id: recordButton
                                 anchors.centerIn: parent
-                                width: parent.width
-                                height: 36
-                                radius: 18
-                                color: !Recorder.available ? Theme.color.fill : recordMouse.pressed ? Qt.darker(Theme.color.danger, 1.2) : recordMouse.containsMouse ? Qt.darker(Theme.color.danger, 1.08) : Theme.color.danger
-                                scale: recordMouse.pressed ? 0.97 : 1
-                                Behavior on scale { NumberAnimation { duration: 100 } }
-                                Text {
-                                    id: recordLabel
-                                    anchors.centerIn: parent
-                                    text: "Record"
-                                    color: Recorder.available ? "white" : Theme.color.tertiary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                                sourceComponent: Theme.material ? materialRecord : glassRecord
+                            }
+                            Component {
+                                id: glassRecord
+                                Rectangle {
+                                    implicitWidth: recordLabel.implicitWidth + 40
+                                    implicitHeight: 36
+                                    radius: 18
+                                    color: !Recorder.available ? Theme.color.fill : recordMouse.pressed ? Qt.darker(Theme.color.danger, 1.2) : recordMouse.containsMouse ? Qt.darker(Theme.color.danger, 1.08) : Theme.color.danger
+                                    scale: recordMouse.pressed ? 0.97 : 1
+                                    Behavior on scale { NumberAnimation { duration: 100 } }
+                                    Text {
+                                        id: recordLabel
+                                        anchors.centerIn: parent
+                                        text: "Record"
+                                        color: Recorder.available ? "white" : Theme.color.tertiary
+                                        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+                                    }
+                                    MouseArea {
+                                        id: recordMouse
+                                        anchors.fill: parent
+                                        enabled: Recorder.available
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.record(win.rec.area)
+                                    }
                                 }
-                                MouseArea {
-                                    id: recordMouse
-                                    anchors.fill: parent
+                            }
+                            Component {
+                                id: materialRecord
+                                SplitButton {
+                                    upward: true
+                                    text: "Record"
+                                    icon: "record"
                                     enabled: Recorder.available
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: win.record(win.rec.area)
+                                    menu: [
+                                        { text: "Record entire screen", icon: "monitor", action: () => { win.rec.area = "screen"; win.record("screen"); } },
+                                        { text: "Record a window", icon: "app-window", action: () => { win.rec.area = "window"; win.record("window"); } },
+                                        { text: "Record a region", icon: "selection", action: () => { win.rec.area = "region"; win.record("region"); } }
+                                    ]
                                 }
                             }
                         }

@@ -585,7 +585,7 @@ class Shell(unittest.TestCase):
     def test_screen_text_never_reaches_trans_as_an_option(self):
         st = (ROOT / "shell/services/ScreenTools.qml").read_text()
         self.assertRegex(st, r'"trans -brief -no-ansi -t " \+ q\(t\) \+ " -- " \+ q\(src\)')
-        for p in (ROOT / "shell/modules/sidebar/Translator.qml", ROOT / "material/modules/sidebar/Translator.qml"):
+        for p in (ROOT / "shell/modules/sidebar/Translator.qml",):
             self.assertIn('"-t", target, "--", input.text]', p.read_text())
 
     def test_links_from_outside_open_only_on_the_web(self):
@@ -655,8 +655,7 @@ class Shell(unittest.TestCase):
 
     def test_text_components_are_plain(self):
         for rel, n in (("shell/modules/menubar/Marquee.qml", 2), ("shell/modules/menubar/HoverTip.qml", 1),
-                       ("material/modules/menubar/HoverTip.qml", 1), ("shell/modules/controlcenter/ListRow.qml", 2),
-                       ("material/modules/controlcenter/ListRow.qml", 2)):
+                       ("material/modules/menubar/HoverTip.qml", 1), ("shell/modules/controlcenter/ListRow.qml", 2)):
             self.assertGreaterEqual((ROOT / rel).read_text().count("textFormat: Text.PlainText"), n, rel)
         for rel in ("shell/modules/clipboard/ClipboardPanel.qml", "material/modules/clipboard/ClipboardPanel.qml"):
             self.assertRegex((ROOT / rel).read_text(), r"component Heading: Text \{\n\s*textFormat: Text\.PlainText")
