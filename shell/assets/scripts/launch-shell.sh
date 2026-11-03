@@ -171,7 +171,7 @@ fi
 # Its own process name. CachyOS's ananicy-cpp files every "qs" as a
 # background service (nice 10), so the shell stuttered whenever an app was
 # busy; started through a link called irice-shell, the process takes that
-# name, which only iRice's own rule (assets/ananicy/irice.rules: interactive,
+# name, which only iRice's own rule (irice-root.py's ANANICY_TEXT: interactive,
 # like GNOME Shell and KWin) matches. Not while something from before the
 # name still watches the shell: an update installing this version (its
 # script is a copy of the old one) or a tty session's watchdog started

@@ -180,5 +180,10 @@ class HelperCurrent(unittest.TestCase):
             self.assertTrue(su.helper_current())  # (no ananicy-cpp)
             Path(d, "etc/ananicy.d").mkdir()
             self.assertFalse(su.helper_current())  # (its rule is missing)
-            Path(d, "etc/ananicy.d/irice.rules").write_bytes((SCRIPTS.parent / "ananicy/irice.rules").read_bytes())
+            Path(d, "etc/ananicy.d/irice.rules").write_bytes(su.root_helper().ANANICY_TEXT)
+            self.assertTrue(su.helper_current())
+            # Turned off in Settings: no rule, and none is missing
+            Path(d, "etc/ananicy.d/irice.rules").unlink()
+            Path(d, "etc/irice").mkdir()
+            Path(d, "etc/irice/priority-off").write_text("off")
             self.assertTrue(su.helper_current())

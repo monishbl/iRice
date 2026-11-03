@@ -1,15 +1,17 @@
 // iRice: the root helper's small fixed jobs run without a password for an
 // administrator (wheel) sitting at this computer, in the session on screen:
-// the login screen's wallpaper and look, and the fixes in System health and
-// Settings → Sharing. Each is its own action (org.irice.root.policy), picked
-// by pkexec from the exact first argument; the helper checks the rest.
+// the login screen's wallpaper and look, the fixes in System health and
+// Settings → Sharing, and the shell's priority (Settings → Battery & Power).
+// Each is its own action (org.irice.root.policy), picked by pkexec from the
+// exact first argument; the helper checks the rest.
 // Updates (org.irice.root.update), Quick Share's Wi-Fi helper (it makes and
 // joins Wi-Fi networks) and anything else keep asking, once, as they start.
 polkit.addRule(function (action, subject) {
     var silent = {
         "org.irice.root.wallpaper": "wallpaper",
         "org.irice.root.login-look": "login-look",
-        "org.irice.root.fix": "fix"
+        "org.irice.root.fix": "fix",
+        "org.irice.root.priority": "priority"
     };
     if (!silent.hasOwnProperty(action.id))
         return polkit.Result.NOT_HANDLED;

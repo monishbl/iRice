@@ -79,6 +79,18 @@ Column {
             detail: "What iRice turns down when the machine runs hot, and what stays loaded"
             page: "power/cooldown"
         }
+        // (where ananicy-cpp runs: CachyOS and others)
+        Row {
+            visible: ShellPriority.available
+            label: "Keep iRice smooth when busy"
+            detail: ShellPriority.error !== "" ? ShellPriority.error : "Panels and animations keep their speed while apps work hard. Asks ananicy-cpp to treat the shell as interactive."
+            labelColor: Theme.color.label
+            Switch {
+                checked: ShellPriority.on
+                enabled: !ShellPriority.busy
+                onToggled: ShellPriority.set(!checked)
+            }
+        }
     }
 
     // ── Battery ─────────────────────────────────────────────────────────

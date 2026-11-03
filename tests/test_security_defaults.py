@@ -21,6 +21,7 @@ beyond 127.0.0.1.
 import importlib.util
 import io
 import json
+import inspect
 import os
 import re
 import shutil
@@ -289,10 +290,36 @@ class RootHelper(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.d = Path(self.tmp.name)
 
-    def test_only_three_fixed_jobs_run_without_a_password(self):
+    def test_priority_writes_only_its_fixed_rule_and_stays_off_through_updates(self):
+        etc = self.d / "etc/ananicy.d"
+        etc.mkdir(parents=True)
+        rule = etc / "irice.rules"
+        self.assertIn(str(rule), self.setup_written())  # (on by default)
+        R.priority(False, prefix=str(self.d), run=lambda *a, **k: None)
+        self.assertFalse(rule.exists())
+        self.assertTrue((self.d / "etc/irice/priority-off").exists())
+        self.assertNotIn(str(rule), self.setup_written())  # (an update leaves it off)
+        self.assertFalse(rule.exists())
+        R.priority(True, prefix=str(self.d), run=lambda *a, **k: None)
+        self.assertEqual(rule.read_bytes(), R.ANANICY_TEXT)
+        self.assertFalse((self.d / "etc/irice/priority-off").exists())
+        # (nothing to pass it: on or off is all it takes)
+        self.assertEqual(list(inspect.signature(R.priority).parameters), ["on", "prefix", "run"])
+
+    def setup_written(self):
+        src = self.d / "src"
+        for rel, _dest, _mode in R.FILES:
+            f = src / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes((ROOT / "shell" / rel).read_bytes())
+        return R.setup(str(src), os.getuid(), prefix=str(self.d), run=lambda *a, **k: None)
+
+    def test_only_fixed_jobs_run_without_a_password(self):
+        # (each takes nothing free-form: fixed fixes, a checked image, a
+        # checked look, the shell's priority on or off with a fixed rule)
         rules = (ROOT / "shell/assets/polkit/49-irice.rules").read_text()
         silent = re.search(r"var silent = \{(.*?)\};", rules, re.S).group(1)
-        self.assertEqual(sorted(re.findall(r'"org\.irice\.root\.([a-z-]+)"', silent)), ["fix", "login-look", "wallpaper"])
+        self.assertEqual(sorted(re.findall(r'"org\.irice\.root\.([a-z-]+)"', silent)), ["fix", "login-look", "priority", "wallpaper"])
         self.assertIn('subject.active && subject.local && subject.isInGroup("wheel")', rules)
         # Every action asks for an administrator by default
         tree = ET.parse(ROOT / "shell/assets/polkit/org.irice.root.policy")

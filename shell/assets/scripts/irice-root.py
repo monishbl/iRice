@@ -21,6 +21,9 @@ Without a password, for an administrator (wheel) at this computer
                      free-form ever runs
   wifi-helper        Quick Share's Wi-Fi helper (qs-wifi-helper.py, next to
                      this file): JSON on stdin and stdout
+  priority on|off    the shell's priority with ananicy-cpp: its fixed rule
+                     in /etc/ananicy.d (on), or none and a marker in
+                     /etc/irice that keeps updates from putting it back (off)
 With the password:
   fingerprint on|off polkit|sudo|login
       a finger is (or isn't) accepted for password prompts (polkit), sudo, or
@@ -107,12 +110,18 @@ FILES = [
     ("assets/polkit/org.irice.root.policy", "/usr/share/polkit-1/actions/org.irice.root.policy", 0o644),
     ("assets/polkit/49-irice.rules", "/etc/polkit-1/rules.d/49-irice.rules", 0o644),
 ]
-# Installed only where their folder already exists: ananicy-cpp's rule that
-# keeps the shell ("irice-shell") interactive (CachyOS files "qs" as a
-# background service otherwise)
-OPTIONAL_FILES = [
-    ("assets/ananicy/irice.rules", "/etc/ananicy.d/irice.rules", 0o644),
-]
+# ananicy-cpp's rule that keeps the shell ("irice-shell", started so by
+# launch-shell.sh) interactive, like GNOME Shell and KWin (CachyOS files "qs"
+# as a background service otherwise). Fixed here, never read from a folder:
+# `priority on` runs without a password, so it writes nothing it's given.
+# Installed where ananicy-cpp is (its /etc/ananicy.d), unless turned off in
+# Settings → Battery & Power (the marker).
+ANANICY_RULE = "/etc/ananicy.d/irice.rules"
+ANANICY_TEXT = b"""# iRice's shell: interactive, so panels and animations stay smooth while
+# apps are busy (iRice's root helper; Settings > Battery & Power turns it off)
+{ "name": "irice-shell", "type": "LowLatency_RT" }
+"""
+PRIORITY_OFF = "/etc/irice/priority-off"
 
 
 class Refused(Exception):
@@ -565,6 +574,36 @@ def bootmenu(on, run=subprocess.run, which=shutil.which, exists=os.path.exists):
     return ["disabled grub-btrfsd"]
 
 
+def priority(on, prefix=None, run=subprocess.run):
+    """The shell's priority with ananicy-cpp (Settings → Battery & Power):
+    on writes its fixed rule, off removes it and leaves a marker so updates
+    (setup) don't put it back. Returns what changed."""
+    prefix = PREFIX if prefix is None else prefix
+    rule = os.path.join(prefix, ANANICY_RULE.lstrip("/"))
+    marker = os.path.join(prefix, PRIORITY_OFF.lstrip("/"))
+    if not os.path.isdir(os.path.dirname(rule)):
+        raise Refused("ananicy-cpp isn't installed (its /etc/ananicy.d is missing)")
+    changed = []
+    if on:
+        write_root(rule, ANANICY_TEXT, 0o644)
+        changed.append(rule)
+        if os.path.exists(marker):
+            os.remove(marker)
+            changed.append(marker)
+    else:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        write_root(marker, "Turned off in Settings → Battery & Power (Keep iRice smooth when busy)\n".encode(), 0o644)
+        changed.append(marker)
+        if os.path.exists(rule):
+            os.remove(rule)
+            changed.append(rule)
+    # ananicy-cpp reads its rules as it starts
+    if prefix == "/":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            run(["systemctl", "try-restart", "ananicy-cpp.service"], timeout=20, check=False)
+    return changed
+
+
 # ── wallpaper ───────────────────────────────────────────────────────────
 def image_kind(data):
     if data[:3] == b"\xff\xd8\xff":
@@ -767,16 +806,13 @@ def check_folder(src):
 
 
 def setup(src, uid, prefix=None, run=subprocess.run):
-    """Installs FILES (and OPTIONAL_FILES where their folder exists) from the
-    shell's folder, only the ones that changed. Returns the destinations
-    written."""
+    """Installs FILES from the shell's folder, only the ones that changed,
+    and ananicy-cpp's rule where it's installed (unless turned off). Returns
+    the destinations written."""
     src = check_folder(src)
     prefix = PREFIX if prefix is None else prefix
     written = []
-    wanted = list(FILES) + [f for f in OPTIONAL_FILES if os.path.isdir(os.path.join(prefix, os.path.dirname(f[1]).lstrip("/")))]
-    for rel, dest, mode in wanted:
-        if (rel, dest, mode) in OPTIONAL_FILES and not os.path.exists(os.path.join(src, rel)):
-            continue  # (an older shell folder without it)
+    for rel, dest, mode in FILES:
         data = read_as(uid, os.path.join(src, rel), MAX_SOURCE)
         dest = os.path.join(prefix, dest.lstrip("/"))
         try:
@@ -787,6 +823,16 @@ def setup(src, uid, prefix=None, run=subprocess.run):
         if not same:
             write_root(dest, data, mode)
             written.append(dest)
+    rule = os.path.join(prefix, ANANICY_RULE.lstrip("/"))
+    if os.path.isdir(os.path.dirname(rule)) and not os.path.exists(os.path.join(prefix, PRIORITY_OFF.lstrip("/"))):
+        try:
+            with open(rule, "rb") as f:
+                same = f.read() == ANANICY_TEXT
+        except OSError:
+            same = False
+        if not same:
+            write_root(rule, ANANICY_TEXT, 0o644)
+            written.append(rule)
     written += refresh_login(src, uid, prefix)
     # ananicy-cpp reads its rules as it starts
     if prefix == "/" and any(d.startswith("/etc/ananicy.d/") for d in written):
@@ -1092,12 +1138,16 @@ def main(argv):
             for d in bootmenu(args[0] == "on"):
                 print(d)
             return 0
+        if cmd == "priority" and len(args) == 1 and args[0] in ("on", "off"):
+            for d in priority(args[0] == "on"):
+                print("changed", d)
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
         raise Refused("usage: irice-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
-                      "quickshare-trust on|off | "
+                      "quickshare-trust on|off | priority on|off | "
                       "update … | setup <folder>")
     except Refused as e:
         print(f"irice-root: {e}", file=sys.stderr)

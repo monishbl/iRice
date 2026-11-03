@@ -687,10 +687,21 @@ def helper_current(folder=None):
     update's root part installs it). An installed file only root may read
     (/etc/polkit-1/rules.d is 0700) can't be compared: it counts as current,
     or the update would offer the helper again every time, for nothing.
-    Its optional files count where their folder is (ananicy-cpp's rules)."""
+    ananicy-cpp's rule counts where ananicy-cpp is, unless it was turned off
+    (the helper's marker)."""
     helper = root_helper()
-    wanted = helper.FILES + [f for f in getattr(helper, "OPTIONAL_FILES", [])
-                             if os.path.isdir(os.path.join(SYSTEM, os.path.dirname(f[1]).lstrip("/")))]
+    rule = getattr(helper, "ANANICY_RULE", "")
+    if rule and os.path.isdir(os.path.join(SYSTEM, os.path.dirname(rule).lstrip("/"))) \
+            and not os.path.exists(os.path.join(SYSTEM, helper.PRIORITY_OFF.lstrip("/"))):
+        try:
+            with open(os.path.join(SYSTEM, rule.lstrip("/")), "rb") as f:
+                if f.read() != helper.ANANICY_TEXT:
+                    return False
+        except PermissionError:
+            pass
+        except OSError:
+            return False
+    wanted = helper.FILES + getattr(helper, "OPTIONAL_FILES", [])
     for rel, dest, mode in wanted:
         try:
             with open(os.path.join(folder or SHELL, rel), "rb") as a:
