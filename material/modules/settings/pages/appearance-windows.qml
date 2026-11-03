@@ -36,24 +36,6 @@ Column {
                 onSelected: i => Config.options.appearance.decorations = values[i]
             }
         }
-        Row {
-            id: pointerRow
-            label: "Pointer"
-            // (one choice, as AppTheme picks it: the Material pointer, Bibata,
-            // or the shared `cursor` when that's off)
-            readonly property bool bibata: Config.options.appearance.materialCursor || Config.options.appearance.cursor === "bibata"
-            detail: bibata ? "Bibata Modern Classic, a rounder pointer" : "The macOS pointer"
-            Segmented {
-                width: 300
-                options: ["macOS", "Bibata"]
-                current: pointerRow.bibata ? 1 : 0
-                onSelected: i => {
-                    Config.options.appearance.materialCursor = i === 1;
-                    if (i === 0)
-                        Config.options.appearance.cursor = "macos";
-                }
-            }
-        }
     }
 
     Group {

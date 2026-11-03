@@ -36,17 +36,6 @@ Column {
                 onSelected: i => Config.options.appearance.decorations = values[i]
             }
         }
-        Row {
-            label: "Pointer"
-            detail: Config.options.appearance.cursor === "bibata" ? "Bibata Modern Classic, like end4" : "The macOS pointer"
-            Segmented {
-                width: 300
-                readonly property var values: ["macos", "bibata"]
-                options: ["macOS", "Bibata"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.cursor))
-                onSelected: i => Config.options.appearance.cursor = values[i]
-            }
-        }
     }
 
     Group {
