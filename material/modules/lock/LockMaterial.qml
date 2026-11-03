@@ -142,7 +142,7 @@ Item {
             // (large: centred, or on the left of a wide screen; small: the
             // top left corner)
             readonly property real largeX: root.split ? Math.round(root.width * 0.08) : Math.round((root.width - width) / 2)
-            readonly property real largeY: Math.round(root.height * (root.split ? 0.14 : root.ios ? 0.09 : 0.11))
+            readonly property real largeY: Math.round(root.height * (root.split ? 0.18 : root.ios ? 0.15 : 0.17))
             x: largeX + (Math.max(48, Math.round(root.width * 0.04)) - largeX) * root.smallT
             y: largeY + (72 - largeY) * root.smallT + root.rise - root.part
             spacing: 20 - 8 * root.smallT

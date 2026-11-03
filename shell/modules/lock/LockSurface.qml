@@ -31,8 +31,12 @@ WlSessionLockSurface {
     // column (beside the clock, on a wide screen) or icons (only the icons)
     readonly property string style: cfg.notifications ?? "shelf"
     readonly property bool split: style === "column" && width > height
-    readonly property string material: cfg.material === "system" ? (Theme.glass.tier === "liquid" ? "glass" : Theme.glass.tier === "frosted" ? "frost" : "solid") : cfg.material
-    readonly property bool darkInk: cfg.text === "dark" || (cfg.text === "auto" && Wallpaper.topIsLight)
+    // Plain (lock.background): no wallpaper, a clean background in the
+    // look's own colour (light or dark), the cards solid; else the wallpaper
+    readonly property bool plain: (cfg.background ?? "plain") !== "wallpaper"
+    readonly property color plainColor: Theme.material ? Qt.alpha(Theme.m3.surfaceContainerLowest, 1) : Theme.dark ? "#0E0E10" : "#F2F2F5"
+    readonly property string material: plain ? "solid" : cfg.material === "system" ? (Theme.glass.tier === "liquid" ? "glass" : Theme.glass.tier === "frosted" ? "frost" : "solid") : cfg.material
+    readonly property bool darkInk: plain ? !Theme.dark : cfg.text === "dark" || (cfg.text === "auto" && Wallpaper.topIsLight)
     readonly property color ink: darkInk ? "#18181B" : "#FFFFFF"
     readonly property color ink2: darkInk ? Qt.rgba(0.09, 0.09, 0.11, 0.66) : Qt.rgba(1, 1, 1, 0.72)
 
@@ -80,13 +84,19 @@ WlSessionLockSurface {
         screen: surface.screen
     }
 
+    Rectangle {
+        visible: surface.plain
+        anchors.fill: parent
+        color: surface.plainColor
+    }
     Image {
         id: wallpaper
+        visible: !surface.plain
         anchors.fill: parent
         // Unlocking it leans in to where the desktop's wallpaper starts
         // (LockFx); after a zoomed lock it settles from there
         scale: 1 + 0.05 * Math.max(surface.zoomOut ? surface.exit : 0, surface.enter)
-        source: Wallpaper.source
+        source: surface.plain ? "" : Wallpaper.source
         fillMode: Image.PreserveAspectCrop
         sourceSize: Qt.size(width, height)
         asynchronous: true
@@ -183,7 +193,7 @@ WlSessionLockSurface {
         Column {
             id: header
             anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height * (surface.ios ? 0.07 : 0.1) + (surface.lockFx === "zoom" ? (1 - surface.reveal) * -20 : 0)
+            y: parent.height * (surface.ios ? 0.13 : 0.16) + (surface.lockFx === "zoom" ? (1 - surface.reveal) * -20 : 0)
             opacity: surface.reveal
             spacing: 0
             Text {

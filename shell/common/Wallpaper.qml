@@ -13,7 +13,9 @@ Singleton {
     readonly property string stillPath: cfg.path || bundledDir + "/tahoe-dusk.jpg"
     // The picture showing now: the chosen one, or the dynamic one for this time
     // of day / appearance. A live wallpaper uses its first frame here (for glass).
-    readonly property string path: livePoster !== "" ? livePoster : cfg.dynamic === "time" ? timePicture : cfg.dynamic === "appearance" ? (Theme.dark ? (cfg.darkPath || bundledDir + "/tahoe-dusk.jpg") : (cfg.lightPath || bundledDir + "/tahoe-day.jpg")) : stillPath
+    // Nothing until your settings are read: before that the defaults
+    // (the bundled picture) would show for a moment at every start
+    readonly property string path: !Config.ready ? "" : livePoster !== "" ? livePoster : cfg.dynamic === "time" ? timePicture : cfg.dynamic === "appearance" ? (Theme.dark ? (cfg.darkPath || bundledDir + "/tahoe-dusk.jpg") : (cfg.lightPath || bundledDir + "/tahoe-day.jpg")) : stillPath
     // Each path segment encoded, so names with # % ? still load
     readonly property url source: fileUrl(path)
     function fileUrl(p) {
