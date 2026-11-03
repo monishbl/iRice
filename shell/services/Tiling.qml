@@ -11,8 +11,8 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property int gapOut: 10 // matches general.gaps_out
-    readonly property int gapIn: 5 // half of the space between two tiles
+    readonly property int gapOut: System.gaps[1] // general.gaps_out, as Settings → Windows & Spaces → Gaps sets it
+    readonly property int gapIn: System.gaps[0] // half of the space between two tiles (general.gaps_in)
 
     // [x, y, w, h] as fractions of the usable area
     readonly property var layouts: ({

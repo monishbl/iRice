@@ -15,7 +15,7 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property bool enabled: Config.ready && Config.options.findPointer.enabled
+    readonly property bool enabled: Config.ready && Config.options.findPointer.enabled && Config.options.findPointer.style !== "off"
     // (Hyprland's side follows the setting live)
     onEnabledChanged: if (Config.ready)
         Quickshell.execDetached(["hyprctl", "eval", "IRICE_FIND_POINTER = " + (enabled ? "true" : "false")])
@@ -67,13 +67,18 @@ Singleton {
             }
         }
     }
-    // The pointer itself, bigger for a moment (the theme Appearance chose;
-    // back to 24, its size, however it ends)
+    // The pointer itself, bigger for a moment (the theme Appearance chose).
+    // Run on its own (setsid), so it always shrinks back, to the size it
+    // had (XCURSOR_SIZE, else 24), whatever happens to the shell; one at a
+    // time (a lock), and only a short hold: every size change reloads the
+    // theme, which is what makes it slow
     Process {
         id: grow
-        command: ["sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; "
-            + "trap 'hyprctl setcursor \"$h\" 24 >/dev/null' EXIT; "
-            + "hyprctl setcursor \"$h\" 72 >/dev/null; sleep 1.1", "sh",
+        command: ["setsid", "-f", "sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; "
+            + "s=${XCURSOR_SIZE:-24}; l=${XDG_RUNTIME_DIR:-/tmp}/irice-findpointer.lock; "
+            + "exec 9>\"$l\"; flock -n 9 || exit 0; "
+            + "trap 'hyprctl setcursor \"$h\" \"$s\" >/dev/null' EXIT INT TERM HUP; "
+            + "hyprctl setcursor \"$h\" $((s * 5 / 2)) >/dev/null; sleep 0.75", "sh",
             Config.options.appearance.cursor === "bibata" ? "Bibata-Modern-Classic" : "macOS"]
     }
 

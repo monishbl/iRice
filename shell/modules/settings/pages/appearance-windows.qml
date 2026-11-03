@@ -16,6 +16,17 @@ Column {
         title: "Windows"
         footer: Config.options.appearance.decorations === "titlebars" && !Decorations.pluginLoaded ? "Title bars need the hyprbars plugin, which isn't installed." : Config.options.appearance.decorations === "controls" ? (Decorations.pluginControls ? "Hover the handle at the top of any window for close, minimize and zoom; rest on the green button to tile. Drawn by the compositor, so it moves with the window." : "Hover the handle at the top of the focused window for close, minimize and zoom. With the compositor glass plugin it's drawn on every window and never lags behind.") : Config.options.appearance.decorations === "titlebars" ? "macOS-style title bars with traffic lights. Double-click a title bar to zoom." : "Borderless windows; use the Window menu for window actions."
         Row {
+            label: "Gaps"
+            detail: "Space round windows: between them and at the screen's edges"
+            Segmented {
+                width: 300
+                readonly property var values: ["none", "compact", "comfortable"]
+                options: ["None", "Compact", "Comfortable"]
+                current: Math.max(0, values.indexOf(Config.options.appearance.gaps))
+                onSelected: i => Config.options.appearance.gaps = values[i]
+            }
+        }
+        Row {
             label: "Decorations"
             Segmented {
                 width: 300

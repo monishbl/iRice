@@ -35,17 +35,11 @@ cfg="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
 if [[ -f "$cfg" ]]; then
     pick="$(sed -n 's/.*"iconTheme"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)"
 fi
-# The look's own icons when installed: Colloid with Glass, Tela circle with
-# Material, light or dark with iRice
-if [[ -z "$pick" ]]; then
-    dark=1
-    [[ -f "$cfg" ]] && grep -q '"mode"[[:space:]]*:[[:space:]]*"light"' "$cfg" && dark=0
-    if [[ -f "$cfg" ]] && grep -q '"look"[[:space:]]*:[[:space:]]*"material"' "$cfg"; then
-        base=Tela-circle; if [[ $dark == 1 ]]; then v=Tela-circle-dark; else v=Tela-circle-light; fi
-    else
-        base=Colloid; if [[ $dark == 1 ]]; then v=Colloid-Dark; else v=Colloid-Light; fi
-    fi
-    if installed "$v"; then pick=$v; elif installed "$base"; then pick=$base; fi
+# Each app's own logo by default (iRice styles it: Clear in Glass, Themed in
+# Material): Adwaita draws the folders and system icons but leaves apps to
+# the icons they ship. An icon theme chosen in Settings wins.
+if [[ -z "$pick" ]] && installed Adwaita; then
+    pick=Adwaita
 fi
 if [[ -z "$pick" && -f "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" ]]; then
     pick="$(sed -n '/^\[Icons\]/,/^\[/{s/^Theme=//p}' "${XDG_CONFIG_HOME:-$HOME/.config}/kdeglobals" | head -1)"

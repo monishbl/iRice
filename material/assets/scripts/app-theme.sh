@@ -100,11 +100,14 @@ include() { # file, line, [create if missing]
 if want gtk; then
     include "$CFG/gtk-3.0/gtk.css" "@import 'irice-colors.css';" create
     include "$CFG/gtk-4.0/gtk.css" "@import 'irice-colors.css';" create
-    # GTK apps follow light/dark too, on the MacTahoe theme when it's installed
+    # GTK apps follow light/dark too, on Adwaita (coloured by the files
+    # above); a MacTahoe theme set by an older iRice is put back to it, any
+    # other theme you chose is left alone
     if command -v gsettings >/dev/null; then
         gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" 2>/dev/null
-        v=$([[ $mode == dark ]] && echo Dark || echo Light)
-        t=$(ls -d /usr/share/themes/MacTahoe-"$v"* "$DATA"/themes/MacTahoe-"$v"* "$HOME"/.themes/MacTahoe-"$v"* 2>/dev/null | head -1)
+        cur=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
+        t=""
+        [[ $cur == MacTahoe* || $cur == Adwaita* || $cur == adw-gtk3* ]] && t=$([[ $mode == dark ]] && echo Adwaita-dark || echo Adwaita)
         # Material: libadwaita's look for GTK 3 apps (adw-gtk3), when installed
         if [[ -n "$roles" ]]; then
             a3=$([[ $mode == dark ]] && echo adw-gtk3-dark || echo adw-gtk3)
@@ -112,7 +115,7 @@ if want gtk; then
                 [[ -d "$d/$a3" ]] && t="$d/$a3" && break
             done
         fi
-        [[ -n "$t" ]] && gsettings set org.gnome.desktop.interface gtk-theme "$(basename "$t")" 2>/dev/null
+        [[ -n "$t" && ( $cur == MacTahoe* || $cur == Adwaita* || $cur == adw-gtk3* ) ]] && gsettings set org.gnome.desktop.interface gtk-theme "$(basename "$t")" 2>/dev/null
     fi
 fi
 if want qt; then

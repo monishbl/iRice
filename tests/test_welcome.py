@@ -10,6 +10,9 @@ import subprocess
 import tempfile
 import unittest
 
+# The newest one-time settings change (Config.qml onLoaded: defaultsVersion)
+LATEST = 3
+
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = Path.home()/'.local/share/irice/quickshell'
 QS = BUNDLE/'bin/qs'
@@ -61,23 +64,23 @@ class WelcomeMigration(unittest.TestCase):
 
     def test_settings_saved_before_it_count_as_welcomed(self):
         self.write({'appearance': {'mode': 'dark'}, 'defaultsVersion': 1})
-        self.assertEqual(self.run_config(), (True, 2))
+        self.assertEqual(self.run_config(), (True, LATEST))
 
     def test_a_new_setup_shows_it(self):
         # (no file: written from the defaults, welcome.done false; the
         # migration sees that file at the next start and leaves it)
         self.assertFalse(self.run_config()[0])
         self.assertFalse(json.loads(self.config.read_text())['welcome']['done'])
-        self.assertEqual(self.run_config(), (False, 2))
+        self.assertEqual(self.run_config(), (False, LATEST))
 
     def test_installs_first_config_shows_it(self):
         # (what install.sh writes on a first install)
         self.write({'appearance': {'mode': 'auto'}, 'welcome': {'done': False}, 'wallpaper': {'dynamic': 'appearance'}})
-        self.assertEqual(self.run_config(), (False, 2))
+        self.assertEqual(self.run_config(), (False, LATEST))
 
     def test_finished_stays_finished(self):
         self.write({'welcome': {'done': True}, 'defaultsVersion': 2})
-        self.assertEqual(self.run_config(), (True, 2))
+        self.assertEqual(self.run_config(), (True, LATEST))
 
 
 if __name__ == '__main__':

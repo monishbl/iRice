@@ -80,8 +80,20 @@ Column {
         title: "Pointer"
         Row {
             label: "Shake to find the pointer"
-            detail: "Move the mouse quickly back and forth to see where the pointer is"
-            Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
+            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, or a ring closes in on it"
+            Segmented {
+                width: 280
+                // (one choice: off, or how it shows; "both" from before shows as Ring)
+                readonly property string now: !Config.options.findPointer.enabled || Config.options.findPointer.style === "off" ? "off" : Config.options.findPointer.style === "grow" ? "grow" : "ring"
+                readonly property var values: ["off", "grow", "ring"]
+                options: ["Off", "Bigger", "Ring"]
+                current: Math.max(0, values.indexOf(now))
+                onSelected: i => {
+                    Config.options.findPointer.enabled = values[i] !== "off";
+                    if (values[i] !== "off")
+                        Config.options.findPointer.style = values[i];
+                }
+            }
         }
     }
 
@@ -110,23 +122,6 @@ Column {
                         Captions.cfg.barX = -1;
                         Captions.cfg.barY = -1;
                     }
-                }
-            }
-        }
-        Group {
-            width: parent.width
-            title: "Pointer"
-            Row {
-                visible: Config.options.findPointer.enabled
-                label: "Show it with"
-                detail: Config.options.findPointer.style === "grow" ? "The pointer grows big for a moment. A few apps draw their own pointer; over those it stays its size."
-                    : Config.options.findPointer.style === "both" ? "A ring, and the pointer grows big for a moment (not over the few apps that draw their own)"
-                    : "A ring that closes in on the pointer"
-                Segmented {
-                    width: 280
-                    options: ["Ring", "Bigger pointer", "Both"]
-                    current: Math.max(0, ["ring", "grow", "both"].indexOf(Config.options.findPointer.style))
-                    onSelected: i => Config.options.findPointer.style = ["ring", "grow", "both"][i]
                 }
             }
         }

@@ -153,12 +153,12 @@ Column {
         }
         Row {
             label: "App icons"
-            detail: ({ themed: "In your colours, like Android's themed icons", dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
+            detail: ({ look: "Your apps' own logos in your colours, like Android's themed icons", themed: "In your colours, like Android's themed icons", dark: "Dark backgrounds, colourful artwork", clear: "Frosted and colourless", tinted: "Tinted with the accent colour", auto: "Dark icons in dark mode" })[Config.options.appearance.iconStyle] ?? ""
             Segmented {
                 width: 400
                 readonly property var values: ["default", "themed", "dark", "clear", "tinted", "auto"]
                 options: ["Default", "Themed", "Dark", "Clear", "Tinted", "Auto"]
-                current: Math.max(0, values.indexOf(Config.options.appearance.iconStyle))
+                current: Math.max(0, values.indexOf(Config.options.appearance.iconStyle === "look" ? (Theme.material ? "themed" : "clear") : Config.options.appearance.iconStyle)) // ("look": each look's own style)
                 onSelected: i => Config.options.appearance.iconStyle = values[i]
             }
         }

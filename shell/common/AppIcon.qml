@@ -19,7 +19,8 @@ IconImage {
     readonly property var cfg: Config.options.appearance
     readonly property string style: {
         const s = cfg.iconStyle;
-        return s === "auto" ? (Theme.dark ? "dark" : "default") : s;
+        // ("look": each look's own, Clear in Glass and Themed in Material)
+        return s === "look" ? (Theme.material ? "themed" : "clear") : s === "auto" ? (Theme.dark ? "dark" : "default") : s;
     }
     // (themed: the Material look's, Android's themed icons; Glass has no
     // Material colours, so it shows the default there)

@@ -243,6 +243,15 @@ Singleton {
         if (windowRadius >= 0 && !gameMode)
             hyprEval("hl.config({ decoration = { rounding = " + windowRadius + ", rounding_power = 4.0 } })");
     }
+    // Space round windows follows Settings → Windows & Spaces → Gaps:
+    // [between, at the screen's edges]
+    readonly property var gapLevels: ({ "none": [0, 0], "compact": [3, 4], "comfortable": [5, 10] })
+    readonly property var gaps: gapLevels[Config.ready ? Config.options.appearance.gaps : ""] ?? gapLevels.compact
+    onGapsChanged: applyGaps()
+    function applyGaps() {
+        if (Config.ready && !gameMode)
+            hyprEval("hl.config({ general = { gaps_in = " + gaps[0] + ", gaps_out = " + gaps[1] + " } })");
+    }
     // Pointer theme follows Settings → Appearance (cursor.lua sets it at login)
     readonly property string cursor: Config.ready ? Config.options.appearance.cursor : ""
     onCursorChanged: if (cursor !== "") {
@@ -280,6 +289,7 @@ Singleton {
             if (event.name !== "configreloaded")
                 return;
             root.applyRadius();
+            root.applyGaps();
             root.applyOpacity();
             if (root.antiFlashbang)
                 root.applyShader();

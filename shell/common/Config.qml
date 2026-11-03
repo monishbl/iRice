@@ -48,6 +48,16 @@ Singleton {
                     adapter.welcome.done = true;
                 adapter.defaultsVersion = 2;
             }
+            // 3 Nov: app icons start in each look's own style (each app's
+            // own logo, Clear in Glass, Themed in Material) unless one was picked
+            if (adapter.defaultsVersion < 3) {
+                if (adapter.appearance.iconStyle === "default")
+                    adapter.appearance.iconStyle = "look";
+                // and the pointer is Bibata in both looks (the macOS one goes)
+                if (adapter.appearance.cursor === "macos")
+                    adapter.appearance.cursor = "bibata";
+                adapter.defaultsVersion = 3;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -82,6 +92,7 @@ Singleton {
 
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
+                property string gaps: "compact" // round windows: none | compact (3 between, 4 at the edges) | comfortable (5, 10)
                 property bool clock24: false // 24-hour time everywhere (TimeFormat)
                 // The look: glass (this shell) | material (experimental: Material 3
                 // Expressive, the material/ folder; switching restarts the shell,
@@ -122,13 +133,13 @@ Singleton {
                 property bool screenCorners: true
                 property string decorations: "none" // none | controls | titlebars
                 property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by iRice)
-                property string iconStyle: "default" // default | dark | clear | tinted | themed (Material: in Material You colours) | auto (dark in dark mode)
+                property string iconStyle: "look" // look (each look's own: Clear with Glass, Themed with Material) | default | dark | clear | tinted | themed (Material: in Material You colours) | auto (dark in dark mode)
                 property string iconShape: "squircle" // squircle (every icon on the same tile) | original
                 property real iconContrast: 0.6 // clear and tinted icons: how far the logo stands apart from its tile (0 .. 1)
                 property string iconTile: "auto" // tile behind transparent logos: auto (from the logo) | neutral | accent
                 property int screenCornerRadius: 12
                 property int windowRadius: 20 // app window corners (continuous curve)
-                property string cursor: "macos" // pointer: macos | bibata (end4's)
+                property string cursor: "bibata" // pointer: bibata (both looks) | macos (from before, while installed)
                 property string windowOpacity: "subtle" // app windows see-through: off | subtle | more | custom (fullscreen, video and games stay opaque)
                 property real windowOpacityActive: 0.97 // custom: the focused window
                 property real windowOpacityInactive: 0.93 // custom: the other windows
@@ -505,7 +516,7 @@ Singleton {
                 // Shake the mouse: the pointer grows for a moment, with a ring
                 // around it (hypr/irice/findpointer.lua, services/FindPointer)
                 property bool enabled: true
-                property string style: "ring" // ring (around it) | grow (a bigger pointer) | both
+                property string style: "ring" // ring (around it) | grow (a bigger pointer) | both (from before) | off
             }
             property JsonObject workspaces: JsonObject {
                 // Moving to another display (keyboard or pointer)

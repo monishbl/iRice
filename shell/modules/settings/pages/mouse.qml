@@ -60,8 +60,20 @@ Column {
         }
         Row {
             label: "Shake to find the pointer"
-            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, with a ring around it. Works with a trackpad too."
-            Switch { checked: Config.options.findPointer.enabled; onToggled: Config.options.findPointer.enabled = !checked }
+            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, or a ring closes in on it. Works with a trackpad too."
+            Segmented {
+                width: 280
+                // (one choice: off, or how it shows; "both" from before shows as Ring)
+                readonly property string now: !Config.options.findPointer.enabled || Config.options.findPointer.style === "off" ? "off" : Config.options.findPointer.style === "grow" ? "grow" : "ring"
+                readonly property var values: ["off", "grow", "ring"]
+                options: ["Off", "Bigger", "Ring"]
+                current: Math.max(0, values.indexOf(now))
+                onSelected: i => {
+                    Config.options.findPointer.enabled = values[i] !== "off";
+                    if (values[i] !== "off")
+                        Config.options.findPointer.style = values[i];
+                }
+            }
         }
     }
 
