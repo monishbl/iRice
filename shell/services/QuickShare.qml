@@ -90,7 +90,7 @@ Singleton {
         if (ev.slow)
             return "on Bluetooth (slow)";
         if (ev.auth)
-            return "password for a faster link";
+            return root.trusted ? "" : "password for a faster link"; // (no prompt when it's trusted)
         return /pauses/.test(ev.message ?? "") ? "Wi-Fi paused for it" : "";
     }
     readonly property bool needed: available && (visible || looking || sendPending || items.length > 0)

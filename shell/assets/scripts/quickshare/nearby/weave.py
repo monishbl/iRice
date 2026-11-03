@@ -450,7 +450,13 @@ class BleSocketTransport(Transport):
         while len(self._buf) < need:
             msg = await self._messages.recv(timeout)
             if msg[:3] == CONTROL_PREFIX:
-                c = parse_control_frame(msg[3:])
+                try:
+                    c = parse_control_frame(msg[3:])
+                except WeaveError:
+                    # (one the parser doesn't know — newer Android adds
+                    # kinds: skipped, not the end of the transfer)
+                    self._log(f"ble: skipped an unknown control message ({len(msg)} bytes, {bytes(msg[:12]).hex()})")
+                    continue
                 if c["type"] == DISCONNECTION:
                     self._log("ble: the other side disconnected")
                     raise TransportClosed("the other device disconnected")

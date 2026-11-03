@@ -64,3 +64,16 @@ class LinkMemory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PkexecEnv(unittest.TestCase):
+    def test_a_shell_not_in_etc_shells_is_replaced(self):
+        from nearby import wifi
+        with tempfile.NamedTemporaryFile("w", suffix="shells", delete=False) as f:
+            f.write("# /etc/shells\n/bin/sh\n/bin/bash\n/usr/bin/fish\n")
+        try:
+            self.assertEqual(wifi.pkexec_env({"SHELL": "/usr/sbin/zsh"}, f.name)["SHELL"], "/bin/sh")
+            self.assertEqual(wifi.pkexec_env({"SHELL": "/usr/bin/fish"}, f.name)["SHELL"], "/usr/bin/fish")
+            self.assertEqual(wifi.pkexec_env({"SHELL": "/x"}, "/nonexistent")["SHELL"], "/x")  # (nothing known: left)
+        finally:
+            os.unlink(f.name)

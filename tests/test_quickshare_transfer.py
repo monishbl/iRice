@@ -339,7 +339,8 @@ class Sending(unittest.IsolatedAsyncioTestCase):
         f.write_bytes(b"x")
         await self.svc.send("phone", [str(f)], host="127.0.0.1", port=port)
         ev = await self.events.wait("failed", dir="out")
-        self.assertIn("Keep Quick Share open", ev["message"])
+        self.assertIn("Couldn't reach phone over this Wi-Fi", ev["message"])
+        self.assertIn("devices reach each other", ev["message"])  # (no Bluetooth here: the way that's left)
 
 
 if __name__ == "__main__":

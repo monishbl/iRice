@@ -37,11 +37,24 @@ MEDIUM_NAMES = {"wifi_lan": "Wi-Fi", "wifi_direct": "Wi-Fi Direct", "wifi_hotspo
 SLOW = "Staying on Bluetooth, which is slow"
 RETRY = {"lan", "direct"}  # links worth a second try in the same transfer (nothing pauses for them)
 RETRY_TIMEOUT = 12  # (the second try waits less)
+SLOW_RTT = 25  # ms: a shared network slower than this goes after Wi-Fi Direct
+SPEED_SAMPLE = 3  # seconds between speed checks on a shared network
+SLOW_RATE = 3_000_000  # bytes/s: below this twice in a row, a big transfer asks for Wi-Fi Direct
+WORTH_MOVING = 50_000_000  # bytes still to go for that to be worth it
+TRUSTED = "/etc/irice/quickshare-trusted"  # (Settings: fast transfers without asking: no password mid-transfer)
+TWIN_WAIT = 8  # a phone the network can't reach: how long to look for it over Bluetooth
 PATH_MEDIUMS = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot", "nm": "wifi_hotspot"}
 JOIN_KEYS = {wifi.CR.WIFI_LAN: "join-lan", wifi.CR.WIFI_DIRECT: "join-direct", wifi.CR.WIFI_HOTSPOT: "join-hotspot"}
 OFFER_KEYS = {wifi.PATH.WIFI_LAN: "join-lan", wifi.PATH.WIFI_DIRECT: "join-direct", wifi.PATH.WIFI_HOTSPOT: "join-hotspot"}
 ADV_REFRESH = 120  # seconds between fresh advertisements while visible
 
+
+
+class Unreachable(OSError):
+    """No way to the phone (`isolated`: found on the network, not reachable there)."""
+    def __init__(self, isolated=False):
+        super().__init__("no way to reach that device")
+        self.isolated = isolated
 
 class QuickShareService:
     def __init__(self, emit, discovery=None, folder=None, name=None, ble=None, helper=None, net_probe=None,
@@ -69,11 +82,13 @@ class QuickShareService:
         self.port_tries = 6  # (½ s apart: a helper from before a restart lets go of the port)
         self.can_host = wifi.helper_possible  # (whether the root helper can make Wi-Fi links here)
         self.reachable = wifi.reachable  # (whether the phone answers at the address it gave)
+        self.latency = wifi.latency  # (and how quickly)
         self.firewall = firewall_status  # (whether a firewall may keep phones from reaching us)
         self.allow_hotspot = allow_hotspot  # (the firewall fix, when it runs without a password)
         self.nm_can_host = wifi.NmWifi.can_host  # (a hotspot through NetworkManager: no password)
         self.nm_link = wifi.NmWifi
         self.nm_usable = wifi.NmWifi.usable
+        self.trusted = TRUSTED  # (the file that says the helper runs without a password)
         self.pause_wifi = True  # (Settings: may the Wi-Fi pause for a fast link without a shared network)
         self._refresher = None
         if ble is not None:
@@ -257,7 +272,7 @@ class QuickShareService:
                 except Exception:  # noqa: BLE001
                     pass
 
-    def _found(self, name, host, port, txt):
+    def _found(self, name, host, port, txt, ifname=""):
         eid = endpoint.parse_service_name(name)
         if eid is None or eid == self.endpoint_id:
             return
@@ -268,8 +283,14 @@ class QuickShareService:
             info = None
         if not info or info["hidden"] or not info["name"]:
             return  # visible to its owner's contacts only: no name to show
-        self.devices[name] = {"id": name, "name": info["name"], "type": info["type"], "host": host, "port": port,
-                              "eid": eid}
+        # Every network it's seen on, the fastest kind first: Wi-Fi, then
+        # wired, then a phone's own USB tether (slow, and it carries other
+        # traffic)
+        old = self.devices.get(name, {})
+        hosts = [h for h in old.get("hosts", []) if h[1:] != (host, port)] + [(link_rank(ifname), host, port)]
+        hosts.sort(key=lambda h: h[0])
+        self.devices[name] = {"id": name, "name": info["name"], "type": info["type"], "host": hosts[0][1],
+                              "port": hosts[0][2], "hosts": hosts, "eid": eid}
         self._devices_changed()
 
     def _lost(self, name):
@@ -343,9 +364,16 @@ class QuickShareService:
                 return await entry["answer"]
 
             def progress(done, total):
+                entry["done"], entry["total"] = done, total
                 self.emit({"ev": "progress", "session": sid, "dir": "in", "done": done, "total": total, "name": sender})
 
             receive = Receive(conn, self.folder, ask, progress)
+            # A shared network that crawls (a busy 2.4 GHz band, a router
+            # in between): Wi-Fi Direct next to it when the phone asks (it
+            # knows its radio; moving on our own mid-flow can make it hop
+            # channels and drop the old link)
+            conn.on_upgrade_retry = lambda mediums, request: self._faster(conn, sid, entry, sender, "the phone asked for a faster link")
+
             if conn.medium == "ble":
                 receive.on_accepted = lambda: conn._spawn(self._upgrade_in(conn, sid, entry, sender))
             entry["session"] = receive
@@ -393,6 +421,17 @@ class QuickShareService:
             self._log(f"{sid}: skipping the shared network: the firewall may block it")
             tries = tries[1:]
         tries = self.memory.order(sender, tries, key=lambda t: t[0])
+        # Fastest first means the measured kind of fast: a shared network on
+        # 2.4 GHz, or one the phone answers slowly on (a busy band, a router
+        # in between), goes after a Wi-Fi Direct link (~10 MB/s), when that
+        # needs no password; decided before any data moves
+        if len(tries) > 1 and tries[0][0] == "lan" and any(p == "direct" for p, _ in tries) \
+                and os.path.exists(self.trusted):
+            rtt = await self.latency(ip)
+            band24 = 0 < (net.get("frequency") or 0) < 3000
+            if band24 or (rtt is not None and rtt > SLOW_RTT):
+                self._log(f"{sid}: the shared network looks slow ({'2.4 GHz' if band24 else f'{rtt:.0f} ms'}): Wi-Fi Direct first")
+                tries = [t for t in tries if t[0] == "direct"] + [t for t in tries if t[0] != "direct"]
         self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers}, {total} bytes)")
         if not tries and fw_blocked:
             self._warn(sid, f"{SLOW}: this computer's firewall would keep {sender} from joining its hotspot. "
@@ -419,6 +458,48 @@ class QuickShareService:
             self.memory.failed(sender, p)
         if not conn._closed and not conn._upgraded.is_set():
             self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
+
+    async def _watch_speed(self, conn, sid, entry, act):
+        """Calls act(rate) once if a big transfer on a shared network stays
+        slow (two checks in a row)."""
+        last, slow = None, 0
+        try:
+            while not conn._closed:
+                await asyncio.sleep(SPEED_SAMPLE)
+                done, total = entry.get("done", 0), entry.get("total", 0)
+                if last is not None and conn.medium == "wifi_lan" and not conn._upgrading and total - done > WORTH_MOVING:
+                    rate = (done - last) / SPEED_SAMPLE
+                    slow = slow + 1 if rate < SLOW_RATE else 0
+                    if slow >= 2:
+                        await act(rate)
+                        return
+                last = done
+        except asyncio.CancelledError:
+            pass
+
+    def _direct_beside(self, net, joining):
+        """Whether a Wi-Fi Direct link can be made next to the Wi-Fi without
+        a password now (mid-transfer nothing may pause or prompt): a group
+        we host, or (`joining`) the phone's."""
+        ok = wifi.join_beside_possible(net) if joining else wifi.direct_possible(net)
+        return self.helper is not None and self.can_host(net) and ok and os.path.exists(self.trusted)
+
+    async def _faster(self, conn, sid, entry, sender, why):
+        """Receiving over a slow shared network, the phone asking: offer
+        Wi-Fi Direct next to the Wi-Fi, once."""
+        if entry.get("faster") or conn._closed or conn.medium != "wifi_lan" or conn._upgrading:
+            return
+        entry["faster"] = True
+        net = await self.net_probe()
+        if not self._direct_beside(net, joining=False) or self.memory.skip(sender, "direct"):
+            self._log(f"{sid}: {why}, but no direct link can be made here now")
+            return
+        self._log(f"{sid}: {why}: offering Wi-Fi Direct")
+        entry["offering"] = "direct"
+        ok, reason = await self._offer(conn, sid, entry, sender, "direct", None, net, 20)
+        if not ok and not conn._closed and conn.medium == "wifi_lan":
+            self.memory.failed(sender, "direct")
+            self._log(f"{sid}: staying on the shared network ({reason})")
 
     async def _offer(self, conn, sid, entry, sender, p, mine, net, timeout):
         """Offers the phone one link; (True, None) once it moved there, else
@@ -510,23 +591,69 @@ class QuickShareService:
     async def _connect(self, dev):
         """The network first; Bluetooth when that fails, or straight away
         when the network keeps failing with this phone (and Bluetooth
-        reaches it)."""
+        reaches it). A phone found on the network but not reachable there
+        (a Wi-Fi that keeps devices apart) gets a few seconds to turn up over
+        Bluetooth too."""
         name = dev.get("name")
         twin = self.ble is not None and self._ble_twin(dev)
-        if dev.get("host") and not (twin and self.memory.skip(name, "connect-lan")):
-            try:
-                t = await StreamTransport.connect(dev["host"], dev["port"], timeout=6 if twin else 10)
-                self.memory.worked(name, "connect-lan")
+        hosts = dev.get("hosts") or ([(1, dev["host"], dev["port"])] if dev.get("host") else [])
+        # (a phone's USB tether only when Bluetooth can't reach it: Bluetooth
+        # then Wi-Fi Direct is about ten times faster)
+        tethers = [h for h in hosts if h[0] >= 2]
+        if not (twin and self.memory.skip(name, "connect-lan")):
+            t = await self._connect_lan(name, [h for h in hosts if h[0] < 2], twin)
+            if t is not None:
                 return t
-            except (OSError, asyncio.TimeoutError):
-                self.memory.failed(name, "connect-lan")
-                if not twin:
-                    raise
-                self._log("couldn't connect over the network: trying Bluetooth")
+            if hosts and not await self._find_twin(dev):
+                t = await self._connect_lan(name, tethers, False)
+                if t is not None:
+                    return t
+                raise Unreachable(isolated=True)
         path = self._ble_twin(dev)
         if self.ble is None or not path:
-            raise OSError("no way to reach that device")
+            t = await self._connect_lan(name, tethers, False)
+            if t is not None:
+                return t
+            raise Unreachable(isolated=False)
         return await self.ble.connect(path)
+
+    async def _connect_lan(self, name, hosts, twin):
+        """A connection at the first of `hosts` that answers, else None."""
+        for _, host, port in hosts:
+            try:
+                t = await StreamTransport.connect(host, port, timeout=6 if twin else 10)
+                self.memory.worked(name, "connect-lan")
+                return t
+            except (OSError, asyncio.TimeoutError) as err:
+                self._log(f"couldn't connect at {host} ({err})")
+        if hosts:
+            self.memory.failed(name, "connect-lan")
+            self._log("couldn't connect over the network: trying Bluetooth")
+        return None
+
+    async def _find_twin(self, dev, wait=TWIN_WAIT):
+        """The same phone over Bluetooth, scanning for it a moment if need be."""
+        if self.ble is None or not self.ble.powered:
+            return None
+        if self._ble_twin(dev):
+            return self._ble_twin(dev)
+        scanning = self.looking
+        try:
+            if not scanning:
+                await self.ble.scan(self._ble_found, self._ble_lost)
+            for _ in range(int(wait / 0.25)):
+                if self._ble_twin(dev):
+                    return self._ble_twin(dev)
+                await asyncio.sleep(0.25)
+        except Exception as e:  # noqa: BLE001 (Bluetooth is optional)
+            self._log(f"Bluetooth scan failed: {e}")
+        finally:
+            if not scanning and not self.looking:
+                try:
+                    await self.ble.stop_scan()
+                except Exception:  # noqa: BLE001
+                    pass
+        return None
 
     async def _send(self, sid, entry, dev, files):
         conn = None
@@ -550,15 +677,41 @@ class QuickShareService:
                     key=lambda m: JOIN_KEYS.get(m, ""))
                 conn.medium_metadata = wifi.medium_metadata(net)
                 conn.on_upgrade_offer = lambda info: self._join(sid, entry, info, net, name)
+            else:
+                # On a shared network: the phone may move us to its Wi-Fi
+                # Direct link when that's faster, joined next to the Wi-Fi
+                # (nothing pauses mid-transfer, no password)
+                net = await self.net_probe()
+                if self._direct_beside(net, joining=True) and not self.memory.skip(name, "join-direct"):
+                    conn.mediums = [wifi.CR.WIFI_LAN, wifi.CR.WIFI_DIRECT]
+                    conn.medium_metadata = wifi.medium_metadata(net)
+                    conn.on_upgrade_offer = lambda info: self._join(sid, entry, info, net, name, pause=False)
             conn.on_upgraded = lambda medium: self._transport_event(sid, medium)
             await conn.handshake()
             self._transport_event(sid, conn.medium)
             self.emit({"ev": "connected", "session": sid, "pin": conn.pin, "to": name, "medium": conn.medium})
 
             def progress(done, total):
+                entry["done"], entry["total"] = done, total
                 self.emit({"ev": "progress", "session": sid, "dir": "out", "done": done, "total": total, "name": name})
 
             send = Send(conn, files, progress)
+            if wifi.CR.WIFI_DIRECT in (conn.mediums or []) and conn.medium == "wifi_lan":
+                async def direct_first():
+                    # A slow shared network (2.4 GHz, a slow answer): ask the
+                    # phone for its Wi-Fi Direct link before the files go
+                    # (nothing in flight yet, so moving is safe)
+                    rtt = await self.latency(transport.peer.rsplit(":", 1)[0])
+                    band24 = 0 < (net.get("frequency") or 0) < 3000
+                    if band24 or (rtt is not None and rtt > SLOW_RTT):
+                        await self._ask_faster(conn, sid, f"{'2.4 GHz' if band24 else f'{rtt:.0f} ms'}")
+                        try:
+                            await asyncio.wait_for(conn._upgraded.wait(), UPGRADE_WAIT)
+                        except asyncio.TimeoutError:
+                            self._log(f"{sid}: the phone stayed on the shared network")
+                send.before_files = direct_first
+                # (crawling later on: ask again, as Android asks us)
+                conn._spawn(self._watch_speed(conn, sid, entry, lambda rate: self._ask_faster(conn, sid, f"{rate / 1e6:.1f} MB/s")))
             if conn.medium == "ble":
                 async def wait_for_wifi():
                     # The phone offers its link after accepting; files wait a
@@ -578,6 +731,13 @@ class QuickShareService:
             self.emit({"ev": "failed", "session": sid, "dir": "out", "message": "Cancelled" if entry.get("cancelled") else f"{name} cancelled"})
         except asyncio.CancelledError:
             raise
+        except Unreachable as e:
+            bt = self.ble is not None and self.ble.powered
+            self.emit({"ev": "failed", "session": sid, "dir": "out", "message": (
+                f"Couldn't reach {name} over this Wi-Fi (it may keep devices apart)" if e.isolated else f"Couldn't reach {name}")
+                + (". Keep Quick Share open on it, nearby with Bluetooth on, and try again." if bt else
+                   ". Turn on Bluetooth so Quick Share can connect without the network, and try again." if self.ble is not None else
+                   ". Put both on a Wi-Fi that lets devices reach each other (a phone's hotspot does), and try again.")})
         except (OSError, asyncio.TimeoutError) as e:
             self.emit({"ev": "failed", "session": sid, "dir": "out",
                        "message": f"Couldn't reach {name}. Keep Quick Share open on it, nearby with Bluetooth on or "
@@ -591,14 +751,21 @@ class QuickShareService:
                 await conn.close()
             await self._release_links(entry)
 
-    async def _join(self, sid, entry, info, net, name):
+    async def _ask_faster(self, conn, sid, why):
+        self._log(f"{sid}: the shared network is slow ({why}): asking for Wi-Fi Direct")
+        try:
+            await conn.ask_faster([wifi.CR.WIFI_DIRECT])
+        except (TransportClosed, OSError):
+            pass
+
+    async def _join(self, sid, entry, info, net, name, pause=True):
         key = OFFER_KEYS.get(info.medium)
-        new = await self._join_path(sid, entry, info, net, name)
+        new = await self._join_path(sid, entry, info, net, name, pause)
         if key:
             (self.memory.worked if new is not None else self.memory.failed)(name, key)
         return new
 
-    async def _join_path(self, sid, entry, info, net, name):
+    async def _join_path(self, sid, entry, info, net, name, pause=True):
         """The phone offers a link (sending over Bluetooth): follow it. Next
         to this computer's own Wi-Fi when the chip allows it (the root
         helper's Wi-Fi Direct client interface: nothing pauses; a password),
@@ -614,7 +781,7 @@ class QuickShareService:
             except (wifi.WifiUnavailable, OSError, asyncio.TimeoutError) as e:
                 self._log(f"{sid}: joining next to the Wi-Fi didn't work ({e}); trying the usual way")
         try:
-            if info.medium != wifi.PATH.WIFI_LAN and self.pause_wifi and await self.nm_usable(net):
+            if info.medium != wifi.PATH.WIFI_LAN and pause and self.pause_wifi and await self.nm_usable(net):
                 nm = entry["nm"] = self.nm_link()
                 self._note(sid, "This computer's Wi-Fi pauses for the transfer and comes back after")
                 return await wifi.join(info, None, net, nm=nm)
@@ -668,6 +835,15 @@ class QuickShareService:
                 pass
         if self.helper is not None:
             await self.helper.close()
+
+
+def link_rank(ifname, sys_net="/sys/class/net"):
+    """0 Wi-Fi, 1 wired (or unknown), 2 a USB network (a phone's tether)."""
+    if not ifname:
+        return 1
+    if os.path.exists(os.path.join(sys_net, ifname, "wireless")):
+        return 0
+    return 2 if "/usb" in os.path.realpath(os.path.join(sys_net, ifname, "device")) else 1
 
 
 def _sharing_check():

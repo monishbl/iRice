@@ -284,6 +284,19 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         await bp.respond_to_offer(self.p, offer, [])
         await self.finish(data)
 
+    async def test_a_slow_shared_network_goes_after_wifi_direct(self):
+        # (on 2.4 GHz, with the password-free helper: Direct first)
+        self.net = dict(net(shared=True), frequency=2422)
+        trusted = Path(self.dir.name, "trusted")
+        trusted.write_text("on\n")
+        self.svc.trusted = str(trusted)
+        data = os.urandom(3000)
+        await self.offer_file(data, [CR.WIFI_LAN, CR.WIFI_DIRECT], ip="127.0.0.2")
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        await self.finish(data)
+
     async def test_upgrades_to_a_wifi_direct_group_it_hosts(self):
         data = os.urandom(50_000)
         sid = await self.offer_file(data, [CR.WIFI_DIRECT, CR.WIFI_HOTSPOT, CR.BLE])
@@ -598,3 +611,77 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlowSharedNetwork(unittest.IsolatedAsyncioTestCase):
+    """Receiving over a shared network that crawls: the phone asks for a
+    faster link (BANDWIDTH_UPGRADE_RETRY, as Android does), or the speed
+    says so, and iRice offers Wi-Fi Direct next to its Wi-Fi."""
+
+    async def asyncSetUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.events = Events()
+        self.helper = FakeHelper()
+        trusted = Path(self.dir.name, "trusted")
+        trusted.write_text("on\n")
+
+        async def probe():
+            return net(shared=True)
+        self.svc = QuickShareService(self.events, None, folder=self.dir.name, name="Test laptop",
+                                     helper=self.helper, net_probe=probe)
+        self.svc.preferred_port = self.svc.upgrade_port = 0
+        self.svc.can_host = lambda n: True
+        self.svc.trusted = str(trusted)
+        await self.svc.configure(visible=True)
+        r, w = await asyncio.open_connection("127.0.0.1", self.svc.port)
+        self.p = qp.Peer(r, w, "Pixel 9")
+
+    async def asyncTearDown(self):
+        await self.svc.close()
+        self.dir.cleanup()
+
+    async def start(self, data):
+        await self.p.connect_as_sender(mediums=[CR.WIFI_LAN, CR.WIFI_DIRECT])
+        await self.p.paired_keys()
+        intro = sharing_pb.IntroductionFrame()
+        intro.file_metadata.append(sharing_pb.FileMetadata(name="video.mp4", size=len(data), payload_id=21,
+                                                           mime_type="video/mp4"))
+        await self.p.send_sharing(SF.INTRODUCTION, introduction=intro)
+        offer = await self.events.wait("incoming")
+        self.assertEqual(offer["medium"], "wifi_lan")
+        self.svc.answer(offer["session"], True)
+        return offer["session"]
+
+    async def test_the_phone_asking_moves_it_to_wifi_direct(self):
+        data = os.urandom(40_000)
+        sid = await self.start(data)
+        retry = qp.offline.OfflineFrame(version=qp.offline.OfflineFrame.V1)
+        retry.v1.type = qp.V1.BANDWIDTH_UPGRADE_RETRY
+        retry.v1.bandwidth_upgrade_retry.supported_medium.extend([CR.WIFI_DIRECT])
+        retry.v1.bandwidth_upgrade_retry.is_request = True
+        await self.p.send(retry)
+        _, offer = await read_until_offer(self.p)
+        self.assertEqual(offer.v1.bandwidth_upgrade_negotiation.upgrade_path_info.medium, PATH.WIFI_DIRECT)
+        await bp.respond_to_offer(self.p, offer, [])
+        for off in range(0, len(data), 10000):
+            await self.p.chunk(21, FILE, len(data), off, data[off:off + 10000], False, "video.mp4")
+        await self.p.chunk(21, FILE, len(data), len(data), b"", True, "video.mp4")
+        done = await self.events.wait("finished")
+        self.assertEqual(Path(done["paths"][0]).read_bytes(), data)
+        self.assertEqual([e["medium"] for e in self.events.of("transport") if e["session"] == sid], ["wifi_lan", "wifi_direct"])
+        self.assertEqual(self.helper.requests[0]["mode"], "p2p")
+
+    async def test_not_without_the_password_free_helper(self):
+        Path(self.svc.trusted).unlink()  # (a password prompt mid-transfer: no)
+        data = os.urandom(20_000)
+        await self.start(data)
+        retry = qp.offline.OfflineFrame(version=qp.offline.OfflineFrame.V1)
+        retry.v1.type = qp.V1.BANDWIDTH_UPGRADE_RETRY
+        retry.v1.bandwidth_upgrade_retry.is_request = True
+        await self.p.send(retry)
+        await asyncio.sleep(0.3)
+        for off in range(0, len(data), 10000):
+            await self.p.chunk(21, FILE, len(data), off, data[off:off + 10000], False, "video.mp4")
+        await self.p.chunk(21, FILE, len(data), len(data), b"", True, "video.mp4")
+        await self.events.wait("finished")
+        self.assertEqual(self.helper.requests, [])

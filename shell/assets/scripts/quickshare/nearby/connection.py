@@ -132,6 +132,7 @@ class Connection:
         self.tag = "connection"
         self.on_upgrade_offer = None
         self.on_upgraded = lambda medium: None
+        self.on_upgrade_retry = None  # async (mediums, is_request): the other side asks for a faster link
         self.on_bytes = lambda pid, data: None
         self.on_file_progress = lambda pid, done, total: None
         self.on_file_done = lambda pid: None
@@ -264,7 +265,7 @@ class Connection:
             if kind == V1.KEEP_ALIVE:
                 if not frame.v1.keep_alive.ack:
                     ack = offline.KeepAliveFrame(ack=True, seq_num=frame.v1.keep_alive.seq_num)
-                    self._spawn(self._quietly(self.send(_frame(V1.KEEP_ALIVE, keep_alive=ack))))
+                    self._spawn(self._quietly(self.send, _frame(V1.KEEP_ALIVE, keep_alive=ack)))
                 continue
             if kind == V1.DISCONNECTION:
                 return None
@@ -273,6 +274,13 @@ class Connection:
                 continue
             if kind == V1.BANDWIDTH_UPGRADE_NEGOTIATION:
                 await self._bwu(frame.v1.bandwidth_upgrade_negotiation)
+                continue
+            if kind == V1.BANDWIDTH_UPGRADE_RETRY:
+                # (the other side would like a faster link: the service
+                # decides whether it can offer one)
+                r = frame.v1.bandwidth_upgrade_retry
+                if self.on_upgrade_retry is not None:
+                    self._spawn(self.on_upgrade_retry(list(r.supported_medium), r.is_request))
                 continue
             return frame
 
@@ -283,9 +291,11 @@ class Connection:
         return t
 
     @staticmethod
-    async def _quietly(coro):
+    async def _quietly(fn, *args):
+        # (the call is made here, so a task cancelled before it runs, as the
+        # connection closes, leaves no coroutine behind unawaited)
         try:
-            await coro
+            await fn(*args)
         except (TransportClosed, OSError):
             pass
 
@@ -374,6 +384,8 @@ class Connection:
             return False
         self._upgrading = True
         self._upgrade_failed.clear()
+        was_upgraded = self._upgraded.is_set()
+        self._upgraded.clear()  # (a second move, from a slow network to a direct link)
         info.supports_client_introduction_ack = True
         info.supports_disabling_encryption = False
         new = None
@@ -416,6 +428,8 @@ class Connection:
         finally:
             if not self._upgraded.is_set() and self._old is None:
                 self._upgrading = False
+                if was_upgraded:
+                    self._upgraded.set()  # (still on the link it moved to before)
 
     async def _switch(self, new):
         """Sends go to the new channel (held back); LAST_WRITE on the old one."""
@@ -460,6 +474,13 @@ class Connection:
     @property
     def medium(self):
         return self.transport.medium
+
+    async def ask_faster(self, mediums):
+        """Asks the other side for a faster link (BANDWIDTH_UPGRADE_RETRY,
+        as Android sends when a transfer crawls): it may offer one of
+        `mediums` (ConnectionRequestFrame.Medium values)."""
+        retry = offline.BandwidthUpgradeRetryFrame(supported_medium=list(mediums), is_request=True)
+        await self.send(_frame(V1.BANDWIDTH_UPGRADE_RETRY, bandwidth_upgrade_retry=retry))
 
     # ── Payloads in ──────────────────────────────────────────────────────
     def expect_file(self, payload_id, sink):

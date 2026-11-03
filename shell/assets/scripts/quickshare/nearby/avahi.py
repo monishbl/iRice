@@ -9,6 +9,7 @@ own thread, and what it finds is handed to asyncio's loop.
 Phones only announce themselves while they can receive (Quick Share open
 or visible to everyone, screen on), so a phone appears in the list then.
 """
+import socket
 import asyncio
 import threading
 
@@ -112,7 +113,8 @@ class Avahi:
 
     # ── Browsing ─────────────────────────────────────────────────────────
     async def browse(self, kind, found, lost):
-        """found(name, host, port, txt dict) / lost(name), called on asyncio's loop."""
+        """found(name, host, port, txt dict, interface name) / lost(name),
+        called on asyncio's loop (one found per network it's seen on)."""
         await self.stop_browsing()
 
         def on_signal(conn, sender, path, iface, signal, params):
@@ -140,12 +142,16 @@ class Avahi:
                 r = bus.call_finish(result).unpack()
             except Exception:  # noqa: BLE001 (gone before it could be resolved)
                 return
-            host, address, port, txt = r[5], r[7], r[8], r[9]
+            index, host, address, port, txt = r[0], r[5], r[7], r[8], r[9]
+            try:
+                ifname = socket.if_indextoname(index)
+            except (OSError, OverflowError):
+                ifname = ""
             fields = {}
             for rec in txt:
                 k, _, v = bytes(rec).partition(b"=")
                 fields[k.decode("ascii", "replace")] = v
-            self.loop.call_soon_threadsafe(found, name, address or host, port, fields)
+            self.loop.call_soon_threadsafe(found, name, address or host, port, fields, ifname)
 
         self.bus.call(AVAHI, "/", "org.freedesktop.Avahi.Server", "ResolveService",
                       self.GLib.Variant("(iisssiu)", (iface, proto, name, stype, domain, PROTO_INET, 0)),

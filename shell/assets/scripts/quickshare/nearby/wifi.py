@@ -266,6 +266,21 @@ def mediums_we_join(helper_ok, nm_ok=False):
 
 
 # ── The root helper ──────────────────────────────────────────────────────
+def pkexec_env(environ=None, shells_file="/etc/shells"):
+    """The environment for pkexec: it refuses to run at all (exit 127) when
+    $SHELL isn't in /etc/shells (a shell installed elsewhere, a user's own
+    build), so a listed one stands in."""
+    env = dict(os.environ if environ is None else environ)
+    try:
+        with open(shells_file, encoding="utf-8") as f:
+            shells = [l.strip() for l in f if l.strip().startswith("/")]
+    except OSError:
+        shells = []
+    if shells and env.get("SHELL") not in shells:
+        env["SHELL"] = "/bin/sh" if "/bin/sh" in shells else shells[0]
+    return env
+
+
 class WifiHelper:
     """qs-wifi-helper.py under pkexec: one JSON request, one JSON answer."""
 
@@ -289,7 +304,7 @@ class WifiHelper:
             cmd = ["pkexec", sys.executable, "-I", self.helper]
         _log("starting the Wi-Fi helper (" + " ".join(cmd[:3]) + ")")
         self.proc = await asyncio.create_subprocess_exec(
-            *cmd, stdin=asyncio.subprocess.PIPE,
+            *cmd, stdin=asyncio.subprocess.PIPE, env=pkexec_env(),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
             line = await asyncio.wait_for(self.proc.stdout.readline(), AUTH_TIMEOUT)
@@ -680,6 +695,22 @@ def phone_address(conn):
     if meta is None or len(meta.ip_address) != 4:
         return None
     return str(ipaddress.IPv4Address(bytes(meta.ip_address)))
+
+
+async def latency(ip):
+    """The phone's round trip at this address in ms (three pings), or None
+    when it doesn't answer or ping isn't there: a busy band or a router in
+    between shows up here before any data moves."""
+    if not ip or not shutil.which("ping"):
+        return None
+    try:
+        p = await asyncio.create_subprocess_exec("ping", "-c", "3", "-i", "0.2", "-W", "1", "-n", "-q", ip,
+                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await asyncio.wait_for(p.communicate(), 4)
+    except (OSError, asyncio.TimeoutError):
+        return None
+    m = re.search(rb"= [\d.]+/([\d.]+)/", out)
+    return float(m.group(1)) if m else None
 
 
 async def reachable(ip):
