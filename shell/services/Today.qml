@@ -7,8 +7,9 @@ import qs.common
 // Today: the morning screen and its desktop widget. On the first unlock (or
 // login) of the day it opens by itself: a greeting, today's events and
 // to-dos, and the weather (modules/today/TodayScreen.qml). Days start at
-// 4 AM, so a late night doesn't count as tomorrow. Settings → Desktop &
-// Widgets → Today:
+// 4 AM, so a late night doesn't count as tomorrow. Today's own options
+// (its Options button, TodayOptions; the widget's right-click menu;
+// Spotlight's Show Today opens it):
 //   ask     every morning; closing clears it for the day, "Pin for today"
 //           keeps it on the desktop as a widget until the day ends
 //   widget  no morning screen; the Today widget is on the desktop every day
@@ -43,7 +44,10 @@ Singleton {
     }
     function close() {
         open = false;
+        optionsOpen = false;
     }
+    // Its options over the panel (modules/today/TodayOptions)
+    property bool optionsOpen: false
 
     // ── The day ─────────────────────────────────────────────────────────
     // "YYYY-MM-DD" of the day it is, days starting at 4 AM

@@ -202,6 +202,10 @@ Item {
             // The widget's own items (Edit Stack, Change Buttons...)
             const own = frames.itemAt(i)?.extraMenu() ?? [];
             items.push(...own);
+            // What it shows (a folder, cities, symbols...), set here
+            // rather than in Settings (WidgetOptions)
+            if (["photos", "worldClock", "stocks", "stack", "system"].includes(w.kind))
+                items.push({ separator: true }, { text: "Widget Options…", action: () => root.openOptions(w.kind) });
             items.push({ separator: true });
             items.push({ text: "Edit Widgets…", action: () => root.startEditing() });
             items.push({ text: "Remove Widget", danger: true, action: () => root.remove(i) });
@@ -215,6 +219,10 @@ Item {
             items.push({ text: "Desktop Settings…", action: () => Panels.openSettings("desktop") });
         }
         menu = { items: items, x: x, y: y };
+    }
+    function openOptions(kind) {
+        Panels.widgetOptionsKind = kind;
+        Panels.show("widgetOptions", root.screen);
     }
     function startEditing() {
         Panels.close();

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import Quickshell
 import Quickshell.Wayland
 import qs.common
@@ -8,8 +9,10 @@ import qs.services
 // ⇧⌘5-style toolbar. Super+Shift+5: every tool (capture screen / selection,
 // copy text, translate, ask AI, record screen / window / selection).
 // Control Center → Record: recording only, like macOS: pick Entire screen,
-// Window or Selected region, then Record. Options (microphone, system audio,
-// pointer, countdown, folder) open above the bar. Esc closes.
+// Window or Selected region, then Record. Options open above the bar: the
+// microphone, system audio, pointer, countdown, frame rate, format,
+// quality and the folder (all of the recording's settings: Spotlight's
+// "Screen Recording Options" opens them, Recorder.openOptions). Esc closes.
 Variants {
     model: Quickshell.screens
 
@@ -82,6 +85,33 @@ Variants {
         }
     }
 
+    component SegmentRow: Item {
+        id: segmentRow
+        property string text
+        property var options: []
+        property int current: 0
+        property real segmentWidth: 168
+        signal selected(int index)
+        width: parent?.width ?? 0
+        height: 36
+        Text {
+            anchors { left: parent.left; leftMargin: 8; right: segment.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            text: segmentRow.text
+            elide: Text.ElideRight
+            color: Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.font.body }
+        }
+        Segmented {
+            id: segment
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            width: segmentRow.segmentWidth
+            options: segmentRow.options
+            current: segmentRow.current
+            accessibleName: segmentRow.text
+            onSelected: i => segmentRow.selected(i)
+        }
+    }
+
     PanelLoader {
         id: slot
         required property var modelData
@@ -100,12 +130,20 @@ Variants {
             readonly property int m: 24
             property bool optionsOpen: false
             onShownChanged: if (shown) {
-                optionsOpen = false;
+                optionsOpen = Recorder.toolbarOptions;
+                Recorder.toolbarOptions = false;
                 Recorder.refreshMics();
             }
             // Starts at 0 so the window animates in when it is created
             property real progress: 0
-            Component.onCompleted: progress = Qt.binding(() => shown ? 1 : 0)
+            Component.onCompleted: {
+                progress = Qt.binding(() => shown ? 1 : 0);
+                // (created already shown: Spotlight's "Screen Recording Options")
+                if (shown) {
+                    optionsOpen = Recorder.toolbarOptions;
+                    Recorder.toolbarOptions = false;
+                }
+            }
             Behavior on progress {
                 NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: win.shown ? Theme.motion.emphasized : Theme.motion.exit }
             }
@@ -207,22 +245,50 @@ Variants {
                             checked: win.rec.cursor
                             onToggled: win.rec.cursor = !win.rec.cursor
                         }
-                        Item {
+                        SegmentRow {
+                            text: "Countdown"
+                            options: ["None", "3 s", "5 s"]
+                            current: Math.max(0, [0, 3, 5].indexOf(win.rec.countdown))
+                            onSelected: i => win.rec.countdown = [0, 3, 5][i]
+                        }
+                        Gap {}
+                        // Video: the frame rate, and with gpu-screen-recorder
+                        // the format and quality (recordings are MP4 files
+                        // named by date)
+                        Caption { text: "Video" }
+                        SegmentRow {
+                            text: "Frame rate"
+                            options: ["30 fps", "60 fps"]
+                            current: win.rec.fps === 30 ? 0 : 1
+                            onSelected: i => win.rec.fps = [30, 60][i]
+                        }
+                        SegmentRow {
+                            visible: Recorder.gsr
+                            text: "Format"
+                            segmentWidth: 192
+                            readonly property var values: ["h264", "hevc", "av1"]
+                            options: ["H.264", "HEVC", "AV1"]
+                            current: Math.max(0, values.indexOf(win.rec.codec))
+                            onSelected: i => win.rec.codec = values[i]
+                        }
+                        Text {
+                            visible: Recorder.gsr
                             width: parent.width
-                            height: 36
-                            Text {
-                                anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
-                                text: "Countdown"
-                                color: Theme.color.label
-                                font { family: Theme.font.family; pixelSize: Theme.font.body }
-                            }
-                            Segmented {
-                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                width: 168
-                                options: ["None", "3 s", "5 s"]
-                                current: [0, 3, 5].indexOf(win.rec.countdown) < 0 ? 0 : [0, 3, 5].indexOf(win.rec.countdown)
-                                onSelected: i => win.rec.countdown = [0, 3, 5][i]
-                            }
+                            leftPadding: 8
+                            rightPadding: 8
+                            wrapMode: Text.Wrap
+                            text: win.rec.codec === "h264" ? "Plays everywhere" : win.rec.codec === "hevc" ? "Smaller files; some players and sites can't play it" : "Smallest files; needs a recent graphics card to record"
+                            color: Theme.color.tertiary
+                            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                        }
+                        SegmentRow {
+                            visible: Recorder.gsr
+                            text: "Quality"
+                            segmentWidth: 232
+                            readonly property var values: ["medium", "high", "very_high", "ultra"]
+                            options: ["Medium", "High", "Very high", "Ultra"]
+                            current: Math.max(0, values.indexOf(win.rec.quality))
+                            onSelected: i => win.rec.quality = values[i]
                         }
                         Gap {}
                         Item {
@@ -235,14 +301,39 @@ Variants {
                                 color: Theme.color.secondary
                                 font { family: Theme.font.family; pixelSize: Theme.font.small }
                             }
-                            IconButton {
+                            // Open it, choose another (the toolbar closes for the
+                            // file chooser), or back to ~/Videos/Screen Recordings
+                            QQ.Row {
                                 id: openFolder
                                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                icon: "folder-open"
-                                tooltip: "Open the folder"
-                                onClicked: {
-                                    Panels.close();
-                                    Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && exec ${2:-xdg-open} \"$1\"", "sh", Recorder.folder, Files.manager]);
+                                spacing: 2
+                                IconButton {
+                                    visible: win.rec.folder !== ""
+                                    width: 32
+                                    height: 32
+                                    icon: "arrow-counter-clockwise"
+                                    tooltip: "Save to ~/Videos/Screen Recordings again"
+                                    onClicked: win.rec.folder = ""
+                                }
+                                IconButton {
+                                    width: 32
+                                    height: 32
+                                    icon: "pencil-simple"
+                                    tooltip: "Choose the folder"
+                                    onClicked: {
+                                        Panels.close();
+                                        FilePicker.pick({ folder: true, title: "Save recordings to", start: Recorder.folder }, p => Config.options.recorder.folder = p);
+                                    }
+                                }
+                                IconButton {
+                                    width: 32
+                                    height: 32
+                                    icon: "folder-open"
+                                    tooltip: "Open the folder"
+                                    onClicked: {
+                                        Panels.close();
+                                        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && exec ${2:-xdg-open} \"$1\"", "sh", Recorder.folder, Files.manager]);
+                                    }
                                 }
                             }
                         }

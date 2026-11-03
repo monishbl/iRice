@@ -4,7 +4,8 @@ import qs.services
 
 // What the morning screen shows (TodayScreen): the greeting and date, today's
 // events and to-dos on the left, the weather on the right, Pin for today and
-// Close at the bottom. `rows` (0 → 1) brings the rows in one after another.
+// Close at the bottom, and Options (TodayOptions, over the panel). `rows`
+// (0 → 1) brings the rows in one after another.
 // Esc and Enter close; Tab moves between the buttons.
 FocusScope {
     id: root
@@ -344,6 +345,11 @@ FocusScope {
             id: buttons
             spacing: 12
             TodayButton {
+                text: "Options"
+                icon: "sliders-horizontal"
+                onActivated: Today.optionsOpen = true
+            }
+            TodayButton {
                 // the widget is on the desktop every day anyway
                 visible: !Today.widgetAlways
                 text: "Pin for today"
@@ -357,5 +363,13 @@ FocusScope {
                 onActivated: Today.close()
             }
         }
+    }
+
+    // Its options, over the panel (Options, or the widget's menu)
+    TodayOptions {
+        anchors.fill: parent
+        z: 20
+        visible: Today.optionsOpen
+        focus: visible
     }
 }

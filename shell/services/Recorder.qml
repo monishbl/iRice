@@ -43,6 +43,16 @@ Singleton {
         toolbarRecord = true;
         Panels.show("screenTools", ScreenTools.focusedScreen());
     }
+    // The recording options (frame rate, format, quality, sound, countdown,
+    // folder) live in the toolbar's Options: this opens it with them showing
+    property bool toolbarOptions: false
+    function openOptions() {
+        if (recording)
+            return;
+        toolbarOptions = true;
+        toolbarRecord = true;
+        Panels.show("screenTools", ScreenTools.focusedScreen());
+    }
     Connections {
         target: Panels
         function onOpenChanged() {

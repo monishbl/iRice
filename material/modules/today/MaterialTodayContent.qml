@@ -499,6 +499,11 @@ FocusScope {
             id: buttonsRow
             spacing: 8
             MButton {
+                text: "Options"
+                icon: "sliders-horizontal"
+                onActivated: Today.optionsOpen = true
+            }
+            MButton {
                 // the widget is on the desktop every day anyway
                 visible: !Today.widgetAlways
                 text: "Pin for today"
@@ -512,5 +517,13 @@ FocusScope {
                 onActivated: Today.close()
             }
         }
+    }
+
+    // Its options, over the panel (Options, or the widget's menu)
+    TodayOptions {
+        anchors.fill: parent
+        z: 20
+        visible: Today.optionsOpen
+        focus: visible
     }
 }

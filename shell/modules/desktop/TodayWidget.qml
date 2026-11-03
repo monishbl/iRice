@@ -9,6 +9,11 @@ import qs.services
 Item {
     id: root
 
+    // Right-click menu: Today's own options (it opens Today with them showing)
+    function menuItems() {
+        return [{ separator: true }, { text: "Today Options…", action: () => { Today.optionsOpen = true; Today.show(""); } }];
+    }
+
     property string size: "l"
     property bool preview: false
     readonly property bool large: size === "l"
