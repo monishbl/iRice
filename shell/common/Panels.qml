@@ -36,6 +36,7 @@ Singleton {
     property string exposeApp: "" // App Exposé: Mission Control shows only this app's windows (entry id or class)
     property bool ccEditing: false // Control Center "Edit Controls"
     property bool widgetEditing: false // desktop widgets: Edit Widgets (gallery open)
+    property string widgetOptionsKind: "" // the widget kind Widget Options… is for (modules/desktop/WidgetOptions)
     // A control is being dragged (slider, reordering): panels hold still
     // instead of rubber-banding under the pointer
     property int holdPull: 0

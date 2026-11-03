@@ -208,6 +208,8 @@ Singleton {
         { title: "Report a Bug…", glyph: "bug", keywords: "bug report issue problem crash broken feedback", run: () => BugReport.start() },
         { title: "Check for Updates", glyph: "arrow-circle-up", keywords: "update upgrade pacman packages", run: () => Updates.count > 0 ? Updates.install() : Quickshell.execDetached(["notify-send", "-a", "Software Update", "Your system is up to date"]) },
         { title: "Change Wallpaper", glyph: "image", keywords: "wallpaper background desktop picture", run: () => Panels.show("wallpaper") },
+        { title: "Show Today", glyph: "sun-horizon", keywords: "today morning greeting day events to-dos weather options", run: () => { Panels.close(); Today.show(""); } },
+        { title: "Screen Recording Options", glyph: "record", keywords: "record recording screen video frame rate fps format quality codec microphone sound countdown folder options", run: () => { Panels.close(); Recorder.openOptions(); } },
         { title: "Stage Manager", glyph: "squares-four", keywords: "stage manager windows group strip", run: () => Config.options.stageManager.enabled = !Config.options.stageManager.enabled },
         { title: "App Store", glyph: "storefront", keywords: "app store install apps software get download flathub aur packages", run: () => Panels.openAppStore() },
         { title: "App Library", glyph: "squares-four", keywords: "apps launchpad library all applications grid", run: () => Panels.show("launchpad") },

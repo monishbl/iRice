@@ -97,6 +97,7 @@ ShellRoot {
     Switcher {}
     EmojiPicker {}
     QuickNote {}
+    WidgetOptions {}
     HotCorners {}
     SnapPreview {}
     TabStrip {}
