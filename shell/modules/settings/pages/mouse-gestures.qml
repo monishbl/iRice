@@ -133,31 +133,6 @@ Column {
         }
     }
 
-    // ── Pointing, clicking and scrolling (services/Mouse.qml applies) ───
-    readonly property var tp: Config.options.trackpad
-    component TpScale: Column {
-        id: tpScale
-        property alias from: tpSlider.from
-        property alias to: tpSlider.to
-        property alias value: tpSlider.value
-        property string low
-        property string high
-        signal moved(real v)
-        width: 240
-        spacing: 2
-        Slider {
-            id: tpSlider
-            width: parent.width
-            onMoved: v => tpScale.moved(v)
-        }
-        Item {
-            width: parent.width
-            height: tpLow.implicitHeight
-            Text { id: tpLow; text: tpScale.low; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
-            Text { anchors.right: parent.right; text: tpScale.high; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
-        }
-    }
-
     // ── Problems ─────────────────────────────────────────────────────────
     Repeater {
         model: [Keymap.userError, Keymap.saveError].filter(e => e !== "")

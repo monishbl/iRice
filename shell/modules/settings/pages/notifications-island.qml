@@ -10,21 +10,6 @@ Column {
     spacing: 22
     readonly property string pageTitle: "Island"
 
-    readonly property var mb: Config.options.menubar
-    function toggleIn(list, id) {
-        return list.includes(id) ? list.filter(x => x !== id) : list.concat([id]);
-    }
-
-    component Toggle: Row {
-        id: tr
-        required property string key
-        property string text
-        property string hint
-        label: text
-        detail: hint
-        Switch { checked: page.mb[tr.key]; onToggled: page.mb[tr.key] = !checked }
-    }
-
     Group {
         width: parent.width
         title: "Island"
