@@ -3,7 +3,9 @@ import qs.common
 import qs.modules.settings
 import qs.services
 
-// Calendar subscriptions (iCalendar links) and reminder alerts.
+// Calendar: which calendars show (from your accounts, and subscriptions to
+// iCalendar links), where new to-dos go, and reminder alerts. This is the
+// one home of these choices; Accounts signs in and links here.
 Column {
     id: page
     width: parent?.width ?? 0
@@ -11,14 +13,93 @@ Column {
 
     property var removed: null // last removed subscription, for Undo
 
+    // Accounts with calendars or task lists (Google, iCloud, Microsoft 365)
+    readonly property bool cloud: CloudAccounts.accounts.length > 0
+    readonly property bool microsoft: CloudAccounts.accounts.some(a => a.provider === "microsoft")
+    function providerOf(c) {
+        const p = CloudAccounts.account(c.account)?.provider;
+        return p === "icloud" ? "iCloud" : p === "microsoft" ? "Outlook" : "";
+    }
+
+    // ── From your accounts: shown or hidden, one switch per calendar ───
     Group {
         width: parent.width
-        title: "Calendars"
+        visible: Google.connected || page.cloud
+        title: "From your accounts"
+        footer: "Shown calendars appear in Calendar, Today and Spotlight. Open an event in Notification Center's calendar to change it, or drag it to another day; calendars you can only view stay read-only. Repeating iCloud and Outlook events are changed on your iPhone, at icloud.com or in Outlook."
+        Row {
+            visible: Google.calendars.length === 0 && CloudAccounts.calendars.length === 0
+            label: "No calendars yet"
+            detail: Google.busy || CloudAccounts.busy ? "Syncing…" : "They appear after the first sync"
+            labelColor: Theme.color.secondary
+        }
+        Repeater {
+            model: Google.connected ? Google.calendars : []
+            Row {
+                id: gcal
+                required property var modelData
+                label: modelData.title + (modelData.primary ? " (primary)" : "")
+                detail: ["Google", Google.accounts.length > 1 ? Google.identity(modelData.account) : "", modelData.writable ? "" : "View only"].filter(x => x).join(" · ")
+                readonly property string ref: modelData.account + "|" + modelData.id
+                readonly property bool shown: Google.shown(modelData)
+                Switch {
+                    checked: gcal.shown
+                    onToggled: {
+                        // (a bare id is how it was kept before several accounts)
+                        const hidden = (Config.options.google.hiddenCalendars ?? []).filter(id => id !== gcal.ref && id !== gcal.modelData.id);
+                        Config.options.google.hiddenCalendars = gcal.shown ? hidden.concat([gcal.ref]) : hidden;
+                    }
+                }
+            }
+        }
+        Repeater {
+            model: CloudAccounts.calendars.filter(c => page.providerOf(c) !== "")
+            Row {
+                id: ccal
+                required property var modelData
+                readonly property string ref: modelData.account + "|" + modelData.id
+                label: modelData.title
+                detail: [page.providerOf(modelData), CloudAccounts.accounts.length > 1 ? CloudAccounts.account(modelData.account)?.identity ?? "" : "", modelData.writable ? "" : "View only"].filter(x => x).join(" · ")
+                Switch {
+                    checked: CloudAccounts.shown(ccal.modelData)
+                    onToggled: {
+                        const hidden = (Config.options.cloud.hiddenCalendars ?? []).filter(x => x !== ccal.ref);
+                        Config.options.cloud.hiddenCalendars = checked ? hidden.concat([ccal.ref]) : hidden;
+                    }
+                }
+            }
+        }
+    }
+
+    // ── To-dos: where new ones go (Google Tasks or Microsoft To Do) ────
+    Group {
+        width: parent.width
+        visible: Google.connected || page.microsoft
+        title: "To-dos"
+        footer: "Tasks from your accounts appear in To-do with your local reminders. Changes show at once and reach Google or Microsoft in the background; deleting can be undone for 8 seconds. Google Tasks has due dates but not times. If a task changes on another device before your change reaches Google, Google's version is kept and a notification shows what you had."
+        Row {
+            label: "New to-dos go to"
+            Dropdown {
+                width: 260
+                options: [{ value: "", label: "This computer only" }].concat(Google.taskLists.map(l => ({ value: l.account + "|" + l.id,
+                    label: l.title + (Google.accounts.length > 1 ? " · " + Google.identity(l.account) : "") })))
+                    .concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
+                // (a bare list id is from before several accounts; "cloud|…" is Microsoft To Do)
+                value: { const v = Config.options.google.taskListId; if (v.startsWith("cloud|")) return v; const l = Google.find(Google.taskLists, v); return l ? l.account + "|" + l.id : ""; }
+                onChosen: v => Config.options.google.taskListId = v
+            }
+        }
+    }
+
+    // ── Subscriptions: iCalendar links ──────────────────────────────────
+    Group {
+        width: parent.width
+        title: "Subscribed calendars"
         footer: Calendar.lastError !== "" ? Calendar.lastError : "Events refresh every 15 minutes. Reminders you add in Notification Center or Spotlight are kept on this computer."
         Row {
             visible: Calendar.sources.length === 0
-            label: "No calendars yet"
-            detail: "Add a link below to see your events in Notification Center and Spotlight."
+            label: "No subscriptions yet"
+            detail: "Add a link below to see its events in Notification Center and Spotlight."
         }
         Repeater {
             model: Calendar.sources

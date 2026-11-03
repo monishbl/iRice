@@ -148,20 +148,35 @@ Column {
                 label: "Trash"
                 Switch { checked: Config.options.dock.trash; onToggled: Config.options.dock.trash = !checked }
             }
+            // One slider: its left end is off (the size you had is kept for
+            // when it's on again)
             Row {
                 label: "Magnification"
-                Switch { checked: Config.options.dock.magnification; onToggled: Config.options.dock.magnification = !checked }
-            }
-            Row {
-                visible: Config.options.dock.magnification
-                label: "Magnified size"
-                Slider {
+                detail: Config.options.dock.magnification ? Math.round(Config.options.dock.magnifiedScale * 100) + "% when you point at an icon" : "Off"
+                Column {
                     width: 220
-                    from: 1.1
-                    to: 2
-                    stepSize: 0.05
-                    value: Config.options.dock.magnifiedScale
-                    onMoved: v => Config.options.dock.magnifiedScale = v
+                    spacing: 2
+                    Slider {
+                        width: parent.width
+                        from: 1
+                        to: 2
+                        stepSize: 0.05
+                        value: Config.options.dock.magnification ? Config.options.dock.magnifiedScale : 1
+                        onMoved: v => {
+                            if (v < 1.025) { // (only the very end: one step right turns it on)
+                                Config.options.dock.magnification = false;
+                                return;
+                            }
+                            Config.options.dock.magnifiedScale = Math.max(1.1, Math.round(v * 100) / 100);
+                            Config.options.dock.magnification = true;
+                        }
+                    }
+                    Item {
+                        width: parent.width
+                        height: magOff.implicitHeight
+                        Text { id: magOff; text: "Off"; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+                        Text { anchors.right: parent.right; text: "Large"; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+                    }
                 }
             }
         }

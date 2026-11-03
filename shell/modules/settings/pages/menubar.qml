@@ -51,17 +51,22 @@ Column {
     Group {
         width: parent.width
         title: "Status items"
-        Toggle { key: "battery"; text: "Battery" }
+        // One choice: off, or the battery with its percentage where you
+        // want it ("true"/"false" from before mean beside/none)
         Row {
-            visible: page.mb.battery
-            label: "Battery percentage"
-            detail: "Inside is cut into the battery. Beside it, it always shows at 20% or less."
+            label: "Battery"
+            detail: !page.mb.battery ? "" : "The percentage inside is cut into the battery; with the icon alone, it shows beside it at 20% or less."
             Segmented {
-                width: 240
-                readonly property var values: ["off", "inside", "outside"]
-                options: ["Off", "Inside", "Beside"]
-                current: Math.max(0, values.indexOf(({ "true": "outside", "false": "off" })[page.mb.batteryPercent] ?? page.mb.batteryPercent))
-                onSelected: i => page.mb.batteryPercent = values[i]
+                width: 300
+                readonly property string percent: ({ "true": "outside", "false": "off" })[page.mb.batteryPercent] ?? page.mb.batteryPercent
+                readonly property var values: ["off", "icon", "inside", "outside"]
+                options: ["Off", "Icon", "% inside", "% beside"]
+                current: !page.mb.battery ? 0 : Math.max(1, values.indexOf(percent))
+                onSelected: i => {
+                    if (i > 0)
+                        page.mb.batteryPercent = i === 1 ? "off" : values[i];
+                    page.mb.battery = i > 0;
+                }
             }
         }
         Toggle { key: "wifi"; text: "Wi-Fi" }

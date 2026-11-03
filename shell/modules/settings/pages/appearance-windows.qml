@@ -55,9 +55,20 @@ Column {
         footer: "Keeps one group of windows in front and the others as thumbnails on the left. A new app opens in its own stage; Shift-click a thumbnail to add its windows to the stage in front. Also in Control Center."
         Row {
             label: "Stage Manager"
-            Switch {
-                checked: Config.options.stageManager.enabled
-                onToggled: Config.options.stageManager.enabled = !checked
+            detail: !Config.options.stageManager.enabled ? "" : Config.options.stageManager.strip ? "Recent stages wait on the left" : "Windows get the full width; switch stages with the Dock or Mission Control"
+            Segmented {
+                width: 300
+                // (one choice: off, or on with or without the recent stages;
+                // Control Center's toggle flips only `enabled`)
+                readonly property string now: !Config.options.stageManager.enabled ? "off" : Config.options.stageManager.strip ? "recents" : "on"
+                readonly property var values: ["off", "on", "recents"]
+                options: ["Off", "On", "On with recents"]
+                current: Math.max(0, values.indexOf(now))
+                onSelected: i => {
+                    if (values[i] !== "off")
+                        Config.options.stageManager.strip = values[i] === "recents";
+                    Config.options.stageManager.enabled = values[i] !== "off";
+                }
             }
         }
     }
@@ -135,19 +146,6 @@ Column {
                     color: Theme.accent
                     Text { id: instLabel; anchors.centerIn: parent; text: "Install…"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold } }
                     MouseArea { anchors.fill: parent; onClicked: Decorations.installPlugin() }
-                }
-            }
-        }
-        Group {
-            width: parent.width
-            title: "Stage Manager"
-            Row {
-                visible: Config.options.stageManager.enabled
-                label: "Show recent stages"
-                detail: "Hide them to give windows the full width; switch with the dock or Mission Control."
-                Switch {
-                    checked: Config.options.stageManager.strip
-                    onToggled: Config.options.stageManager.strip = !checked
                 }
             }
         }

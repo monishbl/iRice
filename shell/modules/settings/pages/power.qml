@@ -149,17 +149,24 @@ Column {
         Group {
             width: parent.width
             title: "Energy mode"
+            // One choice: off, ask, or on by itself
             Row {
                 visible: page.battery && Backends.ppd
-                label: "Offer Low Power when the battery is low"
-                detail: "At " + page.cfg.batterySaverLevel + "% on battery, once each time it runs down, the island asks"
-                Switch { checked: page.cfg.batterySaver; onToggled: Config.options.power.batterySaver = !checked }
-            }
-            Row {
-                visible: page.battery && page.cfg.batterySaver && Backends.ppd
-                label: "Turn it on automatically"
-                detail: "Low Power comes on by itself, and the island offers Undo"
-                Switch { checked: page.cfg.batterySaverAuto; onToggled: Config.options.power.batterySaverAuto = !checked }
+                label: "Low Power when the battery is low"
+                detail: !page.cfg.batterySaver ? "At " + page.cfg.batterySaverLevel + "% on battery, nothing changes"
+                    : page.cfg.batterySaverAuto ? "At " + page.cfg.batterySaverLevel + "% on battery, Low Power comes on by itself, and the island offers Undo"
+                    : "At " + page.cfg.batterySaverLevel + "% on battery, once each time it runs down, the island asks"
+                Segmented {
+                    width: 240
+                    readonly property var values: ["off", "ask", "auto"]
+                    options: ["Off", "Ask", "Automatic"]
+                    current: !page.cfg.batterySaver ? 0 : page.cfg.batterySaverAuto ? 2 : 1
+                    onSelected: i => {
+                        if (i > 0)
+                            Config.options.power.batterySaverAuto = i === 2;
+                        Config.options.power.batterySaver = i > 0;
+                    }
+                }
             }
             Row {
                 visible: Backends.ppd

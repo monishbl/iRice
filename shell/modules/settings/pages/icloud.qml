@@ -97,29 +97,14 @@ Column {
         width: parent.width
         visible: page.icloud.length > 0
         title: "Calendars"
-        footer: "Shown calendars appear in Calendar, Today and Spotlight. Add an event from Notification Center's calendar and pick an iCloud calendar for it. Repeating events show here but are changed on your iPhone or at icloud.com."
-        Row {
-            visible: !CloudAccounts.calendars.some(c => CloudAccounts.account(c.account)?.provider === "icloud")
-            label: "No calendars yet"
-            detail: CloudAccounts.busy ? "Syncing…" : "They appear after the first sync"
-            labelColor: Theme.color.secondary
-        }
-        Repeater {
-            model: CloudAccounts.calendars.filter(c => CloudAccounts.account(c.account)?.provider === "icloud")
-            Row {
-                id: cal
-                required property var modelData
-                readonly property string ref: modelData.account + "|" + modelData.id
-                label: modelData.title
-                detail: modelData.writable ? "" : "View only"
-                Switch {
-                    checked: CloudAccounts.shown(cal.modelData)
-                    onToggled: {
-                        const hidden = (Config.options.cloud.hiddenCalendars ?? []).filter(x => x !== cal.ref);
-                        Config.options.cloud.hiddenCalendars = checked ? hidden.concat([cal.ref]) : hidden;
-                    }
-                }
-            }
+        footer: "Add an event from Notification Center's calendar and pick an iCloud calendar for it. Repeating events are changed on your iPhone or at icloud.com."
+        // (which ones show: set on the Calendar page, each setting's one home)
+        SubpageLink {
+            icon: "calendar-blank"
+            label: "Shown calendars"
+            detail: "Choose them on the Calendar page"
+            page: "calendar"
+            target: "From your accounts"
         }
     }
 }

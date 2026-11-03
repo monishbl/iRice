@@ -5,8 +5,8 @@ import qs.common
 import qs.modules.settings
 import qs.services
 
-// Accessibility: live captions (services/Captions) and finding the pointer
-// (services/FindPointer)
+// Accessibility: live captions (services/Captions), and a link to Shake to
+// find the pointer (its home is Mouse & Trackpad)
 Column {
     id: page
     width: parent?.width ?? 0
@@ -49,51 +49,43 @@ Column {
                 onClicked: Captions.downloading ? Dictation.cancelDownload() : Captions.download()
             }
         }
+        // One choice: off, or where they show
         Row {
             label: "Live captions"
-            detail: !Captions.hasBinary ? "Install speech recognition above first" : !Captions.hasModel ? "Download the Tiny model above first" : Captions.error !== "" ? Captions.error : Captions.enabled ? "On" : "Off"
-            labelColor: Captions.error !== "" ? Theme.color.danger : Theme.color.label
-            Switch {
-                enabled: Captions.ready || Captions.enabled
-                checked: Captions.enabled
-                onToggled: Captions.cfg.enabled = !checked
-            }
-        }
-        Row {
-            label: "Show them"
-            detail: Captions.placement === "island" ? "In the island at the top: the last words, a few lines when it's open"
+            detail: !Captions.hasBinary ? "Install speech recognition above first" : !Captions.hasModel ? "Download the Tiny model above first" : Captions.error !== "" ? Captions.error
+                : !Captions.enabled ? "Off"
+                : Captions.placement === "island" ? "In the island at the top: the last words, a few lines when it's open"
                 : Captions.placement === "strip" ? "Across the bottom of the screen; windows make room for them"
                 : Captions.placement === "video" ? "Over the bottom of the window that's playing, up to three lines, like a film's subtitles"
                 : "In a bar above the Dock. Drag it anywhere."
+            labelColor: Captions.error !== "" ? Theme.color.danger : Theme.color.label
             Segmented {
-                width: 320
-                options: ["Floating", "Over video", "Island", "Bottom"]
-                current: ["bar", "video", "island", "strip"].indexOf(Captions.placement) < 0 ? 0 : ["bar", "video", "island", "strip"].indexOf(Captions.placement)
-                onSelected: i => Captions.cfg.placement = ["bar", "video", "island", "strip"][i]
+                width: 380
+                enabled: Captions.ready || Captions.enabled
+                opacity: enabled ? 1 : 0.4 // (until it's installed: the row says what's missing)
+                readonly property var values: ["off", "bar", "video", "island", "strip"]
+                options: ["Off", "Floating", "Over video", "Island", "Bottom"]
+                current: !Captions.enabled ? 0 : Math.max(1, values.indexOf(Captions.placement))
+                onSelected: i => {
+                    if (i > 0)
+                        Captions.cfg.placement = values[i];
+                    Captions.cfg.enabled = i > 0;
+                }
             }
         }
     }
 
-    // ── The pointer ─────────────────────────────────────────────────────
+    // ── The pointer: set in Mouse & Trackpad (one home per setting) ─────
     Group {
         width: parent.width
         title: "Pointer"
-        Row {
+        SubpageLink {
+            icon: "cursor"
             label: "Shake to find the pointer"
-            detail: "Move the mouse quickly back and forth: the pointer grows for a moment, or a ring closes in on it"
-            Segmented {
-                width: 280
-                // (one choice: off, or how it shows; "both" from before shows as Ring)
-                readonly property string now: !Config.options.findPointer.enabled || Config.options.findPointer.style === "off" ? "off" : Config.options.findPointer.style === "grow" ? "grow" : "ring"
-                readonly property var values: ["off", "grow", "ring"]
-                options: ["Off", "Bigger", "Ring"]
-                current: Math.max(0, values.indexOf(now))
-                onSelected: i => {
-                    Config.options.findPointer.enabled = values[i] !== "off";
-                    if (values[i] !== "off")
-                        Config.options.findPointer.style = values[i];
-                }
-            }
+            detail: "In Mouse & Trackpad"
+            value: !Config.options.findPointer.enabled || Config.options.findPointer.style === "off" ? "Off" : Config.options.findPointer.style === "grow" ? "Bigger" : "Ring"
+            page: "mouse"
+            target: "Shake to find the pointer"
         }
     }
 

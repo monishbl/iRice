@@ -172,17 +172,20 @@ Column {
                 onMoved: v => page.tp.speed = Math.round(v * 20) / 20
             }
         }
+        // One choice: off, tap to click, or tap to click and drag
         Row {
             label: "Tap to click"
-            detail: "Tap with one finger to click"
-            Switch { checked: page.tp.tapToClick; onToggled: page.tp.tapToClick = !checked }
-        }
-        Row {
-            label: "Tap to drag"
-            detail: "Tap, then keep the finger down and move it to drag"
-            enabled: page.tp.tapToClick
-            opacity: enabled ? 1 : 0.5
-            Switch { checked: page.tp.tapAndDrag; onToggled: page.tp.tapAndDrag = !checked }
+            detail: !page.tp.tapToClick ? "Press the trackpad down to click" : page.tp.tapAndDrag ? "Tap with one finger to click; tap, then keep the finger down and move it to drag" : "Tap with one finger to click"
+            Segmented {
+                width: 260
+                options: ["Off", "Click", "Click and drag"]
+                current: !page.tp.tapToClick ? 0 : page.tp.tapAndDrag ? 2 : 1
+                onSelected: i => {
+                    if (i > 0)
+                        page.tp.tapAndDrag = i === 2;
+                    page.tp.tapToClick = i > 0;
+                }
+            }
         }
         Row {
             label: "Secondary click"

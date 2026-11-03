@@ -127,29 +127,19 @@ Column {
 
     }
 
+    // Which calendars show and where new tasks go: set on the Calendar page
+    // (each setting has one home)
     Group {
         width: parent.width
         visible: Google.connected
         title: "Calendars"
-        footer: Google.calendars.length === 0 ? "No calendars yet. They appear after the first sync." : "Shown calendars appear in Calendar, Today and Spotlight. Open an event in Notification Center's calendar to change it, or drag it to another day; calendars you can only view stay read-only."
-        Repeater {
-            model: Google.calendars
-            Row {
-                id: cal
-                required property var modelData
-                label: modelData.title + (modelData.primary ? " (primary)" : "")
-                detail: [Google.accounts.length > 1 ? Google.identity(modelData.account) : "", modelData.writable ? "" : "View only"].filter(x => x).join(" · ")
-                readonly property string ref: modelData.account + "|" + modelData.id
-                readonly property bool shown: Google.shown(modelData)
-                Switch {
-                    checked: cal.shown
-                    onToggled: {
-                        // (a bare id is how it was kept before several accounts)
-                        const hidden = (Config.options.google.hiddenCalendars ?? []).filter(id => id !== cal.ref && id !== cal.modelData.id);
-                        Config.options.google.hiddenCalendars = cal.shown ? hidden.concat([cal.ref]) : hidden;
-                    }
-                }
-            }
+        footer: Google.calendars.length === 0 ? "No calendars yet. They appear after the first sync." : "Open an event in Notification Center's calendar to change it, or drag it to another day."
+        SubpageLink {
+            icon: "calendar-blank"
+            label: "Shown calendars"
+            detail: "Choose them on the Calendar page"
+            page: "calendar"
+            target: "From your accounts"
         }
         Row {
             label: "Add to primary calendar"
@@ -173,18 +163,13 @@ Column {
         width: parent.width
         visible: Google.connected
         title: "Tasks"
-        footer: "Google tasks appear with your local reminders. Changes show at once and reach Google in the background; deleting can be undone for 8 seconds. Google Tasks has due dates but not times. If a task changes on another device before your change reaches Google, Google's version is kept and a notification shows what you had."
-        Row {
-            label: "New tasks go to"
-            Dropdown {
-                width: 260
-                options: [{ value: "", label: "This computer only" }].concat(Google.taskLists.map(l => ({ value: l.account + "|" + l.id,
-                    label: l.title + (Google.accounts.length > 1 ? " · " + Google.identity(l.account) : "") })))
-                    .concat(CloudAccounts.taskLists.map(l => ({ value: "cloud|" + l.account + "|" + l.id, label: l.title + " · To Do" })))
-                // (a bare list id is from before several accounts; "cloud|…" is Microsoft To Do)
-                value: { const v = Config.options.google.taskListId; if (v.startsWith("cloud|")) return v; const l = Google.find(Google.taskLists, v); return l ? l.account + "|" + l.id : ""; }
-                onChosen: v => Config.options.google.taskListId = v
-            }
+        footer: "Google tasks appear with your local reminders. Changes show at once and reach Google in the background; deleting can be undone for 8 seconds."
+        SubpageLink {
+            icon: "list-checks"
+            label: "Where new tasks go"
+            detail: "Choose a list on the Calendar page"
+            page: "calendar"
+            target: "To-dos"
         }
         Row {
             label: "Task lists"

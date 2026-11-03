@@ -33,6 +33,7 @@ Column {
         property string sound: key // what Play plays
         property bool custom: true // can use your own file
         property bool always: false // (logging in: shown with sound effects off too)
+        property bool toggle: true // (logging in: its volume slider turns it off instead)
         readonly property string file: custom ? Config.options.sounds[key + "File"] : ""
         visible: always || Config.options.sounds.enabled
         detail: file !== "" ? file.split("/").pop() : ""
@@ -51,7 +52,7 @@ Column {
                 text: "Reset"
                 onClicked: Config.options.sounds[srow.key + "File"] = ""
             }
-            Switch { checked: Config.options.sounds[srow.key]; onToggled: Config.options.sounds[srow.key] = !checked }
+            Switch { visible: srow.toggle; checked: Config.options.sounds[srow.key]; onToggled: Config.options.sounds[srow.key] = !checked }
         }
     }
 
@@ -59,17 +60,14 @@ Column {
         width: parent.width
         title: "Sound effects"
         footer: "Choose… plays your own file instead of the style's sound."
+        // One choice: off, or the style they play in
         Row {
-            label: "Play sound effects"
-            Switch { checked: Config.options.sounds.enabled; onToggled: Config.options.sounds.enabled = !checked }
-        }
-        Row {
-            visible: Config.options.sounds.enabled
             label: "Style"
-            detail: ({ soft: "Low, rounded tones", marimba: "Warm wooden mallets", keys: "A soft electric piano", taps: "Short, low taps", minimal: "Quiet ticks", glass: "Bright glass and pops" })[Config.options.sounds.pack] ?? ""
+            detail: !Config.options.sounds.enabled ? "No sound effects. The log-in sound is set on its own." : ({ soft: "Low, rounded tones", marimba: "Warm wooden mallets", keys: "A soft electric piano", taps: "Short, low taps", minimal: "Quiet ticks", glass: "Bright glass and pops" })[Config.options.sounds.pack] ?? ""
             Dropdown {
                 width: 200
                 options: [
+                    { value: "off", label: "Off" },
                     { value: "marimba", label: "Marimba" },
                     { value: "taps", label: "Taps" },
                     { value: "soft", label: "Soft" },
@@ -77,10 +75,13 @@ Column {
                     { value: "minimal", label: "Minimal" },
                     { value: "glass", label: "Glass" }
                 ]
-                value: Config.options.sounds.pack
+                value: Config.options.sounds.enabled ? Config.options.sounds.pack : "off"
                 onChosen: v => {
-                    Config.options.sounds.pack = v;
-                    Qt.callLater(() => Sounds.play("notifications", true)); // hear it
+                    if (v !== "off")
+                        Config.options.sounds.pack = v;
+                    Config.options.sounds.enabled = v !== "off";
+                    if (v !== "off")
+                        Qt.callLater(() => Sounds.play("notifications", true)); // hear it
                 }
             }
         }
@@ -138,18 +139,35 @@ Column {
             width: parent.width
             title: "Logging in"
             footer: "Plays once when you log in, at its own volume, even with sound effects off."
-            SoundRow { key: "startup"; label: "Sound when you log in"; always: true }
+            SoundRow { key: "startup"; label: "Sound when you log in"; always: true; toggle: false }
+            // One slider: its left end is off (the volume you had is kept)
             Row {
-                visible: Config.options.sounds.startup
                 label: "Volume"
-                detail: Math.round(Config.options.sounds.startupVolume * 100) + "%"
-                Slider {
+                detail: Config.options.sounds.startup ? Math.round(Config.options.sounds.startupVolume * 100) + "%" : "Off"
+                Column {
                     width: 220
-                    from: 0
-                    to: 1
-                    value: Config.options.sounds.startupVolume
-                    onMoved: v => Config.options.sounds.startupVolume = v
-                    onPressedChanged: if (!pressed) Sounds.play("startup", true) // hear the level
+                    spacing: 2
+                    Slider {
+                        width: parent.width
+                        from: 0
+                        to: 1
+                        value: Config.options.sounds.startup ? Config.options.sounds.startupVolume : 0
+                        onMoved: v => {
+                            if (v < 0.025) {
+                                Config.options.sounds.startup = false;
+                                return;
+                            }
+                            Config.options.sounds.startupVolume = Math.max(0.05, v);
+                            Config.options.sounds.startup = true;
+                        }
+                        onPressedChanged: if (!pressed && Config.options.sounds.startup) Sounds.play("startup", true) // hear the level
+                    }
+                    Item {
+                        width: parent.width
+                        height: startOff.implicitHeight
+                        Text { id: startOff; text: "Off"; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+                        Text { anchors.right: parent.right; text: "Loud"; color: Theme.color.tertiary; font { family: Theme.font.family; pixelSize: Theme.font.caption } }
+                    }
                 }
             }
         }
