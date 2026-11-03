@@ -50,11 +50,11 @@ Squircle {
 
     implicitWidth: Math.max(140, label.implicitWidth + 40)
     implicitHeight: Theme.material ? 36 : 28
-    radius: Theme.radius.control - 2
+    radius: Theme.material ? Math.min(height / 2, 28) : Theme.radius.control - 2 // (Material: FilledField's pill)
     color: Theme.material ? "transparent" : mouse.containsMouse || menu.visible ? Theme.color.fillHover : Theme.color.fill
     readonly property int itemHeight: Theme.material ? 36 : 28
 
-    // Material: a filled field, like TextField's, its underline primary while open
+    // Material: a filled pill, like TextField's, outlined while open
     Loader {
         anchors.fill: parent
         active: Theme.material
@@ -66,13 +66,13 @@ Squircle {
 
     Text {
         id: label
-        anchors { left: parent.left; leftMargin: Theme.material ? 12 : 10; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: Theme.material ? 16 : 10; verticalCenter: parent.verticalCenter }
         text: root.currentLabel
         color: Theme.color.label
         font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
     Icon {
-        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+        anchors { right: parent.right; rightMargin: Theme.material ? 12 : 8; verticalCenter: parent.verticalCenter }
         name: Theme.material ? "caret-down" : "caret-up-down"
         bold: true
         size: Theme.material ? 14 : 11

@@ -268,24 +268,14 @@ Scope {
                         color: Theme.material ? "transparent" : Theme.color.fill
                         border.width: Theme.material ? 0 : 1
                         border.color: root.error !== "" ? Theme.color.danger : password.activeFocus ? Theme.accent : Theme.color.separator
-                        // Material: a filled text field (top corners 4, an
-                        // indicator line that thickens in primary, error red)
+                        // Material: the shared filled pill, error red when wrong
                         Loader {
                             anchors.fill: parent
                             active: Theme.material
-                            sourceComponent: Rectangle {
-                                topLeftRadius: 4
-                                topRightRadius: 4
-                                color: fieldHover.hovered ? Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, 0.08)) : Theme.m3.surfaceContainerHighest
-                                HoverHandler {
-                                    id: fieldHover
-                                    cursorShape: Qt.IBeamCursor
-                                }
-                                Rectangle {
-                                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                    height: password.activeFocus || root.error !== "" ? 2 : 1
-                                    color: root.error !== "" ? Theme.m3.error : password.activeFocus ? Theme.m3.primary : Theme.m3.onSurfaceVariant
-                                }
+                            sourceComponent: FilledField {
+                                active: password.activeFocus
+                                error: root.error !== ""
+                                cursorShape: Qt.IBeamCursor
                             }
                         }
                         TextInput {

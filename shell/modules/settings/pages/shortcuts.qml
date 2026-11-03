@@ -182,10 +182,10 @@ Column {
     Item {
         visible: page.view === "list"
         width: parent.width
-        height: 28
+        height: Math.max(search.height, addButton.height) // (each look's control heights)
         TextField {
             id: search
-            anchors { left: parent.left; right: addButton.left; rightMargin: 12 }
+            anchors { left: parent.left; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             placeholder: "Search by name or keys, like “super s” or “ctrl print”"
             commitOnBlur: false
         }
@@ -684,7 +684,7 @@ Column {
     Item {
         visible: page.view === "form"
         width: parent.width
-        height: 28
+        height: saveForm.height // (each look's button height)
         Flow {
             anchors.right: parent.right
             spacing: 8

@@ -5,17 +5,29 @@ import qs.common
 // are separated by hairlines. Material: an Expressive segmented list, each
 // row its own tile 2 px from the next, the group's outer corners round (24)
 // and the inner ones nearly square (4); the caption in primary.
+// With none of its rows on show (each hidden by its own condition), the
+// whole group folds to nothing: no caption, platter or footer, and no gap
+// (a Column skips items of zero height).
 Column {
     id: root
 
     property string title
     property string footer
     default property alias rows: body.data
+    // (rows' own visibility, read while the platter stays visible: hiding the
+    // platter would hide the rows with it, and the group would never return)
+    readonly property bool hasRows: {
+        const c = body.children;
+        for (let i = 0; i < c.length; i++)
+            if (c[i].visible && c[i].height > 0)
+                return true;
+        return false;
+    }
 
     spacing: Theme.material ? 8 : 6
 
     Text {
-        visible: root.title !== ""
+        visible: root.title !== "" && root.hasRows
         leftPadding: Theme.material ? 16 : 4
         text: root.title
         color: Theme.material ? Theme.m3.primary : Theme.color.secondary
@@ -25,6 +37,7 @@ Column {
     Squircle {
         width: root.width
         height: body.implicitHeight
+        opacity: root.hasRows ? 1 : 0 // (not visible: false, see hasRows)
         radius: 12
         color: Theme.material ? "transparent" : Theme.dark ? Qt.rgba(1, 1, 1, 0.05) : "white"
         border.width: Theme.material ? 0 : 1
@@ -101,7 +114,7 @@ Column {
     }
 
     Text {
-        visible: root.footer !== ""
+        visible: root.footer !== "" && root.hasRows
         width: root.width
         leftPadding: Theme.material ? 16 : 4
         rightPadding: Theme.material ? 16 : 4

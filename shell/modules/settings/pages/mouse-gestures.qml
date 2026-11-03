@@ -150,7 +150,7 @@ Column {
 
     Item {
         width: parent.width
-        height: 28
+        height: addButton.height // (each look's button height)
         Text {
             anchors { left: parent.left; leftMargin: 4; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             text: "Swipe or pinch with several fingers. Changes apply right away."

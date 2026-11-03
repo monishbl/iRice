@@ -25,7 +25,7 @@ Squircle {
 
     implicitWidth: 220
     implicitHeight: Theme.material ? 36 : 28
-    radius: Theme.radius.control - 2
+    radius: Theme.material ? Math.min(height / 2, 28) : Theme.radius.control - 2 // (Material: FilledField's pill)
     color: Theme.material ? "transparent" : Theme.color.fill
     border.width: Theme.material ? 0 : 1
     border.color: input.activeFocus ? Theme.accent : Theme.color.separator
@@ -40,7 +40,7 @@ Squircle {
 
     TextInput {
         id: input
-        anchors { fill: parent; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
+        anchors { fill: parent; leftMargin: Theme.material ? 16 : 10; rightMargin: Theme.material ? 16 : 10 }
         verticalAlignment: TextInput.AlignVCenter
         echoMode: root.secret ? TextInput.Password : TextInput.Normal
         color: Theme.color.label

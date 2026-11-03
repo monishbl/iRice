@@ -22,7 +22,7 @@ Squircle {
 
     implicitWidth: Math.max(Theme.material ? 140 : 96, label.implicitWidth + (Theme.material ? 52 : 40))
     implicitHeight: Theme.material ? 40 : 28
-    radius: Theme.radius.control - 2
+    radius: Theme.material ? Math.min(height / 2, 28) : Theme.radius.control - 2 // (Material: FilledField's pill)
     opacity: enabled ? 1 : Theme.material ? 0.38 : 0.45
     color: Theme.material ? "transparent" : mouse.pressed ? Theme.color.fillPressed : mouse.containsMouse || open ? Theme.color.fillHover : Theme.color.fill
     activeFocusOnTab: true
@@ -48,20 +48,14 @@ Squircle {
     Loader {
         anchors.fill: parent
         active: Theme.material
-        sourceComponent: Rectangle {
-            topLeftRadius: 4
-            topRightRadius: 4
-            color: Qt.tint(Theme.m3.surfaceContainerHighest, Qt.alpha(Theme.m3.onSurface, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: root.open ? 2 : 1
-                color: root.open ? Theme.m3.primary : Theme.m3.onSurfaceVariant
-            }
+        sourceComponent: FilledField {
+            active: root.open
+            hovered: mouse.containsMouse
         }
     }
     Text {
         id: label
-        anchors { left: parent.left; leftMargin: Theme.material ? 12 : 10; right: caret.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: Theme.material ? 16 : 10; right: caret.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
         text: root.current?.label ?? root.placeholder
         elide: Text.ElideRight
         color: root.current ? Theme.color.label : Theme.color.secondary

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick as QQ
 import QtQuick.Controls.Basic
 import qs.common
 import qs.modules.settings
@@ -96,18 +97,15 @@ Column {
                 required property var modelData
                 label: modelData.name
                 detail: Ai.nameForProvider(modelData.provider) + " · " + modelData.id
-                Item {
-                    width: 155
-                    height: 28
+                QQ.Row { // (sized by its buttons: each look's height, padded like any row)
+                    spacing: 8
                     SettingsButton {
                         text: "Edit"
-                        anchors.left: parent.left
                         onClicked: root.edit(modelRow.modelData)
                     }
                     SettingsButton {
                         text: "Remove"
                         danger: true
-                        anchors.right: parent.right
                         onClicked: root.remove(modelRow.modelData)
                     }
                 }
@@ -219,17 +217,14 @@ Column {
             // Status of the last save: an error says how to fix it
             label: root.message
             labelColor: root.messageIsError ? Theme.color.danger : Theme.color.secondary
-            Item {
-                width: 222
-                height: 28
+            QQ.Row {
+                spacing: 8
                 SettingsButton {
-                    anchors.left: parent.left
                     text: root.editingKey ? "Save changes" : "Add model"
                     primary: true
                     onClicked: root.save()
                 }
                 SettingsButton {
-                    anchors.right: parent.right
                     text: "New model"
                     onClicked: root.edit(null)
                 }
