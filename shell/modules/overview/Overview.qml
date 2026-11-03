@@ -834,6 +834,28 @@ Variants {
                                             scale: spaceMouse.pressed ? 0.97 : spaceMouse.containsMouse ? 1.02 : 1
                                             Behavior on scale { SpringAnimation { spring: Theme.motion.spring + 1; damping: Theme.motion.damping + 0.04; epsilon: 0.002 } }
 
+                                            // A space from a display that's unplugged (it stays here till
+                                            // that display is back): a monitor badge, not its name
+                                            Rectangle {
+                                                readonly property bool guest: Object.keys(Spaces.bases).length > 0 && !Object.values(Spaces.bases).includes(Math.floor((space.wsId - 1) / 100) * 100)
+                                                visible: guest
+                                                z: 5
+                                                x: 8
+                                                y: 8
+                                                width: 24
+                                                height: 24
+                                                radius: 12
+                                                color: Theme.material ? Theme.m3.tertiaryContainer : Qt.rgba(0, 0, 0, 0.55)
+                                                Icon {
+                                                    anchors.centerIn: parent
+                                                    name: "monitor"
+                                                    size: 14
+                                                    color: Theme.material ? Theme.m3.onTertiaryContainer : "white"
+                                                }
+                                                Accessible.role: Accessible.StaticText
+                                                Accessible.name: "From a display that isn't connected"
+                                            }
+
                                             // The wallpaper behind the windows (overview.wallpapers)
                                             ClippingRectangle {
                                                 anchors { fill: parent; margins: 1 }
@@ -930,10 +952,25 @@ Variants {
                                                     z: thumbDrag.active ? 5000 : stack
                                                     // A new place (a refresh after a move, the space's other
                                                     // windows re-tiling) glides there instead of jumping
-                                                    Behavior on x { enabled: !thumbDrag.active && win.shown; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                                                    Behavior on y { enabled: !thumbDrag.active && win.shown; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                                                    Behavior on width { enabled: win.shown; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                                                    Behavior on height { enabled: win.shown; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                                    Behavior on x { enabled: !thumbDrag.active && win.shown && settled; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                                    Behavior on y { enabled: !thumbDrag.active && win.shown && settled; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                                    // (only moves after it's in place: as the overview opens, a window
+                                                    // takes its place at once instead of growing from a corner)
+                                                    property bool settled: false
+                                                    Timer {
+                                                        running: win.shown && !thumb.settled
+                                                        interval: 400
+                                                        onTriggered: thumb.settled = true
+                                                    }
+                                                    Connections {
+                                                        target: win
+                                                        function onShownChanged() {
+                                                            if (!win.shown)
+                                                                thumb.settled = false;
+                                                        }
+                                                    }
+                                                    Behavior on width { enabled: win.shown && settled; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                                    Behavior on height { enabled: win.shown && settled; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                                                     scale: thumbDrag.active ? 1.04 : 1
                                                     Behavior on scale { ScaleAnimator { duration: 150; easing.type: Easing.OutCubic } }
 

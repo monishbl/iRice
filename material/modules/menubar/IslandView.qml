@@ -24,6 +24,9 @@ Item {
 
     required property var screen
     required property color fg // menu bar text colour (idle and compact)
+    // The bar's groups sit in pills (Material, no bar background): the
+    // island idles in the same pill, not bare
+    property bool pilled: false
     // A fullscreen window (a video, a game) covers the bar. The island is
     // then drawn only while it has something to say: the bar lifts it over
     // the app (`lifted`, MenuBar) until it has closed again; otherwise it's
@@ -153,7 +156,7 @@ Item {
     // Material, idle (only the spaces' dots): no pill, the dots straight on
     // the bar in its text colour, as iOS's status bar; the pill comes for an
     // activity, an alert or a hover
-    readonly property bool bare: Theme.material && !filled && !compact
+    readonly property bool bare: Theme.material && !filled && !compact && !pilled
     readonly property color ink: Theme.material ? (bare ? fg : IslandInk.ink(inverse)) : filled || Island.showHot ? "#F5F5F7" : fg
     // Material: an alert in it raises it a tonal step (not the volume and
     // brightness HUD, which stays as it is, like Android's)
@@ -270,7 +273,7 @@ Item {
                     opacity: root.bare ? 0 : 1
                     Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                     // Running hot while open: tinted with error
-                    color: Island.showHot && root.expanded ? Qt.tint(IslandInk.surface(root.inverse), Qt.alpha(Theme.m3.error, 0.14)) : IslandInk.surface(root.inverse)
+                    color: Theme.veil(Qt.alpha(Island.showHot && root.expanded ? Qt.tint(IslandInk.surface(root.inverse), Qt.alpha(Theme.m3.error, 0.14)) : IslandInk.surface(root.inverse), 1))
                     Behavior on color { ColorAnimation { duration: Theme.motion.popover } }
                 }
             }

@@ -61,7 +61,7 @@ Item {
     readonly property var groupLabel: {
         const m = {};
         for (let i = 1; i < groups.length; i++)
-            if (groups[i].ids.length > 0 && !groups[i].unplugged)
+            if (groups[i].ids.length > 0 && groups[i].kind !== "guest")
                 m[groups[i].ids[0]] = groups[i].label;
         return m;
     }

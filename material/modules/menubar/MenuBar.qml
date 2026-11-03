@@ -106,6 +106,8 @@ Variants {
         // text and icons in onSurface
         readonly property bool pills: Theme.material && !opaque
         readonly property color fg: pills ? Theme.m3.onSurface : wallInk
+        // (all three pills one colour and height: the island's own surface)
+        readonly property color pillColor: Theme.veil(Qt.alpha(IslandInk.surface(false), 1))
 
         IdleInhibitor {
             window: bar
@@ -156,19 +158,19 @@ Variants {
                 visible: bar.pills && bar.chromeShown && leftItems.width > 0
                 x: leftItems.x - 2
                 width: leftItems.width + 4
-                height: 28
+                height: 26
                 anchors.verticalCenter: parent.verticalCenter
                 radius: height / 2
-                color: Theme.veil(Qt.alpha(Theme.m3.surfaceContainer, 1))
+                color: bar.pillColor
             }
             Rectangle {
                 visible: bar.pills && bar.chromeShown && rightItems.width > 0
                 x: rightItems.x - 2
                 width: rightItems.width + 4
-                height: 28
+                height: 26
                 anchors.verticalCenter: parent.verticalCenter
                 radius: height / 2
-                color: Theme.veil(Qt.alpha(Theme.m3.surfaceContainer, 1))
+                color: bar.pillColor
             }
 
             // ── Left ────────────────────────────────────────────────────
@@ -224,11 +226,20 @@ Variants {
             }
 
             // ── Centre: Spaces ──────────────────────────────────────────
+            Rectangle {
+                visible: spacesOnly.visible && bar.pills
+                anchors.centerIn: spacesOnly
+                width: spacesOnly.width + 20
+                height: 26
+                radius: height / 2
+                color: bar.pillColor
+            }
             Workspaces {
+                id: spacesOnly
                 visible: bar.cfg.workspaces !== "off" && !Config.options.island.enabled // the island shows them instead
                 anchors.centerIn: parent
                 screen: bar.screen
-                fg: bar.wallInk
+                fg: bar.pills ? Theme.m3.onSurface : bar.wallInk
             }
 
             // ── Centre: the dynamic island (it shows the spaces) ────────
@@ -238,7 +249,8 @@ Variants {
                 width: parent.width
                 height: 420
                 screen: bar.screen
-                fg: bar.wallInk
+                fg: bar.pills ? Theme.m3.onSurface : bar.wallInk
+                pilled: bar.pills
                 pointer: tracker.hovered ? Qt.point(tracker.point.position.x, tracker.point.position.y - content.y) : Qt.point(-1, -1)
             }
             // Alerts that come while the island is open: a card under it

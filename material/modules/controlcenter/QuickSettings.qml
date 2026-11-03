@@ -134,6 +134,41 @@ Popover {
             Audio.setVolume(v, true);
     }
 
+    // A press (Material 3 Expressive, as its button groups): the pressed
+    // tile widens and its neighbours in the row give it the room, then all
+    // spring back. shift(id): how far a control moves (dx) and widens (dw)
+    property string pressing: ""
+    property bool pressNow: false
+    property real squeeze: pressNow ? 1 : 0
+    Behavior on squeeze {
+        enabled: Theme.motion.pressBounce
+        SpringAnimation { spring: Theme.motion.springPress.spring; damping: Theme.motion.springPress.damping; epsilon: 0.002 }
+    }
+    function press(id, down) {
+        if (down)
+            pressing = id;
+        pressNow = down;
+    }
+    readonly property real give: 14
+    function shift(id) {
+        const p = itemPos[pressing];
+        if (!p || squeeze === 0)
+            return { dx: 0, dw: 0 };
+        const left = itemPack.find(q => q.row === p.row && q.h === p.h && q.col + q.w === p.col);
+        const right = itemPack.find(q => q.row === p.row && q.h === p.h && p.col + p.w === q.col);
+        const d = give * squeeze;
+        const fromLeft = left ? (right ? d / 2 : d) : 0, fromRight = d - fromLeft;
+        if (!left && !right)
+            return { dx: 0, dw: 0 };
+        if (id === pressing)
+            return { dx: -fromLeft, dw: d };
+        if (left && id === left.id)
+            return { dx: 0, dw: -fromLeft };
+        if (right && id === right.id)
+            return { dx: fromRight, dw: -fromRight };
+        return { dx: 0, dw: 0 };
+    }
+
     // Edit controls: a click gives a control its next size
     function resize(id) {
         moduleDefs.cycleSize(id);
@@ -303,8 +338,11 @@ Popover {
                         scale: (0.86 + 0.14 * cellRise.value) * (drag.active ? 1.05 : 1)
                         opacity: Math.min(1, cellRise.value)
 
+                        readonly property var sq: qs.shift(cell.modelData)
                         Loader {
-                            anchors.fill: parent
+                            x: cell.sq.dx
+                            width: cell.width + cell.sq.dw
+                            height: cell.height
                             sourceComponent: qs.editing || (cell.kind !== "slider" && cell.kind !== "media") ? tileView : cell.kind === "slider" ? sliderView : mediaView
                         }
                         Component {
@@ -320,6 +358,7 @@ Popover {
                                 // finish: they can remove the very tile handling it)
                                 onRemoveRequested: Qt.callLater(moduleDefs.removeModule, cell.modelData)
                                 onResizeRequested: qs.resize(cell.modelData)
+                                onPressedChanged: qs.press(cell.modelData, pressed && !qs.editing)
                             }
                         }
                         // A slider: across (4×1), with its page's button at

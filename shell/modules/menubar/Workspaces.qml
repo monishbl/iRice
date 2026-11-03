@@ -52,11 +52,13 @@ Item {
                 out.push(id);
         return out;
     }
-    // id -> the label shown before it (first of a group after the first)
+    // id -> the label shown before it (first of a group after the first).
+    // An unplugged display's spaces staying here (guests) carry on after
+    // this display's own, unnamed: its name stays in Spaces' data
     readonly property var groupLabel: {
         const m = {};
         for (let i = 1; i < groups.length; i++)
-            if (groups[i].ids.length > 0)
+            if (groups[i].ids.length > 0 && groups[i].kind !== "guest")
                 m[groups[i].ids[0]] = groups[i].label;
         return m;
     }
