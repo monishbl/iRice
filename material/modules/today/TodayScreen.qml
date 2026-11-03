@@ -246,17 +246,6 @@ Scope {
                     anchors.margins: -shadowMargin
                     radius: win.pr
                 }
-                // Glass over an already-frosted backdrop reads as nothing: a
-                // soft surface and a hairline make the panel its own layer
-                // (Material's surface is opaque already)
-                Squircle {
-                    visible: !Theme.material
-                    anchors.fill: parent
-                    radius: win.pr
-                    color: Theme.dark ? Qt.rgba(0.07, 0.07, 0.08, 0.42) : Qt.rgba(1, 1, 1, 0.45)
-                    border.width: 1
-                    border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.08)
-                }
 
                 Item {
                     id: contentClip

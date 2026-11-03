@@ -261,47 +261,6 @@ Variants {
                                                 }
                                             }
                                         }
-                                        Rectangle {
-                                            visible: !Theme.material
-                                            anchors.centerIn: parent
-                                            width: 60
-                                            height: 60
-                                            radius: 30
-                                            gradient: Gradient {
-                                                GradientStop { position: 0; color: Qt.lighter(Theme.accent, 1.25) }
-                                                GradientStop { position: 1; color: Theme.accent }
-                                            }
-                                            opacity: peerMouse.containsMouse && !peer.sending ? 0.88 : 1
-                                            Icon {
-                                                anchors.centerIn: parent
-                                                name: peer.modelData.cast ? Cast.iconFor(peer.modelData) : peer.modelData.type === "mobile" ? "device-mobile" : peer.modelData.type === "tablet" ? "device-tablet" : peer.modelData.type === "laptop" ? "laptop" : "desktop"
-                                                fill: true
-                                                size: 28
-                                                color: Theme.color.onAccent
-                                            }
-                                        }
-                                        // Sending: a ring fills around them
-                                        Canvas {
-                                            anchors.fill: parent
-                                            visible: peer.sending !== null && !Theme.material
-                                            readonly property real f: peer.frac
-                                            onFChanged: requestPaint()
-                                            onVisibleChanged: requestPaint()
-                                            onPaint: {
-                                                const ctx = getContext("2d");
-                                                ctx.reset();
-                                                ctx.lineWidth = 3;
-                                                ctx.lineCap = "round";
-                                                ctx.strokeStyle = Theme.color.fill;
-                                                ctx.beginPath();
-                                                ctx.arc(width / 2, height / 2, width / 2 - 2, 0, 2 * Math.PI);
-                                                ctx.stroke();
-                                                ctx.strokeStyle = Theme.accent;
-                                                ctx.beginPath();
-                                                ctx.arc(width / 2, height / 2, width / 2 - 2, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * f);
-                                                ctx.stroke();
-                                            }
-                                        }
                                         // Sent: a check; declined or stopped: a mark
                                         Rectangle {
                                             visible: peer.ended !== ""
@@ -396,22 +355,6 @@ Variants {
                                 }
                             }
                         }
-                        Row {
-                            visible: !Theme.material
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 24
-                            Repeater {
-                                model: 3
-                                Rectangle {
-                                    required property int index
-                                    width: 52
-                                    height: 52
-                                    radius: 26
-                                    color: Theme.color.fill
-                                    opacity: LocalSend.available ? 0.45 + 0.55 * (0.5 + 0.5 * Math.cos(look.time * Math.PI - index * 0.9)) : 0.45
-                                }
-                            }
-                        }
                         Text {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
@@ -477,13 +420,6 @@ Variants {
                                     }
                                     Accessible.role: Accessible.Button
                                     Accessible.name: modelData.label
-                                    Squircle {
-                                        visible: !Theme.material
-                                        anchors.fill: parent
-                                        anchors.margins: 2
-                                        radius: 12
-                                        color: otherMouse.pressed ? Theme.color.fillPressed : otherMouse.containsMouse ? Theme.color.fillHover : "transparent"
-                                    }
                                     Rectangle {
                                         visible: Theme.material
                                         anchors.fill: parent
@@ -507,13 +443,6 @@ Variants {
                                         name: other.modelData.icon
                                         size: 18
                                         color: Theme.color.label
-                                    }
-                                    // (a hairline between rows, inset like iOS's)
-                                    Rectangle {
-                                        visible: other.index > 0 && !Theme.material
-                                        anchors { top: parent.top; left: parent.left; leftMargin: 14; right: parent.right }
-                                        height: 1
-                                        color: Theme.color.separator
                                     }
                                     MouseArea {
                                         id: otherMouse

@@ -71,13 +71,6 @@ Item {
                     radius: 4
                     color: Theme.material ? Theme.m3.inverseSurface : "transparent"
                 }
-                Glass {
-                    visible: !Theme.material
-                    anchors.fill: parent
-                    radius: Theme.radius.control
-                    shadowMargin: tip.m
-                    lensScale: 0.35
-                }
                 Text {
                     id: label
                     anchors.centerIn: parent

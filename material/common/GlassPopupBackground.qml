@@ -107,12 +107,4 @@ Item {
         borderColor: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.1)
     }
 
-    // Light catching the top edge (a line, not a gradient: translucent
-    // gradients on rounded rectangles draw as mismatched triangles)
-    Rectangle {
-        visible: !Theme.material
-        anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: root.radius * 1.28; rightMargin: root.radius * 1.28; topMargin: 1 }
-        height: 1
-        color: Qt.rgba(1, 1, 1, Theme.dark ? 0.12 : 0.6)
-    }
 }

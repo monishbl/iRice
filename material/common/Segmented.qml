@@ -79,17 +79,6 @@ Rectangle {
         font { family: Theme.font.family; pixelSize: Theme.material ? Theme.font.body : Theme.font.small; weight: Theme.material ? Font.Medium : Font.DemiBold }
     }
 
-    Rectangle {
-        visible: !Theme.material
-        x: 2 + root.offset(root.current)
-        y: 2
-        width: root.widths[root.current] ?? 0
-        height: root.height - 4
-        radius: height / 2
-        color: Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : "white"
-        Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
-        Behavior on width { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
-    }
 
     Row {
         x: 2

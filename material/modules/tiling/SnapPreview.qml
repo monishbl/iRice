@@ -59,13 +59,6 @@ Variants {
 
             // (Material: no glass; a tonal primary container outlined in
             // primary, as Android's desktop windowing previews a snap)
-            Glass {
-                visible: !Theme.material
-                anchors.fill: parent
-                anchors.margins: -shadowMargin
-                shadowMargin: 16
-                radius: Config.options.appearance.windowRadius
-            }
             Squircle {
                 anchors.fill: parent
                 radius: Config.options.appearance.windowRadius

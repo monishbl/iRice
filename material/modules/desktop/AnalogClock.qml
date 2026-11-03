@@ -19,12 +19,6 @@ Item {
     readonly property color ink: Theme.material ? (night ? Theme.m3.onTertiaryContainer : Theme.m3.onPrimaryContainer) : night ? "#F5F5F7" : "#1C1C1E"
     readonly property color hourInk: Theme.material ? (night ? Theme.m3.tertiary : Theme.m3.primary) : ink
 
-    Rectangle {
-        visible: !Theme.material
-        anchors.fill: parent
-        radius: width / 2
-        color: root.face
-    }
     Loader {
         anchors.fill: parent
         active: Theme.material

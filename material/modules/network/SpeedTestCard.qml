@@ -134,20 +134,6 @@ Column {
                 value: Math.max(0.02, Math.min(1, SpeedTest.progress))
             }
         }
-        Rectangle {
-            visible: !Theme.material
-            width: parent.width
-            height: 4
-            radius: 2
-            color: Theme.color.fill
-            Rectangle {
-                width: parent.width * Math.max(0.02, Math.min(1, SpeedTest.progress))
-                height: parent.height
-                radius: 2
-                color: Theme.accent
-                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-            }
-        }
     }
 
     // The numbers

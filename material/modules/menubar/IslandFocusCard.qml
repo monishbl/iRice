@@ -295,23 +295,6 @@ Item {
                 }
             }
         }
-        Item {
-            anchors.fill: parent
-            visible: root.artStyle === "faded" && !Theme.material
-            Image {
-                anchors.fill: parent
-                source: Media.artUrl(root.player) // (kept loaded, at a fixed size: no reload and flicker on every open)
-                fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(640, 640)
-                asynchronous: true
-                retainWhileLoading: true
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property vector4d fade: Qt.vector4d(0.28, 0.22, 0.28, 0.6)
-                    fragmentShader: Qt.resolvedUrl("../../common/edgefade.frag.qsb")
-                }
-            }
-        }
         Icon {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -30
@@ -368,31 +351,6 @@ Item {
                     anchors { left: oPos.right; leftMargin: 8; right: oLen.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                     sourceComponent: SeekWave { frac: oSeekRow.frac }
                 }
-                Rectangle {
-                    visible: !Theme.material
-                    anchors { left: oPos.right; leftMargin: 8; right: oLen.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                    height: oSeek.containsMouse ? 6 : 4
-                    radius: height / 2
-                    color: Qt.rgba(1, 1, 1, 0.25)
-                    Behavior on height { NumberAnimation { duration: Theme.motion.hover } }
-                    Rectangle {
-                        width: parent.width * parent.parent.frac
-                        height: parent.height
-                        radius: parent.radius
-                        color: root.ink
-                    }
-                    MouseArea {
-                        id: oSeek
-                        anchors { fill: parent; topMargin: -6; bottomMargin: -6 }
-                        hoverEnabled: true
-                        enabled: root.player?.canSeek ?? false
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: m => {
-                            root.player.position = m.x / width * root.player.length;
-                            root.player.positionChanged();
-                        }
-                    }
-                }
             }
             Transport {
                 width: parent.width
@@ -431,28 +389,6 @@ Item {
                         color: Theme.m3.surfaceContainerHighest
                         source: Media.artUrl(root.player) !== "" ? mArt : null
                     }
-                }
-            }
-            Squircle {
-                visible: !Theme.material
-                anchors.fill: parent
-                radius: art.radius
-                color: Qt.rgba(1, 1, 1, 0.1)
-            }
-            Image {
-                visible: !Theme.material
-                anchors.fill: parent
-                source: Media.artUrl(root.player)
-                fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(144, 144)
-                asynchronous: true
-                retainWhileLoading: true
-                layer.enabled: true // (always: switching the mask on when it loaded showed it square for a frame)
-                layer.effect: MultiEffect {
-                    maskEnabled: true
-                    maskSource: artMask
-                    maskThresholdMin: 0.5
-                    maskSpreadAtMin: 1
                 }
             }
             Squircle {
@@ -522,32 +458,6 @@ Item {
                 active: Theme.material
                 anchors { left: posText.right; leftMargin: 8; right: lenText.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                 sourceComponent: SeekWave { frac: seek.frac }
-            }
-            Rectangle {
-                id: track
-                visible: !Theme.material
-                anchors { left: posText.right; leftMargin: 8; right: lenText.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                height: seekMouse.containsMouse ? 6 : 4
-                radius: height / 2
-                color: Qt.rgba(1, 1, 1, 0.18)
-                Behavior on height { NumberAnimation { duration: Theme.motion.hover } }
-                Rectangle {
-                    width: parent.width * seek.frac
-                    height: parent.height
-                    radius: parent.radius
-                    color: root.ink
-                }
-                MouseArea {
-                    id: seekMouse
-                    anchors { fill: parent; topMargin: -6; bottomMargin: -6 }
-                    hoverEnabled: true
-                    enabled: root.player?.canSeek ?? false
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: m => {
-                        root.player.position = m.x / width * root.player.length;
-                        root.player.positionChanged();
-                    }
-                }
             }
         }
 
@@ -690,20 +600,6 @@ Item {
             sourceComponent: WavyProgress {
                 value: Math.max(0, LiveInfo.progress(root.kind))
                 color: IslandInk.tint(root.activity?.color)
-            }
-        }
-        Rectangle {
-            visible: LiveInfo.progress(root.kind) >= 0 && !Theme.material
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 8 }
-            height: 4
-            radius: 2
-            color: Qt.rgba(1, 1, 1, 0.16)
-            Rectangle {
-                width: parent.width * Math.max(0, LiveInfo.progress(root.kind))
-                height: parent.height
-                radius: 2
-                color: root.activity?.color ?? root.ink
-                Behavior on width { NumberAnimation { duration: 900 } }
             }
         }
     }

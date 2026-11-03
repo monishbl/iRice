@@ -148,13 +148,6 @@ LazyLoader {
                         anchors.centerIn: parent
                         width: parent.width - 24
                         spacing: Theme.material ? 8 : 6
-                        Icon {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: !Theme.material
-                            name: "tray"
-                            size: 24
-                            color: drop.containsDrag ? Theme.accent : Theme.color.tertiary
-                        }
                         // (Material: the empty state's icon on a shape that
                         // blooms when something's over it)
                         Loader {

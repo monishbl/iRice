@@ -16,20 +16,6 @@ Item {
     implicitWidth: size
     implicitHeight: size
 
-    Icon {
-        anchors.centerIn: parent
-        visible: !Theme.material
-        name: "circle-notch"
-        size: root.size
-        color: root.color
-        RotationAnimator on rotation {
-            from: 0
-            to: 360
-            duration: 900
-            loops: Animation.Infinite
-            running: root.spinning && !Theme.material
-        }
-    }
 
     Loader {
         anchors.centerIn: parent

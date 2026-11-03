@@ -473,13 +473,6 @@ Variants {
                 anchors.centerIn: list
                 visible: dialog.rows.length === 0
                 spacing: 8
-                Icon {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    visible: !Theme.material
-                    name: field.text === "" ? "clipboard-text" : "magnifying-glass"
-                    size: 32
-                    color: Theme.color.tertiary
-                }
                 // Material: the icon on a shape, as Android's empty states
                 Loader {
                     anchors.horizontalCenter: parent.horizontalCenter

@@ -24,12 +24,6 @@ Item {
 
     HoverHandler { id: hover }
     Rectangle {
-        visible: !Theme.material
-        anchors.fill: parent
-        radius: 10
-        color: grab.pressed ? Theme.color.fillPressed : grab.containsMouse ? Theme.color.fill : "transparent"
-    }
-    Rectangle {
         visible: Theme.material
         anchors { fill: parent; topMargin: root.first ? 0 : 1; bottomMargin: root.last ? 0 : 1 }
         topLeftRadius: root.first ? 16 : 4

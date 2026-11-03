@@ -115,31 +115,6 @@ Item {
                 }
             }
         }
-        Rectangle {
-            visible: root.hasTimeline && !Theme.material
-            width: parent.width
-            height: seek.containsMouse ? 5 : 3
-            radius: height / 2
-            color: Qt.rgba(1, 1, 1, 0.2)
-            Behavior on height { NumberAnimation { duration: Theme.motion.hover } }
-            Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, (root.player?.position ?? 0) / Math.max(1, root.player?.length ?? 1)))
-                height: parent.height
-                radius: parent.radius
-                color: "#F5F5F7"
-            }
-            MouseArea {
-                id: seek
-                anchors { fill: parent; topMargin: -6; bottomMargin: -6 }
-                hoverEnabled: true
-                enabled: root.player?.canSeek ?? false
-                cursorShape: Qt.PointingHandCursor
-                onClicked: m => {
-                    root.player.position = m.x / width * root.player.length;
-                    root.player.positionChanged();
-                }
-            }
-        }
         // Timer and transfer progress
         Loader {
             active: Theme.material && LiveInfo.progress(root.kind) >= 0 && root.kind !== "music"
@@ -148,21 +123,6 @@ Item {
             sourceComponent: WavyProgress {
                 value: Math.max(0, LiveInfo.progress(root.kind))
                 color: IslandInk.tint(root.activity.color)
-            }
-        }
-        Rectangle {
-            readonly property real p: LiveInfo.progress(root.kind)
-            visible: p >= 0 && root.kind !== "music" && !Theme.material
-            width: parent.width
-            height: 3
-            radius: 1.5
-            color: Qt.rgba(1, 1, 1, 0.16)
-            Rectangle {
-                width: parent.width * Math.max(0, parent.p)
-                height: parent.height
-                radius: 1.5
-                color: root.activity.color
-                Behavior on width { NumberAnimation { duration: 900 } }
             }
         }
     }

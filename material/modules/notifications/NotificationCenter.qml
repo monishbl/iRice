@@ -45,10 +45,6 @@ Variants {
                 }
             }
 
-            Loader {
-                active: !Theme.material
-                sourceComponent: glassContent
-            }
             Component {
                 id: glassContent
                 Column {

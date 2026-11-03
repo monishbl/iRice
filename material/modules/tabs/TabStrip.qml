@@ -155,15 +155,6 @@ Variants {
                                     border.color: Theme.dark ? "#36363C" : "#E4E4E7"
                                     Behavior on color { enabled: Theme.material; ColorAnimation { duration: Theme.motion.hover } }
                                 }
-                                // A thin divider between back tabs (not between
-                                // Material's pills)
-                                Rectangle {
-                                    visible: !Theme.material && tab.index > 0 && !tab.front && strip.modelData.windows[tab.index - 1] && ("0x" + strip.modelData.windows[tab.index - 1].address.replace(/^0x/, "")) !== strip.modelData.current
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 1
-                                    height: parent.height * 0.5
-                                    color: Theme.color.separator
-                                }
                                 Row {
                                     anchors.centerIn: parent
                                     width: Math.min(implicitWidth, parent.width - 36)

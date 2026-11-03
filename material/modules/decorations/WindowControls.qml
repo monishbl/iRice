@@ -103,48 +103,6 @@ Variants {
             color: Theme.color.secondary
         }
 
-        // Expanded: traffic lights
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: win.m + (24 - 14) / 2
-            visible: win.expanded && !win.pluginMode && !Theme.material
-            spacing: 8
-            Repeater {
-                model: [
-                    { color: "#FF5F57", icon: "x", act: () => Apps.windowActionFor(win.target, "close") },
-                    { color: "#FEBC2E", icon: "minus", act: () => Apps.minimize(win.target) },
-                    { color: "#28C840", icon: "arrows-out-simple", act: () => Apps.windowActionFor(win.target, "fullscreen", { mode: "maximized", action: "toggle" }) }
-                ]
-                Rectangle {
-                    required property var modelData
-                    width: 14
-                    height: 14
-                    radius: 7
-                    color: modelData.color
-                    Icon {
-                        anchors.centerIn: parent
-                        name: parent.modelData.icon
-                        bold: true
-                        size: 9
-                        color: Qt.rgba(0, 0, 0, 0.55)
-                    }
-                    MouseArea {
-                        anchors { fill: parent; margins: -3 }
-                        hoverEnabled: true
-                        onClicked: parent.modelData.act()
-                        // Resting on the green button opens the tile grid, as in Tahoe
-                        onContainsMouseChanged: {
-                            if (parent.modelData.icon !== "arrows-out-simple")
-                                return;
-                            if (containsMouse)
-                                tileDelay.restart();
-                            else
-                                tileDelay.stop();
-                        }
-                    }
-                }
-            }
-        }
 
         // Material: round icon buttons in onSurfaceVariant, each with a
         // state layer (IconButton), minimize, maximize and close

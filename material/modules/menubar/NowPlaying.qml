@@ -82,29 +82,6 @@ Variants {
                             }
                         }
                     }
-                    ClippingRectangle {
-                        visible: !Theme.material
-                        width: 72
-                        height: 72
-                        radius: 12
-                        color: Theme.color.fill
-                        Image {
-                            anchors.fill: parent
-                            source: Media.artUrl(pop.player)
-                            retainWhileLoading: true
-                            fillMode: Image.PreserveAspectCrop
-                            sourceSize: Qt.size(144, 144)
-                            asynchronous: true
-                        }
-                        Icon {
-                            anchors.centerIn: parent
-                            visible: Media.artUrl(pop.player) === ""
-                            name: "music-notes"
-                            fill: true
-                            size: 28
-                            color: Theme.color.tertiary
-                        }
-                    }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         width: pop.contentWidth - 84
@@ -194,27 +171,6 @@ Variants {
                             enabled: pop.player?.canGoNext ?? false
                             opacity: enabled ? 1 : 0.38
                             onClicked: pop.player?.next()
-                        }
-                    }
-                }
-                Row {
-                    visible: !Theme.material
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 18
-                    Repeater {
-                        model: [
-                            { icon: "skip-back", size: 22, act: () => pop.player?.previous(), on: pop.player?.canGoPrevious ?? false },
-                            { icon: pop.player?.isPlaying ? "pause" : "play", size: 30, act: () => pop.player?.togglePlaying(), on: pop.player?.canTogglePlaying ?? false },
-                            { icon: "skip-forward", size: 22, act: () => pop.player?.next(), on: pop.player?.canGoNext ?? false }
-                        ]
-                        Icon {
-                            required property var modelData
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: modelData.icon
-                            fill: true
-                            size: modelData.size
-                            opacity: modelData.on ? 1 : 0.35
-                            MouseArea { anchors { fill: parent; margins: -8 } enabled: parent.modelData.on; onClicked: parent.modelData.act() }
                         }
                     }
                 }

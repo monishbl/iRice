@@ -34,12 +34,6 @@ Scope {
                     id: pop
                     NumberAnimation { target: number; property: "scale"; from: 0.82; to: 1; duration: 220; easing.type: Easing.OutBack }
                 }
-                Glass {
-                    visible: !Theme.material
-                    anchors.fill: parent
-                    radius: 60
-                    shadowMargin: win.m
-                }
                 // Material: a hero shape in primaryContainer that morphs to
                 // the next shape with each second, as Android's timers do
                 Loader {

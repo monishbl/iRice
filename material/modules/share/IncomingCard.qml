@@ -162,28 +162,6 @@ Scope {
                                 }
                             }
                         }
-                        Canvas {
-                            id: ring
-                            anchors.fill: parent
-                            visible: root.state_ === "receiving" && !Theme.material
-                            readonly property real f: root.frac
-                            onFChanged: requestPaint()
-                            onVisibleChanged: requestPaint()
-                            onPaint: {
-                                const ctx = getContext("2d");
-                                ctx.reset();
-                                ctx.lineWidth = 4;
-                                ctx.lineCap = "round";
-                                ctx.strokeStyle = Theme.color.fill;
-                                ctx.beginPath();
-                                ctx.arc(width / 2, height / 2, width / 2 - 3, 0, 2 * Math.PI);
-                                ctx.stroke();
-                                ctx.strokeStyle = Theme.accent;
-                                ctx.beginPath();
-                                ctx.arc(width / 2, height / 2, width / 2 - 3, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * f);
-                                ctx.stroke();
-                            }
-                        }
                         // Arrived: a check; went wrong: a mark
                         Rectangle {
                             visible: root.state_ === "done" || root.state_ === "failed"

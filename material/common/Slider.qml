@@ -49,31 +49,6 @@ Item {
 
     readonly property real ratio: Math.max(0, Math.min(1, (value - from) / (to - from)))
 
-    Rectangle {
-        visible: !Theme.material
-        anchors.verticalCenter: parent.verticalCenter
-        width: parent.width
-        height: 4
-        radius: 2
-        color: Theme.color.toggleOff
-        Rectangle {
-            width: parent.width * root.ratio
-            height: parent.height
-            radius: 2
-            color: Theme.accent
-        }
-    }
-    Rectangle {
-        visible: !Theme.material
-        x: root.ratio * (root.width - width)
-        anchors.verticalCenter: parent.verticalCenter
-        width: 18
-        height: 18
-        radius: 9
-        color: "white"
-        border.width: 1
-        border.color: Qt.rgba(0, 0, 0, 0.15)
-    }
     // ── Material ──
     Loader {
         anchors.fill: parent

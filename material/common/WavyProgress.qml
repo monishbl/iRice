@@ -19,23 +19,6 @@ Item {
     implicitWidth: 200
     implicitHeight: Theme.material ? 10 : 4
 
-    // ── Glass ──
-    Rectangle {
-        visible: !Theme.material
-        anchors.verticalCenter: parent.verticalCenter
-        width: parent.width
-        height: 4
-        radius: 2
-        color: root.trackColor
-        Rectangle {
-            x: root.indeterminate ? slide.pos * (parent.width - width) : 0
-            width: parent.width * root.shown
-            height: parent.height
-            radius: 2
-            color: root.color
-            Behavior on width { enabled: !root.indeterminate; NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
-        }
-    }
     QtObject {
         id: slide
         property real pos: 0

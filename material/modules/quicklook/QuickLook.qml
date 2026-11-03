@@ -310,17 +310,6 @@ Scope {
                                 source: IconLookup.path(win.kind === "folder" ? "folder" : Search.iconForFile(win.path), "text-x-generic")
                             }
                         }
-                        IconButton {
-                            visible: win.kind === "audio" && !Theme.material
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 44
-                            height: 44
-                            icon: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
-                            fill: true
-                            iconSize: 22
-                            iconColor: Theme.color.label
-                            onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
-                        }
                         // Material: play on a big primary-container shape
                         // that morphs, a rounded square while paused and a
                         // circle while it plays, as Android's media controls

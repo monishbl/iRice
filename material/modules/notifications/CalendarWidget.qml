@@ -519,22 +519,6 @@ Platter {
                                         radius: 2
                                         color: row.isEvent ? (row.modelData.e.color || Theme.accent) : "transparent"
                                     }
-                                    Rectangle {
-                                        visible: !row.isEvent && !Theme.material
-                                        x: 4
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 16
-                                        height: 16
-                                        radius: 8
-                                        color: !row.isEvent && row.modelData.t.done ? Theme.accents.orange : "transparent"
-                                        border.width: !row.isEvent && row.modelData.t.done ? 0 : 1.5
-                                        border.color: Theme.accents.orange
-                                        Icon { anchors.centerIn: parent; visible: !row.isEvent && row.modelData.t.done; name: "check"; bold: true; size: 9; color: "white" }
-                                        MouseArea {
-                                            anchors { fill: parent; margins: -6 }
-                                            onClicked: Todos.update(row.modelData.t, { done: !row.modelData.t.done })
-                                        }
-                                    }
                                     // Material: its checkbox
                                     Loader {
                                         active: !row.isEvent && Theme.material

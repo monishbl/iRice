@@ -101,12 +101,6 @@ Variants {
                 forceLiquid: true
                 opacity: win.progress
             }
-            // (Material: the glass is an opaque surface already, nothing to dim)
-            Rectangle {
-                anchors.fill: parent
-                visible: !Theme.material
-                color: Qt.rgba(0, 0, 0, 0.18 * win.progress)
-            }
 
             Item {
                 anchors.fill: parent
@@ -370,30 +364,7 @@ Variants {
                             }
                         }
 
-                        IconImage {
-                            visible: !Theme.material
-                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: -16 }
-                            implicitSize: 40
-                            source: visible ? Apps.iconFor(tile.ipc.class) : ""
-                        }
 
-                        Rectangle {
-                            visible: hover.containsMouse && !Theme.material
-                            anchors { horizontalCenter: parent.horizontalCenter; top: parent.bottom; topMargin: 30 }
-                            width: Math.min(titleText.implicitWidth + 20, parent.width + 40)
-                            height: 24
-                            radius: 12
-                            color: Qt.rgba(0.12, 0.12, 0.14, 0.9)
-                            Text {
-                                id: titleText
-                                anchors.centerIn: parent
-                                width: Math.min(implicitWidth, parent.width - 20)
-                                elide: Text.ElideRight
-                                text: tile.modelData.title || tile.ipc.class
-                                color: "white"
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                            }
-                        }
 
                         // Material: Android's recents chip under the card, the app
                         // icon and the window's title, secondaryContainer when hovered

@@ -222,40 +222,6 @@ Item {
             font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
             TextMetrics { id: nameWidth; font: hudName.font; text: hudName.text }
         }
-        Rectangle {
-            id: hudBar
-            anchors { left: hudName.visible ? hudName.right : hudIcon.right; leftMargin: 12; right: levelsButton.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            height: 8
-            radius: 4
-            visible: !Theme.material // (Material: a Slider, below)
-            color: Qt.rgba(1, 1, 1, 0.16)
-            Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, root.hudValue))
-                height: parent.height
-                radius: 4
-                color: root.ink
-                Behavior on width {
-                    enabled: !barMouse.pressed
-                    SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.5 }
-                }
-            }
-            MouseArea {
-                id: barMouse
-                anchors.fill: parent
-                anchors.margins: -10
-                cursorShape: Qt.PointingHandCursor
-                preventStealing: true
-                onPressed: e => root.setHud((e.x - 10) / hudBar.width)
-                onPositionChanged: e => {
-                    if (pressed)
-                        root.setHud((e.x - 10) / hudBar.width);
-                }
-            }
-            WheelHandler {
-                target: null
-                onWheel: e => root.setHud(root.hudValue + (e.angleDelta.y > 0 ? 0.05 : -0.05))
-            }
-        }
         // Material: the level on Material's tall slider
         Loader {
             active: Theme.material && root.isHud
@@ -581,16 +547,6 @@ Item {
             opacity: root.ease(root.step(0.2))
             transform: Translate { y: (1 - root.ease(root.step(0.2))) * 18 }
             // Top highlight, like light catching the glass edge
-            Rectangle {
-                visible: !Theme.material
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
-                height: parent.height / 2
-                radius: parent.radius - 1
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.08) }
-                    GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
-                }
-            }
 
             Item {
                 id: cardRow
@@ -632,28 +588,6 @@ Item {
                                 color: Theme.m3.onTertiaryContainer
                                 font { family: Theme.font.family; pixelSize: 17; weight: Font.Medium }
                             }
-                        }
-                    }
-                    Rectangle {
-                        visible: !Theme.material
-                        anchors.fill: parent
-                        radius: width / 2
-                        color: "#8E8E93"
-                        clip: true
-                        Text {
-                            anchors.centerIn: parent
-                            visible: !root.event?.card?.avatar
-                            text: root.event?.card?.initials ?? ""
-                            color: "white"
-                            font { family: Theme.font.family; pixelSize: 17; weight: Font.DemiBold }
-                        }
-                        Image {
-                            anchors.fill: parent
-                            visible: !!root.event?.card?.avatar
-                            source: root.event?.card?.avatar ?? ""
-                            fillMode: Image.PreserveAspectCrop
-                            sourceSize: Qt.size(92, 92)
-                            asynchronous: true
                         }
                     }
                     AppIcon {

@@ -30,23 +30,6 @@ Item {
         radius: height / 2
     }
 
-    Rectangle {
-        anchors.fill: parent
-        visible: !Theme.material
-        radius: height / 2
-        color: root.checked ? Theme.accent : Theme.color.toggleOff
-        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-
-        Rectangle {
-            width: parent.height - 4
-            height: width
-            radius: width / 2
-            x: root.checked ? parent.width - width - 2 : 2
-            y: 2
-            color: "white"
-            Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
-        }
-    }
 
     // ── Material ──
     Loader {

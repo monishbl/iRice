@@ -106,20 +106,6 @@ Column {
                 onMoved: v => lv.moved(v)
             }
         }
-        Rectangle {
-            visible: !Theme.material
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width
-            height: 6
-            radius: 3
-            color: Qt.alpha(root.ink, 0.16)
-            Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, lv.value))
-                height: parent.height
-                radius: 3
-                color: root.ink
-            }
-        }
         MouseArea {
             enabled: !Theme.material
             anchors.fill: parent

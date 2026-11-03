@@ -785,14 +785,6 @@ GlassWindow {
                 anchors.centerIn: parent
                 visible: base.status === Image.Loading || (base.status === Image.Null && win.s.path !== "")
                 spacing: 8
-                Icon {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    visible: !Theme.material
-                    name: "circle-notch"
-                    size: 24
-                    color: Theme.color.tertiary
-                    RotationAnimator on rotation { running: parent.visible; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
-                }
                 // (Material: its loading indicator)
                 Spinner {
                     anchors.horizontalCenter: parent.horizontalCenter

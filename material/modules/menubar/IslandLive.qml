@@ -77,21 +77,6 @@ Item {
                     }
                 }
             }
-            Rectangle {
-                anchors.fill: parent
-                radius: 5
-                clip: true
-                color: Qt.alpha(root.ink, 0.15)
-                visible: !Theme.material && lead.art
-                Image {
-                    anchors.fill: parent
-                    source: root.kind === "music" ? Media.artUrl(root.player) : ""
-                    retainWhileLoading: true
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize: Qt.size(36, 36)
-                    asynchronous: true
-                }
-            }
             // Recording: a pulsing red dot (1.4 s, on a slow clock)
             Rectangle {
                 visible: root.kind === "recording"
