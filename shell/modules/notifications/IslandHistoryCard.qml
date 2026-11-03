@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.common
 import qs.services
+import "NotificationGroups.js" as NotificationGroups
 
 // One island alert (`alert`) in Notification Center's iRice group (Island.history),
 // laid out like a NotificationCard: its icon, what kind of alert and when,
@@ -15,8 +16,6 @@ Item {
     signal closeRequested
     readonly property var act: Island.historyActs[alert?.hid ?? 0] ?? null
 
-    // What kind of alert, as the small caption
-    readonly property var kinds: ({ device: "Bluetooth", usb: "USB", display: "Display", audio: "Sound output", charging: "Power", battery: "Battery", temperature: "Temperature", resources: "System", network: "Network", transfer: "Downloads", timer: "Timer", recording: "Screen recording", focus: "Focus", sysupdate: "Software update", custom: "iRice" })
 
     implicitHeight: column.implicitHeight + 24
 
@@ -60,7 +59,7 @@ Item {
             Text {
                 id: kind
                 anchors { left: parent.left; right: time.left; rightMargin: 8 }
-                text: root.kinds[root.alert?.kind ?? ""] ?? "iRice"
+                text: NotificationGroups.kindOf(root.alert)
                 elide: Text.ElideRight
                 color: Theme.color.secondary
                 font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold; capitalization: Font.AllUppercase; letterSpacing: 0.3 }
@@ -122,27 +121,10 @@ Item {
     }
 
     // Close button, top left like a notification's
-    Rectangle {
-        x: -6
-        y: -6
-        width: 22
-        height: 22
-        radius: 11
+    CloseBadge {
         visible: root.hovered
-        color: Theme.dark ? Qt.rgba(0.22, 0.22, 0.25, 1) : "white"
-        border.width: 1
-        border.color: Theme.color.separator
-        Icon {
-            anchors.centerIn: parent
-            name: "x"
-            bold: true
-            size: 11
-            color: Theme.color.secondary
-        }
-        MouseArea {
-            anchors { fill: parent; margins: -3 }
-            onClicked: root.closeRequested()
-        }
+        reach: 3
+        onClicked: root.closeRequested()
         Accessible.role: Accessible.Button
         Accessible.name: "Remove " + (root.alert?.title ?? "alert")
     }

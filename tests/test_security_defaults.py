@@ -607,7 +607,7 @@ class Shell(unittest.TestCase):
 
     def test_notification_bodies_are_sanitised(self):
         for rel in ("shell/modules/notifications/NotificationCard.qml",
-                    "material/modules/notifications/MaterialNotificationCard.qml"):
+                    "shell/modules/notifications/MaterialNotificationCard.qml"):
             self.assertIn("text: Notifications.safeMarkup(root.notification?.body)", (ROOT / rel).read_text())
 
     # Text showing what other people or programs wrote: never markup (Qt's

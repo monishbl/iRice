@@ -19,6 +19,8 @@ THEME = '''pragma Singleton
 import QtQuick
 import Quickshell
 Singleton {
+    property bool material: false
+    property var m3: ({})
     property bool dark: true
     property color accent: '#ffa500'
     property color accentInk: '#ffb844'
@@ -187,6 +189,9 @@ class CalendarLayoutTests(unittest.TestCase):
         put('common/Icon.qml', 'import QtQuick\nText { property string name; property bool fill; property bool bold; property int size: 14; text: name === "arrow-up" ? "↑" : name === "caret-left" ? "‹" : name === "caret-right" ? "›" : "+"; font.pixelSize: size }')
         put('common/ElasticControl.qml', 'import QtQuick\nQtObject { property bool pressed; property var effects: [] }')
         put('common/Switch.qml', 'import QtQuick\nItem { property bool checked; signal toggled(); implicitWidth: 40; implicitHeight: 24 }')
+        # (Material-only parts, never created in the Glass look)
+        put('common/MaterialShape.qml', 'import QtQuick\nItem { property string shape; property color color }')
+        put('MaterialCheck.qml', 'import QtQuick\nItem { property bool checked; property string accessibleName; signal toggled() }')
         put('common/Dropdown.qml', 'import QtQuick\nItem { property var options; property var value; signal chosen(var v); implicitHeight: 30 }')
         put('services/Calendar.qml', CALENDAR)
         put('services/Todos.qml', TODOS)

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.common
 import qs.services
+import "NotificationGroups.js" as NotificationGroups
 
 // Notification Center in the Material look: Android 16's notification shade
 // in the right-hand panel. The time and date large on top; the
@@ -103,24 +104,9 @@ Column {
                 expandedApps = e;
             }
 
-            // Grouped by app, newest group first, as in the Glass list; the
-            // island's alerts are one more group, iRice, placed by its newest
-            readonly property var groups: {
-                const out = [];
-                for (const n of Notifications.list.slice().reverse()) {
-                    const app = n.appName || "Notification";
-                    let g = out.find(x => x.app === app && !x.island);
-                    if (!g)
-                        out.push(g = { app: app, items: [], at: Notifications.received[n.id]?.getTime() ?? 0 });
-                    g.items.push(n);
-                }
-                const h = Island.history;
-                if (h.length > 0) {
-                    const i = out.findIndex(g => g.at < h[0].at);
-                    out.splice(i < 0 ? out.length : i, 0, { app: "iRice", island: true, items: h, at: h[0].at });
-                }
-                return out;
-            }
+            // Grouped by app, the island's alerts one more group (as in the
+            // Glass list)
+            readonly property var groups: NotificationGroups.byApp(Notifications.list, Notifications.received, Island.history)
             // The list's segments: a collapsed group is one card (its newest,
             // with the count); an open one is a header and every card. Open
             // groups are blocks of their own, set apart; everything else joins
