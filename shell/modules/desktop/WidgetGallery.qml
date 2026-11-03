@@ -75,21 +75,25 @@ Variants {
                         required property var modelData
                         required property int index
                         width: kinds.width
-                        height: 36
-                        radius: 10
-                        color: index === win.picked ? Theme.color.fill : rowMouse.containsMouse ? Theme.color.fillHover : "transparent"
+                        height: Theme.material ? 40 : 36
+                        // (Material: the chosen kind on a secondary container
+                        // pill, like a navigation drawer; state layers)
+                        radius: Theme.material ? height / 2 : 10
+                        color: Theme.material ? (index === win.picked ? Theme.m3.secondaryContainer : rowMouse.containsMouse ? Qt.alpha(Theme.m3.onSurface, rowMouse.pressed ? 0.1 : 0.08) : "transparent")
+                            : index === win.picked ? Theme.color.fill : rowMouse.containsMouse ? Theme.color.fillHover : "transparent"
                         Icon {
-                            x: 10
+                            x: Theme.material ? 14 : 10
                             anchors.verticalCenter: parent.verticalCenter
                             name: row.modelData.icon
+                            fill: Theme.material && row.index === win.picked
                             size: 18
-                            color: row.index === win.picked ? Theme.color.label : Theme.color.secondary
+                            color: Theme.material ? (row.index === win.picked ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : row.index === win.picked ? Theme.color.label : Theme.color.secondary
                         }
                         Text {
-                            x: 38
+                            x: Theme.material ? 44 : 38
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.modelData.label
-                            color: Theme.color.label
+                            color: Theme.material && row.index === win.picked ? Theme.m3.onSecondaryContainer : Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: row.index === win.picked ? Font.DemiBold : Font.Normal }
                         }
                         MouseArea {
@@ -125,12 +129,18 @@ Variants {
                     Rectangle {
                         id: done
                         anchors.right: parent.right
-                        width: doneLabel.implicitWidth + 32
-                        height: 32
-                        radius: 16
-                        color: doneMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent
+                        width: doneLabel.implicitWidth + (Theme.material ? 48 : 32)
+                        height: Theme.material ? 40 : 32
+                        // (Material: a filled primary button, its state layers in
+                        // the label's colour, its corners tightening while pressed)
+                        transform: Theme.material ? pressFx1.effects : []
+                        ElasticControl { id: pressFx1; enabled: Theme.material; pressed: doneMouse.pressed }
+                        radius: Theme.material && doneMouse.pressed ? 8 : height / 2
+                        Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.material ? Theme.motion.springFast.spring : 0; damping: Theme.material ? Theme.motion.springFast.damping : 0; epsilon: 0.1 } }
+                        color: Theme.material ? Qt.tint(Theme.m3.primary, Qt.alpha(Theme.m3.onPrimary, doneMouse.pressed ? 0.1 : doneMouse.containsMouse ? 0.08 : 0))
+                            : doneMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent
                         Text { id: doneLabel; anchors.centerIn: parent; text: "Done"; color: Theme.color.onAccent; font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold } }
-                        MouseArea { id: doneMouse; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Panels.widgetEditing = false }
+                        MouseArea { id: doneMouse; anchors.fill: parent; hoverEnabled: Theme.material; cursorShape: Qt.PointingHandCursor; onClicked: Panels.widgetEditing = false }
                     }
 
                     // Size previews: the real widget, scaled down
@@ -148,28 +158,36 @@ Variants {
                                     width: sizeCol.px.width * win.previewScale
                                     height: sizeCol.px.height * win.previewScale
                                     anchors.horizontalCenter: parent.horizontalCenter
+                                    transform: Theme.material ? pressFx2.effects : []
+                                    ElasticControl { id: pressFx2; enabled: Theme.material; pressed: addMouse.pressed }
                                     scale: addMouse.pressed ? 0.95 : addMouse.containsMouse ? 1.04 : 1
                                     Behavior on scale { SpringAnimation { spring: 5; damping: 0.35; epsilon: 0.002 } }
                                     Squircle {
+                                        id: previewCard
+                                        // Material: the widget's own card (WidgetDefs.materialCard),
+                                        // outlined in primary on hover
+                                        readonly property var card: Theme.material ? widgetDefs.materialCard(win.kind.id, sizeCol.modelData) : null
                                         width: sizeCol.px.width
                                         height: sizeCol.px.height
                                         scale: win.previewScale
                                         transformOrigin: Item.TopLeft
-                                        radius: Theme.radius.tile
-                                        color: Theme.color.platter
-                                        border.width: addMouse.containsMouse ? 3 : 1
+                                        radius: card?.pill ? height / 2 : Theme.radius.tile
+                                        color: Theme.material ? (card && card.bg !== "" ? Theme.m3[card.bg] : "transparent") : Theme.color.platter
+                                        border.width: addMouse.containsMouse ? (Theme.material ? 5 : 3) : Theme.material ? 0 : 1
                                         border.color: addMouse.containsMouse ? Theme.accent : Qt.alpha("white", Theme.dark ? 0.08 : 0.4)
                                         clip: true
                                         Loader {
                                             anchors.fill: parent
-                                            anchors.margins: win.kind.bleed ? 0 : 16
+                                            anchors.margins: win.kind.bleed ? 0 : Theme.material ? (previewCard.card?.pad ?? 16) : 16
+                                            anchors.leftMargin: win.kind.bleed ? 0 : Theme.material ? (previewCard.card?.padX ?? 16) : 16
+                                            anchors.rightMargin: win.kind.bleed ? 0 : Theme.material ? (previewCard.card?.padX ?? 16) : 16
                                             source: Qt.resolvedUrl(win.kind.file)
                                             onLoaded: {
                                                 item.size = sizeCol.modelData;
                                                 if (item.preview !== undefined)
                                                     item.preview = true;
                                                 if (item.radius !== undefined)
-                                                    item.radius = 22;
+                                                    item.radius = Theme.material ? Theme.radius.tile : 22;
                                             }
                                         }
                                     }
@@ -180,9 +198,10 @@ Variants {
                                         width: 22
                                         height: 22
                                         radius: 11
-                                        color: Theme.accents.green
+                                        // (Material: the primary, like a small FAB)
+                                        color: Theme.material ? Theme.m3.primary : Theme.accents.green
                                         visible: addMouse.containsMouse
-                                        Icon { anchors.centerIn: parent; name: "plus"; bold: true; size: 12; color: "white" }
+                                        Icon { anchors.centerIn: parent; name: "plus"; bold: true; size: 12; color: Theme.material ? Theme.m3.onPrimary : "white" }
                                     }
                                     MouseArea {
                                         id: addMouse
@@ -192,11 +211,21 @@ Variants {
                                         onClicked: Panels.addWidget(win.kind.id, sizeCol.modelData)
                                     }
                                 }
-                                Text {
+                                // (Material: a tonal chip, the secondary container on hover)
+                                Rectangle {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: widgetDefs.sizeNames[sizeCol.modelData]
-                                    color: Theme.color.secondary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                    width: sizeName.implicitWidth + (Theme.material ? 24 : 0)
+                                    height: Theme.material ? 32 : sizeName.implicitHeight
+                                    radius: Theme.material && addMouse.containsMouse ? height / 2 : 8
+                                    Behavior on radius { enabled: Theme.material; SpringAnimation { spring: Theme.material ? Theme.motion.springFast.spring : 0; damping: Theme.material ? Theme.motion.springFast.damping : 0; epsilon: 0.1 } }
+                                    color: Theme.material ? (addMouse.containsMouse ? Theme.m3.secondaryContainer : Theme.m3.surfaceContainerHighest) : "transparent"
+                                    Text {
+                                        id: sizeName
+                                        anchors.centerIn: parent
+                                        text: widgetDefs.sizeNames[sizeCol.modelData]
+                                        color: Theme.material ? (addMouse.containsMouse ? Theme.m3.onSecondaryContainer : Theme.m3.onSurfaceVariant) : Theme.color.secondary
+                                        font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
+                                    }
                                 }
                             }
                         }
