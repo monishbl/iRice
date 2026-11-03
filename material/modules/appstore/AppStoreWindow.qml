@@ -631,23 +631,17 @@ Scope {
                             spacing: 8
                             QQ.Row {
                                 spacing: 8
-                                SettingsButton {
-                                    id: removeButton
-                                    visible: Theme.material && (page.app?.installed ?? false)
-                                    width: Theme.material ? Math.max(implicitWidth, 160) : implicitWidth
-                                    height: Theme.material ? 48 : implicitHeight
-                                    danger: true
-                                    text: page.busyWith === "removing" ? "Removing…" : "Remove"
-                                    busy: page.busyWith !== ""
-                                    onClicked: AppStore.remove(page.app)
-                                }
-                                SettingsButton {
-                                    primary: true
-                                    width: Theme.material ? Math.max(implicitWidth, (page.app?.installed ?? false) ? 160 : 240) : implicitWidth
-                                    height: Theme.material ? 48 : implicitHeight
-                                    text: page.busyWith === "installing" ? "Installing…" : page.app?.installed ? "Open" : Theme.material ? "Install" : "Get"
+                                // (Material 3 Expressive: one split button,
+                                // Install or Open, the rest in its menu)
+                                SplitButton {
+                                    height: 48
+                                    text: page.busyWith === "installing" ? "Installing…" : page.busyWith === "removing" ? "Removing…" : page.app?.installed ? "Open" : "Install"
+                                    icon: page.app?.installed ? "arrow-square-out" : "download-simple"
                                     busy: page.busyWith !== ""
                                     onClicked: page.app?.installed ? AppStore.open(page.app) : AppStore.install(page.app)
+                                    menu: (page.app?.installed ? [{ text: "Remove", icon: "trash", danger: true, enabled: page.busyWith === "", action: () => AppStore.remove(page.app) }] : [])
+                                        .concat(page.app?.homepage ? [{ text: "Open the website", icon: "globe", action: () => Launch.open(page.app.homepage) }] : [])
+                                        .concat([{ text: "Copy the name", icon: "copy", action: () => Quickshell.clipboardText = page.app?.name ?? "" }])
                                 }
                                 SettingsButton {
                                     visible: !Theme.material && (page.app?.installed ?? false)

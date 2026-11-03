@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -423,6 +424,15 @@ GlassWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     width: toolRow.width + 2 * toolRow.x
                     height: toolRow.height + 2 * toolRow.y
+                    // (floating: an elevation 3 shadow under it)
+                    RectangularShadow {
+                        visible: Theme.material
+                        anchors.fill: parent
+                        radius: height / 2
+                        offset.y: 3
+                        blur: 10
+                        color: Qt.alpha(Theme.m3.shadow ?? "black", Theme.dark ? 0.45 : 0.18)
+                    }
                     Rectangle {
                         visible: Theme.material
                         anchors.fill: parent
@@ -1138,29 +1148,22 @@ GlassWindow {
                     busy: win.busy === "copy"
                     onClicked: win.copy()
                 }
-                // Save, with Save as copy beside it
-                Row {
-                    spacing: 2
-                    EditorButton {
-                        variant: "primary"
-                        label: win.s.dirty ? "Save" : "Done"
-                        tipBelow: false
-                        tooltip: win.s.dirty ? "Save over the original" : "Close the editor"
-                        shortcut: win.s.dirty ? "Ctrl+S" : ""
-                        enabled: win.ready && (win.busy === "" || win.busy === "save")
-                        busy: win.busy === "save"
-                        onClicked: win.save()
-                    }
-                    EditorButton {
-                        variant: "secondary"
-                        icon: "files"
-                        tipBelow: false
-                        tooltip: "Save as a copy"
-                        shortcut: "Ctrl+Shift+S"
-                        enabled: win.ready && (win.busy === "" || win.busy === "saveCopy")
-                        busy: win.busy === "saveCopy"
-                        onClicked: win.saveCopy()
-                    }
+                // Save, a split button: Save as a copy, Copy and Share in
+                // its menu (Material 3 Expressive)
+                SplitButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    upward: true
+                    text: win.s.dirty ? "Save" : "Done"
+                    icon: win.s.dirty ? "floppy-disk" : "check"
+                    tooltip: win.s.dirty ? "Save over the original (Ctrl+S)" : "Close the editor"
+                    enabled: win.ready && (win.busy === "" || win.busy === "save" || win.busy === "saveCopy")
+                    busy: win.busy === "save" || win.busy === "saveCopy"
+                    onClicked: win.save()
+                    menu: [
+                        { text: "Save as a copy", icon: "files", action: () => win.saveCopy() },
+                        { text: "Copy image", icon: "copy", action: () => win.copy() },
+                        { text: "Send to a nearby device", icon: "export", action: () => win.share() }
+                    ]
                 }
             }
         }

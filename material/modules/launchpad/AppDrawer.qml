@@ -686,6 +686,19 @@ Variants {
                         }
                     }
                 }
+
+                // More (Material 3 Expressive's FAB menu): get apps, change
+                // the view, the drawer's settings
+                FabMenu {
+                    anchors { right: parent.right; bottom: parent.bottom; margins: 24 }
+                    icon: "dots-three"
+                    label: "More"
+                    items: [
+                        { text: "Get apps", icon: "storefront", action: () => Panels.openAppStore() },
+                        { text: win.view === 1 ? "Show folders" : "Show A to Z", icon: win.view === 1 ? "squares-four" : "list", action: () => win.toggleView() },
+                        { text: "Dock and drawer settings", icon: "gear", action: () => Panels.openSettings("dock") }
+                    ]
+                }
             }
         }
     }
