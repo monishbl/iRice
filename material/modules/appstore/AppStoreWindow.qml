@@ -104,7 +104,7 @@ Scope {
 
             // The search field on show (Material has its own pill), and what
             // typing in either does
-            readonly property Item searchBox: Theme.material && m3Search.item ? m3Search.item : search
+            readonly property Item searchBox: m3Search.item
             function typed(text) {
                 win.query = text;
                 if (/^aur:/i.test(text))
@@ -153,20 +153,6 @@ Scope {
                 height: parent.height
                 color: Theme.material ? Theme.m3.surfaceContainer : Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.78) : Qt.rgba(0.94, 0.94, 0.96, 0.8)
 
-                TextField {
-                    id: search
-                    visible: !Theme.material
-                    x: 10
-                    y: 14
-                    width: parent.width - 20
-                    height: 28
-                    placeholder: "Search apps"
-                    commitOnBlur: false
-                    onTextChanged: win.typed(text)
-                    onCommitted: win.entered()
-                    Keys.onEscapePressed: text = ""
-                    Component.onCompleted: if (!Panels.appStoreApp && !Theme.material) focusInput()
-                }
                 // Material: the Play Store's pill search bar
                 Loader {
                     id: m3Search
@@ -243,7 +229,7 @@ Scope {
                 }
 
                 Column {
-                    anchors { left: parent.left; right: parent.right; top: Theme.material ? m3Search.bottom : search.bottom; topMargin: Theme.material ? 12 : 14; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
+                    anchors { left: parent.left; right: parent.right; top: m3Search.bottom; topMargin: Theme.material ? 12 : 14; leftMargin: Theme.material ? 12 : 10; rightMargin: Theme.material ? 12 : 10 }
                     spacing: Theme.material ? 0 : 2
                     PlaceRow {
                         place: win.places[0]
@@ -743,28 +729,6 @@ Scope {
                                 SettingsButton {
                                     minor: true
                                     text: "Open"
-                                    onClicked: Launch.openLink(page.app.homepage)
-                                }
-                            }
-                        }
-                        Column {
-                            visible: !Theme.material
-                            spacing: 6
-                            Text {
-                                text: "Package " + (page.app?.pkg ?? "") + (page.app?.version ? " · " + page.app.version : "") + (page.app?.repo ? " · " + page.app.repo : "")
-                                color: Theme.color.tertiary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small }
-                            }
-                            Text {
-                                visible: !!page.app?.homepage
-                                text: "Website"
-                                color: homeMouse.containsMouse ? Theme.accentInk : Theme.color.secondary
-                                font { family: Theme.font.family; pixelSize: Theme.font.small; underline: homeMouse.containsMouse }
-                                MouseArea {
-                                    id: homeMouse
-                                    anchors { fill: parent; margins: -4 }
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: Launch.openLink(page.app.homepage)
                                 }
                             }

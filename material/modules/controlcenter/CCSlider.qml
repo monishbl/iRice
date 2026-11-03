@@ -14,7 +14,7 @@ Item {
     signal moved(real value)
     signal more
 
-    implicitHeight: (label !== "" ? title.implicitHeight + 8 : 0) + (Theme.material ? 48 : track.height)
+    implicitHeight: (label !== "" ? title.implicitHeight + 8 : 0) + 48
 
     Icon {
         visible: root.hasMore
@@ -53,48 +53,4 @@ Item {
         }
     }
 
-    Rectangle {
-        id: track
-        visible: !Theme.material
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: 26
-        radius: height / 2
-        color: Theme.color.toggleOff
-        clip: true
-
-        Rectangle {
-            id: fillBar
-            height: parent.height
-            width: Math.max(parent.height, parent.width * Math.max(0, Math.min(1, root.value)))
-            radius: height / 2
-            color: Theme.dark ? Qt.rgba(1, 1, 1, 0.92) : "white"
-            Behavior on width {
-                enabled: !drag.pressed
-                NumberAnimation { duration: Theme.motion.hover }
-            }
-        }
-
-        Icon {
-            x: 8
-            anchors.verticalCenter: parent.verticalCenter
-            name: root.icon
-            fill: true
-            size: 14
-            color: Qt.rgba(0, 0, 0, 0.6)
-        }
-
-        MouseArea {
-            id: drag
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            function update(x) { root.moved(Math.max(0, Math.min(1, x / width))); }
-            preventStealing: true // a scrolling page around it mustn't take the drag when the pointer drifts up or down
-            onPressed: m => update(m.x)
-            onPressedChanged: Panels.holdPull += pressed ? 1 : -1 // the panel holds still while dragging
-            Component.onDestruction: if (pressed) Panels.holdPull = Math.max(0, Panels.holdPull - 1)
-            onPositionChanged: m => { if (pressed) update(m.x); }
-            onWheel: w => root.moved(Math.max(0, Math.min(1, root.value + (w.angleDelta.y > 0 ? 0.05 : -0.05))))
-        }
-    }
 }

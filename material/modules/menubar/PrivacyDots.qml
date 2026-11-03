@@ -13,7 +13,7 @@ MenuBarItem {
     visible: Privacy.any
     menu: "privacyMenu"
     text: " " // the dots are drawn below; this keeps the item's height and padding
-    implicitWidth: (Theme.material ? chip.width : dots.implicitWidth) + 16
+    implicitWidth: chip.width + 16
 
     Rectangle {
         id: chip
@@ -45,31 +45,4 @@ MenuBarItem {
         }
     }
 
-    Row {
-        id: dots
-        visible: !Theme.material
-        anchors.centerIn: parent
-        spacing: 4
-        Repeater {
-            model: [
-                { on: Privacy.camera, color: "#30D158" },
-                { on: Privacy.mic, color: "#FF9F0A" },
-                { on: Privacy.location, color: "#0A84FF" },
-                { on: Privacy.shareDot, color: "#BF5AF2" }
-            ].filter(d => d.on)
-            Rectangle {
-                required property var modelData
-                width: 7
-                height: 7
-                radius: 3.5
-                color: modelData.color
-                // Appears with a small pop
-                scale: 0
-                Component.onCompleted: scale = 1
-                // (a NumberAnimation: started as it's created, a ScaleAnimator may
-                // never run and leave the dot invisible)
-                Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-            }
-        }
-    }
 }

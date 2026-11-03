@@ -96,83 +96,22 @@ Scope {
     Variants {
         model: Quickshell.screens
 
-        PanelLoader {
-            id: slot0
-            required property var modelData
-            panel: "systemMenu"
-            screen: modelData
-            active: alive && !Theme.material
-
-            MenuPopover {
-                screen: slot0.modelData
-                popoverName: "systemMenu"
-                items: root.systemItems(slot0.modelData)
-            }
-        }
     }
 
     Variants {
         model: Quickshell.screens
 
-        PanelLoader {
-            id: slot1
-            required property var modelData
-            panel: "appMenu"
-            screen: modelData
-            active: alive && !Theme.material
-
-            MenuPopover {
-                screen: slot1.modelData
-                popoverName: "appMenu"
-                items: root.appItems()
-            }
-        }
     }
 
     Variants {
         model: Quickshell.screens
 
-        PanelLoader {
-            id: slot2
-            required property var modelData
-            panel: "windowMenu"
-            screen: modelData
-            active: alive && !Theme.material
-
-            MenuPopover {
-                screen: slot2.modelData
-                popoverName: "windowMenu"
-                items: root.windowItems()
-            }
-        }
     }
 
     // Tray menus. Submenus drill down in place.
     Variants {
         model: Quickshell.screens
 
-        PanelLoader {
-            id: slot3
-            required property var modelData
-            panel: "trayMenu"
-            screen: modelData
-            active: alive && !Theme.material
-
-            MenuPopover {
-                id: tray
-                property var handle: Panels.trayMenu
-                screen: slot3.modelData
-                popoverName: "trayMenu"
-                onShownChanged: if (shown) handle = Panels.trayMenu
-
-                QsMenuOpener {
-                    id: opener
-                    menu: tray.handle
-                }
-
-                items: root.trayItems(opener, tray)
-            }
-        }
     }
 
     // ── Material ────────────────────────────────────────────────────────

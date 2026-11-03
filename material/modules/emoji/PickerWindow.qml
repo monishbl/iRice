@@ -540,15 +540,6 @@ GlassWindow {
                         width: tabRow.tabW
                         height: tabRow.height
 
-                        Squircle {
-                            anchors.centerIn: parent
-                            visible: !Theme.material
-                            width: 30
-                            height: 30
-                            radius: Theme.radius.control - 2
-                            color: tabMouse.pressed ? Theme.color.fillPressed : tabItem.active ? Theme.color.fill : tabMouse.containsMouse ? Qt.alpha(Theme.color.fill, 0.6) : "transparent"
-                            Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-                        }
                         // Material: Android's navigation indicator, a pill in
                         // secondary container that grows out from the
                         // middle of the chosen tab; hovered tabs get a state layer
@@ -582,15 +573,6 @@ GlassWindow {
                             font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
                         }
                         // Active marker under the tab
-                        Rectangle {
-                            visible: !Theme.material
-                            anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
-                            width: tabItem.active ? 14 : 0
-                            height: 2
-                            radius: 1
-                            color: Theme.accent
-                            Behavior on width { NumberAnimation { duration: Theme.motion.hover; easing.type: Easing.OutCubic } }
-                        }
                         MouseArea {
                             id: tabMouse
                             anchors.fill: parent
@@ -942,13 +924,6 @@ GlassWindow {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: !!stateArea.c.spin
                     }
-                    Icon {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        visible: !!stateArea.c.icon && !Theme.material
-                        name: stateArea.c.icon ?? ""
-                        size: 32
-                        color: Theme.color.tertiary
-                    }
                     // Material: the state's icon on a shape, as Android's empty states
                     Loader {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1209,22 +1184,8 @@ GlassWindow {
 
     // Small spinning ring for loading states (Material: its loading indicator)
     component Busy: Item {
-        implicitWidth: Theme.material ? 40 : ring.implicitWidth
-        implicitHeight: Theme.material ? 40 : ring.implicitHeight
-        Icon {
-            id: ring
-            visible: !Theme.material
-            name: "circle-notch"
-            size: 24
-            color: Theme.color.tertiary
-            RotationAnimator on rotation {
-                running: ring.visible && ring.parent.visible
-                from: 0
-                to: 360
-                duration: 900
-                loops: Animation.Infinite
-            }
-        }
+        implicitWidth: 40
+        implicitHeight: 40
         Loader {
             anchors.centerIn: parent
             active: Theme.material
