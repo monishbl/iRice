@@ -53,7 +53,10 @@ def pytest_sessionfinish(session, exitstatus):
             runtime = env.get(b"XDG_RUNTIME_DIR", b"").decode(errors="replace")
             with open(f"/proc/{pid}/stat") as f:
                 started = boot + int(f.read().rsplit(")", 1)[1].split()[19]) / hz
-            if runtime.startswith(tmp) and _started and started >= _started - 1:
+            # (never the dev sandbox's shell: its runtime folder is
+            # /tmp/irice-rt, and agents' smoke runs restart it while tests run)
+            if runtime.startswith(tmp) and not runtime.startswith("/tmp/irice-rt") \
+                    and _started and started >= _started - 1:
                 os.kill(int(pid), signal.SIGTERM)
         except (OSError, ValueError, IndexError):
             continue
