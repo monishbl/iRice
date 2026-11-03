@@ -170,6 +170,10 @@ Singleton {
     // Startup: once per compositor session. The mark carries the Hyprland
     // instance, because the runtime dir outlives a session on another console
     // (the tty session shares /run/user/<uid> with your usual desktop).
+    // sessionStarted: as the chime plays (switched on or not); the login
+    // intro keeps time with it (LoginIntro, which reads the same mark)
+    signal sessionStarted
+    readonly property string startedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     function checkStartup() {
         if (Tools.ready && !startup.running && !startup.done)
             startup.running = true;
@@ -184,11 +188,13 @@ Singleton {
     Process {
         id: startup
         property bool done: false
-        command: ["sh", "-c", "m=\"${XDG_RUNTIME_DIR:-/tmp}/irice-session-started-${HYPRLAND_INSTANCE_SIGNATURE:-none}\"; [ -e \"$m\" ] && exit 1; : > \"$m\""]
+        command: ["sh", "-c", "[ -e \"$1\" ] && exit 1; : > \"$1\"", "sh", root.startedMark]
         onExited: code => {
             done = true;
-            if (code === 0)
+            if (code === 0) {
                 root.play("startup");
+                root.sessionStarted();
+            }
         }
     }
 }

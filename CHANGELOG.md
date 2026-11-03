@@ -13,6 +13,11 @@
 - **Nothing stays open for good.** The rules last until the next restart (firewalld, nftables, iptables), and the shell opens them again if you're still visible. ufw has no such rules, so iRice removes its own when you stop being visible. The permanent rules from the old **Allow through firewall** button are removed automatically.
 - **No password for an administrator at the computer**, as with the other fixed system jobs. System health and Settings → Privacy & Security → Firewall show what's open now, and why. They warn only when the ports didn't open (or close) as asked.
 
+## Boot animations and a login intro · 2026-11-04
+
+- **Pick what shows while your computer starts** (Settings → Lock & Login Screen → Starting up): your system's own animation (the default, as before), one of four of iRice's, or none (the boot messages as text). **Breathe**: the drop with a soft glow and a thin line that fills as it starts. **Orbit**: the drop in a thin ring with a light chasing round it. **Frost** (for Glass): the drop on a frosted glass tile with soft lights behind it. **Bloom** (for Material): the drop on a shape that morphs through Material's loading shapes. Each fits any screen, shows disk passwords and messages, and says when it's shutting down, restarting or installing updates. Changing it asks for your password and takes about a minute (the boot image is rebuilt); if the rebuild fails, nothing changes and Settings says why. Without Plymouth, Settings says how to get it.
+- **Login intro** (off unless you turn it on): as your desktop first appears after you log in, with the startup sound. Glass: the wallpaper comes into focus and the menu bar and dock settle in. Material: the iRice shape opens onto your desktop. Never on a shell restart, never with Reduce motion, and it never stops you clicking or typing. Play Intro shows it.
+
 ## One codebase for both looks · 2026-11-03
 
 - **Glass and Material are now one codebase.** Material used to copy 151 of Glass's files and change a few lines in each (31,938 lines repeated). Now each screen exists once, and where the looks differ it says so in place or picks its look's own view; Material shares 55 lines with Glass, in 2 files kept apart on purpose. A fix made once now reaches both looks, and a test keeps new copies out.

@@ -1,0 +1,166 @@
+# iRice's boot animation: Bloom (tools/make-bootsplash.py; made, not edited)
+# For Material: the drop on a shape that morphs through Material's loading shapes, turning as it goes.
+
+Window.SetBackgroundTopColor(0.039, 0.039, 0.043);
+Window.SetBackgroundBottomColor(0.039, 0.039, 0.043);
+Plymouth.SetRefreshRate(50);
+
+# An image at this screen's size: the nearer set, scaled so the mark is L
+fun scaled(name) {
+  local.img = Image(name + global.suffix);
+  return img.Scale(Math.Int(img.GetWidth() * global.k + 0.5), Math.Int(img.GetHeight() * global.k + 0.5));
+}
+# A sprite's image centred at (dx, dy) from the screen's centre
+fun centre(sprite, img, dx, dy, z) {
+  sprite.SetPosition(global.cx + dx - Math.Int(img.GetWidth() / 2), global.cy + dy - Math.Int(img.GetHeight() / 2), z);
+}
+fun measure() {
+  global.W = Window.GetWidth(); global.H = Window.GetHeight();
+  global.L = Math.Int(Math.Min(global.W, global.H) * 0.14);
+  if (global.L > 200) { global.suffix = "@2x.png"; global.ref = 320; global.ui = 2; global.font = "Inter 20"; }
+  else { global.suffix = "@1x.png"; global.ref = 160; global.ui = 1; global.font = "Inter 11"; }
+  global.k = global.L / global.ref;
+  global.cx = Window.GetX() + Math.Int(global.W / 2);
+  global.cy = Window.GetY() + Math.Int(global.H / 2);
+  global.below = global.cy + Math.Int(global.L * 0.85) + 24 * global.ui;
+}
+measure();
+
+# A whole number as text
+digit[0] = "0"; digit[1] = "1"; digit[2] = "2"; digit[3] = "3"; digit[4] = "4";
+digit[5] = "5"; digit[6] = "6"; digit[7] = "7"; digit[8] = "8"; digit[9] = "9";
+fun number(n) {
+  local.n = Math.Int(n); local.s = "";
+  if (n <= 0) return "0";
+  while (n > 0) { s = digit[n - Math.Int(n / 10) * 10] + s; n = Math.Int(n / 10); }
+  return s;
+}
+fun text(s, rgb) {
+  if (rgb == "warning") return Image.Text(s, 0.984, 0.749, 0.141, 1, global.font);
+  if (rgb == "ink") return Image.Text(s, 0.929, 0.929, 0.937, 1, global.font);
+  return Image.Text(s, 0.631, 0.631, 0.667, 1, global.font);
+}
+
+# What it's doing, under the picture, when it isn't starting up
+global.mode = Plymouth.GetMode();
+caption.sprite = Sprite(); caption.text = "";
+if (global.mode == "shutdown") caption.text = "Shutting down";
+if (global.mode == "reboot") caption.text = "Restarting";
+if (global.mode == "updates" || global.mode == "system-upgrade") caption.text = "Installing updates. Keep your computer on.";
+if (global.mode == "firmware-upgrade") caption.text = "Updating firmware. Keep your computer on.";
+fun update_progress(p) {
+  if (caption.text != "") caption.sprite.SetImage(text(caption.text + " " + number(p) + "%", "secondary"));
+  stack();
+}
+Plymouth.SetSystemUpdateFunction(update_progress);
+
+# Prompts: a password (bullets), or a question (its answer shown)
+dialog.on = 0;
+prompt.sprite = Sprite(); field.sprite = Sprite(); answer.sprite = Sprite(); caps.sprite = Sprite();
+message.sprite = Sprite();
+fun show_dialog(label, bullets, typed) {
+  global.dialog.on = 1;
+  if (!field.image) { field.image = Image("field" + global.suffix); global.dot.image = Image("dot" + global.suffix); }
+  prompt.sprite.SetImage(text(label, "secondary"));
+  field.sprite.SetImage(field.image);
+  for (b = 0; global.bullet[b].sprite || b < bullets; b++) {
+    if (!global.bullet[b].sprite) global.bullet[b].sprite = Sprite(global.dot.image);
+    global.bullet[b].sprite.SetOpacity(0);
+  }
+  global.bullets = bullets;
+  if (typed != "") answer.sprite.SetImage(text(typed, "ink"));
+  else answer.sprite = Sprite();
+  stack();
+}
+fun hide_dialog() {
+  global.dialog.on = 0;
+  stack();
+}
+fun password(label, bullets) {
+  if (label == "") label = "Enter the password to unlock this disk";
+  show_dialog(label, bullets, "");
+}
+fun question(label, typed) { show_dialog(label, 0, typed); }
+Plymouth.SetDisplayPasswordFunction(password);
+Plymouth.SetDisplayQuestionFunction(question);
+Plymouth.SetDisplayNormalFunction(hide_dialog);
+fun show_message(s) { message.sprite.SetImage(text(s, "secondary")); stack(); }
+fun hide_message(s) { message.sprite = Sprite(); stack(); }
+Plymouth.SetDisplayMessageFunction(show_message);
+Plymouth.SetHideMessageFunction(hide_message);
+
+# Everything under the picture, top to bottom: the caption, the prompt and
+# its field (with Caps Lock's warning), the latest message
+fun row(sprite, y, op) {
+  local.img = sprite.GetImage();
+  if (!img) return y;
+  sprite.SetPosition(global.cx - Math.Int(img.GetWidth() / 2), y, 20);
+  sprite.SetOpacity(op);
+  return y + img.GetHeight() + 8 * global.ui;
+}
+fun stack() {
+  local.y = global.below;
+  local.d = global.dialog.on;
+  caption.sprite.SetOpacity(0); prompt.sprite.SetOpacity(0); field.sprite.SetOpacity(0);
+  answer.sprite.SetOpacity(0); caps.sprite.SetOpacity(0);
+  for (b = 0; global.bullet[b].sprite; b++) global.bullet[b].sprite.SetOpacity(0);
+  if (caption.text != "" && !d) y = row(caption.sprite, y, 1);
+  if (d) {
+    y = row(prompt.sprite, y, 1);
+    local.fx = global.cx - Math.Int(field.image.GetWidth() / 2);
+    field.sprite.SetPosition(fx, y, 20);
+    field.sprite.SetOpacity(1);
+    local.fh = field.image.GetHeight();
+    # the latest bullets that fit (a long password scrolls)
+    local.step = 14 * global.ui;
+    local.fit = Math.Int((field.image.GetWidth() - 28 * global.ui) / step);
+    local.first = Math.Max(0, global.bullets - fit);
+    for (b = first; b < global.bullets; b++)
+      global.bullet[b].sprite.SetPosition(fx + 14 * global.ui + (b - first) * step, y + Math.Int((fh - global.dot.image.GetHeight()) / 2), 21);
+    for (b = first; b < global.bullets; b++) global.bullet[b].sprite.SetOpacity(1);
+    if (answer.sprite.GetImage()) {
+      answer.sprite.SetPosition(fx + 14 * global.ui, y + Math.Int((fh - answer.sprite.GetImage().GetHeight()) / 2), 21);
+      answer.sprite.SetOpacity(1);
+    }
+    y = y + fh + 8 * global.ui;
+    if (Plymouth.GetCapslockState()) {
+      caps.sprite.SetImage(text("Caps Lock is on", "warning"));
+      y = row(caps.sprite, y, 1);
+    }
+  }
+  y = row(message.sprite, y, 1);
+}
+if (caption.text != "") caption.sprite.SetImage(text(caption.text, "secondary"));
+
+# The tables: one value per refresh
+t_shape[0] = 0; t_shape[1] = 0; t_shape[2] = 1; t_shape[3] = 1; t_shape[4] = 2; t_shape[5] = 2; t_shape[6] = 3; t_shape[7] = 3; t_shape[8] = 4; t_shape[9] = 4; t_shape[10] = 5; t_shape[11] = 5; t_shape[12] = 6; t_shape[13] = 6; t_shape[14] = 7; t_shape[15] = 7; t_shape[16] = 6; t_shape[17] = 6; t_shape[18] = 8; t_shape[19] = 8; t_shape[20] = 9; t_shape[21] = 9; t_shape[22] = 5; t_shape[23] = 5; t_shape[24] = 10; t_shape[25] = 10; t_shape[26] = 11; t_shape[27] = 11; t_shape[28] = 11; t_shape[29] = 11; t_shape[30] = 12; t_shape[31] = 12; t_shape[32] = 13; t_shape[33] = 13; t_shape[34] = 14; t_shape[35] = 14; t_shape[36] = 15; t_shape[37] = 15; t_shape[38] = 16; t_shape[39] = 16; t_shape[40] = 17; t_shape[41] = 17; t_shape[42] = 18; t_shape[43] = 18; t_shape[44] = 19; t_shape[45] = 19; t_shape[46] = 18; t_shape[47] = 18; t_shape[48] = 20; t_shape[49] = 20; t_shape[50] = 21; t_shape[51] = 21; t_shape[52] = 17; t_shape[53] = 17; t_shape[54] = 22; t_shape[55] = 22; t_shape[56] = 23; t_shape[57] = 23; t_shape[58] = 23; t_shape[59] = 23; t_shape[60] = 24; t_shape[61] = 24; t_shape[62] = 25; t_shape[63] = 25; t_shape[64] = 26; t_shape[65] = 26; t_shape[66] = 27; t_shape[67] = 27; t_shape[68] = 28; t_shape[69] = 28; t_shape[70] = 29; t_shape[71] = 29; t_shape[72] = 30; t_shape[73] = 30; t_shape[74] = 31; t_shape[75] = 31; t_shape[76] = 30; t_shape[77] = 30; t_shape[78] = 32; t_shape[79] = 32; t_shape[80] = 33; t_shape[81] = 33; t_shape[82] = 29; t_shape[83] = 29; t_shape[84] = 34; t_shape[85] = 34; t_shape[86] = 35; t_shape[87] = 35; t_shape[88] = 35; t_shape[89] = 35; t_shape[90] = 36; t_shape[91] = 36; t_shape[92] = 37; t_shape[93] = 37; t_shape[94] = 38; t_shape[95] = 38; t_shape[96] = 39; t_shape[97] = 39; t_shape[98] = 40; t_shape[99] = 40; t_shape[100] = 41; t_shape[101] = 41; t_shape[102] = 42; t_shape[103] = 42; t_shape[104] = 43; t_shape[105] = 43; t_shape[106] = 42; t_shape[107] = 42; t_shape[108] = 44; t_shape[109] = 44; t_shape[110] = 45; t_shape[111] = 45; t_shape[112] = 41; t_shape[113] = 41; t_shape[114] = 46; t_shape[115] = 46; t_shape[116] = 47; t_shape[117] = 47; t_shape[118] = 47; t_shape[119] = 47; t_shape[120] = 48; t_shape[121] = 48; t_shape[122] = 49; t_shape[123] = 49; t_shape[124] = 50; t_shape[125] = 50; t_shape[126] = 51; t_shape[127] = 51; t_shape[128] = 52; t_shape[129] = 52; t_shape[130] = 53; t_shape[131] = 53; t_shape[132] = 54; t_shape[133] = 54; t_shape[134] = 55; t_shape[135] = 55; t_shape[136] = 54; t_shape[137] = 54; t_shape[138] = 56; t_shape[139] = 56; t_shape[140] = 57; t_shape[141] = 57; t_shape[142] = 53; t_shape[143] = 53; t_shape[144] = 58; t_shape[145] = 58; t_shape[146] = 59; t_shape[147] = 59; t_shape[148] = 59; t_shape[149] = 59; t_shape[150] = 60; t_shape[151] = 60; t_shape[152] = 61; t_shape[153] = 61; t_shape[154] = 62; t_shape[155] = 62; t_shape[156] = 63; t_shape[157] = 63; t_shape[158] = 64; t_shape[159] = 64; t_shape[160] = 65; t_shape[161] = 65; t_shape[162] = 66; t_shape[163] = 66; t_shape[164] = 67; t_shape[165] = 67; t_shape[166] = 66; t_shape[167] = 66; t_shape[168] = 68; t_shape[169] = 68; t_shape[170] = 69; t_shape[171] = 69; t_shape[172] = 65; t_shape[173] = 65; t_shape[174] = 70; t_shape[175] = 70; t_shape[176] = 71; t_shape[177] = 71; t_shape[178] = 71; t_shape[179] = 71; t_shape[180] = 72; t_shape[181] = 72; t_shape[182] = 73; t_shape[183] = 73; t_shape[184] = 74; t_shape[185] = 74; t_shape[186] = 75; t_shape[187] = 75; t_shape[188] = 76; t_shape[189] = 76; t_shape[190] = 77; t_shape[191] = 77; t_shape[192] = 78; t_shape[193] = 78; t_shape[194] = 79; t_shape[195] = 79; t_shape[196] = 78; t_shape[197] = 78; t_shape[198] = 80; t_shape[199] = 80; t_shape[200] = 81; t_shape[201] = 81; t_shape[202] = 77; t_shape[203] = 77; t_shape[204] = 82; t_shape[205] = 82; t_shape[206] = 83; t_shape[207] = 83; t_shape[208] = 83; t_shape[209] = 83; t_shape[210] = 84; t_shape[211] = 84; t_shape[212] = 85; t_shape[213] = 85; t_shape[214] = 86; t_shape[215] = 86; t_shape[216] = 87; t_shape[217] = 87; t_shape[218] = 88; t_shape[219] = 88; t_shape[220] = 89; t_shape[221] = 89; t_shape[222] = 90; t_shape[223] = 90; t_shape[224] = 91; t_shape[225] = 91; t_shape[226] = 90; t_shape[227] = 90; t_shape[228] = 92; t_shape[229] = 92; t_shape[230] = 93; t_shape[231] = 93; t_shape[232] = 89; t_shape[233] = 89; t_shape[234] = 94; t_shape[235] = 94; t_shape[236] = 95; t_shape[237] = 95; t_shape[238] = 95; t_shape[239] = 95;
+t_turn[0] = 0.0; t_turn[1] = 0.0821; t_turn[2] = 0.25019; t_turn[3] = 0.46996; t_turn[4] = 0.71349; t_turn[5] = 0.95929; t_turn[6] = 1.19191; t_turn[7] = 1.40123; t_turn[8] = 1.58162; t_turn[9] = 1.73101; t_turn[10] = 1.85002; t_turn[11] = 1.94114; t_turn[12] = 2.00801; t_turn[13] = 2.05489; t_turn[14] = 2.08612; t_turn[15] = 2.10587; t_turn[16] = 2.11787; t_turn[17] = 2.12532; t_turn[18] = 2.13078; t_turn[19] = 2.13622; t_turn[20] = 2.14305; t_turn[21] = 2.15217; t_turn[22] = 2.16407; t_turn[23] = 2.17892; t_turn[24] = 2.19662; t_turn[25] = 2.21693; t_turn[26] = 2.23949; t_turn[27] = 2.26391; t_turn[28] = 2.28975; t_turn[29] = 2.31665; t_turn[30] = 2.35619; t_turn[31] = 2.4383; t_turn[32] = 2.60639; t_turn[33] = 2.82615; t_turn[34] = 3.06968; t_turn[35] = 3.31548; t_turn[36] = 3.5481; t_turn[37] = 3.75742; t_turn[38] = 3.93781; t_turn[39] = 4.0872; t_turn[40] = 4.20621; t_turn[41] = 4.29733; t_turn[42] = 4.36421; t_turn[43] = 4.41108; t_turn[44] = 4.44231; t_turn[45] = 4.46206; t_turn[46] = 4.47407; t_turn[47] = 4.48151; t_turn[48] = 4.48697; t_turn[49] = 4.49242; t_turn[50] = 4.49925; t_turn[51] = 4.50837; t_turn[52] = 4.52027; t_turn[53] = 4.53511; t_turn[54] = 4.55281; t_turn[55] = 4.57313; t_turn[56] = 4.59569; t_turn[57] = 4.6201; t_turn[58] = 4.64595; t_turn[59] = 4.67284; t_turn[60] = 4.71239; t_turn[61] = 4.79449; t_turn[62] = 4.96258; t_turn[63] = 5.18235; t_turn[64] = 5.42588; t_turn[65] = 5.67168; t_turn[66] = 5.9043; t_turn[67] = 6.11362; t_turn[68] = 6.29401; t_turn[69] = 6.4434; t_turn[70] = 6.56241; t_turn[71] = 6.65352; t_turn[72] = 6.7204; t_turn[73] = 6.76728; t_turn[74] = 6.79851; t_turn[75] = 6.81825; t_turn[76] = 6.83026; t_turn[77] = 6.83771; t_turn[78] = 6.84317; t_turn[79] = 6.84861; t_turn[80] = 6.85544; t_turn[81] = 6.86456; t_turn[82] = 6.87646; t_turn[83] = 6.89131; t_turn[84] = 6.90901; t_turn[85] = 6.92932; t_turn[86] = 6.95188; t_turn[87] = 6.9763; t_turn[88] = 7.00214; t_turn[89] = 7.02903; t_turn[90] = 7.06858; t_turn[91] = 7.15069; t_turn[92] = 7.31878; t_turn[93] = 7.53854; t_turn[94] = 7.78207; t_turn[95] = 8.02787; t_turn[96] = 8.26049; t_turn[97] = 8.46981; t_turn[98] = 8.6502; t_turn[99] = 8.79959; t_turn[100] = 8.9186; t_turn[101] = 9.00972; t_turn[102] = 9.0766; t_turn[103] = 9.12347; t_turn[104] = 9.1547; t_turn[105] = 9.17445; t_turn[106] = 9.18646; t_turn[107] = 9.1939; t_turn[108] = 9.19936; t_turn[109] = 9.20481; t_turn[110] = 9.21164; t_turn[111] = 9.22076; t_turn[112] = 9.23266; t_turn[113] = 9.2475; t_turn[114] = 9.2652; t_turn[115] = 9.28551; t_turn[116] = 9.30808; t_turn[117] = 9.33249; t_turn[118] = 9.35834; t_turn[119] = 9.38523; t_turn[120] = 9.42478; t_turn[121] = 9.50688; t_turn[122] = 9.67497; t_turn[123] = 9.89474; t_turn[124] = 10.13826; t_turn[125] = 10.38406; t_turn[126] = 10.61668; t_turn[127] = 10.82601; t_turn[128] = 11.0064; t_turn[129] = 11.15578; t_turn[130] = 11.27479; t_turn[131] = 11.36591; t_turn[132] = 11.43279; t_turn[133] = 11.47966; t_turn[134] = 11.51089; t_turn[135] = 11.53064; t_turn[136] = 11.54265; t_turn[137] = 11.5501; t_turn[138] = 11.55556; t_turn[139] = 11.561; t_turn[140] = 11.56783; t_turn[141] = 11.57695; t_turn[142] = 11.58885; t_turn[143] = 11.6037; t_turn[144] = 11.6214; t_turn[145] = 11.64171; t_turn[146] = 11.66427; t_turn[147] = 11.68868; t_turn[148] = 11.71453; t_turn[149] = 11.74142; t_turn[150] = 11.78097; t_turn[151] = 11.86307; t_turn[152] = 12.03117; t_turn[153] = 12.25093; t_turn[154] = 12.49446; t_turn[155] = 12.74026; t_turn[156] = 12.97288; t_turn[157] = 13.1822; t_turn[158] = 13.36259; t_turn[159] = 13.51198; t_turn[160] = 13.63099; t_turn[161] = 13.72211; t_turn[162] = 13.78899; t_turn[163] = 13.83586; t_turn[164] = 13.86709; t_turn[165] = 13.88684; t_turn[166] = 13.89884; t_turn[167] = 13.90629; t_turn[168] = 13.91175; t_turn[169] = 13.9172; t_turn[170] = 13.92403; t_turn[171] = 13.93315; t_turn[172] = 13.94505; t_turn[173] = 13.95989; t_turn[174] = 13.97759; t_turn[175] = 13.9979; t_turn[176] = 14.02047; t_turn[177] = 14.04488; t_turn[178] = 14.07073; t_turn[179] = 14.09762; t_turn[180] = 14.13717; t_turn[181] = 14.21927; t_turn[182] = 14.38736; t_turn[183] = 14.60713; t_turn[184] = 14.85065; t_turn[185] = 15.09645; t_turn[186] = 15.32907; t_turn[187] = 15.5384; t_turn[188] = 15.71878; t_turn[189] = 15.86817; t_turn[190] = 15.98718; t_turn[191] = 16.0783; t_turn[192] = 16.14518; t_turn[193] = 16.19205; t_turn[194] = 16.22328; t_turn[195] = 16.24303; t_turn[196] = 16.25504; t_turn[197] = 16.26249; t_turn[198] = 16.26795; t_turn[199] = 16.27339; t_turn[200] = 16.28022; t_turn[201] = 16.28934; t_turn[202] = 16.30124; t_turn[203] = 16.31608; t_turn[204] = 16.33379; t_turn[205] = 16.3541; t_turn[206] = 16.37666; t_turn[207] = 16.40107; t_turn[208] = 16.42692; t_turn[209] = 16.45381; t_turn[210] = 16.49336; t_turn[211] = 16.57546; t_turn[212] = 16.74355; t_turn[213] = 16.96332; t_turn[214] = 17.20685; t_turn[215] = 17.45265; t_turn[216] = 17.68527; t_turn[217] = 17.89459; t_turn[218] = 18.07498; t_turn[219] = 18.22437; t_turn[220] = 18.34338; t_turn[221] = 18.4345; t_turn[222] = 18.50138; t_turn[223] = 18.54825; t_turn[224] = 18.57948; t_turn[225] = 18.59923; t_turn[226] = 18.61123; t_turn[227] = 18.61868; t_turn[228] = 18.62414; t_turn[229] = 18.62959; t_turn[230] = 18.63642; t_turn[231] = 18.64554; t_turn[232] = 18.65744; t_turn[233] = 18.67228; t_turn[234] = 18.68998; t_turn[235] = 18.71029; t_turn[236] = 18.73286; t_turn[237] = 18.75727; t_turn[238] = 18.78311; t_turn[239] = 18.81001;
+
+mark.image = scaled("mark"); mark.sprite = Sprite(mark.image);
+shapenames[0] = "shape000"; shapenames[1] = "shape001"; shapenames[2] = "shape002"; shapenames[3] = "shape003"; shapenames[4] = "shape004"; shapenames[5] = "shape005"; shapenames[6] = "shape006"; shapenames[7] = "shape007"; shapenames[8] = "shape008"; shapenames[9] = "shape009"; shapenames[10] = "shape010"; shapenames[11] = "shape011"; shapenames[12] = "shape012"; shapenames[13] = "shape013"; shapenames[14] = "shape014"; shapenames[15] = "shape015"; shapenames[16] = "shape016"; shapenames[17] = "shape017"; shapenames[18] = "shape018"; shapenames[19] = "shape019"; shapenames[20] = "shape020"; shapenames[21] = "shape021"; shapenames[22] = "shape022"; shapenames[23] = "shape023"; shapenames[24] = "shape024"; shapenames[25] = "shape025"; shapenames[26] = "shape026"; shapenames[27] = "shape027"; shapenames[28] = "shape028"; shapenames[29] = "shape029"; shapenames[30] = "shape030"; shapenames[31] = "shape031"; shapenames[32] = "shape032"; shapenames[33] = "shape033"; shapenames[34] = "shape034"; shapenames[35] = "shape035"; shapenames[36] = "shape036"; shapenames[37] = "shape037"; shapenames[38] = "shape038"; shapenames[39] = "shape039"; shapenames[40] = "shape040"; shapenames[41] = "shape041"; shapenames[42] = "shape042"; shapenames[43] = "shape043"; shapenames[44] = "shape044"; shapenames[45] = "shape045"; shapenames[46] = "shape046"; shapenames[47] = "shape047"; shapenames[48] = "shape048"; shapenames[49] = "shape049"; shapenames[50] = "shape050"; shapenames[51] = "shape051"; shapenames[52] = "shape052"; shapenames[53] = "shape053"; shapenames[54] = "shape054"; shapenames[55] = "shape055"; shapenames[56] = "shape056"; shapenames[57] = "shape057"; shapenames[58] = "shape058"; shapenames[59] = "shape059"; shapenames[60] = "shape060"; shapenames[61] = "shape061"; shapenames[62] = "shape062"; shapenames[63] = "shape063"; shapenames[64] = "shape064"; shapenames[65] = "shape065"; shapenames[66] = "shape066"; shapenames[67] = "shape067"; shapenames[68] = "shape068"; shapenames[69] = "shape069"; shapenames[70] = "shape070"; shapenames[71] = "shape071"; shapenames[72] = "shape072"; shapenames[73] = "shape073"; shapenames[74] = "shape074"; shapenames[75] = "shape075"; shapenames[76] = "shape076"; shapenames[77] = "shape077"; shapenames[78] = "shape078"; shapenames[79] = "shape079"; shapenames[80] = "shape080"; shapenames[81] = "shape081"; shapenames[82] = "shape082"; shapenames[83] = "shape083"; shapenames[84] = "shape084"; shapenames[85] = "shape085"; shapenames[86] = "shape086"; shapenames[87] = "shape087"; shapenames[88] = "shape088"; shapenames[89] = "shape089"; shapenames[90] = "shape090"; shapenames[91] = "shape091"; shapenames[92] = "shape092"; shapenames[93] = "shape093"; shapenames[94] = "shape094"; shapenames[95] = "shape095"; 
+for (f = 0; shapenames[f]; f++) shapes[f] = scaled(shapenames[f]);
+shape.sprite = Sprite();
+fun place() {
+  centre(mark.sprite, mark.image, 0, 0, 2);
+  centre(shape.sprite, shapes[0], 0, 0, 1);
+}
+fun frame(i) {
+  shape.sprite.SetImage(shapes[t_shape[i]].Rotate(t_turn[i]));
+}
+
+
+place();
+stack();
+global.tick = 0; global.age = 0;
+fun refresh() {
+  frame(global.tick);
+  global.tick = global.tick + 1;
+  if (global.tick >= 240) global.tick = 0;
+  global.age = global.age + 1;
+  # (Caps Lock can change while the field shows)
+  if (global.dialog.on && Plymouth.GetCapslockState() != global.caps) { global.caps = Plymouth.GetCapslockState(); stack(); }
+}
+Plymouth.SetRefreshFunction(refresh);
+# Another display: everything sized and placed again
+fun hotplug() { measure(); mark.image = scaled("mark"); mark.sprite = Sprite(mark.image); shapenames[0] = "shape000"; shapenames[1] = "shape001"; shapenames[2] = "shape002"; shapenames[3] = "shape003"; shapenames[4] = "shape004"; shapenames[5] = "shape005"; shapenames[6] = "shape006"; shapenames[7] = "shape007"; shapenames[8] = "shape008"; shapenames[9] = "shape009"; shapenames[10] = "shape010"; shapenames[11] = "shape011"; shapenames[12] = "shape012"; shapenames[13] = "shape013"; shapenames[14] = "shape014"; shapenames[15] = "shape015"; shapenames[16] = "shape016"; shapenames[17] = "shape017"; shapenames[18] = "shape018"; shapenames[19] = "shape019"; shapenames[20] = "shape020"; shapenames[21] = "shape021"; shapenames[22] = "shape022"; shapenames[23] = "shape023"; shapenames[24] = "shape024"; shapenames[25] = "shape025"; shapenames[26] = "shape026"; shapenames[27] = "shape027"; shapenames[28] = "shape028"; shapenames[29] = "shape029"; shapenames[30] = "shape030"; shapenames[31] = "shape031"; shapenames[32] = "shape032"; shapenames[33] = "shape033"; shapenames[34] = "shape034"; shapenames[35] = "shape035"; shapenames[36] = "shape036"; shapenames[37] = "shape037"; shapenames[38] = "shape038"; shapenames[39] = "shape039"; shapenames[40] = "shape040"; shapenames[41] = "shape041"; shapenames[42] = "shape042"; shapenames[43] = "shape043"; shapenames[44] = "shape044"; shapenames[45] = "shape045"; shapenames[46] = "shape046"; shapenames[47] = "shape047"; shapenames[48] = "shape048"; shapenames[49] = "shape049"; shapenames[50] = "shape050"; shapenames[51] = "shape051"; shapenames[52] = "shape052"; shapenames[53] = "shape053"; shapenames[54] = "shape054"; shapenames[55] = "shape055"; shapenames[56] = "shape056"; shapenames[57] = "shape057"; shapenames[58] = "shape058"; shapenames[59] = "shape059"; shapenames[60] = "shape060"; shapenames[61] = "shape061"; shapenames[62] = "shape062"; shapenames[63] = "shape063"; shapenames[64] = "shape064"; shapenames[65] = "shape065"; shapenames[66] = "shape066"; shapenames[67] = "shape067"; shapenames[68] = "shape068"; shapenames[69] = "shape069"; shapenames[70] = "shape070"; shapenames[71] = "shape071"; shapenames[72] = "shape072"; shapenames[73] = "shape073"; shapenames[74] = "shape074"; shapenames[75] = "shape075"; shapenames[76] = "shape076"; shapenames[77] = "shape077"; shapenames[78] = "shape078"; shapenames[79] = "shape079"; shapenames[80] = "shape080"; shapenames[81] = "shape081"; shapenames[82] = "shape082"; shapenames[83] = "shape083"; shapenames[84] = "shape084"; shapenames[85] = "shape085"; shapenames[86] = "shape086"; shapenames[87] = "shape087"; shapenames[88] = "shape088"; shapenames[89] = "shape089"; shapenames[90] = "shape090"; shapenames[91] = "shape091"; shapenames[92] = "shape092"; shapenames[93] = "shape093"; shapenames[94] = "shape094"; shapenames[95] = "shape095";  for (f = 0; shapenames[f]; f++) shapes[f] = scaled(shapenames[f]); shape.sprite = Sprite(); place(); stack(); }
+Plymouth.SetDisplayHotplugFunction(hotplug);

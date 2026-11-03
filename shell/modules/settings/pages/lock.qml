@@ -103,6 +103,46 @@ Column {
         }
     }
 
+    // While the computer starts (Plymouth's theme: BootSplash), and as the
+    // desktop first shows after logging in (LoginIntro)
+    Group {
+        width: parent.width
+        title: "Starting up"
+        Component.onCompleted: BootSplash.refresh()
+        footer: BootSplash.error !== "" ? BootSplash.error
+            : BootSplash.busy ? "Rebuilding the boot image. This takes about a minute; you can keep working."
+            : BootSplash.blocked !== "" ? BootSplash.blocked
+            : BootSplash.done ? "Done. It shows the next time your computer starts."
+            : BootSplash.checked && !BootSplash.splash ? "Your boot settings hide the animation: add splash to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then run sudo grub-mkconfig -o /boot/grub/grub.cfg."
+            : (BootSplash.designs.find(d => d.id === BootSplash.chosen)?.description ?? (BootSplash.chosen === "none" ? "No picture: the boot messages, as text." : "Your system's own" + (BootSplash.original !== "" ? " (" + BootSplash.original + ")." : "."))) + " Changing it asks for your password."
+        Row {
+            label: "Boot animation"
+            detail: "What shows while your computer starts and shuts down"
+        }
+        BootAnimations {}
+        Row {
+            label: "Login intro"
+            detail: Config.options.appearance.reduceMotion ? "Off while Reduce motion is on (Accessibility)"
+                : Theme.material ? "As your desktop first appears after you log in, it opens out of the iRice shape"
+                : "As your desktop first appears after you log in, the wallpaper comes into focus and the menu bar and dock settle in"
+            QQ.Row {
+                spacing: 12
+                SettingsButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Play Intro"
+                    enabled: !Config.options.appearance.reduceMotion
+                    onClicked: LockFx.playIntro()
+                }
+                Switch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    accessibleName: "Login intro"
+                    checked: Config.options.lock.loginIntro
+                    onToggled: Config.options.lock.loginIntro = !checked
+                }
+            }
+        }
+    }
+
     Group {
         width: parent.width
         Row {

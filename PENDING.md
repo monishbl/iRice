@@ -4,6 +4,8 @@ Updated 3 November 2026, late. The refactor is merged to main and applied to the
 
 ## Needs you
 
+- **Boot animations**: after this is merged, install the root helper's new files once, with your password: `sudo /usr/bin/python3 -I shell/assets/scripts/irice-root.py setup "$PWD/shell"` from the iRice folder (or the next Software Update does it). Then pick one in Settings → Lock & Login Screen → Starting up; that asks for the password again and rebuilds the boot image. "System" puts CachyOS's animation back.
+
 - **Phone screen lock**: turn it back on (it was set to None for the Quick Share tests).
 - **Phone display size**: you lowered it for the tests; set it back if you like (Settings → Display → Display size).
 - **Log out and back in once**: the new glass plugin (pointer and focus fixes, Material window buttons) is built and installed, but Hyprland only loads it at login. The health check's "older build is loaded" warning clears then.

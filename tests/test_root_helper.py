@@ -324,7 +324,7 @@ class Setup(unittest.TestCase):
     def test_installs_what_changed(self):
         with tempfile.TemporaryDirectory() as t:
             written = R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
-            self.assertEqual(len(written), len(R.FILES))
+            self.assertEqual(len(written), len(R.FILES) + len(R.BOOTSPLASH_IDS))  # (and a folder per boot animation)
             helper = Path(t) / "usr/lib/irice/irice-root"
             self.assertEqual(helper.read_bytes(), SOURCE.read_bytes())
             self.assertEqual(stat.S_IMODE(helper.stat().st_mode), 0o755)
@@ -338,7 +338,7 @@ class Setup(unittest.TestCase):
 
     def test_policy_actions_match_the_subcommands(self):
         policy = (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text()
-        for sub in ("wallpaper", "login-look", "fix", "wifi-helper", "update"):
+        for sub in ("wallpaper", "login-look", "fix", "wifi-helper", "update", "bootsplash"):
             self.assertIn(f'<action id="org.irice.root.{sub}">', policy)
             self.assertIn(f'org.freedesktop.policykit.exec.argv1">{sub}<', policy)
         # every action names its first argument (pkexec takes the first action
@@ -848,3 +848,191 @@ console.log(JSON.stringify([
 """ % self.r.quickshare_trust_rule("alice")
         out = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
         self.assertEqual(json.loads(out.stdout), ["yes", "nh", "nh", "nh", "nh", "nh", "nh"], out.stderr)
+
+
+class BootSplash(unittest.TestCase):
+    """irice-root.py bootsplash: the boot animation, in a folder standing in
+    for the system, with stand-ins for plymouth-set-default-theme and
+    mkinitcpio. Nothing real is asked or changed."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.dir.name)
+        self.r = load(SCRIPTS / "irice-root.py", "irice_root_splash")
+        self.r.write_root = lambda dest, data, mode: (os.makedirs(os.path.dirname(dest), exist_ok=True), Path(dest).write_bytes(data))
+        put = self.put
+        put("usr/share/plymouth/themes/cachyos-bootanimation/cachyos-bootanimation.plymouth", "[Plymouth Theme]\n")
+        put("usr/share/plymouth/themes/spinner/spinner.plymouth", "[Plymouth Theme]\n")
+        put("usr/share/plymouth/themes/text/text.plymouth", "[Plymouth Theme]\n")
+        put("usr/share/plymouth/plymouthd.defaults", "[Daemon]\nTheme=bgrt\nShowDelay=0\n")
+        put("etc/plymouth/plymouthd.conf", "[Daemon]\nTheme=cachyos-bootanimation\n")
+        put("etc/mkinitcpio.conf", "MODULES=()\nHOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems)\n")
+        put("etc/mkinitcpio.d/linux.preset", 'PRESETS=(\'default\')\ndefault_image="/boot/initramfs-linux.img"\n#fallback_image="/boot/initramfs-linux-fallback.img"\n')
+        put("boot/initramfs-linux.img", "built with cachyos-bootanimation")
+        put("boot/initramfs-linux-lts.img", "built with cachyos-bootanimation (lts)")
+        # setup's copy of the themes (root's, in /usr/lib/irice/plymouth)
+        self.r.install_themes(str(ROOT / "shell"), os.getuid(), str(self.root))
+        self.calls = []
+        self.fail = False
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def put(self, rel, text):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def theme(self):
+        return self.r.current_theme(str(self.root))
+
+    def run_(self, cmd, **kw):
+        self.calls.append(cmd)
+        if cmd[0] == "plymouth-set-default-theme":
+            self.put("etc/plymouth/plymouthd.conf", f"[Daemon]\nTheme={cmd[1]}\n")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd == ["mkinitcpio", "-P"]:
+            for img in ("boot/initramfs-linux.img", "boot/initramfs-linux-lts.img"):
+                self.put(img, "half a boot image" if self.fail else "built with " + self.theme())
+            if self.fail:
+                return subprocess.CompletedProcess(cmd, 1, "==> Building image\n==> ERROR: module not found: 'nvidia'\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "==> Image generation successful\n", "")
+        raise AssertionError(cmd)
+
+    def splash(self, choice, tools=("plymouth-set-default-theme", "mkinitcpio")):
+        return self.r.bootsplash(choice, prefix=str(self.root), run=self.run_,
+                                 which=lambda n: "/usr/bin/" + n if n in tools else None)
+
+    def record(self):
+        p = self.root / "etc/irice/bootsplash.json"
+        return json.loads(p.read_text()) if p.exists() else None
+
+    def test_a_design_is_installed_set_and_built(self):
+        self.splash("breathe")
+        theme = self.root / "usr/share/plymouth/themes/irice-breathe"
+        src = ROOT / "shell/assets/plymouth/irice-breathe"
+        self.assertEqual(sorted(p.name for p in theme.iterdir()), sorted(p.name for p in src.iterdir()))
+        self.assertEqual((theme / "irice-breathe.script").read_bytes(), (src / "irice-breathe.script").read_bytes())
+        self.assertEqual(self.theme(), "irice-breathe")
+        self.assertEqual(self.calls, [["plymouth-set-default-theme", "irice-breathe"], ["mkinitcpio", "-P"]])
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with irice-breathe")
+        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "irice-breathe"})
+        self.assertFalse((self.root / "var/lib/irice/initramfs-backup").exists())
+
+    def test_system_puts_back_the_original(self):
+        self.splash("breathe")
+        self.splash("orbit")  # (another design: the original is still the system's)
+        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-breathe").exists())
+        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "irice-orbit"})
+        self.splash("system")
+        self.assertEqual(self.theme(), "cachyos-bootanimation")
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with cachyos-bootanimation")
+        self.assertIsNone(self.record())
+        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-orbit").exists())
+
+    def test_none_is_plymouths_text_theme(self):
+        self.splash("none")
+        self.assertEqual(self.theme(), "text")
+        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "text"})
+        self.splash("system")
+        self.assertEqual(self.theme(), "cachyos-bootanimation")
+
+    def test_already_set_rebuilds_nothing(self):
+        self.splash("frost")
+        self.calls.clear()
+        self.assertEqual(self.splash("frost"), ["already irice-frost"])
+        self.assertEqual(self.splash("system") and self.splash("system"), ["already cachyos-bootanimation"])
+
+    def test_a_theme_set_elsewhere_becomes_the_systems(self):
+        self.splash("bloom")
+        self.put("etc/plymouth/plymouthd.conf", "[Daemon]\nTheme=spinner\n")  # (plymouth-set-default-theme by hand)
+        self.splash("orbit")
+        self.assertEqual(self.record()["original"], "spinner")
+        self.splash("system")
+        self.assertEqual(self.theme(), "spinner")
+
+    def test_a_failed_rebuild_changes_nothing(self):
+        conf = (self.root / "etc/plymouth/plymouthd.conf").read_bytes()
+        self.fail = True
+        with self.assertRaises(self.r.Refused) as e:
+            self.splash("orbit")
+        self.assertIn("nothing changed", str(e.exception))
+        self.assertIn("ERROR: module not found: 'nvidia'", str(e.exception))
+        self.assertEqual((self.root / "etc/plymouth/plymouthd.conf").read_bytes(), conf)
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with cachyos-bootanimation")
+        self.assertEqual((self.root / "boot/initramfs-linux-lts.img").read_text(), "built with cachyos-bootanimation (lts)")
+        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-orbit").exists())
+        self.assertIsNone(self.record())
+        self.assertFalse((self.root / "var/lib/irice/initramfs-backup").exists())
+
+    def test_a_failed_rebuild_keeps_the_design_before(self):
+        self.splash("breathe")
+        self.fail = True
+        with self.assertRaises(self.r.Refused):
+            self.splash("bloom")
+        self.assertEqual(self.theme(), "irice-breathe")
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with irice-breathe")
+        self.assertTrue((self.root / "usr/share/plymouth/themes/irice-breathe/irice-breathe.plymouth").exists())
+        self.assertEqual(self.record()["applied"], "irice-breathe")
+
+    def test_only_its_names(self):
+        for bad in ("", "irice-breathe", "../breathe", "BREATHE", "breathe;reboot", "spinner", "text"):
+            with self.assertRaises(self.r.Refused, msg=bad):
+                self.splash(bad)
+        self.assertEqual(self.calls, [])
+
+    def test_without_plymouth_or_mkinitcpio_it_says_why(self):
+        for tools, said in ((("mkinitcpio",), "Install the plymouth package"),
+                            (("plymouth-set-default-theme", "dracut"), "dracut"),
+                            (("plymouth-set-default-theme", "booster"), "booster")):
+            with self.assertRaises(self.r.Refused) as e:
+                self.splash("orbit", tools)
+            self.assertIn(said, str(e.exception))
+        self.put("etc/mkinitcpio.conf", "HOOKS=(base udev autodetect block filesystems)\n")
+        with self.assertRaises(self.r.Refused) as e:
+            self.splash("orbit")
+        self.assertIn("Add plymouth to HOOKS", str(e.exception))
+        self.put("etc/mkinitcpio.conf.d/plymouth.conf", "HOOKS+=(plymouth)\n")  # (a drop-in adding it counts)
+        self.splash("orbit")
+        self.assertEqual(self.calls[-1], ["mkinitcpio", "-P"])
+
+    def test_themes_come_only_from_setups_copy(self):
+        shutil.rmtree(self.root / "usr/lib/irice/plymouth/irice-frost")
+        # (a theme folder of that name elsewhere is never used)
+        self.put("usr/share/plymouth/themes/irice-frost/irice-frost.plymouth", "[Plymouth Theme]\n")
+        with self.assertRaises(self.r.Refused) as e:
+            self.splash("frost")
+        self.assertIn("Update iRice", str(e.exception))
+        lib = self.root / "usr/lib/irice/plymouth/irice-orbit"
+        (lib / "run.sh").write_text("#!/bin/sh\n")
+        with self.assertRaises(self.r.Refused):
+            self.splash("orbit")
+        self.assertEqual(self.calls, [])
+
+    def test_setup_copies_only_theme_files(self):
+        with tempfile.TemporaryDirectory() as t:
+            src = Path(t) / "shell"
+            shutil.copytree(ROOT / "shell/assets/plymouth/irice-orbit", src / "assets/plymouth/irice-orbit")
+            out = Path(t) / "root"
+            self.assertEqual(self.r.install_themes(str(src), os.getuid(), str(out)), [str(out / "usr/lib/irice/plymouth/irice-orbit")])
+            self.assertEqual(self.r.install_themes(str(src), os.getuid(), str(out)), [])  # nothing changed
+            (src / "assets/plymouth/irice-orbit/notes.txt").write_text("x")
+            with self.assertRaises(self.r.Refused):
+                self.r.install_themes(str(src), os.getuid(), str(out))
+
+    def test_every_design_is_shipped(self):
+        made = sorted(p.name[len("irice-"):] for p in (ROOT / "shell/assets/plymouth").glob("irice-*"))
+        self.assertEqual(made, sorted(self.r.BOOTSPLASH_IDS))
+        for id in made:
+            folder = ROOT / "shell/assets/plymouth" / ("irice-" + id)
+            text = (folder / f"irice-{id}.plymouth").read_text()
+            self.assertIn(f"ScriptFile=/usr/share/plymouth/themes/irice-{id}/irice-{id}.script", text)
+            self.assertIn("ModuleName=script", text)
+            self.assertTrue(all(self.r.THEME_FILE.match(p.name) for p in folder.iterdir()))
+            # every image the script names is there, in both sizes
+            script = (folder / f"irice-{id}.script").read_text()
+            for name in set(__import__("re").findall(r'scaled\("([a-z0-9]+)"\)', script)) | set(__import__("re").findall(r'names\[\d+\] = "([a-z0-9]+)"', script)):
+                for size in ("@1x", "@2x"):
+                    self.assertTrue((folder / f"{name}{size}.png").exists(), f"{id}: {name}{size}.png")
+            self.assertEqual(script.count("{"), script.count("}"), id)
+            self.assertEqual(script.count("("), script.count(")"), id)

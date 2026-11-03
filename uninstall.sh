@@ -65,8 +65,14 @@ for f in /etc/pam.d/greetd /etc/pam.d/login; do
         run sudo rm -f "$f.pre-irice"
     fi
 done
+# The boot animation: the system's own again when it's one of iRice's (the
+# helper rebuilds the boot image, and puts it back as it was if that fails)
+if [[ -x /usr/lib/irice/irice-root ]] && grep -qE '^[[:space:]]*Theme[[:space:]]*=[[:space:]]*irice-' /etc/plymouth/plymouthd.conf 2>/dev/null; then
+    run sudo /usr/lib/irice/irice-root bootsplash system ||
+        echo "  The boot animation stays iRice's (it still works). To change it: sudo plymouth-set-default-theme -R <theme>"
+fi
 # iRice's root helper and its polkit action and rule
-if [[ -e /usr/lib/irice || -e /etc/polkit-1/rules.d/49-irice.rules || -e /usr/share/polkit-1/actions/org.irice.root.policy ]]; then
+if [[ -e /usr/lib/irice|| -e /etc/polkit-1/rules.d/49-irice.rules || -e /usr/share/polkit-1/actions/org.irice.root.policy ]]; then
     run sudo rm -rf /usr/lib/irice
     run sudo rm -f /etc/polkit-1/rules.d/49-irice.rules /usr/share/polkit-1/actions/org.irice.root.policy
 fi

@@ -125,6 +125,7 @@ Variants {
             height: 30
             y: bar.revealed ? 0 : -height
             opacity: bar.revealed ? 1 : 0
+            transform: Translate { y: -12 * LockFx.settle } // (the login intro: settling in)
             Behavior on y { NumberAnimation { duration: Theme.motion.popover; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.motion.emphasized } }
             Behavior on opacity { NumberAnimation { duration: Theme.motion.popover } }
 

@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=irice-orbit
+Description=iRice: The drop inside a thin ring, with a light chasing round it that grows and shrinks.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/irice-orbit
+ScriptFile=/usr/share/plymouth/themes/irice-orbit/irice-orbit.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11

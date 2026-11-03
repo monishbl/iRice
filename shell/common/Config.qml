@@ -194,6 +194,9 @@ Singleton {
                 // (Glass or Material, the look you last used) | text (ly's) |
                 // plain (black, your picture and the field)
                 property string loginStyle: "look"
+                // A short intro as the desktop first appears after logging in
+                // (LoginIntro; never on a shell reload, never with Reduce motion)
+                property bool loginIntro: false
             }
 
             property JsonObject notificationCenter: JsonObject {

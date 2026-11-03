@@ -390,6 +390,23 @@ class RootHelper(unittest.TestCase):
                     self.assertEqual(R.main(bad), R.REFUSED_EXIT, bad)
         self.assertEqual(asked, [])
 
+    def test_the_boot_animation_asks_and_takes_only_its_names(self):
+        # (it rebuilds the boot image: never without the password, and never
+        # a theme name from outside its list)
+        self.assertNotIn("bootsplash", (ROOT / "shell/assets/polkit/49-irice.rules").read_text())
+        self.assertIn('<action id="org.irice.root.bootsplash">', (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text())
+        for bad in ("", "irice-breathe", "../breathe", "spinner", "text", "breathe orbit"):
+            with self.assertRaises(R.Refused, msg=bad):
+                R.bootsplash(bad, prefix=str(self.d), run=None, which=lambda n: None)
+
+    def test_the_firewall_fix_opens_only_sharings_ports(self):
+        # (ufw, firewalld, nftables, iptables alike: LocalSend 53317, Quick
+        # Share 53318, its faster link 53319, link sharing and Cast 53320,
+        # mDNS 5353, DHCP 67 for a Quick Share hotspot. Nothing wider.)
+        numbers = {int(n) for n in re.findall(r"(?<![\w./-])(\d{2,5})(?![\w./])", R.FIREWALL_SCRIPT)}
+        self.assertLessEqual({n for n in numbers if n > 10}, {53317, 53320, 5353, 67})
+        self.assertNotRegex(R.FIREWALL_SCRIPT, r"ufw allow from|--zone=trusted|-j ACCEPT\s*$|policy accept|ufw disable")
+
     def test_wallpaper_takes_only_a_full_path_to_an_image_file(self):
         for bad in ("relative.jpg", "/a\nb.jpg", "/a\0b", "", None):
             with self.assertRaises(R.Refused):
@@ -635,6 +652,7 @@ SH_C_DYNAMIC = re.compile(
 # its data passed as "$1"…, quoted, or numbers only
 SH_C_ALLOWED = {
     "shell/services/BootSnapshots.qml": 1,  # constants joined
+    "shell/services/BootSplash.qml": 1,  # constants joined (reads Plymouth's config; changes nothing)
     "shell/services/Needs.qml": 1,  # constants joined; the folder as $1
     "shell/services/Clipboard.qml": 1,  # a constant flag; the id and db as $1, $2
     "shell/services/Files.qml": 1,  # the file manager quoted (q); the path as $1

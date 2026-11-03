@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=irice-bloom
+Description=iRice: For Material: the drop on a shape that morphs through Material's loading shapes, turning as it goes.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/irice-bloom
+ScriptFile=/usr/share/plymouth/themes/irice-bloom/irice-bloom.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11
