@@ -6,7 +6,7 @@ Updated 3 November 2026, late. The refactor is merged to main and applied to the
 
 - **Phone screen lock**: turn it back on (it was set to None for the Quick Share tests).
 - **Phone display size**: you lowered it for the tests; set it back if you like (Settings → Display → Display size).
-- **Window controls plugin**: reload it or log in again to get the Material window buttons (I wasn't allowed to reload the running compositor's plugin).
+- **Log out and back in once**: the new glass plugin (pointer and focus fixes, Material window buttons) is built and installed, but Hyprland only loads it at login. The health check's "older build is loaded" warning clears then.
 - **Login manager**: switching from ly to iRice's own login screen (greetd) waits for your yes.
 - **ananicy rule**: installing iRice's process-priority rule waits for your yes.
 - **iPhone**: the QR code / browser link works with an Android phone and a phone-sized browser; try it once with a real iPhone.
