@@ -144,6 +144,9 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
                                      helper=self.helper, net_probe=probe)
         self.svc.preferred_port = self.svc.upgrade_port = 0  # (any free ports)
         self.svc.can_host = lambda n: True
+        # (no firewall in the way, whatever this computer's own is; the
+        # tests about one set their own)
+        self.svc.firewall = lambda: {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
         self.svc.nm_can_host = never  # (no real NetworkManager in tests)
         self.svc.nm_link = FakeNm
         FakeNm.made = []
@@ -545,6 +548,7 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         svc = QuickShareService(events, None, name="Test laptop", ble=FakeBluetooth(transport), helper=helper,
                                 net_probe=probe)
         svc.can_host = lambda n: not nm
+        svc.firewall = lambda: {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
         svc.nm_usable = always if nm else never
         svc.nm_link = FakeNm
         FakeNm.made = []
@@ -635,6 +639,7 @@ class SlowSharedNetwork(unittest.IsolatedAsyncioTestCase):
                                      helper=self.helper, net_probe=probe)
         self.svc.preferred_port = self.svc.upgrade_port = 0
         self.svc.can_host = lambda n: True
+        self.svc.firewall = lambda: {"kind": None, "allowed": None, "blocks": False, "hotspot": None}
         self.svc.trusted = str(trusted)
         await self.svc.configure(visible=True)
         r, w = await asyncio.open_connection("127.0.0.1", self.svc.port)
