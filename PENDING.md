@@ -1,65 +1,46 @@
 # What's pending
 
-Updated 3 November 2026, late. The refactor is merged to main and applied to the laptop.
+Updated 4 November 2026. Main is applied to the laptop.
 
 ## Needs you
 
-- **Boot animations**: after this is merged, install the root helper's new files once, with your password: `sudo /usr/bin/python3 -I shell/assets/scripts/irice-root.py setup "$PWD/shell"` from the iRice folder (or the next Software Update does it). Then pick one in Settings → Lock & Login Screen → Starting up; that asks for the password again and rebuilds the boot image. "System" puts CachyOS's animation back.
+- **Quiet start and the new login screen**: run `XDG_CONFIG_HOME=~/iRice/.sandbox/home/.config ~/iRice/install.sh --only=login` once (password), then restart. It holds the boot splash until the login screen, keeps boot messages off the screen, and brings the click-to-edit username and the ly-style login row. Not applied yet.
+- **Phone**: turn its screen lock back on, and set its display size back if you like (both changed for the Quick Share tests).
+- **iPhone**: try the QR code / browser link once with a real iPhone.
+- **Licence follow-ups (small)**: check emojibase's exact copyright line against its LICENSE file; record which Unsplash photo each website background is.
 
-- **Phone screen lock**: turn it back on (it was set to None for the Quick Share tests).
-- **Phone display size**: you lowered it for the tests; set it back if you like (Settings → Display → Display size).
-- **Log out and back in once**: the new glass plugin (pointer and focus fixes, Material window buttons) is built and installed, but Hyprland only loads it at login. The health check's "older build is loaded" warning clears then.
-- **Login manager**: switching from ly to iRice's own login screen (greetd) waits for your yes.
-- **ananicy rule**: installing iRice's process-priority rule waits for your yes.
-- **iPhone**: the QR code / browser link works with an Android phone and a phone-sized browser; try it once with a real iPhone.
-- **Sharing's firewall ports**: run Software Update once, or `pkexec /usr/lib/irice/irice-root setup ~/iRice/shell`, to install the new root helper and polkit rule. Until then, Settings → Privacy & Security → Firewall says "Run Software Update once". The first run then removes the old permanent ufw rules.
-- **Licence follow-ups (small):** check emojibase's exact copyright line against its LICENSE file (the notice says "Copyright (c) Miles Johnson"); record which Unsplash photo each website background is.
-- **Website media shows the old names:** the hero film (re-render `site/film/hero/film.html`: the Bedside Mode caption) and screenshots that show "App Store", "Spotlight Search" or "Control Center" in the UI. The page text and alt texts already use the new names.
+## In progress
 
-## Quick Share (in progress)
+- **AI sidebar chat history**: every chat kept as its own session; a history view to search, open, rename, pin and delete them (delete with Undo); Settings → AI: keep history, delete old chats, delete all.
 
-Done on the branch, tested with your phone:
+## Next, in your order
 
-- Fastest link chosen by measurement before data moves (Wi-Fi Direct ahead of a slow 2.4 GHz network): 500 MB phone→laptop in 55 s, laptop→phone in about 10 s.
-- Fallback to Bluetooth when the router keeps devices apart; Wi-Fi preferred over a USB tether.
-- Only request / done / failed alerts; link changes show in the transfer's live activity.
-- Fixes: unknown Bluetooth messages, pkexec and /etc/shells, the faster-link request phones send.
+1. **Fewer background processes**: the ~33 small watcher processes become one supervisor. Then **the Rust rewrite**, benchmarked against docs/benchmarks-baseline.md, when you say go.
+2. **Quick Share Bluetooth discovery**: phones take minutes to find the laptop over Bluetooth alone (instant over Wi-Fi); the laptop sends the slower kind of advertisement.
 
-Still to do:
+## Not yet tried on real hardware
 
-- [x] 5 GB laptop→phone: 79 s (~75 MB/s, phone's 5.8 GHz Wi-Fi Direct). 5 GB phone→laptop: 160 s (~32 MB/s, laptop's 5 GHz group; ~6 MB/s when it was stuck on 2.4 GHz). 2 GB as 778 files laptop→phone: 66 s. All checksums match.
-- [x] Applied to the laptop (main 60cebd4), Wi-Fi helper installed, Hyprland config reloaded.
-- [x] Laptop on no network: 5 GB phone→laptop 158 s (Bluetooth then 5 GHz Wi-Fi Direct).
-- Phone Wi-Fi off: Android's Quick Share refuses to send at all (its rule, not ours). Phone hotspot: skipped, as you chose. 2 GB of small files phone→laptop: not done (the phone's picker needs a tap per file).
-- [ ] Laptop on 2.4 GHz while receiving: the new 5 GHz group next to it (two channels at once) is unit-tested; check it on the real card the next time the Wi-Fi is on 2.4 GHz.
-- [ ] Phones are slow to find the laptop over Bluetooth alone (minutes; they find it at once over Wi-Fi). The laptop sends the slower kind of Bluetooth advertisement. Look into the fast kind.
-- [x] Merged to main and applied to the laptop; test state put back (Quick Share visible to Everyone, Bluetooth off, test files removed).
+- The iRice boot splashes (Breathe, Orbit, Frost, Bloom) at a real boot; you're on the system's own for now.
+- The quiet start's splash → login handover (after the command above).
+- The 3-finger long press for circle to search, and "Search the web" (Google Lens) through to the browser.
+- Quick Share: the laptop on 2.4 GHz while receiving (the 5 GHz group beside it is unit-tested); 2 GB of small files phone→laptop.
 
-## Bugs reported
+## Offered, waiting for a yes
 
-- [ ] Quick Settings (Material): right-clicking the volume slider leaves the panel faded and slid left, the sound page never showing. First in the full bug sweep.
-
-## Done: full refactor, no duplicated code
-
-- Material's copies of Glass files: 151 → 2 (both kept on purpose), repeated lines 31,938 → 55. 664 tests pass; both looks pass the smoke check in two sandboxes side by side; the screens the smoke check doesn't open (lock, share sheet, banners, OSD, island, password prompt, Quick Preview, screen tools, shelf, captions, welcome, widgets, Software, screenshot editor) checked by hand in both looks.
+- **Hide GRUB's menu**: it shows for 5 s every boot; hidden, it would show only while you hold Esc or Shift (it's also how you reach snapshots).
 
 ## Watch
 
-- **Glass shell froze in the sandbox** (stopped drawing and answering for minutes) in 2 smoke runs this evening, before the refactor merged too; it hasn't come back in 4 runs since, including two side by side under load, nor in 135 panel opens with diagnostics. The smoke check now fails on it and reports whether the compositor or the shell was stuck. If you see the desktop freeze, note the time.
+- **Glass shell froze in the sandbox** in 2 smoke runs on 3 Nov, not since (many runs). The smoke check fails on it and says whether the compositor or the shell was stuck. If your desktop freezes, note the time.
 
-## Next, after the refactor
+## Later
 
-- **Full Material walkthrough against Glass** (the bug sweep, both looks and the core): every panel, page, menu, right-click, slider and gesture side by side; each difference fixed and tested. Known: the volume right-click (check after the reboot), a blank icon in the Material dock.
-- **Efficiency**: the 33 small watcher processes (one supervisor instead).
-- **Later, when you say go**: the Rust rewrite, benchmarked against docs/benchmarks-baseline.md.
-
-## Housekeeping
-
-- Website: re-render the hero film and the screenshots that show old names; `site/public/get` isn't deployed (pushing site/ deploys: ask first).
+- **Website media shows old names**: re-render the hero film (`site/film/hero/film.html`, the Bedside Mode caption) and the screenshots showing "App Store", "Spotlight Search" or "Control Center". `site/public/get` isn't deployed (pushing site/ deploys: ask first).
 - `dev.sh` still lists papirus.
-- Needs you as well: run `pkexec /usr/lib/irice/irice-root setup ~/iRice/shell` once (the Wi-Fi helper's firewall change).
 
-## Done today (for reference)
+## Done recently (4 Nov)
 
-- Applied to the laptop: original app logos (Clear in Glass, Themed in Material), window gaps setting (Compact), one Off / Bigger / Ring control for Shake to find the pointer, Adwaita for GTK apps, Bibata pointer.
-- On the branch: menus stay on screen and scroll; Settings dropdowns fit the window; pinch and spread the right way round; iPhone sharing by QR code.
+- Login screen switched to iRice's (greetd); system helper installed (firewall ports only while visible, "Keep iRice smooth when busy", boot animation picker); Glass plugin reloaded at login.
+- Material vs Glass sweep: Material controls everywhere, settings lined up, Glass given Material's fixes; then Glass got Quick Settings' footer, the lock picture and name, the App Drawer menu and A–Z (a letter lights its whole set), and Search's Clear and Ask AI.
+- Material's lock keeps your Classic layout, with the switch now in Material's Settings.
+- Quick Share's upgrade tests no longer depend on this laptop's firewall.
