@@ -15,8 +15,9 @@ import qs.services
 // Window menu. Centre: Spaces. Right: extra buttons, tray, Now Playing,
 // status items with their menus, sidebar, Spotlight, Control Center, clock.
 // Scroll the left half for brightness, the right half for volume.
+// (None while tessera-ui draws the bar in Rust: Settings' rust.surfaces)
 Variants {
-    model: Quickshell.screens.filter(s => Config.options.menubar.screens.length === 0 || Config.options.menubar.screens.includes(s.name))
+    model: RustUi.drawing("menubar") ? [] : Quickshell.screens.filter(s => Config.options.menubar.screens.length === 0 || Config.options.menubar.screens.includes(s.name))
 
     GlassWindow {
         id: bar

@@ -1,0 +1,116 @@
+//! Which of the shell's surfaces this process draws, and what it tells the
+//! shell about them. The QML shell (shell/services/RustUi.qml) starts it with
+//! `--surfaces menubar,…` (Settings' `rust.surfaces`) and hides its own copy
+//! of a surface only once this process says it draws it, a JSON line on
+//! stdout per event:
+//!   {"src":"ui","kind":"ready","surfaces":["menubar"]}   drawing these
+//!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
+//! If this process ends, the shell draws them again itself.
+
+/// The surfaces that exist in Rust so far
+pub const KNOWN: &[&str] = &["menubar"];
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Surfaces {
+    /// asked for and known, in KNOWN's order
+    pub on: Vec<&'static str>,
+    /// asked for, but not in Rust yet
+    pub unknown: Vec<String>,
+}
+
+impl Surfaces {
+    /// From the arguments: `--surfaces a,b` (or `--surfaces=a,b`). Without the
+    /// option, every known surface (running it by hand draws them all)
+    pub fn from_args(args: &[String]) -> Self {
+        let mut list: Option<String> = None;
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            if let Some(v) = a.strip_prefix("--surfaces=") {
+                list = Some(v.to_string());
+            } else if a == "--surfaces" {
+                list = Some(it.next().cloned().unwrap_or_default());
+            }
+        }
+        let Some(list) = list else {
+            return Self { on: KNOWN.to_vec(), unknown: Vec::new() };
+        };
+        let asked: Vec<&str> = list.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        Self {
+            on: KNOWN.iter().copied().filter(|k| asked.contains(k)).collect(),
+            unknown: asked.iter().filter(|a| !KNOWN.contains(a)).map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn has(&self, s: &str) -> bool {
+        self.on.contains(&s)
+    }
+
+    /// The lines that say what's drawn (on stdout, for the shell)
+    pub fn ready_lines(&self) -> Vec<String> {
+        let mut out: Vec<String> = self.unknown.iter().map(|s| serde_json::json!({"src": "ui", "kind": "unknown", "surface": s}).to_string()).collect();
+        out.push(serde_json::json!({"src": "ui", "kind": "ready", "surfaces": self.on}).to_string());
+        out
+    }
+}
+
+/// Say it, once, to whoever started this process
+pub fn announce(s: &Surfaces) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    for l in s.ready_lines() {
+        let _ = writeln!(out, "{l}");
+    }
+    let _ = out.flush();
+}
+
+/// The screens a bar goes on: config.json's `menubar.screens` (empty: every
+/// screen), as the QML MenuBar's model
+pub fn on_screen(config: &serde_json::Value, output: &str) -> bool {
+    match config["menubar"]["screens"].as_array() {
+        Some(list) if !list.is_empty() => list.iter().any(|s| s.as_str() == Some(output)),
+        _ => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn args(a: &[&str]) -> Vec<String> {
+        std::iter::once("tessera-ui").chain(a.iter().copied()).map(String::from).collect()
+    }
+
+    #[test]
+    fn every_surface_without_the_option() {
+        assert_eq!(Surfaces::from_args(&args(&[])).on, KNOWN.to_vec());
+    }
+
+    #[test]
+    fn only_the_ones_asked_for() {
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,dock"]));
+        assert_eq!(s.on, vec!["menubar"]);
+        assert_eq!(s.unknown, vec!["dock"]);
+        assert!(s.has("menubar") && !s.has("dock"));
+        let s = Surfaces::from_args(&args(&["--surfaces=dock"]));
+        assert!(s.on.is_empty());
+        let s = Surfaces::from_args(&args(&["--surfaces", ""]));
+        assert!(s.on.is_empty() && s.unknown.is_empty());
+    }
+
+    #[test]
+    fn says_what_it_draws_as_json_lines() {
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,osd"]));
+        let lines: Vec<serde_json::Value> = s.ready_lines().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "osd"}));
+        assert_eq!(lines[1], json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
+    }
+
+    #[test]
+    fn bars_follow_the_screens_setting() {
+        assert!(on_screen(&json!({}), "DP-1"));
+        assert!(on_screen(&json!({"menubar": {"screens": []}}), "DP-1"));
+        assert!(on_screen(&json!({"menubar": {"screens": ["DP-1"]}}), "DP-1"));
+        assert!(!on_screen(&json!({"menubar": {"screens": ["DP-1"]}}), "HDMI-A-1"));
+    }
+}

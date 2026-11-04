@@ -24,7 +24,9 @@ inbox() { dev run bash -c "$PRELUDE$1"; }
 setup() {
     local look=$1 wall=${2:-$WALLS/wall-sunset-lake.jpg} scale=${3:-2} mode=${4:-}
     # (the arena up first: `up` seeds its home afresh, so the seed comes after)
-    dev status | grep -q running || dev up >/dev/null 2>&1
+    # (a fresh arena starts a shell of its own: wait for it, so the reload
+    # below replaces it instead of racing it and leaving two)
+    dev status | grep -q running || { dev up >/dev/null 2>&1; sleep 12; }
     python3 "$CAP/seed/seed.py" "$HOMEDIR" "$look" "$wall" >/dev/null
     # (the hidden window's output off first: the shell's icon colouring
     # needs it gone when it starts, or Material's dock icons draw blank)
