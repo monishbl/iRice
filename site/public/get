@@ -1,16 +1,16 @@
-# iRice online setup.
+# Tessera online setup.
 #
 #   bash <(curl -fsSL https://irice.monishbl.in/get) [folder] [--with-settings] [--yes]
 #   bash <(curl -fsSL https://irice.monishbl.in/get) --install [--tui|--cli] [--yes]
 #
-#   folder            where iRice goes (default ~/iRice)
-#   --with-settings   also apply the shared iRice look (irice.monishbl.in/config)
+#   folder            where Tessera goes (default ~/iRice)
+#   --with-settings   also apply the shared Tessera look (irice.monishbl.in/config)
 #   --yes             don't ask before installing packages
-#   --install         install iRice as your desktop (./install.sh: interactive
+#   --install         install Tessera as your desktop (./install.sh: interactive
 #                     or classic prompts, the whole plan shown first)
 #   --tui, --cli      with --install: which installer, without asking
 #
-# Gets iRice from GitHub (or updates a copy already there) and sets it up to
+# Gets Tessera from GitHub (or updates a copy already there) and sets it up to
 # run on its own console, next to your usual desktop: your ~/.config and your
 # session aren't touched. Asked in a terminal, it offers the full install
 # instead. Arch Linux and Arch-based systems only.
@@ -35,10 +35,10 @@ for a in "$@"; do
     esac
 done
 
-say() { printf '\033[1;34miRice:\033[0m %s\n' "$*"; }
+say() { printf '\033[1;34mTessera:\033[0m %s\n' "$*"; }
 
 [[ $EUID -eq 0 ]] && { echo "Run this as yourself, not root (it asks for sudo when it needs it)."; exit 1; }
-command -v pacman >/dev/null || { echo "iRice needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
+command -v pacman >/dev/null || { echo "Tessera needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
 if ! command -v git >/dev/null; then
     say "Installing git first…"
     sudo pacman -S --needed --noconfirm git
@@ -46,12 +46,12 @@ fi
 
 if [[ -d "$dest/.git" ]]; then
     say "Updating the copy in $dest…"
-    git -C "$dest" pull --ff-only || { echo "Couldn't update $dest (it has changes of its own). Use Settings → Software Update in iRice instead."; exit 1; }
+    git -C "$dest" pull --ff-only || { echo "Couldn't update $dest (it has changes of its own). Use Settings → Software Update in Tessera instead."; exit 1; }
 elif [[ -e "$dest" ]]; then
-    echo "$dest exists and isn't an iRice copy. Pick another folder: bash <(curl -fsSL $site/get) ~/somewhere-else"
+    echo "$dest exists and isn't an Tessera copy. Pick another folder: bash <(curl -fsSL $site/get) ~/somewhere-else"
     exit 1
 else
-    say "Getting iRice into $dest…"
+    say "Getting Tessera into $dest…"
     git clone --depth 50 "$repo" "$dest"
 fi
 
@@ -59,8 +59,8 @@ fi
 if [[ $install == ask ]]; then
     install=0
     if [[ ${#pass[@]} == 0 && -r /dev/tty ]] && { : </dev/tty; } 2>/dev/null; then
-        printf '\n  1  Try iRice on its own console, next to your desktop (nothing of yours changes)\n'
-        printf '  2  Install iRice as your desktop (shows the whole plan first)\n'
+        printf '\n  1  Try Tessera on its own console, next to your desktop (nothing of yours changes)\n'
+        printf '  2  Install Tessera as your desktop (shows the whole plan first)\n'
         read -r -p "  Which one? [1/2] " reply </dev/tty || reply=1
         [[ "$reply" == 2* ]] && install=1
     fi
@@ -77,7 +77,7 @@ fi
 "$dest/tools/setup-tty.sh" "${pass[@]}"
 
 if [[ $settings == 1 ]]; then
-    say "Applying the shared iRice look…"
+    say "Applying the shared Tessera look…"
     tmp=$(mktemp -d)
     curl -fsSL "$site/config/irice-config.tar.gz" | tar xz -C "$tmp"
     "$tmp/irice-config/import.sh" --repo "$dest"

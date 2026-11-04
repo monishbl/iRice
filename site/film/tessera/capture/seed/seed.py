@@ -2,7 +2,7 @@
 """Seeds a sandbox arena's home for filming: the look, a calm wallpaper of
 the project's own, a placeholder account picture, the canned AI model, and a
 few past chats. Only ever touches the arena home given.
-  seed.py <arena home> <glass|material> [wallpaper file]
+  [MODE=dark|light] [GLASS=liquid|frosted|solid] [ACCENT=…] seed.py <arena home> <glass|material> [wallpaper file]
 Every change is to the arena's config and state, which `./dev.sh up` seeds
 again from .sandbox/home when the arena is recreated.
 """
@@ -21,7 +21,10 @@ assert os.path.isdir(os.path.join(home, ".config")) and "/.sandbox/" in os.path.
 cfg_path = os.path.join(home, ".config/irice/config.json")
 c = json.load(open(cfg_path))
 a = c.setdefault("appearance", {})
-a.update(look=look, mode="dark", materialSeed="wallpaper", accent=os.environ.get("ACCENT", "wallpaper"), menuIcon="circle")  # (circle: the Badge, the new logo)
+a.update(look=look, mode=os.environ.get("MODE", "dark"), materialSeed="wallpaper", accent=os.environ.get("ACCENT", "wallpaper"), menuIcon="circle")  # (circle: the Badge, the new logo)
+# The glass: a named material (GLASS=liquid | frosted | solid), never a
+# custom mix left from another take (glass-ramp.py sets its own)
+a.update(glass=os.environ.get("GLASS", "liquid"), glassIor=1.5, glassRefraction=1, glassDispersion=0.35, glassDepth="auto")
 c.setdefault("desktop", {})["icons"] = False
 # (the laptop runs warm while recording: no "Running hot" alert in the takes)
 c.setdefault("island", {}).update(hotTemp=200, hotThrottle=False)

@@ -13,3 +13,6 @@ feature-sheet.jpg
 capture/seed/photos/ocean-top.mp4
 capture/seed/photos/wall-*.jpg
 !capture/seed/photos/wall-tiles.jpg
+clips-progress.json
+finish.log
+*.tmp.mp4

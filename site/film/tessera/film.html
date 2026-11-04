@@ -1342,6 +1342,9 @@
 			import { createGlass } from './glass.js';
 
 			const NOWARP = new URLSearchParams(location.search).has('nowarp');
+			/* ?notitles=1: without the chapter titles, for clips of a chapter shown under
+			   a title of their own (the site's tiles) */
+			if (new URLSearchParams(location.search).has('notitles')) document.head.append(Object.assign(document.createElement('style'), { textContent: '.title { visibility: hidden !important; }' }));
 			/* the liquid warps: [t0, t1, still before, still after (or a photo), direction] */
 			const WARPS = [
 				[49.5, 50.5, 'snapD', 'snapCap', [0, -1]],

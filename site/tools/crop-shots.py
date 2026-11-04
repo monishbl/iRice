@@ -18,8 +18,6 @@ CC_OPEN = set()
 # name: (crop box, width it's saved at[, the shot it's cut from])
 CROPS = {
     "hero": ((0, 0, 3840, 2160), 2400),
-    "desk-light": ((0, 0, 3840, 2160), 2400),
-    "desk-dark": ((0, 0, 3840, 2160), 2400),
     "cc-leaves": ((2640, 0, 3840, 1500), 1200),
     "island-connect": ((1320, 0, 2520, 600), 1200),
     "island-connect-tall": ((1490, 0, 2350, 1075), 860, "island-connect"),
@@ -39,8 +37,23 @@ CROPS = {
     "m-clock-stacked": ((1300, 40, 2540, 980), 720, "m-lock-stacked"),
     "m-clock-analog": ((1300, 40, 2540, 980), 720, "m-lock-analog"),
     "m-clock-overlap": ((1300, 40, 2540, 980), 720, "m-lock-overlap"),
-    "m-settings-clock": ((880, 408, 2960, 1808), 1560, "m-settings-clock"),
+    # (without Settings's sidebar: the Lock Screen page alone)
+    "m-settings-clock": ((1493, 408, 2960, 1808), 1100, "m-settings-clock"),
     "appstore": ((0, 0, 3840, 2160), 2400, "g-appstore"),
+    # Tessera's (shots.sh: the same moment in each look, over tiles; the
+    # page splits the Quick Settings pair, so both halves get the same crop)
+    # (the split: the right half, where Quick Settings is; its divider starts
+    # over them)
+    "looks-g": ((1920, 0, 3840, 1080), 1920, "qs-g"), "looks-m": ((1920, 0, 3840, 1080), 1920, "qs-m"),
+    "qs-tile-m": ((2960, 0, 3840, 1040), 880, "qs-m"),
+    "island-g": ((1440, 0, 2400, 480), 960),
+    "share-g": ((1328, 791, 2528, 1391), 1200),
+}
+# The Wi-Fi network's name, wherever Quick Settings is open (the sandbox
+# shows this computer's real network): blurred before cropping
+BLUR = {
+    "looks-g": [(3240, 170, 3420, 206)], "hero": [(3240, 170, 3420, 206)],
+    "looks-m": [(3156, 166, 3315, 214)], "qs-tile-m": [(3156, 166, 3315, 214)],
 }
 
 
@@ -59,6 +72,8 @@ def main(src):
         img = Image.open(path).convert("RGB")
         if name in CC_OPEN:
             blur(img, SSID)
+        for b in BLUR.get(name, []):
+            blur(img, b)
         img = img.crop(box)
         if img.width != width:
             img = img.resize((width, round(img.height * width / img.width)), Image.LANCZOS)
