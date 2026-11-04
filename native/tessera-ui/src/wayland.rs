@@ -363,6 +363,23 @@ impl State {
         }
     }
 
+    /// The part of a surface that takes the pointer (`None`: all of it):
+    /// rectangles in surface-local logical px. Elsewhere clicks go to what's
+    /// below (a dock's full-width window over other windows)
+    pub fn set_input_region(&self, s: &Surface, rects: Option<&[(i32, i32, i32, i32)]>) {
+        match rects {
+            None => s.wl.set_input_region(None),
+            Some(rects) => {
+                let Ok(region) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
+                for &(x, y, w, h) in rects {
+                    region.add(x, y, w, h);
+                }
+                s.wl.set_input_region(Some(region.wl_region()));
+            }
+        }
+        s.wl.commit();
+    }
+
     pub fn keyboard_surface(&self) -> Option<Rc<Surface>> {
         self.keyboard_on.clone()
     }

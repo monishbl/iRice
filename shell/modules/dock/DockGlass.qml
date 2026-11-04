@@ -11,8 +11,9 @@ import qs.services
 // resizing, which made the old dock flicker); input is masked to what's visible.
 // Auto-hide: off, always, or only when a window overlaps the dock.
 // Settings → Dock → Show the dock off: no dock windows at all.
+// (None while tessera-ui draws the dock in Rust: Settings' rust.surfaces)
 Variants {
-    model: Config.options.dock.enabled && !Theme.material ? Quickshell.screens : []
+    model: Config.options.dock.enabled && !Theme.material && !RustUi.drawing("dock") ? Quickshell.screens : []
 
     GlassWindow {
         id: win

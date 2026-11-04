@@ -252,6 +252,9 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_outline(r("outline"));
         t.set_m3_outline_variant(r("outlineVariant"));
         t.set_m3_error(r("error"));
+        t.set_m3_on_error(r("onError"));
+        t.set_m3_inverse_surface(r("inverseSurface"));
+        t.set_m3_inverse_on_surface(r("inverseOnSurface"));
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);

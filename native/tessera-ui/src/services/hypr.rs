@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
-fn dir() -> Option<PathBuf> {
+/// Hyprland's socket folder (this instance's)
+pub fn dir() -> Option<PathBuf> {
     let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
     let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     Some(PathBuf::from(rt).join("hypr").join(sig))

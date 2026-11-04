@@ -81,11 +81,11 @@ class Binary(unittest.TestCase):
 
     def test_a_list_it_cant_draw_is_answered_without_a_display(self):
         # (no Wayland needed: nothing to draw, so it says so and ends)
-        r = self.run_ui("--surfaces", "dock,osd")
+        r = self.run_ui("--surfaces", "osd,notifications")
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
-        self.assertEqual({l["surface"] for l in lines[:-1]}, {"dock", "osd"})
+        self.assertEqual({l["surface"] for l in lines[:-1]}, {"osd", "notifications"})
 
     def test_version(self):
         r = self.run_ui("--version")

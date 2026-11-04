@@ -24,6 +24,10 @@ accesskit = "0.25"
 accesskit_unix = "0.24"
 calloop = { version = "0.14", features = ["signals"] }
 wayland-client = "0.31"
+# App icons as the shell draws them (src/appicon.rs): SVG and PNG decoding.
+# Both are already built (resvg for Slint, image for material-colors): no new crates
+resvg = { version = "0.48", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 wayland-protocols-misc = { version = "0.3", features = ["client"] } # (src/bin/fake-ime.rs only)
 
 [build-dependencies]

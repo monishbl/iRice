@@ -12,6 +12,7 @@
 //! SIGUSR1 prints frame statistics.
 
 mod a11y;
+mod appicon;
 mod egl;
 mod env;
 mod seed;
@@ -96,7 +97,7 @@ fn register_fonts() {
         std::path::PathBuf::from(crate::env::var("ROOT").unwrap_or_default()),
     ];
     let mut collection = slint::fontique_011::shared_collection();
-    for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf"] {
+    for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf", "material/assets/fonts/MaterialSymbolsRounded.ttf"] {
         let Some(file) = roots.iter().find_map(|r| std::fs::File::open(r.join(f)).ok()) else {
             eprintln!("tessera-ui: font {f} not found");
             continue;

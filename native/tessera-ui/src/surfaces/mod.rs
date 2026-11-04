@@ -4,19 +4,21 @@
 //! of a surface only once this process says it draws it, a JSON line on
 //! stdout per event:
 //!   {"src":"ui","kind":"ready","surfaces":["menubar"]}   drawing these
-//!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
+//!   {"src":"ui","kind":"unknown","surface":"osd"}        not in Rust yet
 //! If this process ends, the shell draws them again itself.
 
+pub mod dock;
 pub mod menubar;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar"];
+pub const KNOWN: &[&str] = &["menubar", "dock"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
     match name {
         "menubar" => Some(Box::new(menubar::Menubar::default())),
+        "dock" => Some(Box::new(dock::Dock::default())),
         _ => None,
     }
 }
@@ -95,12 +97,15 @@ mod tests {
 
     #[test]
     fn only_the_ones_asked_for() {
-        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,dock"]));
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,osd"]));
         assert_eq!(s.on, vec!["menubar"]);
-        assert_eq!(s.unknown, vec!["dock"]);
-        assert!(s.on.contains(&"menubar") && !s.on.contains(&"dock"));
-        let s = Surfaces::from_args(&args(&["--surfaces=dock"]));
+        assert_eq!(s.unknown, vec!["osd"]);
+        assert!(s.on.contains(&"menubar") && !s.on.contains(&"osd"));
+        let s = Surfaces::from_args(&args(&["--surfaces=osd"]));
         assert!(s.on.is_empty());
+        // (in KNOWN's order, whatever order they're asked in)
+        let s = Surfaces::from_args(&args(&["--surfaces", "dock,menubar"]));
+        assert_eq!(s.on, vec!["menubar", "dock"]);
         let s = Surfaces::from_args(&args(&["--surfaces", ""]));
         assert!(s.on.is_empty() && s.unknown.is_empty());
     }
