@@ -335,6 +335,7 @@ Variants {
                 anchors { top: search.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: footer.top; bottomMargin: 8 }
                 clip: true
                 contentHeight: sections.implicitHeight
+                bottomMargin: toolbar.visible ? toolbar.height + 12 : 0 // (as the list's: the last tiles scroll out from under the toolbar)
                 boundsBehavior: Flickable.StopAtBounds
                 readonly property real cellW: Math.floor((width - 8) / 2)
                 readonly property real cellH: Math.round(cellW * 0.72)
@@ -343,8 +344,8 @@ Variants {
                     const y = item.mapToItem(sections, 0, 0).y;
                     if (y < contentY)
                         contentY = Math.max(0, y - 24);
-                    else if (y + item.height > contentY + height)
-                        contentY = Math.min(contentHeight - height, y + item.height - height + 8);
+                    else if (y + item.height > contentY + height - bottomMargin)
+                        contentY = Math.min(contentHeight - height + bottomMargin, y + item.height - height + bottomMargin + 8);
                 }
 
                 Column {
