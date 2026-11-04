@@ -13,6 +13,8 @@ import Quickshell.Services.Greetd
 // PAM to ask for it; typing is never held up. Without greetd (or with
 // IRICE_GREETER_MOCK=1) it runs a mock that accepts the password "irice",
 // for trying the greeter in a normal session (Escape quits it there).
+// The name can also be typed (other, otherName): any account, listed or
+// not; a typed name that's on the list becomes that person again.
 QtObject {
     id: root
 
@@ -31,14 +33,24 @@ QtObject {
     property bool asked: false
     // What PAM says that isn't a question (the fingerprint reader's words)
     property string message: ""
+    // A username typed in instead of a person chosen (always, with no one
+    // listed)
+    property bool other: false
+    property string otherName: ""
+    // Who logs in: the chosen person's username, or the one typed in
+    readonly property string userName: other ? otherName.trim() : (users[user]?.name ?? "")
     // The reader: "" (none heard of) | waiting | miss
     property string finger: ""
 
     readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice-greeter.json"
 
     function login(password) {
-        if (busy || users.length === 0)
+        if (busy)
             return;
+        if (userName === "") {
+            error = "Type your username first.";
+            return;
+        }
         error = "";
         busy = true;
         if (mock) {
@@ -57,11 +69,11 @@ QtObject {
     // Opens the conversation for the chosen user (again after a failure, so
     // the reader listens again)
     function begin() {
-        if (mock || open || users.length === 0)
+        if (mock || open || userName === "")
             return;
         open = true;
         asked = false;
-        Greetd.createSession(users[user].name);
+        Greetd.createSession(userName);
     }
     function restart() {
         if (mock)
@@ -75,6 +87,28 @@ QtObject {
         beginTimer.restart();
     }
     onUserChanged: restart()
+    onOtherChanged: restart()
+    onOtherNameChanged: if (other) restart()
+    // Typing a name: starts from the chosen person's
+    function editName() {
+        if (busy || other)
+            return;
+        otherName = users[user]?.name ?? "";
+        other = true;
+    }
+    // Done typing: a listed name is that person again
+    function pickTyped() {
+        const i = users.findIndex(x => x.name === otherName.trim());
+        if (!other || i < 0)
+            return;
+        user = i;
+        other = false;
+    }
+    // Back to the list (when there is one)
+    function cancelName() {
+        if (users.length > 0)
+            other = false;
+    }
     property Timer beginTimer: Timer {
         interval: 300
         onTriggered: root.begin()
@@ -91,7 +125,7 @@ QtObject {
             restart();
             return;
         }
-        remember.setText(JSON.stringify({ user: users[user]?.name ?? "", session: s?.name ?? "" }));
+        remember.setText(JSON.stringify({ user: userName, session: s?.name ?? "" }));
         success = true;
         if (mock) {
             console.log("greeter (mock): would launch", s?.exec);
@@ -167,6 +201,8 @@ QtObject {
         path: "/etc/passwd"
         onLoaded: {
             root.users = text().split("\n").map(l => l.split(":")).filter(f => f.length >= 7 && +f[2] >= 1000 && +f[2] < 60000 && !/(nologin|false)$/.test(f[6])).map(f => ({ name: f[0], full: (f[4] ?? "").split(",")[0] || f[0] }));
+            if (root.users.length === 0)
+                root.other = true;
             root.restoreLast();
             root.beginTimer.restart();
         }
@@ -210,8 +246,12 @@ QtObject {
             const j = JSON.parse(remember.text());
             const u = users.findIndex(x => x.name === j.user);
             const s = sessions.findIndex(x => x.name === j.session);
-            if (u >= 0)
+            if (u >= 0) {
                 user = u;
+            } else if (j.user) { // (last time, a username typed in)
+                otherName = j.user;
+                other = true;
+            }
             if (s >= 0)
                 session = s;
         } catch (e) {}

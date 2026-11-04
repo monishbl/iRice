@@ -19,6 +19,7 @@ import qs.modules.lock as LockUi
 GreeterWindow {
     id: win
     passwordField: input
+    nameField: nameInput
     onRefused: shakeAnim.restart()
     readonly property var m3: Theme.m3
     readonly property var cfg: Config.options.lock
@@ -30,7 +31,7 @@ GreeterWindow {
     // The pill opens on a key or a mouse move and closes 10 s after the
     // last one, unless something's typed (or being checked, or wrong)
     property bool typing: false
-    readonly property bool open: typing || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
+    readonly property bool open: typing || win.auth.other || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
     property real openT: open ? 1 : 0
     Behavior on openT {
         MaterialSpring { epsilon: 0.002 }
@@ -118,10 +119,50 @@ GreeterWindow {
             }
         }
 
+        // The name, above the open pill (it leaves the pill as it opens): a
+        // click types another
+        GreeterNameLabel {
+            win: win
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !win.auth.other
+            opacity: win.openT
+            enabled: win.openT > 0.5
+            text: win.person?.full ?? ""
+            textColor: win.m3.onSurface
+            font { family: Theme.font.family; pixelSize: 16; weight: Font.Medium }
+            hoverFill: win.m3.surfaceContainerHigh
+        }
+        // A typed username (Switch user, or a click on the name), in its own pill
+        Rectangle {
+            visible: win.auth.other
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 360
+            height: 56
+            radius: height / 2
+            color: win.m3.surfaceContainerHigh
+            border.width: nameInput.activeFocus ? 2 : 0
+            border.color: win.m3.primary
+            GreeterNameInput {
+                id: nameInput
+                win: win
+                x: 24
+                width: parent.width - 48
+                color: win.m3.onSurface
+                font { family: Theme.font.family; pixelSize: 18 }
+                placeholderColor: win.m3.onSurfaceVariant
+                placeholderSize: 16
+                selectionColor: win.m3.primary
+                selectedTextColor: win.m3.onPrimary
+                onTextChanged: win.wake()
+            }
+        }
+
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
-            Round { visible: win.auth.users.length > 1; icon: "caret-left"; tip: "Previous person"; onClicked: win.nextUser(-1) }
+            // (as wide as Switch user, so the pill stays centred)
+            Item { width: 44; height: 44 }
+            Round { visible: win.auth.users.length > 1 && !win.auth.other; icon: "caret-left"; tip: "Previous person"; onClicked: win.nextUser(-1) }
             Item {
                 id: fieldBox
                 readonly property bool fingered: win.auth.finger !== ""
@@ -159,7 +200,7 @@ GreeterWindow {
                         Image {
                             id: avatarImage
                             anchors.fill: parent
-                            source: win.auth.avatar(win.person?.name ?? "")
+                            source: win.auth.avatar(win.pictureName)
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(120, 120)
                             asynchronous: true
@@ -187,7 +228,7 @@ GreeterWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 240)
                         elide: Text.ElideRight
-                        text: win.person?.full ?? "No users"
+                        text: win.person?.full ?? ""
                         color: win.m3.onSurface
                         opacity: 1 - win.openT
                         visible: opacity > 0.01
@@ -287,19 +328,25 @@ GreeterWindow {
                         Accessible.role: Accessible.StaticText
                         Accessible.name: win.auth.message || "Fingerprint"
                     }
-                    // A click on the closed pill opens it
+                    // A click on the closed pill opens it; on the name, types
+                    // another
                     MouseArea {
                         anchors.fill: parent
                         visible: !win.open
                         cursorShape: Qt.IBeamCursor
-                        onClicked: {
+                        onClicked: m => {
+                            if (m.x >= nameText.x && m.x <= nameText.x + nameText.width) {
+                                win.editName();
+                                return;
+                            }
                             win.wake();
                             input.forceActiveFocus();
                         }
                     }
                 }
             }
-            Round { visible: win.auth.users.length > 1; icon: "caret-right"; tip: "Next person"; onClicked: win.nextUser(1) }
+            Round { visible: win.auth.users.length > 1 && !win.auth.other; icon: "caret-right"; tip: "Next person"; onClicked: win.nextUser(1) }
+            Round { icon: win.auth.other ? "x" : "user-switch"; tip: win.auth.other ? "Back to the list" : "Switch user"; onClicked: win.auth.other ? win.cancelName() : win.editName() }
         }
     }
 

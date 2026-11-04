@@ -6,8 +6,9 @@ import "../../common/phosphor.js" as Phosphor
 // The text login screen, ly's way: the power keys along the top, and in the
 // middle a box of three fields in monospace: the session, the login and the
 // password. Up and Down (or Tab) move between them, Left and Right choose
-// the session or the person, typing goes into the password from anywhere,
-// Enter logs in. F1 shut down, F2 restart, F3 sleep: each asks to confirm
+// the session, the login is typed as in ly (your name to start with; a
+// listed name is that person, with their picture and settings), typing
+// anywhere else goes into the password, Enter logs in. F1 shut down, F2 restart, F3 sleep: each asks to confirm
 // (Enter, or the same key again). A fingerprint reader's words show in the
 // box. Everything also works by pointer. The window and the logging in:
 // GreeterWindow.
@@ -22,6 +23,7 @@ GreeterWindow {
     readonly property color accent: "#9BBCFF"
     readonly property color bad: "#FF9C9C"
     property int row: 2 // 0 session, 1 login, 2 password
+    onRowChanged: if (row !== 1) auth.pickTyped()
 
     readonly property var powerActions: [["F1", "shutdown", "poweroff"], ["F2", "reboot", "reboot"], ["F3", "sleep", "suspend"]]
     SystemClock { id: clock; precision: SystemClock.Minutes }
@@ -93,8 +95,8 @@ GreeterWindow {
             Field {
                 index: 1
                 label: "login"
-                value: (win.auth.users.length > 1 ? "< " : "") + (win.auth.users[win.auth.user]?.name ?? "No users") + (win.auth.users.length > 1 ? " >" : "")
-                onStep: d => win.nextUser(d)
+                value: win.auth.userName + (win.row === 1 ? "_" : "")
+                typed: true
             }
             // The password: the one text input, holding the keyboard throughout
             Item {
@@ -123,7 +125,12 @@ GreeterWindow {
                     focus: win.primary
                     cursorVisible: win.row === 2
                     Component.onCompleted: if (win.primary) forceActiveFocus()
-                    onAccepted: win.submit()
+                    onAccepted: {
+                        if (win.row === 1)
+                            win.row = 2;
+                        else
+                            win.submit();
+                    }
                     onTextChanged: if (text !== "") win.row = 2
                     Keys.onUpPressed: win.row = Math.max(0, win.row - 1)
                     Keys.onDownPressed: win.row = Math.min(2, win.row + 1)
@@ -131,16 +138,24 @@ GreeterWindow {
                     Keys.onBacktabPressed: win.row = (win.row + 2) % 3
                     Keys.onLeftPressed: event => {
                         if (win.row === 0) win.nextSession(-1);
-                        else if (win.row === 1) win.nextUser(-1);
-                        else event.accepted = false;
+                        else event.accepted = win.row === 1;
                     }
                     Keys.onRightPressed: event => {
                         if (win.row === 0) win.nextSession(1);
-                        else if (win.row === 1) win.nextUser(1);
-                        else event.accepted = false;
+                        else event.accepted = win.row === 1;
                     }
                     Keys.onEscapePressed: win.cancel()
                     Keys.onPressed: event => {
+                        // (the login row: the username, typed as in ly)
+                        if (win.row === 1 && !win.auth.busy) {
+                            const typing = event.text.length === 1 && event.text > " " && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier));
+                            if (event.key === Qt.Key_Backspace || typing) {
+                                win.auth.editName();
+                                win.auth.otherName = typing ? win.auth.otherName + event.text : win.auth.otherName.slice(0, -1);
+                                event.accepted = true;
+                                return;
+                            }
+                        }
                         const actions = { [Qt.Key_F1]: "poweroff", [Qt.Key_F2]: "reboot", [Qt.Key_F3]: "suspend" };
                         if (actions[event.key] && !win.auth.busy) {
                             win.choosePower(actions[event.key]);
@@ -188,6 +203,7 @@ GreeterWindow {
         required property int index
         property string label
         property string value
+        property bool typed: false // (typed into, not chosen with arrows)
         signal step(int d)
         width: parent.width
         height: 36
@@ -210,10 +226,11 @@ GreeterWindow {
         }
         MouseArea {
             anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: field.typed ? Qt.IBeamCursor : Qt.PointingHandCursor
             onClicked: m => {
                 win.row = field.index;
-                field.step(m.x < 130 + (width - 130) / 2 ? -1 : 1);
+                if (!field.typed)
+                    field.step(m.x < 130 + (width - 130) / 2 ? -1 : 1);
                 input.forceActiveFocus();
             }
         }

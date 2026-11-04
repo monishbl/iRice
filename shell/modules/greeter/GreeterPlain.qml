@@ -14,6 +14,7 @@ import "../../common/phosphor.js" as Phosphor
 GreeterWindow {
     id: win
     passwordField: input
+    nameField: nameInput
     onRefused: shake.restart()
 
     readonly property string sans: "Inter"
@@ -51,14 +52,14 @@ GreeterWindow {
             Text {
                 anchors.centerIn: parent
                 visible: picture.status !== Image.Ready
-                text: (win.person?.full ?? "?").charAt(0).toUpperCase()
+                text: ((win.auth.other ? win.auth.otherName : win.person?.full) || "?").charAt(0).toUpperCase()
                 color: win.fg
                 font { family: win.sans; pixelSize: 40; weight: Font.DemiBold }
             }
             Image {
                 id: picture
                 anchors.fill: parent
-                source: win.auth.avatar(win.person?.name ?? "")
+                source: win.auth.avatar(win.pictureName)
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(192, 192)
                 asynchronous: true
@@ -69,14 +70,41 @@ GreeterWindow {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 4
-            Chevron { visible: win.auth.users.length > 1; name: "caret-left"; onClicked: win.nextUser(-1) }
-            Text {
+            // (as wide as Switch user, so the name stays centred)
+            Item { width: 28; height: 28 }
+            Chevron { visible: win.auth.users.length > 1 && !win.auth.other; name: "caret-left"; onClicked: win.nextUser(-1) }
+            GreeterNameLabel {
+                win: win
                 anchors.verticalCenter: parent.verticalCenter
-                text: win.person?.full ?? "No users"
-                color: win.fg
+                visible: !win.auth.other
+                text: win.person?.full ?? ""
+                textColor: win.fg
                 font { family: win.sans; pixelSize: 20; weight: Font.DemiBold }
+                hoverFill: win.field
             }
-            Chevron { visible: win.auth.users.length > 1; name: "caret-right"; onClicked: win.nextUser(1) }
+            // A typed username
+            Rectangle {
+                visible: win.auth.other
+                anchors.verticalCenter: parent.verticalCenter
+                width: 300 - 2 * (28 + 4)
+                height: 44
+                radius: 22
+                color: win.field
+                border.width: nameInput.activeFocus ? 1 : 0
+                border.color: "#3A3A40"
+                GreeterNameInput {
+                    id: nameInput
+                    win: win
+                    x: 18
+                    width: parent.width - 2 * 18
+                    color: win.fg
+                    font { family: win.sans; pixelSize: 16 }
+                    placeholderColor: "#6B6B74"
+                    placeholderSize: 15
+                }
+            }
+            Chevron { visible: win.auth.users.length > 1 && !win.auth.other; name: "caret-right"; onClicked: win.nextUser(1) }
+            Chevron { name: win.auth.other ? "x" : "user-switch"; onClicked: win.auth.other ? win.cancelName() : win.editName() }
         }
         // The field, the fingerprint at its end
         Rectangle {
@@ -221,5 +249,8 @@ GreeterWindow {
             cursorShape: Qt.PointingHandCursor
             onClicked: chev.clicked()
         }
+        Accessible.role: Accessible.Button
+        Accessible.name: ({ "caret-left": "Previous person", "caret-right": "Next person", "user-switch": "Switch user", "x": "Back to the list" })[name] ?? name
+        Accessible.onPressAction: chev.clicked()
     }
 }

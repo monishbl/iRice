@@ -515,6 +515,7 @@ show_plan() {
     [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
     if [[ $GREETER == yes ]]; then
         plan_row Login "the iRice login screen (greetd): /etc/greetd/config.toml (kept as .pre-irice), /usr/share/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (irice uninstall turns it back on)")"
+        plan_row "" "a quiet start: the splash held until the login screen, quiet on GRUB's kernel line (/etc/default/grub kept as .pre-irice)"
     elif [[ -n "$OTHER_DM" ]]; then
         plan_row Login "keeps $OTHER_DM (pick Hyprland there)"
     else
@@ -1054,6 +1055,48 @@ keyring_at_login() { # pam file
     printf '%s\n' "$new" | sudo tee "$1" >/dev/null && note "Your keyring unlocks with your login password ($1)"
 }
 
+# A quiet start, with the iRice login screen: the boot splash's last frame
+# held until the login screen draws (Plymouth quits with --retain-splash),
+# and no boot messages on the console: quiet on the kernel's line (GRUB's
+# /etc/default/grub, kept as .pre-irice; other boot loaders: a note). irice
+# uninstall puts both back.
+PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/irice.conf
+quiet_boot() {
+    if command -v plymouth >/dev/null; then
+        local dropin='# iRice: the splash stays until the login screen draws (irice uninstall removes this)
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/plymouth quit --retain-splash'
+        if [[ $DRY == 1 ]]; then
+            note "would write $PLYMOUTH_DROPIN"
+        else
+            sudo mkdir -p "${PLYMOUTH_DROPIN%/*}" && printf '%s\n' "$dropin" | sudo tee "$PLYMOUTH_DROPIN" >/dev/null
+            sudo systemctl daemon-reload
+        fi
+    fi
+    local grub=/etc/default/grub line
+    if [[ ! -f $grub ]] || ! command -v grub-mkconfig >/dev/null; then
+        grep -qw quiet /proc/cmdline || note "For a quiet start, add quiet to your boot loader's kernel line"
+        return 0
+    fi
+    line=$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$grub" | tail -1)
+    [[ -n $line ]] || return 0
+    grep -qw quiet <<<"$line" && return 0
+    if [[ $DRY == 1 ]]; then
+        note "would add quiet to GRUB_CMDLINE_LINUX_DEFAULT in $grub and run grub-mkconfig"
+        return 0
+    fi
+    [[ -e $grub.pre-irice ]] || sudo cp -a "$grub" "$grub.pre-irice" || return 0
+    # (quoted either way: GRUB_CMDLINE_LINUX_DEFAULT='…' or "…")
+    sudo sed -i -E "s/^(GRUB_CMDLINE_LINUX_DEFAULT=['\"]?)/\1quiet /" "$grub" || return 0
+    if sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; then
+        note "Boot messages hidden (quiet in $grub)"
+    else
+        sudo cp -a "$grub.pre-irice" "$grub"
+        warn "grub-mkconfig failed: $grub is as it was"
+    fi
+}
+
 GREETER_DONE=0 OLD_CONFIG=""
 # (GREETER and OTHER_DM come from decide: another login screen is only
 # replaced when you chose to)
@@ -1071,6 +1114,7 @@ login() {
         run sudo rm -rf /usr/share/irice/material
         if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/irice/material; fi
         run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/irice/greeter.lua
+        run sudo install -m 755 "$ROOT/hypr/greeter-session.sh" /usr/share/irice/greeter-session.sh
         # Its look, from your settings (the shell keeps it up to date after:
         # services/LoginScreen.qml, through irice-root login-look)
         local look
@@ -1113,9 +1157,8 @@ PY
 vt = 1
 
 [default_session]
-command = "start-hyprland -- --config /usr/share/irice/greeter.lua"
+command = "/usr/share/irice/greeter-session.sh"
 user = "greeter"'
-        command -v start-hyprland >/dev/null || conf="${conf/start-hyprland -- /Hyprland }"
         if [[ $DRY == 1 ]]; then note "would write /etc/greetd/config.toml"; else printf '%s\n' "$conf" | sudo tee /etc/greetd/config.toml >/dev/null; fi
         if [[ -n "$OTHER_DM" ]]; then
             run sudo systemctl disable "$OTHER_DM"
@@ -1123,6 +1166,7 @@ user = "greeter"'
         fi
         run sudo systemctl enable greetd || return 1 # (started at the next boot)
         keyring_at_login /etc/pam.d/greetd
+        quiet_boot
         GREETER_DONE=1
     elif [[ -z "$OTHER_DM" ]]; then
         # No login screen: start Hyprland when you log in on the first console,

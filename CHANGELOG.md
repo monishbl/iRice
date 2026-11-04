@@ -1,5 +1,10 @@
 # iRice changelog
 
+## A quiet start, and any username at login · 2026-11-04
+
+- **No more console text between the boot splash and your desktop.** The splash's last frame stays until the login screen draws, the login screen's compositor logs to the journal (`journalctl -t irice-greeter`) instead of onto the screen, and the console is cleared with its cursor hidden. On GRUB, `quiet` is added to the kernel line, so boot messages stay off the screen too (`/etc/default/grub` is kept as `.pre-irice`; other boot loaders get a note). Run `./install.sh --only=login` once to get it; `irice uninstall` puts it all back.
+- **Log in as anyone:** on the Glass, Material and plain login screens your name is text that turns into a field when you click it (hovered, it shows a pencil), or press **Switch user** beside it. Type any username; Enter or Tab goes on to the password, Esc goes back. A typed name that's on the list is that person again, with their picture. The text login screen types the login straight in, as in ly. The login screen remembers a typed name for next time.
+
 ## Material and Glass, side by side · 2026-11-04
 
 - **Material's controls everywhere in Material.** The Wi-Fi password field and Join button, the full Wi-Fi join form, Calendar's Add calendar, Report a Bug's boxes and the shortcut recorder were still Glass's; they're Material's filled pills and buttons now. Chips that turn things on and off (the menu bar's screens, a Focus schedule's days, the island's live pieces, a shortcut's modifier keys) are Material's filter chips, with a tick when on.
