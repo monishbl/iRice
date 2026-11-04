@@ -4,10 +4,7 @@ Updated 4 November 2026. Main is applied to the laptop.
 
 ## Needs you
 
-- **Quiet start and the new login screen**: run `XDG_CONFIG_HOME=~/iRice/.sandbox/home/.config ~/iRice/install.sh --only=login` once (password), then restart. It holds the boot splash until the login screen, keeps boot messages off the screen, and brings the click-to-edit username and the ly-style login row. Not applied yet.
-- **Phone**: turn its screen lock back on, and set its display size back if you like (both changed for the Quick Share tests).
-- **iPhone**: try the QR code / browser link once with a real iPhone.
-- **Licence follow-ups (small)**: check emojibase's exact copyright line against its LICENSE file; record which Unsplash photo each website background is.
+- **Restart once** to see the quiet start and the new login screen (installed; not seen yet).
 
 ## Next, in your order
 
@@ -18,7 +15,7 @@ Updated 4 November 2026. Main is applied to the laptop.
 ## Not yet tried on real hardware
 
 - The iRice boot splashes (Breathe, Orbit, Frost, Bloom) at a real boot; you're on the system's own for now.
-- The quiet start's splash → login handover (after the command above).
+- The quiet start's splash → login handover (at your next restart).
 - irice-events on real hardware: closing the lid with "keep awake when closed" settings, sleep and wake, plugging a USB drive or mouse, a real screen share and camera (the inhibitors are confirmed held by it).
 - The 3-finger long press for circle to search, and "Search the web" (Google Lens) through to the browser.
 - Quick Share: the laptop on 2.4 GHz while receiving (the 5 GHz group beside it is unit-tested); 2 GB of small files phone→laptop.
