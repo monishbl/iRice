@@ -8,8 +8,11 @@
 //!            active window, per monitor; from its event socket
 //!   status   battery (status::Battery, UPower) and Wi-Fi (status::Wifi,
 //!            NetworkManager), over the system bus
+//!   clipboard  the clipboard history (clipboard::History: cliphist, the
+//!            shell's pins and times) and its pictures (clipboard::Previews)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod clipboard;
 pub mod hypr;
 pub mod status;
 
@@ -20,6 +23,7 @@ pub fn start(name: &str, tx: Sender<Msg>) {
     match name {
         "hypr" => hypr::spawn_events(tx),
         "status" => status::spawn(tx),
+        "clipboard" => clipboard::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

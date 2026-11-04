@@ -56,6 +56,36 @@ class Agreement(unittest.TestCase):
             self.assertIn(word, rs)
         self.assertIn('"--surfaces"', qml)
 
+    def test_panels_drawn_in_rust_open_and_close_through_the_shell(self):
+        # RustUi forwards Panels' open and close as commands on tessera-ui's
+        # stdin; tessera-ui says when a panel closed itself and asks for
+        # what only the shell does (src/shell.rs)
+        qml = (ROOT / "shell/services/RustUi.qml").read_text()
+        shell_rs = (CRATE / "src/shell.rs").read_text()
+        for word in ('cmd: "open"', 'cmd: "close"', "proc.write(", 'e.kind === "closed"', 'e.kind === "call"', "Panels.close()"):
+            self.assertIn(word, qml)
+        for word in ('"cmd"', '"surface"', '"screen"', '"closed"', '"call"'):
+            self.assertIn(word, shell_rs)
+        main_rs = (CRATE / "src/main.rs").read_text()
+        self.assertIn("Command::parse", main_rs)
+        # every call a part asks for is one RustUi.qml answers
+        asked = set()
+        for p in (CRATE / "src").rglob("*.rs"):
+            asked |= set(re.findall(r'shell::ask\("([a-zA-Z.]+)"', p.read_text()))
+        answered = set(re.findall(r'case "([a-zA-Z.]+)":', qml))
+        self.assertTrue(asked, "no calls found")
+        self.assertEqual(sorted(asked - answered), [], "asked of the shell, never answered")
+
+    def test_panel_twins_step_aside_through_their_loader(self):
+        # a panel's twin steps aside with its PanelLoader (`elsewhere`), so
+        # Panels' opening goes to tessera-ui and the QML window never loads
+        loader = (ROOT / "shell/common/PanelLoader.qml").read_text()
+        self.assertRegex(loader, r"wanted: !elsewhere &&")
+        for name, path in (("emoji", "shell/modules/emoji/EmojiPicker.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml")):
+            src = (ROOT / path).read_text()
+            self.assertIn(f'RustUi.drawing("{name}")', src)
+            self.assertIn("elsewhere:", src)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old
@@ -86,6 +116,13 @@ class Binary(unittest.TestCase):
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
         self.assertEqual({l["surface"] for l in lines[:-1]}, {"dock", "osd"})
+
+    def test_commands_on_stdin_and_its_end(self):
+        # (no Wayland: nothing to draw, it answers and ends; a bad line or a
+        # command for a surface it doesn't draw changes nothing)
+        r = subprocess.run([str(binary()), "--surfaces", "dock"], input='nonsense\n{"cmd":"open","surface":"dock"}\n', capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout.splitlines()[-1]), {"src": "ui", "kind": "ready", "surfaces": []})
 
     def test_version(self):
         r = self.run_ui("--version")

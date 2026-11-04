@@ -18,6 +18,8 @@ zbus = { version = "5", default-features = false, features = ["blocking-api", "a
 material-colors = "0.5"
 # (the wallpaper's seed: matugen's steps on the release matugen uses, src/seed.rs)
 mc04 = { package = "material-colors", version = "0.4", features = ["image"] }
+# (the one material-colors 0.4 already builds: clipboard pictures and GIF previews)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 libc = "0.2"
 memmap2 = "0.9"
 accesskit = "0.25"
