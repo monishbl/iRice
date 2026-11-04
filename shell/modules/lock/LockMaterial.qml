@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.common
 import qs.services
 
@@ -509,7 +508,7 @@ Item {
                         Image {
                             id: avatarImage
                             anchors.fill: parent
-                            source: root.avatarPath !== "" ? "file://" + root.avatarPath : ""
+                            source: Account.pictureUrl
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(120, 120)
                             asynchronous: true
@@ -540,7 +539,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 240)
                         elide: Text.ElideRight
-                        text: root.fullName || (Quickshell.env("USER") ?? "")
+                        text: Account.name
                         color: root.m3.onSurface
                         opacity: 1 - root.openT
                         visible: opacity > 0.01
@@ -788,15 +787,6 @@ Item {
             last = p;
         }
     }
-    // Your name as the account has it (its full name), else the login
-    property string fullName: ""
-    Process {
-        running: true
-        command: ["sh", "-c", "getent passwd \"$USER\" | cut -d: -f5 | cut -d, -f1"]
-        stdout: StdioCollector {
-            onStreamFinished: root.fullName = text.trim()
-        }
-    }
 
     // Now Playing on the lock screen: art in a cookie, a play button that
     // squares off while playing, the wavy timeline (one per player: the
@@ -969,15 +959,6 @@ Item {
                 }
             }
 
-    // A picture for the avatar, if there is one
-    property string avatarPath: ""
-    Process {
-        running: true
-        command: ["sh", "-c", "for f in \"$HOME/.face\" \"$HOME/.face.icon\" \"/var/lib/AccountsService/icons/$USER\"; do [ -s \"$f\" ] && [ -r \"$f\" ] && { echo \"$f\"; exit 0; }; done; true"]
-        stdout: StdioCollector {
-            onStreamFinished: root.avatarPath = text.trim()
-        }
-    }
 
     Connections {
         target: root.lockScope

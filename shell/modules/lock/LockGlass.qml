@@ -11,9 +11,11 @@ import qs.services
 // Lock.qml's):
 //   iOS    the date and a large clock, a row of small widgets (battery,
 //          weather, next event), Now Playing with controls, recent
-//          notifications, and the password field at the bottom
-//   macOS  the date and a large clock up top; avatar, name and the password
-//          field at the bottom (Now Playing above them while music plays)
+//          notifications, and your picture, name and the password field at
+//          the bottom
+//   macOS  the date and a large clock up top; your picture, name and the
+//          password field at the bottom (Now Playing above them while music
+//          plays)
 // Cards and the field are glass, frost or solid (or follow the system), and
 // the text is light, dark, or picked from the wallpaper.
 // Everything here lifts away on unlock.
@@ -341,19 +343,21 @@ Item {
         opacity: host.reveal
         spacing: 10
 
-        Rectangle {
-            visible: !host.ios
+        // You: your picture (or the person glyph) and your full name, in
+        // both layouts
+        Avatar {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 64
             height: 64
-            radius: 32
             color: host.darkInk ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.18)
-            Icon { anchors.centerIn: parent; name: "user"; fill: true; size: 32; color: root.ink }
+            iconColor: root.ink
         }
         Text {
-            visible: !host.ios
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Quickshell.env("USER") ?? ""
+            width: Math.min(implicitWidth, 360)
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            text: Account.name
             color: root.ink
             font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Font.DemiBold }
         }
