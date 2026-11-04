@@ -162,7 +162,7 @@ def pick_twin(devices, name, address, fallback=False):
 
 # The advertisement monitor: Fast Pair adverts are service data (AD type
 # 0x16) for the 16-bit UUID 0xFE2C, which leads it little-endian
-APP_PATH = "/org/irice/fastpair"
+APP_PATH = "/org/tessera/fastpair"
 MONITOR_PATH = APP_PATH + "/monitor0"
 MONITOR_XML = """<node><interface name="org.bluez.AdvertisementMonitor1">
 <method name="Release"/><method name="Activate"/>

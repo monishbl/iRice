@@ -21,8 +21,8 @@ The reader: any listed in systemd's fingerprint hwdb (the readers libfprint
 drives), and readers that need a vendor driver (DRIVERS: Dell's Broadcom
 ControlVault 3 needs libfprint-tod and Dell's TOD driver from the AUR).
 fprintd does the rest over D-Bus (net.reactivated.Fprint), as the person at
-the computer: no root. Where a finger is accepted besides iRice's lock
-screen is a marked line in PAM files (irice-root.py fingerprint), read here.
+the computer: no root. Where a finger is accepted besides Tessera's lock
+screen is a marked line in PAM files (tessera-root.py fingerprint), read here.
 """
 import glob
 import json
@@ -40,14 +40,15 @@ DRIVERS = {f"0a5c:{p}": ("Broadcom ControlVault 3", ["libfprint-tod", "libfprint
            for p in ("5841", "5842", "5843", "5844", "5845")}
 FINGERS = ["right-index-finger", "left-index-finger", "right-thumb", "left-thumb", "right-middle-finger",
            "left-middle-finger", "right-ring-finger", "left-ring-finger", "right-little-finger", "left-little-finger"]
-MARK = "# iRice fingerprint"
-# Where a finger may be accepted (irice-root.py fingerprint): the PAM file of each
+MARK = "# Tessera fingerprint"
+OLD_MARK = "# iRice fingerprint"  # (marked before iRice became Tessera, until the root setup runs)
+# Where a finger may be accepted (tessera-root.py fingerprint): the PAM file of each
 PAM_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm", "lightdm", "lxdm"]}
 # Makers of fingerprint readers (USB): one of theirs that libfprint doesn't
 # know is a reader without a Linux driver yet, said so instead of hidden
 VENDORS = {"27c6": "Goodix", "06cb": "Synaptics", "138a": "Validity", "10a5": "FPC", "1c7a": "Egis",
            "2808": "FocalTech", "147e": "UPEK", "08ff": "AuthenTec"}
-ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
+ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
 
 
 def path(p):
@@ -115,7 +116,8 @@ def pam_state():
         for n in names:
             try:
                 with open(path(f"/etc/pam.d/{n}")) as f:
-                    on = on or MARK in f.read()
+                    text = f.read()
+                    on = on or MARK in text or OLD_MARK in text
             except OSError:
                 pass
         out[where] = on
@@ -168,7 +170,7 @@ def enrolled():
 def slow_start(run=subprocess.run):
     """systemd stopped fprintd before it finished starting: Broadcom's driver
     updates the reader's firmware then (about a minute), and some systems
-    (CachyOS) give a service 15 s. irice-root.py's "fprintd" fix gives it
+    (CachyOS) give a service 15 s. tessera-root.py's "fprintd" fix gives it
     longer."""
     try:
         out = run(["systemctl", "show", "fprintd", "-p", "Result", "--value"], capture_output=True, text=True,
@@ -266,15 +268,17 @@ def delete(finger):
 
 
 def fix():
-    """irice-root.py's "fprintd" fix: through the installed helper (no
+    """tessera-root.py's "fprintd" fix: through the installed helper (no
     password), or, while that's older than this folder's, its script with
     the password."""
     import importlib.util
     here = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("irice_root", os.path.join(here, "irice-root.py"))
+    spec = importlib.util.spec_from_file_location("tessera_root", os.path.join(here, "tessera-root.py"))
     root = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(root)
-    helper = path("/usr/lib/irice/irice-root")
+    helper = path("/usr/lib/tessera/tessera-root")
+    if not os.access(helper, os.X_OK):
+        helper = path("/usr/lib/irice/irice-root")  # (installed before iRice became Tessera)
     try:
         p = None
         if os.access(helper, os.X_OK):

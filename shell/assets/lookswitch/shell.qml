@@ -5,10 +5,10 @@ import Quickshell.Wayland
 
 // The screen shown while the shell restarts into the other look (Glass or
 // Material; switch-look.sh): your blurred wallpaper on every display, the
-// iRice mark morphing through Material's shapes, and the look's name. A
+// Tessera mark morphing through Material's shapes, and the look's name. A
 // config of its own (run from a copy, with qs -p, like the update screen), so
 // it stays up while the shell restarts. It reads ../status: "run", then
-// "done" (fade out and quit). Its own namespace (not "irice:"), so the
+// "done" (fade out and quit). Its own namespace (not "tessera:"), so the
 // compositor doesn't blur it.
 ShellRoot {
     id: root
@@ -73,7 +73,7 @@ ShellRoot {
             required property var modelData
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "iricelookswitch"
+            WlrLayershell.namespace: "tesseralookswitch"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive // (keys don't reach apps meanwhile)
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; bottom: true; left: true; right: true }
@@ -150,7 +150,7 @@ ShellRoot {
                     }
                     Text {
                         anchors.centerIn: parent
-                        text: "\ue604" // (Phosphor's filled circle-wavy: the Badge, the logo)
+                        text: "\ue604" // (Phosphor's filled circle-wavy: the Tessera badge)
                         color: root.ink
                         font { family: "Phosphor-Fill"; pixelSize: 64 }
                     }
@@ -164,13 +164,13 @@ ShellRoot {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.to === "material" ? "Material" : "Glass"
                         color: root.ink
-                        font { family: root.to === "material" ? "iRice Sans Flex" : "Inter"; pixelSize: 40; weight: Font.DemiBold }
+                        font { family: root.to === "material" ? "Tessera Sans Flex" : "Inter"; pixelSize: 40; weight: Font.DemiBold }
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.to === "material" ? "Material · experimental" : "Glass"
                         color: Qt.alpha(root.ink, 0.65)
-                        font { family: root.to === "material" ? "iRice Sans Flex" : "Inter"; pixelSize: 16 }
+                        font { family: root.to === "material" ? "Tessera Sans Flex" : "Inter"; pixelSize: 16 }
                     }
                 }
             }

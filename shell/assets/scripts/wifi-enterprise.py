@@ -43,9 +43,9 @@ CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundl
 
 
 def ca_bundle():
-    if os.environ.get("IRICE_CA_BUNDLE") == "none":  # (tests: a system without one)
+    if os.environ.get("TESSERA_CA_BUNDLE") == "none":  # (tests: a system without one)
         return ""
-    for path in ([os.environ["IRICE_CA_BUNDLE"]] if os.environ.get("IRICE_CA_BUNDLE") else []) + list(CA_BUNDLES):
+    for path in ([os.environ["TESSERA_CA_BUNDLE"]] if os.environ.get("TESSERA_CA_BUNDLE") else []) + list(CA_BUNDLES):
         if os.path.isfile(path) and os.access(path, os.R_OK):
             return path
     return ""

@@ -2,7 +2,7 @@
 Bluetooth (weave) link, and the bandwidth upgrade off it.
 
 The stand-in phone (quickshare_peer.py + quickshare_ble_peer.py, written
-from the protocol side) talks weave to iRice's service. Upgrades go to a
+from the protocol side) talks weave to Tessera's service. Upgrades go to a
 second TCP port on 127.0.0.1, standing in for the network or a Wi-Fi
 Direct group (the root helper is a fake that hands out 127.0.0.1): the
 offer, the plain-text introduction and ack, LAST_WRITE / SAFE_TO_CLOSE on
@@ -157,7 +157,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
             return self.answers
         self.svc.reachable = reachable
         await self.svc.configure(visible=True)
-        # The link: the phone is the central, iRice the peripheral (GATT server)
+        # The link: the phone is the central, Tessera the peripheral (GATT server)
         self.to_phone, self.to_engine, self.phone = bp.pair(engine_central=False, packet_size=185)
         sock = weave.WeaveSocket(self.to_phone, is_client=False, max_packet=244)
         self.to_engine.connect(sock.feed)
@@ -396,7 +396,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
 
     async def test_debug_log_names_frames_but_no_secrets(self):
         from nearby import debuglog
-        log = Path(self.dir.name, "irice-quickshare.log")
+        log = Path(self.dir.name, "tessera-quickshare.log")
         debuglog._path = str(log)
         try:
             data = os.urandom(5000)
@@ -537,7 +537,7 @@ class SendingOverBluetooth(unittest.IsolatedAsyncioTestCase):
     async def joins(self, nm, plain=False):
         events = Events()
         helper = FakeHelper()
-        # iRice is the central now: it connects to the phone's GATT server
+        # Tessera is the central now: it connects to the phone's GATT server
         to_phone, to_engine, phone = bp.pair(engine_central=True, packet_size=20)
         sock = weave.WeaveSocket(to_phone, is_client=True, max_packet=20)
         to_engine.connect(sock.feed)
@@ -624,7 +624,7 @@ if __name__ == "__main__":
 class SlowSharedNetwork(unittest.IsolatedAsyncioTestCase):
     """Receiving over a shared network that crawls: the phone asks for a
     faster link (BANDWIDTH_UPGRADE_RETRY, as Android does), or the speed
-    says so, and iRice offers Wi-Fi Direct next to its Wi-Fi."""
+    says so, and Tessera offers Wi-Fi Direct next to its Wi-Fi."""
 
     async def asyncSetUp(self):
         self.dir = tempfile.TemporaryDirectory()

@@ -20,7 +20,7 @@ ShaderEffect {
     readonly property alias shape: shapeItem
 
     readonly property var host: QsWindow.window
-    // Glass in a GlassWindow can be drawn by the irice-glass Hyprland plugin
+    // Glass in a GlassWindow can be drawn by the tessera-glass Hyprland plugin
     // (true refraction of whatever is behind). Glass in the wallpaper window
     // only ever has wallpaper behind it, so it refracts the baked wallpaper.
     readonly property bool inGlassWindow: host?.registerGlass !== undefined

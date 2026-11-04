@@ -1,4 +1,11 @@
-# iRice changelog
+# Tessera changelog
+
+## iRice is now Tessera · 2026-11-04
+
+- **A new name, everywhere:** the desktop, its settings, its command (`tessera doctor`, `tessera update`…), its login screen and its boot animations. Its mark is the **Badge**, the wavy seal that was the last menu icon in Settings → Appearance; it's the menu bar's default now, and it's in the boot animations, the look switch and the login intro. The separate Badge choice is now that default.
+- **Nothing to redo:** your settings, to-dos, chats, models and the rest move from the `irice` folders to `tessera` ones by themselves the next time the shell starts, and the old names stay behind as links. API keys, iCloud passwords, backups and exported shortcuts made before still work.
+- **Everything keeps working before the one-time setup:** until you run it, Tessera uses iRice's system helper and its permissions, its priority rule, its login screen and its session entry, exactly as before. Two commands with your password then move those to Tessera's names and remove iRice's; `docs/rename-to-tessera.md` lists them.
+- Older names still count where scripts or a running session use them (`IRICE_ROOT`, `IRICE_TTY`…), and a glass plugin, `irice-events` or native helpers built before keep working until they're rebuilt.
 
 ## One process follows the system instead of about thirty · 2026-11-04
 

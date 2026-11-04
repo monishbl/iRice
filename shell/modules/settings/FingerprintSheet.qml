@@ -84,7 +84,7 @@ Scope {
             color: "transparent"
             anchors { top: true; bottom: true; left: true; right: true }
             exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "irice:fingerprint"
+            WlrLayershell.namespace: "tessera:fingerprint"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 

@@ -47,7 +47,7 @@ Singleton {
             flush();
     }
 
-    // (`quiet`: set with iRice's own slider, so no brightness bar: Audio.hush)
+    // (`quiet`: set with Tessera's own slider, so no brightness bar: Audio.hush)
     property real quietUntil: 0
     function set(v, quiet) {
         if (quiet)

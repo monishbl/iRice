@@ -1,4 +1,4 @@
-"""iRice's Quick Share (Nearby Share) engine.
+"""Tessera's Quick Share (Nearby Share) engine.
 
 The protocol is Google's Nearby Connections with Nearby Sharing on top:
   transport.py   a byte stream carrying length-prefixed frames (TCP today;

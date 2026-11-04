@@ -5,7 +5,7 @@ import Quickshell.Bluetooth
 import Quickshell.Io
 import qs.common
 
-// Android's Quick Share (Nearby Share), built in: iRice speaks the protocol
+// Android's Quick Share (Nearby Share), built in: Tessera speaks the protocol
 // itself (assets/scripts/quickshare, see its nearby/__init__.py), so phones
 // send to this computer and it sends to them from their own Quick Share
 // sheet, with nothing else installed. Like LocalSend: you're asked in the
@@ -49,7 +49,7 @@ Singleton {
         onTriggered: Config.options.sharing.quickShare = "off"
     }
     // One name for this computer, LocalSend's too (Settings → Sharing → Your name)
-    readonly property string name: cfg.name || (Quickshell.env("USER") ?? "iRice") + "'s computer"
+    readonly property string name: cfg.name || (Quickshell.env("USER") ?? "Tessera") + "'s computer"
     readonly property string folder: cfg.quickShareFolder || ""
 
     property bool looking: false // the share sheet is open: find devices
@@ -326,8 +326,8 @@ Singleton {
 
     // ── Fast transfers without asking (Settings → Sharing) ──────────────
     // A polkit rule lets the Wi-Fi helper start without the password, for
-    // you (iRice's root helper: quickshare-trust). Turning it on or off asks
-    // once. /etc/irice/quickshare-trusted (readable by all) says it's on.
+    // you (Tessera's root helper: quickshare-trust). Turning it on or off asks
+    // once. /etc/tessera/quickshare-trusted (readable by all) says it's on.
     property bool trusted: false
     property bool trustBusy: false
     property string trustError: ""
@@ -336,7 +336,8 @@ Singleton {
     }
     Process {
         id: trustProbe
-        command: ["test", "-e", "/etc/irice/quickshare-trusted"]
+        // (/etc/irice: turned on before iRice became Tessera, until the root setup moves it)
+        command: ["sh", "-c", "[ -e /etc/tessera/quickshare-trusted ] || [ -e /etc/irice/quickshare-trusted ]"]
         onExited: code => root.trusted = code === 0
     }
     function setTrusted(on) {
@@ -348,7 +349,7 @@ Singleton {
             return;
         }
         trustBusy = true;
-        trustProc.command = ["pkexec", "/usr/lib/irice/irice-root", "quickshare-trust", on ? "on" : "off"];
+        trustProc.command = RootHelper.command(["quickshare-trust", on ? "on" : "off"]);
         trustProc.running = true;
     }
     Process {
@@ -358,7 +359,7 @@ Singleton {
             root.trustBusy = false;
             if (code !== 0 && code !== 126)
                 root.trustError = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (trustErr.text.replace(/^irice-root: /, "").trim() || "That didn't change. Update iRice, then try again.");
+                    : (trustErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
             root.checkTrust();
         }
     }

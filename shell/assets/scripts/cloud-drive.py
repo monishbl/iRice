@@ -18,7 +18,7 @@ each) so they open quickly again and changes upload in the background.
 
 The sign-in is rclone's (its own app registration with Google and Microsoft),
 kept in rclone's config (~/.config/rclone/rclone.conf, as remotes named
-irice-gdrive and irice-onedrive).
+tessera-gdrive and tessera-onedrive).
 """
 import json
 import os
@@ -35,15 +35,15 @@ DRIVES = {
 
 
 def rclone():
-    return os.environ.get("IRICE_RCLONE") or shutil.which("rclone")
+    return os.environ.get("TESSERA_RCLONE") or shutil.which("rclone")
 
 
 def remote(name):
-    return "irice-" + name
+    return "tessera-" + name
 
 
 def unit(name):
-    return "irice-drive-" + name
+    return "tessera-drive-" + name
 
 
 def folder(name):
@@ -67,7 +67,7 @@ def mount_points(table=None):
     died is still there, though its folder can't be opened)."""
     points = set()
     try:
-        with open(table or os.environ.get("IRICE_MOUNTINFO") or "/proc/self/mountinfo") as f:
+        with open(table or os.environ.get("TESSERA_MOUNTINFO") or "/proc/self/mountinfo") as f:
             for line in f:
                 parts = line.split(" ")
                 if len(parts) > 4:

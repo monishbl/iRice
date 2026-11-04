@@ -131,7 +131,7 @@ Scope {
         PanelWindow {
             required property var modelData
             screen: modelData
-            WlrLayershell.namespace: "irice:lockveil"
+            WlrLayershell.namespace: "tessera:lockveil"
             WlrLayershell.layer: WlrLayer.Overlay
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; bottom: true; left: true; right: true }
@@ -381,7 +381,7 @@ Scope {
                 root.prepareForSleep(args[0] === true);
         }
     }
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         running: root.watchSleep && Events.fallsBack("login1")
         command: [Tools.watcher, "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"]
@@ -449,7 +449,7 @@ Scope {
     }
     PamContext {
         id: finger
-        config: "irice-fingerprint"
+        config: "tessera-fingerprint"
         configDirectory: Quickshell.shellDir + "/assets/pam"
         onMessageChanged: {
             const m = message ?? "";
@@ -537,7 +537,7 @@ Scope {
     }
     PamContext {
         id: face
-        config: "irice-face"
+        config: "tessera-face"
         configDirectory: Quickshell.shellDir + "/assets/pam"
         onCompleted: result => {
             if (result === PamResult.Success) {

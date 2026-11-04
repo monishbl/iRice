@@ -54,7 +54,7 @@ class AppStore(unittest.TestCase):
         (root / "as/xml").mkdir(parents=True)
         with gzip.open(root / "as/xml/extra.xml.gz", "wt") as f:
             f.write(CATALOGUE)
-        self.env = {"IRICE_APPSTREAM": str(root / "as"), "XDG_CACHE_HOME": str(root / "cache")}
+        self.env = {"TESSERA_APPSTREAM": str(root / "as"), "XDG_CACHE_HOME": str(root / "cache")}
         self.old = {k: os.environ.get(k) for k in self.env}
         os.environ.update(self.env)
         self.m = load()
@@ -74,7 +74,7 @@ class AppStore(unittest.TestCase):
         self.assertEqual((o["name"], o["repo"], o["iconName"], o["desktop"]), ("Obsidian", "extra", "obsidian", "obsidian.desktop"))
         self.assertEqual(o["description"], "Make and follow connections.\n\nPlugins.")
         # read once: the second time from the cache
-        self.assertTrue(list(Path(self.env["XDG_CACHE_HOME"], "irice/appstore").glob("repo-*.json")))
+        self.assertTrue(list(Path(self.env["XDG_CACHE_HOME"], "tessera/appstore").glob("repo-*.json")))
 
     def test_ranking(self):
         m = self.m

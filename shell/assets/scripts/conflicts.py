@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What else is running that does iRice's job twice, for services/Conflicts.qml
+"""What else is running that does Tessera's job twice, for services/Conflicts.qml
 (an island alert soon after the shell starts, and Settings → About → System
 health). Read-only; prints a JSON list of
   { "id", "name", "short", "what", "fix" }
@@ -8,13 +8,13 @@ as ("waybar", "mako"), `short` and `what` say what it duplicates (for the island
 `fix` how to stop it.
 
 Looks for:
-  - another owner of org.freedesktop.Notifications (iRice shows notifications)
+  - another owner of org.freedesktop.Notifications (Tessera shows notifications)
   - a bar or shell drawn by something else (Hyprland layers whose namespace
-    isn't iRice's)
+    isn't Tessera's)
   - more than one hypridle, or a second cliphist recorder (wl-paste --watch)
     in this Hyprland session
   - user units that start those with the session (systemctl --user is-enabled)
-The shell that runs this is its parent: its own layers and names are iRice's.
+The shell that runs this is its parent: its own layers and names are Tessera's.
 """
 import json
 import os
@@ -96,13 +96,13 @@ def notifications(found):
     if pid == SHELL_PID or cmdline(pid) == cmdline(SHELL_PID):
         return
     name = comm(pid) or "another app"
-    if name in ("irice-shell", "qs", "quickshell"):
+    if name in ("tessera-shell", "irice-shell", "qs", "quickshell"):
         name = "quickshell"  # (another Quickshell config)
     found.append({"id": "notifications:" + name, "name": NOTIFIERS.get(name, name),
-                  "short": "Shows notifications instead of iRice",
-                  "what": "shows notifications, so iRice's Notification Center and banners stay empty",
+                  "short": "Shows notifications instead of Tessera",
+                  "what": "shows notifications, so Tessera's Notification Center and banners stay empty",
                   "fix": f"Stop {name} from starting with your session (remove it from your autostart, or "
-                         f"systemctl --user disable --now {name}), then restart iRice."})
+                         f"systemctl --user disable --now {name}), then restart Tessera."})
 
 
 def layers(found):
@@ -116,7 +116,7 @@ def layers(found):
             for layer in level:
                 ns = layer.get("namespace", "") or ""
                 pid = layer.get("pid", 0)
-                if pid == SHELL_PID or ns.startswith("irice:") or ns.startswith("irice-"):
+                if pid == SHELL_PID or ns.startswith("tessera:") or ns.startswith("tessera-"):
                     continue
                 who = comm(pid) if pid else ""
                 base = ns.split(":")[0].split("-")[0].lower()
@@ -127,7 +127,7 @@ def layers(found):
                 proc = who or name
                 found.append({"id": "bar:" + name, "name": name,
                               "short": "Draws a second bar or shell",
-                              "what": "draws a bar or shell over iRice's menu bar and dock",
+                              "what": "draws a bar or shell over Tessera's menu bar and dock",
                               "fix": f"Remove {proc} from your Hyprland autostart (exec-once) or "
                                      f"systemctl --user disable --now {proc}, then log in again."})
 
@@ -148,13 +148,13 @@ def duplicates(found):
     if len(idle) > 1:
         found.append({"id": "hypridle", "name": "hypridle", "short": f"Runs {len(idle)} times",
                       "what": f"is running {len(idle)} times, so the screen may dim, lock or sleep twice",
-                      "fix": "iRice starts its own hypridle. Remove exec-once = hypridle from your Hyprland config, "
+                      "fix": "Tessera starts its own hypridle. Remove exec-once = hypridle from your Hyprland config, "
                              "or systemctl --user disable --now hypridle."})
     if any(len(v) > 1 for v in clips.values()):
         found.append({"id": "cliphist", "name": "a second clipboard recorder",
                       "short": "Saves what you copy twice",
                       "what": "saves everything you copy twice (wl-paste --watch cliphist store)",
-                      "fix": "iRice records the clipboard itself. Remove the extra exec-once = wl-paste --watch cliphist store "
+                      "fix": "Tessera records the clipboard itself. Remove the extra exec-once = wl-paste --watch cliphist store "
                              "from your Hyprland config, or systemctl --user disable --now cliphist."})
 
 
@@ -169,7 +169,7 @@ def units(found):
         if any(i.endswith(":" + unit) or i == unit for i in have):
             continue  # (already said: it's running)
         found.append({"id": "unit:" + unit, "name": unit, "short": "Starts with your session",
-                      "what": "starts with your session (a systemd user service) and does a job iRice does",
+                      "what": "starts with your session (a systemd user service) and does a job Tessera does",
                       "fix": f"systemctl --user disable --now {unit}"})
 
 

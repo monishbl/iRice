@@ -225,7 +225,7 @@ class Share:
 
 def handler_for(share):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "iRice"
+        server_version = "Tessera"
         sys_version = ""
         protocol_version = "HTTP/1.1"
         timeout = 60
@@ -351,7 +351,7 @@ def handler_for(share):
                 # (the disk keeps room to spare: a phone never fills it)
                 if length + share.incoming + KEEP_FREE > shutil.disk_usage(share.folder).free:
                     return self._text(507, "That computer doesn't have room for this file. Free some space on it, then try again.")
-                tmp = os.path.join(share.folder, f".irice-incoming-{secrets.token_hex(6)}.part")
+                tmp = os.path.join(share.folder, f".tessera-incoming-{secrets.token_hex(6)}.part")
                 fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
                 share.received += 1
                 share.incoming += length
@@ -387,7 +387,7 @@ def make_qr(url):
     if not shutil.which("qrencode"):
         return None, "Showing the code needs qrencode. Install it, then try again."
     folder = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-    path = os.path.join(folder, f"irice-link-{secrets.token_hex(6)}.svg")
+    path = os.path.join(folder, f"tessera-link-{secrets.token_hex(6)}.svg")
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
@@ -418,8 +418,8 @@ def main(argv):
         share_args = {"files": files}
     else:
         share_args = {"folder": os.path.expanduser(argv[2])}
-    # (IRICE_LINKSHARE_HOST: the tests, on the loopback address)
-    host, link = (os.environ["IRICE_LINKSHARE_HOST"], "test") if os.environ.get("IRICE_LINKSHARE_HOST") else pick_address(addresses())
+    # (TESSERA_LINKSHARE_HOST: the tests, on the loopback address)
+    host, link = (os.environ["TESSERA_LINKSHARE_HOST"], "test") if os.environ.get("TESSERA_LINKSHARE_HOST") else pick_address(addresses())
     if host is None:
         emit({"ev": "error", "message": "This computer isn't on a Wi-Fi or wired network. Connect it and the phone "
                                         "to the same Wi-Fi (or join the iPhone's Personal Hotspot), then try again."})
@@ -429,7 +429,7 @@ def main(argv):
     # Ports the firewall lets in meanwhile (SharingPorts.qml, "links"):
     # Cast's file port when it isn't casting, the faster-link one, else any
     server = None
-    for port in (0,) if os.environ.get("IRICE_LINKSHARE_HOST") else PORTS + (0,):
+    for port in (0,) if os.environ.get("TESSERA_LINKSHARE_HOST") else PORTS + (0,):
         try:
             server = ThreadingHTTPServer((host, port), handler_for(share))
             break

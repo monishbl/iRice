@@ -21,7 +21,7 @@ Scope {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.namespace: "irice:shelf-probe"
+        WlrLayershell.namespace: "tessera:shelf-probe"
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         DropArea {
             anchors.fill: parent

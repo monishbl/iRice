@@ -100,7 +100,7 @@ GreeterWindow {
         // What went wrong, a power choice to confirm, or the reader's words
         Rectangle {
             readonly property string say: win.powerChoice ? ({ suspend: "Sleep", reboot: "Restart", poweroff: "Shut down" })[win.powerChoice] + ": press Enter or click it again"
-                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is irice. Esc closes it." : "")
+                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is tessera. Esc closes it." : "")
             visible: say !== ""
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(sayText.implicitWidth, 440) + 32

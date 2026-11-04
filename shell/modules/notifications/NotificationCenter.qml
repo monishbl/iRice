@@ -30,7 +30,7 @@ Variants {
             // own glass; solid glass always has the panel
             bare: Theme.glass.tier !== "solid" && !Config.options.notificationCenter.background
             property alias widgetTab: ncTabState.value
-            // Notifications, or island alerts in the iRice group
+            // Notifications, or island alerts in the Tessera group
             readonly property bool anything: Notifications.list.length > 0 || Island.history.length > 0
             QtObject {
                 id: ncTabState
@@ -188,7 +188,7 @@ Variants {
                                                 height: 22
                                                 icon: "x"
                                                 iconSize: 11
-                                                accessibleName: group.modelData.island ? "Clear iRice alerts" : "Clear " + group.modelData.app
+                                                accessibleName: group.modelData.island ? "Clear Tessera alerts" : "Clear " + group.modelData.app
                                                 onClicked: {
                                                     if (group.modelData.island)
                                                         Island.clearHistory();

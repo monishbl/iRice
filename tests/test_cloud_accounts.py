@@ -1,8 +1,8 @@
 """cloud-accounts.py: iCloud (CalDAV/CardDAV) and Microsoft 365 (Graph).
 
-iCalendar edits keep what iRice doesn't change (alarms, attendees). The
+iCalendar edits keep what Tessera doesn't change (alarms, attendees). The
 CalDAV side runs against a real CalDAV server, Radicale, when one is there
-(IRICE_TEST_RADICALE: a Python with radicale; skipped otherwise): connect,
+(TESSERA_TEST_RADICALE: a Python with radicale; skipped otherwise): connect,
 add, edit, delete, repeating events left alone, contacts, a refused password.
 The Graph side runs against a stand-in Microsoft Graph."""
 import http.server
@@ -80,10 +80,10 @@ class Ics(unittest.TestCase):
 
 
 # ── Against a real CalDAV server ────────────────────────────────────────
-RADICALE = os.environ.get("IRICE_TEST_RADICALE", "")
+RADICALE = os.environ.get("TESSERA_TEST_RADICALE", "")
 
 
-@unittest.skipUnless(RADICALE and os.path.exists(RADICALE), "set IRICE_TEST_RADICALE to a Python with radicale")
+@unittest.skipUnless(RADICALE and os.path.exists(RADICALE), "set TESSERA_TEST_RADICALE to a Python with radicale")
 class CalDav(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -128,7 +128,7 @@ class CalDav(unittest.TestCase):
     def setUp(self):
         self.state = tempfile.TemporaryDirectory()
         self.env = dict(os.environ, XDG_STATE_HOME=self.state.name,
-                        IRICE_CLOUD_SECRET_FILE=os.path.join(self.state.name, "secrets.json"))
+                        TESSERA_CLOUD_SECRET_FILE=os.path.join(self.state.name, "secrets.json"))
 
     def tearDown(self):
         self.state.cleanup()
@@ -149,7 +149,7 @@ class CalDav(unittest.TestCase):
         self.assertEqual([c["title"] for c in s["calendars"]], ["Home"])
         self.assertEqual(s["contacts"][0]["name"], "Jane Doe")
         # the password is in the keyring (here: the test's file), never the account file
-        self.assertNotIn("abcd", Path(self.state.name, "irice/cloud/accounts.json").read_text())
+        self.assertNotIn("abcd", Path(self.state.name, "tessera/cloud/accounts.json").read_text())
         acc, cal = s["accounts"][0]["id"], s["calendars"][0]["id"]
         start = int(time.time() // 3600 * 3600 + 86400) * 1000
 

@@ -13,7 +13,7 @@ import qs.services
 //   1 the look: Glass or Material (experimental; only where its files are)
 //   2 light, dark, or auto (light from sunrise to sunset)
 //   3 a wallpaper: the bundled ones, or a picture of your own
-// then "Start using iRice". Light or dark and the wallpaper apply as you
+// then "Start using Tessera". Light or dark and the wallpaper apply as you
 // pick them; the look last, as Settings → Appearance switches it (the shell
 // restarts behind the switching screen; apps keep running). "Set up later"
 // on every step puts it away for good. Enter continues, Esc goes back, Tab
@@ -151,7 +151,7 @@ Scope {
             anchors { top: true; bottom: true; left: true; right: true }
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice-welcome"
+            WlrLayershell.namespace: "tessera-welcome"
             WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             color: "transparent"
 
@@ -238,7 +238,7 @@ Scope {
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
-                            text: ["Welcome to iRice", "Light or dark?", "Choose a wallpaper", "You're all set"][root.step]
+                            text: ["Welcome to Tessera", "Light or dark?", "Choose a wallpaper", "You're all set"][root.step]
                             color: root.ink
                             font { family: Theme.font.family; pixelSize: 24; weight: Font.DemiBold; letterSpacing: -0.2 }
                         }
@@ -249,7 +249,7 @@ Scope {
                                 "Pick a look for your desktop. You can change it any time in Settings → Appearance.",
                                 "Auto is light from sunrise to sunset and dark at night.",
                                 "Pick one of these, or a picture of your own.",
-                                root.look !== Config.options.appearance.look ? (root.look === "material" ? "iRice switches to Material when you start. Your apps keep running." : "iRice switches to Glass when you start. Your apps keep running.") : "Everything you picked can be changed in Settings."
+                                root.look !== Config.options.appearance.look ? (root.look === "material" ? "Tessera switches to Material when you start. Your apps keep running." : "Tessera switches to Glass when you start. Your apps keep running.") : "Everything you picked can be changed in Settings."
                             ][root.step]
                             color: root.ink2
                             font { family: Theme.font.family; pixelSize: 14 }
@@ -484,7 +484,7 @@ Scope {
                             }
                             WelcomeButton {
                                 kind: "primary"
-                                text: root.step === root.steps - 1 ? "Start using iRice" : "Continue"
+                                text: root.step === root.steps - 1 ? "Start using Tessera" : "Continue"
                                 onClicked: root.next()
                             }
                         }

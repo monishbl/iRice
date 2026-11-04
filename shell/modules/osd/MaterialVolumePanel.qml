@@ -38,7 +38,7 @@ PanelWindow {
     screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "irice:osd"
+    WlrLayershell.namespace: "tessera:osd"
     WlrLayershell.layer: WlrLayer.Overlay
     anchors { top: true; bottom: true; right: true }
     implicitWidth: edge + panelWidth + 12 + cardWidth + 24

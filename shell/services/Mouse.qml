@@ -113,7 +113,7 @@ Singleton {
                 lookAgain.restart();
         }
     }
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         running: Config.ready && Tools.has("udevadm") && Events.fallsBack("udev")
         command: [Tools.watcher, "udevadm", "monitor", "--udev", "--subsystem-match=input"]
@@ -144,18 +144,18 @@ Singleton {
     readonly property bool followAvailable: GlassPlugin.available && GlassPlugin.version >= 4
     function applyBoundaries() {
         if (followAvailable && Config.ready)
-            GlassPlugin.command("pointer-follow", "irice-glass pointer-follow " + (cfg.focus === "hover" ? 1 : 0));
+            GlassPlugin.command("pointer-follow", GlassPlugin.name + " pointer-follow " + (cfg.focus === "hover" ? 1 : 0));
         if (!boundaryAvailable || !Config.ready)
             return;
         const mode = cfg.boundaryMode === "corners" ? 1 : cfg.boundaryMode === "resistance" ? 2 : 0;
-        GlassPlugin.command("pointer-policy", "irice-glass pointer-policy " + mode + " " + Math.max(4, Math.min(100, cfg.cornerSize)));
+        GlassPlugin.command("pointer-policy", GlassPlugin.name + " pointer-policy " + mode + " " + Math.max(4, Math.min(100, cfg.cornerSize)));
         confineSelection();
     }
     function confineSelection() {
         if (!boundaryAvailable)
             return;
         const name = cfg.boundaryMode !== "off" && !System.locked && ScreenTools.selecting !== "" ? ScreenTools.selectingScreen?.name : "";
-        GlassPlugin.command("pointer-confine", "irice-glass pointer-confine " + (name || "-"));
+        GlassPlugin.command("pointer-confine", GlassPlugin.name + " pointer-confine " + (name || "-"));
     }
     readonly property string boundarySignature: cfg.boundaryMode + "|" + cfg.cornerSize
     onBoundarySignatureChanged: applyBoundaries()
@@ -185,7 +185,7 @@ Singleton {
             if (act.kind === "none" || !Config.ready || root.cfg.focus !== "hover" || System.locked || Panels.open !== "" || ScreenTools.selecting !== "")
                 return;
             if (act.kind === "refocus" && root.boundaryAvailable) {
-                Quickshell.execDetached(["hyprctl", "irice-glass", "pointer-refocus"]);
+                Quickshell.execDetached(["hyprctl", GlassPlugin.name, "pointer-refocus"]);
                 return;
             }
             const script = decodeURIComponent(Qt.resolvedUrl("../assets/scripts/pointer-focus.lua").toString().replace("file://", ""));
@@ -228,7 +228,7 @@ Singleton {
     property var openedClass: ({})
     Process {
         id: inputAge
-        command: ["hyprctl", "irice-glass", "input-age"]
+        command: ["hyprctl", GlassPlugin.name, "input-age"]
         stdout: StdioCollector {
             onStreamFinished: root.urgentDecided(parseInt(text.trim()))
         }
@@ -239,7 +239,7 @@ Singleton {
         const t = Hyprland.toplevels.values.find(w => "0x" + w.address.replace(/^0x/, "") === address);
         if (!t)
             return;
-        // iRice's own windows (Settings, pickers it opened) are only ever
+        // Tessera's own windows (Settings, pickers it opened) are only ever
         // opened on purpose, from a click, a shortcut or a command: they
         // come forward, never as an "wants your attention" alert
         // (the Wayland app id: a window that has just opened has no class

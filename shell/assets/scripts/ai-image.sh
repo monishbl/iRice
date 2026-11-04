@@ -6,7 +6,7 @@
 #   ai-image.sh FILE…         ai-image.sh --clipboard   (exit 3: no picture there)
 set -uo pipefail
 umask 077
-dir="${XDG_RUNTIME_DIR:-/tmp}/irice-ai"
+dir="${XDG_RUNTIME_DIR:-/tmp}/tessera-ai"
 mkdir -p "$dir"
 im=$(command -v magick || command -v convert) || { echo "!	ImageMagick isn't installed" ; exit 2; }
 

@@ -171,7 +171,7 @@ GreeterWindow {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             text: win.powerChoice ? ({ suspend: "Sleep", reboot: "Restart", poweroff: "Shut down" })[win.powerChoice] + ": click it again or press Enter. Esc cancels."
-                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is irice. Esc quits." : "")
+                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is tessera. Esc quits." : "")
             color: win.auth.error || win.powerChoice ? win.bad : win.dim
             font { family: win.sans; pixelSize: 13 }
         }

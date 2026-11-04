@@ -1,4 +1,4 @@
-"""Secure by default: what iRice does before anyone changes a setting, and
+"""Secure by default: what Tessera does before anyone changes a setting, and
 the guards that keep it that way (SECURITY-AUDIT.md).
 
   sharing        nothing is visible until you turn it on; nothing is saved
@@ -54,7 +54,7 @@ def load(name, path):
     return mod
 
 
-R = load("irice_root_sec", SCRIPTS / "irice-root.py")
+R = load("tessera_root_sec", SCRIPTS / "tessera-root.py")
 WIFI = load("qs_wifi_helper_sec", QS / "qs-wifi-helper.py")
 LINK = load("link_share_sec", SCRIPTS / "link-share.py")
 CAST = load("cast_sec", SCRIPTS / "cast.py")
@@ -295,16 +295,16 @@ class RootHelper(unittest.TestCase):
     def test_priority_writes_only_its_fixed_rule_and_stays_off_through_updates(self):
         etc = self.d / "etc/ananicy.d"
         etc.mkdir(parents=True)
-        rule = etc / "irice.rules"
+        rule = etc / "tessera.rules"
         self.assertIn(str(rule), self.setup_written())  # (on by default)
         R.priority(False, prefix=str(self.d), run=lambda *a, **k: None)
         self.assertFalse(rule.exists())
-        self.assertTrue((self.d / "etc/irice/priority-off").exists())
+        self.assertTrue((self.d / "etc/tessera/priority-off").exists())
         self.assertNotIn(str(rule), self.setup_written())  # (an update leaves it off)
         self.assertFalse(rule.exists())
         R.priority(True, prefix=str(self.d), run=lambda *a, **k: None)
         self.assertEqual(rule.read_bytes(), R.ANANICY_TEXT)
-        self.assertFalse((self.d / "etc/irice/priority-off").exists())
+        self.assertFalse((self.d / "etc/tessera/priority-off").exists())
         # (nothing to pass it: on or off is all it takes)
         self.assertEqual(list(inspect.signature(R.priority).parameters), ["on", "prefix", "run"])
 
@@ -325,18 +325,18 @@ class RootHelper(unittest.TestCase):
         # it by itself as visibility changes, so a password each time would
         # be asked again and again; at worst it opens what Settings → Sharing
         # opens anyway, and closes it)
-        rules = (ROOT / "shell/assets/polkit/49-irice.rules").read_text()
+        rules = (ROOT / "shell/assets/polkit/49-tessera.rules").read_text()
         silent = re.search(r"var silent = \{(.*?)\};", rules, re.S).group(1)
-        self.assertEqual(sorted(re.findall(r'"org\.irice\.root\.([a-z-]+)"', silent)),
+        self.assertEqual(sorted(re.findall(r'"org\.tessera\.root\.([a-z-]+)"', silent)),
                          ["fix", "login-look", "priority", "sharing-ports", "wallpaper"])
         self.assertIn('subject.active && subject.local && subject.isInGroup("wheel")', rules)
         # Every action asks for an administrator by default
-        tree = ET.parse(ROOT / "shell/assets/polkit/org.irice.root.policy")
+        tree = ET.parse(ROOT / "shell/assets/polkit/org.tessera.root.policy")
         for action in tree.getroot().iter("action"):
             for k in ("allow_any", "allow_inactive", "allow_active"):
                 self.assertEqual(action.find(f"defaults/{k}").text, "auth_admin", action.get("id"))
             ann = {a.get("key"): a.text for a in action.iter("annotate")}
-            self.assertEqual(ann["org.freedesktop.policykit.exec.path"], "/usr/lib/irice/irice-root")
+            self.assertEqual(ann["org.freedesktop.policykit.exec.path"], "/usr/lib/tessera/tessera-root")
 
     def test_the_fixes_are_fixed(self):
         self.assertEqual(set(R.FIXES), {"networkmanager", "bluetooth", "avahi", "upower", "profiles",
@@ -393,9 +393,9 @@ class RootHelper(unittest.TestCase):
     def test_the_boot_animation_asks_and_takes_only_its_names(self):
         # (it rebuilds the boot image: never without the password, and never
         # a theme name from outside its list)
-        self.assertNotIn("bootsplash", (ROOT / "shell/assets/polkit/49-irice.rules").read_text())
-        self.assertIn('<action id="org.irice.root.bootsplash">', (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text())
-        for bad in ("", "irice-breathe", "../breathe", "spinner", "text", "breathe orbit"):
+        self.assertNotIn("bootsplash", (ROOT / "shell/assets/polkit/49-tessera.rules").read_text())
+        self.assertIn('<action id="org.tessera.root.bootsplash">', (ROOT / "shell/assets/polkit/org.tessera.root.policy").read_text())
+        for bad in ("", "tessera-breathe", "../breathe", "spinner", "text", "breathe orbit"):
             with self.assertRaises(R.Refused, msg=bad):
                 R.bootsplash(bad, prefix=str(self.d), run=None, which=lambda n: None)
 
@@ -443,7 +443,7 @@ class RootHelper(unittest.TestCase):
         rule = R.quickshare_trust_rule("bob")
         self.assertIn('subject.user === "bob" && subject.active && subject.local', rule)
         self.assertIn('words.length !== 2', rule)  # (wifi-helper with no arguments, nothing else)
-        self.assertIn('"org.irice.root.wifi-helper"', rule)
+        self.assertIn('"org.tessera.root.wifi-helper"', rule)
 
     def test_face_takes_only_a_camera(self):
         for bad in ("/dev/../etc/shadow", "/dev/video0/../../etc/shadow", "/etc/passwd", "/dev/v4l/by-id/../../sda",
@@ -549,17 +549,17 @@ class PrivateFiles(unittest.TestCase):
 
     def test_the_quick_share_log_never_goes_to_a_shared_folder(self):
         base = {k: v for k, v in os.environ.items() if k != "XDG_RUNTIME_DIR"}
-        self.assertIsNone(self.fresh_debuglog(dict(base, IRICE_QS_DEBUG="1"))._path)
+        self.assertIsNone(self.fresh_debuglog(dict(base, TESSERA_QS_DEBUG="1"))._path)
         with tempfile.TemporaryDirectory() as d:
             os.chmod(d, 0o755)  # (others can read it: not a runtime folder)
-            self.assertIsNone(self.fresh_debuglog(dict(base, IRICE_QS_DEBUG="1", XDG_RUNTIME_DIR=d))._path)
+            self.assertIsNone(self.fresh_debuglog(dict(base, TESSERA_QS_DEBUG="1", XDG_RUNTIME_DIR=d))._path)
 
     def test_the_quick_share_log_is_private_and_never_followed(self):
         with tempfile.TemporaryDirectory() as d:
             os.chmod(d, 0o700)
-            env = dict(os.environ, IRICE_QS_DEBUG="1", XDG_RUNTIME_DIR=d)
+            env = dict(os.environ, TESSERA_QS_DEBUG="1", XDG_RUNTIME_DIR=d)
             log = self.fresh_debuglog(env)
-            self.assertEqual(log._path, os.path.join(d, "irice-quickshare.log"))
+            self.assertEqual(log._path, os.path.join(d, "tessera-quickshare.log"))
             log.log("test", "hello")
             self.assertEqual(os.stat(log._path).st_mode & 0o777, 0o600)
             os.unlink(log._path)
@@ -575,7 +575,7 @@ class PrivateFiles(unittest.TestCase):
         ls = load("localsend_tls", SCRIPTS / "localsend.py")
         with tempfile.TemporaryDirectory() as d:
             ls.configure_tls(d)
-            folder = Path(d, "irice/localsend")
+            folder = Path(d, "tessera/localsend")
             self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
             self.assertEqual((folder / "private.pem").stat().st_mode & 0o777, 0o600)
 
@@ -650,6 +650,9 @@ SH_C_ALLOWED = {
     "shell/services/Files.qml": 1,  # the file manager quoted (q); the path as $1
     "shell/services/ScreenTools.qml": 1,  # its runner: every caller quotes (q) or passes numbers
     "shell/services/Search.qml": 1,  # ">command": what you typed, in a terminal, on purpose
+    "shell/services/RootHelper.qml": 1,  # constants joined (the helper's two paths); the arguments as "$@"
+    "shell/services/LoginScreen.qml": 1,  # constants joined (RootHelper.knows: a fixed subcommand)
+    "shell/modules/settings/pages/wallpaper.qml": 1,  # constants joined (RootHelper.pick)
 }
 
 

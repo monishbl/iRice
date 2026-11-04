@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""System health for iRice (Settings → About → System health).
+"""System health for Tessera (Settings → About → System health).
 
 Each check asks the service itself, not whether its package is installed:
 PipeWire answers pw-cli (and its PulseAudio part pactl), NetworkManager reports itself running, Avahi gives
@@ -18,9 +18,9 @@ instead of holding the page.
         free-form ever runs): restarting a user service runs directly;
         starting a system service runs as root through pkexec, only after
         the page showed the exact command and the person pressed the button
-        for it: through iRice's root helper (/usr/lib/irice/irice-root fix
+        for it: through Tessera's root helper (/usr/lib/tessera/tessera-root fix
         <id>, no password) once an update installed it, and until then the
-        command itself, after the password in iRice's own dialog.
+        command itself, after the password in Tessera's own dialog.
 
 Nothing runs until the page asks: there's no background polling.
 """
@@ -35,14 +35,21 @@ import subprocess
 import sys
 import threading
 
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
+
 HERE = os.path.dirname(os.path.realpath(__file__))  # (the real folder, from the Material look's links too)
 SHELL = os.path.dirname(os.path.dirname(HERE))
 REPO = os.path.dirname(SHELL)
 EACH = 2.0   # seconds a check may take
 TOTAL = 3.0  # seconds for all of them together
-PLUGIN_VERSION = 4  # what `hyprctl irice-glass ping` answers when current
+PLUGIN_VERSION = 4  # what `hyprctl tessera-glass ping` answers when current
 
-GROUPS = ("Sound", "Network & sharing", "Power", "Desktop", "iRice itself")
+GROUPS = ("Sound", "Network & sharing", "Power", "Desktop", "Tessera itself")
 
 # The fixes this script will run, and nothing else: user services directly,
 # root ones (ROOT_FIXES, below) through pkexec. The firewall's: sharing's
@@ -55,13 +62,13 @@ FIXES = {
     "firewall": [sys.executable, "-I", os.path.join(HERE, "sharing-check.py"), "ports", "again"],
 }
 # Sharing's own checks (firewall, Bluetooth pairing prompts), and the root
-# fixes: the fixed list in the root helper (irice-root.py)
+# fixes: the fixed list in the root helper (tessera-root.py)
 _spec = importlib.util.spec_from_file_location("sharing_check", os.path.join(HERE, "sharing-check.py"))
 sharing = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sharing)
-ROOT_FIXES = sharing.irice_root.FIXES
-SHOWN = {"btpairing": sharing.PAIRING_SHOWN, "networkmanager": sharing.irice_root.NETWORK_SHOWN}  # (what the page shows for these)
-SYSTEM = os.environ.get("IRICE_SYSTEM_ROOT", "/")  # where /usr is looked for (tests)
+ROOT_FIXES = sharing.tessera_root.FIXES
+SHOWN = {"btpairing": sharing.PAIRING_SHOWN, "networkmanager": sharing.tessera_root.NETWORK_SHOWN}  # (what the page shows for these)
+SYSTEM = os.environ.get("TESSERA_SYSTEM_ROOT", "/")  # where /usr is looked for (tests)
 
 _local = threading.local() # per check: whether something it asked hung
 
@@ -155,7 +162,7 @@ def check_networkmanager(_):
         others = [u for u in ("iwd", "systemd-networkd") if active(u)]
         if others:
             return result("networkmanager", "NetworkManager", "Network & sharing", "off",
-                          f"Network managed by {'/'.join(others)}; iRice's Wi-Fi menus need NetworkManager")
+                          f"Network managed by {'/'.join(others)}; Tessera's Wi-Fi menus need NetworkManager")
     return result("networkmanager", "NetworkManager", "Network & sharing", "fail", "Not running: Wi-Fi and the network menu won't work",
                   "sudo systemctl enable --now NetworkManager")
 
@@ -208,10 +215,10 @@ def check_firewall(_):
         return result("firewall", name, "Network & sharing", "ok", "No firewall turned on")
     if f["error"] or (not f["asked"] and not sharing.helper_installed()):
         closing = bool(f["error"]) and not f["want"]
-        older = not f["error"] or f["code"] == sharing.irice_root.REFUSED_EXIT
+        older = not f["error"] or f["code"] == sharing.tessera_root.REFUSED_EXIT
         r = result("firewall", name, "Network & sharing", "warn",
                    f"{kind}: sharing's ports didn't {'close' if closing else 'open'}: " +
-                   (f["error"] or "iRice's system helper isn't installed yet.") +
+                   (f["error"] or "Tessera's system helper isn't installed yet.") +
                    ("" if closing else " Phones can't reach this computer while it's visible."),
                    "Run Software Update once" if older else "Try again: the Fix button here")
         r["canFix"] = not older  # (an older helper: only an update helps)
@@ -276,8 +283,8 @@ def check_upower(_):
                   "sudo systemctl enable --now upower")
 
 
-# Power managers that power-profiles-daemon would fight with (iRice leaves it
-# out next to them: install.sh, tools/irice-packages.sh)
+# Power managers that power-profiles-daemon would fight with (Tessera leaves it
+# out next to them: install.sh, tools/tessera-packages.sh)
 POWER_MANAGERS = (("tlp", "TLP"), ("auto-cpufreq", "auto-cpufreq"), ("tuned", "tuned"))
 
 
@@ -317,7 +324,7 @@ def check_notifications(opts):
                      "GetConnectionUnixProcessID", "s", "org.freedesktop.Notifications"])
     if code != 0:
         return result("notifications", "Notifications", "Desktop", "fail", "Nothing is receiving notifications",
-                      "Restart iRice: Super+Ctrl+Escape")
+                      "Restart Tessera: Super+Ctrl+Escape")
     m = re.search(r"(\d+)\s*$", out.strip())
     pid = int(m.group(1)) if m else 0
     owner = ""
@@ -326,21 +333,21 @@ def check_notifications(opts):
     except OSError:
         pass
     # (the shell itself, or, asked from somewhere else, a Quickshell)
-    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("irice-shell", "qs", "quickshell"):
-        return result("notifications", "Notifications", "Desktop", "ok", "iRice shows them")
+    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("tessera-shell", "irice-shell", "qs", "quickshell"):
+        return result("notifications", "Notifications", "Desktop", "ok", "Tessera shows them")
     return result("notifications", "Notifications", "Desktop", "warn",
-                  f"Another program ({owner or 'unknown'}) is showing notifications instead of iRice",
-                  f"Stop it from starting with your session (pid {pid}), then restart iRice")
+                  f"Another program ({owner or 'unknown'}) is showing notifications instead of Tessera",
+                  f"Stop it from starting with your session (pid {pid}), then restart Tessera")
 
 
 def check_polkit(opts):
     if opts.polkit == "off":
         return result("polkit", "Password prompts", "Desktop", "off", "Not used in this session")
     if opts.polkit == "yes":
-        return result("polkit", "Password prompts", "Desktop", "ok", "iRice asks for your password")
+        return result("polkit", "Password prompts", "Desktop", "ok", "Tessera asks for your password")
     return result("polkit", "Password prompts", "Desktop", "fail",
-                  "iRice's password prompt isn't registered: apps asking for admin rights will fail",
-                  "Close any other polkit agent (polkit-gnome, polkit-kde), then restart iRice: Super+Ctrl+Escape")
+                  "Tessera's password prompt isn't registered: apps asking for admin rights will fail",
+                  "Close any other polkit agent (polkit-gnome, polkit-kde), then restart Tessera: Super+Ctrl+Escape")
 
 
 def check_clipboard(_):
@@ -377,16 +384,16 @@ def check_disk(_):
     return result("disk", "Disk space", "Desktop", "ok", f"{gb:.0f} GB free")
 
 
-# ── iRice itself ────────────────────────────────────────────────────────
+# ── Tessera itself ────────────────────────────────────────────────────────
 
 def source():
-    """The iRice folder: this one, or (an installed copy of the shell) the one
+    """The Tessera folder: this one, or (an installed copy of the shell) the one
     the installer recorded."""
     if os.path.isfile(os.path.join(REPO, "compat.json")):
         return REPO
     for base in (os.environ.get("XDG_DATA_HOME", ""), os.path.expanduser("~/.local/share")):
         try:
-            src = open(os.path.join(base, "irice", "source")).read().strip() if base else ""
+            src = open(os.path.join(app_dir(base), "source")).read().strip() if base else ""
         except OSError:
             continue
         if src and os.path.isfile(os.path.join(src, "compat.json")):
@@ -412,7 +419,7 @@ def check_hyprland(_):
     except ValueError:
         tag = ""
     if not tag:
-        return result("hyprland", "Hyprland", "iRice itself", "fail", "Couldn't ask Hyprland", "Is this a Hyprland session?")
+        return result("hyprland", "Hyprland", "Tessera itself", "fail", "Couldn't ask Hyprland", "Is this a Hyprland session?")
     rng = compat().get("hyprland", {})
     v = version_tuple(tag)
     lo = version_tuple(rng.get("min", "0"))
@@ -424,37 +431,48 @@ def check_hyprland(_):
     else:
         ok = v >= lo and (not hi or v <= version_tuple(hi))
     if ok:
-        return result("hyprland", "Hyprland", "iRice itself", "ok", tag.lstrip("v"))
+        return result("hyprland", "Hyprland", "Tessera itself", "ok", tag.lstrip("v"))
     if v >= lo:
-        return result("hyprland", "Hyprland", "iRice itself", "warn",
-                      f"{tag.lstrip('v')} is newer than iRice is tested with ({hi}): the glass or some settings may not work",
-                      "Run Software Update when an iRice that supports it is out")
-    return result("hyprland", "Hyprland", "iRice itself", "warn",
-                  f"{tag.lstrip('v')} is older than iRice needs ({rng.get('min', '?')})",
+        return result("hyprland", "Hyprland", "Tessera itself", "warn",
+                      f"{tag.lstrip('v')} is newer than Tessera is tested with ({hi}): the glass or some settings may not work",
+                      "Run Software Update when a Tessera that supports it is out")
+    return result("hyprland", "Hyprland", "Tessera itself", "warn",
+                  f"{tag.lstrip('v')} is older than Tessera needs ({rng.get('min', '?')})",
                   "Run Software Update (it updates the system)")
 
 
 def check_plugin(_):
-    code, out = run(["hyprctl", "irice-glass", "ping"])
-    m = re.search(r"irice-glass (\d+)", out or "")
+    code, out = run(["hyprctl", "tessera-glass", "ping"])
+    m = re.search(r"tessera-glass (\d+)", out or "")
+    if not (code == 0 and m):
+        # (built while Tessera was called iRice: it answers to the old name)
+        code, out = run(["hyprctl", "irice-glass", "ping"])
+        if code == 0 and re.search(r"irice-glass (\d+)", out or ""):
+            return result("plugin", "Glass plugin", "Tessera itself", "warn",
+                          "Loaded, but built before iRice became Tessera",
+                          "Rebuild it: tessera rebuild plugin; then log out and in")
     if code == 0 and m:
         n = int(m.group(1))
         if n >= PLUGIN_VERSION:
-            return result("plugin", "Glass plugin", "iRice itself", "ok", f"Loaded (version {n})")
-        return result("plugin", "Glass plugin", "iRice itself", "warn",
+            return result("plugin", "Glass plugin", "Tessera itself", "ok", f"Loaded (version {n})")
+        return result("plugin", "Glass plugin", "Tessera itself", "warn",
                       f"An older build is loaded (version {n}): pointer and focus fixes need the new one",
-                      "Run Software Update, or rebuild it: irice rebuild plugin; then log out and in")
-    return result("plugin", "Glass plugin", "iRice itself", "fail", "Not loaded: glass falls back to frosted",
-                  "Settings → Appearance → Glass → Build plugin, or: irice rebuild plugin")
+                      "Run Software Update, or rebuild it: tessera rebuild plugin; then log out and in")
+    return result("plugin", "Glass plugin", "Tessera itself", "fail", "Not loaded: glass falls back to frosted",
+                  "Settings → Appearance → Glass → Build plugin, or: tessera rebuild plugin")
 
 
 def check_native(_):
     build = os.path.join(SHELL, "native", "build")
-    have = os.path.isdir(os.path.join(build, "qml", "IRice", "Native")) and os.path.exists(os.path.join(build, "glass-ipc"))
+    have = os.path.isdir(os.path.join(build, "qml", "Tessera", "Native")) and os.path.exists(os.path.join(build, "glass-ipc"))
     if have:
-        return result("native", "Native helpers", "iRice itself", "ok", "Built")
-    return result("native", "Native helpers", "iRice itself", "warn", "Not built: glass updates use a slower path",
-                  "irice rebuild native")
+        return result("native", "Native helpers", "Tessera itself", "ok", "Built")
+    # (built while Tessera was called iRice: still used, under the old name)
+    if os.path.isdir(os.path.join(build, "qml", "IRice", "Native")) and os.path.exists(os.path.join(build, "glass-ipc")):
+        return result("native", "Native helpers", "Tessera itself", "ok", "Built (before iRice became Tessera)",
+                      "tessera rebuild native")
+    return result("native", "Native helpers", "Tessera itself", "warn", "Not built: glass updates use a slower path",
+                  "tessera rebuild native")
 
 
 def check_quickshell(opts):
@@ -464,39 +482,40 @@ def check_quickshell(opts):
     except OSError:
         pass
     if os.path.basename(exe) not in ("qs", "quickshell"):
-        bundled = os.path.expanduser("~/.local/share/irice/quickshell/bin/qs")
-        exe = bundled if os.access(bundled, os.X_OK) else (shutil.which("qs") or "qs")
+        # (…/irice: built while Tessera was called iRice)
+        bundled = [b for b in (os.path.expanduser(f"~/.local/share/{n}/quickshell/bin/qs") for n in ("tessera", "irice")) if os.access(b, os.X_OK)]
+        exe = bundled[0] if bundled else (shutil.which("qs") or "qs")
     code, out = run([exe, "--version"])
     m = re.search(r"Quickshell (\d+\.\d+\.\d+)", out or "")
     qs = compat().get("quickshell", {})
     want, least = qs.get("bundled", ""), qs.get("min", "") or qs.get("bundled", "")
     if not m:
-        return result("quickshell", "Quickshell", "iRice itself", "warn", "Couldn't read its version")
+        return result("quickshell", "Quickshell", "Tessera itself", "warn", "Couldn't read its version")
     # (Software Update doesn't build Quickshell: the fix is the build script, by hand)
     build = os.path.join(source(), "tools", "build-quickshell.sh") + (f" v{want}" if want else "")
-    restart = ", then restart iRice: Super+Ctrl+Escape"
+    restart = ", then restart Tessera: Super+Ctrl+Escape"
     have = m.group(1)
-    if "/irice/quickshell/" in exe:  # iRice's own build
+    if "/tessera/quickshell/" in exe or "/irice/quickshell/" in exe:  # Tessera's own build
         if want and have != want:
-            return result("quickshell", "Quickshell", "iRice itself", "warn", f"iRice's own build is {have}; this iRice expects {want}",
+            return result("quickshell", "Quickshell", "Tessera itself", "warn", f"Tessera's own build is {have}; this Tessera expects {want}",
                           "Rebuild it: " + build + restart)
-        return result("quickshell", "Quickshell", "iRice itself", "ok", f"{have} (iRice's own build)")
+        return result("quickshell", "Quickshell", "Tessera itself", "ok", f"{have} (Tessera's own build)")
     if least and version_tuple(have) < version_tuple(least):
-        return result("quickshell", "Quickshell", "iRice itself", "warn", f"{have}, older than iRice needs ({least})",
-                      "Build iRice its own: " + build + restart)
-    return result("quickshell", "Quickshell", "iRice itself", "ok", have)
+        return result("quickshell", "Quickshell", "Tessera itself", "warn", f"{have}, older than Tessera needs ({least})",
+                      "Build Tessera its own: " + build + restart)
+    return result("quickshell", "Quickshell", "Tessera itself", "ok", have)
 
 
 def check_watchers(_):
     code, out = run([sys.executable, "-I", os.path.join(HERE, "process-identity.py"), "reap", "--dry-run"])
     lines = [l for l in (out or "").splitlines() if l.strip()]
     if code is None:
-        return result("watchers", "Background helpers", "iRice itself", "warn", out)
+        return result("watchers", "Background helpers", "Tessera itself", "warn", out)
     if not lines:
-        return result("watchers", "Background helpers", "iRice itself", "ok", "None left behind")
-    return result("watchers", "Background helpers", "iRice itself", "warn",
+        return result("watchers", "Background helpers", "Tessera itself", "ok", "None left behind")
+    return result("watchers", "Background helpers", "Tessera itself", "warn",
                   f"{len(lines)} left behind by an earlier shell (they use battery)",
-                  "Restart iRice (Super+Ctrl+Escape): it ends them as it starts")
+                  "Restart Tessera (Super+Ctrl+Escape): it ends them as it starts")
 
 
 CHECKS = [check_pipewire, check_wireplumber, check_networkmanager, check_bluetooth, check_avahi, check_firewall,
@@ -524,7 +543,7 @@ def check_all(opts):
                 r = f.result()
             except Exception as e:  # a check's own bug mustn't hide the others
                 name = futures[f].__name__.removeprefix("check_")
-                r = result(name, name, "iRice itself", "warn", f"Check failed: {e}")
+                r = result(name, name, "Tessera itself", "warn", f"Check failed: {e}")
             out[futures[f]] = r
     except concurrent.futures.TimeoutError:
         pass
@@ -535,7 +554,7 @@ def check_all(opts):
             rows.append(out[c])
         else:
             name = c.__name__.removeprefix("check_")
-            rows.append(result(name, name, "iRice itself", "warn", "Didn't answer in time"))
+            rows.append(result(name, name, "Tessera itself", "warn", "Didn't answer in time"))
     return rows
 
 
@@ -544,7 +563,7 @@ def as_text(rows):
     bug = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bug)
     bad = [r for r in rows if r["status"] in ("fail", "warn")]
-    lines = ["iRice system health: " + ("all good" if not bad else f"{len(bad)} need attention"), ""]
+    lines = ["Tessera system health: " + ("all good" if not bad else f"{len(bad)} need attention"), ""]
     for g in GROUPS:
         lines.append(g)
         for r in rows:
@@ -574,7 +593,7 @@ def main(argv):
             return 1
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if cmd[1:2] == [sharing.HELPER] and p.returncode == sharing.irice_root.REFUSED_EXIT:
+            if cmd[1:2] == [sharing.HELPER] and p.returncode == sharing.tessera_root.REFUSED_EXIT:
                 # (an older helper without this fix: the command itself, with the password)
                 cmd = ["pkexec"] + ROOT_FIXES[opts.id]
                 p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)

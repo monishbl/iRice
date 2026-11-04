@@ -1,4 +1,4 @@
-"""iRice's root helper (shell/assets/scripts/irice-root.py) and the update
+"""Tessera's root helper (shell/assets/scripts/tessera-root.py) and the update
 that goes through it (sysupdate.py), unprivileged: a fake pkexec runs the
 helper as you, a fake pacman and a fake yay stand in, and setup installs
 into a temporary folder. Nothing real is asked or changed.
@@ -18,9 +18,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "shell/assets/scripts"
-SOURCE = SCRIPTS / "irice-root.py"
+SOURCE = SCRIPTS / "tessera-root.py"
 SYSUPDATE = SCRIPTS / "sysupdate.py"
-SHIM = SCRIPTS / "irice-sudo"
+SHIM = SCRIPTS / "tessera-sudo"
 
 
 def load(path, name):
@@ -30,7 +30,7 @@ def load(path, name):
     return mod
 
 
-R = load(SOURCE, "irice_root")
+R = load(SOURCE, "tessera_root")
 
 FAKE_PACMAN = r'''#!/usr/bin/env python3
 import os, sys
@@ -50,14 +50,14 @@ FAKE_PKEXEC = r'''#!/usr/bin/env python3
 import os, sys
 open(os.environ["FAKE_LOG"], "a").write("pkexec " + " ".join(sys.argv[1:]) + "\n")
 args = sys.argv[1:]
-assert args[1:2] == ["-I"] or args[0].endswith("irice-root"), args
+assert args[1:2] == ["-I"] or args[0].endswith("tessera-root"), args
 i = args.index("update")
 code = """
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("r", sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.PACMAN = os.environ["FAKE_PACMAN"]
-m.PREFIX = os.environ["IRICE_SYSTEM_ROOT"]
+m.PREFIX = os.environ["TESSERA_SYSTEM_ROOT"]
 sys.exit(m.update(sys.argv[2:], os.getuid()))
 """
 os.execv(sys.executable, [sys.executable, "-c", code, os.environ["HELPER_SOURCE"]] + args[i + 1:])
@@ -105,7 +105,7 @@ class PacmanChecks(unittest.TestCase):
 class Arguments(unittest.TestCase):
     def test_update_arguments(self):
         p = R.parse_update(["--snapshot", "snapper", "--system", "--ignore", "hyprland,aquamarine", "--install", "a,b",
-                            "--remove", "c", "--setup", "/home/a/.config/quickshell/irice", "--broker"])
+                            "--remove", "c", "--setup", "/home/a/.config/quickshell/tessera", "--broker"])
         self.assertEqual((p["snapshot"], p["system"], p["ignore"], p["install"], p["remove"], p["broker"]),
                          ("snapper", True, ["hyprland", "aquamarine"], ["a", "b"], ["c"], True))
         for bad in (["--install", "-x"], ["--install", "a;b"], ["--snapshot", "btrfs"], ["--root", "/"],
@@ -118,7 +118,7 @@ class Arguments(unittest.TestCase):
         self.assertNotIn("firewall", R.FIXES)  # (fix firewall: sharing-ports open, in main)
         fprintd = R.fix_command("fprintd")[2]
         self.assertIn("TimeoutStartSec=5min", fprintd)
-        self.assertIn("/etc/systemd/system/fprintd.service.d/irice-timeout.conf", fprintd)
+        self.assertIn("/etc/systemd/system/fprintd.service.d/tessera-timeout.conf", fprintd)
         self.assertTrue(fprintd.rstrip().endswith("systemctl start fprintd"))
         for bad in ("rm -rf /", "", "../avahi", "pairing"):
             with self.assertRaises(R.Refused):
@@ -224,8 +224,8 @@ class LoginLook(unittest.TestCase):
 
 
 class LoginCopy(unittest.TestCase):
-    """setup refreshes the login screen's copy of iRice (./install.sh
-    --greeter's /usr/share/irice) from the checkout, only where there is one."""
+    """setup refreshes the login screen's copy of Tessera (./install.sh
+    --greeter's /usr/share/tessera) from the checkout, only where there is one."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -244,7 +244,7 @@ class LoginCopy(unittest.TestCase):
         (self.repo / "shell/link.qml").symlink_to("/etc/shadow")
         (self.repo / "hypr").mkdir()
         (self.repo / "hypr/greeter.lua").write_text("-- greeter\n")
-        self.share = self.d / "root/usr/share/irice"
+        self.share = self.d / "root/usr/share/tessera"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -313,33 +313,33 @@ class Setup(unittest.TestCase):
     def test_ananicy_rule_only_where_ananicy_is(self):
         with tempfile.TemporaryDirectory() as t:
             R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
-            self.assertFalse((Path(t) / "etc/ananicy.d/irice.rules").exists())
+            self.assertFalse((Path(t) / "etc/ananicy.d/tessera.rules").exists())
         with tempfile.TemporaryDirectory() as t:
             (Path(t) / "etc/ananicy.d").mkdir(parents=True)
             written = R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
-            rule = Path(t) / "etc/ananicy.d/irice.rules"
+            rule = Path(t) / "etc/ananicy.d/tessera.rules"
             self.assertIn(str(rule), written)
-            self.assertIn('"irice-shell"', rule.read_text())
+            self.assertIn('"tessera-shell"', rule.read_text())
 
     def test_installs_what_changed(self):
         with tempfile.TemporaryDirectory() as t:
             written = R.setup(str(ROOT / "shell"), os.getuid(), prefix=t)
             self.assertEqual(len(written), len(R.FILES) + len(R.BOOTSPLASH_IDS))  # (and a folder per boot animation)
-            helper = Path(t) / "usr/lib/irice/irice-root"
+            helper = Path(t) / "usr/lib/tessera/tessera-root"
             self.assertEqual(helper.read_bytes(), SOURCE.read_bytes())
             self.assertEqual(stat.S_IMODE(helper.stat().st_mode), 0o755)
-            self.assertTrue((Path(t) / "etc/polkit-1/rules.d/49-irice.rules").exists())
-            self.assertTrue((Path(t) / "usr/share/polkit-1/actions/org.irice.root.policy").exists())
-            self.assertTrue((Path(t) / "usr/lib/irice/qs-wifi-helper.py").exists())
+            self.assertTrue((Path(t) / "etc/polkit-1/rules.d/49-tessera.rules").exists())
+            self.assertTrue((Path(t) / "usr/share/polkit-1/actions/org.tessera.root.policy").exists())
+            self.assertTrue((Path(t) / "usr/lib/tessera/qs-wifi-helper.py").exists())
             self.assertEqual(R.setup(str(ROOT / "shell"), os.getuid(), prefix=t), [])  # nothing changed
             helper.chmod(0o777)  # (a wrong mode counts as a change)
             self.assertEqual(R.setup(str(ROOT / "shell"), os.getuid(), prefix=t), [str(helper)])
             self.assertEqual(stat.S_IMODE(helper.stat().st_mode), 0o755)
 
     def test_policy_actions_match_the_subcommands(self):
-        policy = (ROOT / "shell/assets/polkit/org.irice.root.policy").read_text()
+        policy = (ROOT / "shell/assets/polkit/org.tessera.root.policy").read_text()
         for sub in ("wallpaper", "login-look", "fix", "wifi-helper", "update", "bootsplash"):
-            self.assertIn(f'<action id="org.irice.root.{sub}">', policy)
+            self.assertIn(f'<action id="org.tessera.root.{sub}">', policy)
             self.assertIn(f'org.freedesktop.policykit.exec.argv1">{sub}<', policy)
         # every action names its first argument (pkexec takes the first action
         # whose program matches, so one without argv1 could shadow the others)
@@ -492,7 +492,7 @@ class AurHelperChoice(unittest.TestCase):
 
 
 class FingerprintPam(unittest.TestCase):
-    """irice-root.py fingerprint: one marked line, first among the rules."""
+    """tessera-root.py fingerprint: one marked line, first among the rules."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -502,7 +502,7 @@ class FingerprintPam(unittest.TestCase):
         self.vendor.mkdir()
         self.module = d / "pam_fprintd.so"
         self.module.write_text("")
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_fp")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_fp")
         self.r.write_root = lambda dest, data, mode: Path(dest).write_bytes(data)
 
     def tearDown(self):
@@ -549,7 +549,7 @@ class FingerprintPam(unittest.TestCase):
 
 
 class PhoneCam(unittest.TestCase):
-    """irice-root.py phonecam: the v4l2loopback drop-ins, and loading it."""
+    """tessera-root.py phonecam: the v4l2loopback drop-ins, and loading it."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -557,7 +557,7 @@ class PhoneCam(unittest.TestCase):
         self.etc, self.dev = d / "etc", d / "dev"
         self.etc.mkdir()
         self.dev.mkdir()
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_cam")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_cam")
 
         def write(dest, data, mode):
             Path(dest).parent.mkdir(parents=True, exist_ok=True)
@@ -580,8 +580,8 @@ class PhoneCam(unittest.TestCase):
     def test_on(self):
         changed = self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
         self.assertEqual(len(changed), 2)
-        self.assertIn('video_nr=42 card_label="Phone camera" exclusive_caps=1', (self.etc / "modprobe.d/irice-phonecam.conf").read_text())
-        self.assertEqual((self.etc / "modules-load.d/irice-phonecam.conf").read_text(), "v4l2loopback\n")
+        self.assertIn('video_nr=42 card_label="Phone camera" exclusive_caps=1', (self.etc / "modprobe.d/tessera-phonecam.conf").read_text())
+        self.assertEqual((self.etc / "modules-load.d/tessera-phonecam.conf").read_text(), "v4l2loopback\n")
         self.assertIn(["modprobe", "v4l2loopback"], self.calls)
 
     def test_already_there(self):
@@ -607,11 +607,11 @@ class PhoneCam(unittest.TestCase):
         self.r.phonecam(True, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
         changed = self.r.phonecam(False, etc=str(self.etc), run=self.fake(), dev_dir=str(self.dev))
         self.assertEqual(len(changed), 2)
-        self.assertFalse((self.etc / "modprobe.d/irice-phonecam.conf").exists())
+        self.assertFalse((self.etc / "modprobe.d/tessera-phonecam.conf").exists())
 
 
 class FaceUnlock(unittest.TestCase):
-    """irice-root.py face: Howdy's camera in its config, and faces only for
+    """tessera-root.py face: Howdy's camera in its config, and faces only for
     the person who asked."""
 
     def setUp(self):
@@ -620,7 +620,7 @@ class FaceUnlock(unittest.TestCase):
         self.config = d / "config.ini"
         self.models = d / "models"
         self.models.mkdir()
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_face")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_face")
         self.r.write_root = lambda dest, data, mode: Path(dest).write_bytes(data)
         self.calls = []
         self.uid = os.getuid()
@@ -691,9 +691,9 @@ class SysUpdate(unittest.TestCase):
         self.run_dir.mkdir(mode=0o700)
         self.log = d / "calls"
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", XDG_RUNTIME_DIR=str(self.run_dir),
-                        IRICE_SYSTEM_ROOT=str(self.sysroot), FAKE_LOG=str(self.log), FAKE_PACMAN=str(self.bin / "pacman"),
+                        TESSERA_SYSTEM_ROOT=str(self.sysroot), FAKE_LOG=str(self.log), FAKE_PACMAN=str(self.bin / "pacman"),
                         HELPER_SOURCE=str(SOURCE), XDG_STATE_HOME=str(d / "state"))
-        for k in ("IRICE_FAKE_SYSUPDATE", "IRICE_SANDBOX"):
+        for k in ("TESSERA_FAKE_SYSUPDATE", "TESSERA_SANDBOX"):
             self.env.pop(k, None)
 
     def tearDown(self):
@@ -703,14 +703,14 @@ class SysUpdate(unittest.TestCase):
         return subprocess.run([sys.executable, "-I", str(SYSUPDATE), *args], env=self.env, capture_output=True, text=True, timeout=60)
 
     def status(self):
-        return json.loads((self.run_dir / "irice-sysupdate/status.json").read_text())
+        return json.loads((self.run_dir / "tessera-sysupdate/status.json").read_text())
 
     def test_one_password_for_the_system_and_the_aur(self):
         self.assertEqual(self.sysupdate("helper-status").returncode, 1)  # not installed yet
         p = self.sysupdate("run", "--system", "--aur")
         self.assertEqual(p.returncode, 0, p.stderr)
         st = self.status()
-        self.assertEqual(st["state"], "done", (st, (self.run_dir / "irice-sysupdate/log").read_text()))
+        self.assertEqual(st["state"], "done", (st, (self.run_dir / "tessera-sysupdate/log").read_text()))
         self.assertEqual(st["steps"], ["setup", "system", "aur"])
         self.assertIn("vim", st["upgraded"])
         self.assertIn("apple_cursor", st["upgraded"])  # (yay's pacman -U, through the root part)
@@ -719,7 +719,7 @@ class SysUpdate(unittest.TestCase):
         pk = [c for c in calls if c.startswith("pkexec ")]
         self.assertEqual(len(pk), 1, calls)
         self.assertIn(f"{SOURCE} update --system --setup {ROOT / 'shell'} --broker", pk[0])
-        # yay asks irice-sudo, never pkexec
+        # yay asks tessera-sudo, never pkexec
         yay = [c for c in calls if c.startswith("yay ")][0]
         self.assertIn(f"--sudo {SHIM}", yay)
         self.assertNotIn("pkexec", yay)
@@ -729,21 +729,21 @@ class SysUpdate(unittest.TestCase):
         self.assertEqual(pacman, ["pacman -Syu --noconfirm",
                                   "pacman -U --config /etc/pacman.conf --noconfirm -- /tmp/apple_cursor.pkg.tar.zst",
                                   "pacman -D --asdeps apple_cursor"])
-        self.assertFalse((self.run_dir / "irice-sysupdate/sudo.sock").exists())
+        self.assertFalse((self.run_dir / "tessera-sysupdate/sudo.sock").exists())
         # setup installed the helper: the next update runs the installed copy
         self.assertEqual(self.sysupdate("helper-status").returncode, 0)
-        self.assertTrue(os.access(self.sysroot / "usr/lib/irice/irice-root", os.X_OK))
+        self.assertTrue(os.access(self.sysroot / "usr/lib/tessera/tessera-root", os.X_OK))
         self.log.unlink()
         p = self.sysupdate("run", "--system")
         self.assertEqual(self.status()["state"], "done")
         pk = [c for c in self.log.read_text().splitlines() if c.startswith("pkexec ")]
-        self.assertEqual(pk, [f"pkexec {self.sysroot}/usr/lib/irice/irice-root update --system"])
+        self.assertEqual(pk, [f"pkexec {self.sysroot}/usr/lib/tessera/tessera-root update --system"])
 
     def test_the_shim_refuses_outside_an_update(self):
-        env = {k: v for k, v in self.env.items() if not k.startswith("IRICE_SUDO")}
+        env = {k: v for k, v in self.env.items() if not k.startswith("TESSERA_SUDO")}
         p = subprocess.run([str(SHIM), "pacman", "-U", "x"], env=env, capture_output=True, text=True)
         self.assertEqual(p.returncode, 1)
-        self.assertIn("only works during an iRice update", p.stderr)
+        self.assertIn("only works during a Tessera update", p.stderr)
         self.assertEqual(subprocess.run([str(SHIM), "-v"], env=env).returncode, 0)
 
 
@@ -778,7 +778,7 @@ class WifiHelperStart(unittest.TestCase):
     def test_installed_helper_still_asks_at_the_start(self):
         # (it makes and joins Wi-Fi networks: not one of the silent jobs)
         with tempfile.TemporaryDirectory() as t:
-            fake = Path(t) / "irice-root"
+            fake = Path(t) / "tessera-root"
             fake.write_text("#!/bin/sh\n")
             fake.chmod(0o755)
             cmd, asked = self.start(str(fake))
@@ -786,7 +786,7 @@ class WifiHelperStart(unittest.TestCase):
         self.assertEqual(asked, [1])
 
     def test_before_setup_its_the_password_as_before(self):
-        cmd, asked = self.start("/nonexistent/irice-root")
+        cmd, asked = self.start("/nonexistent/tessera-root")
         self.assertTrue(cmd.endswith("-I " + str(SCRIPTS / "quickshare/qs-wifi-helper.py")), cmd)
         self.assertEqual(asked, [1])
 
@@ -796,12 +796,12 @@ if __name__ == "__main__":
 
 
 class QuickShareTrust(unittest.TestCase):
-    """irice-root.py quickshare-trust: a polkit rule letting Quick Share's
+    """tessera-root.py quickshare-trust: a polkit rule letting Quick Share's
     Wi-Fi helper start without the password, for the one person who asked."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_trust")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_trust")
         self.r.write_root = lambda dest, data, mode: (os.makedirs(os.path.dirname(dest), exist_ok=True), Path(dest).write_bytes(data))
         self.user = __import__("pwd").getpwuid(os.getuid()).pw_name
 
@@ -810,8 +810,8 @@ class QuickShareTrust(unittest.TestCase):
 
     def test_on_and_off(self):
         changed = self.r.quickshare_trust(True, os.getuid(), prefix=self.dir.name)
-        rule = Path(self.dir.name, "etc/polkit-1/rules.d/49-irice-quickshare.rules")
-        mark = Path(self.dir.name, "etc/irice/quickshare-trusted")
+        rule = Path(self.dir.name, "etc/polkit-1/rules.d/49-tessera-quickshare.rules")
+        mark = Path(self.dir.name, "etc/tessera/quickshare-trusted")
         self.assertEqual(sorted(changed), sorted([str(rule), str(mark)]))
         self.assertIn(f'subject.user === "{self.user}"', rule.read_text())
         self.assertEqual(mark.read_text().strip(), self.user)
@@ -835,15 +835,15 @@ function ask(id, prog, cmd, user, active, local) {
     var subject = { user: user, active: active, local: local };
     return rules[0](action, subject);
 }
-var H = "/usr/lib/irice/irice-root";
+var H = "/usr/lib/tessera/tessera-root";
 console.log(JSON.stringify([
-    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", true, true),
-    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "bob", true, true),
-    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", false, true),
-    ask("org.irice.root.wifi-helper", H, H + " wifi-helper", "alice", true, false),
-    ask("org.irice.root.update", H, H + " update", "alice", true, true),
-    ask("org.irice.root.wifi-helper", "/bin/sh", H + " wifi-helper", "alice", true, true),
-    ask("org.irice.root.wifi-helper", H, H + " wifi-helper extra", "alice", true, true)
+    ask("org.tessera.root.wifi-helper", H, H + " wifi-helper", "alice", true, true),
+    ask("org.tessera.root.wifi-helper", H, H + " wifi-helper", "bob", true, true),
+    ask("org.tessera.root.wifi-helper", H, H + " wifi-helper", "alice", false, true),
+    ask("org.tessera.root.wifi-helper", H, H + " wifi-helper", "alice", true, false),
+    ask("org.tessera.root.update", H, H + " update", "alice", true, true),
+    ask("org.tessera.root.wifi-helper", "/bin/sh", H + " wifi-helper", "alice", true, true),
+    ask("org.tessera.root.wifi-helper", H, H + " wifi-helper extra", "alice", true, true)
 ]));
 """ % self.r.quickshare_trust_rule("alice")
         out = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
@@ -851,14 +851,14 @@ console.log(JSON.stringify([
 
 
 class BootSplash(unittest.TestCase):
-    """irice-root.py bootsplash: the boot animation, in a folder standing in
+    """tessera-root.py bootsplash: the boot animation, in a folder standing in
     for the system, with stand-ins for plymouth-set-default-theme and
     mkinitcpio. Nothing real is asked or changed."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.root = Path(self.dir.name)
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_splash")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_splash")
         self.r.write_root = lambda dest, data, mode: (os.makedirs(os.path.dirname(dest), exist_ok=True), Path(dest).write_bytes(data))
         put = self.put
         put("usr/share/plymouth/themes/cachyos-bootanimation/cachyos-bootanimation.plymouth", "[Plymouth Theme]\n")
@@ -870,7 +870,7 @@ class BootSplash(unittest.TestCase):
         put("etc/mkinitcpio.d/linux.preset", 'PRESETS=(\'default\')\ndefault_image="/boot/initramfs-linux.img"\n#fallback_image="/boot/initramfs-linux-fallback.img"\n')
         put("boot/initramfs-linux.img", "built with cachyos-bootanimation")
         put("boot/initramfs-linux-lts.img", "built with cachyos-bootanimation (lts)")
-        # setup's copy of the themes (root's, in /usr/lib/irice/plymouth)
+        # setup's copy of the themes (root's, in /usr/lib/tessera/plymouth)
         self.r.install_themes(str(ROOT / "shell"), os.getuid(), str(self.root))
         self.calls = []
         self.fail = False
@@ -904,31 +904,31 @@ class BootSplash(unittest.TestCase):
                                  which=lambda n: "/usr/bin/" + n if n in tools else None)
 
     def record(self):
-        p = self.root / "etc/irice/bootsplash.json"
+        p = self.root / "etc/tessera/bootsplash.json"
         return json.loads(p.read_text()) if p.exists() else None
 
     def test_a_design_is_installed_set_and_built(self):
         self.splash("breathe")
-        theme = self.root / "usr/share/plymouth/themes/irice-breathe"
-        src = ROOT / "shell/assets/plymouth/irice-breathe"
+        theme = self.root / "usr/share/plymouth/themes/tessera-breathe"
+        src = ROOT / "shell/assets/plymouth/tessera-breathe"
         self.assertEqual(sorted(p.name for p in theme.iterdir()), sorted(p.name for p in src.iterdir()))
-        self.assertEqual((theme / "irice-breathe.script").read_bytes(), (src / "irice-breathe.script").read_bytes())
-        self.assertEqual(self.theme(), "irice-breathe")
-        self.assertEqual(self.calls, [["plymouth-set-default-theme", "irice-breathe"], ["mkinitcpio", "-P"]])
-        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with irice-breathe")
-        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "irice-breathe"})
-        self.assertFalse((self.root / "var/lib/irice/initramfs-backup").exists())
+        self.assertEqual((theme / "tessera-breathe.script").read_bytes(), (src / "tessera-breathe.script").read_bytes())
+        self.assertEqual(self.theme(), "tessera-breathe")
+        self.assertEqual(self.calls, [["plymouth-set-default-theme", "tessera-breathe"], ["mkinitcpio", "-P"]])
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with tessera-breathe")
+        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "tessera-breathe"})
+        self.assertFalse((self.root / "var/lib/tessera/initramfs-backup").exists())
 
     def test_system_puts_back_the_original(self):
         self.splash("breathe")
         self.splash("orbit")  # (another design: the original is still the system's)
-        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-breathe").exists())
-        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "irice-orbit"})
+        self.assertFalse((self.root / "usr/share/plymouth/themes/tessera-breathe").exists())
+        self.assertEqual(self.record(), {"original": "cachyos-bootanimation", "applied": "tessera-orbit"})
         self.splash("system")
         self.assertEqual(self.theme(), "cachyos-bootanimation")
         self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with cachyos-bootanimation")
         self.assertIsNone(self.record())
-        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-orbit").exists())
+        self.assertFalse((self.root / "usr/share/plymouth/themes/tessera-orbit").exists())
 
     def test_none_is_plymouths_text_theme(self):
         self.splash("none")
@@ -940,7 +940,7 @@ class BootSplash(unittest.TestCase):
     def test_already_set_rebuilds_nothing(self):
         self.splash("frost")
         self.calls.clear()
-        self.assertEqual(self.splash("frost"), ["already irice-frost"])
+        self.assertEqual(self.splash("frost"), ["already tessera-frost"])
         self.assertEqual(self.splash("system") and self.splash("system"), ["already cachyos-bootanimation"])
 
     def test_a_theme_set_elsewhere_becomes_the_systems(self):
@@ -961,22 +961,22 @@ class BootSplash(unittest.TestCase):
         self.assertEqual((self.root / "etc/plymouth/plymouthd.conf").read_bytes(), conf)
         self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with cachyos-bootanimation")
         self.assertEqual((self.root / "boot/initramfs-linux-lts.img").read_text(), "built with cachyos-bootanimation (lts)")
-        self.assertFalse((self.root / "usr/share/plymouth/themes/irice-orbit").exists())
+        self.assertFalse((self.root / "usr/share/plymouth/themes/tessera-orbit").exists())
         self.assertIsNone(self.record())
-        self.assertFalse((self.root / "var/lib/irice/initramfs-backup").exists())
+        self.assertFalse((self.root / "var/lib/tessera/initramfs-backup").exists())
 
     def test_a_failed_rebuild_keeps_the_design_before(self):
         self.splash("breathe")
         self.fail = True
         with self.assertRaises(self.r.Refused):
             self.splash("bloom")
-        self.assertEqual(self.theme(), "irice-breathe")
-        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with irice-breathe")
-        self.assertTrue((self.root / "usr/share/plymouth/themes/irice-breathe/irice-breathe.plymouth").exists())
-        self.assertEqual(self.record()["applied"], "irice-breathe")
+        self.assertEqual(self.theme(), "tessera-breathe")
+        self.assertEqual((self.root / "boot/initramfs-linux.img").read_text(), "built with tessera-breathe")
+        self.assertTrue((self.root / "usr/share/plymouth/themes/tessera-breathe/tessera-breathe.plymouth").exists())
+        self.assertEqual(self.record()["applied"], "tessera-breathe")
 
     def test_only_its_names(self):
-        for bad in ("", "irice-breathe", "../breathe", "BREATHE", "breathe;reboot", "spinner", "text"):
+        for bad in ("", "tessera-breathe", "../breathe", "BREATHE", "breathe;reboot", "spinner", "text"):
             with self.assertRaises(self.r.Refused, msg=bad):
                 self.splash(bad)
         self.assertEqual(self.calls, [])
@@ -997,13 +997,13 @@ class BootSplash(unittest.TestCase):
         self.assertEqual(self.calls[-1], ["mkinitcpio", "-P"])
 
     def test_themes_come_only_from_setups_copy(self):
-        shutil.rmtree(self.root / "usr/lib/irice/plymouth/irice-frost")
+        shutil.rmtree(self.root / "usr/lib/tessera/plymouth/tessera-frost")
         # (a theme folder of that name elsewhere is never used)
-        self.put("usr/share/plymouth/themes/irice-frost/irice-frost.plymouth", "[Plymouth Theme]\n")
+        self.put("usr/share/plymouth/themes/tessera-frost/tessera-frost.plymouth", "[Plymouth Theme]\n")
         with self.assertRaises(self.r.Refused) as e:
             self.splash("frost")
-        self.assertIn("Update iRice", str(e.exception))
-        lib = self.root / "usr/lib/irice/plymouth/irice-orbit"
+        self.assertIn("Update Tessera", str(e.exception))
+        lib = self.root / "usr/lib/tessera/plymouth/tessera-orbit"
         (lib / "run.sh").write_text("#!/bin/sh\n")
         with self.assertRaises(self.r.Refused):
             self.splash("orbit")
@@ -1012,25 +1012,25 @@ class BootSplash(unittest.TestCase):
     def test_setup_copies_only_theme_files(self):
         with tempfile.TemporaryDirectory() as t:
             src = Path(t) / "shell"
-            shutil.copytree(ROOT / "shell/assets/plymouth/irice-orbit", src / "assets/plymouth/irice-orbit")
+            shutil.copytree(ROOT / "shell/assets/plymouth/tessera-orbit", src / "assets/plymouth/tessera-orbit")
             out = Path(t) / "root"
-            self.assertEqual(self.r.install_themes(str(src), os.getuid(), str(out)), [str(out / "usr/lib/irice/plymouth/irice-orbit")])
+            self.assertEqual(self.r.install_themes(str(src), os.getuid(), str(out)), [str(out / "usr/lib/tessera/plymouth/tessera-orbit")])
             self.assertEqual(self.r.install_themes(str(src), os.getuid(), str(out)), [])  # nothing changed
-            (src / "assets/plymouth/irice-orbit/notes.txt").write_text("x")
+            (src / "assets/plymouth/tessera-orbit/notes.txt").write_text("x")
             with self.assertRaises(self.r.Refused):
                 self.r.install_themes(str(src), os.getuid(), str(out))
 
     def test_every_design_is_shipped(self):
-        made = sorted(p.name[len("irice-"):] for p in (ROOT / "shell/assets/plymouth").glob("irice-*"))
+        made = sorted(p.name[len("tessera-"):] for p in (ROOT / "shell/assets/plymouth").glob("tessera-*"))
         self.assertEqual(made, sorted(self.r.BOOTSPLASH_IDS))
         for id in made:
-            folder = ROOT / "shell/assets/plymouth" / ("irice-" + id)
-            text = (folder / f"irice-{id}.plymouth").read_text()
-            self.assertIn(f"ScriptFile=/usr/share/plymouth/themes/irice-{id}/irice-{id}.script", text)
+            folder = ROOT / "shell/assets/plymouth" / ("tessera-" + id)
+            text = (folder / f"tessera-{id}.plymouth").read_text()
+            self.assertIn(f"ScriptFile=/usr/share/plymouth/themes/tessera-{id}/tessera-{id}.script", text)
             self.assertIn("ModuleName=script", text)
             self.assertTrue(all(self.r.THEME_FILE.match(p.name) for p in folder.iterdir()))
             # every image the script names is there, in both sizes
-            script = (folder / f"irice-{id}.script").read_text()
+            script = (folder / f"tessera-{id}.script").read_text()
             for name in set(__import__("re").findall(r'scaled\("([a-z0-9]+)"\)', script)) | set(__import__("re").findall(r'names\[\d+\] = "([a-z0-9]+)"', script)):
                 for size in ("@1x", "@2x"):
                     self.assertTrue((folder / f"{name}{size}.png").exists(), f"{id}: {name}{size}.png")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Starts the apps that asked to start with your session (XDG autostart:
 ~/.config/autostart and /etc/xdg/autostart), once per session. Hyprland
-doesn't do this itself; hypr/irice/execs.lua runs this at login.
+doesn't do this itself; hypr/tessera/execs.lua runs this at login.
 
   xdg-autostart.py [--wait-tray SECONDS] [--dry-run]
   xdg-autostart.py list | set FILE on|off | add DESKTOP-ID | remove FILE
@@ -11,21 +11,21 @@ The subcommands are for Settings → Login Items; each prints one JSON object
 (list: {startAtLogin, items: [...]}; the others {ok, error?}). FILE is a
 file name only (foo.desktop), never a path, and only
 $XDG_CONFIG_HOME/autostart is written: turning a system entry off writes a
-user copy of it there with Hidden=true (the XDG way; X-iRice-Override marks
+user copy of it there with Hidden=true (the XDG way; X-Tessera-Override marks
 it, and turning it back on removes it), turning your own off sets Hidden=true
 in it (the file stays). add copies Name/Exec/Icon from an installed app's
 desktop entry; remove moves your file aside (restore brings it back, for
 Undo). start runs one now. Settings → Login Items → "Start them when you log
-in" (loginItems.startAtLogin in $XDG_CONFIG_HOME/irice/config.json) off: the
-login run starts nothing. IRICE_SYSTEM_ROOT (tests, the sandbox) puts the
+in" (loginItems.startAtLogin in $XDG_CONFIG_HOME/tessera/config.json) off: the
+login run starts nothing. TESSERA_SYSTEM_ROOT (tests, the sandbox) puts the
 system folder (/etc/xdg, when XDG_CONFIG_DIRS isn't set) under another root.
 
 Which entries, as the XDG autostart spec has it: your own folder overrides
 the system's by file name (and earlier XDG_CONFIG_DIRS the later ones);
 Hidden=true or X-GNOME-Autostart-enabled=false turns one off; OnlyShowIn and
-NotShowIn are matched against this desktop (Hyprland, iRice, and
+NotShowIn are matched against this desktop (Hyprland, Tessera, and
 XDG_CURRENT_DESKTOP); a TryExec that isn't installed skips it. Left out as
-well: what iRice already runs or would fight with (DENY below: the keyring,
+well: what Tessera already runs or would fight with (DENY below: the keyring,
 polkit agents, notification daemons, other bars and shells, idle daemons,
 PipeWire's own autostart). Each one starts detached (setsid, like apps from
 the shell), in its Path=, in a terminal when Terminal=true.
@@ -46,14 +46,21 @@ import subprocess
 import sys
 import time
 
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DESKTOPS = {"hyprland", "irice"}
-# Entries iRice runs itself or that would conflict, matched against the file
+DESKTOPS = {"hyprland", "tessera", "irice"}  # (irice: autostart entries written for it before the rename)
+# Entries Tessera runs itself or that would conflict, matched against the file
 # name (without .desktop) and the program's name; "x*" matches anything
 # starting with x, "*x*" anything with x in it
 DENY = (
     "gnome-keyring*",  # (started at login: PAM, or execs.lua)
-    "*polkit*",  # (any polkit agent: iRice is one)
+    "*polkit*",  # (any polkit agent: Tessera is one)
     "mako", "dunst", "swaync", "fnott", "xfce4-notifyd", "notify-osd", "org.kde.plasma.notifications",
     "waybar", "ags", "astal", "eww", "hyprpanel", "nwg-panel", "nwg-dock*", "ironbar", "quickshell", "qs",
     "org.kde.plasmashell", "plasmashell", "xembedsniproxy", "gnome-shell*", "org.gnome.shell*", "lxqt-panel", "xfce4-panel",
@@ -82,10 +89,10 @@ def config_home():
 def apps_config_home():
     """Where apps keep their settings, and their autostart entries (FDM,
     CachyOS Hello…). The tty session gives the shell folders of its own
-    (IRICE_TTY: tty-shell.sh), never the apps (common/Launch.qml, child_env
+    (TESSERA_TTY: tty-shell.sh), never the apps (common/Launch.qml, child_env
     below): Settings → Login Items, run from the shell, read an empty folder
     of its own while login started the apps' (seen on a real laptop)."""
-    if os.environ.get("IRICE_TTY") == "1":
+    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
         return os.path.join(os.path.expanduser("~"), ".config")
     return config_home()
 
@@ -94,17 +101,17 @@ def user_dir():
     return os.path.join(apps_config_home(), "autostart")
 
 
-def irice_dir():
-    """iRice's own settings: IRICE_USER_DIR when the session says (the tty
-    session keeps them apart), else $XDG_CONFIG_HOME/irice."""
-    return os.environ.get("IRICE_USER_DIR") or os.path.join(config_home(), "irice")
+def tessera_dir():
+    """Tessera's own settings: TESSERA_USER_DIR when the session says (the tty
+    session keeps them apart), else $XDG_CONFIG_HOME/tessera."""
+    return (os.environ.get("TESSERA_USER_DIR") or os.environ.get("IRICE_USER_DIR")) or app_dir(config_home())
 
 
 def system_dirs():
-    """XDG_CONFIG_DIRS, else /etc/xdg (under IRICE_SYSTEM_ROOT when set)."""
+    """XDG_CONFIG_DIRS, else /etc/xdg (under TESSERA_SYSTEM_ROOT when set)."""
     system = [d for d in (os.environ.get("XDG_CONFIG_DIRS") or "").split(":") if d]
     if not system:
-        system = [os.path.join(os.environ.get("IRICE_SYSTEM_ROOT") or "/", "etc/xdg")]
+        system = [os.path.join(os.environ.get("TESSERA_SYSTEM_ROOT") or "/", "etc/xdg")]
     return [os.path.join(d, "autostart") for d in system]
 
 
@@ -116,7 +123,7 @@ def dirs():
 def start_at_login():
     """Settings → Login Items → Start them when you log in (default on)."""
     try:
-        with open(os.path.join(irice_dir(), "config.json"), encoding="utf-8") as f:
+        with open(os.path.join(tessera_dir(), "config.json"), encoding="utf-8") as f:
             v = json.load(f).get("loginItems", {}).get("startAtLogin", True)
         return v is not False
     except (OSError, ValueError, AttributeError):
@@ -233,7 +240,7 @@ def why_not(name, keys, path, argv, here):
     if not argv:
         return "no command"
     if denied(stem, os.path.basename(argv[0])):
-        return "iRice does this itself"
+        return "Tessera does this itself"
     if not installed(argv[0]):
         return "not installed"
     return ""
@@ -257,9 +264,9 @@ def plan():
 
 def lock():
     """True the first time in this session."""
-    rt = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/irice-{os.getuid()}"
+    rt = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/tessera-{os.getuid()}"
     session = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or os.environ.get("XDG_SESSION_ID") or "session"
-    path = os.path.join(rt, f"irice-autostart.{session.replace('/', '_')}")
+    path = os.path.join(rt, f"tessera-autostart.{session.replace('/', '_')}")
     try:
         os.makedirs(rt, mode=0o700, exist_ok=True)
         os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
@@ -286,9 +293,10 @@ def child_env():
     """As the shell starts apps (common/Launch.qml): in the tty test session,
     without its sandbox folders."""
     env = dict(os.environ)
-    if env.get("IRICE_TTY") == "1":
-        for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "IRICE_SANDBOX",
-                  "IRICE_ROOT", "IRICE_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
+    if (env.get("TESSERA_TTY") or env.get("IRICE_TTY")) == "1":
+        # (IRICE_*: the same, from a session started before iRice became Tessera)
+        for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX",
+                  "TESSERA_ROOT", "TESSERA_TTY", "IRICE_SANDBOX", "IRICE_ROOT", "IRICE_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
             env.pop(k, None)
     return env
 
@@ -310,7 +318,7 @@ def launch(argv, cwd, terminal):
 
 FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+@-]{0,200}\.desktop$")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+@-]{0,200}$")
-OVERRIDE = "X-iRice-Override"  # (a user copy of a system entry that only turns it on or off)
+OVERRIDE = "X-Tessera-Override"  # (a user copy of a system entry that only turns it on or off)
 DESKTOP_NAMES = {"kde": "KDE Plasma", "gnome": "GNOME", "xfce": "Xfce", "lxqt": "LXQt", "lxde": "LXDE",
                  "mate": "MATE", "x-cinnamon": "Cinnamon", "cinnamon": "Cinnamon", "unity": "Unity",
                  "budgie": "Budgie", "pantheon": "Pantheon", "deepin": "Deepin", "enlightenment": "Enlightenment",
@@ -348,7 +356,7 @@ def friendly(why, keys):
         return "Only for " + (" and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1])
     return {"not an application": "Not an app", "not for this desktop": "Not for Hyprland",
             "not installed": "Not installed", "no command": "No command to run",
-            "iRice does this itself": "iRice does this itself"}.get(why, why[:1].upper() + why[1:])
+            "Tessera does this itself": "Tessera does this itself"}.get(why, why[:1].upper() + why[1:])
 
 
 def items():
@@ -387,7 +395,7 @@ def items():
             "skippedWhenOn": friendly(later, keys) if off and later else "",
             "canStart": bool(argv) and installed(argv[0]) and not denied(name[:-len(".desktop")], os.path.basename(argv[0])),
             "removable": name in users and name not in systems,
-            "added": true(keys.get("X-iRice-Added")),
+            "added": true(keys.get("X-Tessera-Added")),
         })
     return sorted(out, key=lambda i: (i["name"].casefold(), i["file"]))
 
@@ -519,14 +527,14 @@ def add(app):
     for k in ("Name", "GenericName", "Comment", "Icon", "Exec", "TryExec", "Path", "Terminal"):
         if keys.get(k):
             body.append(f"{k}={keys[k]}")
-    body.append("X-iRice-Added=true")
+    body.append("X-Tessera-Added=true")
     write(name, "\n".join(body) + "\n")
     return {"ok": True, "file": name}
 
 
 def removed_dir():
     state = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
-    return os.path.join(state, "irice", "autostart-removed")
+    return os.path.join(app_dir(state), "autostart-removed")
 
 
 def remove(name):

@@ -53,7 +53,7 @@ class Pure(unittest.TestCase):
 class Server(unittest.TestCase):
     def start(self, *args):
         self.rt = tempfile.TemporaryDirectory()
-        env = dict(os.environ, IRICE_LINKSHARE_HOST="127.0.0.1", XDG_RUNTIME_DIR=self.rt.name)
+        env = dict(os.environ, TESSERA_LINKSHARE_HOST="127.0.0.1", XDG_RUNTIME_DIR=self.rt.name)
         self.proc = subprocess.Popen([sys.executable, "-I", str(SCRIPT), *args], env=env, text=True,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         ready = json.loads(self.proc.stdout.readline())

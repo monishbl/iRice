@@ -43,7 +43,7 @@ int main() {
             cpp = Path(tmp) / 'test.cpp'
             cpp.write_text(source)
             binary = str(Path(tmp) / 'test')
-            subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/irice-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
+            subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/tessera-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
             subprocess.run([binary], check=True, capture_output=True)
 
     @unittest.skipUnless(shutil.which('g++'), 'requires C++ compiler')
@@ -74,7 +74,7 @@ int main() {
             cpp = Path(tmp) / 'test.cpp'
             cpp.write_text(source)
             binary = str(Path(tmp) / 'test')
-            subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/irice-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
+            subprocess.run(['g++', '-std=c++17', '-I', str(ROOT / 'hypr/plugin/tessera-glass'), str(cpp), '-o', binary], check=True, capture_output=True)
             subprocess.run([binary], check=True, capture_output=True)
 
     @unittest.skipUnless(shutil.which('g++') and Path('/usr/include/hyprland/src/desktop/state/FocusState.hpp').exists(), 'requires Hyprland headers')
@@ -85,7 +85,7 @@ int main() {
         body = header[header.index('enum eFocusReason'):]
         body = body[body.index('{') + 1:body.index('}')]
         names = [n.strip().split('=')[0].strip() for n in body.split(',') if n.strip()]
-        ours = (ROOT / 'hypr/plugin/irice-glass/focus-policy.hpp').read_text()
+        ours = (ROOT / 'hypr/plugin/tessera-glass/focus-policy.hpp').read_text()
         for value, name in enumerate(names):
             short = name.removeprefix('FOCUS_REASON_')
             self.assertIn(f'{short} = {value},', ours, f'{name} should be {value}')

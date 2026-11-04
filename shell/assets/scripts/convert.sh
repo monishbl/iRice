@@ -11,7 +11,7 @@ from="${BASH_REMATCH[1]}" to="${BASH_REMATCH[3]}"
 temp() { sed -E 's/^([-0-9.,]+)[[:space:]]*(°)?[fF]$/\1 °F/; s/^([-0-9.,]+)[[:space:]]*(°)?[cC]$/\1 °C/; s/^(°)?[fF]$/°F/; s/^(°)?[cC]$/°C/' <<<"$1"; }
 sing() { sed -E 's/\b(cup|ounce|pound|gram|liter|litre|meter|metre|mile|foot|yard|gallon|pint|quart|teaspoon|tablespoon|second|minute|hour|day|week|month|year|byte|bit)s\b/\1/g; s/\bfeet\b/foot/g; s/\binches\b/inch/g; s/\b([kKmMgGtTpP])i?[bB]\b/\U\1B/g' <<<"$1"; }
 from=$(sing "$(temp "$from")") to=$(sing "$(temp "$to")")
-stamp="${XDG_CACHE_HOME:-$HOME/.cache}/irice/exrates-stamp"
+stamp="${XDG_CACHE_HOME:-$HOME/.cache}/tessera/exrates-stamp"
 args=(-t)
 if grep -qiE '^[$€£¥₹]|\b[a-z]{3}$' <<<"$from" && grep -qiE '^[a-z]{3}$|^[$€£¥₹]$' <<<"$to" && [[ -z "$(find "$stamp" -mmin -1440 2>/dev/null)" ]]; then
     args+=(-e)

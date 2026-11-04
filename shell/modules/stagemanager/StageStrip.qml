@@ -23,7 +23,7 @@ Variants {
         readonly property var waiting: StageManager.waiting(wsId).slice(0, 6)
         readonly property bool covered: Desktop.covered(screen, Qt.rect(0, 0, implicitWidth, screen?.height ?? 0))
 
-        WlrLayershell.namespace: "irice:stagestrip"
+        WlrLayershell.namespace: "tessera:stagestrip"
         WlrLayershell.layer: WlrLayer.Bottom
         anchors { top: true; bottom: true; left: true }
         implicitWidth: 176

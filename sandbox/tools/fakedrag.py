@@ -29,6 +29,6 @@ def activate(app):
     win.present()
 
 
-app = Gtk.Application(application_id="dev.irice.fakedrag")
+app = Gtk.Application(application_id="dev.tessera.fakedrag")
 app.connect("activate", activate)
 app.run([])

@@ -13,7 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 HELPER = str(REPO) + "/shell/assets/scripts/quickshare/qs-wifi-helper.py"
-SHIELD = "/etc/dbus-1/system.d/zzz-irice-quickshare.conf"
+SHIELD = "/etc/dbus-1/system.d/zzz-tessera-quickshare.conf"
 t0 = time.monotonic()
 
 

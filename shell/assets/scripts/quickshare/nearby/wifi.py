@@ -12,10 +12,10 @@ offers (it hosts) and this computer joins. Hosting and joining need root
 (wpa_supplicant's D-Bus API is root-only; NetworkManager can't host a
 Wi-Fi Direct group): qs-wifi-helper.py runs under pkexec, started only
 when such a link is needed and kept a few minutes for the next transfer.
-Once an update installed iRice's root helper, it's the copy there
-(/usr/lib/irice/irice-root wifi-helper); before, the one here. Either way
+Once an update installed Tessera's root helper, it's the copy there
+(/usr/lib/tessera/tessera-root wifi-helper); before, the one here. Either way
 it asks for the password as it starts (it can make and join Wi-Fi
-networks, more than iRice's silent jobs may), never during a transfer.
+networks, more than Tessera's silent jobs may), never during a transfer.
 It ends — and takes every group, interface and DHCP server it made with it
 — when its stdin closes, so nothing outlives the helper.
 """
@@ -32,8 +32,18 @@ from .transport import StreamTransport
 
 UPGRADE_PORT = 53319  # next to the Quick Share port (53318), for firewall rules
 HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "qs-wifi-helper.py")
-# iRice's root helper, once installed (IRICE_SYSTEM_ROOT: tests)
-ROOT_HELPER = os.path.join(os.environ.get("IRICE_SYSTEM_ROOT", "/"), "usr/lib/irice/irice-root")
+# Tessera's root helper, once installed (TESSERA_SYSTEM_ROOT: tests); until
+# the root setup installs it, the one from before iRice became Tessera
+ROOT_HELPER = os.path.join(os.environ.get("TESSERA_SYSTEM_ROOT", "/"), "usr/lib/tessera/tessera-root")
+OLD_ROOT_HELPER = os.path.join(os.environ.get("TESSERA_SYSTEM_ROOT", "/"), "usr/lib/irice/irice-root")
+
+
+def installed_root_helper():
+    """The root helper that's installed now (looked at each time: a setup
+    while this runs replaces the old one)."""
+    if not os.access(ROOT_HELPER, os.X_OK) and os.access(OLD_ROOT_HELPER, os.X_OK):
+        return OLD_ROOT_HELPER
+    return ROOT_HELPER
 HELPER_IDLE = 600  # the helper (and its password) stays this long after a transfer
 AUTH_TIMEOUT = 120  # for typing the password
 PATH = offline.BandwidthUpgradeNegotiationFrame.UpgradePathInfo
@@ -181,8 +191,9 @@ async def network():
 
 def helper_script():
     """The Wi-Fi helper that would run: the root helper's copy once installed."""
-    installed = os.path.join(os.path.dirname(ROOT_HELPER), "qs-wifi-helper.py")
-    return installed if os.access(ROOT_HELPER, os.X_OK) and os.path.exists(installed) else HELPER
+    root_helper = installed_root_helper()
+    installed = os.path.join(os.path.dirname(root_helper), "qs-wifi-helper.py")
+    return installed if os.access(root_helper, os.X_OK) and os.path.exists(installed) else HELPER
 
 
 def helper_shields():
@@ -190,7 +201,9 @@ def helper_shields():
     rule while it lasts: qs-wifi-helper.py DBUS_SHIELD). Older copies don't."""
     try:
         with open(helper_script()) as f:
-            return "zzz-irice-quickshare" in f.read()
+            text = f.read()
+        # (zzz-irice-…: the copy installed before iRice became Tessera)
+        return "zzz-tessera-quickshare" in text or "zzz-irice-quickshare" in text
     except OSError:
         return False
 
@@ -234,7 +247,7 @@ def no_direct_reason(net):
     if net.get("iwd"):
         return "iwd runs the Wi-Fi here, and Wi-Fi Direct needs wpa_supplicant instead"
     if net.get("nm") and net.get("p2p_go", True) and not net.get("shield"):
-        return "NetworkManager ends Wi-Fi Direct links it didn't make (iRice's next update works around that)"
+        return "NetworkManager ends Wi-Fi Direct links it didn't make (Tessera's next update works around that)"
     return "Wi-Fi Direct isn't available here"
 
 
@@ -253,7 +266,7 @@ def medium_metadata(net):
 def helper_possible(net):
     # (under iwd there's no wpa_supplicant for the helper: no password asked for nothing)
     return bool(net.get("station")) and not net.get("iwd", False) and bool(shutil.which("pkexec")) and \
-        (os.path.exists(HELPER) or os.access(ROOT_HELPER, os.X_OK))
+        (os.path.exists(HELPER) or os.access(installed_root_helper(), os.X_OK))
 
 
 def mediums_we_join(helper_ok, nm_ok=False):
@@ -284,7 +297,7 @@ def pkexec_env(environ=None, shells_file="/etc/shells"):
 class WifiHelper:
     """qs-wifi-helper.py under pkexec: one JSON request, one JSON answer."""
 
-    def __init__(self, on_auth=None, helper=HELPER, root_helper=ROOT_HELPER):
+    def __init__(self, on_auth=None, helper=HELPER, root_helper=None):
         self.helper = helper
         self.root_helper = root_helper
         self.on_auth = on_auth or (lambda: None)
@@ -298,8 +311,9 @@ class WifiHelper:
         if not shutil.which("pkexec"):
             raise WifiUnavailable("Wi-Fi Direct needs pkexec (from polkit) to set up the link.")
         self.on_auth()  # (a password prompt is coming: say what for)
-        if self.root_helper and os.access(self.root_helper, os.X_OK):
-            cmd = ["pkexec", self.root_helper, "wifi-helper"]
+        root_helper = self.root_helper or installed_root_helper()
+        if root_helper and os.access(root_helper, os.X_OK):
+            cmd = ["pkexec", root_helper, "wifi-helper"]
         else:
             cmd = ["pkexec", sys.executable, "-I", self.helper]
         _log("starting the Wi-Fi helper (" + " ".join(cmd[:3]) + ")")
@@ -376,8 +390,8 @@ class WifiHelper:
 
 
 # ── Through NetworkManager: no root, no password ─────────────────────────
-NM_PROFILE = "irice-quickshare"
-NM_MARKER = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "irice-quickshare-wifi.json")
+NM_PROFILE = "tessera-quickshare"
+NM_MARKER = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "tessera-quickshare-wifi.json")
 NM_HOTSPOT_IP = "10.42.0.1"  # NetworkManager's "shared" network
 NM_MIN_BYTES = 256 * 1024  # smaller shares stay on Bluetooth (no pause for a photo thumbnail or a link)
 NM_JOIN_WAIT = 25
@@ -748,7 +762,7 @@ async def join(info, helper, net, helper_ok=True, timeout=15, nm=None):
         try:
             host = str(ipaddress.IPv4Address(bytes(s.ip_address)))
         except ValueError as e:
-            raise WifiUnavailable("the phone offered an address iRice can't use") from e
+            raise WifiUnavailable("the phone offered an address Tessera can't use") from e
         if same_network(net.get("addresses", []), s.ip_address) is None:
             raise WifiUnavailable("the phone isn't on this computer's network")
         return await StreamTransport.connect(host, s.wifi_port, timeout=timeout, medium="wifi_lan")
@@ -778,4 +792,4 @@ async def join(info, helper, net, helper_ok=True, timeout=15, nm=None):
             raise WifiUnavailable("the phone's Wi-Fi gave no address to connect to")
         return await StreamTransport.connect(gateway, c.port, timeout=timeout, medium=medium,
                                              local_address=link.get("ip"))
-    raise WifiUnavailable("the phone offered a link iRice doesn't support")
+    raise WifiUnavailable("the phone offered a link Tessera doesn't support")

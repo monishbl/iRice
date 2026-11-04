@@ -5,7 +5,7 @@
 //                     lensing Tahoe shows), with slight chromatic dispersion.
 //   mode 1 (frosted): translucent tint only; the compositor blurs what's behind.
 //   mode 2 (solid):   opaque, for Reduce Transparency.
-//   mode 3 (plugin):  shadow only; the irice-glass Hyprland plugin draws the glass.
+//   mode 3 (plugin):  shadow only; the tessera-glass Hyprland plugin draws the glass.
 // All modes add a specular rim and a soft drop shadow. Output is premultiplied.
 
 layout(location = 0) in vec2 qt_TexCoord0;
@@ -40,7 +40,7 @@ float sdRoundBox(vec2 p, vec2 b, float r) {
     // circular arc of the same radius, so the curve eases in instead of
     // starting abruptly. Near-pills blend back to circular ends (n -> 2), so
     // capsules and circles stay round. Same function in shell/glass/glass.frag
-    // and the irice-glass plugin, so both draw the same shape.
+    // and the tessera-glass plugin, so both draw the same shape.
     float hm = min(b.x, b.y);
     float k = max(circular, smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0)));
     float n = mix(4.0, 2.0, k);
@@ -114,7 +114,7 @@ void main() {
         alpha = 1.0;
     }
 
-    // Light from the top left (same model as the irice-glass plugin): a sharp
+    // Light from the top left (same model as the tessera-glass plugin): a sharp
     // specular where it hits, a fainter glint on the opposite edge, a sheen
     // across the top and an inner shadow along the bottom.
     vec2 L = normalize(vec2(-0.55, -0.83));

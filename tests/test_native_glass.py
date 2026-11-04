@@ -20,7 +20,7 @@ DRIVER = r'''
 #include <cstdlib>
 #include <thread>
 int main(int argc, char** argv) {
-    irice::GlassSender sender;
+    tessera::GlassSender sender;
     for (int i = 2; i < argc; i++)
         sender.submit(argv[i], argv[i]);
     std::this_thread::sleep_for(std::chrono::milliseconds(std::atoi(argv[1])));
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 class GlassSenderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='irice-glass-ipc-')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='tessera-glass-ipc-')
         d = Path(cls.tmp.name)
         (d / 'driver.cpp').write_text(DRIVER)
         cls.binary = d / 'driver'
@@ -44,7 +44,7 @@ class GlassSenderTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def setUp(self):
-        self.run_dir = tempfile.TemporaryDirectory(prefix='irice-glass-run-')
+        self.run_dir = tempfile.TemporaryDirectory(prefix='tessera-glass-run-')
         self.addCleanup(self.run_dir.cleanup)
         self.socket_dir = Path(self.run_dir.name) / 'hypr/fixture'
         self.socket_dir.mkdir(parents=True)

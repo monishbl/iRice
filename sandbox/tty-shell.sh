@@ -13,25 +13,26 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SB="$ROOT/.sandbox/home"
-# A real desktop on this machine (./dev.sh tty, the demo, or "iRice" on the
-# login screen): not IRICE_SANDBOX, which is only for the nested test window
+# A real desktop on this machine (./dev.sh tty, the demo, or "Tessera" on the
+# login screen): not TESSERA_SANDBOX, which is only for the nested test window
 # (it turns power actions into notes, leaves out the password agent and
 # updates, and lets tests unlock the lock screen without a password)
-export IRICE_ROOT="$ROOT" IRICE_TTY=1
+export TESSERA_ROOT="$ROOT" TESSERA_TTY=1
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
 # Clipboard history: the one the session's watcher (tty.lua: wl-paste --watch
 # cliphist store) writes, in your usual cache. With the cache above, the
 # shell read an empty history of its own and the clipboard panel was empty
 export CLIPHIST_DB_PATH="${CLIPHIST_DB_PATH:-$HOME/.cache/cliphist/db}"
 # Apps and icons installed for this user (~/.local/share: AppImages, Steam
-# games, web apps, icon themes) are still found, after iRice's own data
+# games, web apps, icon themes) are still found, after Tessera's own data
 export XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 SHELL_DIR="$ROOT/shell"
-# The Quickshell the shell runs on (iRice's own build when there is one; see
+# The Quickshell the shell runs on (Tessera's own build when there is one; see
 # launch-shell.sh): asking it over IPC needs the same version
 QS=qs
-for d in "$XDG_DATA_HOME" "$HOME/.local/share"; do
-    [[ -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]] && { QS="$d/irice/quickshell/bin/qs"; break; }
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+for d in "$XDG_DATA_HOME/tessera" "$HOME/.local/share/tessera" "$XDG_DATA_HOME/irice" "$HOME/.local/share/irice"; do
+    [[ -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]] && { QS="$d/quickshell/bin/qs"; break; }
 done
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:?not inside a Hyprland session}"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -44,15 +45,16 @@ alive() {
 
 sig_of() { { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p'; }
 is_tty_shell() {
-    # (an update screen, "qs -p <…>/irice-update.XXXX/ui", is never the shell)
-    tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q '/irice-update\.' && return 1
-    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx "IRICE_TTY=1"
+    # (an update screen, "qs -p <…>/tessera-update.XXXX/ui", is never the
+    # shell; irice-update: one from before iRice became Tessera)
+    tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -e '/tessera-update\.' -e '/irice-update\.' && return 1
+    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
 }
 
 # This session's shells, oldest first
 shell_pids() {
     local p
-    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" && [[ "$(sig_of "$p")" == "$SIG" ]] && echo "$p"
     done | sort -n
     return 0
@@ -72,7 +74,7 @@ gone() {
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
-    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
         [[ -z "$s" || "$s" == "$SIG" ]] && continue
@@ -85,12 +87,15 @@ start() {
     alive || return 0
     (
         flock -n 9 || exit 0 # another start is running
+        # (also the lock a watchdog from before iRice became Tessera takes,
+        # until the next login)
+        flock -n 7 || exit 0
         [[ -n "$(shell_pids)" ]] && exit 0
         # The locks' descriptors must not leak into the shell (and the apps it
         # opens), or they'd hold the locks and block every later start
-        setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$SHELL_DIR" >/dev/null 2>&1 8>&- 9>&-
+        setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$SHELL_DIR" >/dev/null 2>&1 6>&- 7>&- 8>&- 9>&-
         sleep 2 # let it register before the lock is released
-    ) 9>"$LOCKDIR/irice-shell.lock"
+    ) 9>"$LOCKDIR/tessera-shell.lock" 7>"$LOCKDIR/irice-shell.lock"
 }
 
 stop() {
@@ -110,11 +115,15 @@ case "${1:-start}" in
     start) start ;;
     restart) stop; start ;;
     watchdog)
-        exec 8>"$LOCKDIR/irice-watchdog.lock"
+        exec 8>"$LOCKDIR/tessera-watchdog.lock"
         flock -n 8 || exit 0 # this session already has one
-        # (this one finds the shell as "irice-shell" too: launch-shell.sh
-        # uses that name only once the session's watchdog does)
-        echo $$ >"$LOCKDIR/irice-watchdog.names"
+        # (or one from before iRice became Tessera, which keeps running until
+        # the next login: two would each start a shell)
+        exec 6>"$LOCKDIR/irice-watchdog.lock"
+        flock -n 6 || exit 0
+        # (this one finds the shell as "tessera-shell" and "irice-shell" too:
+        # launch-shell.sh uses those names only once the session's watchdog does)
+        echo $$ >"$LOCKDIR/tessera-watchdog.names"
         reap
         sleep 20 # let it start
         misses=0 gone=0
@@ -135,7 +144,7 @@ case "${1:-start}" in
             pids=($(shell_pids))
             if (( ${#pids[@]} == 0 )); then
                 # crashed (the third time soon after an update: the recovery window too)
-                "$SHELL_DIR/assets/scripts/shell-restarted.sh" "$LOCKDIR" -p "$SHELL_DIR" 8>&-
+                "$SHELL_DIR/assets/scripts/shell-restarted.sh" "$LOCKDIR" -p "$SHELL_DIR" 6>&- 8>&-
                 start
                 misses=0
                 sleep 10
@@ -147,7 +156,7 @@ case "${1:-start}" in
             if timeout 4 "$QS" ipc --pid "${pids[0]}" show >/dev/null 2>&1; then
                 misses=0
             elif (( ++misses >= 2 )); then
-                notify-send -a iRice "Restarting the shell" "It stopped responding." 2>/dev/null
+                notify-send -a Tessera "Restarting the shell" "It stopped responding." 2>/dev/null
                 stop; start
                 misses=0
                 sleep 10

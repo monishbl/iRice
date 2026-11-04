@@ -103,7 +103,7 @@ Singleton {
     }
 
     readonly property QtObject font: QtObject {
-        readonly property string family: root.material ? "iRice Sans Flex" : "Inter"
+        readonly property string family: root.material ? "Tessera Sans Flex" : "Inter"
         readonly property string mono: "JetBrains Mono"
         readonly property int caption: 11
         readonly property int small: 12
@@ -236,7 +236,7 @@ Singleton {
             return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
         }
 
-        // The plugin's per-shape parameters for the current material (see irice-glass)
+        // The plugin's per-shape parameters for the current material (see tessera-glass)
         function preset(minSide) {
             const l = lensAmount, f = frostAmount, s = solidAmount;
             const thick = depth === "depth" || (depth === "auto" && minSide <= 140);

@@ -21,7 +21,7 @@ Variants {
         screen: modelData
         visible: Wallpaper.started // after the wallpaper at login
         color: "transparent"
-        WlrLayershell.namespace: "irice:dock"
+        WlrLayershell.namespace: "tessera:dock"
         WlrLayershell.layer: WlrLayer.Top
 
         readonly property var cfg: Config.options.dock

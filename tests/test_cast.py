@@ -92,7 +92,7 @@ class FakeCast(threading.Thread):
         self.volume = 1.0
 
     def send(self, conn, src, ns, payload):
-        conn.sendall(cast.encode(src, "sender-irice", ns, payload))
+        conn.sendall(cast.encode(src, "sender-tessera", ns, payload))
 
     def run(self):
         conn, _ = self.lsock.accept()

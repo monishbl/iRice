@@ -382,7 +382,7 @@ Column {
         Row {
             visible: !settingsGroup.builtIn && (settingsGroup.m?.enabled ?? false) && !Brightness.ddcInstalled
             label: "Brightness"
-            detail: "To change this display's brightness from iRice, install ddcutil (sudo pacman -S ddcutil), then log out and back in."
+            detail: "To change this display's brightness from Tessera, install ddcutil (sudo pacman -S ddcutil), then log out and back in."
         }
         Row {
             visible: !settingsGroup.builtIn && (settingsGroup.m?.enabled ?? false) && Brightness.ddcInstalled && settingsGroup.ddc === null

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Makes iRice's boot animations: Plymouth script themes in
-shell/assets/plymouth/irice-<id>/ (Settings → Lock & Login Screen → Boot
-animation; the root helper installs the one you pick, irice-root bootsplash).
+"""Makes Tessera's boot animations: Plymouth script themes in
+shell/assets/plymouth/tessera-<id>/ (Settings → Lock & Login Screen → Boot
+animation; the root helper installs the one you pick, tessera-root bootsplash).
 
   tools/make-bootsplash.py                  the themes, and Settings' thumbnails
                                             and names (thumbnails/, designs.json)
@@ -9,14 +9,14 @@ animation; the root helper installs the one you pick, irice-root bootsplash).
                                             a seamless loop), DIR/<id>.png and
                                             DIR/designs.json
 
-The designs (DESIGNS), each on near-black with the iRice mark (Phosphor's
-filled drop, as in the menu bar and the look switch):
-  breathe  the drop with a soft glow that breathes, and a thin progress line
-  orbit    the drop inside a thin ring; two arcs chase round it, so the lit
+The designs (DESIGNS), each on near-black with the Tessera mark (Phosphor's
+filled circle-wavy, the badge, as in the menu bar and the look switch):
+  breathe  the badge with a soft glow that breathes, and a thin progress line
+  orbit    the badge inside a thin ring; two arcs chase round it, so the lit
            part grows and shrinks (like a circular progress indicator)
-  frost    Glass: the drop on a frosted squircle, two soft lights drifting
+  frost    Glass: the badge on a frosted squircle, two soft lights drifting
            behind it, and now and then a light sweeping across the glass
-  bloom    Material: the drop on a shape that morphs through Material's
+  bloom    Material: the badge on a shape that morphs through Material's
            loading shapes (cookie, pentagon, pill, sunny…) on its spring,
            turning as it goes
 Plymouth calls the script 50 times a second. Everything that moves is a table
@@ -45,8 +45,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUT = os.path.join(ROOT, "shell", "assets", "plymouth")
-DROP_FONT = os.path.join(ROOT, "shell", "assets", "fonts", "Phosphor-Fill.ttf")
-DROP = ""
+BADGE_FONT = os.path.join(ROOT, "shell", "assets", "fonts", "Phosphor-Fill.ttf")
+BADGE = ""  # (Phosphor's circle-wavy: the Tessera badge)
 
 FPS = 50  # Plymouth's refresh rate (the script sets it)
 MARK = 0.14  # the mark, as a share of the screen's shorter side
@@ -80,14 +80,16 @@ def paint(mask, rgb, alpha=1.0):
     return im
 
 
-def drop_mask(height, canvas):
-    """The drop, its ink `height` px tall, centred on a canvas×canvas mask."""
-    probe = ImageFont.truetype(DROP_FONT, 1000)
-    x0, y0, x1, y1 = probe.getbbox(DROP)
-    font = ImageFont.truetype(DROP_FONT, round(1000 * height * SS / (y1 - y0)))
-    x0, y0, x1, y1 = font.getbbox(DROP)
+def badge_mask(height, canvas):
+    """The badge, its ink `height` px tall (a little less: it's round, where
+    the mark it replaced was a drop), centred on a canvas×canvas mask."""
+    height = height * 0.86
+    probe = ImageFont.truetype(BADGE_FONT, 1000)
+    x0, y0, x1, y1 = probe.getbbox(BADGE)
+    font = ImageFont.truetype(BADGE_FONT, round(1000 * height * SS / (y1 - y0)))
+    x0, y0, x1, y1 = font.getbbox(BADGE)
     big = Image.new("L", (canvas * SS, canvas * SS), 0)
-    ImageDraw.Draw(big).text(((canvas * SS - (x1 - x0)) / 2 - x0, (canvas * SS - (y1 - y0)) / 2 - y0), DROP, font=font, fill=255)
+    ImageDraw.Draw(big).text(((canvas * SS - (x1 - x0)) / 2 - x0, (canvas * SS - (y1 - y0)) / 2 - y0), BADGE, font=font, fill=255)
     return big.reduce(SS)
 
 
@@ -227,7 +229,7 @@ def wave(i, period):
 # frame for the preview (sprites: [(z, name, dx, dy, opacity, angle)]).
 class Breathe:
     id, name = "breathe", "Breathe"
-    description = "The drop with a soft glow that breathes, and a thin line that fills as your computer starts."
+    description = "The badge with a soft glow that breathes, and a thin line that fills as your computer starts."
     period = 250  # 5 s
     extent = 1.15
     line = 1.6  # the progress line's width, in marks
@@ -237,7 +239,7 @@ class Breathe:
         lw, lh = round(self.line * L), max(2, round(L / 64))
         line = smooth((lw, lh * 3), lambda d, s: d.rounded_rectangle((0, lh * s, lw * s - 1, 2 * lh * s - 1), radius=lh * s / 2, fill=255))
         return {
-            "mark": paint(drop_mask(L, c), INK),
+            "mark": paint(badge_mask(L, c), INK),
             "glow": paint(glow(round(3.8 * L), 0.5 * L, 0.36 * L), INK),
             "track": paint(line, INK, 0.14),
             "fill": paint(line, INK, 0.8),
@@ -292,7 +294,7 @@ Plymouth.SetBootProgressFunction(progress);
 
 class Orbit:
     id, name = "orbit", "Orbit"
-    description = "The drop inside a thin ring, with a light chasing round it that grows and shrinks."
+    description = "The badge inside a thin ring, with a light chasing round it that grows and shrinks."
     period = 120  # 2.4 s
     extent = 1.15
 
@@ -300,7 +302,7 @@ class Orbit:
         c = round(2.2 * L)
         r, w = 0.95 * L, max(2, L / 48)
         return {
-            "mark": paint(drop_mask(round(0.62 * L), round(0.8 * L)), INK),
+            "mark": paint(badge_mask(round(0.62 * L), round(0.8 * L)), INK),
             "track": paint(ring(c, r, w), INK, 0.12),
             "arc": paint(ring(c, r, w, -45, 90), INK, 0.9),
         }
@@ -340,7 +342,7 @@ fun frame(i) {
 
 class Frost:
     id, name = "frost", "Frost"
-    description = "For Glass: the drop on a frosted glass tile, soft lights drifting behind it and a light sweeping across."
+    description = "For Glass: the badge on a frosted glass tile, soft lights drifting behind it and a light sweeping across."
     period = 240  # 4.8 s
     extent = 1.05
     tile = 1.55  # the tile's size, in marks
@@ -366,7 +368,7 @@ class Frost:
         glass.putalpha(ImageChops.add(fill, rim))
         out = {
             "glass": glass,
-            "mark": paint(drop_mask(round(0.72 * L), round(0.9 * L)), INK),
+            "mark": paint(badge_mask(round(0.72 * L), round(0.9 * L)), INK),
             "light": paint(glow(round(2.4 * L), 0.5 * L, 0.38 * L), INDIGO, 0.55),
             "white": paint(glow(round(2.0 * L), 0.4 * L, 0.32 * L), INK, 0.3),
         }
@@ -439,7 +441,7 @@ fun frame(i) {
 
 class Bloom:
     id, name = "bloom", "Bloom"
-    description = "For Material: the drop on a shape that morphs through Material's loading shapes, turning as it goes."
+    description = "For Material: the badge on a shape that morphs through Material's loading shapes, turning as it goes."
     # Material's loading indicator: a new shape every 600 ms on the expressive
     # spring, a quarter turn with each, and a whole turn a cycle (eight shapes:
     # 8 × 90° + 360° = three whole turns, so the cycle loops seamlessly)
@@ -465,7 +467,7 @@ class Bloom:
 
     def images(self, L):
         c = round(self.size * L * 1.25)  # (room to turn: no shape reaches past its circle's 1.2)
-        out = {"mark": paint(drop_mask(round(0.5 * L), round(0.7 * L)), M3_ON_PRIMARY)}
+        out = {"mark": paint(badge_mask(round(0.5 * L), round(0.7 * L)), M3_ON_PRIMARY)}
         for n, (a, b, m) in enumerate(self.frames()[0]):
             out[f"shape{n:03d}"] = paint(shape_mask(a, b, m, self.size * L, c), M3_PRIMARY)
         return out
@@ -661,7 +663,7 @@ def rgb(c):
 
 def script_for(d):
     tables = d.tables()
-    lines = [f"# iRice's boot animation: {d.name} (tools/make-bootsplash.py; made, not edited)",
+    lines = [f"# Tessera's boot animation: {d.name} (tools/make-bootsplash.py; made, not edited)",
              f"# {d.description}"]
     common = COMMON.replace("@BG@", rgb(BG)).replace("@MARK@", str(MARK)).replace("@EXTENT@", str(d.extent))
     common = common.replace("@WARNING@", rgb(WARNING)).replace("@INK@", rgb(INK)).replace("@SECONDARY@", rgb(SECONDARY))
@@ -678,10 +680,10 @@ def script_for(d):
 
 
 def plymouth_file(d):
-    tid = "irice-" + d.id
+    tid = "tessera-" + d.id
     return f"""[Plymouth Theme]
 Name={tid}
-Description=iRice: {d.description}
+Description=Tessera: {d.description}
 ModuleName=script
 
 [script]
@@ -709,7 +711,7 @@ def ui_images(L):
 
 
 def write_theme(d, out):
-    folder = os.path.join(out, "irice-" + d.id)
+    folder = os.path.join(out, "tessera-" + d.id)
     shutil.rmtree(folder, ignore_errors=True)
     os.makedirs(folder)
     sets = {}
@@ -718,9 +720,9 @@ def write_theme(d, out):
         sets[suffix] = ims
         for name, im in ims.items():
             im.save(os.path.join(folder, name + suffix + ".png"), optimize=True)
-    with open(os.path.join(folder, f"irice-{d.id}.script"), "w") as f:
+    with open(os.path.join(folder, f"tessera-{d.id}.script"), "w") as f:
         f.write(script_for(d))
-    with open(os.path.join(folder, f"irice-{d.id}.plymouth"), "w") as f:
+    with open(os.path.join(folder, f"tessera-{d.id}.plymouth"), "w") as f:
         f.write(plymouth_file(d))
     return sets
 
@@ -830,7 +832,7 @@ def main():
             continue
         sets = write_theme(d, OUT)
         thumbnail(d, sets, os.path.join(OUT, "thumbnails", d.id + ".png"))
-        print("made irice-" + d.id)
+        print("made tessera-" + d.id)
         if a.preview:
             os.makedirs(a.preview, exist_ok=True)
             n = preview(d, sets, a.preview)

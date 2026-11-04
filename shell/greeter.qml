@@ -1,13 +1,13 @@
 //@ pragma UseQApplication
 //@ pragma Env QSG_DISTANCEFIELD_ANTIALIASING=gray
-// iRice login screen for greetd: qs -p <shell dir>/greeter.qml, started by
+// Tessera login screen for greetd: qs -p <shell dir>/greeter.qml, started by
 // assets/scripts/greeter-start.sh in the greeter compositor (hypr/greeter.lua).
-// Its style (IRICE_GREETER_STYLE; Settings → Lock Screen → Login screen):
+// Its style (TESSERA_GREETER_STYLE; Settings → Lock Screen → Login screen):
 //   look   this root's look: Glass here, Material in the Material root
 //          (modules/greeter/GreeterSurface.qml, each look's own)
 //   text   ly's: a box of monospace fields, keyboard first (GreeterText)
 //   plain  black, your picture, the field and the fingerprint (GreeterPlain)
-// Settings' Preview runs it with IRICE_GREETER_MOCK=1 (password "irice").
+// Settings' Preview runs it with TESSERA_GREETER_MOCK=1 (password "tessera").
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
@@ -16,7 +16,7 @@ import qs.modules.greeter
 ShellRoot {
     id: root
 
-    readonly property string style: Quickshell.env("IRICE_GREETER_STYLE") || "look"
+    readonly property string style: Quickshell.env("TESSERA_GREETER_STYLE") || "look"
 
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor.ttf") }
     FontLoader { source: Qt.resolvedUrl("assets/fonts/Phosphor-Fill.ttf") }

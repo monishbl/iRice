@@ -9,9 +9,9 @@ import qs.services
 
 // Finder-style window tabs (Settings → Appearance → Window tabs: Finder).
 // Hyprland groups the windows and keeps an empty bar's space above them
-// (hypr/irice/tabs.lua); this draws the tabs there: app icon and title,
+// (hypr/tessera/tabs.lua); this draws the tabs there: app icon and title,
 // the front tab raised, close on hover, + for a new window of the app.
-// Which tab is in front comes from the irice-glass plugin. While windows
+// Which tab is in front comes from the tessera-glass plugin. While windows
 // move or spaces switch, the strips step out of the way and come back
 // once things settle, so they never trail behind.
 Variants {
@@ -58,7 +58,7 @@ Variants {
         // Fresh group data after anything that can change it
         Process {
             id: query
-            command: ["hyprctl", "irice-glass", "groups"]
+            command: ["hyprctl", GlassPlugin.name, "groups"]
             stdout: StdioCollector {
                 onStreamFinished: {
                     try {
@@ -92,10 +92,10 @@ Variants {
         Connections {
             target: Hyprland
             function onRawEvent(event) {
-                const moving = ["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "irice-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"].includes(event.name);
+                const moving = ["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "irice-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"].includes(event.name);
                 const grouping = ["togglegroup", "moveintogroup", "moveoutofgroup", "activewindow", "activewindowv2", "lockgroups", "ignoregrouplock"].includes(event.name);
                 if (moving || grouping)
-                    win.refresh(moving && !(event.name === "irice-drag" && event.data.startsWith("drop")));
+                    win.refresh(moving && !((event.name === "tessera-drag" || event.name === "irice-drag") && event.data.startsWith("drop")));
             }
         }
 
@@ -106,7 +106,7 @@ Variants {
                 id: stripWin
                 required property var modelData
                 screen: win.screen
-                WlrLayershell.namespace: "irice:tabs"
+                WlrLayershell.namespace: "tessera:tabs"
                 WlrLayershell.layer: WlrLayer.Top
                 exclusionMode: ExclusionMode.Ignore
                 anchors { top: true; left: true }

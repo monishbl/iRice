@@ -197,7 +197,7 @@ GreeterWindow {
             wrapMode: Text.Wrap
             visible: text !== ""
             text: win.powerChoice ? ({ suspend: "Sleep", reboot: "Restart", poweroff: "Shut Down" })[win.powerChoice] + ": click it again or press Return. Esc cancels."
-                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is irice. Esc quits." : "")
+                : win.auth.error || win.auth.message || (win.auth.mock ? "Preview: the password is tessera. Esc quits." : "")
             color: win.auth.error || win.powerChoice ? "#FFB4B4" : Qt.rgba(1, 1, 1, 0.75)
             font { family: win.sans; pixelSize: 12; weight: Font.Medium }
         }

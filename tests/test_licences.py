@@ -1,4 +1,4 @@
-"""iRice's licence (GPL-3.0-or-later) and the notices for what it bundles
+"""Tessera's licence (GPL-3.0-or-later) and the notices for what it bundles
 from others (THIRD_PARTY_NOTICES.md, the texts in LICENSES/)."""
 import re
 import unittest
@@ -41,15 +41,15 @@ class Licence(unittest.TestCase):
 
     def test_notices_cover_what_is_bundled(self):
         text = read("THIRD_PARTY_NOTICES.md")
-        for part in ("Phosphor", "Google Sans Flex", "iRice Sans Flex", "Reserved Font Name", "Material Symbols",
-                     "iRice Symbols", "material-color-utilities", "Nearby", "UKEY2", "emoji-test.txt", "CLDR",
+        for part in ("Phosphor", "Google Sans Flex", "Tessera Sans Flex", "Reserved Font Name", "Material Symbols",
+                     "Tessera Symbols", "material-color-utilities", "Nearby", "UKEY2", "emoji-test.txt", "CLDR",
                      "emojibase", "RQuickShare", "end4", "Geist", "Unsplash"):
             self.assertIn(part, text, part)
         # modified Apache-2.0 files say so (section 4(b))
-        self.assertRegex(text, r"Changed by iRice[^\n]*subset")
-        # every bundled sound is iRice's, made by its generator (the Material
+        self.assertRegex(text, r"Changed by Tessera[^\n]*subset")
+        # every bundled sound is Tessera's, made by its generator (the Material
         # set too, once of unknown source)
-        self.assertRegex(text, r"material/assets/sounds/material[^\n]*made by iRice[^\n]*make-sounds\.py material")
+        self.assertRegex(text, r"material/assets/sounds/material[^\n]*made by Tessera[^\n]*make-sounds\.py material")
         self.assertNotIn("source unrecorded", text)
 
     def test_licence_paths_named_in_files_exist(self):

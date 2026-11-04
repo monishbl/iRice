@@ -14,7 +14,7 @@ import qs.services
 //   larger, settling), then the cover lifts off the windows while the
 //   widgets and icons fade in and the menu bar and dock settle in (LockFx,
 //   as unlocking does, without its zoom: the wallpaper itself stays put)
-//   Material: the iRice mark (Material's cookie with the drop, as the boot
+//   Material: the Tessera mark (Material's cookie with the drop, as the boot
 //   animation Bloom shows it) opens into a window onto the desktop that
 //   grows, morphing to a circle, until it fills the screen
 // It has to be up for the shell's first frame, before Config and Sounds
@@ -38,6 +38,12 @@ Scope {
         blockLoading: true
         printErrors: false
     }
+    FileView {
+        id: oldStartedMark
+        path: Sounds.oldStartedMark
+        blockLoading: true
+        printErrors: false
+    }
     function wanted() {
         try {
             const c = JSON.parse(settingsFile.text() || "{}");
@@ -46,7 +52,7 @@ Scope {
             return false;
         }
     }
-    Component.onCompleted: if (!startedMark.loaded && !System.locked && wanted()) arm()
+    Component.onCompleted: if (!startedMark.loaded && !oldStartedMark.loaded && !System.locked && wanted()) arm()
 
     // ── Its course ───────────────────────────────────────────────────────
     property bool shown: false // the cover is up
@@ -119,8 +125,8 @@ Scope {
         onTriggered: if (root.shown && !root.playing) root.play()
     }
     // Everything moves by `t` alone, so it can be slowed as a whole
-    // (IRICE_INTRO_PACE=10: a tenth of the speed, to record it frame by frame)
-    readonly property real pace: Math.max(1, Number(Quickshell.env("IRICE_INTRO_PACE")) || 1)
+    // (TESSERA_INTRO_PACE=10: a tenth of the speed, to record it frame by frame)
+    readonly property real pace: Math.max(1, Number((Quickshell.env("TESSERA_INTRO_PACE") || Quickshell.env("IRICE_INTRO_PACE"))) || 1)
     NumberAnimation {
         id: clock
         target: root
@@ -167,7 +173,7 @@ Scope {
             id: win
             required property var modelData
             screen: modelData
-            WlrLayershell.namespace: "irice:lockveil" // (unblurred, unanimated by the compositor)
+            WlrLayershell.namespace: "tessera:lockveil" // (unblurred, unanimated by the compositor)
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
@@ -255,7 +261,7 @@ Scope {
                         }
                         Text {
                             anchors.centerIn: parent
-                            text: "\ue210" // (Phosphor's filled drop: the iRice mark)
+                            text: "\ue604" // (Phosphor's filled circle-wavy: the Tessera badge)
                             color: Theme.m3.onPrimary
                             font { family: "Phosphor-Fill"; pixelSize: Math.round(material.mark * 0.42) }
                             opacity: 1 - root.out(root.span(0, 250))

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Sets up iRice to run from this folder on its own console (./dev.sh tty or
+# Sets up Tessera to run from this folder on its own console (./dev.sh tty or
 # ./demo.sh), without installing it as your desktop: your ~/.config and your
-# usual session aren't touched; iRice keeps its settings in .sandbox/home.
+# usual session aren't touched; Tessera keeps its settings in .sandbox/home.
 #
 #   tools/setup-tty.sh [--yes]     packages (asks first), then builds
 #
@@ -12,13 +12,13 @@ YES=0
 [[ "${1:-}" == "--yes" ]] && YES=1
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 
-command -v pacman >/dev/null || { echo "iRice needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
+command -v pacman >/dev/null || { echo "Tessera needs Arch Linux (or an Arch-based system such as CachyOS or EndeavourOS)."; exit 1; }
 
 source "$ROOT/tools/packages.sh"   # the same list as install.sh
 missing=()
 for p in "${PACKAGES[@]}"; do pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if (( ${#missing[@]} > 0 )); then
-    say "Packages iRice needs: ${missing[*]}"
+    say "Packages Tessera needs: ${missing[*]}"
     if [[ $YES == 0 ]]; then
         read -rp "Install them now with sudo pacman? [Y/n] " a
         [[ "${a,,}" == n* ]] && { echo "Skipped. Install them yourself, then run this again."; exit 1; }
@@ -47,9 +47,9 @@ if (( ${#missing[@]} > 0 )); then
         helper=$(command -v yay || command -v paru || true)
         if [[ -n "$helper" ]]; then
             TERM=${TERM:-xterm} "$helper" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}" ||
-                echo "The pointer didn't install: see above. iRice works without it; run this again to retry."
+                echo "The pointer didn't install: see above. Tessera works without it; run this again to retry."
         else
-            echo "yay didn't install: see above. iRice works without the pointer; run this again to retry."
+            echo "yay didn't install: see above. Tessera works without the pointer; run this again to retry."
         fi
     fi
 fi
@@ -67,16 +67,17 @@ if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
         # ...but not its Ranging and LE Audio control profiles: they make phones
         # ask to pair when they send with Quick Share (shell/assets/scripts/sharing-check.py)
         sudo mkdir -p /etc/systemd/system/bluetooth.service.d
-        printf '# iRice: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n' |
-            sudo tee /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf >/dev/null
+        printf '# Tessera: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n' |
+            sudo tee /etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf >/dev/null
+        sudo rm -f /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf # (its name before iRice became Tessera)
         sudo systemctl daemon-reload
         sudo systemctl restart bluetooth && echo "Done: reconnect your headphones to see their battery."
     fi
 fi
 
-# iRice on the login screen (ly, SDDM, GDM…), next to your usual Hyprland
-if [[ ! -f /usr/share/wayland-sessions/irice.desktop ]] || ! grep -q "$ROOT/sandbox/irice-session.sh" /usr/share/wayland-sessions/irice.desktop; then
-    say "Add \"iRice\" to the login screen, so you can pick it instead of your usual desktop?"
+# Tessera on the login screen (ly, SDDM, GDM…), next to your usual Hyprland
+if [[ ! -f /usr/share/wayland-sessions/tessera.desktop ]] || ! grep -q "$ROOT/sandbox/tessera-session.sh" /usr/share/wayland-sessions/tessera.desktop; then
+    say "Add \"Tessera\" to the login screen, so you can pick it instead of your usual desktop?"
     a=y
     [[ $YES == 0 ]] && read -rp "Add it? [Y/n] " a
     [[ "${a,,}" != n* ]] && "$ROOT/tools/setup-session.sh"
@@ -85,13 +86,13 @@ fi
 say "Building the glass shaders…"
 "$ROOT/tools/build-shaders.sh" || { echo "The shaders didn't build (needs qt6-shadertools)."; exit 1; }
 say "Building the glass plugin for Hyprland $(pkg-config --modversion hyprland 2>/dev/null)…"
-make -C "$ROOT/hypr/plugin/irice-glass" -s || echo "The glass plugin didn't build: glass falls back to frosted. Check the Hyprland headers (hyprland package), then run this again."
+make -C "$ROOT/hypr/plugin/tessera-glass" -s || echo "The glass plugin didn't build: glass falls back to frosted. Check the Hyprland headers (hyprland package), then run this again."
 say "Building the native helpers…"
 "$ROOT/shell/native/build.sh" >/dev/null || echo "Native helpers skipped: the shell uses its slower fallbacks."
 
 cat <<EOF
 
-iRice is ready. To start it:
+Tessera is ready. To start it:
   1. Switch to a free console: Ctrl+Alt+F3, and log in
   2. cd $ROOT && ./demo.sh --check && ./dev.sh tty
   3. Super+Shift+Escape ends it; Ctrl+Alt+F1 or F2 takes you back.

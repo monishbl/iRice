@@ -51,7 +51,7 @@ Scope {
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice:island-alerts"
+            WlrLayershell.namespace: "tessera:island-alerts"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             mask: Region { item: stack }
 

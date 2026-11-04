@@ -1,7 +1,7 @@
 .pragma library
 // The sounds to log in to (Settings → Notifications → Logging in), each
 // with its name and the style whose instrument plays it. Any can be chosen
-// whichever style is on; "" is iRice's own chime, the default. The files
+// whichever style is on; "" is Tessera's own chime, the default. The files
 // are assets/sounds/startup/<id>.ogg (tools/make-sounds.py startups).
 
 var styles = [
@@ -32,7 +32,7 @@ var motifs = [
 ]
 
 // Every choice, the original first: { id, name, style, about }
-var all = [{ id: "", name: "iRice", style: "Original", about: "The chime iRice has always played" }].concat(
+var all = [{ id: "", name: "Tessera", style: "Original", about: "The chime Tessera has always played" }].concat(
     styles.reduce((list, s) => list.concat(motifs.map(m => ({ id: s.id + "-" + m.id, name: names[s.id + "-" + m.id], style: s.name, about: m.about }))), []))
 
 function find(id) {

@@ -7,14 +7,14 @@ import qs.services
 
 // Privacy & Security: fingerprint and face unlock (biometrics.qml, a part),
 // what shows when your screen is shared, and what may run without your
-// password: iRice's root helper, Quick Share's direct link, the firewall's
+// password: Tessera's root helper, Quick Share's direct link, the firewall's
 // ports for sharing (SharingPorts)
 Column {
     id: page
     width: parent?.width ?? 0
     spacing: 22
 
-    // Which firewall is on, and whether iRice's root helper is there
+    // Which firewall is on, and whether Tessera's root helper is there
     // (sharing-check.py, as on Phone & Sharing)
     property var system: ({}) // { firewall: { kind, open, why, error }, passwordless }
     readonly property string checkScript: decodeURIComponent(Qt.resolvedUrl("../../../assets/scripts/sharing-check.py").toString().replace("file://", ""))
@@ -66,9 +66,9 @@ Column {
     Group {
         width: parent.width
         title: "Without your password"
-        footer: "Only for an administrator at this computer, in the session on screen. Everything else iRice does as an administrator asks for your password."
+        footer: "Only for an administrator at this computer, in the session on screen. Everything else Tessera does as an administrator asks for your password."
         Row {
-            label: "iRice's helper"
+            label: "Tessera's helper"
             detail: page.system.passwordless ? "Installed: the login screen's wallpaper and look, and the fixes below, don't ask for your password"
                 : "Not installed yet: the login screen's wallpaper and the fixes below ask for your password. The next update installs it."
         }

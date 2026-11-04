@@ -47,8 +47,15 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# (IRICE_APPSTREAM: another folder holding xml/ and icons/, for tests)
-_AS = os.environ.get("IRICE_APPSTREAM")
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
+
+# (TESSERA_APPSTREAM: another folder holding xml/ and icons/, for tests)
+_AS = os.environ.get("TESSERA_APPSTREAM")
 CATALOGUE = (os.path.join(_AS, "xml"),) if _AS else ("/usr/share/swcatalog/xml", "/usr/share/app-info/xmls")
 CATALOGUE_ICONS = (os.path.join(_AS, "icons"),) if _AS else ("/usr/share/swcatalog/icons", "/usr/share/app-info/icons")
 AUR = "https://aur.archlinux.org/rpc/v5"
@@ -77,14 +84,14 @@ REPO_PICKS = ["firefox", "chromium", "thunderbird", "libreoffice-fresh", "gimp",
 
 def cache_dir():
     base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    d = os.path.join(base, "irice", "appstore")
+    d = os.path.join(app_dir(base), "appstore")
     os.makedirs(os.path.join(d, "icons"), exist_ok=True)
     return d
 
 
 def fetch_json(url, data=None, timeout=TIMEOUT):
     req = urllib.request.Request(url, data=json.dumps(data).encode() if data is not None else None,
-                                 headers={"User-Agent": "iRice Software", "Content-Type": "application/json"})
+                                 headers={"User-Agent": "Tessera Software", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 

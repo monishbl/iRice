@@ -7,7 +7,7 @@ import qs.services
 import "../../common/SettingsMap.js" as SettingsMap
 import "SettingsIndex.js" as SettingsIndex
 
-// iRice Settings: a regular app window. This is the window's logic, the same
+// Tessera Settings: a regular app window. This is the window's logic, the same
 // in both looks: history, search, paging and finding a row. Each look draws
 // it its own way: Glass a translucent sidebar beside the pane
 // (SettingsGlass.qml), Material Android's two panes (SettingsMaterial.qml).
@@ -17,7 +17,7 @@ Scope {
 
         FloatingWindow {
             id: win
-            title: "iRice Settings"
+            title: "Tessera Settings"
             // (Material: two panes, Android's 300 px list beside the page)
             implicitWidth: Theme.material ? 1040 : 860
             implicitHeight: Theme.material ? 700 : 620
@@ -91,7 +91,7 @@ Scope {
             // don't). It waits in the dock and comes back by itself when the
             // sign-in is done, failed or cancelled.
             property bool aside: false
-            readonly property var toplevel: Hyprland.toplevels.values.find(t => t.title === "iRice Settings") ?? null
+            readonly property var toplevel: Hyprland.toplevels.values.find(t => t.title === "Tessera Settings") ?? null
             Connections {
                 target: Google
                 function onSigningInChanged() {

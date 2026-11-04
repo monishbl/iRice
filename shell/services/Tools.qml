@@ -14,7 +14,7 @@ Singleton {
     // Wrapper for long-lived watcher processes (see the script): they end
     // with the shell, however it ends. Use as [Tools.watcher, cmd, args...]
     // with stdinEnabled: true. (Most watchers now run only without
-    // irice-events: services/Events.)
+    // tessera-events: services/Events.)
     readonly property string watcher: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/watch.sh").toString().replace("file://", ""))
     property bool ready: false
 

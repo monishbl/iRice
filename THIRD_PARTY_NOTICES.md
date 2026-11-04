@@ -1,12 +1,12 @@
 # Third-party notices
 
-iRice is licensed under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`; see [LICENSE](LICENSE)). The parts below come from others and keep their own licences. The licence texts they require are in [LICENSES/](LICENSES) or next to the files.
+Tessera is licensed under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`; see [LICENSE](LICENSE)). The parts below come from others and keep their own licences. The licence texts they require are in [LICENSES/](LICENSES) or next to the files.
 
 | Part | Licence | Licence text |
 |---|---|---|
 | Phosphor Icons | MIT | `shell/assets/fonts/LICENSE-phosphor` |
-| iRice Sans Flex (Google Sans Flex, renamed) | OFL-1.1 | `material/assets/fonts/LICENSE-google-sans-flex`, [LICENSES/OFL-1.1.txt](LICENSES/OFL-1.1.txt) |
-| iRice Symbols (Material Symbols Rounded, subset and renamed) | Apache-2.0 | `material/assets/fonts/LICENSE-material-symbols`, [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
+| Tessera Sans Flex (Google Sans Flex, renamed) | OFL-1.1 | `material/assets/fonts/LICENSE-google-sans-flex`, [LICENSES/OFL-1.1.txt](LICENSES/OFL-1.1.txt) |
+| Tessera Symbols (Material Symbols Rounded, subset and renamed) | Apache-2.0 | `material/assets/fonts/LICENSE-material-symbols`, [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
 | material-color-utilities 0.4.0 | Apache-2.0 | [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
 | Google Nearby and UKEY2 protocol definitions | Apache-2.0 | [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
 | Unicode emoji data and CLDR annotations | Unicode License v3 | [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt) |
@@ -19,16 +19,16 @@ iRice is licensed under the GNU General Public License, version 3 or (at your op
 **Phosphor Icons.** Copyright (c) 2020-2021 Phosphor Icons. MIT License.
 Files: `shell/assets/fonts/Phosphor.ttf`, `Phosphor-Bold.ttf`, `Phosphor-Fill.ttf`, and the same fonts in `site/film/hero/assets/`. The licence and copyright notice are in `LICENSE-phosphor` next to each copy. Upstream: https://github.com/phosphor-icons/homepage
 
-**iRice Sans Flex (Google Sans Flex).** Copyright 2015 The Google Sans Flex Authors (https://github.com/googlefonts/googlesans-flex). SIL Open Font License 1.1.
+**Tessera Sans Flex (Google Sans Flex).** Copyright 2015 The Google Sans Flex Authors (https://github.com/googlefonts/googlesans-flex). SIL Open Font License 1.1.
 File: `material/assets/fonts/GoogleSansFlex.ttf`.
-- **Changed by iRice:** the family is renamed "iRice Sans Flex" in the font's name table (`tools/gen-material.sh`), so another installed copy can't take its place. The outlines are unchanged.
+- **Changed by Tessera:** the family is renamed "Tessera Sans Flex" in the font's name table (`tools/gen-material.sh`), so another installed copy can't take its place. The outlines are unchanged.
 - **Reserved Font Name:** Google Sans Flex declares none, so OFL section 3 doesn't require the rename. The rename also keeps "Google Sans" from naming a product, as Google's trademark note (in the licence file) asks.
 - The font, renamed, is still under the OFL 1.1 and is not relicensed under the GPL. The copyright and licence are kept in the name table and in `LICENSE-google-sans-flex`, which also holds Google's TRADEMARKS.md.
 - "Google", "Google Sans" and "Google Sans Flex" are trademarks of Google LLC. They are named here only to credit the source.
 
-**iRice Symbols (Material Symbols Rounded).** Copyright Google LLC. Apache License 2.0.
+**Tessera Symbols (Material Symbols Rounded).** Copyright Google LLC. Apache License 2.0.
 File: `material/assets/fonts/MaterialSymbolsRounded.ttf`. Upstream: https://github.com/google/material-design-icons
-- **Changed by iRice** (Apache-2.0 section 4(b)): subset to the icons listed in `tools/material-symbols-map.txt` (about 400), and renamed "iRice Symbols" in the name table. The glyphs themselves are unchanged.
+- **Changed by Tessera** (Apache-2.0 section 4(b)): subset to the icons listed in `tools/material-symbols-map.txt` (about 400), and renamed "Tessera Symbols" in the name table. The glyphs themselves are unchanged.
 - This notice and `material/assets/fonts/NOTICE` record the change. The upstream licence is in `LICENSE-material-symbols`. Material Symbols ships no NOTICE file.
 
 **Geist and Geist Mono** (used only by the website's film engine). Copyright (c) 2023 Vercel, in collaboration with basement.studio. SIL Open Font License 1.1.
@@ -40,7 +40,7 @@ Files: `site/film/engine/fonts/*.woff2`. Licence: `site/film/engine/fonts/OFL-Ge
 
 **material-color-utilities 0.4.0.** Copyright Google LLC. Apache License 2.0. Upstream: https://github.com/material-foundation/material-color-utilities
 - File: `shell/common/MaterialColor.js`.
-- **Changed by iRice:** bundled and minified from the npm package `@material/material-color-utilities@0.4.0` by `tools/gen-material.sh`, with a small entry point, `scheme()`, that iRice wrote. The file's header says so. Upstream's code is otherwise unchanged.
+- **Changed by Tessera:** bundled and minified from the npm package `@material/material-color-utilities@0.4.0` by `tools/gen-material.sh`, with a small entry point, `scheme()`, that Tessera wrote. The file's header says so. Upstream's code is otherwise unchanged.
 
 **Film engine** (website only). Copyright (c) 2026 the product-film-kit contributors. MIT License.
 - Files: `site/film/engine/`.
@@ -54,11 +54,11 @@ Files: `site/film/engine/fonts/*.woff2`. Licence: `site/film/engine/fonts/OFL-Ge
   - `shell/assets/quickshare/proto/ukey2/`, from https://github.com/google/ukey2
 - Generated code: `shell/assets/scripts/quickshare/nearby/pb/`, generated from these files by `tools/gen-quickshare-protos.sh`.
 - Each `.proto` file keeps its licence header. `shell/assets/quickshare/proto/NOTICE` explains their use.
-- iRice uses them to speak the Quick Share protocol with Android phones. It contains no Google SDK.
+- Tessera uses them to speak the Quick Share protocol with Android phones. It contains no Google SDK.
 
-**RQuickShare** (https://github.com/Martichou/rquickshare, GPL-3.0). One 24-byte constant, `WAKE_DATA` in `shell/assets/scripts/quickshare/nearby/bluez.py`, is the fixed Bluetooth advertisement RQuickShare sends (`core_lib/src/hdl/blea.rs`). It is used for interoperability and credited here. GPL-3.0 is compatible with iRice's licence.
+**RQuickShare** (https://github.com/Martichou/rquickshare, GPL-3.0). One 24-byte constant, `WAKE_DATA` in `shell/assets/scripts/quickshare/nearby/bluez.py`, is the fixed Bluetooth advertisement RQuickShare sends (`core_lib/src/hdl/blea.rs`). It is used for interoperability and credited here. GPL-3.0 is compatible with Tessera's licence.
 
-**end4's illogical-impulse** (https://github.com/end-4/dots-hyprland, GPL-3.0). iRice's default keys and gestures follow end4's layout wherever both have the same action (`tools/gen-keymap.py`, `hypr/irice/keybinds.lua`). The layout is followed; no code is copied.
+**end4's illogical-impulse** (https://github.com/end-4/dots-hyprland, GPL-3.0). Tessera's default keys and gestures follow end4's layout wherever both have the same action (`tools/gen-keymap.py`, `hypr/tessera/keybinds.lua`). The layout is followed; no code is copied.
 
 ## Data
 
@@ -81,22 +81,22 @@ Files: `site/film/engine/fonts/*.woff2`. Licence: `site/film/engine/fonts/OFL-Ge
 
 | Files | Source | Licence |
 |---|---|---|
-| `shell/assets/wallpapers/*.jpg` (Glass's built-in set; the `tahoe-` file names are kept so existing settings still find them) | made by iRice, `tools/gen-wallpapers.sh` | iRice's (GPL-3.0-or-later) |
-| `material/assets/wallpapers/*.jpg` | made by iRice, `tools/make-material-wallpapers.py` | iRice's |
-| `shell/assets/sounds/` | made by iRice, `tools/make-sounds.py` and `tools/make-directional-sounds.sh` | iRice's |
-| `shell/assets/devices/*.svg` | made by iRice, `tools/device-pictures.py` | iRice's |
-| `material/assets/sounds/material/*.ogg` | made by iRice, `tools/make-sounds.py material` and `tools/make-directional-sounds.sh` | iRice's |
+| `shell/assets/wallpapers/*.jpg` (Glass's built-in set; the `tahoe-` file names are kept so existing settings still find them) | made by Tessera, `tools/gen-wallpapers.sh` | Tessera's (GPL-3.0-or-later) |
+| `material/assets/wallpapers/*.jpg` | made by Tessera, `tools/make-material-wallpapers.py` | Tessera's |
+| `shell/assets/sounds/` | made by Tessera, `tools/make-sounds.py` and `tools/make-directional-sounds.sh` | Tessera's |
+| `shell/assets/devices/*.svg` | made by Tessera, `tools/device-pictures.py` | Tessera's |
+| `material/assets/sounds/material/*.ogg` | made by Tessera, `tools/make-sounds.py material` and `tools/make-directional-sounds.sh` | Tessera's |
 | `site/film/hero/assets/*.jpg` (website backgrounds) | photos from Unsplash (per-photo sources not recorded) | Unsplash License |
 
-## Not shipped with iRice
+## Not shipped with Tessera
 
-The installer can fetch these if you choose them. They are not part of iRice and iRice's licence doesn't cover them:
+The installer can fetch these if you choose them. They are not part of Tessera and Tessera's licence doesn't cover them:
 
 - **Apple's macOS wallpapers**, downloaded from a community mirror by `tools/get-wallpapers.sh`. © Apple Inc., all rights reserved.
 - **ttf-apple-emoji** (AUR), the Apple emoji style. Apple's font, repackaged by the AUR package; check its terms before you install it.
-- Hyprland, Quickshell, the Bibata pointer, icon themes and other packages, each under its own licence. The glass plugin (`hypr/plugin/irice-glass`) is built on your computer against Hyprland's headers (BSD-3-Clause).
-- **The Rust crates irice-events is built from** (`native/irice-events`): zbus, serde, serde_json, libc and what they use, at the versions in its `Cargo.lock`. `tools/build-native.sh` downloads them from crates.io and builds them into the program on your computer; none are in this repository. Each is under the MIT licence, the Apache License 2.0, or either (one also under the Unicode License v3).
+- Hyprland, Quickshell, the Bibata pointer, icon themes and other packages, each under its own licence. The glass plugin (`hypr/plugin/tessera-glass`) is built on your computer against Hyprland's headers (BSD-3-Clause).
+- **The Rust crates tessera-events is built from** (`native/tessera-events`): zbus, serde, serde_json, libc and what they use, at the versions in its `Cargo.lock`. `tools/build-native.sh` downloads them from crates.io and builds them into the program on your computer; none are in this repository. Each is under the MIT licence, the Apache License 2.0, or either (one also under the Unicode License v3).
 
 ## Trademarks
 
-macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast, Google Lens and Material You are trademarks of Google LLC; other names belong to their owners. iRice names them only to say what it works with or resembles. iRice is not affiliated with or endorsed by any of them.
+macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast, Google Lens and Material You are trademarks of Google LLC; other names belong to their owners. Tessera names them only to say what it works with or resembles. Tessera is not affiliated with or endorsed by any of them.

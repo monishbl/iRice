@@ -213,16 +213,16 @@ Singleton {
     }
     function isHidden(h) {
         const n = h?.workspace?.name ?? "";
-        return n === "special:minimized" || n === "special:irice-desktop";
+        return n === "special:minimized" || n === "special:tessera-desktop";
     }
     function show(h) {
         if (!h)
             return;
         const n = h.workspace?.name ?? "";
-        if (n === "special:irice-desktop" && Desktop.showingDesktop) {
+        if (n === "special:tessera-desktop" && Desktop.showingDesktop) {
             Desktop.restoreDesktop(); // the whole desktop comes back, like on a Mac
             Qt.callLater(() => h.wayland?.activate());
-        } else if (n === "special:minimized" || n === "special:irice-desktop") {
+        } else if (n === "special:minimized" || n === "special:tessera-desktop") {
             restore(h);
         } else {
             Hyprland.dispatch("hl.dsp.focus({ window = \"address:" + (h.address.startsWith("0x") ? h.address : "0x" + h.address) + "\" })");
@@ -237,7 +237,7 @@ Singleton {
         if (windows.length === 0)
             return launch(app.entry);
         // Show Desktop is on and this app's windows stepped aside: end it
-        const aside = windows.find(t => hyprFor(t)?.workspace?.name === "special:irice-desktop");
+        const aside = windows.find(t => hyprFor(t)?.workspace?.name === "special:tessera-desktop");
         if (aside && Desktop.showingDesktop)
             return show(hyprFor(aside));
         const seen = windows.filter(t => !isHidden(hyprFor(t)));

@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.common
 import "SharingDevices.js" as Devices
 
-// Sharing with nearby devices, both ways iRice speaks: LocalSend (computers
+// Sharing with nearby devices, both ways Tessera speaks: LocalSend (computers
 // and phones running the LocalSend app) and Quick Share (Android). The share
 // sheet, the Control Center module and its page use this, not the two
 // protocols directly:
@@ -67,7 +67,7 @@ Singleton {
     // Written to a private folder as a .txt file; the sheet shows the text
     // itself. (Quick Share can also send text and links natively; that needs
     // a sendText in QuickShare.qml, which doesn't exist yet: TODO.)
-    readonly property string textDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-share"
+    readonly property string textDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-share"
     function shareText(text, scr) {
         const t = String(text ?? "").trim();
         if (t === "") {
@@ -110,7 +110,7 @@ Singleton {
         if (Config.options.island.enabled)
             Island.post({ kind: "custom", icon: "share-network", title: title, subtitle: subtitle, color: Theme.accent }, 4000);
         else
-            Quickshell.execDetached(["notify-send", "-a", "iRice", title, subtitle]);
+            Quickshell.execDetached(["notify-send", "-a", "Tessera", title, subtitle]);
     }
 
     // ── Incoming requests (modules/share/IncomingCard: AirDrop's alert) ──
@@ -197,7 +197,7 @@ Singleton {
     //   qs ipc call sharingdemo ask | progress <0-100> | done | fail
     IpcHandler {
         target: "sharingdemo"
-        enabled: Quickshell.env("IRICE_SANDBOX") === "1"
+        enabled: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
         function ask(): void {
             root.addRequest({ id: "demo:1", via: "demo", session: "1", from: "Maya's phone", type: "phone", what: "2 photos",
                 files: [{ name: "IMG_2041.jpg", mime: "image/jpeg" }, { name: "IMG_2042.jpg", mime: "image/jpeg" }], total: 6200000, pin: "4821" });

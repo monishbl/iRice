@@ -5,10 +5,10 @@ import Quickshell.Io
 import qs.common
 
 // The boot animation (Settings → Lock & Login Screen): Plymouth's theme, read
-// from its config (readable by all), and set through iRice's root helper
-// (irice-root bootsplash, which always asks for the password: it rebuilds
+// from its config (readable by all), and set through Tessera's root helper
+// (tessera-root bootsplash, which always asks for the password: it rebuilds
 // the boot image). The choices: the system's own theme (the one set before
-// iRice changed it, which the helper remembers), one of iRice's designs
+// Tessera changed it, which the helper remembers), one of Tessera's designs
 // (tools/make-bootsplash.py; their names in assets/plymouth/designs.json),
 // or none (Plymouth's text theme).
 //   BootSplash.chosen   "system" | a design's id | "none"
@@ -36,10 +36,12 @@ Singleton {
         id: designsFile
         path: Quickshell.shellDir + "/assets/plymouth/designs.json"
     }
-    // The system's own theme: as it was before iRice, unless set since by hand
+    // The system's own theme: as it was before Tessera, unless set since by hand
     readonly property string original: record && record.applied === theme ? record.original : theme
     readonly property string chosen: {
-        const id = theme.startsWith("irice-") ? theme.slice(6) : "";
+        // (irice-<id>: set before iRice became Tessera, until the root setup renames it)
+        const m = /^(tessera|irice)-(.+)$/.exec(theme);
+        const id = m ? m[2] : "";
         if (designs.some(d => d.id === id))
             return id;
         return theme === "text" && original !== "text" ? "none" : "system";
@@ -56,11 +58,11 @@ Singleton {
             "t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /etc/plymouth/plymouthd.conf 2>/dev/null | tail -n 1)",
             "[ -n \"$t\" ] || t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /usr/share/plymouth/plymouthd.defaults 2>/dev/null | tail -n 1)",
             "echo \"theme:$t\"",
-            "echo \"record:$(head -c 512 /etc/irice/bootsplash.json 2>/dev/null)\"",
+            "echo \"record:$(head -c 512 /etc/tessera/bootsplash.json 2>/dev/null || head -c 512 /etc/irice/bootsplash.json 2>/dev/null)\"",
             "grep -qw splash /proc/cmdline && echo splash",
             "for b in mkinitcpio dracut booster; do command -v $b >/dev/null && { echo \"builder:$b\"; break; }; done",
             "grep -hE '^[[:space:]]*HOOKS[+]?=' /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/*.conf 2>/dev/null | grep -qw plymouth && echo hooked",
-            "grep -q 'org.irice.root.bootsplash' /usr/share/polkit-1/actions/org.irice.root.policy 2>/dev/null && test -x /usr/lib/irice/irice-root && test -d /usr/lib/irice/plymouth/irice-breathe && echo helper",
+            RootHelper.knows("bootsplash") + " && { test -d /usr/lib/tessera/plymouth/tessera-breathe || test -d /usr/lib/irice/plymouth/irice-breathe; } && echo helper",
             ":"].join("; ")]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -84,11 +86,11 @@ Singleton {
     // Why a choice can't be made here, and what to do (else "")
     readonly property string blocked: !checked ? ""
         : !installed ? "Your computer starts without a boot animation: Plymouth isn't installed. Install the plymouth package, add plymouth to HOOKS in /etc/mkinitcpio.conf, then come back here."
-        : builder === "dracut" ? "This computer builds its boot image with dracut, which iRice doesn't rebuild. To use one of these, run in a terminal: sudo plymouth-set-default-theme -R irice-breathe (or another design's name)."
+        : builder === "dracut" ? "This computer builds its boot image with dracut, which Tessera doesn't rebuild. To use one of these, run in a terminal: sudo plymouth-set-default-theme -R tessera-breathe (or another design's name)."
         : builder === "booster" ? "This computer builds its boot image with booster, which doesn't show boot animations."
         : builder === "" ? "There's no mkinitcpio to rebuild the boot image with."
         : !hooked ? "Plymouth isn't in the boot image. Add plymouth to HOOKS in /etc/mkinitcpio.conf (after kms), then come back here."
-        : !helper ? "Update iRice first (Settings → Software Update): the update installs the boot animations. Then pick one here."
+        : !helper ? "Update Tessera first (Settings → Software Update): the update installs the boot animations. Then pick one here."
         : ""
 
     // Setting one (the password, then about a minute while the boot image is rebuilt)
@@ -110,7 +112,7 @@ Singleton {
             return;
         }
         pending = id;
-        setProc.command = ["pkexec", "/usr/lib/irice/irice-root", "bootsplash", id];
+        setProc.command = RootHelper.command(["bootsplash", id]);
         setProc.running = true;
     }
     Process {
@@ -122,7 +124,7 @@ Singleton {
             // (126: the password prompt was dismissed; nothing changed)
             if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed: an administrator's password is needed."
-                    : (setErr.text.replace(/^irice-root: /, "").trim().replace(/^./, c => c.toUpperCase()) || "That didn't change. Update iRice, then try again.");
+                    : (setErr.text.replace(/^(tessera|irice)-root: /, "").trim().replace(/^./, c => c.toUpperCase()) || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

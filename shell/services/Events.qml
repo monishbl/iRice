@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.common
 
-// irice-events (native/irice-events, built by tools/build-native.sh): one
+// tessera-events (native/tessera-events, built by tools/build-native.sh): one
 // process that follows the system for the whole shell (logind, udev, the
 // sound server, the network, badges, Cast devices, the camera, location,
 // screen sharing, copies, the clipboard history) and holds logind
@@ -13,14 +13,34 @@ import qs.common
 // EventWatch and listen to the signals below.
 //
 // Without it (not built, or it keeps ending) `ready` is false and every
-// service runs its own watcher as before. covers(src): irice-events follows
+// service runs its own watcher as before. covers(src): tessera-events follows
 // src; fallsBack(src): the service's own watcher should run. Neither is
-// true for the moment before irice-events says it's ready, so watchers
+// true for the moment before tessera-events says it's ready, so watchers
 // aren't started only to be stopped.
 Singleton {
     id: root
 
-    readonly property string binary: Quickshell.env("IRICE_EVENTS") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/bin/irice-events"
+    readonly property string binary: Quickshell.env("TESSERA_EVENTS") || Quickshell.env("IRICE_EVENTS") || Paths.data + "/bin/tessera-events"
+    // (or the one built while Tessera was called iRice, until the next
+    // rebuild: tools/build-native.sh)
+    readonly property string olderBinary: Paths.data + "/bin/irice-events"
+    property string found: ""
+    property bool canStart: false // (once the command has the binary found: set after it)
+    Process {
+        running: true
+        command: ["sh", "-c", "for b; do [ -x \"$b\" ] && { echo \"$b\"; exit 0; }; done; exit 1", "sh", root.binary, root.olderBinary]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.found = text.trim();
+                if (root.found)
+                    Qt.callLater(() => root.canStart = true);
+                else {
+                    root.quickEnds = 3; // (not built)
+                    root.decided = true;
+                }
+            }
+        }
+    }
     property bool ready: false // running, and said it's ready
     property bool decided: false // ready, or known not to be
     property var unsupported: ({}) // sources it can't follow here (their watchers run)
@@ -98,8 +118,8 @@ Singleton {
     property bool didStart: false
     KeptProcess {
         id: proc
-        wanted: root.quickEnds < 3
-        command: [root.binary]
+        wanted: root.canStart && root.quickEnds < 3
+        command: [root.found]
         stdinEnabled: true // (it ends when this closes: the shell quit)
         onStarted: root.didStart = true
         onRunningChanged: if (!running) {
@@ -142,12 +162,12 @@ Singleton {
                 for (const s of srcs)
                     sync(s);
             } else if (e.kind === "error") {
-                console.warn("irice-events:", e.msg);
+                console.warn("tessera-events:", e.msg);
             }
             return;
         }
         if (e.kind === "unsupported") {
-            console.info("irice-events: no " + e.src + " here (" + (e.error ?? "") + "): using its watcher");
+            console.info("tessera-events: no " + e.src + " here (" + (e.error ?? "") + "): using its watcher");
             unsupported = Object.assign({}, unsupported, { [e.src]: true });
             return;
         }
@@ -199,7 +219,7 @@ Singleton {
             break;
         case "inhibit":
             if (e.error)
-                console.warn("irice-events: couldn't inhibit " + e.what + ": " + e.error);
+                console.warn("tessera-events: couldn't inhibit " + e.what + ": " + e.error);
             inhibited(e.what, e.on === true, e.error ?? "");
             break;
         }

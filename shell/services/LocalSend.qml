@@ -33,7 +33,7 @@ Singleton {
         onTriggered: Config.options.sharing.receiving = "off"
     }
     onAliasChanged: tell({ cmd: "mode", mode: receiving ? "everyone" : "off", alias: alias })
-    readonly property string alias: cfg.name || (Quickshell.env("USER") ?? "iRice") + "'s computer"
+    readonly property string alias: cfg.name || (Quickshell.env("USER") ?? "Tessera") + "'s computer"
 
     property bool sharing: false // the share sheet is open or a send is running
     property var peers: [] // [{ id, alias, type, model }]

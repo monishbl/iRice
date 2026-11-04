@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A bug report for iRice (Settings → Report a Bug, services/BugReport.qml).
+"""A bug report for Tessera (Settings → Report a Bug, services/BugReport.qml).
 
 What leaves the computer is only what the person saw in the preview and left
 ticked, and it's scrubbed first: the log and system info go through scrub(),
@@ -154,7 +154,7 @@ def sysinfo(shell_dir):
     repo = os.path.dirname(os.path.abspath(shell_dir.rstrip("/")))
     commit = run(["git", "-C", repo, "rev-parse", "--short", "HEAD"]).strip()
     date = run(["git", "-C", repo, "log", "-1", "--format=%cs"]).strip()
-    info["iRice"] = f"{commit} ({date})" if commit else "unknown"
+    info["Tessera"] = f"{commit} ({date})" if commit else "unknown"
     try:
         hv = json.loads(run(["hyprctl", "version", "-j"]) or "{}")
         info["Hyprland"] = hv.get("tag") or hv.get("version") or "unknown"
@@ -268,7 +268,7 @@ def payload(report):
     body = {"title": title}
     for key, _ in FIELDS:
         body[key] = (report.get(key) or "").strip()[:20000]
-    body["version"] = (report.get("sysinfo") or {}).get("iRice", "")
+    body["version"] = (report.get("sysinfo") or {}).get("Tessera", "")
     if report.get("includeInfo"):
         body["sysinfo"] = report.get("sysinfo") or {}
     if report.get("includeLog"):
@@ -285,12 +285,12 @@ def payload(report):
 
 
 def send(report, endpoint=None):
-    endpoint = endpoint or os.environ.get("IRICE_BUG_ENDPOINT") or ENDPOINT
+    endpoint = endpoint or os.environ.get("TESSERA_BUG_ENDPOINT") or ENDPOINT
     if urllib.parse.urlparse(endpoint).scheme != "https":
         raise ValueError("Reports are only sent over https.")
     data = json.dumps(payload(report)).encode()
     req = urllib.request.Request(endpoint, data=data, method="POST",
-                                 headers={"Content-Type": "application/json", "User-Agent": "iRice-bug-report"})
+                                 headers={"Content-Type": "application/json", "User-Agent": "Tessera-bug-report"})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.loads(r.read().decode() or "{}")

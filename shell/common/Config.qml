@@ -3,12 +3,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// User settings, persisted to $XDG_CONFIG_HOME/irice/config.json. Edits to the
+// User settings, persisted to $XDG_CONFIG_HOME/tessera/config.json. Edits to the
 // file apply live; changes made from the UI are written back.
 Singleton {
     id: root
 
-    readonly property string dir: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/irice"
+    readonly property string dir: Paths.config
     property alias options: adapter
     property bool ready: false
 
@@ -58,6 +58,13 @@ Singleton {
                     adapter.appearance.cursor = "bibata";
                 adapter.defaultsVersion = 3;
             }
+            // 4 Nov: iRice is now Tessera, and its mark is the badge: the
+            // menu icon and the screenshot editor saved under the old name
+            // (or the badge's own choice, "circle") are Tessera's
+            if (["irice", "circle"].includes(adapter.appearance.menuIcon))
+                adapter.appearance.menuIcon = "tessera";
+            if (adapter.screenshot.editor === "irice")
+                adapter.screenshot.editor = "tessera";
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -113,9 +120,9 @@ Singleton {
                 property real materialTransparency: 0
                 property string accent: "blue" // see Theme.accents, or "wallpaper"
                 // (frosted by default: light on the GPU; liquid, the full glass that
-                // bends what's behind, needs the irice-glass plugin, else it's frosted)
+                // bends what's behind, needs the tessera-glass plugin, else it's frosted)
                 property string glass: "frosted" // frosted | liquid | solid | custom
-                property string menuIcon: "irice" // leftmost menu: irice | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien | circle (no company marks)
+                property string menuIcon: "tessera" // leftmost menu: tessera (the badge) | distro | linux | command | terminal | cpu | atom | planet | rocket | star | lightning | flame | leaf | snowflake | moon | cat | ghost | alien (no company marks)
                 property string iconTheme: "" // app icon theme; empty = automatic (KDE / GNOME setting, else Papirus, Breeze, Adwaita)
                 property string keySymbols: "auto" // auto (follows menuIcon) | mac | windows | linux
                 // Custom material (Settings → Appearance → Advanced), each 0..1
@@ -132,7 +139,7 @@ Singleton {
                 property bool wallpaperTint: true
                 property bool screenCorners: true
                 property string decorations: "none" // none | controls | titlebars
-                property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by iRice)
+                property string windowTabs: "hyprland" // tab bar of grouped windows: hyprland (restyled) | finder (drawn by Tessera)
                 property string iconStyle: "look" // look (each look's own: Clear with Glass, Themed with Material) | default | dark | clear | tinted | themed (Material: in Material You colours) | auto (dark in dark mode)
                 property string iconShape: "squircle" // squircle (every icon on the same tile) | original
                 property real iconContrast: 0.6 // clear and tinted icons: how far the logo stands apart from its tile (0 .. 1)
@@ -190,7 +197,7 @@ Singleton {
                 property int clockWeight: 640 // Google Sans Flex wght, 100 .. 1000
                 property int clockWidth: 112 // wdth, 25 .. 151
                 property bool clockRound: true // rounded digits (else sharp)
-                // The iRice login screen (greetd, ./install.sh --greeter): look
+                // The Tessera login screen (greetd, ./install.sh --greeter): look
                 // (Glass or Material, the look you last used) | text (ly's) |
                 // plain (black, your picture and the field)
                 property string loginStyle: "look"
@@ -239,15 +246,15 @@ Singleton {
                 property bool recording: true // screen recording starts and stops
                 property bool today: true // the morning screen (Today) opens
                 property bool error: true // a wrong password
-                property string startupFile: "" // your own sound per event; empty = iRice's
+                property string startupFile: "" // your own sound per event; empty = Tessera's
                 property string chargingFile: ""
                 property string displaysFile: ""
-                property string pack: "marimba" // style of iRice's sounds: marimba | soft | keys | taps | minimal | glass (assets/sounds/<pack>)
+                property string pack: "marimba" // style of Tessera's sounds: marimba | soft | keys | taps | minimal | glass (assets/sounds/<pack>)
                 property real volume: 0.6
                 // The log-in sound's own volume: it plays at this, louder than
                 // the rest, even with sound effects off (only `startup` stops it)
                 property real startupVolume: 0.9
-                property string startupSound: "" // one of StartupSounds.js; "" = iRice's own chime
+                property string startupSound: "" // one of StartupSounds.js; "" = Tessera's own chime
             }
 
             // Screen recording (services/Recorder.qml): gpu-screen-recorder,
@@ -265,8 +272,8 @@ Singleton {
                 property string folder: "" // "" = ~/Videos/Screen Recordings
             }
             property JsonObject screenshot: JsonObject {
-                property string editor: "irice" // irice (floating thumbnail, click to mark up) | swappy
-                property bool thumbnail: true // iRice editor: floating thumbnail after a screenshot; off = a notification with Edit
+                property string editor: "tessera" // tessera (floating thumbnail, click to mark up) | swappy
+                property bool thumbnail: true // Tessera editor: floating thumbnail after a screenshot; off = a notification with Edit
                 property bool markup: true // Swappy only: area screenshots open in Swappy to crop, draw and annotate
                 property bool textSearch: true // Search finds screenshots by their words (read and kept on this computer; off deletes the index)
             }
@@ -335,7 +342,7 @@ Singleton {
                 property string effort: "medium" // low | medium | high | xhigh | max (Claude)
                 property bool showThinking: true
                 property string ollamaUrl: "http://localhost:11434"
-                // How the assistant answers (iRice's own prompt is fixed:
+                // How the assistant answers (Tessera's own prompt is fixed:
                 // services/AiPrompt.js): a style and the person's short note
                 property string style: "balanced" // balanced | concise | friendly | professional | playful
                 property string customInstructions: ""
@@ -527,7 +534,7 @@ Singleton {
             }
             property JsonObject findPointer: JsonObject {
                 // Shake the mouse: the pointer grows for a moment, with a ring
-                // around it (hypr/irice/findpointer.lua, services/FindPointer)
+                // around it (hypr/tessera/findpointer.lua, services/FindPointer)
                 property bool enabled: true
                 property string style: "ring" // ring (around it) | grow (a bigger pointer) | both (from before) | off
             }
@@ -564,7 +571,7 @@ Singleton {
                 property bool middleClick: false // three-finger click / both bottom corners = middle click
             }
             property JsonObject displays: JsonObject {
-                // Settings → Displays: "name\tmode\tx\ty\tscale\ttransform\tenabled\tmirror" per display, written to hypr/irice monitors
+                // Settings → Displays: "name\tmode\tx\ty\tscale\ttransform\tenabled\tmirror" per display, written to hypr/tessera monitors
                 property list<string> monitors: []
                 // When a display connects or leaves (services/DisplayFx.qml):
                 // off | extend | liquid | warp, and the sound panned toward it

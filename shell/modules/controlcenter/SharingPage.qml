@@ -68,7 +68,7 @@ DetailPage {
     TextField {
         width: parent.width
         height: Theme.material ? 40 : 30
-        placeholder: (Quickshell.env("USER") ?? "iRice") + "'s computer"
+        placeholder: (Quickshell.env("USER") ?? "Tessera") + "'s computer"
         text: Config.options.sharing.name
         onCommitted: t => Config.options.sharing.name = t.trim()
     }

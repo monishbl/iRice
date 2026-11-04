@@ -14,7 +14,7 @@ PanelWindow {
     property string name
     readonly property var backdrop: backdropItem.texture
 
-    WlrLayershell.namespace: "irice:" + name
+    WlrLayershell.namespace: "tessera:" + name
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
@@ -27,8 +27,8 @@ PanelWindow {
         needed: root.glasses.some(g => g.modeIndex === 0)
     }
 
-    // Frosted glass relies on Hyprland blurring behind "irice:*" layers (see
-    // hypr/irice/rules.lua). Glass surfaces still register here so a window
+    // Frosted glass relies on Hyprland blurring behind "tessera:*" layers (see
+    // hypr/tessera/rules.lua). Glass surfaces still register here so a window
     // knows what it hosts.
     property var glasses: []
     function registerGlass(g) {
@@ -44,14 +44,19 @@ PanelWindow {
         glassChanged();
     }
 
-    // With iRice's native module (shell/native), C++ keeps the plugin's shapes
+    // With Tessera's native module (shell/native), C++ keeps the plugin's shapes
     // in step on every frame this window draws, and nothing below runs
     readonly property bool nativeSync: native.status === Loader.Ready
     Loader {
         id: native
         active: Native.glassSync
-        source: active ? "NativeSync.qml" : ""
+        // (NativeSyncOld: the module built while Tessera was called iRice)
+        source: active ? (Native.module === "IRice.Native" ? "NativeSyncOld.qml" : "NativeSync.qml") : ""
         onLoaded: {
+            // (an older build has no plugin property and always says irice-glass,
+            // which every plugin answers to)
+            if ("plugin" in item)
+                item.plugin = Qt.binding(() => GlassPlugin.name);
             item.monitor = Qt.binding(() => root.screen?.name ?? "");
             item.ns = Qt.binding(() => root.WlrLayershell.namespace);
             item.version = Qt.binding(() => GlassPlugin.version);
@@ -61,7 +66,7 @@ PanelWindow {
         }
     }
 
-    // With the irice-glass plugin, this window's glass shapes are sent to the
+    // With the tessera-glass plugin, this window's glass shapes are sent to the
     // compositor. A change starts a short per-frame sync (animations move and
     // fade glass through their parents), sending only when shapes differ.
     property string sentShapes: "" // what went last: the shape count and shapes

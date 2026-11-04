@@ -5,7 +5,7 @@ Material colour roles, for the Material look:
   app-theme-render.py <roles json> <extra json> <template>=<output> ...
 
 roles: Theme.m3 as JSON ({"primary": "#rrggbb", "surfaceContainerHigh": …}).
-extra: the same {"irice": {…}} values app-theme.sh gives matugen.
+extra: the same {"tessera": {…}} values app-theme.sh gives matugen.
 
 Why not matugen: matugen 4.2 makes its scheme with the 2021 Material spec,
 and the shell's (common/MaterialColor.js) is the 2025 one, so even from the
@@ -13,7 +13,7 @@ same seed the surfaces, containers and outlines come out different and apps
 wouldn't match the shell. The templates only use matugen's plain
 substitutions, so they're filled here with the shell's own colours:
   {{colors.<role>.<default|light|dark>.<hex|hex_stripped|red|green|blue|rgb>}}
-  {{irice.<key>}}
+  {{tessera.<key>}}
 The scheme is already the current mode's, so light, dark and default are the
 same colour. The templates write pure white for text on the accent (Glass's
 accent fills carry white text); Material's primary is light in dark mode,
@@ -27,7 +27,7 @@ import sys
 
 PLACEHOLDER = re.compile(r"\{\{\s*([^{}]*?)\s*\}\}")
 COLOR = re.compile(r"^colors\.([a-z0-9_]+)\.(?:default|light|dark)\.(hex|hex_stripped|red|green|blue|rgb)$")
-IRICE = re.compile(r"^irice\.([a-z0-9_]+)$")
+TESSERA = re.compile(r"^tessera\.([a-z0-9_]+)$")
 # Pure white as the templates spell it: #ffffff, a bare ffffff value (foot) or 255,255,255 (KDE)
 WHITE = re.compile(r"#ffffff\b|(?<![0-9a-fA-F#])ffffff\b|\b255,\s*255,\s*255\b", re.IGNORECASE)
 
@@ -74,9 +74,9 @@ def fill(template, roles, extra):
             out.append({"hex": h, "hex_stripped": h[1:], "red": str(int(h[1:3], 16)), "green": str(int(h[3:5], 16)),
                         "blue": str(int(h[5:7], 16)), "rgb": "rgb(%d, %d, %d)" % (int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16))}[fmt])
             continue
-        m = IRICE.match(part)
-        if m and m.group(1) in extra.get("irice", {}):
-            out.append(str(extra["irice"][m.group(1)]))
+        m = TESSERA.match(part)
+        if m and m.group(1) in extra.get("tessera", {}):
+            out.append(str(extra["tessera"][m.group(1)]))
             continue
         raise KeyError("unknown placeholder {{" + part + "}}")
     return "".join(out)
@@ -96,7 +96,7 @@ def main(argv):
             done.append((dest, fill(f.read(), roles, extra)))
     for dest, text in done:
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
-        tmp = dest + ".irice-tmp"
+        tmp = dest + ".tessera-tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(text)
         os.replace(tmp, dest)

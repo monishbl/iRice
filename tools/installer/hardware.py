@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What this computer has, and what the iRice installer could set up for it.
+"""What this computer has, and what the Tessera installer could set up for it.
 
   hardware.py plan             the plan, one item a line (tab-separated:
                                id, ticked 1/0, ask 1/0, locked 1/0, group,
@@ -20,7 +20,7 @@ what the installer builds for this machine (shown, always done), and
 tuning. An NVIDIA driver is only ever installed when asked for by name.
 
 Detection is pure functions over text (parse_lspci, parse_cpu, edid_size,
-suggest_scale, plan): tests feed them fixtures. IRICE_SYSTEM_ROOT moves /sys,
+suggest_scale, plan): tests feed them fixtures. TESSERA_SYSTEM_ROOT moves /sys,
 /proc and /var/lib/pacman somewhere else (tests).
 """
 import glob
@@ -33,7 +33,7 @@ import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "shell", "assets", "scripts")
-ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
+ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
 
 GROUPS = ["Firmware & drivers", "Biometrics", "Build for this machine", "Tuning"]
 # PCI vendors
@@ -50,7 +50,7 @@ def path(p):
 def load(name):
     """One of the shell's scripts (fingerprint.py, face.py) as a module: the
     installer asks them, rather than knowing readers and cameras twice."""
-    spec = importlib.util.spec_from_file_location("irice_" + name, os.path.join(SCRIPTS, name + ".py"))
+    spec = importlib.util.spec_from_file_location("tessera_" + name, os.path.join(SCRIPTS, name + ".py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -195,13 +195,13 @@ def plan(f):
                     "Compiled against this Hyprland, so the glass and window controls match it exactly", locked=True))
     out.append(item("build-native", G[2], "Native helpers for this Qt",
                     "Faster glass sync and requests than the fall-backs, built for the Qt installed here; "
-                    "and irice-events, one process that follows the system for the shell", locked=True))
+                    "and tessera-events, one process that follows the system for the shell", locked=True))
     out.append(item("build-shaders", G[2], "Shaders", "Compiled once for this machine's Qt", locked=True))
 
     # Tuning
     laptop = f.get("laptop", False)
     pm = f.get("power_manager", "")
-    # (power-profiles-daemon is one of iRice's packages, turned on with the
+    # (power-profiles-daemon is one of Tessera's packages, turned on with the
     # services: shown here, done there; never next to another power manager)
     if laptop and not pm and "power-profiles-daemon" not in have:
         out.append(item("power", G[3], "Energy modes", "Balanced, Power Saver and Performance from the menu bar; longer battery life",
@@ -237,7 +237,7 @@ def apply_lines(items, ids):
 
 # ── This computer ───────────────────────────────────────────────────────
 def read(p, binary=False):
-    """A file, by its path as found (already under IRICE_SYSTEM_ROOT)."""
+    """A file, by its path as found (already under TESSERA_SYSTEM_ROOT)."""
     try:
         with open(p, "rb" if binary else "r") as f:
             return f.read()
@@ -288,7 +288,7 @@ def collect(run=subprocess.run):
     have = installed_packages()
     pci = sysfs_pci()
     # lspci's names, and the modules that could drive each device (pciutils
-    # isn't one of iRice's packages: without it, sysfs alone)
+    # isn't one of Tessera's packages: without it, sysfs alone)
     if ROOT == "/":
         try:
             named = {d["slot"]: d for d in parse_lspci(run(["lspci", "-nnk"], capture_output=True, text=True, timeout=10).stdout)}
@@ -343,7 +343,7 @@ def collect(run=subprocess.run):
         "ir_camera": cam,
         "screens": screens(),
         "monitors_set": os.path.exists(os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
-                                                    "irice", "monitors.lua")),
+                                                    "tessera", "monitors.lua")),
         "hyprland": hv,
         "pulseaudio": "pulseaudio" in have,
         "network": network,

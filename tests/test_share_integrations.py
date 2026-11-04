@@ -63,13 +63,13 @@ class FileManagerMenus(unittest.TestCase):
     def test_login_session_puts_menus_where_the_apps_look(self):
         # (the shell's own data folder there isn't the apps'; menus added
         # there by an earlier version move over)
-        old = self.h.root / "data/kio/servicemenus/irice-share.desktop"
+        old = self.h.root / "data/kio/servicemenus/tessera-share.desktop"
         old.parent.mkdir(parents=True)
         old.write_text("[Desktop Entry]\n")
-        self.h.env["IRICE_TTY"] = "1"
+        self.h.env["TESSERA_TTY"] = "1"
         r = self.h.fm("status")
         self.assertEqual(r.returncode, 0, r.stderr)
-        new = self.h.root / ".local/share/kio/servicemenus/irice-share.desktop"
+        new = self.h.root / ".local/share/kio/servicemenus/tessera-share.desktop"
         self.assertTrue(new.exists())
         self.assertIn("Send to a nearby device", new.read_text())
         self.assertFalse(old.exists())
@@ -96,14 +96,14 @@ class FileManagerMenus(unittest.TestCase):
         self.assertTrue(all(m["installed"] for m in st.values()), st)
 
         data = self.h.root / "data"
-        dolphin = data / "kio/servicemenus/irice-share.desktop"
+        dolphin = data / "kio/servicemenus/tessera-share.desktop"
         self.assertTrue(os.access(dolphin, os.X_OK), "KDE 6 needs a local service menu to be executable")
         self.assertIn(str(SCRIPTS / "share-files.sh"), dolphin.read_text())
         self.assertIn("%U", dolphin.read_text())
-        self.assertIn("%F", (data / "nemo/actions/irice-share.nemo_action").read_text())
+        self.assertIn("%F", (data / "nemo/actions/tessera-share.nemo_action").read_text())
 
         actions = ET.parse(uca).getroot().findall("action")
-        self.assertEqual(sorted(a.findtext("unique-id") for a in actions), ["1234-1", "irice-share"])
+        self.assertEqual(sorted(a.findtext("unique-id") for a in actions), ["1234-1", "tessera-share"])
 
         # Installing again doesn't add a second copy
         self.h.fm("install", "thunar")
@@ -122,7 +122,7 @@ class FileManagerMenus(unittest.TestCase):
             self.assertTrue(os.access(script, os.X_OK))
             self.assertIn("NAUTILUS_SCRIPT_SELECTED_URIS", script.read_text())
         else:
-            self.assertTrue((self.h.root / "data/nautilus-python/extensions/irice-share.py").exists())
+            self.assertTrue((self.h.root / "data/nautilus-python/extensions/tessera-share.py").exists())
 
     def test_a_broken_thunar_file_is_reported_not_overwritten(self):
         uca = self.h.root / "config/Thunar/uca.xml"

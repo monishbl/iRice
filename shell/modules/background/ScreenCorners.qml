@@ -14,7 +14,7 @@ Variants {
         readonly property int r: Config.options.appearance.screenCornerRadius
 
         screen: modelData
-        WlrLayershell.namespace: "irice:corners"
+        WlrLayershell.namespace: "tessera:corners"
         WlrLayershell.layer: WlrLayer.Overlay
         exclusionMode: ExclusionMode.Ignore
         anchors { bottom: true; left: true; right: true }

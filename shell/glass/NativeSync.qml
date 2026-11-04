@@ -1,4 +1,4 @@
-import IRice.Native
+import Tessera.Native
 
 // Loaded by GlassWindow only when the native module is there (common/Native.qml)
 GlassSync {}

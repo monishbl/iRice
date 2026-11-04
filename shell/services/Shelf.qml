@@ -20,7 +20,7 @@ import "ShelfLogic.js" as Logic
 //   - Super+Alt+D (keymap.json "shelf"), or its menu bar icon (shelf.menubar)
 // While the left button is held (keybinds.lua: pointerDown / pointerUp,
 // non-consuming), the pointer is followed (assets/scripts/pointer-follow.py);
-// never otherwise. Moving a window (the irice-glass plugin says so) doesn't count.
+// never otherwise. Moving a window (the tessera-glass plugin says so) doesn't count.
 Singleton {
     id: root
 
@@ -75,7 +75,7 @@ Singleton {
     }
 
     // Kept across restarts (references only)
-    readonly property string file: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/irice/shelf.json"
+    readonly property string file: Paths.state + "/shelf.json"
     function save() {
         saver.restart();
     }
@@ -284,7 +284,7 @@ Singleton {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            if (event.name === "irice-drag" && root.down) {
+            if ((event.name === "tessera-drag" || event.name === "irice-drag") && root.down) { // (irice-drag: a glass plugin built before the rename)
                 root.windowMove = true;
                 root.probing = false;
                 if (follower.running)

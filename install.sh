@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# iRice installer for Arch Linux. Installs everything iRice needs, builds it,
+# Tessera installer for Arch Linux. Installs everything Tessera needs, builds it,
 # sets it up and checks the result. Safe to run again (it updates).
 #
 #   ./install.sh               interactive (full screen) or classic prompts: it asks which
@@ -10,12 +10,12 @@
 #   ./install.sh --dry-run     the plan and each step's commands, change nothing
 #   ./install.sh --dev         link the shell to this folder instead of copying it
 #   ./install.sh --no-deps     skip installing packages
-#   ./install.sh --no-greeter  don't set up the iRice login screen
+#   ./install.sh --no-greeter  don't set up the Tessera login screen
 #   ./install.sh --no-extras   skip the optional extras (apps, pointer, icon themes, emoji)
 #   ./install.sh --no-snapshot no snapper or Timeshift snapshot before starting
-#   ./install.sh --verify      only check an existing install (same as: irice doctor)
-#   ./install.sh --only=login  only switch to the iRice login screen (greetd), from the
-#                              settings in $XDG_CONFIG_HOME/irice; nothing else changes
+#   ./install.sh --verify      only check an existing install (same as: tessera doctor)
+#   ./install.sh --only=login  only switch to the Tessera login screen (greetd), from the
+#                              settings in $XDG_CONFIG_HOME/tessera; nothing else changes
 # Choices (the interactive installer passes these; with --yes, unset ones are
 # the recommended ones, and nothing asked by name is done):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
@@ -23,9 +23,9 @@
 #   --extras=apps,pointer,emoji|none  --hardware=ID,…|none (see --plan)
 #   --replace-pulseaudio  --network=networkmanager|keep
 #
-# Your Hyprland config is backed up once (~/.config/hypr.pre-irice) and
-# `irice uninstall` puts it back. Other Quickshell configs are left alone.
-# Everything is logged to ~/.cache/irice/install.log.
+# Your Hyprland config is backed up once (~/.config/hypr.pre-tessera) and
+# `tessera uninstall` puts it back. Other Quickshell configs are left alone.
+# Everything is logged to ~/.cache/tessera/install.log.
 set -Euo pipefail
 # Some AUR builds fail without a terminal type, which serial consoles and
 # non-interactive runs leave unset
@@ -36,7 +36,7 @@ CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 BIN="$HOME/.local/bin"
-LOG="$CACHE/irice/install.log"
+LOG="$CACHE/tessera/install.log"
 
 YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
@@ -90,7 +90,7 @@ with_rich() {
 }
 if [[ $UI != cli && $VERIFY_ONLY == 0 && $PLAN_ONLY == 0 && -t 0 && -t 1 ]] && [[ $UI == tui || $YES == 0 ]]; then
     if [[ $UI == ask ]]; then
-        printf '\n\033[1miRice setup\033[0m\n'
+        printf '\n\033[1mTessera setup\033[0m\n'
         printf '  1  Interactive: pick with the arrow keys and see the whole plan first (recommended)\n'
         printf '  2  Classic: one question at a time\n'
         read -r -p "  Which one? [1/2] " reply </dev/tty || reply=2
@@ -105,7 +105,7 @@ fi
 if [[ $VERIFY_ONLY == 0 && $DRY == 0 && $PLAN_ONLY == 0 ]]; then
     mkdir -p "$(dirname "$LOG")"
     exec > >(tee -a "$LOG") 2>&1
-    echo "=== $(date '+%F %T') iRice install from $ROOT ($*)"
+    echo "=== $(date '+%F %T') Tessera install from $ROOT ($*)"
 fi
 if [[ -t 1 ]]; then
     B=$'\033[1m' DIM=$'\033[2m' RED=$'\033[1;31m' GRN=$'\033[1;32m' YEL=$'\033[1;33m' BLU=$'\033[1;34m' R=$'\033[0m'
@@ -144,7 +144,7 @@ step() {
             die "Stopped. Fix the problem above and run the installer again; finished steps are quick the second time."
         fi
         local reply
-        read -r -p "  [R]etry, [s]kip$([[ -z "$optional" ]] && echo " (iRice may not work)"), or [a]bort? " reply </dev/tty || reply=a
+        read -r -p "  [R]etry, [s]kip$([[ -z "$optional" ]] && echo " (Tessera may not work)"), or [a]bort? " reply </dev/tty || reply=a
         case "$reply" in
             [sS]*) warn "Skipped."; return 0 ;;
             [aA]*) die "Stopped. Run the installer again when ready; finished steps are quick the second time." ;;
@@ -154,7 +154,7 @@ step() {
 
 # ── What's needed ───────────────────────────────────────────────────────
 source "$ROOT/tools/packages.sh"
-# What this iRice is tested with (compat.json), read as text: python and jq
+# What this Tessera is tested with (compat.json), read as text: python and jq
 # may not be installed yet
 compat() { # section key
     awk -v s="\"$1\"" -v k="\"$2\":" '
@@ -168,7 +168,7 @@ QS_BUNDLED=$(compat quickshell bundled) NEED_QUICKSHELL=$(compat quickshell min)
 NEED_QUICKSHELL=${NEED_QUICKSHELL:-${QS_BUNDLED:-0.3.2}}
 
 version_ge() { [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" == "$2" ]]; }
-# Whether a Hyprland version is no newer than the one iRice is tested with
+# Whether a Hyprland version is no newer than the one Tessera is tested with
 # ("0.56.x": any 0.56 release)
 hypr_tested() {
     local v="$1" max="$HYPR_MAX" n
@@ -213,10 +213,13 @@ hypr_version() {
     [[ -n "$v" ]] || v=$(hypr --version 2>/dev/null | sed -n 's/^Hyprland \([0-9.]*\).*/\1/p' | head -1)
     printf '%s\n' "$v"
 }
-# iRice's own Quickshell when there is one (launch-shell.sh starts that one), else the system's
+# Tessera's own Quickshell when there is one (launch-shell.sh starts that one), else the system's
 qs_version() {
     local qs=qs
-    [[ -x "$DATA/irice/quickshell/bin/qs" && -d "$DATA/irice/quickshell/lib/qt6/qml/Quickshell" ]] && qs="$DATA/irice/quickshell/bin/qs"
+    local d
+    for d in "$DATA/tessera" "$DATA/irice"; do # (irice: built before the rename)
+        [[ -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]] && { qs="$d/quickshell/bin/qs"; break; }
+    done
     "$qs" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1
 }
 # Another power manager, which power-profiles-daemon would fight with (TLP's
@@ -238,7 +241,7 @@ login_profile() {
     sh=$(basename "$(getent passwd "$(id -un)" | cut -d: -f7)")
     case "$sh" in
         zsh) printf '%s\n' "${ZDOTDIR:-$HOME}/.zprofile" ;;
-        fish) printf '%s\n' "$CONFIG/fish/conf.d/irice-start-hyprland.fish" ;;
+        fish) printf '%s\n' "$CONFIG/fish/conf.d/tessera-start-hyprland.fish" ;;
         bash)
             # bash reads the first of these that exists
             local f
@@ -255,7 +258,7 @@ login_profile() {
 # marker (uninstall.sh takes them out), on stdout. Returns 1 when there's
 # nothing to add: no such file, the keyring's lines are there already, or
 # KWallet's are (it unlocks its own wallet)
-KEYRING_MARK='# irice: unlock the keyring with the login password'
+KEYRING_MARK='# tessera: unlock the keyring with the login password'
 pam_with_keyring() { # pam file
     [[ -f "$1" ]] || return 1
     grep -qE 'pam_gnome_keyring\.so|pam_kwallet[0-9]*\.so' "$1" && return 1
@@ -274,9 +277,9 @@ pam_with_keyring() { # pam file
 }
 # The makers of the GPUs here (intel, amd, nvidia; one per line), from the
 # kernel's display devices, NVIDIA's module, else lspci.
-# IRICE_SYSTEM_ROOT (tests) is where /sys is looked for.
+# TESSERA_SYSTEM_ROOT (tests) is where /sys is looked for.
 gpu_vendors() {
-    local sys="${IRICE_SYSTEM_ROOT:-}" f
+    local sys="${TESSERA_SYSTEM_ROOT:-}" f
     {
         for f in "$sys"/sys/class/drm/card[0-9]*/device/vendor; do
             [[ -f "$f" ]] && cat "$f"
@@ -289,18 +292,18 @@ gpu_vendors() {
         case "$f" in 0x8086) echo intel ;; 0x1002) echo amd ;; 0x10de) echo nvidia ;; esac
     done | sort -u
 }
-# hypr/irice/gpu.lua for an NVIDIA GPU (what Hyprland's wiki asks for), on
+# hypr/tessera/gpu.lua for an NVIDIA GPU (what Hyprland's wiki asks for), on
 # stdout; returns 1 without one. Only when NVIDIA is the only GPU: on hybrid
 # graphics the other one draws the desktop, and forcing NVIDIA's VA-API and
 # GLX there would break them, so the lines are left as suggestions. The
 # software cursor only for drivers before 555 (no explicit sync: hardware
 # cursors flicker or vanish); newer ones work with Hyprland's default.
 gpu_lua() { # vendors (gpu_vendors' output)
-    local sys="${IRICE_SYSTEM_ROOT:-}" ver major on=""
+    local sys="${TESSERA_SYSTEM_ROOT:-}" ver major on=""
     grep -qx nvidia <<<"$1" || return 1
     ver=$(cat "$sys/sys/module/nvidia/version" 2>/dev/null || true)
     major=${ver%%.*}
-    printf -- '-- Written by the iRice installer: an NVIDIA GPU (driver %s). Rewritten at each install;\n' "${ver:-not loaded}"
+    printf -- '-- Written by the Tessera installer: an NVIDIA GPU (driver %s). Rewritten at each install;\n' "${ver:-not loaded}"
     printf -- '-- your own changes go in ~/.config/hypr/custom.lua.\n'
     if grep -qvx nvidia <<<"$1"; then
         printf -- '-- Another GPU draws the desktop too (hybrid graphics), so nothing is forced onto NVIDIA.\n'
@@ -387,11 +390,11 @@ decide() {
                 want_extra emoji "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n && WANT_EMOJI=1
         fi
     fi
-    # Icon themes: none unless chosen (iRice styles the apps' own icons)
+    # Icon themes: none unless chosen (Tessera styles the apps' own icons)
     local t
     if [[ $ICONS == - ]]; then
         ICONS=""
-        if [[ $EXTRAS == 1 && $DEPS == 1 ]] && ask "Install extra icon themes (iRice styles the apps' own icons without one)?" n; then
+        if [[ $EXTRAS == 1 && $DEPS == 1 ]] && ask "Install extra icon themes (Tessera styles the apps' own icons without one)?" n; then
             for t in "${ICON_THEMES[@]}"; do ask "  ${t%%:*}?" n && ICONS+=" ${t%%:*}"; done
         fi
     fi
@@ -403,7 +406,7 @@ decide() {
         if [[ $YES == 1 || $PLAN_ONLY == 1 ]]; then
             PULSE=no
         else
-            warn "PulseAudio is installed; iRice uses PipeWire, which replaces it."
+            warn "PulseAudio is installed; Tessera uses PipeWire, which replaces it."
             ask "Replace PulseAudio with PipeWire?" y && PULSE=yes || PULSE=no
         fi
     fi
@@ -416,7 +419,7 @@ decide() {
                     NETWORK=no
                 else
                     warn "Your network is run by $OTHER_NET."
-                    ask "Switch it to NetworkManager (iRice's Wi-Fi menus use it; takes effect after a reboot)?" y && NETWORK=yes || NETWORK=no
+                    ask "Switch it to NetworkManager (Tessera's Wi-Fi menus use it; takes effect after a reboot)?" y && NETWORK=yes || NETWORK=no
                 fi
             fi
         fi
@@ -425,9 +428,9 @@ decide() {
     OTHER_DM=$(other_login_manager)
     if [[ $GREETER == ask ]]; then
         if [[ -n "$OTHER_DM" ]]; then
-            ask "Use the iRice login screen instead of $OTHER_DM?" n && GREETER=yes || GREETER=no
+            ask "Use the Tessera login screen instead of $OTHER_DM?" n && GREETER=yes || GREETER=no
         else
-            ask "Set up the iRice login screen (recommended)?" y && GREETER=yes || GREETER=no
+            ask "Set up the Tessera login screen (recommended)?" y && GREETER=yes || GREETER=no
         fi
     fi
     decide_hardware
@@ -489,7 +492,7 @@ show_plan() {
             for t in $ICONS; do p=$(icon_package "$t"); pkg_installed "$p" || need+=("$p"); done
             plan_row "Icon themes" "${need[*]:-installed}"
         else
-            plan_row "Icon themes" "none: the apps' own icons, styled by iRice"
+            plan_row "Icon themes" "none: the apps' own icons, styled by Tessera"
         fi
     else
         plan_row Packages "none (--no-deps)"
@@ -502,39 +505,39 @@ show_plan() {
             line=$(hw_line "$id")
             [[ -z "$line" ]] && { plan_row "$first" "($id: nothing to do on this computer)"; first=""; continue; }
             IFS=$'\t' read -r _ _ _ _ _ title _ pkgs paur <<<"$line"
-            if [[ $id == scale-* ]]; then pkgs="writes $CONFIG/irice/monitors.lua"; fi
+            if [[ $id == scale-* ]]; then pkgs="writes $CONFIG/tessera/monitors.lua"; fi
             plan_row "$first" "$title: ${pkgs}${paur:+${pkgs:+, }AUR: $paur}"
             first=""
         done
     else
         plan_row Hardware "nothing chosen"
     fi
-    plan_row Builds "shaders, the glass plugin, native helpers and irice-events, for this machine ($DATA/irice)"
-    plan_row Files "$CONFIG/quickshell/irice and $CONFIG/hypr (the current ones copied to $DATA/irice/backups first;"
-    plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-irice), $BIN/irice"
-    [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
+    plan_row Builds "shaders, the glass plugin, native helpers and tessera-events, for this machine ($DATA/tessera)"
+    plan_row Files "$CONFIG/quickshell/tessera and $CONFIG/hypr (the current ones copied to $DATA/tessera/backups first;"
+    plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-tessera), $BIN/tessera"
+    [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/tessera/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
     if [[ $GREETER == yes ]]; then
-        plan_row Login "the iRice login screen (greetd): /etc/greetd/config.toml (kept as .pre-irice), /usr/share/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (irice uninstall turns it back on)")"
-        plan_row "" "a quiet start: the splash held until the login screen, quiet on GRUB's kernel line (/etc/default/grub kept as .pre-irice)"
+        plan_row Login "the Tessera login screen (greetd): /etc/greetd/config.toml (kept as .pre-tessera), /usr/share/tessera$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (tessera uninstall turns it back on)")"
+        plan_row "" "a quiet start: the splash held until the login screen, quiet on GRUB's kernel line (/etc/default/grub kept as .pre-tessera)"
     elif [[ -n "$OTHER_DM" ]]; then
         plan_row Login "keeps $OTHER_DM (pick Hyprland there)"
     else
         plan_row Login "Hyprland starts when you log in on tty1 ($(login_profile))"
     fi
-    plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-irice)"
+    plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-tessera)"
     p="NetworkManager"
     if [[ -n "$OTHER_NET" ]]; then
-        [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: iRice's Wi-Fi menus won't work)"
+        [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: Tessera's Wi-Fi menus won't work)"
     fi
     pm=$(power_manager) || pm=""
-    plan_row Services "$p, bluetooth, avahi-daemon$([[ -z $pm ]] && echo ", power-profiles-daemon"), plocate-updatedb.timer, iRice's root helper and polkit rule"
+    plan_row Services "$p, bluetooth, avahi-daemon$([[ -z $pm ]] && echo ", power-profiles-daemon"), plocate-updatedb.timer, Tessera's root helper and polkit rule"
     say "  Nothing else of yours is changed or removed."
 }
 
 # ── Steps ───────────────────────────────────────────────────────────────
 VIRT=none
 preflight() {
-    command -v pacman >/dev/null || { say "  iRice installs on Arch Linux (pacman)."; return 1; }
+    command -v pacman >/dev/null || { say "  Tessera installs on Arch Linux (pacman)."; return 1; }
     [[ $EUID == 0 ]] && { say "  Run this as your normal user, not root; it asks for sudo when needed."; return 1; }
     command -v sudo >/dev/null || { say "  sudo is needed. As root: pacman -S sudo, then add your user to wheel (EDITOR=nano visudo)."; return 1; }
     if [[ $DRY == 0 ]]; then
@@ -561,19 +564,19 @@ preflight() {
         warn "No GPU render device found. Hyprland needs one; in a VM, turn on 3D acceleration"
         warn "(virt-manager: Video Virtio + 3D acceleration and OpenGL display; VirtualBox: VMSVGA + 3D)."
     fi
-    # A Hyprland newer than this iRice is tested with: the update in the next
+    # A Hyprland newer than this Tessera is tested with: the update in the next
     # step installs it. Holding it back alone (--ignore) would be a partial
     # upgrade, which Arch doesn't support, so it's go on or stop
     if [[ $DEPS == 1 ]]; then
         local repo_hv
         repo_hv=$(repo_version hyprland)
         if [[ -n "$repo_hv" ]] && ! hypr_tested "$repo_hv"; then
-            warn "Your repositories have Hyprland $repo_hv; this iRice is tested with $HYPR_MAX."
+            warn "Your repositories have Hyprland $repo_hv; this Tessera is tested with $HYPR_MAX."
             note "Installing updates the whole system, Hyprland included (Arch doesn't support holding one"
-            note "package back). Most of iRice works; the glass plugin or some settings may not until"
-            note "an iRice update supports $repo_hv (irice update, or Settings → Software Update)."
+            note "package back). Most of Tessera works; the glass plugin or some settings may not until"
+            note "a Tessera update supports $repo_hv (tessera update, or Settings → Software Update)."
             ask "Continue with Hyprland $repo_hv anyway?" y ||
-                die "Stopped: nothing was changed. Run the installer again once iRice supports Hyprland $repo_hv."
+                die "Stopped: nothing was changed. Run the installer again once Tessera supports Hyprland $repo_hv."
         fi
     fi
     return 0
@@ -583,10 +586,10 @@ pkg_installed() { pacman -Qq "$1" >/dev/null 2>&1; }
 install_packages() {
     [[ $DEPS == 0 ]] && { note "Skipped (--no-deps)."; return 0; }
     local want=("${PACKAGES[@]}")
-    # Things that would conflict with what iRice uses
+    # Things that would conflict with what Tessera uses
     if pkg_installed pulseaudio; then
         if [[ $PULSE != yes ]]; then
-            say "  PulseAudio is installed, and PipeWire (what iRice uses) can't be installed next to it."
+            say "  PulseAudio is installed, and PipeWire (what Tessera uses) can't be installed next to it."
             say "  Nothing was removed. Run the installer again and say yes to replacing it (or pass --replace-pulseaudio)."
             return 1
         fi
@@ -627,33 +630,33 @@ install_packages() {
     local hv qv
     hv=$(hypr_version)
     if ! version_ge "${hv:-0}" "$NEED_HYPRLAND"; then
-        say "  Hyprland ${hv:-is missing}; iRice needs $NEED_HYPRLAND or newer."
+        say "  Hyprland ${hv:-is missing}; Tessera needs $NEED_HYPRLAND or newer."
         if [[ "$(. /etc/os-release 2>/dev/null && echo "${ID:-}")" == manjaro ]]; then
             say "  Manjaro's stable branch gets Arch's updates a few weeks later, so its Hyprland can be too old."
             say "  Wait for it to arrive there, or move to the unstable branch, which follows Arch closely:"
             say "    sudo pacman-mirrors --api --set-branch unstable && sudo pacman -Syyu"
         elif [[ -z "$hv" ]]; then
-            say "  Your repositories don't have it (pacman -Si hyprland); iRice needs Arch's, or a repository that carries it."
+            say "  Your repositories don't have it (pacman -Si hyprland); Tessera needs Arch's, or a repository that carries it."
         fi
         return 1
     fi
-    hypr_tested "$hv" || warn "Hyprland $hv is newer than this iRice is tested with ($HYPR_MAX)."
+    hypr_tested "$hv" || warn "Hyprland $hv is newer than this Tessera is tested with ($HYPR_MAX)."
     qv=$(qs_version)
     if ! version_ge "${qv:-0}" "$NEED_QUICKSHELL"; then
         if [[ -n "$qv" ]]; then
-            say "  Your Quickshell is $qv; iRice needs $NEED_QUICKSHELL or newer."
+            say "  Your Quickshell is $qv; Tessera needs $NEED_QUICKSHELL or newer."
         else
             say "  Quickshell isn't in your repositories."
         fi
-        say "  Building iRice its own Quickshell instead (a few minutes; your system's stays as it is)…"
+        say "  Building Tessera its own Quickshell instead (a few minutes; your system's stays as it is)…"
         build_quickshell || return 1
         qv=$(qs_version)
     fi
     note "Hyprland $hv, Quickshell $qv"
 }
 
-# iRice's own Quickshell (tools/build-quickshell.sh: a release, in
-# ~/.local/share/irice/quickshell), with what it needs to build
+# Tessera's own Quickshell (tools/build-quickshell.sh: a release, in
+# ~/.local/share/tessera/quickshell), with what it needs to build
 build_quickshell() {
     local need=()
     mapfile -t need < <(pacman -T -- "${QUICKSHELL_BUILD[@]}" 2>/dev/null)
@@ -664,8 +667,8 @@ build_quickshell() {
     version_ge "$(qs_version)" "$NEED_QUICKSHELL" || { say "  The build finished, but Quickshell still isn't $NEED_QUICKSHELL or newer."; return 1; }
 }
 
-# yay, the AUR helper: set up unless there's one (iRice's extras come from
-# the AUR, and `irice update` uses yay or paru to keep them current). On
+# yay, the AUR helper: set up unless there's one (Tessera's extras come from
+# the AUR, and `tessera update` uses yay or paru to keep them current). On
 # Manjaro, whose own software app (pamac) builds from the AUR too, only when
 # you say so
 install_yay() {
@@ -673,10 +676,10 @@ install_yay() {
     local have
     have=$(aur_helper)
     if [[ -n "$have" ]]; then
-        note "$(basename "$have") is installed: iRice uses it for the AUR."
+        note "$(basename "$have") is installed: Tessera uses it for the AUR."
         return 0
     fi
-    if command -v pamac >/dev/null && ! ask "Install yay too (iRice's AUR extras and irice update use it; pamac stays as it is)?" n; then
+    if command -v pamac >/dev/null && ! ask "Install yay too (Tessera's AUR extras and tessera update use it; pamac stays as it is)?" n; then
         note "Skipped: no yay. The AUR extras are left out (pamac build <name> installs one by hand)."
         return 0
     fi
@@ -715,11 +718,11 @@ emoji_extras() {
     [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
     aur_install "$WANT_EMOJI" "Apple and Fluent emoji" "${EMOJI_AUR[@]}"
 }
-# Icon themes, only the ones chosen: iRice styles the apps' own icons without
+# Icon themes, only the ones chosen: Tessera styles the apps' own icons without
 # one. Papirus from the repositories, the others from the AUR
 icon_themes() {
     [[ $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    [[ -z "${ICONS// /}" ]] && { note "None chosen: the apps' own icons, styled by iRice."; return 0; }
+    [[ -z "${ICONS// /}" ]] && { note "None chosen: the apps' own icons, styled by Tessera."; return 0; }
     local t p repo=() aur=()
     for t in $ICONS; do
         p=$(icon_package "$t") || continue
@@ -765,11 +768,11 @@ hardware_item() { # id
 # A display's scale (the hardware plan's suggestion), only while Settings →
 # Displays hasn't saved its own (monitors.lua is then its)
 write_scale() { # output scale
-    local f="$CONFIG/irice/monitors.lua"
+    local f="$CONFIG/tessera/monitors.lua"
     [[ -e "$f" ]] && { note "Settings → Displays has your displays' settings: the scale is left to it."; return 0; }
     if [[ $DRY == 1 ]]; then note "would write scale $2 for $1 to $f"; return 0; fi
-    mkdir -p "$CONFIG/irice"
-    printf -- '-- Written by the iRice installer: a scale for this screen. Settings → Displays replaces this file.\nhl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' "$1" "$2" >"$f"
+    mkdir -p "$CONFIG/tessera"
+    printf -- '-- Written by the Tessera installer: a scale for this screen. Settings → Displays replaces this file.\nhl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' "$1" "$2" >"$f"
     note "Scale $2 for $1 (Settings → Displays changes it)"
 }
 
@@ -778,12 +781,12 @@ write_scale() { # output scale
 snapshot() {
     [[ $SNAPSHOT == 0 ]] && { note "Skipped (--no-snapshot)."; return 0; }
     case "$(snapshot_tool)" in
-        snapper) run sudo snapper -c root create --description "Before the iRice install" --cleanup-algorithm number ;;
+        snapper) run sudo snapper -c root create --description "Before the Tessera install" --cleanup-algorithm number ;;
         timeshift)
             note "Timeshift's first snapshot can take a while."
-            run sudo timeshift --create --comments "Before the iRice install" --scripted
+            run sudo timeshift --create --comments "Before the Tessera install" --scripted
             ;;
-        *) note "No snapper or Timeshift set up: no snapshot (what iRice replaces is backed up as it goes)." ;;
+        *) note "No snapper or Timeshift set up: no snapshot (what Tessera replaces is backed up as it goes)." ;;
     esac
 }
 
@@ -792,12 +795,12 @@ snapshot() {
 # isn't valid JSON)
 settings() {
     [[ -z "$LOOK$MODE$LOGIN_STYLE" ]] && { note "Kept as they are."; return 0; }
-    local cfg="$CONFIG/irice/config.json"
+    local cfg="$CONFIG/tessera/config.json"
     if [[ $DRY == 1 ]]; then note "would set${LOOK:+ look=$LOOK}${MODE:+ mode=$MODE}${LOGIN_STYLE:+ loginStyle=$LOGIN_STYLE} in $cfg"; return 0; fi
-    mkdir -p "$CONFIG/irice"
+    mkdir -p "$CONFIG/tessera"
     if [[ -f "$cfg" ]]; then
-        mkdir -p "$DATA/irice/backups"
-        cp -a "$cfg" "$DATA/irice/backups/config-$(date +%Y%m%d-%H%M%S).json" || return 1
+        mkdir -p "$DATA/tessera/backups"
+        cp -a "$cfg" "$DATA/tessera/backups/config-$(date +%Y%m%d-%H%M%S).json" || return 1
     fi
     python3 -I - "$cfg" "$LOOK" "$MODE" "$LOGIN_STYLE" <<'PY'
 import json, os, sys
@@ -810,7 +813,7 @@ except FileNotFoundError:
 except (OSError, ValueError) as e:
     sys.exit(f"  {path} couldn't be read ({e}): left as it is")
 if not isinstance(c, dict):
-    sys.exit(f"  {path} isn't iRice's settings: left as it is")
+    sys.exit(f"  {path} isn't Tessera's settings: left as it is")
 def part(k):
     if not isinstance(c.get(k), dict):
         c[k] = {}
@@ -830,50 +833,50 @@ PY
 build() {
     # Shaders (compiled with Qt's qsb) and the Liquid Glass plugin, built
     # against the installed Hyprland. The plugin source is kept so it can be
-    # rebuilt after Hyprland updates (irice rebuild, or Settings).
+    # rebuilt after Hyprland updates (tessera rebuild, or Settings).
     say "  Compiling shaders…"
     run "$ROOT/tools/build-shaders.sh" || return 1
     say "  Building the glass plugin for Hyprland $(hypr_version)…"
-    run mkdir -p "$DATA/irice/src/tools" "$DATA/irice/src/hypr"
-    run rm -rf "$DATA/irice/src/hypr/plugin"
-    run cp -r "$ROOT/hypr/plugin" "$DATA/irice/src/hypr/plugin"
-    run cp "$ROOT/tools/build-plugin.sh" "$DATA/irice/src/tools/"
-    run make -C "$DATA/irice/src/hypr/plugin/irice-glass" clean >/dev/null 2>&1
-    run "$DATA/irice/src/tools/build-plugin.sh" || return 1
-    [[ $DRY == 1 ]] || hypr_version >"$DATA/irice/irice-glass.built-for"
+    run mkdir -p "$DATA/tessera/src/tools" "$DATA/tessera/src/hypr"
+    run rm -rf "$DATA/tessera/src/hypr/plugin"
+    run cp -r "$ROOT/hypr/plugin" "$DATA/tessera/src/hypr/plugin"
+    run cp "$ROOT/tools/build-plugin.sh" "$DATA/tessera/src/tools/"
+    run make -C "$DATA/tessera/src/hypr/plugin/tessera-glass" clean >/dev/null 2>&1
+    run "$DATA/tessera/src/tools/build-plugin.sh" || return 1
+    [[ $DRY == 1 ]] || hypr_version >"$DATA/tessera/tessera-glass.built-for"
     # Native helpers (glass kept in step from C++, the C request helper),
     # built inside the shell so they're copied with it. Optional: without
     # them the shell uses its QML and Python fall-backs.
     say "  Building the native helpers…"
-    run "$ROOT/shell/native/build.sh" || note "Native helpers skipped: the shell uses its slower fall-backs (rebuild later with: irice rebuild)"
-    # irice-events, the one process that follows the system for the shell.
+    run "$ROOT/shell/native/build.sh" || note "Native helpers skipped: the shell uses its slower fall-backs (rebuild later with: tessera rebuild)"
+    # tessera-events, the one process that follows the system for the shell.
     # Optional too: without it the shell runs a watcher per thing it follows.
-    say "  Building irice-events…"
-    run "$ROOT/tools/build-native.sh" || note "irice-events skipped: the shell uses its separate watchers (rebuild later with: irice rebuild)"
+    say "  Building tessera-events…"
+    run "$ROOT/tools/build-native.sh" || note "tessera-events skipped: the shell uses its separate watchers (rebuild later with: tessera rebuild)"
 }
 
-# ~/.local/bin on your PATH (for the irice command), in bash, zsh and fish
+# ~/.local/bin on your PATH (for the tessera command), in bash, zsh and fish
 add_to_path() {
     [[ $DRY == 1 ]] && { note "would add ~/.local/bin to your PATH"; return 0; }
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-        if [[ -f "$rc" ]] && ! grep -q 'irice: local bin' "$rc"; then
-            printf '\nexport PATH="$HOME/.local/bin:$PATH" # irice: local bin\n' >>"$rc"
+        if [[ -f "$rc" ]] && ! grep -q -e 'tessera: local bin' -e 'irice: local bin' "$rc"; then
+            printf '\nexport PATH="$HOME/.local/bin:$PATH" # tessera: local bin\n' >>"$rc"
         fi
     done
     if [[ -d "$CONFIG/fish" ]]; then
         mkdir -p "$CONFIG/fish/conf.d"
-        printf 'fish_add_path -g $HOME/.local/bin\n' >"$CONFIG/fish/conf.d/irice.fish"
+        printf 'fish_add_path -g $HOME/.local/bin\n' >"$CONFIG/fish/conf.d/tessera.fish"
     fi
 }
 
 install_files() {
     # Preserve locally edited installed copies before replacing managed files.
-    local installed_backup="$DATA/irice/backups/installed-$(date +%Y%m%d-%H%M%S-%N)"
-    if [[ -e "$CONFIG/quickshell/irice" || -d "$CONFIG/hypr" ]]; then
+    local installed_backup="$DATA/tessera/backups/installed-$(date +%Y%m%d-%H%M%S-%N)"
+    if [[ -e "$CONFIG/quickshell/tessera" || -d "$CONFIG/hypr" ]]; then
         run mkdir -p -m 700 "$installed_backup" || return 1
-        if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then
-            run cp -a "$CONFIG/quickshell/irice" "$installed_backup/shell" || return 1
+        if [[ -e "$CONFIG/quickshell/tessera" || -L "$CONFIG/quickshell/tessera" ]]; then
+            run cp -a "$CONFIG/quickshell/tessera" "$installed_backup/shell" || return 1
         fi
         if [[ -d "$CONFIG/hypr" ]]; then
             run cp -a "$CONFIG/hypr" "$installed_backup/hypr" || return 1
@@ -882,31 +885,37 @@ install_files() {
         # Only the last five are kept (each holds the whole shell and hypr)
         local old
         while IFS= read -r old; do
-            [[ -n "$old" && "$old" == "$DATA/irice/backups/installed-"* ]] && run rm -rf -- "$old"
-        done < <(ls -1d "$DATA/irice/backups/installed-"* 2>/dev/null | sort | head -n -5)
+            [[ -n "$old" && "$old" == "$DATA/tessera/backups/installed-"* ]] && run rm -rf -- "$old"
+        done < <(ls -1d "$DATA/tessera/backups/installed-"* 2>/dev/null | sort | head -n -5)
     fi
     # The shell
     run mkdir -p "$CONFIG/quickshell" "$BIN"
-    if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then
-        run rm -rf "$CONFIG/quickshell/irice"
+    if [[ -e "$CONFIG/quickshell/tessera" || -L "$CONFIG/quickshell/tessera" ]]; then
+        run rm -rf "$CONFIG/quickshell/tessera"
     fi
     if [[ $DEV == 1 ]]; then
-        run ln -s "$ROOT/shell" "$CONFIG/quickshell/irice"
+        run ln -s "$ROOT/shell" "$CONFIG/quickshell/tessera"
     else
-        run cp -r "$ROOT/shell" "$CONFIG/quickshell/irice"
+        run cp -r "$ROOT/shell" "$CONFIG/quickshell/tessera"
     fi
-    # Hyprland config: yours is backed up once, before iRice first replaces it
-    if [[ -d "$CONFIG/hypr" && ! -d "$CONFIG/hypr/irice" && ! -e "$CONFIG/hypr.pre-irice" ]]; then
-        run cp -a "$CONFIG/hypr" "$CONFIG/hypr.pre-irice"
-        note "Your Hyprland config is backed up to $CONFIG/hypr.pre-irice"
+    # (iRice's: a shell started from it before the rename keeps finding its
+    # files until it restarts as Tessera)
+    if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then
+        run rm -rf "$CONFIG/quickshell/irice"
+        run ln -s tessera "$CONFIG/quickshell/irice"
     fi
-    run mkdir -p "$CONFIG/hypr/irice"
+    # Hyprland config: yours is backed up once, before Tessera first replaces it
+    if [[ -d "$CONFIG/hypr" && ! -d "$CONFIG/hypr/tessera" && ! -e "$CONFIG/hypr.pre-tessera" ]]; then
+        run cp -a "$CONFIG/hypr" "$CONFIG/hypr.pre-tessera"
+        note "Your Hyprland config is backed up to $CONFIG/hypr.pre-tessera"
+    fi
+    run mkdir -p "$CONFIG/hypr/tessera"
     run cp "$ROOT/hypr/hyprland.lua" "$CONFIG/hypr/hyprland.lua"
-    # Everything in hypr/irice (Lua modules and the json they read), but leave
+    # Everything in hypr/tessera (Lua modules and the json they read), but leave
     # files the installer or the user added there (vm.lua) alone
     local f
-    for f in "$ROOT/hypr/irice/"*; do
-        [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/irice/"
+    for f in "$ROOT/hypr/tessera/"*; do
+        [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/tessera/"
     done
     # Idle timers come from Settings → Battery & Power (start-idle.sh); a
     # hypridle.conf here is yours and wins over them. Earlier installers copied
@@ -916,56 +925,57 @@ install_files() {
     fi
     # Your keyboard layout, as the system has it (localectl), over the "us" default
     if [[ $DRY == 1 ]]; then
-        note "would write your keyboard layout (localectl) to $CONFIG/hypr/irice/keyboard.lua"
+        note "would write your keyboard layout (localectl) to $CONFIG/hypr/tessera/keyboard.lua"
     else
-        note "$("$ROOT/tools/keyboard-lua.sh" "$CONFIG/hypr/irice/keyboard.lua")"
+        note "$("$ROOT/tools/keyboard-lua.sh" "$CONFIG/hypr/tessera/keyboard.lua")"
     fi
     # A hyprland.conf next to hyprland.lua would be ambiguous; move it aside
     if [[ -f "$CONFIG/hypr/hyprland.conf" ]]; then
-        run mv "$CONFIG/hypr/hyprland.conf" "$CONFIG/hypr/hyprland.conf.pre-irice"
+        run mv "$CONFIG/hypr/hyprland.conf" "$CONFIG/hypr/hyprland.conf.pre-tessera"
     fi
     # What it set (displays, keyboard, environment, programs) as suggestions
     # you can turn on, written once; nothing of it is applied
-    if [[ -f "$CONFIG/hypr/hyprland.conf.pre-irice" && ! -f "$CONFIG/hypr/irice/from-your-old-config.lua" ]]; then
+    if [[ -f "$CONFIG/hypr/hyprland.conf.pre-tessera" && ! -f "$CONFIG/hypr/tessera/from-your-old-config.lua" ]]; then
         if [[ $DRY == 1 ]]; then
-            note "would write your old hyprland.conf's settings as suggestions to $CONFIG/hypr/irice/from-your-old-config.lua"
+            note "would write your old hyprland.conf's settings as suggestions to $CONFIG/hypr/tessera/from-your-old-config.lua"
         else
-            OLD_CONFIG=$(python3 -I "$ROOT/tools/old-hypr-config.py" "$CONFIG/hypr/hyprland.conf.pre-irice" \
-                "$CONFIG/hypr/irice/from-your-old-config.lua" 2>/dev/null || true)
+            OLD_CONFIG=$(python3 -I "$ROOT/tools/old-hypr-config.py" "$CONFIG/hypr/hyprland.conf.pre-tessera" \
+                "$CONFIG/hypr/tessera/from-your-old-config.lua" 2>/dev/null || true)
         fi
     fi
     # Virtual machines: software cursor (hardware cursors often don't show)
     if [[ $VIRT != none ]]; then
-        [[ $DRY == 1 ]] || printf -- '-- Written by the iRice installer: this is a virtual machine (%s)\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" >"$CONFIG/hypr/irice/vm.lua"
+        [[ $DRY == 1 ]] || printf -- '-- Written by the Tessera installer: this is a virtual machine (%s)\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" >"$CONFIG/hypr/tessera/vm.lua"
     else
-        run rm -f "$CONFIG/hypr/irice/vm.lua"
+        run rm -f "$CONFIG/hypr/tessera/vm.lua"
     fi
     # NVIDIA: the environment Hyprland's wiki asks for (gpu.lua)
     local gpus lua
     gpus=$(gpu_vendors)
     if lua=$(gpu_lua "$gpus"); then
-        if [[ $DRY == 1 ]]; then note "would write NVIDIA's settings to $CONFIG/hypr/irice/gpu.lua"; else printf '%s\n' "$lua" >"$CONFIG/hypr/irice/gpu.lua"; fi
+        if [[ $DRY == 1 ]]; then note "would write NVIDIA's settings to $CONFIG/hypr/tessera/gpu.lua"; else printf '%s\n' "$lua" >"$CONFIG/hypr/tessera/gpu.lua"; fi
         if [[ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" == N ]]; then
             warn "NVIDIA's kernel mode setting is off; Hyprland needs it: add nvidia_drm.modeset=1 to your kernel parameters"
         fi
     else
-        run rm -f "$CONFIG/hypr/irice/gpu.lua"
+        run rm -f "$CONFIG/hypr/tessera/gpu.lua"
     fi
-    # The irice command (doctor, update, rebuild, repair, uninstall) and where iRice came from
-    run mkdir -p "$DATA/irice"
-    [[ $DRY == 1 ]] || printf '%s\n' "$ROOT" >"$DATA/irice/source"
-    run install -m 755 "$ROOT/tools/irice" "$BIN/irice"
+    # The tessera command (doctor, update, rebuild, repair, uninstall) and where Tessera came from
+    run mkdir -p "$DATA/tessera"
+    [[ $DRY == 1 ]] || printf '%s\n' "$ROOT" >"$DATA/tessera/source"
+    run install -m 755 "$ROOT/tools/tessera" "$BIN/tessera"
+    run rm -f "$BIN/irice" # (the command's name before iRice became Tessera)
     case ":$PATH:" in
         *":$BIN:"*) ;;
         *) add_to_path ;;
     esac
-    # Your usual folders (Downloads, Pictures...), which iRice uses
+    # Your usual folders (Downloads, Pictures...), which Tessera uses
     command -v xdg-user-dirs-update >/dev/null && run xdg-user-dirs-update
     run mkdir -p "$HOME/Pictures/Wallpapers" "$HOME/Pictures/Screenshots"
     # "Send to a nearby device…" in the right-click menu of the file managers
     # found (only that entry is added; Settings → Sharing can remove it)
     if command -v python3 >/dev/null; then
-        run python3 -I "$CONFIG/quickshell/irice/assets/scripts/file-manager-share.py" install >/dev/null ||
+        run python3 -I "$CONFIG/quickshell/tessera/assets/scripts/file-manager-share.py" install >/dev/null ||
             warn "Couldn't add Send to a nearby device… to your file manager; Settings → Sharing can try again."
     fi
     return 0
@@ -990,7 +1000,7 @@ services() {
     if systemctl is-active --quiet systemd-networkd || systemctl is-active --quiet dhcpcd || systemctl is-active --quiet iwd; then
         if ! systemctl is-enabled --quiet NetworkManager 2>/dev/null; then
             if [[ $NETWORK != yes ]]; then
-                warn "Your network stays with ${OTHER_NET:-its own service}: iRice's Wi-Fi menus need NetworkManager (./install.sh --network=networkmanager)."
+                warn "Your network stays with ${OTHER_NET:-its own service}: Tessera's Wi-Fi menus need NetworkManager (./install.sh --network=networkmanager)."
             else
                 for s in systemd-networkd dhcpcd; do systemctl is-enabled --quiet $s 2>/dev/null && run sudo systemctl disable $s; done
                 # iwd stays and NetworkManager drives it (instead of its own
@@ -1000,7 +1010,7 @@ services() {
                         note "would write /etc/NetworkManager/conf.d/wifi_backend.conf (wifi.backend=iwd)"
                     else
                         sudo mkdir -p /etc/NetworkManager/conf.d &&
-                            printf '# Written by the iRice installer: NetworkManager uses iwd, which ran the Wi-Fi before\n[device]\nwifi.backend=iwd\n' |
+                            printf '# Written by the Tessera installer: NetworkManager uses iwd, which ran the Wi-Fi before\n[device]\nwifi.backend=iwd\n' |
                             sudo tee /etc/NetworkManager/conf.d/wifi_backend.conf >/dev/null
                     fi
                 fi
@@ -1034,19 +1044,19 @@ services() {
     return 0
 }
 
-# iRice's root helper (/usr/lib/irice/irice-root) and its polkit action and
+# Tessera's root helper (/usr/lib/tessera/tessera-root) and its polkit action and
 # rule: the login screen's wallpaper, the fixes in System health and Sharing,
 # and Quick Share's Wi-Fi links then run without a password; updates ask once,
 # at the start. Software Update keeps it in step with this folder.
 root_helper() {
-    command -v pkexec >/dev/null || { warn "polkit isn't installed: iRice will ask for your password for each fix"; return 0; }
-    run sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/irice-root.py" setup "$ROOT/shell" || warn "iRice's root helper wasn't installed: Software Update installs it next time"
+    command -v pkexec >/dev/null || { warn "polkit isn't installed: Tessera will ask for your password for each fix"; return 0; }
+    run sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" setup "$ROOT/shell" || warn "Tessera's root helper wasn't installed: Software Update installs it next time"
     return 0
 }
 
 # Your keyring (passwords for apps) unlocked by your login password, with the
 # login screen's PAM file (greetd's, or the console's): once, backed up first
-# (.pre-irice), only with gnome-keyring's PAM module installed
+# (.pre-tessera), only with gnome-keyring's PAM module installed
 keyring_at_login() { # pam file
     [[ -f /usr/lib/security/pam_gnome_keyring.so ]] || return 0
     local new
@@ -1055,19 +1065,20 @@ keyring_at_login() { # pam file
         note "would add unlocking the keyring at login to $1"
         return 0
     fi
-    [[ -e "$1.pre-irice" ]] || sudo cp -a "$1" "$1.pre-irice" || return 0
+    [[ -e "$1.pre-tessera" ]] || sudo cp -a "$1" "$1.pre-tessera" || return 0
     printf '%s\n' "$new" | sudo tee "$1" >/dev/null && note "Your keyring unlocks with your login password ($1)"
 }
 
-# A quiet start, with the iRice login screen: the boot splash's last frame
+# A quiet start, with the Tessera login screen: the boot splash's last frame
 # held until the login screen draws (Plymouth quits with --retain-splash),
 # and no boot messages on the console: quiet on the kernel's line (GRUB's
-# /etc/default/grub, kept as .pre-irice; other boot loaders: a note). irice
+# /etc/default/grub, kept as .pre-tessera; other boot loaders: a note). tessera
 # uninstall puts both back.
-PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/irice.conf
+PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/tessera.conf
+OLD_PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/irice.conf # (iRice's)
 quiet_boot() {
     if command -v plymouth >/dev/null; then
-        local dropin='# iRice: the splash stays until the login screen draws (irice uninstall removes this)
+        local dropin='# Tessera: the splash stays until the login screen draws (tessera uninstall removes this)
 [Service]
 ExecStart=
 ExecStart=-/usr/bin/plymouth quit --retain-splash'
@@ -1075,6 +1086,7 @@ ExecStart=-/usr/bin/plymouth quit --retain-splash'
             note "would write $PLYMOUTH_DROPIN"
         else
             sudo mkdir -p "${PLYMOUTH_DROPIN%/*}" && printf '%s\n' "$dropin" | sudo tee "$PLYMOUTH_DROPIN" >/dev/null
+            sudo rm -f "$OLD_PLYMOUTH_DROPIN"
             sudo systemctl daemon-reload
         fi
     fi
@@ -1090,14 +1102,35 @@ ExecStart=-/usr/bin/plymouth quit --retain-splash'
         note "would add quiet to GRUB_CMDLINE_LINUX_DEFAULT in $grub and run grub-mkconfig"
         return 0
     fi
-    [[ -e $grub.pre-irice ]] || sudo cp -a "$grub" "$grub.pre-irice" || return 0
+    [[ -e $grub.pre-tessera ]] || sudo cp -a "$grub" "$grub.pre-tessera" || return 0
     # (quoted either way: GRUB_CMDLINE_LINUX_DEFAULT='…' or "…")
     sudo sed -i -E "s/^(GRUB_CMDLINE_LINUX_DEFAULT=['\"]?)/\1quiet /" "$grub" || return 0
     if sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; then
         note "Boot messages hidden (quiet in $grub)"
     else
-        sudo cp -a "$grub.pre-irice" "$grub"
+        sudo cp -a "$grub.pre-tessera" "$grub"
         warn "grub-mkconfig failed: $grub is as it was"
+    fi
+}
+
+# The login screen's entry for a Tessera run from a folder (tools/setup-
+# session.sh, ./dev.sh tty's way in): iRice's, from before it became
+# Tessera, becomes Tessera's, starting the same folder's session script
+login_session_entry() {
+    local sessions="${TESSERA_SYSTEM_ROOT:-}/usr/share/wayland-sessions" # (TESSERA_SYSTEM_ROOT: the tests)
+    local old="$sessions/irice.desktop" exec dir
+    [[ -f $old ]] || return 0
+    exec=$(sed -n 's/^Exec=//p' "$old" | head -1)
+    dir=$(dirname "$exec")
+    if [[ "$exec" == */sandbox/irice-session.sh && -x "$dir/tessera-session.sh" ]]; then
+        if [[ $DRY == 1 ]]; then
+            note "would replace $old with $sessions/tessera.desktop ($dir/tessera-session.sh)"
+            return 0
+        fi
+        printf '%s\n' '[Desktop Entry]' 'Name=Tessera' "Comment=Tessera, the macOS-style Hyprland desktop, from $(dirname "$dir")" \
+            "Exec=$dir/tessera-session.sh" 'Type=Application' 'DesktopNames=Hyprland' |
+            sudo tee "$sessions/tessera.desktop" >/dev/null &&
+            sudo rm -f "$old" && note "The login screen's entry is \"Tessera\" now"
     fi
 }
 
@@ -1109,20 +1142,20 @@ login() {
         if ! pkg_installed greetd; then run sudo pacman -S --needed --noconfirm greetd || return 1; fi
         # The greeter user can't read your home, so it gets its own copy
         local wall
-        wall=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); w=c.get("wallpaper",{}); print(w.get("darkPath") or w.get("path") or "")' "$CONFIG/irice/config.json" 2>/dev/null || true)
+        wall=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); w=c.get("wallpaper",{}); print(w.get("darkPath") or w.get("path") or "")' "$CONFIG/tessera/config.json" 2>/dev/null || true)
         [[ -f "$wall" ]] || wall="$ROOT/shell/assets/wallpapers/tahoe-dusk.jpg"
-        run sudo mkdir -p /usr/share/irice
-        run sudo rm -rf /usr/share/irice/shell
-        run sudo cp -r "$ROOT/shell" /usr/share/irice/shell
+        run sudo mkdir -p /usr/share/tessera
+        run sudo rm -rf /usr/share/tessera/shell
+        run sudo cp -r "$ROOT/shell" /usr/share/tessera/shell
         # (the Material look's files: its login screen is assembled from both)
-        run sudo rm -rf /usr/share/irice/material
-        if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/irice/material; fi
-        run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/irice/greeter.lua
-        run sudo install -m 755 "$ROOT/hypr/greeter-session.sh" /usr/share/irice/greeter-session.sh
+        run sudo rm -rf /usr/share/tessera/material
+        if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/tessera/material; fi
+        run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/tessera/greeter.lua
+        run sudo install -m 755 "$ROOT/hypr/greeter-session.sh" /usr/share/tessera/greeter-session.sh
         # Its look, from your settings (the shell keeps it up to date after:
-        # services/LoginScreen.qml, through irice-root login-look)
+        # services/LoginScreen.qml, through tessera-root login-look)
         local look
-        look=$(python3 -I - "$CONFIG/irice/config.json" <<'PY' 2>/dev/null || true
+        look=$(python3 -I - "$CONFIG/tessera/config.json" <<'PY' 2>/dev/null || true
 import json, sys
 try:
     c = json.load(open(sys.argv[1]))
@@ -1146,27 +1179,32 @@ print(json.dumps({
 PY
 )
         if [[ -n $look ]]; then
-            if [[ $DRY == 1 ]]; then note "would write /usr/share/irice/greeter.json"; else printf '%s' "$look" | sudo tee /usr/share/irice/greeter.json >/dev/null; fi
+            if [[ $DRY == 1 ]]; then note "would write /usr/share/tessera/greeter.json"; else printf '%s' "$look" | sudo tee /usr/share/tessera/greeter.json >/dev/null; fi
         fi
         # In a virtual machine the login screen needs the software cursor too
         if [[ $VIRT != none && $DRY == 0 ]]; then
-            printf '\n-- virtual machine (%s): software cursor\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" | sudo tee -a /usr/share/irice/greeter.lua >/dev/null
+            printf '\n-- virtual machine (%s): software cursor\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" | sudo tee -a /usr/share/tessera/greeter.lua >/dev/null
         fi
-        run sudo cp "$wall" /usr/share/irice/wallpaper.jpg
-        run sudo chmod -R a+rX /usr/share/irice
-        if [[ -f /etc/greetd/config.toml && ! -e /etc/greetd/config.toml.pre-irice ]]; then
-            run sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.pre-irice
+        run sudo cp "$wall" /usr/share/tessera/wallpaper.jpg
+        run sudo chmod -R a+rX /usr/share/tessera
+        if [[ -f /etc/greetd/config.toml && ! -e /etc/greetd/config.toml.pre-tessera ]]; then
+            run sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.pre-tessera
         fi
         local conf='[terminal]
 vt = 1
 
 [default_session]
-command = "/usr/share/irice/greeter-session.sh"
+command = "/usr/share/tessera/greeter-session.sh"
 user = "greeter"'
         if [[ $DRY == 1 ]]; then note "would write /etc/greetd/config.toml"; else printf '%s\n' "$conf" | sudo tee /etc/greetd/config.toml >/dev/null; fi
+        # iRice's copy, from before it became Tessera: greetd starts Tessera's now
+        if [[ -d /usr/share/irice ]] && grep -q /usr/share/tessera/ /etc/greetd/config.toml 2>/dev/null; then
+            run sudo rm -rf /usr/share/irice
+        fi
+        login_session_entry
         if [[ -n "$OTHER_DM" ]]; then
             run sudo systemctl disable "$OTHER_DM"
-            [[ $DRY == 1 ]] || printf '%s\n' "$OTHER_DM" >"$DATA/irice/previous-login-manager" # for irice uninstall
+            [[ $DRY == 1 ]] || printf '%s\n' "$OTHER_DM" >"$DATA/tessera/previous-login-manager" # for tessera uninstall
         fi
         run sudo systemctl enable greetd || return 1 # (started at the next boot)
         keyring_at_login /etc/pam.d/greetd
@@ -1177,22 +1215,56 @@ user = "greeter"'
         # from the file your login shell reads (bash, zsh, fish or sh)
         local profile
         profile=$(login_profile)
-        if ! grep -q 'irice: start Hyprland' "$profile" 2>/dev/null; then
+        if ! grep -q -e 'tessera: start Hyprland' -e 'irice: start Hyprland' "$profile" 2>/dev/null; then
             if [[ $DRY == 1 ]]; then
                 note "would add starting Hyprland on tty1 to $profile"
             elif [[ $profile == *.fish ]]; then
                 mkdir -p "$(dirname "$profile")"
-                printf '%s\n' '# irice: start Hyprland when logging in on the first console' \
+                printf '%s\n' '# tessera: start Hyprland when logging in on the first console' \
                     'if status is-login; and test -z "$WAYLAND_DISPLAY"; and test "$XDG_VTNR" = 1; and command -q start-hyprland' \
                     '    exec start-hyprland' 'end' >"$profile"
             else
-                printf '%s\n' '' '# irice: start Hyprland when logging in on the first console' \
+                printf '%s\n' '' '# tessera: start Hyprland when logging in on the first console' \
                     '[ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = 1 ] && command -v start-hyprland >/dev/null && exec start-hyprland' >>"$profile"
             fi
             note "Log in on the first console (tty1) and Hyprland starts."
         fi
         keyring_at_login /etc/pam.d/login
     fi
+    return 0
+}
+
+# ── iRice is now Tessera ────────────────────────────────────────────────
+# What an install from before the rename made under iRice's names moves to
+# Tessera's before anything is written: your settings and data
+# (migrate-names.py: …/irice to …/tessera, the old names left as links),
+# the Hyprland files it installed, and the backups of yours it kept (the
+# uninstaller puts those back). Nothing is lost or written twice.
+adopt_old_names() {
+    if [[ $DRY == 1 ]]; then
+        note "would move iRice's folders, backups and login entries to Tessera's names"
+        return 0
+    fi
+    python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" || true
+    local p n
+    for p in "$CONFIG/hypr" "$CONFIG/hypr/hyprland.conf"; do
+        [[ -e "$p.pre-irice" && ! -e "$p.pre-tessera" ]] && mv "$p.pre-irice" "$p.pre-tessera"
+    done
+    if [[ -d "$CONFIG/hypr/irice" && ! -L "$CONFIG/hypr/irice" && ! -e "$CONFIG/hypr/tessera" ]]; then
+        mv "$CONFIG/hypr/irice" "$CONFIG/hypr/tessera" && ln -s tessera "$CONFIG/hypr/irice"
+    fi
+    for p in irice.fish:tessera.fish irice-start-hyprland.fish:tessera-start-hyprland.fish; do
+        [[ -f "$CONFIG/fish/conf.d/${p%%:*}" && ! -e "$CONFIG/fish/conf.d/${p##*:}" ]] &&
+            mv "$CONFIG/fish/conf.d/${p%%:*}" "$CONFIG/fish/conf.d/${p##*:}"
+    done
+    # (root's: greetd's config, GRUB's, the PAM files the keyring line went in;
+    # TESSERA_SYSTEM_ROOT: where /etc is, for the tests)
+    local s="${TESSERA_SYSTEM_ROOT:-}"
+    for p in "$s"/etc/greetd/config.toml.pre-irice "$s"/etc/default/grub.pre-irice "$s"/etc/pam.d/*.pre-irice; do
+        [[ -e $p ]] || continue
+        n="${p%.pre-irice}.pre-tessera"
+        [[ -e $n ]] || sudo mv "$p" "$n" || true
+    done
     return 0
 }
 
@@ -1207,9 +1279,9 @@ verify() {
     hv=$(hypr_version) qv=$(qs_version)
     version_ge "${hv:-0}" "$NEED_HYPRLAND" && ok "Hyprland $hv" || bad "Hyprland ${hv:-missing} (needs $NEED_HYPRLAND+)" "sudo pacman -Syu hyprland"
     if [[ -n "$hv" ]] && ! hypr_tested "$hv"; then
-        meh "Hyprland $hv is newer than this iRice is tested with ($HYPR_MAX)" "irice update brings support once it's ready; until then the glass or some settings may not work"
+        meh "Hyprland $hv is newer than this Tessera is tested with ($HYPR_MAX)" "tessera update brings support once it's ready; until then the glass or some settings may not work"
     fi
-    version_ge "${qv:-0}" "$NEED_QUICKSHELL" && ok "Quickshell $qv" || bad "Quickshell ${qv:-missing} (needs $NEED_QUICKSHELL+)" "$ROOT/tools/build-quickshell.sh (iRice's own; or sudo pacman -Syu quickshell)"
+    version_ge "${qv:-0}" "$NEED_QUICKSHELL" && ok "Quickshell $qv" || bad "Quickshell ${qv:-missing} (needs $NEED_QUICKSHELL+)" "$ROOT/tools/build-quickshell.sh (Tessera's own; or sudo pacman -Syu quickshell)"
     for c in hyprctl hypridle wpctl nmcli bluetoothctl grim slurp wl-copy cliphist playerctl brightnessctl notify-send python3 curl jq; do
         command -v "$c" >/dev/null || missing+=("$c")
     done
@@ -1218,24 +1290,25 @@ verify() {
     for c in qalc rg plocate pdftoppm swappy matugen tesseract wf-recorder magick; do command -v "$c" >/dev/null || missing+=("$c"); done
     [[ ${#missing[@]} == 0 ]] && ok "Feature tools (conversions, search, Quick Preview, markup, app colours)" || meh "Some features are off; missing: ${missing[*]}"
     # Shell files, shaders
-    if [[ -f "$CONFIG/quickshell/irice/shell.qml" ]]; then
+    if [[ -f "$CONFIG/quickshell/tessera/shell.qml" ]]; then
         local frag qsb
-        frag=$(find -L "$CONFIG/quickshell/irice" -name '*.frag' -o -name '*.vert' | wc -l)
-        qsb=$(find -L "$CONFIG/quickshell/irice" -name '*.qsb' | wc -l)
-        (( qsb >= frag && frag > 0 )) && ok "Shell installed, $qsb shaders compiled" || bad "Shaders aren't compiled ($qsb of $frag)" "irice rebuild"
+        frag=$(find -L "$CONFIG/quickshell/tessera" -name '*.frag' -o -name '*.vert' | wc -l)
+        qsb=$(find -L "$CONFIG/quickshell/tessera" -name '*.qsb' | wc -l)
+        (( qsb >= frag && frag > 0 )) && ok "Shell installed, $qsb shaders compiled" || bad "Shaders aren't compiled ($qsb of $frag)" "tessera rebuild"
     else
-        bad "The shell isn't installed in $CONFIG/quickshell/irice" "run the installer again"
+        bad "The shell isn't installed in $CONFIG/quickshell/tessera" "run the installer again"
     fi
     # Glass plugin built for this Hyprland
-    local so="$DATA/irice/irice-glass.so"
+    local so="$DATA/tessera/tessera-glass.so"
+    [[ -f "$so" ]] || so="$DATA/tessera/irice-glass.so" # (built before iRice became Tessera)
     if [[ -f "$so" ]] && [[ -n "$(nm -D "$so" 2>/dev/null | grep -E "pluginInit|PLUGIN_INIT")" ]]; then
-        if [[ "$(cat "$DATA/irice/irice-glass.built-for" 2>/dev/null)" == "$hv" ]]; then
+        if [[ "$(cat "$DATA/tessera/tessera-glass.built-for" 2>/dev/null || cat "$DATA/tessera/irice-glass.built-for" 2>/dev/null)" == "$hv" ]]; then
             ok "Glass plugin built for Hyprland $hv"
         else
-            meh "The glass plugin was built for another Hyprland version" "irice rebuild (until then glass looks frosted)"
+            meh "The glass plugin was built for another Hyprland version" "tessera rebuild (until then glass looks frosted)"
         fi
     else
-        meh "The glass plugin isn't built (glass looks frosted)" "irice rebuild"
+        meh "The glass plugin isn't built (glass looks frosted)" "tessera rebuild"
     fi
     # Hyprland config: Hyprland checks it itself
     if [[ -f "$CONFIG/hypr/hyprland.lua" ]]; then
@@ -1249,47 +1322,49 @@ verify() {
     else
         bad "No Hyprland config in $CONFIG/hypr" "run the installer again"
     fi
-    if [[ -f "$CONFIG/hypr/irice/from-your-old-config.lua" ]]; then
-        note "Settings from your old hyprland.conf are in $CONFIG/hypr/irice/from-your-old-config.lua, turned off (remove \"-- \" to use one)"
+    if [[ -f "$CONFIG/hypr/tessera/from-your-old-config.lua" ]]; then
+        note "Settings from your old hyprland.conf are in $CONFIG/hypr/tessera/from-your-old-config.lua, turned off (remove \"-- \" to use one)"
     fi
     # Fonts, icons, services
     # (no grep -q in these pipelines: it stops reading early, and pipefail
     # would count the writer's broken pipe as a failure)
     [[ -n "$(fc-list : family 2>/dev/null | grep -i '^Inter')" ]] && ok "Inter font" || bad "The Inter font is missing" "sudo pacman -S inter-font"
-    # (an icon theme is optional: without one, the apps' own icons, styled by iRice)
+    # (an icon theme is optional: without one, the apps' own icons, styled by Tessera)
     icons=""
     for t in Colloid Tela-circle Numix-Circle Flat-Remix-Blue-Light Papirus; do
         [[ -d /usr/share/icons/$t || -d "$DATA/icons/$t" ]] && icons+="${icons:+, }$t"
     done
-    [[ -n $icons ]] || icons="the apps' own, styled by iRice"
+    [[ -n $icons ]] || icons="the apps' own, styled by Tessera"
     ok "App icons: $icons"
     systemctl is-enabled --quiet NetworkManager 2>/dev/null && ok "NetworkManager on" || meh "NetworkManager isn't on (Wi-Fi menus won't work)" "sudo systemctl enable --now NetworkManager"
     systemctl is-enabled --quiet bluetooth 2>/dev/null && ok "Bluetooth service on" || meh "Bluetooth service isn't on" "sudo systemctl enable --now bluetooth"
     systemctl is-enabled --quiet avahi-daemon 2>/dev/null && ok "mDNS (avahi) on" || meh "avahi-daemon isn't on (phones on the same Wi-Fi won't find this computer)" "sudo systemctl enable --now avahi-daemon"
     # Login
     if systemctl is-enabled --quiet greetd 2>/dev/null; then
-        if [[ -f /usr/share/irice/shell/greeter.qml && -f /usr/share/irice/greeter.lua ]] && id greeter >/dev/null 2>&1 && grep -q irice /etc/greetd/config.toml 2>/dev/null; then
-            ok "iRice login screen (greetd)"
+        if [[ -f /usr/share/tessera/shell/greeter.qml && -f /usr/share/tessera/greeter.lua ]] && id greeter >/dev/null 2>&1 && grep -q tessera /etc/greetd/config.toml 2>/dev/null; then
+            ok "Tessera login screen (greetd)"
+        elif [[ -f /usr/share/irice/shell/greeter.qml ]] && grep -q /usr/share/irice/ /etc/greetd/config.toml 2>/dev/null; then
+            meh "The login screen is the one installed before iRice became Tessera (it works)" "./install.sh --only=login"
         else
-            bad "greetd is on but the iRice login screen isn't set up" "run the installer again"
+            bad "greetd is on but the Tessera login screen isn't set up" "run the installer again"
         fi
     elif [[ -n "$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null)" ]]; then
         ok "Login screen: $(basename "$(readlink /etc/systemd/system/display-manager.service)" .service) (choose Hyprland there)"
-    elif grep -q 'irice: start Hyprland' "$(login_profile)" 2>/dev/null; then
+    elif grep -q -e 'tessera: start Hyprland' -e 'irice: start Hyprland' "$(login_profile)" 2>/dev/null; then
         ok "Hyprland starts when you log in on tty1"
     else
         meh "Nothing starts Hyprland at login" "start it with: start-hyprland"
     fi
-    # Inside a running iRice session: the live parts
+    # Inside a running Tessera session: the live parts
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
-        hyprctl irice-glass ping 2>/dev/null | grep -q irice-glass && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "irice rebuild --load"
-        if pgrep -af '(^|/)(irice-shell|qs|quickshell) ' | grep -q irice; then
-            ok "The iRice shell is running"
+        { hyprctl tessera-glass ping 2>/dev/null | grep -q tessera-glass || hyprctl irice-glass ping 2>/dev/null | grep -q irice-glass; } && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "tessera rebuild --load"
+        if pgrep -af '(^|/)(tessera-shell|irice-shell|qs|quickshell) ' | grep -qi -e tessera -e irice; then
+            ok "The Tessera shell is running"
         else
-            bad "The iRice shell isn't running" "irice repair"
+            bad "The Tessera shell isn't running" "tessera repair"
         fi
         local qlog
-        qlog=$(timeout 5 qs log -c irice -t 400 2>/dev/null)
+        qlog=$(timeout 5 qs log -c tessera -t 400 2>/dev/null)
         if grep -q "Failed to load configuration" <<<"$qlog"; then
             bad "The shell reported an error" "$(grep -m1 -A1 'Failed to load' <<<"$qlog" | tail -1)"
         fi
@@ -1303,31 +1378,32 @@ verify() {
 
 # ── Run ─────────────────────────────────────────────────────────────────
 if [[ $VERIFY_ONLY == 1 ]]; then
-    printf '%siRice check%s\n' "$B" "$R"
+    printf '%sTessera check%s\n' "$B" "$R"
     verify
     exit $?
 fi
 
 if [[ $ONLY == login ]]; then
-    printf '%siRice login screen%s\n' "$B" "$R"
+    printf '%sTessera login screen%s\n' "$B" "$R"
     VIRT=$(systemd-detect-virt --vm 2>/dev/null || true)
     VIRT=${VIRT:-none}
     OTHER_DM=$(other_login_manager) GREETER=yes
-    say "  Settings from $CONFIG/irice$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM is turned off (irice uninstall turns it back on)")"
-    ask "Switch to the iRice login screen?" y || { say "Nothing changed."; exit 0; }
-    mkdir -p "$DATA/irice"
+    say "  Settings from $CONFIG/tessera$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM is turned off (tessera uninstall turns it back on)")"
+    ask "Switch to the Tessera login screen?" y || { say "Nothing changed."; exit 0; }
+    adopt_old_names
+    mkdir -p "$DATA/tessera"
     login || die "The login screen couldn't be set up (see above)"
-    say "${GRN}Done.${R} Restart to begin at the iRice login screen."
+    say "${GRN}Done.${R} Restart to begin at the Tessera login screen."
     exit 0
 fi
 
 cat <<EOF
 
-${B}iRice${R}  A glass desktop for Hyprland
+${B}Tessera${R}  A glass desktop for Hyprland
 
-This sets up iRice on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
+This sets up Tessera on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
   • takes a snapshot first, when snapper or Timeshift is set up
-  • installs Hyprland, Quickshell and everything iRice uses (pacman; updates the system)
+  • installs Hyprland, Quickshell and everything Tessera uses (pacman; updates the system)
   • what this computer's hardware is missing, if you like (firmware, drivers, biometrics)
   • builds the glass plugin and shaders for this machine
   • installs the shell and its Hyprland config (yours is backed up first)
@@ -1343,6 +1419,7 @@ show_plan
 say ""
 ask "Start?" y || { say "Nothing changed."; exit 0; }
 
+adopt_old_names
 step "Checking your system" preflight
 step "Safety snapshot" snapshot optional
 step "Installing packages" install_packages
@@ -1351,8 +1428,8 @@ step "Pointer (optional)" aur_extras optional
 step "Emoji styles (optional)" emoji_extras optional
 step "Icon themes (optional)" icon_themes optional
 step "For this computer (optional)" hardware optional
-step "Building iRice" build optional
-step "Installing iRice" install_files
+step "Building Tessera" build optional
+step "Installing Tessera" install_files
 step "Wallpapers (optional)" extras optional
 step "Your settings" settings optional
 step "Starting services" services optional
@@ -1368,11 +1445,11 @@ if [[ -n "$OLD_CONFIG" ]]; then
     printf '\n%s\n' "$OLD_CONFIG" | sed 's/^/  /'
 fi
 
-printf '\n%s%s%s\n' "$B" "$([[ $result == 0 ]] && echo "iRice is ready." || echo "iRice is installed, with problems above.")" "$R"
+printf '\n%s%s%s\n' "$B" "$([[ $result == 0 ]] && echo "Tessera is ready." || echo "Tessera is installed, with problems above.")" "$R"
 cat <<EOF
-  • Restart to begin$([[ $GREETER_DONE == 1 ]] && echo " at the iRice login screen" || ([[ -n "$OTHER_DM" ]] && echo ", and pick Hyprland at your login screen" || echo ": log in on tty1 and Hyprland starts")).
+  • Restart to begin$([[ $GREETER_DONE == 1 ]] && echo " at the Tessera login screen" || ([[ -n "$OTHER_DM" ]] && echo ", and pick Hyprland at your login screen" || echo ": log in on tty1 and Hyprland starts")).
   • Super+/ lists the keyboard shortcuts; Super+, opens Settings.
-  • The ${B}irice${R} command: irice doctor (check), irice update, irice rebuild, irice repair, irice uninstall.
+  • The ${B}tessera${R} command: tessera doctor (check), tessera update, tessera rebuild, tessera repair, tessera uninstall.
   • Log: $LOG
 EOF
 if [[ $result == 0 ]] && ask "Restart now?" n; then

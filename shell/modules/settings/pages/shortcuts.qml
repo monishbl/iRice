@@ -6,7 +6,7 @@ import qs.services
 
 // Keyboard Shortcuts: every bind, grouped like the data, searchable by name
 // or by keys ("super s", "ctrl print"). Change, turn off or reset a default;
-// add shortcuts of your own for apps, default apps, iRice actions or
+// add shortcuts of your own for apps, default apps, Tessera actions or
 // commands. Two views: the list, and the form for one shortcut.
 Column {
     id: page
@@ -249,7 +249,7 @@ Column {
             Row {
                 visible: group.modelData.binds.length === 0
                 label: "No shortcuts of your own yet"
-                detail: "Add one to open an app, run a command or start an iRice action."
+                detail: "Add one to open an app, run a command or start a Tessera action."
                 SettingsButton { text: "Add shortcut"; icon: "plus"; onClicked: page.openForm("") }
             }
             Repeater {
@@ -323,7 +323,7 @@ Column {
             if (kind === "app" && !action())
                 return "Choose an app from the list.";
             if (kind === "shell" && !shellName)
-                return "Choose an iRice action.";
+                return "Choose a Tessera action.";
             if (kind === "command" && commandField.text.trim() === "")
                 return "Enter a command to run, for example kitty -e btop.";
             return "";
@@ -460,7 +460,7 @@ Column {
                 id: kindPicker
                 anchors { left: parent.left; right: parent.right; margins: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                 readonly property var kinds: ["app", "role", "shell", "command"]
-                options: ["App", "Default app", "iRice action", "Command"]
+                options: ["App", "Default app", "Tessera action", "Command"]
                 current: Math.max(0, kinds.indexOf(form.kind))
                 onSelected: i => {
                     form.kind = kinds[i];
@@ -672,10 +672,10 @@ Column {
                 label: "Markup editor"
                 Segmented {
                     width: 200
-                    options: ["iRice", "Swappy"]
+                    options: ["Tessera", "Swappy"]
                     off: Tools.has("swappy") ? [] : [1]
                     current: Config.options.screenshot.editor === "swappy" ? 1 : 0
-                    onSelected: i => Config.options.screenshot.editor = i === 1 ? "swappy" : "irice"
+                    onSelected: i => Config.options.screenshot.editor = i === 1 ? "swappy" : "tessera"
                 }
             }
             Row {

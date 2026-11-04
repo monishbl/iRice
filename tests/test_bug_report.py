@@ -25,7 +25,7 @@ def load():
 
 
 SAMPLE = """\
-\x1b[33m WARN\x1b[0m: loading /home/alice/.config/irice/config.json
+\x1b[33m WARN\x1b[0m: loading /home/alice/.config/tessera/config.json
  INFO: user alice on alice-laptop, mail alice.smith@example.org
  INFO: token = ghp_AbC123dEf456GhI789jKl012MnO345pQr678
  INFO: Authorization: Bearer sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
@@ -54,7 +54,7 @@ class Scrubbing(unittest.TestCase):
         self.assertNotIn(" alice ", self.out)
 
     def test_what_replaces_them_says_what_it_was(self):
-        for label in ("~/.config/irice", "<email>", "<redacted>", "<token>", "<hex>", "<ip>", "<mac>", "<name>", "<user>", "<host>"):
+        for label in ("~/.config/tessera", "<email>", "<redacted>", "<token>", "<hex>", "<ip>", "<mac>", "<name>", "<user>", "<host>"):
             self.assertIn(label, self.out, label)
 
     def test_harmless_text_is_kept(self):
@@ -96,7 +96,7 @@ class Payload(unittest.TestCase):
         self.m = load()
         self.report = {"title": "Dock vanishes", "happened": "It's gone after waking", "steps": "", "expected": "",
                        "includeLog": True, "includeInfo": True, "includeShot": False,
-                       "log": "a log", "sysinfo": {"iRice": "abc123", "Hyprland": "0.56.2"}}
+                       "log": "a log", "sysinfo": {"Tessera": "abc123", "Hyprland": "0.56.2"}}
 
     def test_unticked_parts_are_not_sent(self):
         body = self.m.payload(dict(self.report, includeLog=False, includeInfo=False))

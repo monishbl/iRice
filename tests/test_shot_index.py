@@ -35,7 +35,7 @@ class Index(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = Path(self.tmp.name)
-        self.shots, self.bin, self.index = t / "Screenshots", t / "bin", t / "state" / "irice" / "screenshot-text.json"
+        self.shots, self.bin, self.index = t / "Screenshots", t / "bin", t / "state" / "tessera" / "screenshot-text.json"
         self.shots.mkdir()
         self.bin.mkdir()
         fake = self.bin / "tesseract"

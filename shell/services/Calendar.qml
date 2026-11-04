@@ -16,7 +16,7 @@ import qs.common
 Singleton {
     id: root
 
-    // Subscriptions: [{ name, url, color, enabled }] in ~/.config/irice/calendars.json
+    // Subscriptions: [{ name, url, color, enabled }] in ~/.config/tessera/calendars.json
     property var sources: []
     // Local events: [{ id, title, start, end, allDay, alert (minutes or -1), notes }] (ms timestamps)
     property var local: []

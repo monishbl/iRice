@@ -15,7 +15,7 @@ class LinkMemory(unittest.TestCase):
     def setUp(self):
         self.now = 1000.0
         self.dir = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self.dir.name, "irice", "quickshare-links.json")
+        self.path = os.path.join(self.dir.name, "tessera", "quickshare-links.json")
         self.m = links.LinkMemory(self.path, clock=lambda: self.now)
 
     def tearDown(self):

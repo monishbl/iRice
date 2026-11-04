@@ -202,7 +202,7 @@ def shaper():
 
 
 def main():
-    tmp = tempfile.mkdtemp(prefix="irice-emoji-")
+    tmp = tempfile.mkdtemp(prefix="tessera-emoji-")
     paths = {k: fetch(u, os.path.join(tmp, k)) for k, u in URLS.items()}
 
     ann = json.load(open(paths["ann"], encoding="utf-8"))["annotations"]["annotations"]

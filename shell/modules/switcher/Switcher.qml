@@ -14,7 +14,7 @@ import qs.services
 // previous window: the strip only appears once Alt is held for `holdDelay`
 // ms (or on a second Tab), so nothing flashes.
 //
-// Tab presses arrive as global shortcuts (irice:switcher, irice:switcherBack)
+// Tab presses arrive as global shortcuts (tessera:switcher, tessera:switcherBack)
 // because Hyprland eats the bound keys. Releasing Alt can't come that way:
 // Hyprland drops a release bind once another key was pressed while the
 // modifier was held (that's what makes "tap Super" work). So the first press
@@ -51,7 +51,7 @@ Scope {
     function candidates() {
         return Hyprland.toplevels.values.filter(t => {
             const ws = t.workspace;
-            return !ws || ws.id > 0 || ws.name === "special:minimized" || ws.name === "special:irice-desktop";
+            return !ws || ws.id > 0 || ws.name === "special:minimized" || ws.name === "special:tessera-desktop";
         });
     }
 
@@ -160,23 +160,23 @@ Scope {
         }
     }
 
-    // hypr/irice/keybinds.lua: ALT + Tab -> irice:switcher,
-    // ALT + SHIFT + Tab -> irice:switcherBack
+    // hypr/tessera/keybinds.lua: ALT + Tab -> tessera:switcher,
+    // ALT + SHIFT + Tab -> tessera:switcherBack
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "switcher"
         description: "Switch windows (hold Alt, press Tab)"
         onPressed: root.step(1)
     }
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "switcherBack"
         description: "Switch windows, backwards"
         onPressed: root.step(-1)
     }
     // Optional: a compositor-side "Alt released" signal, if one is bound
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "switcherCommit"
         description: "Switch to the selected window"
         onPressed: root.commit()

@@ -7,7 +7,7 @@ import qs.services
 
 // Report a Bug: what happened, and what's attached (screenshot, log, system
 // info), each shown before it's sent and each can be left out. Sent to
-// iRice's report server (services/BugReport.qml), which files a GitHub issue.
+// Tessera's report server (services/BugReport.qml), which files a GitHub issue.
 Column {
     id: page
     readonly property string pageTitle: "Report a Bug"
@@ -156,7 +156,7 @@ Column {
             }
         }
         Row {
-            label: "iRice log"
+            label: "Tessera log"
             detail: BugReport.gathering ? "Reading…" : "The last 500 lines, scrubbed"
             QQ.Row {
                 spacing: 8
@@ -183,7 +183,7 @@ Column {
         }
         Row {
             label: "System info"
-            detail: "iRice, Hyprland and Quickshell versions, graphics, displays, distribution"
+            detail: "Tessera, Hyprland and Quickshell versions, graphics, displays, distribution"
             QQ.Row {
                 spacing: 8
                 SettingsButton {
@@ -212,7 +212,7 @@ Column {
 
     Group {
         width: parent.width
-        footer: "Sent to iRice's report server, which files it as an issue on github.com/monishbl/iRice. Your IP address is used only to limit how many reports come from one network and isn't stored with the report."
+        footer: "Sent to Tessera's report server, which files it as an issue on github.com/monishbl/iRice. Your IP address is used only to limit how many reports come from one network and isn't stored with the report."
         Row {
             label: BugReport.state_ === "sending" ? "Sending…"
                 : BugReport.state_ === "sent" ? "Report sent. Thank you!"

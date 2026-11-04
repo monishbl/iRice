@@ -989,7 +989,7 @@ class Shield(unittest.TestCase):
         self.events = []
         events = self.events
         self.old = (helper.start_group, helper.run, helper.have, helper.DBUS_SHIELD)
-        helper.DBUS_SHIELD = str(Path(self.dir.name, "zzz-irice-quickshare.conf"))
+        helper.DBUS_SHIELD = str(Path(self.dir.name, "zzz-tessera-quickshare.conf"))
 
         def start(wpa, dev, freq, anywhere=True, **_):
             events.append(("group", Path(helper.DBUS_SHIELD).exists()))

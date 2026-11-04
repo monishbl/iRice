@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Makes iRice's own UI sounds from sine partials, in several styles:
+"""Makes Tessera's own UI sounds from sine partials, in several styles:
 shell/assets/sounds/<pack>/<event>.ogg (Settings → Notifications → Style).
 
   tools/make-sounds.py

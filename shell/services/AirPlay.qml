@@ -7,16 +7,16 @@ import qs.common
 
 // AirPlay speakers (HomePod, Apple TV, AirPlay speakers) as outputs, with
 // PipeWire's own AirPlay support (RAOP, the pipewire-zeroconf package): a
-// small PipeWire client of its own (assets/pipewire/irice-airplay.conf) finds
+// small PipeWire client of its own (assets/pipewire/tessera-airplay.conf) finds
 // them over mDNS and adds each as an output. It runs as a user unit
-// (irice-airplay, so it outlives a shell restart), or as the shell's own
+// (tessera-airplay, so it outlives a shell restart), or as the shell's own
 // child without systemd. Off until Settings -> Sound turns it on.
 Singleton {
     id: root
 
     readonly property bool wanted: Config.options.audio.airplay
-    readonly property string conf: Quickshell.shellDir + "/assets/pipewire/irice-airplay.conf"
-    readonly property string unit: "irice-airplay"
+    readonly property string conf: Quickshell.shellDir + "/assets/pipewire/tessera-airplay.conf"
+    readonly property string unit: "tessera-airplay"
 
     property bool checked: false
     property bool installed: false // pipewire-zeroconf's raop modules
@@ -65,7 +65,7 @@ Singleton {
         // (100: no systemd user manager. A unit left over, restarting or
         // stopping, is cleared first: one copy only)
         command: ["sh", "-c", "systemctl --user show-environment >/dev/null 2>&1 || exit 100; "
-            + "systemctl --user stop \"$1\" 2>/dev/null; systemctl --user reset-failed \"$1\" 2>/dev/null; "
+            + "systemctl --user stop \"$1\" irice-airplay 2>/dev/null; systemctl --user reset-failed \"$1\" 2>/dev/null; "
             + "exec systemd-run --user --quiet --collect --unit=\"$1\" -p Restart=on-failure -p RestartSec=5 pipewire -c \"$2\"", "sh", root.unit, root.conf]
         stderr: StdioCollector { id: starterErr }
         onExited: code => {
@@ -96,7 +96,8 @@ Singleton {
     function stop() {
         if (child.running)
             child.signal(15);
-        Quickshell.execDetached(["systemctl", "--user", "stop", unit]);
+        // (irice-airplay: its unit when it was started before iRice became Tessera)
+        Quickshell.execDetached(["systemctl", "--user", "stop", unit, "irice-airplay"]);
         running = false;
     }
 

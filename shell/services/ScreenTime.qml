@@ -39,7 +39,7 @@ Singleton {
         timeout: 120
         respectInhibitors: true // a playing video counts as use
     }
-    // (iRice's own windows, like Settings, don't count)
+    // (Tessera's own windows, like Settings, don't count)
     readonly property string app: Apps.activeEntry?.id === "org.quickshell" ? "" : (Apps.activeEntry?.id ?? "")
     property real since: Date.now()
     property string counting: ""

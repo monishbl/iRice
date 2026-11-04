@@ -14,19 +14,19 @@ not as separate groups.
 - **Add another account** works the same way, with an account already
   connected. Each account has its own **Sync now** and **Disconnect**.
 - Otherwise the native helper `goa-signin` (`shell/native/goa-signin.c`,
-  built with iRice's native helpers) asks GOA's own Google provider to add
+  built with Tessera's native helpers) asks GOA's own Google provider to add
   one. Your browser opens at Google's sign-in; when you approve, Google
   redirects to GOA's handler, which hands the result back to the helper over
   D-Bus. The account is then GOA's, like one added in GNOME Settings, and
   GNOME Settings is never opened. GOA shows a small "Sign in" window; the
   helper presses its button for you.
 - Calendars switched off for the account in Online Accounts are switched on,
-  since connecting it to iRice asks for them. GOA's Google sign-in already
+  since connecting it to Tessera asks for them. GOA's Google sign-in already
   includes Tasks.
 
-GOA renews the sign-in; iRice asks it for short-lived tokens over the session
+GOA renews the sign-in; Tessera asks it for short-lived tokens over the session
 bus and never sees a password or refresh token. **Disconnect account** only
-unlinks iRice from that account; it stays usable by other apps. Needs
+unlinks Tessera from that account; it stays usable by other apps. Needs
 `gnome-online-accounts` and `python-gobject`. Without the native helpers,
 Settings offers Online Accounts' own window instead.
 
@@ -91,7 +91,7 @@ running in between.
 
 Every change to an event or task is written to an outbox on disk before it's
 sent, and shows as made right away, including after a restart. If Google
-can't be reached, it waits: iRice tries again after 30 seconds, then 2, 8 and
+can't be reached, it waits: Tessera tries again after 30 seconds, then 2, 8 and
 30 minutes, and before every sync. Changes go out in the order you made them.
 
 Each edit carries the version (ETag) of the item it was made against, sent as
@@ -107,7 +107,7 @@ notes to other apps.
 
 ## Storage
 
-Kept in `$XDG_CONFIG_HOME/irice/google` (mode `0700`, files `0600`, written
+Kept in `$XDG_CONFIG_HOME/tessera/google` (mode `0700`, files `0600`, written
 atomically):
 
 - `accounts/<id>/`, one folder per connected account:
@@ -124,7 +124,7 @@ The single account kept before several were possible moves into
 
 Tokens never reach QML, command lines or UiState. A sync that fails part-way
 keeps the last complete data and position. **Remove local data** deletes
-iRice's copy of an account, and its unsent changes, without contacting
+Tessera's copy of an account, and its unsent changes, without contacting
 Google.
 
 ## Not done yet

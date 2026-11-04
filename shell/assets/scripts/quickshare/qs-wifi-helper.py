@@ -162,14 +162,14 @@ def ap_freq(station, hint, chans, driver=""):
 # RemoveInterface meanwhile (P2PDevice.Disconnect ends the group). In /etc,
 # as the bus reads policy only from /usr/share and /etc; one left by a
 # helper that died is removed when the next one starts.
-DBUS_SHIELD = "/etc/dbus-1/system.d/zzz-irice-quickshare.conf"
+DBUS_SHIELD = "/etc/dbus-1/system.d/zzz-tessera-quickshare.conf"
 
 
 def dbus_shield_conf():
     return """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
-  <!-- iRice Quick Share, while it hosts a Wi-Fi Direct group (removed afterwards):
+  <!-- Tessera Quick Share, while it hosts a Wi-Fi Direct group (removed afterwards):
        NetworkManager would end the group with RemoveInterface -->
   <policy context="mandatory">
     <deny send_destination="fi.w1.wpa_supplicant1" send_interface="fi.w1.wpa_supplicant1"
@@ -180,7 +180,7 @@ def dbus_shield_conf():
 
 
 NM_CONF_DIR = "/run/NetworkManager/conf.d"
-NM_CONF = "90-irice-quickshare.conf"
+NM_CONF = "90-tessera-quickshare.conf"
 
 
 def nm_unmanaged_conf(station, p2p_dev=True):
@@ -199,7 +199,7 @@ def nm_unmanaged_conf(station, p2p_dev=True):
     specs = ([f"interface-name:p2p-dev-{station}"] if p2p_dev else []) + \
         [f"interface-name:p2p-{station}-*", "interface-name:p2p-grp-*",
          f"interface-name:{JOIN_IFACE}", f"interface-name:{AP_IFACE}"]
-    return "# iRice Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
+    return "# Tessera Quick Share, while it makes a Wi-Fi link (removed afterwards)\n" \
            "[keyfile]\nunmanaged-devices+=" + ";".join(specs) + "\n"
 
 
@@ -663,7 +663,7 @@ class Links:
             for f, t, c in nft_input_chains(run("nft", "list", "chains", check=False)):
                 for proto, port in LINK_PORTS:
                     out = run("nft", "--echo", "--handle", "insert", "rule", f, t, c, "iifname", iface, proto, "dport",
-                              str(port), "accept", "comment", '"irice quick share"', check=False)
+                              str(port), "accept", "comment", '"tessera quick share"', check=False)
                     m = re.search(r"# handle (\d+)", out)
                     if m:
                         self.undo.append(lambda f=f, t=t, c=c, h=m.group(1): run("nft", "delete", "rule", f, t, c, "handle", h, check=False))

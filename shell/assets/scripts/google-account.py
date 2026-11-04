@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Google Calendar and Tasks for iRice: one request per run, JSON on stdin,
+"""Google Calendar and Tasks for Tessera: one request per run, JSON on stdin,
 JSON lines out (Google.qml).
 
 Several accounts at once: each has its own directory (accounts/<id>/: its
@@ -15,8 +15,8 @@ isn't overwritten: Google's version is kept and the shell is told once, with
 what you had, to copy.
 
 Signing in: through GNOME Online Accounts (GOA), the desktop's account
-broker, so iRice never holds a password or refresh token; the account is
-added from iRice's Settings by the native helper goa-signin (browser sign-in,
+broker, so Tessera never holds a password or refresh token; the account is
+added from Tessera's Settings by the native helper goa-signin (browser sign-in,
 no GNOME Settings app). A custom OAuth client (loopback, PKCE) is the
 alternative for people who'd rather use their own.
 
@@ -219,7 +219,7 @@ class OnlineAccounts:
         return accounts
 
     # Calendars switched off for an account in Online Accounts: connecting it
-    # to iRice is asking for them, so they're switched on
+    # to Tessera is asking for them, so they're switched on
     def enable_calendar(self, path):
         try:
             from gi.repository import Gio, GLib
@@ -270,18 +270,18 @@ class Account:
                     goaSettings=shutil.which('gnome-online-accounts-gtk') or shutil.which('gnome-control-center') or '')
 
     # The native helper that adds the account to Online Accounts (goa-signin,
-    # built with iRice's native helpers); without it, Online Accounts' own
+    # built with Tessera's native helpers); without it, Online Accounts' own
     # window is the way
     @staticmethod
     def signin_helper():
         here = Path(__file__).resolve().parent
         built = here.parent.parent / 'native' / 'build' / 'goa-signin'
-        return str(built) if os.access(built, os.X_OK) else shutil.which('irice-goa-signin') or ''
+        return str(built) if os.access(built, os.X_OK) else shutil.which('tessera-goa-signin') or ''
 
     def signin(self):
         helper = self.signin_helper()
         if not helper:
-            raise RuntimeError('Connecting from here needs iRice\'s native helpers. Run Software Update (or irice rebuild), or use Online Accounts.')
+            raise RuntimeError('Connecting from here needs Tessera\'s native helpers. Run Software Update (or tessera rebuild), or use Online Accounts.')
         import subprocess
         # (the shell moves Settings out of the way while the sign-in window
         # and the browser are up: it would cover them)
@@ -319,7 +319,7 @@ class Account:
                 self.send_response(200 if valid else 400)
                 self.send_header('Content-Type', 'text/plain; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(b'Return to iRice Settings.' if valid else b'Invalid authorization response.')
+                self.wfile.write(b'Return to Tessera Settings.' if valid else b'Invalid authorization response.')
             def log_message(self, *_):
                 pass
 

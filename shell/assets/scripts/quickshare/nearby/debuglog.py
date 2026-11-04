@@ -1,7 +1,7 @@
 """A log of what Quick Share does, for testing with a phone: on with
-IRICE_QS_DEBUG=1 or the file $XDG_RUNTIME_DIR/irice-quickshare.debug.
+TESSERA_QS_DEBUG=1 or the file $XDG_RUNTIME_DIR/tessera-quickshare.debug.
 
-It goes to $XDG_RUNTIME_DIR/irice-quickshare.log (private to you, gone at
+It goes to $XDG_RUNTIME_DIR/tessera-quickshare.log (private to you, gone at
 logout), one line per event: the time, the connection, and what happened.
 Frames are logged by kind and size only: never keys, PINs, passwords, file
 contents or names of files (the UKEY2 exchange and the encrypted frames are
@@ -26,10 +26,10 @@ def _private_dir():
 
 _dir = _private_dir()
 _path = None
-# (or `touch $XDG_RUNTIME_DIR/irice-quickshare.debug`: the shell starts the
+# (or `touch $XDG_RUNTIME_DIR/tessera-quickshare.debug`: the shell starts the
 # helper, so its environment is the shell's; the next start picks it up)
-if _dir and (os.environ.get("IRICE_QS_DEBUG") == "1" or os.path.exists(os.path.join(_dir, "irice-quickshare.debug"))):
-    _path = os.path.join(_dir, "irice-quickshare.log")
+if _dir and ((os.environ.get("TESSERA_QS_DEBUG") or os.environ.get("IRICE_QS_DEBUG")) == "1" or os.path.exists(os.path.join(_dir, "tessera-quickshare.debug"))):
+    _path = os.path.join(_dir, "tessera-quickshare.log")
 
 
 def enabled():

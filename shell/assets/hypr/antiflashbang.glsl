@@ -1,5 +1,5 @@
 #version 300 es
-// iRice anti-flashbang: softens very bright regions (white pages at night)
+// Tessera anti-flashbang: softens very bright regions (white pages at night)
 // while leaving mid-tones and colours alone.
 precision mediump float;
 in vec2 v_texcoord;

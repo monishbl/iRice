@@ -7,7 +7,7 @@ import Quickshell.Wayland
 import qs.common
 
 // Shake to find the pointer (Settings → Mouse & Trackpad): Hyprland notices the
-// shake (hypr/irice/findpointer.lua) and calls irice:findPointer. Then, as
+// shake (hypr/tessera/findpointer.lua) and calls tessera:findPointer. Then, as
 // findPointer.style says: a ring shrinks onto the pointer, following it
 // while it moves (ring); the pointer itself is big for a moment (grow,
 // hyprctl setcursor: one step up and one back, since every size change
@@ -18,10 +18,10 @@ Singleton {
     readonly property bool enabled: Config.ready && Config.options.findPointer.enabled && Config.options.findPointer.style !== "off"
     // (Hyprland's side follows the setting live)
     onEnabledChanged: if (Config.ready)
-        Quickshell.execDetached(["hyprctl", "eval", "IRICE_FIND_POINTER = " + (enabled ? "true" : "false")])
+        Quickshell.execDetached(["hyprctl", "eval", "TESSERA_FIND_POINTER = " + (enabled ? "true" : "false")])
 
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "findPointer"
         description: "Shake to find the pointer"
         onPressed: root.show()
@@ -75,7 +75,7 @@ Singleton {
     Process {
         id: grow
         command: ["setsid", "-f", "sh", "-c", "h=$1; [ \"$1\" = macOS ] && [ -d /usr/share/icons/macOS-hypr ] && h=macOS-hypr; "
-            + "s=${XCURSOR_SIZE:-24}; l=${XDG_RUNTIME_DIR:-/tmp}/irice-findpointer.lock; "
+            + "s=${XCURSOR_SIZE:-24}; l=${XDG_RUNTIME_DIR:-/tmp}/tessera-findpointer.lock; "
             + "exec 9>\"$l\"; flock -n 9 || exit 0; "
             + "trap 'hyprctl setcursor \"$h\" \"$s\" >/dev/null' EXIT INT TERM HUP; "
             + "hyprctl setcursor \"$h\" $((s * 5 / 2)) >/dev/null; sleep 0.75", "sh",
@@ -93,7 +93,7 @@ Singleton {
             anchors { top: true; bottom: true; left: true; right: true }
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice-findpointer"
+            WlrLayershell.namespace: "tessera-findpointer"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             mask: Region {}
 

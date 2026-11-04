@@ -13,7 +13,7 @@ Apache-2.0; the files are named next to each function):
     3 bytes  service id hash
     4 bytes  endpoint id (the one the mDNS name carries too)
     1 byte   endpoint info size, then the endpoint info (endpoint.py)
-    6 bytes  Bluetooth Classic address (zeros: iRice doesn't do Classic)
+    6 bytes  Bluetooth Classic address (zeros: Tessera doesn't do Classic)
     1 byte   UWB address size (0), 1 byte extra field (WebRTC: 0)
   … back in the medium advertisement:
     2 bytes  device token (random), then the extra fields: a mask byte,
@@ -59,7 +59,7 @@ AD_OVERHEAD = 4 + 3  # around service data in an advertisement: its length, type
 
 
 class AdvertisementError(ValueError):
-    """Bytes that aren't a Nearby advertisement (or one iRice can't read)."""
+    """Bytes that aren't a Nearby advertisement (or one Tessera can't read)."""
 
 
 # ── Building ─────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ def medium_advertisement(data, device_token, psm=0):
 
 
 def advertisement(endpoint_id, endpoint_info, device_token, psm=0):
-    """The 0xFEF3 service data of a visible iRice."""
+    """The 0xFEF3 service data of a visible Tessera."""
     return medium_advertisement(connections_advertisement(endpoint_id, endpoint_info), device_token, psm)
 
 

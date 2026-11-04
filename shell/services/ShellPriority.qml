@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.common
 
 // Keeping the shell smooth when apps are busy: ananicy-cpp's rule that runs
-// it as an interactive process (iRice's root helper: `irice-root priority
+// it as an interactive process (Tessera's root helper: `tessera-root priority
 // on|off`, no password for an administrator at this computer). Only where
 // ananicy-cpp is installed; off stays off through updates.
 Singleton {
@@ -23,7 +23,8 @@ Singleton {
     }
     Process {
         id: check
-        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/irice.rules"]
+        // (irice.rules: installed before iRice became Tessera, until the root setup replaces it)
+        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f /etc/ananicy.d/irice.rules"]
         onExited: code => {
             root.available = code !== 2;
             root.on = code === 0;
@@ -39,7 +40,7 @@ Singleton {
             return;
         }
         busy = true;
-        job.command = ["pkexec", "/usr/lib/irice/irice-root", "priority", on ? "on" : "off"];
+        job.command = RootHelper.command(["priority", on ? "on" : "off"]);
         job.running = true;
     }
     Process {
@@ -48,10 +49,10 @@ Singleton {
         onExited: code => {
             root.busy = false;
             if (code === 64)
-                root.error = "iRice's system helper is from before this setting. Run Software Update once, then try again.";
+                root.error = "Tessera's system helper is from before this setting. Run Software Update once, then try again.";
             else if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (jobErr.text.replace(/^irice-root: /, "").trim() || "That didn't change. Update iRice, then try again.");
+                    : (jobErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

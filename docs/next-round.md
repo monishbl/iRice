@@ -1,4 +1,4 @@
-# iRice: next round
+# Tessera: next round
 
 Tick what you want, add notes under any item (`> your note`), and send it back.
 Nothing in sections 3–5 has been changed yet.
@@ -23,12 +23,12 @@ Nothing in sections 3–5 has been changed yet.
 - Desktop widgets on a grid (10 kinds, gallery, drag to snap with a grid and ghost).
 - Icons: icon-theme launcher (`QS_ICON_THEME`), `IconLookup` (no more pink/black boxes); dock Downloads/Trash; themed Apps button.
 - Menu bar: menu icon choice (distro, brand marks); shortcut symbols (auto/macOS/Windows/Linux); every item can be hidden.
-- Wallpaper sets: "Name Light/Dark" pairs and time-of-day folders, detected automatically (iRice ships its own; Apple's aren't downloaded).
+- Wallpaper sets: "Name Light/Dark" pairs and time-of-day folders, detected automatically (Tessera ships its own; Apple's aren't downloaded).
 - Repair Shell (menu + Super+Ctrl+Esc); tty session can't duplicate shells any more.
 - Screenshots: Super+Shift+S full screen, Super+Ctrl+Shift+S area.
 
 **Bug sweep (this round)**
-- Install/uninstall: your original Hyprland/greetd config is backed up once and restored correctly (a re-install used to make uninstall restore iRice).
+- Install/uninstall: your original Hyprland/greetd config is backed up once and restored correctly (a re-install used to make uninstall restore Tessera).
 - tty session: lock files no longer leak into the shell and apps (a crash could leave the session without a shell).
 - Repair Shell skips processes whose session it can't read; `dev.sh up` never sends an empty window move to your desktop.
 - Focus: re-picking the active mode no longer loses what to restore.
@@ -113,7 +113,7 @@ Measured cost today: the shell idles near 0% CPU; costs show up during animation
 **Lock screen and idle**
 - [x] iOS-style lock screen: big clock, widgets, notifications, Now Playing.
 - [x] StandBy: when charging and idle, a full-screen clock / widgets / photos view.
-- [ ] Boot splash (Plymouth) matching the iRice look.
+- [ ] Boot splash (Plymouth) matching the Tessera look.
 - [x] Startup / screenshot / trash sounds (optional UI sounds).
 
 **Productivity**
@@ -164,7 +164,7 @@ music 8.9% / 43 → 5.6% / 26; a dock magnification sweep 70% → 33%.
 
 Needs you:
 - [ ] Clean up leftover watcher processes from earlier dev sessions (they filled PipeWire's client slots; the cause is fixed):
-      `bash -c 'for d in /proc/[0-9]*; do [ "$(awk "{print \$4}" $d/stat 2>/dev/null)" = 1 ] || continue; case "$(cat $d/comm 2>/dev/null)" in pactl|udevadm|nmcli|bash) ;; *) continue;; esac; tr "\0" "\n" <$d/environ 2>/dev/null | grep -qx IRICE_SANDBOX=1 && kill ${d#/proc/}; done'`
+      `bash -c 'for d in /proc/[0-9]*; do [ "$(awk "{print \$4}" $d/stat 2>/dev/null)" = 1 ] || continue; case "$(cat $d/comm 2>/dev/null)" in pactl|udevadm|nmcli|bash) ;; *) continue;; esac; tr "\0" "\n" <$d/environ 2>/dev/null | grep -qx TESSERA_SANDBOX=1 && kill ${d#/proc/}; done'`
 - [ ] Tahoe themes: `paru -S mactahoe-icon-theme-git apple_cursor apple_hyprcursor mactahoe-gtk-theme`
 - [ ] Nearby sharing through your firewall: `sudo ufw allow 53317`
 - [ ] Sandbox tools (optional): `./dev.sh run sudo pacman -S libqalculate ripgrep plocate swappy psmisc poppler ffmpegthumbnailer python-gobject matugen`

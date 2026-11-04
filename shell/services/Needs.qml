@@ -10,7 +10,7 @@ import qs.common
 //   avahi (finding TVs, speakers and phones on the network), PipeWire,
 //   NetworkManager, a keyring (the Secret Service: iCloud's password),
 //   GNOME Online Accounts (Microsoft 365: its Microsoft provider, 3.50+),
-//   iRice's goa-signin helper (built by Software Update)
+//   Tessera's goa-signin helper (built by Software Update)
 Singleton {
     id: root
 
@@ -41,7 +41,7 @@ Singleton {
             "{ busctl --user list 2>/dev/null; busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ListActivatableNames 2>/dev/null; } | grep -q org.freedesktop.secrets && echo keyring",
             "{ test -x /usr/lib/goa-daemon || test -x /usr/libexec/goa-daemon; } && echo goa",
             "v=$(pacman -Q gnome-online-accounts 2>/dev/null | awk '{print $2}'); [ -n \"$v\" ] && [ \"$(vercmp \"$v\" 3.50)\" -ge 0 ] && echo goaMicrosoft",
-            "test -x \"$1/native/build/goa-signin\" || command -v irice-goa-signin >/dev/null && echo goaSignin",
+            "test -x \"$1/native/build/goa-signin\" || command -v tessera-goa-signin >/dev/null && echo goaSignin",
             ":"].join("; "), "sh", Quickshell.shellDir]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -54,7 +54,7 @@ Singleton {
     }
     Component.onCompleted: Startup.later(() => refresh()) // (after the desktop is up)
 
-    // iRice's native helpers (goa-signin among them): built here, as you
+    // Tessera's native helpers (goa-signin among them): built here, as you
     property bool building: false
     property string buildError: ""
     function buildNative() {
@@ -106,7 +106,7 @@ Singleton {
             }
         }
     }
-    // Turning a service on (iRice's root helper: the fixes in System health)
+    // Turning a service on (Tessera's root helper: the fixes in System health)
     function turnOnAvahi() {
         if (!avahiInstalled)
             install(["avahi"]);

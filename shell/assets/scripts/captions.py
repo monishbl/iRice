@@ -64,16 +64,16 @@ def rms(chunk):
 
 
 def recorder():
-    """The speakers' sound, raw s16 mono 16 kHz on stdout. (IRICE_CAPTIONS_SINK:
+    """The speakers' sound, raw s16 mono 16 kHz on stdout. (TESSERA_CAPTIONS_SINK:
     another output's, by name: tests play into a silent one.)"""
-    sink = os.environ.get("IRICE_CAPTIONS_SINK", "")
+    sink = os.environ.get("TESSERA_CAPTIONS_SINK", "")
     if shutil.which("pw-record"):
         return ["pw-record", "--raw", "--rate", str(RATE), "--channels", "1", "--format", "s16",
-                "-P", "{ stream.capture.sink = true node.name = irice-captions media.name = \"Live captions\" }"] + \
+                "-P", "{ stream.capture.sink = true node.name = tessera-captions media.name = \"Live captions\" }"] + \
             (["--target", sink] if sink else []) + ["-"]
     if shutil.which("parec"):
         return ["parec", "-d", (sink + ".monitor") if sink else "@DEFAULT_MONITOR@", f"--rate={RATE}", "--channels=1", "--format=s16le", "--raw",
-                "--client-name=irice-captions"]
+                "--client-name=tessera-captions"]
     return None
 
 
@@ -170,7 +170,7 @@ def run(lang):
     if not cmd:
         emit({"error": "Live captions need PipeWire's or PulseAudio's recorder (pw-record or parec).", "need": "audio"})
         return 1
-    folder = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "irice")
+    folder = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "tessera")
     os.makedirs(folder, mode=0o700, exist_ok=True)
     threads = max(1, min(4, (os.cpu_count() or 4) - 1))
     rec = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)

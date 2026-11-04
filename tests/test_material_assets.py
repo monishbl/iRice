@@ -56,7 +56,7 @@ class Root(unittest.TestCase):
             for rel in ("shell.qml", "common/Look.js"):
                 self.assertEqual(os.path.realpath(root / rel), str((MATERIAL / rel).resolve()), rel)
             # shared: the shell, Theme, controls, services and settings data
-            for rel in ("IriceShell.qml", "common/Theme.qml", "common/Switch.qml", "services/Audio.qml", "common/Config.qml", "common/Panels.qml",
+            for rel in ("TesseraShell.qml", "common/Theme.qml", "common/Switch.qml", "services/Audio.qml", "common/Config.qml", "common/Panels.qml",
                         "assets/scripts/launch-shell.sh", "common/LookPreview.qml", "common/MaterialShape.qml"):
                 self.assertEqual(os.path.realpath(root / rel), str((SHELL / rel).resolve()), rel)
             # every file of both is there, nothing else
@@ -76,7 +76,7 @@ class Root(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root = Path(self.mr.build(str(SHELL), str(MATERIAL), os.path.join(t, "material-shell")))
             env = dict(os.environ, XDG_DATA_HOME=t, HOME=t)
-            env.pop("IRICE_UPDATE_REPO", None)
+            env.pop("TESSERA_UPDATE_REPO", None)
             out = subprocess.run(["python3", "-I", str(root / "assets/scripts/update-source.py"), str(root)],
                                  env=env, capture_output=True, text=True, timeout=10).stdout.strip()
             self.assertEqual(out, str(ROOT))
@@ -118,9 +118,9 @@ class Launch(unittest.TestCase):
         (t / "bin").mkdir()
         (t / "bin/qs").write_text(FAKE_QS)
         (t / "bin/qs").chmod(0o755)
-        (t / "config/irice").mkdir(parents=True)
-        self.config = t / "config/irice/config.json"
-        self.root = t / "cache/irice/material-shell"
+        (t / "config/tessera").mkdir(parents=True)
+        self.config = t / "config/tessera/config.json"
+        self.root = t / "cache/tessera/material-shell"
         self.env = dict(os.environ, HOME=str(t), XDG_CONFIG_HOME=str(t / "config"), XDG_CACHE_HOME=str(t / "cache"),
                         XDG_DATA_HOME=str(t / "data"), XDG_RUNTIME_DIR=str(t), QS_CALL=str(t / "call"),
                         PATH=f"{t / 'bin'}:/usr/bin:/bin", RUNNING=str(self.root), QS_ICON_THEME="hicolor")
@@ -138,21 +138,21 @@ class Launch(unittest.TestCase):
         return Path(self.env["QS_CALL"]).read_text().split("\n")[:2]
 
     def test_glass_keeps_its_arguments(self):
-        self.assertEqual(self.launch("glass", "-c", "irice"), ["-c", "irice"])
+        self.assertEqual(self.launch("glass", "-c", "tessera"), ["-c", "tessera"])
         self.assertEqual(self.launch("glass", "-p", str(SHELL)), ["-p", str(SHELL)])
         # (a restart from the Material root goes back to this folder)
         self.assertEqual(self.launch("glass", "-p", str(self.root)), ["-p", str(SHELL.resolve())])
 
     def test_material_starts_its_root(self):
-        self.assertEqual(self.launch("material", "-c", "irice"), ["-p", str(self.root)])
+        self.assertEqual(self.launch("material", "-c", "tessera"), ["-p", str(self.root)])
         self.assertEqual(self.launch("material", "-p", str(SHELL)), ["-p", str(self.root)])
         self.assertTrue((self.root / "common/Theme.qml").is_symlink())
 
     def test_runs_under_its_own_name(self):
-        # (CachyOS's ananicy rule for "qs" lowers its priority; irice-shell has iRice's own)
-        self.launch("glass", "-c", "irice")
-        self.assertEqual(Path(self.env["QS_CALL"] + ".name").read_text().strip(), "irice-shell")
-        self.assertEqual(os.readlink(Path(self.tmp.name) / "irice-bin/irice-shell"), str(Path(self.tmp.name) / "bin/qs"))
+        # (CachyOS's ananicy rule for "qs" lowers its priority; tessera-shell has Tessera's own)
+        self.launch("glass", "-c", "tessera")
+        self.assertEqual(Path(self.env["QS_CALL"] + ".name").read_text().strip(), "tessera-shell")
+        self.assertEqual(os.readlink(Path(self.tmp.name) / "tessera-bin/tessera-shell"), str(Path(self.tmp.name) / "bin/qs"))
 
     def name_while(self, script, args, text, env=None):
         import subprocess
@@ -162,7 +162,7 @@ class Launch(unittest.TestCase):
         w = subprocess.Popen(["bash", str(f), *args], env=dict(self.env, **(env or {})))
         try:
             time.sleep(0.3)
-            self.launch("glass", "-c", "irice")
+            self.launch("glass", "-c", "tessera")
             return Path(self.env["QS_CALL"] + ".name").read_text().strip()
         finally:
             w.kill()
@@ -170,24 +170,24 @@ class Launch(unittest.TestCase):
 
     def test_keeps_the_old_name_for_an_update_from_before_it(self):
         # (the update script runs from a copy made by the old version: it looks for "qs")
-        self.assertEqual(self.name_while("irice-update.ab12/run.sh", ["x"], "pgrep -x qs"), "qs")
-        self.assertEqual(self.name_while("irice-update.cd34/run.sh", ["x"], "pgrep -x irice-shell"), "irice-shell")
+        self.assertEqual(self.name_while("tessera-update.ab12/run.sh", ["x"], "pgrep -x qs"), "qs")
+        self.assertEqual(self.name_while("tessera-update.cd34/run.sh", ["x"], "pgrep -x tessera-shell"), "tessera-shell")
 
     def test_keeps_the_old_name_for_an_older_tty_watchdog(self):
         self.env["HYPRLAND_INSTANCE_SIGNATURE"] = "sig1"
         self.assertEqual(self.name_while("old/tty-shell.sh", ["watchdog"], ""), "qs")
         # (a new watchdog notes itself; one of another session doesn't count)
-        marker = Path(self.tmp.name) / "hypr/sig1/irice-watchdog.names"
+        marker = Path(self.tmp.name) / "hypr/sig1/tessera-watchdog.names"
         marker.parent.mkdir(parents=True)
-        self.assertEqual(self.name_while("new/tty-shell.sh", ["watchdog"], f'echo $$ > "{marker}"'), "irice-shell")
-        self.assertEqual(self.name_while("other/tty-shell.sh", ["watchdog"], "", {"HYPRLAND_INSTANCE_SIGNATURE": "sig2"}), "irice-shell")
+        self.assertEqual(self.name_while("new/tty-shell.sh", ["watchdog"], f'echo $$ > "{marker}"'), "tessera-shell")
+        self.assertEqual(self.name_while("other/tty-shell.sh", ["watchdog"], "", {"HYPRLAND_INSTANCE_SIGNATURE": "sig2"}), "tessera-shell")
 
     def test_ipc_reaches_the_running_root(self):
         import subprocess
         r = subprocess.run(["bash", str(SHELL / "assets/scripts/shell-ipc.sh"), "call", "lock", "lock"], env=dict(self.env, QS="qs"),
                            timeout=20, capture_output=True, text=True)
         self.assertNotEqual(r.returncode, 0)  # (no root built yet: nothing runs)
-        self.launch("material", "-c", "irice")  # builds the root
+        self.launch("material", "-c", "tessera")  # builds the root
         r = subprocess.run(["bash", str(SHELL / "assets/scripts/shell-ipc.sh"), "call", "lock", "lock"], env=dict(self.env, QS="qs"),
                            timeout=20, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -207,7 +207,7 @@ class IdleListener(unittest.TestCase):
             (t / "bin").mkdir()
             (t / "bin/hypridle").write_text("#!/bin/sh\nexec sleep 30\n")
             (t / "bin/hypridle").chmod(0o755)
-            d = t / "irice-idle-sig"
+            d = t / "tessera-idle-sig"
             d.mkdir()
             old = subprocess.Popen(["bash", "-c", 'exec 9>"$1/lock"; flock 9; echo "qs -p /old/shell ipc call lock lock" > "$1/lock-command"; exec sleep 30', "_", str(d)])
             try:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LocalSend for iRice: send files to, and receive files from, nearby devices
+"""LocalSend for Tessera: send files to, and receive files from, nearby devices
 running LocalSend (phones, other computers), like AirDrop. Speaks LocalSend
 protocol v2: multicast discovery on 224.0.0.167:53317 and certificate-pinned HTTPS.
 
@@ -40,7 +40,7 @@ import urllib.parse
 import unicodedata
 
 GROUP, DISCOVERY = "224.0.0.167", 53317
-PORT = int(os.environ.get("IRICE_LOCALSEND_PORT", DISCOVERY))  # (another port only for testing two on one machine)
+PORT = int(os.environ.get("TESSERA_LOCALSEND_PORT", DISCOVERY))  # (another port only for testing two on one machine)
 API = "/api/localsend/v2"
 FINGERPRINT = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
 DOWNLOADS = os.environ.get("XDG_DOWNLOAD_DIR") or os.path.join(os.path.expanduser("~"), "Downloads")
@@ -134,7 +134,7 @@ def connect(p, timeout=10):
 
 def configure_tls(directory=None):
     global FINGERPRINT, TLS_CONTEXT
-    directory = Path(directory or (os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"))) / "irice/localsend"
+    directory = Path(directory or (os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"))) / "tessera/localsend"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(directory, 0o700)
     cert, key = directory / "certificate.pem", directory / "private.pem"
@@ -142,7 +142,7 @@ def configure_tls(directory=None):
         with tempfile.TemporaryDirectory(dir=directory) as tmp:
             c, k = Path(tmp) / 'cert', Path(tmp) / 'key'
             subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3650',
-                            '-subj', '/CN=iRice LocalSend', '-keyout', str(k), '-out', str(c)],
+                            '-subj', '/CN=Tessera LocalSend', '-keyout', str(k), '-out', str(c)],
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
             os.chmod(k, 0o600); os.chmod(c, 0o600)
             os.replace(k, key); os.replace(c, cert)
@@ -275,7 +275,7 @@ def unique(path):
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "iRice-LocalSend"
+    server_version = "Tessera-LocalSend"
 
     def setup(self):
         self.request.settimeout(15)

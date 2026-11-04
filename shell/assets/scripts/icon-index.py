@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Icon index for iRice: every icon name in a theme (and the themes it
+"""Icon index for Tessera: every icon name in a theme (and the themes it
 inherits, then hicolor and /usr/share/pixmaps) mapped to the file to draw,
 preferring scalable and large icons over small ones, and full-colour icons
 over symbolic ones. Qt's own theme lookup depends on the platform theme and

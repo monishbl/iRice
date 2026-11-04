@@ -1,7 +1,7 @@
 """The welcome screen shows once, on a new setup: Config's one-time
 migration marks settings saved before it as welcomed, and leaves a fresh
 config (written from the defaults, or by install.sh) to show it. Runs the real
-Config.qml offscreen with iRice's Quickshell build when it's installed."""
+Config.qml offscreen with Tessera's Quickshell build when it's installed."""
 import json
 import os
 from pathlib import Path
@@ -14,7 +14,7 @@ import unittest
 LATEST = 3
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = Path.home()/'.local/share/irice/quickshell'
+BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()), Path.home() / ".local/share/tessera/quickshell")  # (irice: built before the rename)
 QS = BUNDLE/'bin/qs'
 
 # Prints welcome.done (and the defaults version) half a second after the
@@ -34,17 +34,18 @@ Timer {
 @unittest.skipUnless(QS.exists(), 'requires bundled Quickshell')
 class WelcomeMigration(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='irice-welcome-test-')
+        self.temp = tempfile.TemporaryDirectory(prefix='tessera-welcome-test-')
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         (self.base/'runtime').mkdir(mode=0o700)
-        self.config = self.base/'config/irice/config.json'
+        self.config = self.base/'config/tessera/config.json'
         self.env = dict(os.environ, QT_QPA_PLATFORM='offscreen', XDG_RUNTIME_DIR=str(self.base/'runtime'), XDG_STATE_HOME=str(self.base/'state'), XDG_CONFIG_HOME=str(self.base/'config'), XDG_CACHE_HOME=str(self.base/'cache'), QML_IMPORT_PATH=str(BUNDLE/'lib/qt6/qml'))
 
     def run_config(self):
         home = self.base/'shell'
         (home/'common').mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT/'shell/common/Config.qml', home/'common/Config.qml')
+        shutil.copy2(ROOT/'shell/common/Paths.qml', home/'common/Paths.qml')
         (home/'shell.qml').write_text('import QtQuick\nimport Quickshell\nimport qs.common\nShellRoot { settings.watchFiles: false\n' + PROBE + '\n}\n')
         try:
             p = subprocess.run([str(QS), '-p', str(home)], env=self.env, capture_output=True, text=True, timeout=10)

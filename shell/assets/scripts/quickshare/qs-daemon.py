@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iRice's Quick Share helper (services/QuickShare.qml), over stdin/stdout.
+"""Tessera's Quick Share helper (services/QuickShare.qml), over stdin/stdout.
 
 Commands, one JSON object per line on stdin:
   {"cmd": "config", "visible": bool, "name": str, "folder": str, "pause_wifi": bool}
@@ -15,8 +15,8 @@ the link is going, shown quietly with the transfer: "slow" when it stays on
 Bluetooth, "auth" when a password prompt is coming) — see
 nearby/service.py.
 
-IRICE_QS_DEBUG=1 logs what happens (frames by kind and size, no secrets) to
-$XDG_RUNTIME_DIR/irice-quickshare.log (nearby/debuglog.py).
+TESSERA_QS_DEBUG=1 logs what happens (frames by kind and size, no secrets) to
+$XDG_RUNTIME_DIR/tessera-quickshare.log (nearby/debuglog.py).
 
 It ends when stdin closes: the shell quit, restarted, or no longer needs it
 (nothing visible, nothing being sent). It's started only for that long.
@@ -50,9 +50,9 @@ def emit(obj):
 async def main():
     loop = asyncio.get_running_loop()
     discovery = None
-    # (IRICE_QS_NO_MDNS=1: tests, which mustn't announce on the real network)
+    # (TESSERA_QS_NO_MDNS=1: tests, which mustn't announce on the real network)
     try:
-        if os.environ.get("IRICE_QS_NO_MDNS") == "1":
+        if (os.environ.get("TESSERA_QS_NO_MDNS") or os.environ.get("IRICE_QS_NO_MDNS")) == "1":
             raise ImportError
         from nearby.avahi import Avahi, AvahiUnavailable
         try:
@@ -66,15 +66,15 @@ async def main():
             emit({"ev": "error", "message": f"Finding devices needs python-gobject ({e}). Install it, then try again."})
     except ImportError:
         pass
-    # Bluetooth LE (IRICE_QS_NO_BLE=1, and the tests' IRICE_QS_NO_MDNS=1: off)
+    # Bluetooth LE (TESSERA_QS_NO_BLE=1, and the tests' TESSERA_QS_NO_MDNS=1: off)
     ble = bus = None
-    if os.environ.get("IRICE_QS_NO_BLE") != "1" and os.environ.get("IRICE_QS_NO_MDNS") != "1":
+    if (os.environ.get("TESSERA_QS_NO_BLE") or os.environ.get("IRICE_QS_NO_BLE")) != "1" and (os.environ.get("TESSERA_QS_NO_MDNS") or os.environ.get("IRICE_QS_NO_MDNS")) != "1":
         try:
             from nearby.bluez import Bluetooth
             from nearby.gbus import BusUnavailable, GioBus
             try:
                 bus = GioBus(loop)
-                ble = Bluetooth(bus, scan_uuids=os.environ.get("IRICE_QS_BLE_SCAN") == "uuids")
+                ble = Bluetooth(bus, scan_uuids=(os.environ.get("TESSERA_QS_BLE_SCAN") or os.environ.get("IRICE_QS_BLE_SCAN")) == "uuids")
                 if not await ble.start():
                     debuglog.log("daemon", "no Bluetooth adapter (yet)")
             except BusUnavailable as e:

@@ -117,7 +117,7 @@ def profile_for(ssid):
 
 
 def runtime_dir():
-    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "irice")
+    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "tessera")
     os.makedirs(d, mode=0o700, exist_ok=True)
     return d
 

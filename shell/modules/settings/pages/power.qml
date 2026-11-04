@@ -70,19 +70,19 @@ Column {
         }
     }
 
-    // Cool-down: what iRice turns down when it runs hot (a subpage)
+    // Cool-down: what Tessera turns down when it runs hot (a subpage)
     Group {
         width: parent.width
         SubpageLink {
             icon: "thermometer-simple"
             label: "Cool-down and performance"
-            detail: "What iRice turns down when the machine runs hot, and what stays loaded"
+            detail: "What Tessera turns down when the machine runs hot, and what stays loaded"
             page: "power/cooldown"
         }
         // (where ananicy-cpp runs: CachyOS and others)
         Row {
             visible: ShellPriority.available
-            label: "Keep iRice smooth when busy"
+            label: "Keep Tessera smooth when busy"
             detail: ShellPriority.error !== "" ? ShellPriority.error : "Panels and animations keep their speed while apps work hard. Asks ananicy-cpp to treat the shell as interactive."
             labelColor: Theme.color.label
             Switch {
@@ -98,7 +98,7 @@ Column {
         visible: page.battery
         width: parent.width
         title: "Battery"
-        footer: Power.guardError !== "" ? Power.guardError : "It sleeps rather than shutting down, so your work is there when you plug in. This keeps working even if iRice isn't running."
+        footer: Power.guardError !== "" ? Power.guardError : "It sleeps rather than shutting down, so your work is there when you plug in. This keeps working even if Tessera isn't running."
         Row {
             label: "Critical battery"
             detail: "Warn at 10% and 5%, sleep at 3% (even with Caffeine on)"
@@ -139,7 +139,7 @@ Column {
         width: parent.width
         title: "Lid and waking"
         visible: page.battery
-        footer: "Lock and Do nothing keep the computer running with the lid closed (Wi-Fi, downloads and music carry on; the built-in screen goes off); with another display, it carries on there. A critically low battery still sleeps. If iRice isn't running, closing the lid sleeps, as it always has."
+        footer: "Lock and Do nothing keep the computer running with the lid closed (Wi-Fi, downloads and music carry on; the built-in screen goes off); with another display, it carries on there. A critically low battery still sleeps. If Tessera isn't running, closing the lid sleeps, as it always has."
         Row { label: "Closing the lid on battery"; Lid { key: "lidBattery" } }
         Row { label: "Closing the lid on the charger"; Lid { key: "lidAc" } }
         Row { label: "With another display connected"; detail: "On the charger"; Lid { key: "lidExternal" } }

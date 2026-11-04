@@ -6,7 +6,7 @@ With **Settings → Mouse → Focus → Follows pointer**, workspace changes and
 
 Reliable stationary-pointer refocus uses the rebuilt compositor plugin to account for Hyprland’s movement-threshold check even after the pointer has been idle. Without the plugin, same-position hit-testing is best effort; new-window targeting still works.
 
-Updates are event-driven and coalesced for 180 ms; there is no continuous focus polling. iRice delegates hit-testing to Hyprland instead of guessing which window is on top. Locking, open shell panels and region selection suppress this automatic focus work. On-click focus disables it.
+Updates are event-driven and coalesced for 180 ms; there is no continuous focus polling. Tessera delegates hit-testing to Hyprland instead of guessing which window is on top. Locking, open shell panels and region selection suppress this automatic focus work. On-click focus disables it.
 
 ## Boundaries
 
@@ -19,7 +19,7 @@ Updates are event-driven and coalesced for 180 ms; there is no continuous focus 
 
 All enabled modes confine the pointer during region selection. This has a 1.5-second lease refreshed while selection is active, so a shell crash cannot leave permanent confinement behind. Games/applications with pointer constraints take precedence. Relative mouse and touchpad movement are protected; deliberate pointer warps remain free, including the new-window focus behavior. Absolute tablet positioning is not modified.
 
-The updated `irice-glass` compositor plugin is required for physical pointer barriers. Older/missing plugins retain normal pointer movement and Settings explains the dependency. Screenshot clipping does not require the plugin. The plugin advertises pointer support only when its motion hook installs successfully. New source files are included in its Makefile and normal plugin rebuilds.
+The updated `tessera-glass` compositor plugin is required for physical pointer barriers. Older/missing plugins retain normal pointer movement and Settings explains the dependency. Screenshot clipping does not require the plugin. The plugin advertises pointer support only when its motion hook installs successfully. New source files are included in its Makefile and normal plugin rebuilds.
 
 ## Workspace chips and screenshots
 

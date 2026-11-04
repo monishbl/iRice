@@ -47,7 +47,7 @@ Singleton {
         }
     }
     readonly property string why: !active ? (snoozed || declined ? "Off until it cools or you plug in" : "") : manual ? "Turned on" : hotOn ? "The CPU is hot" : "On battery"
-    // qs -c irice ipc call cooldown toggle | on | off
+    // qs -c tessera ipc call cooldown toggle | on | off
     IpcHandler {
         target: "cooldown"
         function toggle(): void { root.toggle(); }

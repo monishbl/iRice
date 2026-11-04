@@ -33,7 +33,7 @@ elif args[:2] == ["connection", "add"] and state.get("refuse_add"):
     print("Error: not allowed", file=sys.stderr); sys.exit(4)
 elif "up" in args and state.get("refuse_up_home") and "HOME-UUID" in args:
     print("Error: Connection activation failed: Unknown reason", file=sys.stderr); sys.exit(4)
-elif "up" in args and state.get("refuse_up") and "irice-quickshare" in args:
+elif "up" in args and state.get("refuse_up") and "tessera-quickshare" in args:
     print("Error: no luck", file=sys.stderr); sys.exit(4)
 '''
 
@@ -160,7 +160,7 @@ class HotspotFirewall(unittest.TestCase):
         self.root = Path(self.dir.name)
         (self.root / "etc/ufw").mkdir(parents=True)
         (self.root / "etc/ufw/ufw.conf").write_text("ENABLED=yes\n")
-        os.environ["IRICE_SYSTEM_ROOT"] = str(self.root)
+        os.environ["TESSERA_SYSTEM_ROOT"] = str(self.root)
         os.environ["XDG_STATE_HOME"] = str(self.root / "state")
         spec = importlib.util.spec_from_file_location("sharing_check", ROOT / "shell/assets/scripts/sharing-check.py")
         self.sc = importlib.util.module_from_spec(spec)
@@ -168,7 +168,7 @@ class HotspotFirewall(unittest.TestCase):
         self.sc._active = lambda unit: unit == "ufw"
 
     def tearDown(self):
-        os.environ.pop("IRICE_SYSTEM_ROOT", None)
+        os.environ.pop("TESSERA_SYSTEM_ROOT", None)
         os.environ.pop("XDG_STATE_HOME", None)
         self.dir.cleanup()
 
@@ -196,7 +196,7 @@ class HotspotFirewall(unittest.TestCase):
     def test_visible_lets_dhcp_through(self):
         # (Quick Share's ports, open while visible, include DHCP: its
         # receiving is the only time a phone joins its hotspot)
-        self.assertIn(("udp", 67, 67), self.sc.irice_root.PORT_SETS["quickshare"])
+        self.assertIn(("udp", 67, 67), self.sc.tessera_root.PORT_SETS["quickshare"])
         self.note(["mdns", "quickshare"])
         self.assertTrue(self.sc.firewall()["hotspot"])
         self.note([])  # (closed: the rules readable say what's left)

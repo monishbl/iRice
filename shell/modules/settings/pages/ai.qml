@@ -143,7 +143,7 @@ Column {
         Row {
             label: "Display name"
             detail: "Optional; defaults to the model ID"
-            TextField { id: nameField; width: 270; placeholder: "Name shown in iRice" }
+            TextField { id: nameField; width: 270; placeholder: "Name shown in Tessera" }
         }
         Row {
             label: "Provider"
@@ -276,7 +276,7 @@ Column {
         }
         Row {
             label: "Your note"
-            detail: "How it should answer: tone, length, what to call you. iRice's own rules stay in place. " + noteArea.length + " of " + Prompt.MAX_NOTE
+            detail: "How it should answer: tone, length, what to call you. Tessera's own rules stay in place. " + noteArea.length + " of " + Prompt.MAX_NOTE
         }
         // (a few lines; Glass: the field's fill and hairline, Material: its pill)
         Item {

@@ -12,7 +12,7 @@ import "StartupSounds.js" as StartupSounds
 // USB device comes or goes, a latch for locking, glass taps for notifications,
 // a pop for the volume keys, a knock for a wrong password, the shutter for
 // screenshots, paper for emptying the Trash.
-// iRice's own sounds are in assets/sounds/<style> (made by
+// Tessera's own sounds are in assets/sounds/<style> (made by
 // tools/make-sounds.py; the style is Settings → Notifications → Style, and
 // in the Material look its own set unless "Material sounds" is off); the
 // shutter and paper come from the freedesktop sound theme. Each can be
@@ -173,7 +173,9 @@ Singleton {
     // sessionStarted: as the chime plays (switched on or not); the login
     // intro keeps time with it (LoginIntro, which reads the same mark)
     signal sessionStarted
-    readonly property string startedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
+    readonly property string startedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
+    // (a session that started before iRice became Tessera: its mark counts too)
+    readonly property string oldStartedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     function checkStartup() {
         if (Tools.ready && !startup.running && !startup.done)
             startup.running = true;
@@ -188,7 +190,7 @@ Singleton {
     Process {
         id: startup
         property bool done: false
-        command: ["sh", "-c", "[ -e \"$1\" ] && exit 1; : > \"$1\"", "sh", root.startedMark]
+        command: ["sh", "-c", "[ -e \"$1\" ] && exit 1; [ -e \"$2\" ] && { : > \"$1\"; exit 1; }; : > \"$1\"", "sh", root.startedMark, root.oldStartedMark]
         onExited: code => {
             done = true;
             if (code === 0) {

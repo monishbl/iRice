@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds sandbox test tools inside the irice container (not on the host).
+# Builds sandbox test tools inside the tessera container (not on the host).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 OUT=../../.sandbox/bin

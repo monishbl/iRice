@@ -34,7 +34,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace irice {
+namespace tessera {
 
 class GlassSender {
 public:
@@ -198,4 +198,4 @@ private:
     std::thread                                      m_thread;
 };
 
-} // namespace irice
+} // namespace tessera

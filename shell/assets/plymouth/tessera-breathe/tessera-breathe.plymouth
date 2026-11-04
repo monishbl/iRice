@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=tessera-breathe
+Description=Tessera: The badge with a soft glow that breathes, and a thin line that fills as your computer starts.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tessera-breathe
+ScriptFile=/usr/share/plymouth/themes/tessera-breathe/tessera-breathe.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11

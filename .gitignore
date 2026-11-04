@@ -8,7 +8,7 @@ sandbox/tools/gen/
 
 # Native helpers, built by shell/native/build.sh
 shell/native/build/
-# irice-events, built by tools/build-native.sh (Cargo.lock is kept)
+# tessera-events, built by tools/build-native.sh (Cargo.lock is kept)
 native/*/target/
 
 # Python caches

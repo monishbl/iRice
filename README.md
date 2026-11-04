@@ -1,4 +1,6 @@
-# iRice
+# Tessera
+
+(Formerly iRice. Coming from it? Your settings move over by themselves; [docs/rename-to-tessera.md](docs/rename-to-tessera.md) has the two commands to run once.)
 
 A glass desktop shell for Hyprland, after macOS, with everything end4's illogical-impulse dots offer and more: Stages, window tiling, Focus modes, an App Drawer and a matching login screen. A second look, Material, follows Android. It's written from scratch in [Quickshell](https://quickshell.org) and tuned for integrated GPUs.
 
@@ -30,7 +32,7 @@ A glass desktop shell for Hyprland, after macOS, with everything end4's illogica
 - **Tiling:** halves, quarters, thirds, fill and centre from the Window menu, from the tile grid that opens when you rest on the green window button, or with Super+Ctrl+Arrows / F / C. **Drag a window to a screen edge or corner** and a glass preview shows where it will go (needs the glass plugin). Arrange two to four windows side by side; Return to Previous Size puts a window back.
 - **App Windows:** one app's windows from every space (three fingers down, or click the app in front in the dock).
 - **Picture in Picture:** browsers' video pop-outs float small in a corner on every space; any window can do it from the Window menu or Super+Shift+P.
-- **Window tabs:** merge windows into tabs (Window menu or Super+T, Super+[ / ] to switch). Tabs look like Hyprland's bar restyled, or iRice's own with icons (Settings → Appearance).
+- **Window tabs:** merge windows into tabs (Window menu or Super+T, Super+[ / ] to switch). Tabs look like Hyprland's bar restyled, or Tessera's own with icons (Settings → Appearance).
 - **Stages:** one group of windows in front, the rest as thumbnails on the left. New apps open in their own stage; Shift-click a thumbnail to merge it into the front one. Turn it on in Quick Settings.
 
 **Apps**
@@ -86,7 +88,7 @@ Choose the material in Settings → Appearance: Glass, Frost or Solid, or your o
 
 **Lens** sets how thick the glass looks: Thin (edge lensing only), Depth (a thick lens that bends the whole shape), or Auto (depth on large panels, thin on small controls).
 
-Real glass over windows needs the **irice-glass** Hyprland plugin, which the installer builds (or Settings → Appearance → Build plugin…). Hyprland then draws the glass itself, and only where it repaints anyway, so static glass costs nothing. Without the plugin, Glass refracts the wallpaper only and falls back to Frosted over windows. Rebuild the plugin after a Hyprland update; until then iRice uses Frosted.
+Real glass over windows needs the **tessera-glass** Hyprland plugin, which the installer builds (or Settings → Appearance → Build plugin…). Hyprland then draws the glass itself, and only where it repaints anyway, so static glass costs nothing. Without the plugin, Glass refracts the wallpaper only and falls back to Frosted over windows. Rebuild the plugin after a Hyprland update; until then Tessera uses Frosted.
 
 The shell idles below 0.1% CPU. A live wallpaper is the exception while it's visible (about 10% of a core for a 720p video in testing); it pauses when windows cover most of the screen.
 
@@ -100,35 +102,35 @@ On Arch Linux (a fresh install or your current one), one line does everything:
 bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
 ```
 
-It downloads iRice to `~/.local/share/irice/repo` and runs the installer. It asks which way you'd like: **interactive** (full screen, arrow keys and space to tick, with live progress and a summary; it needs `python-rich` and offers to install it) or **classic** (one question at a time). Either way every question comes first, then the whole plan (each package, file and service), and nothing changes until you start. The installer then:
+It downloads Tessera to `~/.local/share/tessera/repo` and runs the installer. It asks which way you'd like: **interactive** (full screen, arrow keys and space to tick, with live progress and a summary; it needs `python-rich` and offers to install it) or **classic** (one question at a time). Either way every question comes first, then the whole plan (each package, file and service), and nothing changes until you start. The installer then:
 1. checks your system (Arch, sudo, internet, disk space, a GPU render device, virtual machine)
 2. takes a snapshot first when snapper or Timeshift is set up
-3. updates the system and installs Hyprland, Quickshell and everything iRice uses (all from the official repositories)
-4. optionally installs the Bibata pointer from the AUR (it sets up `yay` if you have no AUR helper), the Apple and Fluent emoji styles (default no), and icon themes (Colloid, Tela circle, Numix Circle, Flat Remix, Papirus; default none: iRice styles the apps' own icons)
+3. updates the system and installs Hyprland, Quickshell and everything Tessera uses (all from the official repositories)
+4. optionally installs the Bibata pointer from the AUR (it sets up `yay` if you have no AUR helper), the Apple and Fluent emoji styles (default no), and icon themes (Colloid, Tela circle, Numix Circle, Flat Remix, Papirus; default none: Tessera styles the apps' own icons)
 5. installs what this computer's hardware is missing, as you choose: firmware (Intel SOF sound, Broadcom Wi-Fi), video decoding and Vulkan for each GPU, NVIDIA's driver (only when you tick it), the fingerprint reader's and face camera's drivers (each asked), and a display scale for a sharp screen. See it with `./install.sh --plan`
-6. compiles the shaders and builds the glass plugin against your Hyprland, installing it as `~/.local/share/irice/irice-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
-7. installs the shell (`~/.config/quickshell/irice`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-irice`)
+6. compiles the shaders and builds the glass plugin against your Hyprland, installing it as `~/.local/share/tessera/tessera-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
+7. installs the shell (`~/.config/quickshell/tessera`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-tessera`)
 8. optionally downloads Apple's macOS wallpapers and starts you on them (light by day, dark at night), and saves the look, light or dark and login style you picked
 9. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools
-10. sets up the iRice login screen (greetd), or starts Hyprland when you log in on tty1
+10. sets up the Tessera login screen (greetd), or starts Hyprland when you log in on tty1
 11. checks the result and tells you how to fix anything that's off
 
-Nothing of yours is removed or turned off unless you chose it: PulseAudio, another network service or another login screen is only replaced when you say so (with `--yes`, never). An optional step that fails is reported and skipped. The installer can be run again at any time (it updates), and everything is logged to `~/.cache/irice/install.log`. From a clone: `./install.sh`. Options: `--tui` or `--cli` (which installer), `--yes` (no questions), `--plan` (show the plan only), `--dry-run`, `--dev` (link the shell to the clone), `--no-deps`, `--no-greeter`, `--no-extras`, `--no-snapshot`, `--verify`; the choices as flags are in `./install.sh --help`.
+Nothing of yours is removed or turned off unless you chose it: PulseAudio, another network service or another login screen is only replaced when you say so (with `--yes`, never). An optional step that fails is reported and skipped. The installer can be run again at any time (it updates), and everything is logged to `~/.cache/tessera/install.log`. From a clone: `./install.sh`. Options: `--tui` or `--cli` (which installer), `--yes` (no questions), `--plan` (show the plan only), `--dry-run`, `--dev` (link the shell to the clone), `--no-deps`, `--no-greeter`, `--no-extras`, `--no-snapshot`, `--verify`; the choices as flags are in `./install.sh --help`.
 
-Afterwards the `irice` command looks after it:
+Afterwards the `tessera` command looks after it:
 
 | Command | |
 |---|---|
-| `irice doctor` | check everything (in a session, also that the shell and glass plugin are running) |
-| `irice update` | get the latest iRice and install it |
-| `irice rebuild` | rebuild the glass plugin and shaders, e.g. after a Hyprland update |
-| `irice repair` | restart the shell (duplicated bars, a frozen shell); apps keep running |
-| `irice logs` | the shell's log |
-| `irice uninstall` | remove iRice, put your Hyprland config and login screen back |
+| `tessera doctor` | check everything (in a session, also that the shell and glass plugin are running) |
+| `tessera update` | get the latest Tessera and install it |
+| `tessera rebuild` | rebuild the glass plugin and shaders, e.g. after a Hyprland update |
+| `tessera repair` | restart the shell (duplicated bars, a frozen shell); apps keep running |
+| `tessera logs` | the shell's log |
+| `tessera uninstall` | remove Tessera, put your Hyprland config and login screen back |
 
 **In a virtual machine** (for trying it or a demo): give it 4 GB of memory, 2+ cores and 3D acceleration, or Hyprland can't start: in virt-manager, *Video: Virtio* with *3D acceleration* and *Display Spice: OpenGL* on; in VirtualBox, *VMSVGA* with *Enable 3D Acceleration*. Install Arch (e.g. `archinstall` with a user that has sudo, NetworkManager, and no desktop), log in, run the line above and restart. The installer turns on the software cursor and the guest tools for the VM by itself.
 
-Put your own Hyprland changes in `~/.config/hypr/custom.lua`. iRice loads it last, and an error in it won't break the rest of the config.
+Put your own Hyprland changes in `~/.config/hypr/custom.lua`. Tessera loads it last, and an error in it won't break the rest of the config.
 
 Optional extras:
 - `songrec` for Identify Song
@@ -137,7 +139,7 @@ Optional extras:
 - `easyeffects`, `cloudflare-warp-bin` for their toggles
 - hyprbars for title bars: Settings → Appearance → Decorations → Title bars → Install… builds it with `hyprpm`
 
-To preview the login screen from your session: `IRICE_GREETER_MOCK=1 qs -p shell/greeter.qml` (the password is "irice"). iRice runs on Quickshell 0.2 or newer, including end4's pinned build, so the installer doesn't replace an installed one.
+To preview the login screen from your session: `TESSERA_GREETER_MOCK=1 qs -p shell/greeter.qml` (the password is "tessera"). Tessera runs on Quickshell 0.2 or newer, including end4's pinned build, so the installer doesn't replace an installed one.
 
 ## Keys
 
@@ -180,32 +182,32 @@ Super is ⌘. Press **Super+/** for the full list, which is read live from Hyprl
 | 3 fingers up / down | Overview / App Windows |
 | 4 fingers left / right | Sidebar / Notification Center |
 | Pinch / spread 4 fingers | App Drawer / Show Desktop |
-| 3 fingers, long press | Circle to search (needs iRice's glass plugin) |
+| 3 fingers, long press | Circle to search (needs Tessera's glass plugin) |
 | Three-finger drag (Settings → Trackpad) | Move the window under your fingers; the swipes above move to 4 fingers |
 | Touchscreen: pull down from the menu bar | Quick Settings (right third) or Notification Center |
 | Touchscreen: swipe up from the bottom edge | Show a hidden dock |
 
 ## Files
 
-To send files with **LocalSend**, open LocalSend on the receiving phone or computer and connect both devices to the same network. In iRice, go to **Settings → Sharing → Send files…**, choose one or more files, then click the receiving device. You can also use **Share…** on a desktop file or **Share** in Quick Preview. The receiving device must accept the transfer.
+To send files with **LocalSend**, open LocalSend on the receiving phone or computer and connect both devices to the same network. In Tessera, go to **Settings → Sharing → Send files…**, choose one or more files, then click the receiving device. You can also use **Share…** on a desktop file or **Share** in Quick Preview. The receiving device must accept the transfer.
 
-For Android's **Quick Share** (formerly Nearby Share), iRice speaks the protocol itself; nothing else needs installing. In Settings → Sharing → Android phones (Quick Share), set **Visible to phones** to *Everyone for 10 min* or *Everyone*: phones on the same Wi-Fi then see this computer in their Quick Share sheet, and you're asked in the island before anything is saved (files go to Downloads, or the folder you choose; links and Wi-Fi networks can be opened or copied). To send, use Share on a file and pick the phone; it must have Quick Share open and be visible to Everyone. Without a shared network it works over Bluetooth (turn it on; Settings → Sharing offers a button): the phone and this computer find each other and connect over Bluetooth LE, then the transfer moves to a Wi-Fi Direct link for full speed, which asks for your password once (it needs root for a moment; nothing stays configured afterwards). Without the password, or without Wi-Fi, it carries on over Bluetooth, which is slow. If they can't find each other, make sure avahi-daemon is running; with a firewall on (ufw, firewalld, nftables or iptables), iRice opens sharing's ports only while you're visible to others or sharing (Quick Share 53318–53319, DHCP and mDNS; LocalSend 53317; 53319–53320 while a QR-code share or a Chromecast plays a file from this computer) and closes them after, without a password for an administrator at the computer; Settings → Privacy & Security → Firewall says what's open now. If phones ask to pair over Bluetooth, Settings → Sharing → **Stop pairing prompts** turns off BlueZ's experimental Ranging profile, which causes it. For testing with a phone, `IRICE_QS_DEBUG=1` logs what happens to `$XDG_RUNTIME_DIR/irice-quickshare.log` (no keys, PINs or passwords).
+For Android's **Quick Share** (formerly Nearby Share), Tessera speaks the protocol itself; nothing else needs installing. In Settings → Sharing → Android phones (Quick Share), set **Visible to phones** to *Everyone for 10 min* or *Everyone*: phones on the same Wi-Fi then see this computer in their Quick Share sheet, and you're asked in the island before anything is saved (files go to Downloads, or the folder you choose; links and Wi-Fi networks can be opened or copied). To send, use Share on a file and pick the phone; it must have Quick Share open and be visible to Everyone. Without a shared network it works over Bluetooth (turn it on; Settings → Sharing offers a button): the phone and this computer find each other and connect over Bluetooth LE, then the transfer moves to a Wi-Fi Direct link for full speed, which asks for your password once (it needs root for a moment; nothing stays configured afterwards). Without the password, or without Wi-Fi, it carries on over Bluetooth, which is slow. If they can't find each other, make sure avahi-daemon is running; with a firewall on (ufw, firewalld, nftables or iptables), Tessera opens sharing's ports only while you're visible to others or sharing (Quick Share 53318–53319, DHCP and mDNS; LocalSend 53317; 53319–53320 while a QR-code share or a Chromecast plays a file from this computer) and closes them after, without a password for an administrator at the computer; Settings → Privacy & Security → Firewall says what's open now. If phones ask to pair over Bluetooth, Settings → Sharing → **Stop pairing prompts** turns off BlueZ's experimental Ranging profile, which causes it. For testing with a phone, `TESSERA_QS_DEBUG=1` logs what happens to `$XDG_RUNTIME_DIR/tessera-quickshare.log` (no keys, PINs or passwords).
 
-Dolphin's KDE colors and the desktop light/dark preference follow iRice even when **Match apps** is off. Fonts, icons and widget styles are preserved. Reopen Dolphin if it retains an old palette after changing modes.
+Dolphin's KDE colors and the desktop light/dark preference follow Tessera even when **Match apps** is off. Fonts, icons and widget styles are preserved. Reopen Dolphin if it retains an old palette after changing modes.
 
 For **AI**, open **Settings → AI**, choose a provider, enter the exact model ID from your account, optionally give it a display name, and add a credential. Custom servers also need their API base URL. Save the model, then select it from the sidebar's model menu or Settings. Models can be edited and removed, and the same model ID can be saved for different providers or connections. Credentials stay in the system keyring or a private file, separate from model settings; existing provider keys and the previously selected model are imported.
 
 **Vertex AI** supports [Express mode API keys](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview) or an OAuth access token with your Google Cloud project and region (including `global`). Pasted OAuth access tokens are short-lived and must be replaced when they expire. Adaptive thinking is an optional per-model setting for Anthropic models that support it.
 
-- `~/.config/irice/config.json`: settings. Edits apply live.
-- `~/.config/irice/focus.json` and `calendars.json`: Focus modes and calendar subscriptions (also editable in Settings).
-- `~/.local/state/irice/`: layout, to-dos, notes, clipboard pins, your reminders, AI chat and API keys when no keyring is running. Private files are owner-only.
-- `~/.cache/irice/`: the baked glass backdrop, Quick Preview's PDF pages.
-- With Match apps on: `irice-colors.*` files next to your GTK, terminal and Qt configs (each config gets one include line); turning it off empties them.
+- `~/.config/tessera/config.json`: settings. Edits apply live.
+- `~/.config/tessera/focus.json` and `calendars.json`: Focus modes and calendar subscriptions (also editable in Settings).
+- `~/.local/state/tessera/`: layout, to-dos, notes, clipboard pins, your reminders, AI chat and API keys when no keyring is running. Private files are owner-only.
+- `~/.cache/tessera/`: the baked glass backdrop, Quick Preview's PDF pages.
+- With Match apps on: `tessera-colors.*` files next to your GTK, terminal and Qt configs (each config gets one include line); turning it off empties them.
 
 ## Trying it without installing
 
-From a text console (Ctrl+Alt+F3), run `./dev.sh tty`. It starts iRice as its own Hyprland session with real input, while your normal desktop keeps running (Ctrl+Alt+F2 to switch back, Super+Shift+Escape or Ctrl+Alt+Backspace to end). Its settings live in the sandbox folder.
+From a text console (Ctrl+Alt+F3), run `./dev.sh tty`. It starts Tessera as its own Hyprland session with real input, while your normal desktop keeps running (Ctrl+Alt+F2 to switch back, Super+Shift+Escape or Ctrl+Alt+Backspace to end). Its settings live in the sandbox folder.
 
 If it freezes:
 - A watchdog restarts the shell when it stops responding; Super+Ctrl+Alt+R restarts it by hand, Super+Escape closes any stuck panel.
@@ -227,7 +229,7 @@ All development happens in a nested Hyprland inside a distrobox (`./dev.sh`), ne
 ```
 
 What the sandbox shares with the host, and how it's guarded:
-- **Audio:** the host's PipeWire, so volume changes are real. `IRICE_HOST_AUDIO=0` turns this off.
+- **Audio:** the host's PipeWire, so volume changes are real. `TESSERA_HOST_AUDIO=0` turns this off.
 - **System D-Bus:** network and Bluetooth toggles act on real hardware.
 - **Guarded:** power actions only notify, the polkit agent isn't registered, and host AI keys are stripped.
 - **Processes:** distrobox shares the host process list. `./dev.sh down` and `reload` find sandbox processes by their runtime directory, so never use `pkill`.
@@ -242,7 +244,7 @@ Layout: `shell/` (Quickshell config), `hypr/` (Hyprland config), `sandbox/` (nes
 - **hyprglass "Ultra" tier:** the plugin hooks Hyprland internals and wasn't tested here. Auto, Glass, Frosted and Solid cover the looks without it.
 - **Vertical or bottom bar:** end4 offers these; a macOS menu bar stays at the top.
 
-Fonts and icons: Phosphor (MIT), iRice Sans Flex (Google Sans Flex, OFL-1.1) and iRice Symbols (Material Symbols, Apache-2.0) are bundled; Inter and Papirus are used when installed. The bundled wallpapers are generated by `tools/gen-wallpapers.sh`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Fonts and icons: Phosphor (MIT), Tessera Sans Flex (Google Sans Flex, OFL-1.1) and Tessera Symbols (Material Symbols, Apache-2.0) are bundled; Inter and Papirus are used when installed. The bundled wallpapers are generated by `tools/gen-wallpapers.sh`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 
 ### Google Calendar, Tasks and Keep
@@ -251,8 +253,8 @@ Settings → Google connects Calendar and Tasks through desktop Online Accounts;
 
 ## Licence
 
-iRice is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (`GPL-3.0-or-later`). It comes with no warranty. The full text is in [LICENSE](LICENSE).
+Tessera is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (`GPL-3.0-or-later`). It comes with no warranty. The full text is in [LICENSE](LICENSE).
 
-The fonts, icons, protocol definitions and data iRice bundles from others keep their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists each one, and the licence texts are in [LICENSES/](LICENSES).
+The fonts, icons, protocol definitions and data Tessera bundles from others keep their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists each one, and the licence texts are in [LICENSES/](LICENSES).
 
-**Trademarks.** macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast and Material You are trademarks of Google LLC. They are named here only to say what iRice works with or resembles. iRice is not affiliated with or endorsed by Apple or Google.
+**Trademarks.** macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast and Material You are trademarks of Google LLC. They are named here only to say what Tessera works with or resembles. Tessera is not affiliated with or endorsed by Apple or Google.

@@ -316,7 +316,7 @@ Singleton {
         const why = c.reason === "deleted" ? "it was deleted on Google"
             : c.reason === "changed" ? "it changed on Google" : "Google refused it (" + c.reason + ")";
         const body = "Your change to " + c.title + " couldn't be saved because " + why + ". Here's what you had: " + c.what;
-        Quickshell.execDetached(["sh", "-c", '[ "$(timeout 600 notify-send -a iRice --action=copy=Copy "$1" "$2")" = copy ] && printf %s "$3" | wl-copy',
+        Quickshell.execDetached(["sh", "-c", '[ "$(timeout 600 notify-send -a Tessera --action=copy=Copy "$1" "$2")" = copy ] && printf %s "$3" | wl-copy',
             "sh", "Google change not saved", body, c.what]);
     }
     IdleMonitor {
@@ -431,7 +431,7 @@ Singleton {
                         root.offline = !!message.offline;
                         // (offline: the change is kept and shown; no alarm for that)
                         if (!message.offline && !["sync", "status", "flush"].includes(root.operation))
-                            Quickshell.execDetached(["notify-send", "-a", "iRice", "Google", message.error]);
+                            Quickshell.execDetached(["notify-send", "-a", "Tessera", "Google", message.error]);
                     }
                 } catch (e) { root.lastError = "Could not read the Google helper response."; }
             }

@@ -4,7 +4,7 @@ import qs.common
 import qs.services
 
 // The open island's Recent list: the last few alerts (Island.history, the
-// ones Notification Center keeps under iRice), newest first. One compact line
+// ones Notification Center keeps under Tessera), newest first. One compact line
 // each: the alert's icon, what and its detail, and how long ago (a close
 // button while hovered). Swipe a line sideways, or use its close button, to
 // remove it; Clear empties the list. Its button (Open a download or a drive)

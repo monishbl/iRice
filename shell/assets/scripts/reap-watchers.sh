@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Run once when the shell starts: ends iRice watchers left behind by an
+# Run once when the shell starts: ends Tessera watchers left behind by an
 # earlier shell that crashed or was killed outright, so its wrapper
 # (watch.sh) never got to end them. Copies piling up like that once kept the
 # laptop hot (25 of them at 250% CPU).
 #
-# watch.sh writes each watcher group down in $XDG_RUNTIME_DIR/irice-watchers
+# watch.sh writes each watcher group down in $XDG_RUNTIME_DIR/tessera-watchers
 # (the wrapper and the group's leader, each with its start time, and the
 # group's token). A record whose wrapper is gone is a leftover: its group's
 # members are ended, even when the leader itself has already exited (it

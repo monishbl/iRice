@@ -41,7 +41,7 @@ def results_url(status, location):
 
 def body(path, data):
     """The form Lens's page sends: the picture as encoded_image."""
-    boundary = "----irice" + secrets.token_hex(12)
+    boundary = "----tessera" + secrets.token_hex(12)
     kind = mimetypes.guess_type(path)[0] or "image/jpeg"
     head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"encoded_image\"; "
             f"filename=\"{os.path.basename(path).replace(chr(34), '')}\"\r\nContent-Type: {kind}\r\n\r\n").encode()

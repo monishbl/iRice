@@ -35,7 +35,7 @@ class Autostart(unittest.TestCase):
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(d / "home"),
                         XDG_CONFIG_HOME=str(d / "home/.config"), XDG_CONFIG_DIRS=str(d / "etc/xdg"),
                         XDG_RUNTIME_DIR=str(self.rt), HYPRLAND_INSTANCE_SIGNATURE="sig1", XDG_CURRENT_DESKTOP="Hyprland")
-        for k in ("IRICE_USER_DIR", "IRICE_TTY"):  # (not this session's)
+        for k in ("TESSERA_USER_DIR", "TESSERA_TTY"):  # (not this session's)
             self.env.pop(k, None)
 
     def tearDown(self):
@@ -71,7 +71,7 @@ class Autostart(unittest.TestCase):
         self.entry(self.system, "gnome-off", Exec="app", **{"X-GNOME-Autostart-enabled": "false"})
         self.entry(self.system, "missing", Exec="app", TryExec="not-installed-anywhere")
         self.entry(self.system, "not-on-path", Exec="not-installed-anywhere --x")
-        self.entry(self.system, "mako", Exec="mako")  # (iRice shows notifications)
+        self.entry(self.system, "mako", Exec="mako")  # (Tessera shows notifications)
         self.entry(self.system, "polkit-gnome-authentication-agent-1", Exec="/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")
         self.entry(self.system, "gnome-keyring-secrets", Exec="/usr/bin/gnome-keyring-daemon --start --components=secrets")
         # the user's copy of a system entry wins: here it turns it off
@@ -91,7 +91,7 @@ class Autostart(unittest.TestCase):
         self.assertEqual(skipped["missing.desktop"], "not installed")
         self.assertEqual(skipped["not-on-path.desktop"], "not installed")
         for n in ("mako", "polkit-gnome-authentication-agent-1", "gnome-keyring-secrets"):
-            self.assertEqual(skipped[n + ".desktop"], "iRice does this itself", n)
+            self.assertEqual(skipped[n + ".desktop"], "Tessera does this itself", n)
         self.assertEqual(self.started(), [])  # (a dry run starts nothing)
         # the real run: each one detached, in its Path= (else home)
         self.run_it()
@@ -124,7 +124,7 @@ class Autostart(unittest.TestCase):
     def test_the_tty_session_drops_its_sandbox_folders(self):
         self.fake("setsid", f'shift; echo "${{XDG_DATA_HOME:-none}}" >>{self.log}\n')
         self.entry(self.user, "app", Exec="app")
-        self.run_it(IRICE_TTY="1", XDG_DATA_HOME="/sandbox/data")
+        self.run_it(TESSERA_TTY="1", XDG_DATA_HOME="/sandbox/data")
         self.assertEqual(self.started(), ["none"])
 
     # ── Settings → Login Items: list, set, add, remove, restore, start ──
@@ -156,7 +156,7 @@ class Autostart(unittest.TestCase):
         s = it["syncthing.desktop"]
         self.assertEqual((s["name"], s["icon"], s["comment"], s["exec"], s["origin"], s["status"], s["enabled"], s["removable"]),
                          ("syncthing", "syncthing", "Sync files", "syncthing serve", "system", "start", True, False))
-        self.assertEqual((it["mako.desktop"]["status"], it["mako.desktop"]["reason"]), ("skipped", "iRice does this itself"))
+        self.assertEqual((it["mako.desktop"]["status"], it["mako.desktop"]["reason"]), ("skipped", "Tessera does this itself"))
         self.assertFalse(it["mako.desktop"]["canStart"])
         self.assertEqual(it["kde-only.desktop"]["reason"], "Only for KDE Plasma")
         self.assertEqual(it["both.desktop"]["reason"], "Only for GNOME and Xfce")
@@ -268,7 +268,7 @@ class Autostart(unittest.TestCase):
 
     def test_the_master_switch(self):
         self.entry(self.user, "app", Exec="app")
-        cfg = Path(self.env["XDG_CONFIG_HOME"]) / "irice"
+        cfg = Path(self.env["XDG_CONFIG_HOME"]) / "tessera"
         cfg.mkdir()
         (cfg / "config.json").write_text(json.dumps({"loginItems": {"startAtLogin": False}}))
         self.assertFalse(self.manage("list")["startAtLogin"])
@@ -287,7 +287,7 @@ class Autostart(unittest.TestCase):
         self.entry(root / "etc/xdg/autostart", "app", Exec="app")
         env = dict(self.env)
         env.pop("XDG_CONFIG_DIRS")
-        p = subprocess.run([sys.executable, "-I", str(SCRIPT), "list"], env=dict(env, IRICE_SYSTEM_ROOT=str(root)),
+        p = subprocess.run([sys.executable, "-I", str(SCRIPT), "list"], env=dict(env, TESSERA_SYSTEM_ROOT=str(root)),
                            capture_output=True, text=True, timeout=20)
         self.assertEqual([i["file"] for i in json.loads(p.stdout)["items"]], ["app.desktop"])
 
@@ -299,18 +299,18 @@ class Autostart(unittest.TestCase):
         self.entry(self.user, "FDM", Exec="app --hidden")
         shell_cfg = d / "sandbox/.config"
         (shell_cfg / "autostart").mkdir(parents=True)
-        out = json.loads(self.run_it("list", XDG_CONFIG_HOME=str(shell_cfg), IRICE_TTY="1").stdout)
+        out = json.loads(self.run_it("list", XDG_CONFIG_HOME=str(shell_cfg), TESSERA_TTY="1").stdout)
         self.assertIn("FDM.desktop", [i["file"] for i in out["items"]])
         out = json.loads(self.run_it("list", XDG_CONFIG_HOME=str(shell_cfg)).stdout)
         self.assertNotIn("FDM.desktop", [i["file"] for i in out["items"]])  # (a normal session: its own XDG_CONFIG_HOME)
 
-    def test_the_switch_is_read_from_irice_user_dir(self):
+    def test_the_switch_is_read_from_tessera_user_dir(self):
         d = Path(self.tmp.name)
         self.entry(self.user, "app", Exec="app")
-        irice = d / "sandbox/.config/irice"
-        irice.mkdir(parents=True)
-        (irice / "config.json").write_text(json.dumps({"loginItems": {"startAtLogin": False}}))
-        self.run_it(IRICE_USER_DIR=str(irice))
+        tessera = d / "sandbox/.config/tessera"
+        tessera.mkdir(parents=True)
+        (tessera / "config.json").write_text(json.dumps({"loginItems": {"startAtLogin": False}}))
+        self.run_it(TESSERA_USER_DIR=str(tessera))
         self.assertEqual(self.started(), [])  # (turned off in the session's own settings)
 
 

@@ -5,10 +5,10 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
 
-// Talks to the irice-glass Hyprland plugin (hypr/plugin/irice-glass), which
+// Talks to the tessera-glass Hyprland plugin (hypr/plugin/tessera-glass), which
 // draws Liquid Glass inside the compositor. `available` says whether it's
 // loaded; when it isn't, glass falls back to Frosted (Hyprland's blur).
-// Shapes go over Hyprland's request socket as `irice-glass set ...`: one
+// Shapes go over Hyprland's request socket as `tessera-glass set ...`: one
 // request at a time, carrying every window's latest pending update together
 // (a Hyprland batch), so an animation costs one request per frame. Requests go
 // through a small helper (assets/scripts/glass-ipc.py), never a socket of our
@@ -19,6 +19,10 @@ Singleton {
     id: root
 
     property bool available: false
+    // The name the loaded plugin answers to: a plugin built while Tessera was
+    // called iRice (loaded until it's rebuilt and you log in again) only knows
+    // irice-glass. Requests start with it.
+    property string name: "tessera-glass"
     property int version: 0 // 2+: shapes carry gloss (a 19th number)
     readonly property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hypr/" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + "/.socket.sock"
 
@@ -32,14 +36,14 @@ Singleton {
     readonly property real windowFrost: Config.ready ? Config.options.appearance.glassWindowFrost : 0
     function sendWindowFrost() {
         if (available)
-            command("window-frost", "irice-glass window-frost " + windowFrost.toFixed(2));
+            command("window-frost", root.name + " window-frost " + windowFrost.toFixed(2));
     }
     onWindowFrostChanged: sendWindowFrost()
     onReady: sendWindowFrost()
 
     // `shapes`: the shape count, then each shape's numbers (see Glass.pluginShape)
     function update(monitor, ns, shapes) {
-        command(monitor + "\n" + ns, "irice-glass set " + monitor + " " + ns + " " + shapes);
+        command(monitor + "\n" + ns, root.name + " set " + monitor + " " + ns + " " + shapes);
     }
 
     // Queue a request; a newer one with the same key replaces it
@@ -113,10 +117,15 @@ Singleton {
             splitMarker: "\x1e"
             onRead: data => {
                 if (root.isPing) {
-                    root.available = data.startsWith("irice-glass");
+                    root.available = data.startsWith(root.pingName);
                     root.version = root.available ? (parseInt(data.split(" ")[1]) || 1) : 0;
-                    if (root.available)
+                    if (root.available) {
+                        root.name = root.pingName;
                         Qt.callLater(root.ready);
+                    } else if (root.pingName === "tessera-glass") {
+                        root.pingName = "irice-glass"; // (then the older name)
+                        oldPing.restart();
+                    }
                 } else if (!data.startsWith("ok") && !data.startsWith("error")) {
                     // Not the plugin answering (it was unloaded): fall back
                     // to Frosted until a ping finds it again
@@ -134,6 +143,7 @@ Singleton {
         onTriggered: ipc.running = true
     }
     property bool isPing: false
+    property string pingName: "tessera-glass"
     property bool helperStarted: false
 
     // Is the plugin there? Asked at start, after config reloads (plugins load
@@ -144,18 +154,28 @@ Singleton {
             return;
         }
         isPing = true;
-        send("irice-glass ping");
+        send(pingName + " ping");
+    }
+    // A fresh round: the new name first
+    function pingAgain() {
+        pingName = "tessera-glass";
+        ping();
+    }
+    Timer {
+        id: oldPing
+        interval: 50
+        onTriggered: root.ping()
     }
     Timer {
         running: true
         interval: 1500
-        onTriggered: root.ping()
+        onTriggered: root.pingAgain()
     }
     Timer {
         running: !root.available
         repeat: true
         interval: 30000
-        onTriggered: root.ping()
+        onTriggered: root.pingAgain()
     }
     Connections {
         target: Hyprland
@@ -167,6 +187,6 @@ Singleton {
     Timer {
         id: pingLater
         interval: 1000
-        onTriggered: root.ping()
+        onTriggered: root.pingAgain()
     }
 }

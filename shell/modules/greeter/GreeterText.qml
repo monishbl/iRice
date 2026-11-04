@@ -82,7 +82,7 @@ GreeterWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 bottomPadding: 14
-                text: win.auth.hostname || "iRice"
+                text: win.auth.hostname || "Tessera"
                 color: win.fg
                 font { family: win.mono; pixelSize: 16 }
             }
@@ -188,7 +188,7 @@ GreeterWindow {
                     width: column.width - 24
                     wrapMode: Text.Wrap
                     text: win.powerChoice ? win.powerChoice + ": Enter (or the same key again) to confirm, Esc to cancel"
-                        : win.auth.error || (win.auth.busy ? "logging in…" : win.auth.message || (win.auth.mock ? "preview: the password is irice, Esc quits" : "Enter to log in"))
+                        : win.auth.error || (win.auth.busy ? "logging in…" : win.auth.message || (win.auth.mock ? "preview: the password is tessera, Esc quits" : "Enter to log in"))
                     color: win.auth.error || win.powerChoice ? win.bad : win.dim
                     font { family: win.mono; pixelSize: 13 }
                 }

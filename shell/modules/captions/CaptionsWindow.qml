@@ -71,7 +71,7 @@ Scope {
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice:captions"
+            WlrLayershell.namespace: "tessera:captions"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             // Its place (kept), or centred above the Dock
             readonly property real cx: Math.max(0, Math.min(Captions.cfg.barX >= 0 ? Captions.cfg.barX : (sw - w) / 2, sw - w))
@@ -165,7 +165,7 @@ Scope {
             anchors { left: true; right: true; bottom: true }
             exclusiveZone: implicitHeight // (windows make room for it)
             WlrLayershell.layer: WlrLayer.Top
-            WlrLayershell.namespace: "irice:captions"
+            WlrLayershell.namespace: "tessera:captions"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             Words {
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 64; rightMargin: 64 }
@@ -216,7 +216,7 @@ Scope {
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice:captions"
+            WlrLayershell.namespace: "tessera:captions"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             anchors { left: true; top: true }
             margins {

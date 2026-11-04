@@ -14,19 +14,22 @@ TO="${1:-}"
 SHELL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
 MATERIAL_DIR="$(dirname "$SHELL_DIR")/material"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
-CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/irice"
-LOG="$RUN/irice-look.log"
+# Tessera's folder under $1, or iRice's while it hasn't been moved yet (the
+# shell moves it as it starts: migrate-names.py)
+app_dir() { if [[ ! -e "$1/tessera" && -d "$1/irice" ]]; then echo "$1/irice"; else echo "$1/tessera"; fi; }
+CONFIG="$(app_dir "${XDG_CONFIG_HOME:-$HOME/.config}")/config.json"
+CACHE="$(app_dir "${XDG_CACHE_HOME:-$HOME/.cache}")"
+LOG="$RUN/tessera-look.log"
 exec >>"$LOG" 2>&1
 echo "== $(date '+%F %T') switch to $TO"
 
 if [[ $TO == material && ! -f "$MATERIAL_DIR/shell.qml" ]]; then
-    notify-send -a iRice "The Material look isn't installed" "Its files (material/, beside the shell) are missing. Update iRice, then try again." 2>/dev/null || true
+    notify-send -a Tessera "The Material look isn't installed" "Its files (material/, beside the shell) are missing. Update Tessera, then try again." 2>/dev/null || true
     exit 1
 fi
 # One switch at a time (8>&- on everything it starts: a shell or the screen
 # holding the lock would block the next switch)
-exec 8>"$RUN/irice-look.lock"
+exec 8>"$RUN/tessera-look.lock"
 flock -n 8 || { echo "already switching"; exit 0; }
 
 # The choice is saved (the shell writes its settings a moment after a change)
@@ -40,14 +43,15 @@ saved || { echo "the setting wasn't saved"; exit 1; }
 # The screen, from a copy (it must outlive the shell, and a Glass install has
 # the Material fonts only in material/)
 QS=qs
-for d in "${XDG_DATA_HOME:-}" "$HOME/.local/share"; do
-    if [[ -n "$d" && -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]]; then
-        QS="$d/irice/quickshell/bin/qs"
-        export QML_IMPORT_PATH="$d/irice/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+    if [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]]; then
+        QS="$d/quickshell/bin/qs"
+        export QML_IMPORT_PATH="$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
         break
     fi
 done
-T="$(mktemp -d "$RUN/irice-look.XXXXXX")"
+T="$(mktemp -d "$RUN/tessera-look.XXXXXX")"
 trap 'rm -rf "$T"' EXIT
 mkdir "$T/ui"
 cp "$SHELL_DIR/assets/lookswitch/shell.qml" "$T/ui/"
@@ -65,23 +69,24 @@ except (OSError, ValueError):
 backdrops = {os.path.basename(p)[len("backdrop-"):-len(".png")]: p for p in glob.glob(os.path.join(cache, "backdrop-*.png"))}
 json.dump({"to": to, "dark": mode != "light", "backdrops": backdrops}, open(out, "w"))
 PY
-env -u IRICE_TTY -u IRICE_SHELL setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null 8>&-
+env -u TESSERA_TTY -u TESSERA_SHELL setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null 8>&-
 sleep 0.5 # (covered)
 
 # Leaving Material: the window styling it set live goes back to the config's
 if [[ $TO == glass ]]; then
     hyprctl reload config-only >/dev/null 2>&1
-    hyprctl irice-glass controls-style glass >/dev/null 2>&1
+    hyprctl tessera-glass controls-style glass >/dev/null 2>&1
+    hyprctl irice-glass controls-style glass >/dev/null 2>&1 # (a plugin built before the rename)
 fi
 
 # The shell, restarted into the chosen look. In the dev sandbox through its
 # own reload, which only touches the sandbox's shells (repair-shell.sh also
 # clears shells of other sessions it thinks have ended, and from inside the
 # sandbox's container a real session can look ended)
-if [[ ${IRICE_SANDBOX:-0} == 1 && ${IRICE_TTY:-0} != 1 && -x "${IRICE_ROOT:-}/sandbox/reload-shell.sh" ]]; then
-    "$IRICE_ROOT/sandbox/reload-shell.sh" 8>&-
+if [[ ${TESSERA_SANDBOX:-${IRICE_SANDBOX:-0}} == 1 && ${TESSERA_TTY:-${IRICE_TTY:-0}} != 1 && -x "${TESSERA_ROOT:-${IRICE_ROOT:-}}/sandbox/reload-shell.sh" ]]; then
+    "$TESSERA_ROOT/sandbox/reload-shell.sh" 8>&-
 else
-    IRICE_REPAIR_QUIET=1 "$SHELL_DIR/assets/scripts/repair-shell.sh" 8>&-
+    TESSERA_REPAIR_QUIET=1 "$SHELL_DIR/assets/scripts/repair-shell.sh" 8>&-
 fi
 # Up once it answers (then a moment to draw its first frames)
 for _ in $(seq 100); do

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The recovery screen: when iRice's shell keeps stopping soon after an
+# The recovery screen: when Tessera's shell keeps stopping soon after an
 # update (keep-shell.sh counts its restarts), a terminal window offers to go
 # back to before that update. It needs nothing from the shell, only a
 # terminal, Python and pkexec (which asks for the password right there).
@@ -43,7 +43,7 @@ if [[ "${1:-}" != --inside ]]; then
 fi
 shift
 launch=("$@")
-[[ ${#launch[@]} -eq 0 ]] && launch=(-c irice)
+[[ ${#launch[@]} -eq 0 ]] && launch=(-c tessera)
 
 when="$(python3 -I -c 'import json,subprocess,sys,time
 try:
@@ -55,7 +55,7 @@ except Exception:
 while true; do
     clear
     printf '\n  \033[1mThe desktop keeps stopping\033[0m\n\n'
-    printf '  iRice'"'"'s shell has stopped three times%s.\n\n' "${when:+ since the update on $when}"
+    printf '  Tessera'"'"'s shell has stopped three times%s.\n\n' "${when:+ since the update on $when}"
     printf '  1  Go back to before that update (asks for your password)\n'
     printf '  2  Try starting the desktop again\n'
     printf '  3  Close this and use a terminal\n\n'

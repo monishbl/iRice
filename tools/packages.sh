@@ -1,9 +1,9 @@
-# Packages iRice needs, shared by install.sh and tools/setup-tty.sh (sourced).
+# Packages Tessera needs, shared by install.sh and tools/setup-tty.sh (sourced).
 # shellcheck disable=SC2034
 PACKAGES=(
     # Compositor, shell, portals
     hyprland hypridle hyprpicker hyprsunset quickshell xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
-    # Building the glass plugin, shaders and irice-events (Rust)
+    # Building the glass plugin, shaders and tessera-events (Rust)
     base-devel git pkgconf qt6-shadertools cmake ninja rust
     qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg ffmpeg qt6-5compat qt6-wayland plasma-integration
     # Sound, network, Bluetooth, power, keyring, polkit
@@ -39,18 +39,18 @@ APPS=(kitty nautilus gvfs firefox mpv loupe pavucontrol)     # if you have none:
 # Emoji styles beyond the default Noto Color Emoji (shell/common/EmojiFont.qml). Off by
 # default; Settings can also install them later, with yay.
 EMOJI_AUR=(ttf-apple-emoji ttf-fluent-emoji)
-# What tools/build-quickshell.sh needs, installed only when iRice builds its own
+# What tools/build-quickshell.sh needs, installed only when Tessera builds its own
 # Quickshell (yours is missing, or older than compat.json's minimum)
 QUICKSHELL_BUILD=(git cmake ninja qt6-base qt6-declarative qt6-svg qt6-wayland qt6-shadertools spirv-tools
     wayland wayland-protocols cli11 cpptrace jemalloc libdrm libglvnd libpipewire libxcb mesa pam polkit glib2)
 # The pointer, in both looks (GTK apps use Adwaita, which comes with gtk3)
 AUR=(bibata-cursor-theme-bin)
-# Icon themes, optional: iRice styles the apps' own icons without one (Glass
+# Icon themes, optional: Tessera styles the apps' own icons without one (Glass
 # clear, Material themed). name:package; Papirus is in the repositories, the
 # others in the AUR. install.sh --icons=colloid,papirus… or its question
 ICON_THEMES=(colloid:colloid-icon-theme-git tela-circle:tela-circle-icon-theme-git numix-circle:numix-circle-icon-theme-git
     flat-remix:flat-remix papirus:papirus-icon-theme)
 ICON_THEMES_REPO=(papirus-icon-theme)
-# Packages iRice used to need and no longer does. Software Update offers to
+# Packages Tessera used to need and no longer does. Software Update offers to
 # remove the ones still installed (pacman -Rns, in its root part); install.sh ignores them.
 DROPPED=(mactahoe-icon-theme-git mactahoe-gtk-theme apple_cursor apple_hyprcursor)  # (apps' own logos, Adwaita and Bibata since 3 Nov 2026)

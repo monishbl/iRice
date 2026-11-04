@@ -20,7 +20,7 @@ DAEMON = qp.ENGINE / "qs-daemon.py"
 class Daemon(unittest.IsolatedAsyncioTestCase):
     async def test_receive_through_the_json_interface_then_exit(self):
         with tempfile.TemporaryDirectory() as d:
-            env = dict(os.environ, IRICE_QS_NO_MDNS="1", IRICE_QS_NO_BLE="1", XDG_STATE_HOME=d)
+            env = dict(os.environ, TESSERA_QS_NO_MDNS="1", TESSERA_QS_NO_BLE="1", XDG_STATE_HOME=d)
             proc = await asyncio.create_subprocess_exec(sys.executable, "-I", str(DAEMON), env=env,
                                                         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
 

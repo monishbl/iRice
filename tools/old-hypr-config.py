@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """What your old hyprland.conf set, for install.sh: it moves that file aside
-(hyprland.conf.pre-irice) and iRice's Lua config takes over, so the
+(hyprland.conf.pre-tessera) and Tessera's Lua config takes over, so the
 displays, keyboard layout, environment and programs you had there are
 written as suggestions, every line commented out, to a file
-hyprland.lua loads (~/.config/hypr/irice/from-your-old-config.lua).
+hyprland.lua loads (~/.config/hypr/tessera/from-your-old-config.lua).
 Nothing is applied until you remove the "-- " in front of a line.
 
   old-hypr-config.py <hyprland.conf> <out.lua>
@@ -17,7 +17,7 @@ import os
 import re
 import sys
 
-# Programs iRice runs itself, or that would fight with it: marked as such
+# Programs Tessera runs itself, or that would fight with it: marked as such
 OWN = ("waybar", "ags", "eww", "hyprpanel", "quickshell", "qs ", "swaync", "mako", "dunst", "hypridle", "swayidle",
        "hyprpaper", "swww", "swaybg", "wl-paste", "cliphist", "polkit", "gnome-keyring", "nm-applet", "blueman-applet",
        "dbus-update-activation-environment", "systemctl --user import-environment", "hyprpm reload", "nwg-dock")
@@ -114,8 +114,8 @@ def monitor_lua(value):
 
 def write(found, out, source):
     lines = ["-- Settings from your old hyprland.conf (" + source + "), written once by the",
-             "-- iRice installer as suggestions: none of them is on. To use one, remove the",
-             '-- "-- " in front of it; Hyprland reloads by itself. iRice\'s own settings',
+             "-- Tessera installer as suggestions: none of them is on. To use one, remove the",
+             '-- "-- " in front of it; Hyprland reloads by itself. Tessera\'s own settings',
              "-- (Settings → Displays, Keyboard) may already cover them.", ""]
     if found["monitor"]:
         lines += ["-- Displays (Settings → Displays does this too)"] + [monitor_lua(m) for m in found["monitor"]] + [""]
@@ -126,7 +126,7 @@ def write(found, out, source):
     if found["env"]:
         lines += ["-- Environment"]
         for name, v in found["env"]:
-            note = " -- (NVIDIA: gpu.lua sets what iRice needs)" if name in NVIDIA else ""
+            note = " -- (NVIDIA: gpu.lua sets what Tessera needs)" if name in NVIDIA else ""
             lines.append(f"-- hl.env({lua(name)}, {lua(v)}){note}")
         lines.append("")
     if found["exec"]:
@@ -134,7 +134,7 @@ def write(found, out, source):
         for c in found["exec"]:
             own = any(w in c for w in OWN)
             lines.append(f'-- hl.on("hyprland.start", function() hl.exec_cmd({lua(c)}) end)' +
-                         (" -- (iRice does this itself)" if own else ""))
+                         (" -- (Tessera does this itself)" if own else ""))
         lines.append("")
     with open(out + ".tmp", "w") as f:
         f.write("\n".join(lines))

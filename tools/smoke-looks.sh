@@ -4,12 +4,12 @@
 # refactor runs before it's merged (tests don't load the shell).
 #   tools/smoke-looks.sh [glass|material]   (both when not given)
 # Runs in the first free sandbox arena (SMOKE_ARENAS of them, 3 by default:
-# the usual sandbox and IRICE_ARENA=2, 3, started when needed), so checkouts
+# the usual sandbox and TESSERA_ARENA=2, 3, started when needed), so checkouts
 # check side by side; each arena's config is put back afterwards. Screenshots
 # of the headless test output go to $SMOKE_SHOTS when it's set.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MAIN="${IRICE_MAIN:-/home/$(id -un)/Projects/Personal/iRice}"
+MAIN="${TESSERA_MAIN:-${IRICE_MAIN:-/home/$(id -un)/Projects/Personal/iRice}}"
 LOOKS=("${@:-glass material}")
 [[ $# -eq 0 ]] && LOOKS=(glass material)
 PANELS=(controlCenter notificationCenter spotlight launchpad clipboard overview missionControl emoji cheatsheet
@@ -31,13 +31,17 @@ until [[ -n "$arena" ]]; do
     done
     [[ -z "$arena" ]] && sleep 5
 done
-export IRICE_ARENA=$arena
-IRICE_RT=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "$IRICE_RT" )
-IRICE_HOME=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "$IRICE_HOME" )
-LOG="$IRICE_RT/quickshell.log"
-echo "arena $arena ($IRICE_RT)"
+# (IRICE_*: main's sandbox scripts from before iRice became Tessera read those)
+export TESSERA_ARENA=$arena IRICE_ARENA=$arena
+TESSERA_RT=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "${TESSERA_RT:-${IRICE_RT:-}}" )
+TESSERA_HOME=$( ROOT="$MAIN"; source "$MAIN/sandbox/lib.sh"; echo "${TESSERA_HOME:-${IRICE_HOME:-}}" )
+LOG="$TESSERA_RT/quickshell.log"
+echo "arena $arena ($TESSERA_RT)"
 ./dev.sh status | grep -q running || { ./dev.sh up >/dev/null; sleep 30; }
-CFG="$IRICE_HOME/.config/irice/config.json"
+CFG="$TESSERA_HOME/.config/tessera/config.json"
+# (an arena not yet started by a Tessera shell: iRice's folder, which the
+# shell moves to Tessera's as it starts, leaving a link, so this path holds)
+[[ -f "$CFG" ]] || CFG="$TESSERA_HOME/.config/irice/config.json"
 backup="$(mktemp)"
 cp "$CFG" "$backup"
 trap 'cp "$backup" "$CFG"; rm -f "$backup"' EXIT
@@ -61,7 +65,7 @@ ipc() { shell_ipc "$@" >/dev/null 2>&1; }
 # the shell, and what the shell's threads are doing
 stuck_report() {
     local pid
-    pid="$(pgrep -a -x irice-shell | awk -v rt="$IRICE_RT/" 'index($2, rt) == 1 {print $1}' | head -1)"
+    pid="$( { pgrep -a -x tessera-shell; pgrep -a -x irice-shell; } | awk -v rt="$TESSERA_RT/" 'index($2, rt) == 1 {print $1}' | head -1)"
     echo "     compositor answers: $(timeout 10 ./dev.sh hyprctl monitors >/dev/null 2>&1 && echo yes || echo no)"
     if [[ -n "$pid" ]]; then
         echo "     shell $pid, threads (count, state, cpu, waiting in, name):"
@@ -72,14 +76,25 @@ stuck_report() {
     sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -v -E 'INFO|DEBUG|textinput' | tail -6 | sed 's/^/     log: /'
 }
 
+# This arena's Tessera shells: a sandbox from before iRice became Tessera
+# (main's reload-shell.sh) stops only the shells named irice-shell or qs
+stop_tessera_shells() {
+    local p
+    for p in $(pgrep -x tessera-shell); do
+        { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$TESSERA_RT" && kill "$p" 2>/dev/null
+    done
+    return 0
+}
+
 failed=0
 for look in "${LOOKS[@]}"; do
     set_look "$look"
     sleep 25 # (Material's start guard counts a reload within ~20 s as a failed start)
-    # (this checkout's shaders, and its shell: IRICE_ROOT given inside the
+    # (this checkout's shaders, and its shell: TESSERA_ROOT given inside the
     # container, where dev.sh's own environment doesn't reach)
     "$ROOT/tools/build-shaders.sh" >/dev/null 2>&1
-    ./dev.sh run env IRICE_ROOT="$ROOT" IRICE_LAB=0 "$MAIN/sandbox/reload-shell.sh" >/dev/null 2>&1
+    stop_tessera_shells
+    ./dev.sh run env TESSERA_ROOT="$ROOT" IRICE_ROOT="$ROOT" TESSERA_LAB=0 IRICE_LAB=0 "$MAIN/sandbox/reload-shell.sh" >/dev/null 2>&1
     sleep 45
     if [[ "$(look_now)" != "$look" ]]; then
         echo "FAIL $look: the start guard switched the look (the $look shell didn't start)"
@@ -88,11 +103,12 @@ for look in "${LOOKS[@]}"; do
     fi
     # (and it really is this checkout's shell running, not main's)
     if [[ "$look" == material ]]; then
-        loaded="$(readlink -f "$IRICE_HOME/.cache/irice/material-shell/shell.qml")"
+        loaded="$(readlink -f "$TESSERA_HOME/.cache/tessera/material-shell/shell.qml")"
+        [[ -n "$loaded" ]] || loaded="$(readlink -f "$TESSERA_HOME/.cache/irice/material-shell/shell.qml")"
     else
         # (the sandbox's own shell: its binary link is in the sandbox's runtime
         # folder; the container also sees the person's real one)
-        loaded="$(./dev.sh run sh -c 'pgrep -a -x irice-shell' 2>/dev/null | grep "^[0-9]* $IRICE_RT/" | grep -o -- "-p [^ ]*" | head -1)"
+        loaded="$(./dev.sh run sh -c 'pgrep -a -x tessera-shell; pgrep -a -x irice-shell' 2>/dev/null | grep "^[0-9]* $TESSERA_RT/" | grep -o -- "-p [^ ]*" | head -1)"
     fi
     if [[ "$loaded" != *"$ROOT/"* ]]; then
         echo "FAIL $look: the sandbox runs another checkout ($loaded), not $ROOT"

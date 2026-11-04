@@ -85,7 +85,7 @@ Singleton {
                     for (const o of outs) {
                         const p = o.properties ?? {};
                         const bin = p["application.process.binary"] ?? "";
-                        if (monitor.has(o.source) || bin === "irice-shell" || bin === "qs" || bin === "quickshell" || p["media.name"] === "Peak detect")
+                        if (monitor.has(o.source) || bin === "tessera-shell" || bin === "irice-shell" || bin === "qs" || bin === "quickshell" || p["media.name"] === "Peak detect")
                             continue;
                         apps.add(root.nice(p["application.name"] || bin));
                         streams.push({ name: p["application.name"] ?? "", bin: bin, pid: parseInt(p["application.process.id"] ?? "0") || 0 });
@@ -100,7 +100,7 @@ Singleton {
         }
     }
 
-    // ── Camera, location and screen sharing from irice-events ───────────
+    // ── Camera, location and screen sharing from tessera-events ───────────
     // (services/Events: the same looks as the scripts below, done in-process)
     EventWatch {
         source: "camera"
@@ -126,7 +126,7 @@ Singleton {
     }
 
     // ── Camera ──────────────────────────────────────────────────────────
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         running: Tools.has("fuser") && Events.fallsBack("camera")
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/camera.sh").toString().replace("file://", ""))]
@@ -155,7 +155,7 @@ Singleton {
     }
 
     // ── Screen sharing ──────────────────────────────────────────────────
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         id: shareWatch
         running: Tools.ready && !shareRetry.running && Events.fallsBack("screenshare")
@@ -187,7 +187,7 @@ Singleton {
         for (const n of graph) {
             if (!(n.type ?? "").endsWith(":Node") || !(props(n)["node.name"] ?? "").startsWith("xdph-streaming-"))
                 continue;
-            // (iRice's own screen recorder, through the portal, isn't a share)
+            // (Tessera's own screen recorder, through the portal, isn't a share)
             const mine = links.filter(l => {
                 if (l.info["output-node-id"] !== n.id)
                     return false;

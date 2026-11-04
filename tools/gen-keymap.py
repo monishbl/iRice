@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Writes iRice's default keymap and gestures (hypr/irice/keymap.json and
+"""Writes Tessera's default keymap and gestures (hypr/tessera/keymap.json and
 gestures.json). The defaults follow end4 (illogical-impulse) wherever both
-have the same action; iRice-only actions sit on keys end4 leaves free.
+have the same action; Tessera-only actions sit on keys end4 leaves free.
 
 Each bind: id (stable, used by the user's changes), keys ("$MOD" is Super, or
 Alt in the sandbox), group and label (Settings and the cheatsheet), action,
 and options. Actions:
-  {"shell": name}   an iRice action (Hyprland global "irice:<name>")
+  {"shell": name}   a Tessera action (Hyprland global "tessera:<name>")
   {"app": role}     the default app for a role (Settings → Default apps)
   {"exec": cmd}     a command
   {"dsp": lua}      a Hyprland dispatcher, as Lua (e.g. hl.dsp.window.close())
@@ -77,8 +77,8 @@ b("dark-mode", "CTRL + $MOD + SHIFT + D", "Shell", "Light or dark appearance", s
 b("quick-note", "$MOD + ALT + N", "Shell", "Quick note", shell("quickNote"))
 b("session", "CTRL + ALT + Delete", "Shell", "Power options", shell("session"))
 b("reset", "$MOD + Escape", "Shell", "Close everything (if something is stuck)", shell("reset"))
-b("repair", "CTRL + $MOD + R", "Shell", "Restart the shell (apps keep running)", {"exec": "setsid -f \"$IRICE_SHELL/assets/scripts/repair-shell.sh\""})
-b("repair-escape", "$MOD + CTRL + Escape", "Shell", "Restart the shell (alternative)", {"exec": "setsid -f \"$IRICE_SHELL/assets/scripts/repair-shell.sh\""})
+b("repair", "CTRL + $MOD + R", "Shell", "Restart the shell (apps keep running)", {"exec": "setsid -f \"$TESSERA_SHELL/assets/scripts/repair-shell.sh\""})
+b("repair-escape", "$MOD + CTRL + Escape", "Shell", "Restart the shell (alternative)", {"exec": "setsid -f \"$TESSERA_SHELL/assets/scripts/repair-shell.sh\""})
 
 # ── Screen ─────────────────────────────────────────────────────────────────
 b("snip", "$MOD + SHIFT + S", "Screen", "Screenshot of an area", shell("screenshotRegion"))
@@ -189,7 +189,7 @@ b("mixer", "CTRL + $MOD + V", "Apps", "Volume mixer", {"app": "mixer"})
 b("tasks", "CTRL + SHIFT + Escape", "Apps", "Task manager", {"app": "tasks"})
 
 # ── Gestures ───────────────────────────────────────────────────────────────
-# end4's set, plus iRice's on finger counts end4 leaves free.
+# end4's set, plus Tessera's on finger counts end4 leaves free.
 # action: a Hyprland gesture action ("workspace", "move", "fullscreen", ...)
 # or {"shell": name}
 gestures = [
@@ -200,8 +200,8 @@ gestures = [
     {"id": "overview-down", "fingers": 4, "direction": "down", "label": "Overview", "action": {"shell": "overview"}},
     {"id": "launchpad", "fingers": 4, "direction": "pinchin", "label": "App Drawer", "action": {"shell": "launchpad"}},
     {"id": "show-desktop", "fingers": 4, "direction": "pinchout", "label": "Show desktop", "action": {"shell": "showDesktop"}},
-    # A long press (fingers resting still): the irice-glass plugin sees it
-    # (hold.cpp), gestures.lua runs it; iRice actions only
+    # A long press (fingers resting still): the tessera-glass plugin sees it
+    # (hold.cpp), gestures.lua runs it; Tessera actions only
     {"id": "circle-search", "fingers": 3, "direction": "hold", "label": "Circle to search", "action": {"shell": "circleSearch"}},
 ]
 
@@ -210,7 +210,7 @@ assert len(ids) == len(set(ids)), "duplicate bind ids"
 keys = [x["keys"] for x in binds]
 assert len(keys) == len(set(keys)), "two binds on one key: " + str({k for k in keys if keys.count(k) > 1})
 for name, data in (("keymap.json", binds), ("gestures.json", gestures)):
-    path = os.path.join(ROOT, "hypr", "irice", name)
+    path = os.path.join(ROOT, "hypr", "tessera", name)
     with open(path, "w") as f:
         json.dump(data, f, indent=1, ensure_ascii=False)
         f.write("\n")

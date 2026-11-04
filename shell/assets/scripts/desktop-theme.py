@@ -45,7 +45,7 @@ def update_ini(path, groups):
     if path.exists() and path.read_text() == text:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".irice-theme-", dir=path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=".tessera-theme-", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as stream:
             stream.write(text.lstrip("\n"))
@@ -69,14 +69,15 @@ def current(path, group, key):
         return ""
 
 
-# Schemes iRice may switch between; anything else was chosen by the user and
-# is left alone (a palette set in KDE's settings or qt6ct isn't ours to undo)
-OURS = re.compile(r"^(BreezeDark|BreezeLight|Breeze|iRice.*)?$")
+# Schemes Tessera may switch between; anything else was chosen by the user and
+# is left alone (a palette set in KDE's settings or qt6ct isn't ours to undo;
+# iRice…: ours from before iRice became Tessera)
+OURS = re.compile(r"^(BreezeDark|BreezeLight|Breeze|Tessera.*|iRice.*)?$")
 
 
 def fallback_scheme(path, dark):
     bg, view, button, fg, muted = ("30,30,33", "24,24,27", "48,48,52", "235,235,240", "160,160,168") if dark else ("245,245,247", "255,255,255", "235,235,240", "30,30,33", "100,100,108")
-    groups = {"General": {"Name": "iRice Dark" if dark else "iRice Light", "ColorScheme": path.stem}}
+    groups = {"General": {"Name": "Tessera Dark" if dark else "Tessera Light", "ColorScheme": path.stem}}
     for name, background in [("Window", bg), ("View", view), ("Button", button), ("Tooltip", button), ("Header", bg), ("Complementary", bg), ("Selection", "0,100,210")]:
         groups["Colors:" + name] = {
             "BackgroundNormal": background, "BackgroundAlternate": button,
@@ -98,7 +99,7 @@ def apply_kde(mode, scheme=None):
         roots = [data] + [Path(p) for p in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":") if p]
         scheme = next((p / "color-schemes" / (name + ".colors") for p in roots if (p / "color-schemes" / (name + ".colors")).is_file()), None)
         if scheme is None:
-            scheme = data / "color-schemes" / ("iRiceDesktopDark.colors" if mode == "dark" else "iRiceDesktopLight.colors")
+            scheme = data / "color-schemes" / ("TesseraDesktopDark.colors" if mode == "dark" else "TesseraDesktopLight.colors")
             fallback_scheme(scheme, mode == "dark")
     scheme = Path(scheme).resolve()
     palette = configparser.ConfigParser(interpolation=None)
@@ -137,11 +138,11 @@ def apply_kde(mode, scheme=None):
     disabled = colors.copy()
     for i in [0, 6, 8, 19]:
         disabled[i] = colors[20]
-    qt_palette = cfg / "qt6ct/colors/iRiceDesktop.conf"
-    # qt6ct: only when no palette is chosen, or one of ours (iRice.conf from
+    qt_palette = cfg / "qt6ct/colors/TesseraDesktop.conf"
+    # qt6ct: only when no palette is chosen, or one of ours (Tessera.conf from
     # Match apps, or this one)
     chosen = current(cfg / "qt6ct/qt6ct.conf", "Appearance", "color_scheme_path")
-    if not chosen or Path(chosen).name.startswith("iRice"):
+    if not chosen or Path(chosen).name.startswith(("Tessera", "iRice")):
         changed |= update_ini(qt_palette, {"ColorScheme": {"active_colors": ", ".join(colors), "inactive_colors": ", ".join(colors), "disabled_colors": ", ".join(disabled)}})
         changed |= update_ini(cfg / "qt6ct/qt6ct.conf", {"Appearance": {"custom_palette": "true", "color_scheme_path": str(qt_palette)}})
     # Existing KDE apps that watch the desktop palette can reload it.

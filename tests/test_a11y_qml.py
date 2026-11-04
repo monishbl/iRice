@@ -1,6 +1,6 @@
 """Keyboard and screen-reader basics of the shared controls.
 
-Runs a small page with each control in iRice's Quickshell, offscreen, and
+Runs a small page with each control in Tessera's Quickshell, offscreen, and
 drives it with real key and mouse events (QtTest's TestEvent): Tab visits
 every control in order, Space and Enter act, the arrows move sliders and
 choices, each control carries an accessible role and name, and the focus
@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = Path.home() / ".local/share/irice/quickshell"
+BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()), Path.home() / ".local/share/tessera/quickshell")  # (irice: built before the rename)
 QS = BUNDLE / "bin/qs"
 
 PAGE = r'''
@@ -102,7 +102,7 @@ ShellRoot {
 @unittest.skipUnless(QS.exists(), "requires bundled Quickshell")
 class KeyboardAndScreenReader(unittest.TestCase):
     def run_page(self):
-        with tempfile.TemporaryDirectory(prefix="irice-a11y-") as d:
+        with tempfile.TemporaryDirectory(prefix="tessera-a11y-") as d:
             home = Path(d) / "shell"
             home.mkdir()
             for part in ("common", "glass", "modules", "services", "assets"):

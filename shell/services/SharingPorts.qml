@@ -10,8 +10,8 @@ import qs.common
 // receiving: 53317), while the share sheet looks for devices (their answers
 // come in: LocalSend's 53317, mDNS), and while a QR-code share or a cast
 // serves a file (53319-53320). Sending itself needs nothing open: the
-// connection goes out. sharing-check.py `ports` asks iRice's root helper
-// (`irice-root sharing-ports open <sets>|close`: fixed ports, no password
+// connection goes out. sharing-check.py `ports` asks Tessera's root helper
+// (`tessera-root sharing-ports open <sets>|close`: fixed ports, no password
 // for an administrator at this computer); with no firewall on, or nothing
 // changed, it asks nothing. Opening goes at once, closing a few seconds
 // later (a quick off and on asks once), and once at startup.
@@ -20,7 +20,7 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property bool sandbox: Quickshell.env("IRICE_SANDBOX") === "1"
+    readonly property bool sandbox: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
     readonly property string script: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/sharing-check.py").toString().replace("file://", ""))
 
     // What's needed now: the root helper's set names (sorted, joined), and why
@@ -101,7 +101,7 @@ Singleton {
             } else {
                 root.failedWith = code;
                 root.error = (job.sets ? "Sharing's ports didn't open. " : "Sharing's ports didn't close. ")
-                    + (r.error || (code === 64 ? "iRice's system helper is from before this. Run Software Update once." : "Try again."));
+                    + (r.error || (code === 64 ? "Tessera's system helper is from before this. Run Software Update once." : "Try again."));
             }
             root.schedule(); // (what's needed may have changed meanwhile)
         }

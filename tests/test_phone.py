@@ -42,7 +42,7 @@ class Track(unittest.TestCase):
             fake.write_text(FAKE_ADB)
             fake.chmod(0o755)
             r = subprocess.run([sys.executable, "-I", str(SCRIPT), "watch"], capture_output=True, text=True, timeout=30,
-                               env=dict(os.environ, IRICE_ADB=str(fake)))
+                               env=dict(os.environ, TESSERA_ADB=str(fake)))
             first = json.loads(r.stdout.splitlines()[0])
             ok, locked = first["devices"]
             self.assertEqual(ok["model"], "realme GT Master Edition")

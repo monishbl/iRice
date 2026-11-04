@@ -33,6 +33,6 @@ def activate(app):
     win.maximize()
 
 
-app = Gtk.Application(application_id="org.irice.redraw")
+app = Gtk.Application(application_id="org.tessera.redraw")
 app.connect("activate", activate)
 app.run(None)

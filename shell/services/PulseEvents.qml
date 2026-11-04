@@ -6,7 +6,7 @@ import qs.common
 
 // One `pactl subscribe` for the whole shell (Privacy's microphone dot,
 // Devices' output alerts): each line is passed on as event(). Started again
-// after it ends (the sound server restarted, or isn't up yet). irice-events
+// after it ends (the sound server restarted, or isn't up yet). tessera-events
 // (services/Events) subscribes itself when it's there; its events come as
 // the same lines.
 Singleton {

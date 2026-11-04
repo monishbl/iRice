@@ -148,7 +148,7 @@ Singleton {
 
     // Blurred backdrop for liquid glass, baked per screen by the background
     // window. The version bump makes every glass window reload it.
-    readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice"
+    readonly property string cacheDir: Paths.cache
     property var backdropVersions: ({})
     function backdropPath(screenName) {
         return cacheDir + "/backdrop-" + screenName + ".png";

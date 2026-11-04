@@ -6,13 +6,13 @@ health (health-check.py) and the Quick Share helper (why a link failed).
   firewall   ufw, firewalld, nftables or iptables turned on: phones reach
              this computer (LocalSend 53317, Quick Share 53318 and its
              faster-link port 53319, mDNS 5353/udp to be found, DHCP for its
-             hotspot) only through the ports iRice opens while you're
+             hotspot) only through the ports Tessera opens while you're
              visible to others or sharing (`ports`, below). Unprivileged
              programs can't read the rules, so what's open is known from
-             `ports`' own note (~/.local/state/irice/sharing-ports.json:
+             `ports`' own note (~/.local/state/tessera/sharing-ports.json:
              this boot's, except ufw's, which stay through a restart), or
              when the rules file is readable (or firewalld answers).
-  pairing    BlueZ's experimental features on (iRice's setup turns them on
+  pairing    BlueZ's experimental features on (Tessera's setup turns them on
              for headphone batteries) bring profiles that need encryption the
              moment a phone connects for Quick Share, so the phone asks to
              pair (phone-to-phone Quick Share never does): Ranging (RAP)
@@ -26,13 +26,13 @@ health (health-check.py) and the Quick Share helper (why a link failed).
 
   sharing-check.py status          JSON {"firewall": {...}, "pairing": {...}}
   sharing-check.py fix pairing
-        runs the fixed script (irice-root.py) through pkexec: the installed
-        root helper, without a password (/usr/lib/irice/irice-root fix …),
-        or before it's installed the script itself, after iRice's password
+        runs the fixed script (tessera-root.py) through pkexec: the installed
+        root helper, without a password (/usr/lib/tessera/tessera-root fix …),
+        or before it's installed the script itself, after Tessera's password
         dialog; nothing from the command line reaches it. JSON {"ok", "error"}.
   sharing-check.py ports <set>[,<set>…]|none [why]
         lets in exactly these of the root helper's fixed sets (PORT_SETS),
-        or none (services/SharingPorts.qml): `irice-root sharing-ports
+        or none (services/SharingPorts.qml): `tessera-root sharing-ports
         open|close` through pkexec, no password for an administrator at this
         computer. Asks nothing with no firewall on, or when they're so
         already. Notes what's open, and why (for System health). JSON {"ok",
@@ -40,7 +40,7 @@ health (health-check.py) and the Quick Share helper (why a link failed).
         helper is older, or missing; 126 cancelled; 127 not allowed).
   sharing-check.py ports again
         the last ones asked for, asked again (System health's Fix button)
-IRICE_SYSTEM_ROOT (tests) is where /etc and /usr are looked for.
+TESSERA_SYSTEM_ROOT (tests) is where /etc and /usr are looked for.
 """
 import importlib.util
 import json
@@ -50,19 +50,26 @@ import shutil
 import subprocess
 import sys
 
-ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
-STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
+ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
+_state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+STATE = os.path.join(_state, "irice" if not os.path.exists(os.path.join(_state, "tessera")) and os.path.isdir(os.path.join(_state, "irice")) else "tessera")
 PORTS_NOTE = os.path.join(STATE, "sharing-ports.json")
-# The fixed scripts live in the root helper (irice-root.py), which runs them
+# The fixed scripts live in the root helper (tessera-root.py), which runs them
 # without a password once installed; until then they go through pkexec here
-_spec = importlib.util.spec_from_file_location("irice_root", os.path.join(os.path.dirname(os.path.abspath(__file__)), "irice-root.py"))
-irice_root = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(irice_root)
-DROPIN = irice_root.DROPIN
-PLUGINS = irice_root.PLUGINS
-PAIRING_SCRIPT, PAIRING_SHOWN = irice_root.PAIRING_SCRIPT, irice_root.PAIRING_SHOWN
-# The installed helper (/usr/lib/irice/irice-root): its fixes don't ask
-HELPER = os.path.join(ROOT, "usr/lib/irice/irice-root")
+_spec = importlib.util.spec_from_file_location("tessera_root", os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessera-root.py"))
+tessera_root = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tessera_root)
+DROPIN = tessera_root.DROPIN
+PLUGINS = tessera_root.PLUGINS
+PAIRING_SCRIPT, PAIRING_SHOWN = tessera_root.PAIRING_SCRIPT, tessera_root.PAIRING_SHOWN
+# The installed helper (/usr/lib/tessera/tessera-root): its fixes don't ask.
+# Until the root setup installs it, the one from before Tessera was called
+# iRice (/usr/lib/irice/irice-root) does, through its own polkit rule.
+HELPER = os.path.join(ROOT, "usr/lib/tessera/tessera-root")
+OLD_HELPER = os.path.join(ROOT, "usr/lib/irice/irice-root")
+if not os.access(HELPER, os.X_OK) and os.access(OLD_HELPER, os.X_OK):
+    HELPER = OLD_HELPER
 
 
 def helper_installed():
@@ -164,7 +171,7 @@ def firewall():
     "allowed": True | False | None (Quick Share's port gets through now),
     "blocks": bool (on, and not known to let it through), "hotspot": True |
     False | None (DHCP, 67/udp, gets through: phones joining Quick Share's
-    hotspot need an address from it), "open": the sets iRice has open now,
+    hotspot need an address from it), "open": the sets Tessera has open now,
     and why; "want" (what was last asked for), "error" and "code" (how that
     went), "asked": bool (ever)}."""
     kind = firewall_kind()
@@ -185,7 +192,7 @@ def firewall():
         allowed = {0: True, 1: False}.get(code)
     elif allowed is None and kind == "nftables":
         if _read("/etc/nftables.d/irice.nft") is not None or _read("/etc/nftables.d/irice.conf") is not None:
-            allowed = True  # (the drop-in iRice's earlier, permanent fix kept: sharing-ports takes it out)
+            allowed = True  # (the drop-in Tessera's earlier, permanent fix kept: sharing-ports takes it out)
         else:
             rules = _read("/etc/nftables.conf")
             if rules is not None and _accepts_all(rules) and "include" not in rules:
@@ -217,7 +224,7 @@ def pairing():
     plugin in PLUGINS is left out (an older drop-in with rap alone isn't enough)."""
     conf = _read("/etc/bluetooth/main.conf") or ""
     experimental = bool(re.search(r"^\s*Experimental\s*=\s*true", conf, re.M))
-    text = _read(DROPIN)
+    text = _read(DROPIN) or _read(tessera_root.OLD_DROPIN)  # (the old name, until the root setup renames it)
     if text is None:
         _, text = _run("systemctl", "show", "-p", "ExecStart", "--value", "bluetooth")
     off = set()
@@ -243,7 +250,7 @@ def fix(what):
         # script then, with the password)
         if helper_installed() and helper_current():
             p = subprocess.run(["pkexec", HELPER, "fix", "btpairing"], capture_output=True, text=True, timeout=120)
-            if p.returncode == irice_root.REFUSED_EXIT:  # (an older helper without this fix: ask as before)
+            if p.returncode == tessera_root.REFUSED_EXIT:  # (an older helper without this fix: ask as before)
                 p = None
         if p is None:
             p = subprocess.run(["pkexec", "/bin/sh", "-c", script], capture_output=True, text=True, timeout=120)
@@ -265,7 +272,7 @@ def ports(sets, why=""):
     code, error = 0, ""
     if kind and not (_current(note, kind) and note.get("open") == sets and note.get("code") == 0):
         if not helper_installed():
-            code, error = irice_root.REFUSED_EXIT, "iRice's system helper isn't installed yet. Run Software Update once."
+            code, error = tessera_root.REFUSED_EXIT, "Tessera's system helper isn't installed yet. Run Software Update once."
         elif not shutil.which("pkexec"):
             code, error = 1, "pkexec (from polkit) is needed to open the firewall's ports."
         else:
@@ -274,9 +281,9 @@ def ports(sets, why=""):
                                    capture_output=True, text=True, timeout=120)
                 code = p.returncode
                 error = "" if code == 0 else {
-                    irice_root.REFUSED_EXIT: "iRice's system helper is from before this. Run Software Update once.",
+                    tessera_root.REFUSED_EXIT: "Tessera's system helper is from before this. Run Software Update once.",
                     126: "Cancelled: no password was given.", 127: "Not allowed: it needs an administrator's password.",
-                }.get(code) or (p.stderr or p.stdout).replace("irice-root: ", "").strip()[:300] or "It didn't work."
+                }.get(code) or (p.stderr or p.stdout).replace("tessera-root: ", "").replace("irice-root: ", "").strip()[:300] or "It didn't work."
             except subprocess.TimeoutExpired:
                 code, error = 1, "The firewall took too long to answer."
     # (what didn't change stays as it was: open until a close went through)
@@ -299,7 +306,7 @@ def main(argv):
         note = ports_note()
         argv = ["ports", ",".join(note.get("want", [])) or "none", note.get("why", "")]
     sets = ([] if argv[1] == "none" else argv[1].split(",")) if argv[:1] == ["ports"] and len(argv) in (2, 3) else None
-    if sets is not None and set(sets) <= set(irice_root.PORT_SETS):
+    if sets is not None and set(sets) <= set(tessera_root.PORT_SETS):
         code, error, kind = ports(sets, argv[2] if len(argv) == 3 else "")
         print(json.dumps({"ok": code == 0, "error": error, "kind": kind}))
         if error:

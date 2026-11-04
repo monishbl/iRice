@@ -24,7 +24,7 @@ Singleton {
     property var last: null // name -> { kind, hotspot }
     onModeChanged: last = null // (another way of looking: learn the state again)
 
-    // irice-events (services/Events) follows NetworkManager over D-Bus, or
+    // tessera-events (services/Events) follows NetworkManager over D-Bus, or
     // the kernel's netlink, and says when something changed
     readonly property string source: mode === "nm" ? "nm" : "net"
     EventWatch {
@@ -40,7 +40,7 @@ Singleton {
     }
     readonly property bool nativeOn: on && Events.covers(source)
     onNativeOnChanged: if (nativeOn) look()
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         id: monitor
         running: root.on && Events.fallsBack(root.source)

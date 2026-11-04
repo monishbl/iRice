@@ -157,7 +157,7 @@ test('ocr: without English data, only installed languages are passed', () => {
 });
 
 test('keymap: volume and brightness work without media keys, on free combos', () => {
-    const km = JSON.parse(read('hypr/irice/keymap.json'));
+    const km = JSON.parse(read('hypr/tessera/keymap.json'));
     const keys = km.map(b => b.keys);
     assert.equal(new Set(keys).size, keys.length, 'duplicate key combos');
     for (const [k, a] of [['$MOD + F12', 'volumeUp'], ['$MOD + F11', 'volumeDown'], ['$MOD + F2', 'brightnessUp'], ['$MOD + F1', 'brightnessDown']]) {

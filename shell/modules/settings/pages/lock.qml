@@ -81,12 +81,12 @@ Column {
         }
     }
 
-    // The iRice login screen (greetd): its style; the look's colours and
+    // The Tessera login screen (greetd): its style; the look's colours and
     // clock follow yours (LoginScreen)
     Group {
         width: parent.width
         title: "Login screen"
-        footer: !LoginScreen.installed ? "This computer signs in with another login screen. iRice's comes with ./install.sh --greeter; until then, Preview shows it."
+        footer: !LoginScreen.installed ? "This computer signs in with another login screen. Tessera's comes with ./install.sh --greeter; until then, Preview shows it."
             : LoginScreen.status !== "" ? LoginScreen.status : "Your colours, light or dark and your clock go to the login screen by themselves."
         Row {
             label: "Style"
@@ -95,7 +95,7 @@ Column {
         }
         Row {
             label: "Preview"
-            detail: "Shows it on this screen. The password there is irice; Esc closes it."
+            detail: "Shows it on this screen. The password there is tessera; Esc closes it."
             SettingsButton {
                 text: "Preview Login Screen"
                 onClicked: LoginScreen.preview()
@@ -123,7 +123,7 @@ Column {
         Row {
             label: "Login intro"
             detail: Config.options.appearance.reduceMotion ? "Off while Reduce motion is on (Accessibility)"
-                : Theme.material ? "As your desktop first appears after you log in, it opens out of the iRice shape"
+                : Theme.material ? "As your desktop first appears after you log in, it opens out of the Tessera shape"
                 : "As your desktop first appears after you log in, the wallpaper comes into focus and the menu bar and dock settle in"
             QQ.Row {
                 spacing: 12

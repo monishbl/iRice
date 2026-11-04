@@ -19,7 +19,7 @@ Singleton {
             "openai": "OPENAI_API_KEY",
             "openrouter": "OPENROUTER_API_KEY"
         })
-    readonly property string fallbackPath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/irice/ai-keys.json"
+    readonly property string fallbackPath: Paths.state + "/ai-keys.json"
 
     property var keys: ({})
     property var edited: ({})
@@ -71,8 +71,10 @@ Singleton {
         const job = pending[0];
         pending = pending.slice(1);
         keyring.job = job;
-        keyring.command = job.op === "clear" ? ["secret-tool", "clear", "application", "irice", "provider", job.slot]
-            : ["secret-tool", "store", "--label=iRice · " + job.label, "application", "irice", "provider", job.slot];
+        // (clear: also the key kept while Tessera was called iRice, under
+        // application=irice, which lookups still find)
+        keyring.command = job.op === "clear" ? ["sh", "-c", "secret-tool clear application tessera provider \"$1\"; secret-tool clear application irice provider \"$1\"", "sh", job.slot]
+            : ["secret-tool", "store", "--label=Tessera · " + job.label, "application", "tessera", "provider", job.slot];
         keyring.stdinEnabled = job.op === "store";
         keyring.running = true;
     }
@@ -150,7 +152,8 @@ Singleton {
             id: lookup
             required property string modelData
             running: true
-            command: ["secret-tool", "lookup", "application", "irice", "provider", lookup.modelData]
+            // (else the key kept while Tessera was called iRice)
+            command: ["sh", "-c", "secret-tool lookup application tessera provider \"$1\" || secret-tool lookup application irice provider \"$1\"", "sh", lookup.modelData]
             stdout: StdioCollector {
                 onStreamFinished: {
                     if (text.trim() === "" || root.edited[lookup.modelData])

@@ -1,4 +1,4 @@
-"""Offscreen integration checks using iRice's Quickshell build when installed."""
+"""Offscreen integration checks using Tessera's Quickshell build when installed."""
 import json
 import os
 from pathlib import Path
@@ -8,14 +8,14 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = Path.home()/'.local/share/irice/quickshell'
+BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()), Path.home() / ".local/share/tessera/quickshell")  # (irice: built before the rename)
 QS = BUNDLE/'bin/qs'
 
 
 @unittest.skipUnless(QS.exists(), 'requires bundled Quickshell')
 class QmlAuditTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='irice-audit-test-')
+        self.temp = tempfile.TemporaryDirectory(prefix='tessera-audit-test-')
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.env = dict(os.environ, QT_QPA_PLATFORM='offscreen', XDG_RUNTIME_DIR=str(self.base/'runtime'), XDG_STATE_HOME=str(self.base/'state'), XDG_CONFIG_HOME=str(self.base/'config'), XDG_CACHE_HOME=str(self.base/'cache'), QML_IMPORT_PATH=str(BUNDLE/'lib/qt6/qml'))
@@ -49,6 +49,7 @@ class QmlAuditTests(unittest.TestCase):
     def state_home(self, name):
         home=self.base/name
         self.copy(home, Path('common/UiState.qml'))
+        self.copy(home, Path('common/Paths.qml'))
         self.copy(home, Path('assets/scripts/state-merge.py'))
         (home/'services').mkdir()
         (home/'services/Stub.qml').write_text('import QtQuick\nQtObject {}')
@@ -62,7 +63,7 @@ Timer { interval: 30; repeat: true; running: true; onTriggered: {
 }}
 Timer { id: quit; interval: 20; onTriggered: Qt.quit() }
 '''))
-        state=self.base/'state/irice'
+        state=self.base/'state/tessera'
         subprocess.run(['python3',str(home/'assets/scripts/state-merge.py'),str(state)],check=True)
         self.assertEqual(json.loads((state/'state.json').read_text())['desktopNote'], 'durable')
         self.assertEqual((state/'state.json').stat().st_mode & 0o777, 0o600)
@@ -78,7 +79,7 @@ Timer { id: edit; interval: '''+str(delay)+'''; onTriggered: {'''+mutation+''';}
 Timer { id: quit; interval: 1100; onTriggered: Qt.quit() }
 '''))
         for proc in procs: self.finish(proc)
-        saved=json.loads((self.base/'state/irice/state.json').read_text())
+        saved=json.loads((self.base/'state/tessera/state.json').read_text())
         self.assertEqual(saved['desktopNote'],'note'); self.assertEqual(saved['todos'][0]['text'],'todo')
 
     def test_notes_only_report_success_after_write(self):

@@ -243,8 +243,8 @@ Singleton {
     }
     Process {
         id: msSignin
-        // (built here, or installed with iRice's package; neither: said so)
-        command: ["sh", "-c", "exe=\"$1/native/build/goa-signin\"; [ -x \"$exe\" ] || exe=$(command -v irice-goa-signin) || { echo '{\"error\":\"Connecting needs iRice\\u2019s native helpers. Run Software Update, then try again.\"}'; exit 1; }; exec \"$exe\" ms_graph", "sh", Quickshell.shellDir]
+        // (built here, or installed with Tessera's package; neither: said so)
+        command: ["sh", "-c", "exe=\"$1/native/build/goa-signin\"; [ -x \"$exe\" ] || exe=$(command -v tessera-goa-signin) || { echo '{\"error\":\"Connecting needs Tessera\\u2019s native helpers. Run Software Update, then try again.\"}'; exit 1; }; exec \"$exe\" ms_graph", "sh", Quickshell.shellDir]
         stdout: StdioCollector {
             onStreamFinished: {
                 let r = {};
@@ -256,7 +256,7 @@ Singleton {
                 } else {
                     root.signingIn = false;
                     if (!r.cancelled) {
-                        root.lastError = r.error || "Couldn't open the Microsoft sign-in. Update iRice, then try again.";
+                        root.lastError = r.error || "Couldn't open the Microsoft sign-in. Update Tessera, then try again.";
                         root.errorFrom = "microsoft";
                     }
                 }
@@ -329,7 +329,7 @@ Singleton {
                     root.lastError = s.error ?? "";
                     root.errorFrom = root.providerOf(done?.request);
                     if (s.error && done && /^(event|task)/.test(done.request.cmd))
-                        Quickshell.execDetached(["notify-send", "-a", "iRice", "Change not saved", s.error]);
+                        Quickshell.execDetached(["notify-send", "-a", "Tessera", "Change not saved", s.error]);
                 } else {
                     root.lastError = "The calendar helper didn't answer. Check that Python 3 is installed.";
                 }

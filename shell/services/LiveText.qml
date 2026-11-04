@@ -11,7 +11,7 @@ import "../common/LiveTextLogic.js" as Logic
 // Preview). The screenshot index lets Search find a shot by its words: built
 // in the background by one low-priority process, only for screenshots it
 // hasn't read yet, and not on battery below 30% or in power saver
-// (assets/scripts/shot-index.py; $XDG_STATE_HOME/irice, owner-only).
+// (assets/scripts/shot-index.py; $XDG_STATE_HOME/tessera, owner-only).
 Singleton {
     id: root
 
@@ -117,7 +117,7 @@ Singleton {
 
     // ── Finding screenshots by their text (Search) ─────────────────────────
     readonly property bool indexing: Config.options.screenshot.textSearch ?? true
-    readonly property string indexFile: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/irice/screenshot-text.json"
+    readonly property string indexFile: Paths.state + "/screenshot-text.json"
     readonly property string script: Quickshell.shellDir + "/assets/scripts/shot-index.py"
     readonly property bool mayIndex: Logic.mayIndex({ onBattery: Power.onBattery, percent: Power.percent, saver: Power.mode === "power-saver" })
     property var shots: ({}) // the index, once Search first asks

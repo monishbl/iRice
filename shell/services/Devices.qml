@@ -256,7 +256,7 @@ Singleton {
                 root.onUdev(props);
         }
     }
-    // (without irice-events)
+    // (without tessera-events)
     Process {
         id: udev
         running: Island.enabled && Tools.has("udevadm") && !udevRetry.running && Events.fallsBack("udev")
@@ -288,7 +288,7 @@ Singleton {
                 return;
             if (event.name === "monitoraddedv2" || event.name === "monitorremovedv2") {
                 const [, name, ...desc] = event.data.split(",");
-                if (name.startsWith("HEADLESS") || name.startsWith("IRICE-"))
+                if (name.startsWith("HEADLESS") || name.startsWith("TESSERA-"))
                     return;
                 const added = event.name === "monitoraddedv2";
                 Island.post({ kind: "display", icon: name.startsWith("eDP") ? "desktop" : "monitor", title: desc.join(",").trim() || name, subtitle: added ? "Display connected · " + name : "Display disconnected", color: added ? Theme.accents.green : Qt.rgba(1, 1, 1, 0.55) }, 3500);

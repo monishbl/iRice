@@ -143,7 +143,7 @@ Column {
         Group {
             width: parent.width
             title: "Between displays"
-            footer: Mouse.boundaryAvailable ? "Applies to mice and trackpads. Deliberate focus warps still cross displays. During region selection, the pointer stays on the starting screen." : "Pointer boundaries need the updated iRice compositor plugin. Screenshot bounds are protected even without it."
+            footer: Mouse.boundaryAvailable ? "Applies to mice and trackpads. Deliberate focus warps still cross displays. During region selection, the pointer stays on the starting screen." : "Pointer boundaries need the updated Tessera compositor plugin. Screenshot bounds are protected even without it."
             Row {
                 label: "Pointer boundaries"
                 Dropdown {

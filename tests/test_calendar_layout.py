@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-QS = Path.home() / '.local/share/irice/quickshell/bin/qs'
+QS = next((q for q in (Path.home() / '.local/share/tessera/quickshell/bin/qs', Path.home() / '.local/share/irice/quickshell/bin/qs') if q.exists()), Path.home() / '.local/share/tessera/quickshell/bin/qs')  # (irice: built before the rename)
 
 THEME = '''pragma Singleton
 import QtQuick
@@ -167,7 +167,7 @@ ShellRoot {
 @unittest.skipUnless(QS.exists(), 'requires bundled Quickshell')
 class CalendarLayoutTests(unittest.TestCase):
     def test_bounded_agenda_and_all_tabs(self):
-        with tempfile.TemporaryDirectory(prefix='irice-calendar-test-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='tessera-calendar-test-') as tmp:
             self.check_layout(Path(tmp))
 
     def check_layout(self, p):

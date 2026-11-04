@@ -24,7 +24,7 @@ PanelWindow {
     screen: target
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "irice:display-confirm"
+    WlrLayershell.namespace: "tessera:display-confirm"
     WlrLayershell.layer: WlrLayer.Overlay
     implicitWidth: 400 + 2 * m
     implicitHeight: body.implicitHeight + 48 + 2 * m

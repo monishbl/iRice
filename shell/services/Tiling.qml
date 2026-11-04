@@ -43,7 +43,7 @@ Singleton {
     // address -> { floating, at, size } before the first snap
     property var previous: ({})
 
-    // Drag a window to an edge or corner (reported by the irice-glass plugin):
+    // Drag a window to an edge or corner (reported by the tessera-glass plugin):
     // a preview shows where it will go; letting go there tiles it
     property string dragZone: "none"
     property string dragMonitor: ""
@@ -67,7 +67,7 @@ Singleton {
                 }
                 return;
             }
-            if (event.name !== "irice-drag")
+            if (event.name !== "tessera-drag" && event.name !== "irice-drag") // (irice: a glass plugin built before the rename)
                 return;
             const [kind, mon, zone, addr] = event.data.split(",");
             if (kind === "zone") {

@@ -46,7 +46,7 @@ NS_CONN = "urn:x-cast:com.google.cast.tp.connection"
 NS_HEART = "urn:x-cast:com.google.cast.tp.heartbeat"
 NS_RECV = "urn:x-cast:com.google.cast.receiver"
 NS_MEDIA = "urn:x-cast:com.google.cast.media"
-SENDER = "sender-irice"
+SENDER = "sender-tessera"
 MEDIA_EXT = re.compile(r"\.(mp4|m4v|webm|mkv|mov|mp3|m4a|aac|ogg|oga|opus|flac|wav|jpe?g|png|gif|webp|m3u8|mpd)(\?|$)", re.I)
 
 

@@ -33,7 +33,7 @@ Column {
             label: Fingerprint.reader?.name ?? "Fingerprint reader"
             detail: Fingerprint.installError !== "" ? Fingerprint.installError
                 : Fingerprint.reader?.unsupported ? "Found, but it has no Linux driver yet (libfprint). Your password works as always; fprint.freedesktop.org lists the readers that do."
-                : Fingerprint.missing.length > 0 ? "Found. To use it, install " + Fingerprint.missing.join(", ") + ((Fingerprint.info.aur ?? []).length > 0 ? " (from the AUR: iRice sets up an AUR helper first if there's none)" : "") + ". It asks for your password once."
+                : Fingerprint.missing.length > 0 ? "Found. To use it, install " + Fingerprint.missing.join(", ") + ((Fingerprint.info.aur ?? []).length > 0 ? " (from the AUR: Tessera sets up an AUR helper first if there's none)" : "") + ". It asks for your password once."
                 : Fingerprint.fixing ? "Setting up the reader. Its firmware is updating; this takes about a minute."
                 : Fingerprint.fixError !== "" ? Fingerprint.fixError
                 : Fingerprint.slowStart ? "Found. Its driver updates the reader's firmware the first time, which takes about a minute, and the system stops it after 15 seconds. Set Up gives it the time it needs."
@@ -128,7 +128,7 @@ Column {
         }
         Repeater {
             model: Fingerprint.ready ? [
-                { key: "polkit", label: "Password prompts", detail: "When an app or iRice asks for an administrator's password" },
+                { key: "polkit", label: "Password prompts", detail: "When an app or Tessera asks for an administrator's password" },
                 { key: "sudo", label: "sudo in terminals", detail: "sudo asks for a finger first" },
                 { key: "login", label: "Login screen", detail: Fingerprint.info.gdm ? "GDM asks for a finger by itself. For greetd, ly, SDDM, LightDM or LXDM: your password is still needed once after a restart (it unlocks your saved passwords)" : "Your password is still needed once after a restart: it unlocks your saved passwords" }
             ] : []
@@ -167,7 +167,7 @@ Column {
         Row {
             visible: !Face.installed
             label: "Face unlock"
-            detail: Face.installError !== "" ? Face.installError : "Needs Howdy (howdy-next, from the AUR: iRice sets up an AUR helper first if there's none). It asks for your password once."
+            detail: Face.installError !== "" ? Face.installError : "Needs Howdy (howdy-next, from the AUR: Tessera sets up an AUR helper first if there's none). It asks for your password once."
             labelColor: Face.installError !== "" ? Theme.color.danger : Theme.color.label
             SettingsButton {
                 text: Face.installing ? "Installing…" : "Install"

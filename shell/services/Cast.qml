@@ -20,7 +20,7 @@ Singleton {
     property var found: ({}) // "interface;protocol;avahi name" -> device
     // (not while avahi-daemon is off: it would only end, again and again)
     readonly property bool browsing: Tools.has("avahi-browse") && (!Needs.checked || Needs.avahi)
-    // irice-events (services/Events) browses through Avahi's D-Bus API
+    // tessera-events (services/Events) browses through Avahi's D-Bus API
     EventWatch {
         source: "avahi"
         active: root.browsing
@@ -44,7 +44,7 @@ Singleton {
         found = {};
         devices = [];
     }
-    // (without irice-events)
+    // (without tessera-events)
     KeptProcess {
         id: browser
         wanted: root.browsing && Events.fallsBack("avahi")
@@ -53,7 +53,7 @@ Singleton {
         stdout: SplitParser {
             onRead: line => root.avahiLine(line)
         }
-        // (avahi-daemon restarted, or irice-events took over: what it knew
+        // (avahi-daemon restarted, or tessera-events took over: what it knew
         // is gone; looked for again)
         onRunningChanged: if (!running) root.forget()
     }

@@ -88,7 +88,7 @@ class Share(unittest.TestCase):
         qr = Path(r["qr"])
         self.assertTrue(qr.read_text().lstrip().startswith("<?xml"))
         self.assertEqual(qr.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(qr.parent, Path(self.dir.name, "run/irice"))
+        self.assertEqual(qr.parent, Path(self.dir.name, "run/tessera"))
         self.run_script("forget", str(qr))
         self.assertFalse(qr.exists())
 

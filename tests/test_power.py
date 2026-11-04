@@ -115,19 +115,19 @@ class IdleConfig(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d)
             (p / "bin").mkdir()
-            (p / "config/irice").mkdir(parents=True)
-            (p / "config/irice/idle-listeners").write_text(listeners)
+            (p / "config/tessera").mkdir(parents=True)
+            (p / "config/tessera/idle-listeners").write_text(listeners)
             if own is not None:
                 (p / "config/hypr").mkdir(parents=True)
                 (p / "config/hypr/hypridle.conf").write_text(own)
             stub = p / "bin/hypridle"
             stub.write_text('#!/bin/sh\ncat "$2" > "$IDLE_CAPTURE"\n')
             stub.chmod(0o755)
-            env = dict(os.environ, PATH=str(p / "bin") + ":" + os.environ["PATH"], IRICE_SANDBOX="1", IRICE_TTY="1",
+            env = dict(os.environ, PATH=str(p / "bin") + ":" + os.environ["PATH"], TESSERA_SANDBOX="1", TESSERA_TTY="1",
                        XDG_RUNTIME_DIR=d, XDG_CONFIG_HOME=str(p / "config"), HYPRLAND_INSTANCE_SIGNATURE="fixture",
                        IDLE_CAPTURE=str(p / "captured"))
             subprocess.run(["bash", str(SCRIPTS / "start-idle.sh"), "qs"], env=env, check=True, timeout=5)
-            return (p / "captured").read_text(), (p / "irice-idle-fixture/grace").read_text().strip()
+            return (p / "captured").read_text(), (p / "tessera-idle-fixture/grace").read_text().strip()
 
     def test_settings_timers_become_listeners(self):
         conf, grace = self.run_idle("battery dim 120\nac off 600\nbattery sleep 900\nnonsense line\nac lock x\ngrace 0\n")
@@ -152,7 +152,7 @@ class IdleConfig(unittest.TestCase):
         self.assertNotIn("ac sleep", conf)
 
     def test_the_copy_an_old_installer_put_there_isnt_yours(self):
-        # (the last hypr/hypridle.conf iRice shipped, which install.sh copied in)
+        # (the last hypr/hypridle.conf iRice shipped, before it became Tessera, which install.sh copied in)
         conf, _ = self.run_idle("ac sleep 60\n", own=SHIPPED_HYPRIDLE)
         self.assertIn("ac sleep", conf)
         self.assertNotIn("loginctl lock-session", conf)

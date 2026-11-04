@@ -1,6 +1,6 @@
 import QtQuick
 
-// One service's wish for an irice-events source (services/Events), kept on
+// One service's wish for an tessera-events source (services/Events), kept on
 // while `active`. `source` is a source's name ("udev", "pulse"…) with its
 // `args` ({ subsystems: ["usb"] }), or "inhibit:<what>" for a logind
 // inhibitor held while active (args: { why }).

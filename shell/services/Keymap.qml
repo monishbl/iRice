@@ -4,10 +4,10 @@ import Quickshell
 import Quickshell.Io
 import qs.common
 
-// Keyboard shortcuts and trackpad gestures for Settings: iRice's defaults
-// (hypr/irice/keymap.json and gestures.json, written by tools/gen-keymap.py)
+// Keyboard shortcuts and trackpad gestures for Settings: Tessera's defaults
+// (hypr/tessera/keymap.json and gestures.json, written by tools/gen-keymap.py)
 // merged with your changes (<Config.dir>/keybinds.json). Hyprland reads the
-// same files (hypr/irice/keybinds.lua and gestures.lua), so saving writes the
+// same files (hypr/tessera/keybinds.lua and gestures.lua), so saving writes the
 // file and reloads Hyprland's config.
 //
 // keybinds.json:
@@ -24,23 +24,26 @@ Singleton {
 
     // ── Where things are ─────────────────────────────────────────────────
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"
-    // The hypr data: $IRICE_ROOT/hypr/irice; else the repo next to the shell
+    // The hypr data: $TESSERA_ROOT/hypr/tessera; else the repo next to the shell
     // (shell/ and hypr/ are siblings) when keymap.json is there; else the
-    // installed copy in ~/.config/hypr/irice. Empty until that's known.
+    // installed copy in ~/.config/hypr/tessera (hypr/irice: installed before
+    // iRice became Tessera, until the installer runs again). Empty until that's known.
     // (Quickshell.shellDir, not a relative URL: those can't leave the shell folder)
-    readonly property string repoHyprDir: Quickshell.shellDir.replace(/\/[^\/]*\/?$/, "") + "/hypr/irice"
+    readonly property string repoHyprDir: Quickshell.shellDir.replace(/\/[^\/]*\/?$/, "") + "/hypr/tessera"
     property string probedHyprDir: ""
-    readonly property string hyprDir: Quickshell.env("IRICE_ROOT") ? Quickshell.env("IRICE_ROOT") + "/hypr/irice" : probedHyprDir
+    readonly property string hyprDir: (Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) ? (Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) + "/hypr/tessera" : probedHyprDir
     Process {
-        running: !Quickshell.env("IRICE_ROOT")
-        command: ["test", "-f", root.repoHyprDir + "/keymap.json"]
-        onExited: code => root.probedHyprDir = code === 0 ? root.repoHyprDir : root.configHome + "/hypr/irice"
+        running: !(Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT"))
+        command: ["sh", "-c", "for d; do [ -f \"$d/keymap.json\" ] && { echo \"$d\"; exit 0; }; done; echo \"$2\"", "sh", root.repoHyprDir, root.configHome + "/hypr/tessera", root.configHome + "/hypr/irice"]
+        stdout: StdioCollector {
+            onStreamFinished: root.probedHyprDir = text.trim()
+        }
     }
     readonly property string userPath: Config.dir + "/keybinds.json"
     readonly property string home: Quickshell.env("HOME")
     readonly property string scriptsDir: decodeURIComponent(Qt.resolvedUrl("../assets/scripts").toString().replace("file://", ""))
     // $MOD is Super, except in the nested sandbox (Alt)
-    readonly property string modKey: Quickshell.env("IRICE_SANDBOX") === "1" && !Launch.tty ? "ALT" : "SUPER"
+    readonly property string modKey: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1" && !Launch.tty ? "ALT" : "SUPER"
 
     // ── State ────────────────────────────────────────────────────────────
     property var defaults: []
@@ -86,7 +89,7 @@ Singleton {
     }
 
     // ── Readable names ───────────────────────────────────────────────────
-    // iRice actions (GlobalShortcut names, appid "irice")
+    // Tessera actions (GlobalShortcut names, appid "tessera")
     readonly property var shellActions: [
         { name: "spotlight", label: "Search" },
         { name: "overview", label: "Overview" },
@@ -170,7 +173,7 @@ Singleton {
         { name: "pinch", label: "Pinch or spread" },
         { name: "pinchin", label: "Pinch" },
         { name: "pinchout", label: "Spread" },
-        // (fingers resting still: the irice-glass plugin's, gestures.lua)
+        // (fingers resting still: the tessera-glass plugin's, gestures.lua)
         { name: "hold", label: "Long press" }
     ]
 
@@ -197,7 +200,7 @@ Singleton {
             return "Opens " + (e?.name ?? a.desktop);
         }
         if (a.exec !== undefined)
-            return "Runs " + String(a.exec).replace("$IRICE_SHELL/assets/scripts/", "");
+            return "Runs " + String(a.exec).replace("$TESSERA_SHELL/assets/scripts/", "").replace("$IRICE_SHELL/assets/scripts/", "");
         if (a.zoom !== undefined)
             return a.zoom > 0 ? "Zooms in" : "Zooms out";
         if (a.space !== undefined) {
@@ -805,17 +808,17 @@ Singleton {
             try {
                 const d = JSON.parse(text());
                 root.defaults = Array.isArray(d) ? d.filter(x => x && x.id && x.keys) : [];
-                root.defaultsError = Array.isArray(d) ? "" : "iRice's default shortcuts (" + path + ") aren't a list. Run tools/gen-keymap.py again, or reinstall iRice.";
+                root.defaultsError = Array.isArray(d) ? "" : "Tessera's default shortcuts (" + path + ") aren't a list. Run tools/gen-keymap.py again, or reinstall Tessera.";
             } catch (e) {
                 root.defaults = [];
-                root.defaultsError = "iRice's default shortcuts (" + path + ") can't be read: " + e.message + ". Run tools/gen-keymap.py again, or reinstall iRice.";
+                root.defaultsError = "Tessera's default shortcuts (" + path + ") can't be read: " + e.message + ". Run tools/gen-keymap.py again, or reinstall Tessera.";
             }
             root.defaultsLoaded = true;
             root.revision++;
         }
         onLoadFailed: error => {
             root.defaults = [];
-            root.defaultsError = "iRice's default shortcuts weren't found at " + path + ". Reinstall iRice (./install.sh), or set IRICE_ROOT to the repo when running it from there.";
+            root.defaultsError = "Tessera's default shortcuts weren't found at " + path + ". Reinstall Tessera (./install.sh), or set TESSERA_ROOT to the repo when running it from there.";
             root.defaultsLoaded = true;
         }
     }
@@ -897,7 +900,7 @@ Singleton {
     // ── Export ───────────────────────────────────────────────────────────
     // sections: any of "keybinds", "shortcuts", "gestures"
     function exportData(sections) {
-        const out = { "irice-keybinds": 1 };
+        const out = { "tessera-keybinds": 1 };
         if (sections.includes("keybinds"))
             out.keybinds = clone(user.keybinds);
         if (sections.includes("shortcuts"))
@@ -918,10 +921,11 @@ Singleton {
         try {
             data = JSON.parse(text);
         } catch (e) {
-            return { error: "That file isn't valid JSON (" + e.message + "). Export it again from iRice, or fix it in a text editor." };
+            return { error: "That file isn't valid JSON (" + e.message + "). Export it again from Tessera, or fix it in a text editor." };
         }
-        if (!data || typeof data !== "object" || data["irice-keybinds"] === undefined)
-            return { error: "That isn't an iRice shortcuts file. Choose a file made with Export here." };
+        // ("irice-keybinds": exported before iRice became Tessera, the same format)
+        if (!data || typeof data !== "object" || (data["tessera-keybinds"] === undefined && data["irice-keybinds"] === undefined))
+            return { error: "That isn't a Tessera shortcuts file. Choose a file made with Export here." };
         const has = { keybinds: data.keybinds !== undefined, shortcuts: data.shortcuts !== undefined, gestures: data.gestures !== undefined };
         const wanted = sections.filter(s => has[s]);
         if (wanted.length === 0) {
@@ -1015,7 +1019,7 @@ Singleton {
         if (counts.gestures)
             parts.push(counts.gestures + (counts.gestures === 1 ? " gesture" : " gestures"));
         if (counts.unknown)
-            parts.push(counts.unknown + " skipped (not in this version of iRice)");
+            parts.push(counts.unknown + " skipped (not in this version of Tessera)");
         const total = counts.changed + counts.added + counts.gestures;
         return {
             title: "Import from file",
@@ -1024,7 +1028,7 @@ Singleton {
         };
     }
 
-    // end4: the helper parses its Lua files; this matches them to iRice's binds.
+    // end4: the helper parses its Lua files; this matches them to Tessera's binds.
     // cb(preview) — preview.error says what went wrong.
     function previewEnd4(withBinds, withGestures, cb) {
         const h = home + "/.config/hypr";
@@ -1043,7 +1047,7 @@ Singleton {
                 return;
             }
             if (parsed.files.length === 0) {
-                cb({ error: "No end4 config was found in ~/.config/hypr/hyprland/. Install end4's dotfiles, or import an iRice file instead." });
+                cb({ error: "No end4 config was found in ~/.config/hypr/hyprland/. Install end4's dotfiles, or import a Tessera file instead." });
                 return;
             }
             cb(root.matchEnd4(parsed));
@@ -1060,12 +1064,12 @@ Singleton {
             const k = actionKey(e.action);
             (end4By[k] = end4By[k] ?? []).push(e);
         }
-        const iriceBy = {};
+        const tesseraBy = {};
         for (const b of current.filter(b => !b.custom)) {
             const k = actionKey(b.action);
-            (iriceBy[k] = iriceBy[k] ?? []).push(b);
+            (tesseraBy[k] = tesseraBy[k] ?? []).push(b);
         }
-        // Keys end4 gives to each action, to see which iRice binds it displaced
+        // Keys end4 gives to each action, to see which Tessera binds it displaced
         const end4Keys = {};
         for (const e of parsed.binds)
             end4Keys[canonical(e.keys)] = actionKey(e.action);
@@ -1075,7 +1079,7 @@ Singleton {
         let changed = 0, added = 0, same = 0, off = 0;
         for (const k in end4By) {
             const ends = end4By[k];
-            const mine = (iriceBy[k] ?? []).slice();
+            const mine = (tesseraBy[k] ?? []).slice();
             const left = [];
             for (const e of ends) {
                 const i = mine.findIndex(b => canonical(b.keys) === canonical(e.keys) && !b.disabled);
@@ -1088,10 +1092,10 @@ Singleton {
                     left.push(e);
             }
             for (const e of left) {
-                // Move an iRice default when it's unambiguous (one bind each
+                // Move a Tessera default when it's unambiguous (one bind each
                 // side) or end4 gave its keys to something else
                 let i = -1;
-                if (ends.length === 1 && (iriceBy[k] ?? []).length === 1 && mine.length === 1)
+                if (ends.length === 1 && (tesseraBy[k] ?? []).length === 1 && mine.length === 1)
                     i = 0;
                 else
                     i = mine.findIndex(b => end4Keys[canonical(b.keys)] !== undefined && end4Keys[canonical(b.keys)] !== k);
@@ -1129,7 +1133,7 @@ Singleton {
                 }
             }
         }
-        // end4 wins a clash: iRice binds left on keys end4 now uses turn off
+        // end4 wins a clash: Tessera binds left on keys end4 now uses turn off
         for (const b of current) {
             if (touched[b.id] || b.disabled)
                 continue;
@@ -1197,7 +1201,7 @@ Singleton {
             title: "Import from end4",
             summary: "Import from end4: " + parts.join(", ") + (total === 0 ? ". " + same + " already match." : ""),
             lines: lines, skipped: skipped, result: u, total: total,
-            note: parsed.ignored > 0 ? parsed.ignored + " binds inside loops (workspaces 1–10) are left out: iRice's defaults have them." : ""
+            note: parsed.ignored > 0 ? parsed.ignored + " binds inside loops (workspaces 1–10) are left out: Tessera's defaults have them." : ""
         };
     }
 

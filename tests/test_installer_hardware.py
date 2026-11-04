@@ -20,18 +20,18 @@ HW = ROOT / "tools/installer/hardware.py"
 
 def load(system_root):
     """hardware.py with /sys, /proc and pacman's database under system_root."""
-    old = os.environ.get("IRICE_SYSTEM_ROOT")
-    os.environ["IRICE_SYSTEM_ROOT"] = str(system_root)
+    old = os.environ.get("TESSERA_SYSTEM_ROOT")
+    os.environ["TESSERA_SYSTEM_ROOT"] = str(system_root)
     try:
-        spec = importlib.util.spec_from_file_location("irice_hardware_test", HW)
+        spec = importlib.util.spec_from_file_location("tessera_hardware_test", HW)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
     finally:
         if old is None:
-            os.environ.pop("IRICE_SYSTEM_ROOT", None)
+            os.environ.pop("TESSERA_SYSTEM_ROOT", None)
         else:
-            os.environ["IRICE_SYSTEM_ROOT"] = old
+            os.environ["TESSERA_SYSTEM_ROOT"] = old
 
 
 LSPCI = textwrap.dedent("""\
@@ -298,7 +298,7 @@ class InstallPlan(unittest.TestCase):
         self.fake("lspci", "exit 0\n")
         env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / ".config"),
                    XDG_DATA_HOME=str(self.home / ".local/share"), XDG_CACHE_HOME=str(self.home / ".cache"),
-                   IRICE_SYSTEM_ROOT=str(self.root), COLUMNS="300")
+                   TESSERA_SYSTEM_ROOT=str(self.root), COLUMNS="300")
         p = subprocess.run([str(ROOT / "install.sh"), "--plan", *args], env=env, capture_output=True, text=True,
                            timeout=60, stdin=subprocess.DEVNULL)
         self.assertFalse((self.marks / "changed").exists(), (self.marks / "changed").read_text() if (self.marks / "changed").exists() else "")
@@ -315,7 +315,7 @@ class InstallPlan(unittest.TestCase):
         self.assertIn("Linux firmware: linux-firmware", out)
         self.assertIn("nope: nothing to do on this computer", out)
         self.assertIn("look material, dark appearance, login style text", out)
-        self.assertIn("the iRice login screen (greetd)", out)
+        self.assertIn("the Tessera login screen (greetd)", out)
         self.assertIn("hyprland", out)  # (the packages it would install)
         self.assertNotIn("Start?", out)
 

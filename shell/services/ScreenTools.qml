@@ -15,7 +15,7 @@ Singleton {
 
     readonly property string shotsDir: Quickshell.env("HOME") + "/Pictures/Screenshots"
     readonly property string videosDir: Quickshell.env("HOME") + "/Videos"
-    readonly property string tmp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-capture.png"
+    readonly property string tmp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-capture.png"
 
     // Region selection request: "" when idle, else screenshot | ocr | translate | record | ask | circle
     // (circle: circle to search, drawn freehand or as a box)
@@ -30,7 +30,7 @@ Singleton {
     // Last screen translation, shown by TranslationCard
     property var translation: null // { x, y, w, h, screen, source, text, busy, error }
 
-    // The iRice screenshot editor (modules/screentools/editor) sets this while
+    // The Tessera screenshot editor (modules/screentools/editor) sets this while
     // it's in use (screenshot.editor isn't "swappy"); screenshots then go to
     // it through `shot` instead of Swappy and the notification.
     property bool hasEditor: false
@@ -147,7 +147,7 @@ Singleton {
     // message (`kind` circle: and ask what it is). The pictures stay
     // owner-only in the runtime folder; ones over a day old go.
     function askAbout(args, kind) {
-        const dir = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-ai";
+        const dir = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-ai";
         const file = dir + "/shot-" + Date.now() + ".jpg";
         const q = a => "'" + a.replace(/'/g, "'\\''") + "'";
         run(kind ?? "ask", "umask 077; mkdir -p " + q(dir) + " && find " + q(dir) + " -name 'shot-*.jpg' -mmin +1440 -delete; grim -t jpeg -q 85 " + args.map(q).join(" ") + " " + q(file) + " && echo " + q(file) + " && base64 -w0 " + q(file));
