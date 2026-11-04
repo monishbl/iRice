@@ -123,6 +123,8 @@ struct MenuEntry {
     glass_sent: String,
     kind: MenuKind,
     rows: Vec<Row>,
+    region_sent: String,
+    size_sent: (u32, u32),
 }
 
 #[derive(Default)]
@@ -395,7 +397,7 @@ impl Menubar {
                     sub_color: sub_color.unwrap_or_default(),
                     has_sub_color: sub_color.is_some(),
                     ringed,
-                    ring_arc: island::arc(22.0, 22.0, 18.0, value.unwrap_or(0.0) as f32).into(),
+                    ring_arc: island::arc(22.0, 22.0, 20.0, value.unwrap_or(0.0) as f32).into(),
                     rings: ModelRc::new(VecModel::from(rings)),
                     action: s("action").into(),
                     action2: s("action2").into(),
@@ -809,10 +811,13 @@ impl Menubar {
         m.ui.set_current(-1);
     }
 
-    fn resize_menu(m: &MenuEntry) {
-        let w = (m.ui.get_panel_width() + 32.0).ceil() as u32;
+    fn resize_menu(m: &mut MenuEntry) {
+        let w = ((m.ui.get_panel_width() + 32.0).ceil() as u32).max(64);
         let h = (34.0 + m.ui.get_panel_height() + 24.0).ceil() as u32;
-        m.surface.show(w.max(64), h);
+        if (w, h) != m.size_sent {
+            m.surface.show(w, h);
+            m.size_sent = (w, h);
+        }
     }
 
     fn open_menu(&mut self, st: &mut State, output: String, kind: MenuKind, x: f32) {
@@ -850,7 +855,7 @@ impl Menubar {
             ui.on_closed(move || to3(Box::new(M::MenuClosed)));
             ui.show().expect("show menu");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.menu = Some(MenuEntry { output: output.clone(), surface, ui, a11y, open: false, glass_sent: String::new(), kind: kind.clone(), rows: Vec::new() });
+            self.menu = Some(MenuEntry { output: output.clone(), surface, ui, a11y, open: false, glass_sent: String::new(), kind: kind.clone(), rows: Vec::new(), region_sent: String::new(), size_sent: (0, 0) });
         }
         let rows = self.rows_for(st, &kind, &output);
         let material = st.shell.look.material;
@@ -863,6 +868,10 @@ impl Menubar {
             tray::menu(key, path, st.shell.sender(NAME));
         }
         let m = self.menu.as_mut().unwrap();
+        // (shown afresh: hidden, it needs its size again to be mapped)
+        m.size_sent = (0, 0);
+        m.region_sent.clear();
+        m.ui.set_panel_left(if x < 16.0 { x.max(0.0) } else { 16.0 });
         Self::resize_menu(m);
         m.open = true;
         m.ui.set_shown(true);
@@ -1479,6 +1488,18 @@ impl Part for Menubar {
             let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &m.surface));
             if let Some(a) = m.a11y.as_mut() {
                 a.update(false, f);
+            }
+            if m.open && m.surface.mapped.get() {
+                // its rows are laid out once drawn: fit the window to them
+                Self::resize_menu(m);
+                // only the panel takes the pointer (the bar stays clickable above it)
+                let ui = &m.ui;
+                let r = [(ui.get_panel_x() as i32, ui.get_panel_y().max(34.0) as i32, ui.get_panel_width().ceil() as i32, ui.get_panel_height().ceil() as i32)];
+                let key = format!("{r:?}");
+                if key != m.region_sent {
+                    st.set_input_region(&m.surface, Some(&r));
+                    m.region_sent = key;
+                }
             }
         }
         if !st.shell.plugin || st.shell.look.material {

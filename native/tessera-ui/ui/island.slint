@@ -433,7 +433,7 @@ component AlertView inherits Rectangle {
                 height: 100%;
                 viewbox-width: 44;
                 viewbox-height: 44;
-                commands: "M 22 4 A 18 18 0 1 1 21.99 4";
+                commands: "M 22 2 A 20 20 0 1 1 21.99 2";
                 stroke: ink.with-alpha(0.14);
                 stroke-width: 3px;
                 fill: transparent;
@@ -562,43 +562,56 @@ component AlertView inherits Rectangle {
         if a.card && a.headline != "": Text {
             text: a.headline;
             color: ink;
-            font-size: 17px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 500;
             wrap: word-wrap;
+            max-height: 66px;
+            overflow: elide;
         }
+        // the glass card: lighter than the island, with a soft rim
+        // (Material: a tonal layer, no rim)
         if a.card: Rectangle {
-            border-radius: Theme.material ? 20px : 18px;
-            background: Theme.material ? Theme.m3-surface-container-highest : #ffffff1f;
+            border-radius: 20px;
+            background: Theme.material ? Theme.m3-on-surface.with-alpha(0.1) : #ffffff24;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: #ffffff38;
             HorizontalLayout {
                 padding: 12px;
-                spacing: 10px;
-                Rectangle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 18px;
-                    background: Theme.material ? Theme.m3-primary-container : #ffffff2e;
-                    if a.has-app-icon: Image {
-                        width: 24px;
-                        height: 24px;
-                        source: a.app-icon;
-                        image-fit: contain;
-                    }
-                    if !a.has-app-icon: Text {
-                        text: a.card-initials;
-                        color: Theme.material ? Theme.m3-on-primary-container : ink;
-                        font-size: 14px;
-                        font-weight: 600;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                spacing: 12px;
+                // the avatar: initials on grey (Material: tertiary), the app's badge
+                VerticalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: 46px;
+                        height: 46px;
+                        border-radius: 23px;
+                        background: Theme.material ? Theme.m3-tertiary-container : #8E8E93;
+                        Text {
+                            text: a.card-initials;
+                            color: Theme.material ? Theme.m3-on-tertiary-container : #ffffff;
+                            font-size: 17px;
+                            font-weight: Theme.material ? 500 : 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if a.has-app-icon: Image {
+                            x: parent.width - self.width + 3px;
+                            y: parent.height - self.height + 3px;
+                            width: 20px;
+                            height: 20px;
+                            source: a.app-icon;
+                            image-fit: contain;
+                        }
                     }
                 }
                 VerticalLayout {
                     spacing: 2px;
                     HorizontalLayout {
+                        spacing: 8px;
                         Text {
                             text: a.card-name;
                             color: ink;
-                            font-size: Theme.body;
+                            font-size: 15px;
                             font-weight: 600;
                             overflow: elide;
                             horizontal-stretch: 1;
@@ -606,15 +619,15 @@ component AlertView inherits Rectangle {
                         Text {
                             text: a.card-time;
                             color: ink2;
-                            font-size: Theme.caption;
+                            font-size: Theme.small;
                         }
                     }
                     Text {
                         text: a.card-text;
                         color: ink.with-alpha(0.85);
-                        font-size: Theme.small;
+                        font-size: 14px;
                         wrap: word-wrap;
-                        max-height: 54px;
+                        max-height: 60px;
                         overflow: elide;
                     }
                 }

@@ -26,7 +26,8 @@ pub fn top_is_light(rgb: &[[u8; 3]]) -> bool {
 /// The top rows of a picture squeezed into 64 x 64
 pub fn top_rows(path: &std::path::Path) -> Option<Vec<[u8; 3]>> {
     let img = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
-    let small = img.resize_exact(64, 64, image::imageops::FilterType::Triangle).to_rgb8();
+    // (a box average: a 4K picture in milliseconds, and the top rows are an average anyway)
+    let small = img.thumbnail_exact(64, 64).to_rgb8();
     Some((0..2).flat_map(|y| (0..64).map(move |x| (x, y))).map(|(x, y)| small.get_pixel(x, y).0).collect())
 }
 

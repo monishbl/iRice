@@ -45,7 +45,8 @@ Scope {
             audio: { icon: Audio.icon, volume: Audio.volume, muted: Audio.muted, sink: Audio.sink?.description || Audio.sink?.nickname || "Sound", micMuted: Audio.micMuted },
             privacy: { any: Privacy.any, camera: Privacy.camera, mic: Privacy.mic, location: Privacy.location, share: Privacy.shareDot },
             weather: { ready: Weather.ready, icon: Weather.icon, temp: Weather.temp, condition: Weather.condition, high: Weather.high, low: Weather.low, place: Weather.place },
-            resources: { cpu: Resources.cpu, memory: Resources.memory },
+            // (only while the bar shows them: each sample would wake it)
+            resources: Config.options.menubar.resources ? { cpu: Resources.cpu, memory: Resources.memory } : { cpu: 0, memory: 0 },
             keyboard: { multiple: KeyboardLayout.multiple, short: KeyboardLayout.short, name: KeyboardLayout.name ?? "" },
             updates: Updates.count,
             battery: { summary: BatteryHealth.summary(), lowPower: root.profile === "power-saver" },

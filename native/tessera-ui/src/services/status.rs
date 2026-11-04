@@ -10,7 +10,7 @@ use zbus::proxy::CacheProperties;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::MatchRule;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Battery {
     pub present: bool,
     pub percent: f64,
@@ -22,7 +22,7 @@ pub struct Battery {
     pub time_to_full: i64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Wifi {
     pub present: bool, // a Wi-Fi device exists
     pub enabled: bool,
@@ -30,7 +30,7 @@ pub struct Wifi {
     pub strength: u8,  // 0..100
 }
 
-fn watch<T: Send + 'static>(
+fn watch<T: Send + Clone + PartialEq + 'static>(
     tx: Sender<Msg>,
     sender: &'static str,
     read: fn(&Connection) -> zbus::Result<T>,
@@ -46,9 +46,16 @@ fn watch<T: Send + 'static>(
                 .member("PropertiesChanged")?
                 .build();
             let mut signals = MessageIterator::for_match_rule(rule, &conn, Some(16))?;
-            tx.send(wrap(read(&conn)?)).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+            // (only what changed: NetworkManager and UPower signal often,
+            // for properties these readings don't hold)
+            let mut last = read(&conn)?;
+            tx.send(wrap(last.clone())).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
             while signals.next().is_some() {
-                tx.send(wrap(read(&conn)?)).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+                let now = read(&conn)?;
+                if now != last {
+                    tx.send(wrap(now.clone())).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+                    last = now;
+                }
             }
             Ok(())
         };
