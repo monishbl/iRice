@@ -18,7 +18,7 @@ zbus = { version = "5", default-features = false, features = ["blocking-api", "a
 material-colors = "0.5"
 # (the wallpaper's seed: matugen's steps on the release matugen uses, src/seed.rs)
 mc04 = { package = "material-colors", version = "0.4", features = ["image"] }
-# (the one material-colors 0.4 already builds: clipboard pictures and GIF previews)
+# (the one material-colors 0.4 already builds: clipboard pictures, GIF previews, app icons)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 libc = "0.2"
 memmap2 = "0.9"
@@ -26,6 +26,9 @@ accesskit = "0.25"
 accesskit_unix = "0.24"
 calloop = { version = "0.14", features = ["signals"] }
 wayland-client = "0.31"
+# App icons as the shell draws them (src/appicon.rs): SVG decoding (resvg,
+# already built for Slint; PNG through `image` above): no new crates
+resvg = { version = "0.48", default-features = false }
 wayland-protocols-misc = { version = "0.3", features = ["client"] } # (src/bin/fake-ime.rs only)
 
 [build-dependencies]
