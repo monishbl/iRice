@@ -520,14 +520,16 @@ impl Clipboard {
         }
     }
 
+    /// All / Text / Images (the choice stays where it was, within the new
+    /// rows, as the QML's)
     fn set_kind(&mut self, st: &State, k: usize) {
         self.kind = k.min(KINDS.len() - 1);
-        self.sel = 0;
         self.scroll = 0.0;
         if let Some(w) = &self.win {
             w.ui.set_list_y(0.0);
         }
         self.rebuild(st);
+        self.reveal();
     }
 }
 

@@ -744,7 +744,8 @@ impl Emoji {
         if is(Key::Escape) {
             self.close(true);
         } else if is(Key::Tab) {
-            self.next_tab(st, 1);
+            // (Shift+Tab: Backtab from a keyboard; a virtual one may send Tab with Shift)
+            self.next_tab(st, if shift { -1 } else { 1 });
         } else if is(Key::Backtab) {
             self.next_tab(st, -1);
         } else if is(Key::LeftArrow) || is(Key::RightArrow) {

@@ -168,6 +168,8 @@ export component EmojiPicker inherits Window {
             height: panel-height - pad - 4px;
 
             field := SearchField {
+                x: 0;
+                y: 0;
                 width: parent.width;
                 placeholder: root.placeholder;
                 edited(t) => { root.edited(t); }
@@ -420,7 +422,7 @@ export component EmojiPicker inherits Window {
                     text: footer-glyph;
                     horizontal-alignment: center;
                     vertical-alignment: center;
-                    overflow: elide;
+                    overflow: footer-kind == 1 ? elide : clip;
                     color: Theme.label;
                     font-family: footer-kind == 0 ? root.emoji-font : Theme.font;
                     font-size: footer-kind == 0 ? 34px : footer-kind == 1 ? Theme.title : 28px;
@@ -454,10 +456,10 @@ export component EmojiPicker inherits Window {
                     font-size: Theme.title;
                 }
                 hints := HorizontalLayout {
-                    x: parent.width - self.preferred-width - 2px;
-                    y: 2px;
-                    height: parent.height;
-                    alignment: center;
+                    x: parent.width - self.width - 2px;
+                    y: (parent.height - self.height) / 2 + 2px;
+                    width: self.preferred-width;
+                    height: 22px;
                     spacing: 10px;
                     KeyHint {
                         keys: hint-insert;

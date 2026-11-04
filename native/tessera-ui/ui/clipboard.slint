@@ -127,6 +127,8 @@ export component ClipboardPanel inherits Window {
             height: 480px;
 
             field := SearchField {
+                x: 0;
+                y: 0;
                 width: parent.width - 210px - 12px;
                 placeholder: "Search clipboard";
                 clearable: false;
@@ -308,7 +310,8 @@ export component ClipboardPanel inherits Window {
                             accessible-role: none;
                         }
                         actions := HorizontalLayout {
-                            x: parent.width - self.preferred-width - 8px;
+                            x: parent.width - self.width - 8px;
+                            width: self.preferred-width;
                             y: (parent.height - 28px) / 2;
                             height: 28px;
                             spacing: 2px;
@@ -467,7 +470,10 @@ export component ClipboardPanel inherits Window {
                 width: parent.width;
                 height: 28px;
                 HorizontalLayout {
-                    alignment: start;
+                    x: 0;
+                    y: (parent.height - 22px) / 2;
+                    width: self.preferred-width;
+                    height: 22px;
                     spacing: 14px;
                     for h[i] in ["Paste", "Copy", "Plain text", "Pin", "Remove"]: KeyHint {
                         keys: [hint-keys[i]];

@@ -18,7 +18,22 @@ A surface moves when its Rust version does what the QML one does, **in both look
 | The QML twin stepping aside | the QML surface's model or `visible` | `RustUi.drawing("<name>")` (e.g. MenuBar.qml's model is `[]` then) |
 | Tests | the part's `#[cfg(test)] mod tests`, and `tests/test_rust_ui.py` checks the twin | |
 
-Shared, so ask before changing their meaning (add, don't rename): `src/shell.rs`, `src/theme.rs` + `ui/theme.slint` (tokens follow `shell/common/Theme.qml`; add a token there when a surface needs one the QML Theme has), `src/wayland.rs` (the platform), `src/a11y.rs`.
+Shared, so ask before changing their meaning (add, don't rename): `src/shell.rs`, `src/theme.rs` + `ui/theme.slint` (tokens follow `shell/common/Theme.qml`; add a token there when a surface needs one the QML Theme has), `ui/widgets.slint` (search field, icon button, key caps, spinner, Material state shapes, text button), `src/wayland.rs` (the platform), `src/a11y.rs`.
+
+## Panels: opened by the shell, drawn here
+
+Panels (the emoji picker, the clipboard, later Control Center, Search…) open through the QML shell's `Panels.show/toggle/close`, whatever asked (a shortcut, `qs ipc call …`, Spotlight, Control Center). They keep doing so: services/RustUi.qml forwards every open and close of a panel tessera-ui draws as a JSON line on its stdin, and tessera-ui answers on stdout (the protocol is in `src/shell.rs`'s top comment):
+
+| Direction | Line | Meaning |
+|---|---|---|
+| shell → tessera-ui | `{"cmd":"open","surface":"emoji","screen":"DP-1"}` | Panels opened it on that output (sent again if it moves to another) |
+| shell → tessera-ui | `{"cmd":"close","surface":"emoji"}` | Panels closed it (its shortcut again, another panel opened) |
+| tessera-ui → shell | `{"src":"ui","kind":"closed","surface":"emoji"}` | it closed itself (Esc, a click outside, a pick): `Panels.close()` |
+| tessera-ui → shell | `{"src":"ui","kind":"call","call":"clipboard.pin","args":[…]}` | something only the shell does (its state files, Settings, opening a link): RustUi.qml's `call()` lists them |
+
+To move a panel: its part implements `Part::command` ("open" on `cmd.screen`, "close"; any other `cmd` reaches it too with the whole object in `Command::args`), calls `shell::closed(name)` when it closes itself, and `shell::ask(call, args)` for the shell's own things (add the call to RustUi.qml's `call()`; tests/test_rust_ui.py checks every asked call is answered). Its QML twin's PanelLoader steps aside with `elsewhere: RustUi.drawing("<name>")`: the QML window then never loads, and if tessera-ui ends, the QML one opens again. A panel is a full-screen transparent Overlay layer (`Anchor` all sides, size 0×0, `exclusive: -1`) with `KeyboardInteractivity::Exclusive` while open and `None` while it animates out, so a click outside reaches it (and closes it) as the QML panels' click catcher does; `keyboard_left` closes it too. Keep the window after closing (hide the surface): Slint keeps its drawn glyphs.
+
+Keys a panel drives from its search field: the field's `key` callback returns at once whether it's one the panel handles (Slint wants the answer synchronously) and posts the key to the part as a message; the part does the rest.
 
 ## A part
 
