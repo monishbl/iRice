@@ -16,6 +16,16 @@ Before, the arena ran 10 `bash watch.sh` wrappers (3.7–4.0 MB each) and what t
 
 The arena doesn't run the real session's logind processes, which are off in the sandbox: the two `gdbus monitor`s (Lock with fingerprint/face unlock; Power while iRice handles the lid) and the `systemd-inhibit … sleep infinity` pairs (lid, idle). On the real session irice-events replaces them too, so the saving there is larger (the user counted 37 processes and ~200 MB before).
 
+## On the real session (4 Nov, the live tty session, Material, same settings)
+
+| | before (the watchers) | with irice-events |
+|---|---:|---:|
+| Processes under the shell | 37 | 6 |
+| Their memory | 200 MB | 49 MB |
+| irice-events itself | — | 4.1 MB, 0.0% CPU |
+
+The idle and lid inhibitors are now held by irice-events (`systemd-inhibit --list` shows it as their owner) instead of two systemd-inhibit and sleep pairs. What's left: Phone (`phone.py`, its wrapper and `adb`, on because adb and scrcpy are installed) and `glass-ipc`.
+
 ## Still running (and why)
 - `glass-ipc`: the requests to Hyprland's socket for the glass plugin. It answers per frame, and a stuck request restarts it on its own. Folding it into irice-events would tie the glass to the event stream's restarts; left for a later step.
 - Only while a feature is on or in use (none at idle in this arena): Phone (`phone.py` and `adb`), FastPair, Mirroring, Captions, AirPlay (`pipewire`), the speed test.
