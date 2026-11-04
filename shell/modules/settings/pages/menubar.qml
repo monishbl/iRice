@@ -105,22 +105,16 @@ Column {
                     layoutDirection: Qt.RightToLeft
                     Repeater {
                         model: Quickshell.screens
-                        Rectangle {
+                        Chip {
                             required property var modelData
-                            readonly property bool on: page.mb.screens.length === 0 || page.mb.screens.includes(modelData.name)
-                            width: sName.implicitWidth + 20
-                            height: 26
-                            radius: 13
-                            color: on ? Theme.accent : Theme.color.fill
-                            Text { id: sName; anchors.centerIn: parent; text: parent.modelData.name; color: parent.on ? Theme.color.onAccent : Theme.color.label; font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium } }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    const all = Quickshell.screens.map(s => s.name);
-                                    const cur = page.mb.screens.length === 0 ? all : page.mb.screens;
-                                    const next = page.toggleIn(cur, parent.modelData.name);
-                                    page.mb.screens = next.length === all.length ? [] : next;
-                                }
+                            checked: page.mb.screens.length === 0 || page.mb.screens.includes(modelData.name)
+                            solid: true
+                            text: modelData.name
+                            onClicked: {
+                                const all = Quickshell.screens.map(s => s.name);
+                                const cur = page.mb.screens.length === 0 ? all : page.mb.screens;
+                                const next = page.toggleIn(cur, modelData.name);
+                                page.mb.screens = next.length === all.length ? [] : next;
                             }
                         }
                     }

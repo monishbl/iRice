@@ -100,50 +100,16 @@ Column {
         return event.nativeScanCode > 0 ? "code:" + event.nativeScanCode : "";
     }
 
-    component ModChip: Squircle {
-        id: chip
+    // (Chip: Glass's accent pill, Material's filter chip with its tick)
+    component ModChip: Chip {
         required property string mod
-        readonly property bool checked: root.mods.includes(mod)
-        width: Math.max(56, chipLabel.implicitWidth + 24)
+        width: Math.max(56, implicitWidth)
         height: 32
-        radius: Theme.radius.control
-        activeFocusOnTab: true
-        color: checked ? Theme.accent : chipMouse.pressed ? Theme.color.fillPressed : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-        scale: chipMouse.pressed ? 0.97 : 1
-        Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
-        Behavior on scale { ScaleAnimator { duration: Theme.motion.press } }
-        Accessible.role: Accessible.CheckBox
-        Accessible.name: chipLabel.text
-        Accessible.checked: checked
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return) {
-                root.toggle(chip.mod);
-                event.accepted = true;
-            }
-        }
-        Squircle {
-            anchors { fill: parent; margins: -3 }
-            visible: chip.activeFocus
-            radius: chip.radius + 3
-            color: "transparent"
-            border.width: 2
-            border.color: Theme.accent
-        }
-        Text {
-            id: chipLabel
-            anchors.centerIn: parent
-            // The name in words, and the symbol with Mac symbols on
-            text: KeyNames.style === "mac" ? KeyNames.name(chip.mod) + " " + ({ SUPER: "Command", CTRL: "Control", ALT: "Option", SHIFT: "Shift" })[chip.mod] : KeyNames.name(chip.mod === "SUPER" ? Keymap.modKey : chip.mod)
-            color: chip.checked ? Theme.color.onAccent : Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
-        }
-        MouseArea {
-            id: chipMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.toggle(chip.mod)
-        }
+        checked: root.mods.includes(mod)
+        solid: true
+        // The name in words, and the symbol with Mac symbols on
+        text: KeyNames.style === "mac" ? KeyNames.name(mod) + " " + ({ SUPER: "Command", CTRL: "Control", ALT: "Option", SHIFT: "Shift" })[mod] : KeyNames.name(mod === "SUPER" ? Keymap.modKey : mod)
+        onClicked: root.toggle(mod)
     }
 
     // Modifiers + the key
@@ -162,19 +128,27 @@ Column {
             color: Theme.color.tertiary
             font { family: Theme.font.family; pixelSize: Theme.font.title }
         }
+        // (Material: a filled pill like the text fields, outlined while listening)
         Squircle {
             id: catcher
             width: 168
             height: 32
-            radius: Theme.radius.control
-            color: activeFocus ? Theme.accentAlpha(0.12) : Theme.color.fill
-            border.width: activeFocus ? 2 : 1
+            radius: Theme.material ? height / 2 : Theme.radius.control
+            color: Theme.material ? "transparent" : activeFocus ? Theme.accentAlpha(0.12) : Theme.color.fill
+            border.width: Theme.material ? 0 : activeFocus ? 2 : 1
             border.color: activeFocus ? Theme.accent : Theme.color.separator
             activeFocusOnTab: true
+            Loader {
+                anchors.fill: parent
+                active: Theme.material
+                sourceComponent: FilledField {
+                    active: catcher.activeFocus
+                }
+            }
             Accessible.role: Accessible.EditableText
             Accessible.name: "Key: " + (root.key ? Keymap.keyLabel(root.key) : "none") + ". Press a key to change it."
             Text {
-                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                anchors { fill: parent; leftMargin: Theme.material ? 16 : 10; rightMargin: Theme.material ? 16 : 10 }
                 verticalAlignment: Text.AlignVCenter
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight

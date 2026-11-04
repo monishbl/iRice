@@ -116,31 +116,13 @@ Column {
                         spacing: 6
                         Repeater {
                             model: pieceRow.modelData.pieces
-                            Rectangle {
+                            Chip {
                                 id: chip
                                 required property var modelData
                                 readonly property string key: pieceRow.modelData.kind + "." + modelData[0]
-                                readonly property bool on: { Config.options.island.livePieces; Config.options.island.known; return Island.shows(pieceRow.modelData.kind, modelData[0]); }
-                                width: chipText.implicitWidth + 20
-                                height: 26
-                                radius: 13
-                                color: on ? Theme.accentTint : chipMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                                border.width: on ? 1 : 0
-                                border.color: Theme.accent
-                                Text {
-                                    id: chipText
-                                    anchors.centerIn: parent
-                                    text: chip.modelData[1]
-                                    color: chip.on ? Theme.color.label : Theme.color.secondary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: chip.on ? Font.Medium : Font.Normal }
-                                }
-                                MouseArea {
-                                    id: chipMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Island.setShows(pieceRow.modelData.kind, chip.modelData[0], !chip.on)
-                                }
+                                checked: { Config.options.island.livePieces; Config.options.island.known; return Island.shows(pieceRow.modelData.kind, modelData[0]); }
+                                text: modelData[1]
+                                onClicked: Island.setShows(pieceRow.modelData.kind, chip.modelData[0], !chip.checked)
                             }
                         }
                     }

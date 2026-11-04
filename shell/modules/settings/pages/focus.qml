@@ -182,32 +182,20 @@ Column {
             visible: page.mode?.schedule?.enabled ?? false
             label: "Days"
             Flow {
-                width: 7 * 30 + 6 * 4
+                width: 7 * (Theme.material ? 40 : 30) + 6 * 4
                 spacing: 4
                 Repeater {
                     model: 7
-                    Squircle {
+                    Chip {
                         required property int index
-                        readonly property bool on: (page.mode?.schedule?.days ?? []).includes(index)
-                        width: 30
-                        height: 28
-                        radius: Theme.radius.control - 2
-                        color: on ? Theme.accent : dayMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-                        Text {
-                            anchors.centerIn: parent
-                            text: page.dayNames[parent.index]
-                            color: parent.on ? Theme.color.onAccent : Theme.color.label
-                            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-                        }
-                        MouseArea {
-                            id: dayMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const days = page.mode.schedule.days ?? [];
-                                page.patchSchedule({ days: parent.on ? days.filter(d => d !== parent.index) : days.concat([parent.index]).sort() });
-                            }
+                        checked: (page.mode?.schedule?.days ?? []).includes(index)
+                        solid: true
+                        tick: false
+                        width: Theme.material ? 40 : 30 // (one letter: a fixed width, so a week fits a row)
+                        text: page.dayNames[index]
+                        onClicked: {
+                            const days = page.mode.schedule.days ?? [];
+                            page.patchSchedule({ days: checked ? days.filter(d => d !== index) : days.concat([index]).sort() });
                         }
                     }
                 }
