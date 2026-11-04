@@ -5,8 +5,10 @@ import qs.glass
 import qs.services
 
 // App Library (Super+Ctrl+Space, or the Apps button in the dock): every app,
-// grouped into category folders or listed A–Z. Typing searches; arrow keys
-// move; Enter opens; Escape steps back out of a folder, then closes.
+// grouped into category folders or listed A–Z (with a letter index down the
+// side when the list is long). Typing searches; arrow keys move; Enter opens;
+// Escape steps back out of a folder, then closes. Right-click, press and
+// hold, or the Menu key: the app's menu (its shortcuts, Open, Keep in Dock).
 Variants {
     model: Theme.material ? [] : Quickshell.screens
 
@@ -30,9 +32,39 @@ Variants {
                 id: lib
                 searchField: field
             }
-            onShownChanged: if (shown) lib.reset()
+            onShownChanged: {
+                if (shown)
+                    lib.reset();
+                else
+                    menu = null;
+            }
             Component.onCompleted: lib.reset()
             onTabPressed: lib.toggleView()
+
+            // An app's menu (AppLibraryModel's items), a glass menu at the
+            // pointer, or at the app for the Menu key
+            property var menu: null
+            function openMenu(entry, m, from) {
+                const p = from.mapToItem(null, m.x, m.y);
+                menu = { items: lib.menuItems(entry), x: p.x, y: p.y };
+            }
+            function openSelectedMenu() {
+                const entry = lib.showingApps ? lib.visibleApps[lib.selected] : null;
+                const cell = entry ? grid.itemAtIndex(lib.selected) : null;
+                if (cell)
+                    openMenu(entry, Qt.point(cell.width / 2, 92), cell);
+            }
+            Loader {
+                active: dialog.menu !== null
+                sourceComponent: ContextMenu {
+                    screen: dialog.screen
+                    items: dialog.menu?.items ?? []
+                    pointX: (dialog.menu?.x ?? 0) + menuWidth / 2
+                    pointY: dialog.menu?.y ?? 0
+                    upward: false
+                    onDismissed: dialog.menu = null
+                }
+            }
 
             // Header: back button (in a folder), search, view switch
             Item {
@@ -91,6 +123,12 @@ Variants {
                         Keys.onRightPressed: e => { if (text === "") lib.move(1); else e.accepted = false; }
                         Keys.onUpPressed: lib.move(-grid.columns)
                         Keys.onDownPressed: lib.move(grid.columns)
+                        Keys.onPressed: e => {
+                            if (e.key === Qt.Key_Menu || (e.key === Qt.Key_F10 && (e.modifiers & Qt.ShiftModifier))) {
+                                dialog.openSelectedMenu();
+                                e.accepted = true;
+                            }
+                        }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
@@ -118,7 +156,7 @@ Variants {
                 id: grid
 
                 Momentum {}
-                anchors { top: header.bottom; topMargin: 24; left: parent.left; right: parent.right; bottom: parent.bottom }
+                anchors { top: header.bottom; topMargin: 24; left: parent.left; right: parent.right; rightMargin: scrubber.visible ? scrubber.width + 8 : 0; bottom: parent.bottom }
                 readonly property int columns: Math.max(1, Math.floor(width / (lib.showingApps ? 120 : 210)))
                 cellWidth: Math.floor(width / columns)
                 cellHeight: lib.showingApps ? 116 : 236
@@ -128,6 +166,21 @@ Variants {
                 currentIndex: lib.selected
                 highlightMoveDuration: 0
                 highlightFollowsCurrentItem: false
+
+                // The row of app i at the top (the index's jumps)
+                function lead(i) {
+                    const max = originY + Math.max(0, contentHeight - height);
+                    scrollAnim.stop();
+                    scrollAnim.to = Math.max(originY, Math.min(max, originY + Math.floor(i / columns) * cellHeight));
+                    scrollAnim.start();
+                }
+                NumberAnimation {
+                    id: scrollAnim
+                    target: grid
+                    property: "contentY"
+                    duration: Theme.motion.panel
+                    easing.type: Easing.OutCubic
+                }
 
                 delegate: Item {
                     id: cell
@@ -166,8 +219,11 @@ Variants {
                             id: appMouse
                             anchors.fill: parent
                             hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onEntered: lib.selected = cell.index
-                            onClicked: lib.activate(cell.index)
+                            // Right-click or press and hold: its menu
+                            onClicked: m => m.button === Qt.RightButton ? dialog.openMenu(cell.modelData, m, appMouse) : lib.activate(cell.index)
+                            onPressAndHold: m => dialog.openMenu(cell.modelData, m, appMouse)
                         }
                     }
 
@@ -232,6 +288,76 @@ Variants {
                             color: Theme.color.label
                             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.Medium }
                         }
+                    }
+                }
+            }
+
+            // A–Z: a letter index down the side, as in Contacts. Click or drag
+            // along it to jump; the letter in view is marked (bold, in the
+            // accent), the one under the pointer gets a fill.
+            Item {
+                id: scrubber
+                visible: lib.alphabetical && lib.letters.length > 1 && grid.contentHeight > grid.height
+                anchors { right: parent.right; top: grid.top; bottom: grid.bottom }
+                width: 24
+
+                readonly property real step: lib.letters.length > 0 ? Math.min(22, height / lib.letters.length) : 22
+                // (the letter of the first row in view)
+                readonly property string current: visible ? lib.letterAt(Math.max(0, Math.floor((grid.contentY - grid.originY) / grid.cellHeight + 0.5)) * grid.columns) : ""
+                readonly property int hovered: scrubMouse.containsMouse ? Math.floor((scrubMouse.mouseY - letterColumn.y) / step) : -1
+                function jump(y) {
+                    const x = lib.letters[Math.max(0, Math.min(lib.letters.length - 1, Math.floor((y - letterColumn.y) / step)))];
+                    if (!x)
+                        return;
+                    lib.selected = x.index;
+                    grid.lead(x.index);
+                }
+
+                Column {
+                    id: letterColumn
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    Repeater {
+                        model: scrubber.visible ? lib.letters : []
+                        Item {
+                            required property var modelData
+                            required property int index
+                            readonly property bool marked: modelData.letter === scrubber.current
+                            width: scrubber.width
+                            height: scrubber.step
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Jump to " + modelData.letter
+                            Accessible.onPressAction: {
+                                lib.selected = modelData.index;
+                                grid.lead(modelData.index);
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Math.min(20, parent.height)
+                                height: width
+                                radius: width / 2
+                                color: Theme.color.fill
+                                opacity: scrubber.hovered === parent.index ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                text: parent.modelData.letter
+                                color: parent.marked ? Theme.accentInk : Theme.color.secondary
+                                font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: parent.marked ? Font.Bold : Font.Medium }
+                            }
+                        }
+                    }
+                }
+                MouseArea {
+                    id: scrubMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onPressed: e => scrubber.jump(e.y)
+                    onPositionChanged: e => {
+                        if (pressed)
+                            scrubber.jump(e.y);
                     }
                 }
             }

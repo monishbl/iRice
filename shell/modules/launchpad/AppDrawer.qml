@@ -82,7 +82,7 @@ Variants {
                 searchField: field
             }
             // Plain A–Z (all apps, no search): the letter scrubber shows
-            readonly property bool alphabetical: lib.query === "" && lib.view === 1 && lib.folder === null
+            readonly property bool alphabetical: lib.alphabetical
 
             // What the grid shows changed: its cells come in one after another
             property bool entering: false
@@ -102,23 +102,12 @@ Variants {
                 lib.reset();
                 enter();
             }
-            // An app's menu, as Android 17's: its own shortcuts (the desktop
-            // file's actions: New Window, New Private Window…), then the
-            // system's actions
+            // An app's menu, as Android 17's: its own shortcuts, then the
+            // system's actions (AppLibraryModel)
             property var menu: null
             function openMenu(entry, m, from) {
-                const id = entry.id ?? "";
-                const pinned = Config.options.dock.pinned.includes(id);
-                const own = (entry.actions ?? []).map(a => ({ text: a.name, action: () => {
-                    Panels.close();
-                    a.execute();
-                } }));
-                const items = (own.length > 0 ? [{ header: "Shortcuts" }].concat(own) : []).concat([{ header: "Actions" }, { text: "Open", action: () => {
-                    Panels.close();
-                    Apps.launch(entry);
-                } }, { text: pinned ? "Remove from Dock" : "Keep in Dock", action: () => pinned ? Apps.unpin(id) : Apps.pin(id) }]);
                 const p = from.mapToItem(null, m.x, m.y);
-                menu = { items: items, x: p.x, y: p.y };
+                menu = { items: lib.menuItems(entry), x: p.x, y: p.y };
             }
             Loader {
                 active: win.menu !== null
@@ -519,29 +508,10 @@ Variants {
                         anchors { right: parent.right; top: grid.top; bottom: grid.bottom }
                         width: 28
 
-                        // [{ letter, index }] for each letter's first app
-                        readonly property var letters: {
-                            const out = [];
-                            for (let i = 0; i < lib.apps.length; i++) {
-                                const c = (lib.apps[i].name ?? "").charAt(0).toUpperCase();
-                                const l = /[A-Z]/.test(c) ? c : "#";
-                                if (out.length === 0 || out[out.length - 1].letter !== l)
-                                    out.push({ letter: l, index: i });
-                            }
-                            return out;
-                        }
+                        readonly property var letters: lib.letters
                         readonly property real step: letters.length > 0 ? Math.min(24, height / letters.length) : 24
                         // (the letter of the first row in view)
-                        readonly property string current: {
-                            if (!visible)
-                                return "";
-                            const first = Math.max(0, Math.floor((grid.contentY - grid.originY) / grid.cellHeight + 0.5)) * grid.columns;
-                            let l = "";
-                            for (const x of letters)
-                                if (x.index <= first)
-                                    l = x.letter;
-                            return l;
-                        }
+                        readonly property string current: visible ? lib.letterAt(Math.max(0, Math.floor((grid.contentY - grid.originY) / grid.cellHeight + 0.5)) * grid.columns) : ""
                         function jump(y) {
                             const k = Math.max(0, Math.min(letters.length - 1, Math.floor((y - column.y) / step)));
                             const x = letters[k];

@@ -24,7 +24,8 @@ QtObject {
         ["System", ["System", "Settings", "Monitor", "PackageManager", "HardwareSettings"]]
     ]
 
-    readonly property var apps: Apps.entries.filter(a => !a.noDisplay).slice().sort((a, b) => a.name.localeCompare(b.name))
+    // (case aside: "mpv" goes with the M's, not after Z)
+    readonly property var apps: Apps.entries.filter(a => !a.noDisplay).slice().sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.name.localeCompare(b.name))
     readonly property var folders: {
         const map = {};
         for (const a of apps) {
@@ -81,5 +82,43 @@ QtObject {
     }
     function move(d) {
         selected = Math.max(0, Math.min(count - 1, selected + d));
+    }
+
+    // An app's menu (ContextMenu items): its own shortcuts (the desktop
+    // file's actions: New Window, New Private Window…), then Open and
+    // Keep in Dock or Remove from Dock
+    function menuItems(entry) {
+        const id = entry.id ?? "";
+        const pinned = Config.options.dock.pinned.includes(id);
+        const own = (entry.actions ?? []).map(a => ({ text: a.name, action: () => {
+            Panels.close();
+            a.execute();
+        } }));
+        return (own.length > 0 ? [{ header: "Shortcuts" }].concat(own) : []).concat([{ header: "Actions" }, { text: "Open", action: () => {
+            Panels.close();
+            Apps.launch(entry);
+        } }, { text: pinned ? "Remove from Dock" : "Keep in Dock", action: () => pinned ? Apps.unpin(id) : Apps.pin(id) }]);
+    }
+
+    // A–Z (all apps, no search) gets a letter scrubber: each letter's first
+    // app, [{ letter, index }] ("#" for names that don't start with A–Z)
+    readonly property bool alphabetical: query === "" && view === 1 && folder === null
+    readonly property var letters: {
+        const out = [];
+        for (let i = 0; i < apps.length; i++) {
+            const c = (apps[i].name ?? "").charAt(0).toUpperCase();
+            const l = /[A-Z]/.test(c) ? c : "#";
+            if (out.length === 0 || out[out.length - 1].letter !== l)
+                out.push({ letter: l, index: i });
+        }
+        return out;
+    }
+    // The letter of the app at index i (the first one in view, for the mark)
+    function letterAt(i) {
+        let l = "";
+        for (const x of letters)
+            if (x.index <= i)
+                l = x.letter;
+        return l;
     }
 }
