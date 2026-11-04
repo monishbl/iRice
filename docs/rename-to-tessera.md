@@ -69,7 +69,10 @@ before and after the rename shares.
 
 ## The one-time setup, with your password
 
-From `~/iRice`, after the update is in (Software Update, or `git pull`):
+From `~/iRice`, after the update is in. Software Update restarts the shell
+by itself; after a pull by hand, restart it (Super+Ctrl+Alt+R in the
+console session, or Super+Ctrl+Escape), so it moves your folders and runs
+the new code with Hyprland's reloaded config. Then:
 
 1. **The root setup**, which installs Tessera's helper, polkit action and
    rule and ananicy rule, moves `/etc/irice` to `/etc/tessera`, renames the
