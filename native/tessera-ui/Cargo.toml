@@ -18,6 +18,9 @@ zbus = { version = "5", default-features = false, features = ["blocking-api", "a
 material-colors = "0.5"
 # (the wallpaper's seed: matugen's steps on the release matugen uses, src/seed.rs)
 mc04 = { package = "material-colors", version = "0.4", features = ["image"] }
+# (already in the build through Slint and the seed's reader: the wallpaper's
+# top for the menu bar's text colour, services/wallpaper.rs)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 libc = "0.2"
 memmap2 = "0.9"
 accesskit = "0.25"

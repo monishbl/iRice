@@ -19,6 +19,14 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // A line for it (its stdin): what this shell still owns that its surfaces
+    // show (modules/menubar/RustBridge.qml), {"src":"shell","kind":…}
+    function send(obj) {
+        if (proc.running)
+            proc.write(JSON.stringify(obj) + "\n");
+    }
+    // It has (re)started: whoever feeds it says everything again
+    signal started
 
     // (armed a moment after the list changes, once `command` has the new
     // list: started in the same instant, it could run with the old one)
@@ -55,8 +63,10 @@ Singleton {
         }
         if (e.src !== "ui")
             return;
-        if (e.kind === "ready")
+        if (e.kind === "ready") {
             drawn = e.surfaces ?? [];
+            started();
+        }
         else if (e.kind === "unknown")
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
     }

@@ -15,6 +15,11 @@ pub struct Battery {
     pub present: bool,
     pub percent: f64,
     pub charging: bool,
+    /// UPower's state: 1 charging, 2 discharging, 4 fully charged, 5 pending charge
+    pub state: u32,
+    /// seconds, 0 unknown
+    pub time_to_empty: i64,
+    pub time_to_full: i64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -68,6 +73,9 @@ fn battery(conn: &Connection) -> zbus::Result<Battery> {
         present: kind == 2 && p.get_property::<bool>("IsPresent")?,
         percent: p.get_property("Percentage")?,
         charging: state == 1 || state == 4, // charging, fully charged
+        state,
+        time_to_empty: p.get_property("TimeToEmpty").unwrap_or(0),
+        time_to_full: p.get_property("TimeToFull").unwrap_or(0),
     })
 }
 

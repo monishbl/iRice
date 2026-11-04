@@ -14,6 +14,8 @@
 mod a11y;
 mod egl;
 mod env;
+mod icon_theme;
+mod icons;
 mod seed;
 mod services;
 mod shell;
@@ -193,20 +195,27 @@ fn main() {
         })
         .unwrap();
 
-    // Ends when stdin (a pipe from whoever started us) closes
+    // Ends when stdin (a pipe from whoever started us) closes. Until then the
+    // shell writes JSON lines there: its state, for the surfaces (services::bridge)
     let stdin_is_pipe = unsafe {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
     };
     if stdin_is_pipe {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
+        let mut lines = services::bridge::Lines::default();
         lh
-            .insert_source(src, |_, _, state: &mut State| {
-                let mut buf = [0u8; 256];
+            .insert_source(src, move |_, _, state: &mut State| {
+                let mut buf = [0u8; 8192];
                 let n = unsafe { libc::read(0, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 if n <= 0 {
                     state.exit = true;
                     return Ok(PostAction::Remove);
+                }
+                for l in lines.feed(&buf[..n as usize]) {
+                    if let Some(v) = services::bridge::parse_line(&l) {
+                        handle(state, Msg::Data(v));
+                    }
                 }
                 Ok(PostAction::Continue)
             })
