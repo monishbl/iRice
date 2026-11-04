@@ -5,7 +5,9 @@
 //! stdin, and messages from the data threads).
 //!
 //!   tessera-ui [--surfaces a,b]  draw these (default: all it has); ends on SIGTERM/SIGINT,
-//!                                or when stdin, a pipe, closes (the shell that started it quit)
+//!                                or when stdin, a pipe, closes (the shell that started it quit);
+//!                                JSON lines on stdin `{"to":"osd",…}` go to that surface
+//!                                (the shell's RustUi.tell)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
@@ -84,6 +86,15 @@ fn handle(state: &mut State, msg: Msg) {
             }
         }
     }
+}
+
+/// A line from the shell on stdin (RustUi.tell): `{"to": "<surface>", …}`
+/// reaches that part's `message` as the serde_json::Value
+fn shell_said(state: &mut State, line: &[u8]) {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { return };
+    let Some(to) = v["to"].as_str().and_then(|t| surfaces::KNOWN.iter().find(|k| **k == t)) else { return };
+    let mut v = Some(v);
+    state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
 }
 
 /// Fonts that aren't system fonts: Phosphor (icons) and Google Sans Flex
@@ -200,13 +211,22 @@ fn main() {
     };
     if stdin_is_pipe {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
+        let mut pending: Vec<u8> = Vec::new();
         lh
-            .insert_source(src, |_, _, state: &mut State| {
-                let mut buf = [0u8; 256];
+            .insert_source(src, move |_, _, state: &mut State| {
+                let mut buf = [0u8; 4096];
                 let n = unsafe { libc::read(0, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 if n <= 0 {
                     state.exit = true;
                     return Ok(PostAction::Remove);
+                }
+                pending.extend_from_slice(&buf[..n as usize]);
+                while let Some(i) = pending.iter().position(|&b| b == b'\n') {
+                    let line: Vec<u8> = pending.drain(..=i).collect();
+                    shell_said(state, &line);
+                }
+                if pending.len() > 1 << 16 {
+                    pending.clear(); // (not lines: ignore)
                 }
                 Ok(PostAction::Continue)
             })
@@ -223,6 +243,11 @@ fn main() {
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());
     state.each_part(|p, st| p.start(st));
+    // (parts that show nothing until something happens, as the OSD: no first
+    // frame to wait for, they draw from now; the shell steps aside at once)
+    if state.surfaces.is_empty() {
+        surfaces::announce(&state.shell.surfaces);
+    }
 
     while !state.exit {
         let timeout = if state.wants_frame_soon() {

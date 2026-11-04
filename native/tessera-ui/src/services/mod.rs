@@ -10,7 +10,10 @@
 //!            NetworkManager), over the system bus
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod audio;
+pub mod brightness;
 pub mod hypr;
+pub mod pulse;
 pub mod status;
 
 use crate::Msg;
@@ -20,6 +23,8 @@ pub fn start(name: &str, tx: Sender<Msg>) {
     match name {
         "hypr" => hypr::spawn_events(tx),
         "status" => status::spawn(tx),
+        "audio" => audio::spawn(tx),
+        "brightness" => brightness::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

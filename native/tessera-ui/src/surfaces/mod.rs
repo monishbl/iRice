@@ -5,20 +5,31 @@
 //! stdout per event:
 //!   {"src":"ui","kind":"ready","surfaces":["menubar"]}   drawing these
 //!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
+//!   {"src":"ui","kind":"osd","shown":true}               a surface's own news (`tell`)
 //! If this process ends, the shell draws them again itself.
 
 pub mod menubar;
+pub mod osd;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar"];
+pub const KNOWN: &[&str] = &["menubar", "osd"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
     match name {
         "menubar" => Some(Box::new(menubar::Menubar::default())),
+        "osd" => Some(Box::new(osd::Osd::default())),
         _ => None,
     }
+}
+
+/// A line for the shell (RustUi.qml reads it), from a surface
+pub fn tell(v: serde_json::Value) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{v}");
+    let _ = out.flush();
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -107,9 +118,9 @@ mod tests {
 
     #[test]
     fn says_what_it_draws_as_json_lines() {
-        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,osd"]));
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,dock"]));
         let lines: Vec<serde_json::Value> = s.ready_lines().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "osd"}));
+        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "dock"}));
         assert_eq!(lines[1], json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
     }
 

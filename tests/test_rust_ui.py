@@ -56,6 +56,25 @@ class Agreement(unittest.TestCase):
             self.assertIn(word, rs)
         self.assertIn('"--surfaces"', qml)
 
+    def test_the_osd_and_the_shell_tell_each_other(self):
+        # tessera-ui says when its capsule shows (the banners move under it);
+        # the shell tells it what its own sliders set (no OSD for those) and
+        # passes `qs ipc call osd preview` on, as stdin lines {"to": "osd", …}
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        osd_rs = (CRATE / "src/surfaces/osd/mod.rs").read_text()
+        main_rs = (CRATE / "src/main.rs").read_text()
+        self.assertIn('e.kind === "osd"', rust_ui)
+        self.assertIn('"kind": "osd", "shown"', osd_rs)
+        self.assertIn("proc.write(", rust_ui)
+        self.assertIn('v["to"]', main_rs)
+        self.assertIn('RustUi.tell("osd", { hush: "sound" })', (ROOT / "shell/services/Audio.qml").read_text())
+        self.assertIn('RustUi.tell("osd", { hush: "brightness" })', (ROOT / "shell/services/Brightness.qml").read_text())
+        osd_qml = (ROOT / "shell/modules/osd/Osd.qml").read_text()
+        self.assertIn('RustUi.tell("osd", { preview: kind })', osd_qml)
+        self.assertIn("RustUi.osdShown", osd_qml)
+        for word in ('v["hush"]', 'v["preview"]'):
+            self.assertIn(word, osd_rs)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old
@@ -81,11 +100,11 @@ class Binary(unittest.TestCase):
 
     def test_a_list_it_cant_draw_is_answered_without_a_display(self):
         # (no Wayland needed: nothing to draw, so it says so and ends)
-        r = self.run_ui("--surfaces", "dock,osd")
+        r = self.run_ui("--surfaces", "dock,notifications")
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
-        self.assertEqual({l["surface"] for l in lines[:-1]}, {"dock", "osd"})
+        self.assertEqual({l["surface"] for l in lines[:-1]}, {"dock", "notifications"})
 
     def test_version(self):
         r = self.run_ui("--version")
