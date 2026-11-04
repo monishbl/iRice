@@ -363,6 +363,25 @@ impl State {
         }
     }
 
+    /// Where a surface takes the pointer: these rectangles (logical px), or
+    /// everywhere (None). A surface taller than what it shows (the menu
+    /// bar, with room below it for the island) lets clicks through elsewhere
+    pub fn set_input_region(&self, s: &Surface, rects: Option<&[(i32, i32, i32, i32)]>) {
+        match rects {
+            None => s.wl.set_input_region(None),
+            Some(list) => {
+                let Ok(region) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
+                for &(x, y, w, h) in list {
+                    if w > 0 && h > 0 {
+                        region.add(x, y, w, h);
+                    }
+                }
+                s.wl.set_input_region(Some(region.wl_region()));
+            }
+        }
+        s.wl.commit();
+    }
+
     pub fn keyboard_surface(&self) -> Option<Rc<Surface>> {
         self.keyboard_on.clone()
     }

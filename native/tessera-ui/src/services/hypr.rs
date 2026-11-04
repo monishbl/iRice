@@ -168,6 +168,14 @@ pub fn spawn_events(tx: Sender<Msg>) {
     });
 }
 
+/// A dispatch (Hyprland's Lua: `hl.dsp.window.float({ … })`), on a thread
+pub fn dispatch(cmd: impl Into<String>) {
+    let cmd = cmd.into();
+    std::thread::spawn(move || {
+        let _ = request(&format!("dispatch {cmd}"));
+    });
+}
+
 pub fn focus_workspace(id: i32) {
     std::thread::spawn(move || {
         let _ = request(&format!("dispatch hl.dsp.focus({{ workspace = {id} }})"));

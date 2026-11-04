@@ -52,7 +52,9 @@ Scope {
             power: { ppd: Backends.ppd, profile: root.profile, performance: PowerProfiles.hasPerformanceProfile },
             tools: { hyprpicker: Tools.has("hyprpicker") },
             wifi: { elsewhere: Backends.wifiUnmanaged && Backends.hasWifiHardware, short: Backends.wifiShort, linkUp: Backends.wifiLinkUp },
-            island: { pinned: Island.pinned, hot: Island.showHot, fsMode: Island.fsMode, history: Island.history.length }
+            island: { pinned: Island.pinned, hot: Island.showHot, fsMode: Island.fsMode, history: Island.history.length },
+            // each display's block of spaces and its name (Spaces, SpaceMap.js)
+            spaces: { bases: Spaces.bases, labels: Spaces.labels }
         })
     property string sent: ""
     function push() {
@@ -90,6 +92,10 @@ Scope {
                     color: String(a.color),
                     title: a.kind === "music" ? "" : LiveInfo.title(a.kind),
                     time: a.kind === "music" ? "" : LiveInfo.time(a.kind),
+                    // which pieces its collapsed pill shows (Settings → Menu bar)
+                    lead: Island.shows(a.kind, a.kind === "music" ? "art" : "icon"),
+                    name: Island.shows(a.kind, a.kind === "music" ? "title" : a.kind === "timer" ? "label" : "name"),
+                    clock: a.kind !== "music" && Island.shows(a.kind, "time"),
                     controls: a.kind === "music" ? [] : LiveInfo.controls(a.kind).filter(b => Island.shows(a.kind, b.piece)).map(b => ({ icon: b.icon, fill: !!b.fill, on: b.on !== false, danger: !!b.danger }))
                 }));
         const line = JSON.stringify(acts);
@@ -159,6 +165,10 @@ Scope {
             return Apps.quit(a[0]);
         case "mergeTabs":
             return Apps.mergeIntoTabs();
+        case "moveSpace": // <id> <display>: a space and its windows to another display
+            return Spaces.moveSpaceTo(Number(a[0]), a[1]);
+        case "go": // <id>: a space (made on its own display if it isn't there yet)
+            return Spaces.go(Number(a[0]));
         case "islandAct": { // <uid> <1 | 2 | more index>: an alert's button
             const e = Island.byUid[Number(a[0])];
             const since = Date.now();
