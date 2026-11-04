@@ -100,9 +100,35 @@ Singleton {
         }
     }
 
+    // ── Camera, location and screen sharing from irice-events ───────────
+    // (services/Events: the same looks as the scripts below, done in-process)
+    EventWatch {
+        source: "camera"
+    }
+    EventWatch {
+        source: "location"
+    }
+    EventWatch {
+        source: "screenshare"
+        active: Tools.ready
+    }
+    Connections {
+        target: Events
+        function onCamera(apps) {
+            root.cameraApps = apps.map(root.nice);
+        }
+        function onLocation(apps) {
+            root.locationApps = apps.map(a => a === "?" ? "An app" : root.nice(a.replace(/\.desktop$/, "").split(".").pop()));
+        }
+        function onScreenshare(graph) {
+            root.readGraph(graph);
+        }
+    }
+
     // ── Camera ──────────────────────────────────────────────────────────
+    // (without irice-events)
     Process {
-        running: Tools.has("fuser")
+        running: Tools.has("fuser") && Events.fallsBack("camera")
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/camera.sh").toString().replace("file://", ""))]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {
@@ -117,7 +143,7 @@ Singleton {
     // GeoClue is D-Bus activated: only look while it's already running, so
     // asking never starts it. An app that can't be named shows as "An app".
     Process {
-        running: Tools.has("busctl")
+        running: Tools.has("busctl") && Events.fallsBack("location")
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/location.sh").toString().replace("file://", ""))]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {
@@ -129,31 +155,29 @@ Singleton {
     }
 
     // ── Screen sharing ──────────────────────────────────────────────────
+    // (without irice-events)
     Process {
         id: shareWatch
-        running: Tools.ready
+        running: Tools.ready && !shareRetry.running && Events.fallsBack("screenshare")
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/screenshare.sh").toString().replace("file://", ""))]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {
-            onRead: line => root.readGraph(line)
+            onRead: line => {
+                try {
+                    root.readGraph(JSON.parse(line));
+                } catch (e) {}
+            }
         }
-        onExited: shareRetry.start() // PipeWire restarted
+        onExited: if (Events.fallsBack("screenshare")) shareRetry.start() // PipeWire restarted
     }
     Timer {
         id: shareRetry
         interval: 5000
-        onTriggered: {
-            root.shares = [];
-            shareWatch.running = true;
-        }
+        onTriggered: root.shares = []
     }
-    function readGraph(line) {
-        let graph;
-        try {
-            graph = JSON.parse(line);
-        } catch (e) {
+    function readGraph(graph) {
+        if (!Array.isArray(graph))
             return;
-        }
         const byId = {};
         for (const o of graph)
             byId[o.id] = o;

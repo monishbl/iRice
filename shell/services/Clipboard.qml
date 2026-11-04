@@ -61,9 +61,22 @@ Singleton {
         interval: 1000
         onTriggered: stampFile.setText(JSON.stringify(root.stamps))
     }
-    // A new copy: list again shortly (cliphist stores it first)
+    // A new copy: list again shortly (cliphist stores it first). irice-events
+    // (services/Events) sees cliphist's database written; without it,
+    // wl-paste --watch says something was copied.
+    EventWatch {
+        source: "clipboard"
+        active: Tools.has("cliphist")
+        args: ({ path: root.db })
+    }
+    Connections {
+        target: Events
+        function onClipboardChanged() {
+            copiedTimer.restart();
+        }
+    }
     Process {
-        running: Tools.has("wl-copy") && Tools.has("cliphist")
+        running: Tools.has("wl-copy") && Tools.has("cliphist") && Events.fallsBack("clipboard")
         command: [Tools.watcher, "wl-paste", "--watch", "echo", "copied"]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {

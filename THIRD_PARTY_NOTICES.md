@@ -95,6 +95,7 @@ The installer can fetch these if you choose them. They are not part of iRice and
 - **Apple's macOS wallpapers**, downloaded from a community mirror by `tools/get-wallpapers.sh`. © Apple Inc., all rights reserved.
 - **ttf-apple-emoji** (AUR), the Apple emoji style. Apple's font, repackaged by the AUR package; check its terms before you install it.
 - Hyprland, Quickshell, the Bibata pointer, icon themes and other packages, each under its own licence. The glass plugin (`hypr/plugin/irice-glass`) is built on your computer against Hyprland's headers (BSD-3-Clause).
+- **The Rust crates irice-events is built from** (`native/irice-events`): zbus, serde, serde_json, libc and what they use, at the versions in its `Cargo.lock`. `tools/build-native.sh` downloads them from crates.io and builds them into the program on your computer; none are in this repository. Each is under the MIT licence, the Apache License 2.0, or either (one also under the Unicode License v3).
 
 ## Trademarks
 

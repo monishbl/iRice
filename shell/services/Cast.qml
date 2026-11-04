@@ -18,20 +18,44 @@ Singleton {
     // [{ id, name, model, host, port }]
     property var devices: []
     property var found: ({}) // "interface;protocol;avahi name" -> device
+    // (not while avahi-daemon is off: it would only end, again and again)
+    readonly property bool browsing: Tools.has("avahi-browse") && (!Needs.checked || Needs.avahi)
+    // irice-events (services/Events) browses through Avahi's D-Bus API
+    EventWatch {
+        source: "avahi"
+        active: root.browsing
+        onActiveChanged: if (!active) root.forget()
+    }
+    Connections {
+        target: Events
+        enabled: root.browsing
+        function onAvahiFound(key, s) {
+            const txt = s.txt ?? {};
+            root.seen(key, { id: txt.id || s.name, name: txt.fn || s.name, model: txt.md || "", host: s.host, port: Number(s.port) || 8009 });
+        }
+        function onAvahiLost(key) {
+            root.seen(key, null);
+        }
+        function onAvahiDown() {
+            root.forget();
+        }
+    }
+    function forget() {
+        found = {};
+        devices = [];
+    }
+    // (without irice-events)
     KeptProcess {
         id: browser
-        // (not while avahi-daemon is off: it would only end, again and again)
-        wanted: Tools.has("avahi-browse") && (!Needs.checked || Needs.avahi)
+        wanted: root.browsing && Events.fallsBack("avahi")
         command: [Tools.watcher, "avahi-browse", "-p", "-r", "-k", "_googlecast._tcp"]
         stdinEnabled: true // (Tools.watcher: it ends with the shell)
         stdout: SplitParser {
             onRead: line => root.avahiLine(line)
         }
-        // (avahi-daemon restarted: what it knew is gone; looked for again)
-        onRunningChanged: if (!running) {
-            root.found = {};
-            root.devices = [];
-        }
+        // (avahi-daemon restarted, or irice-events took over: what it knew
+        // is gone; looked for again)
+        onRunningChanged: if (!running) root.forget()
     }
     function avahiLine(line) {
         const f = line.split(";");
@@ -40,19 +64,24 @@ Singleton {
         // (a device is heard once per interface and IP version: it's gone
         // when the last of those goes)
         const key = f[1] + ";" + f[2] + ";" + f[3];
-        const next = Object.assign({}, found);
         if (f[0] === "-") {
-            delete next[key];
+            seen(key, null);
         } else if (f[0] === "=" && f.length >= 10) {
             const txt = {};
             const re = /"([^=]+)=([^"]*)"/g; // (no matchAll in QML)
             let m;
             while ((m = re.exec(f[9])) !== null)
                 txt[m[1]] = m[2];
-            next[key] = { id: txt.id || f[3], name: txt.fn || f[3], model: txt.md || "", host: f[7], port: Number(f[8]) || 8009 };
-        } else {
-            return;
+            seen(key, { id: txt.id || f[3], name: txt.fn || f[3], model: txt.md || "", host: f[7], port: Number(f[8]) || 8009 });
         }
+    }
+    // A device heard (or, null, gone) on one interface and IP version
+    function seen(key, dev) {
+        const next = Object.assign({}, found);
+        if (dev)
+            next[key] = dev;
+        else
+            delete next[key];
         found = next;
         // One per device, IPv4 over IPv6
         const byId = {};

@@ -1,5 +1,11 @@
 # iRice changelog
 
+## One process follows the system instead of about thirty · 2026-11-04
+
+- **irice-events**, iRice's first part written in Rust, now does what about thirty small background processes did: it notices sleep and the lid, USB devices and drives, mice coming and going, sound changes, network changes, app badges, Cast devices, and apps using the camera, your location or your screen. It also notices copies in progress and new clipboard history. It holds the "keep awake" and lid settings with logind itself. In the sandbox, the processes under the shell went from 25 (112 MB) to 2 (8 MB); see `docs/benchmarks-events.md`.
+- **Nothing changes in what you see.** Badges, the island's alerts, the privacy dots and the volume all behave as before. If irice-events isn't there (not built yet) or keeps stopping, the shell uses its older watchers, as before.
+- **The installer builds it**, and so do `irice update` and `irice rebuild` (`tools/build-native.sh`, into `~/.local/share/irice/bin`). This needs Rust, which is now among the build packages.
+
 ## Past chats in the AI sidebar · 2026-11-04
 
 - **New chat no longer throws the old one away.** Every chat is kept, and the clock beside the pencil shows them: grouped Pinned, Today, Yesterday, Previous 7 days and by month, each with when you last used it and its model, the open one marked. Click one to carry on where you left off (with its model, if you still have it); an answer still coming in the chat you're leaving is stopped and kept first. `/new` starts a new chat, as the pencil and `/clear` do.

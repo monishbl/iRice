@@ -24,9 +24,26 @@ Singleton {
     property var last: null // name -> { kind, hotspot }
     onModeChanged: last = null // (another way of looking: learn the state again)
 
+    // irice-events (services/Events) follows NetworkManager over D-Bus, or
+    // the kernel's netlink, and says when something changed
+    readonly property string source: mode === "nm" ? "nm" : "net"
+    EventWatch {
+        source: root.source
+        active: root.on
+    }
+    Connections {
+        target: Events
+        enabled: root.on
+        function onNetworkChanged() {
+            settle.restart();
+        }
+    }
+    readonly property bool nativeOn: on && Events.covers(source)
+    onNativeOnChanged: if (nativeOn) look()
+    // (without irice-events)
     Process {
         id: monitor
-        running: root.on
+        running: root.on && Events.fallsBack(root.source)
         command: root.mode === "nm" ? [Tools.watcher, "nmcli", "monitor"] : [Tools.watcher, "ip", "monitor", "link", "address"]
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         stdout: SplitParser {

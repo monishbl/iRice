@@ -263,12 +263,32 @@ Singleton {
     // it and logind sleeps as usual, so the lid never does nothing by
     // accident.
     readonly property bool lidMine: !sandboxed && hasBattery && Policy.lidNeedsInhibit(cfg, System.keepAwake)
+    // (irice-events holds the inhibitor and hears the lid; without it,
+    // systemd-inhibit and gdbus monitor do)
+    EventWatch {
+        source: "inhibit:handle-lid-switch"
+        active: root.lidMine
+        args: ({ why: "Lid settings (Battery & Power)" })
+    }
+    EventWatch {
+        source: "login1"
+        active: root.lidMine
+    }
+    Connections {
+        target: Events
+        enabled: root.lidMine
+        function onLogin1(kind, args) {
+            const closed = kind === "PropertiesChanged" ? args[1]?.LidClosed : undefined;
+            if (closed !== undefined)
+                closed === true ? root.lidClosed() : root.lidOpened();
+        }
+    }
     Process {
-        running: root.lidMine
+        running: root.lidMine && Events.fallsBack("inhibit")
         command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=handle-lid-switch", "--who=iRice", "--why=Lid settings (Battery & Power)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
     }
     Process {
-        running: root.lidMine
+        running: root.lidMine && Events.fallsBack("login1")
         command: [Tools.watcher, "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"]
         stdinEnabled: true
         stdout: SplitParser {
