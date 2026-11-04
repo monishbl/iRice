@@ -1,5 +1,13 @@
 # iRice changelog
 
+## Glass catches up with Material · 2026-11-04
+
+- **Control Center has a footer:** your picture, the battery and its percentage, then Settings, Power and Edit Controls as round glass buttons under the controls. While you edit, the pencil turns into **Done**.
+- **Your picture and name on the lock screen in both layouts.** Widgets now shows them above the password field, as Classic does, and both show your real picture (`~/.face`, or the one set for your account) and your full name rather than a person glyph and your login.
+- **The App Drawer's app menu:** right-click an app, press and hold it, or press the Menu key for its own shortcuts (New Window and the like), **Open**, and **Keep in Dock** or **Remove from Dock**.
+- **A–Z index in All Apps:** when the list is longer than the window, a column of letters down the side jumps to that letter (click or drag along it); the letter in view is marked. Apps also sort without regard to case now, in both looks.
+- **Search has Clear and Ask AI buttons** at the end of the field: small and grey until you point at them, reached from the field with Shift+Tab, and named for screen readers. Ask AI answers right there, or opens the AI sidebar when nothing is typed.
+
 ## A quiet start, and any username at login · 2026-11-04
 
 - **No more console text between the boot splash and your desktop.** The splash's last frame stays until the login screen draws, the login screen's compositor logs to the journal (`journalctl -t irice-greeter`) instead of onto the screen, and the console is cleared with its cursor hidden. On GRUB, `quiet` is added to the kernel line, so boot messages stay off the screen too (`/etc/default/grub` is kept as `.pre-irice`; other boot loaders get a note). Run `./install.sh --only=login` once to get it; `irice uninstall` puts it all back.
