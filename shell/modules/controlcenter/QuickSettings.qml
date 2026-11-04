@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.common
 import qs.glass
 import qs.services
@@ -90,16 +89,6 @@ Popover {
 
     ModuleDefs { id: moduleDefs }
     PointerMenu { id: choices }
-
-    // A picture for the avatar, if there is one
-    property string avatarPath: ""
-    Process {
-        running: true
-        command: ["sh", "-c", "for f in \"$HOME/.face\" \"$HOME/.face.icon\" \"/var/lib/AccountsService/icons/$USER\"; do [ -s \"$f\" ] && [ -r \"$f\" ] && { echo \"$f\"; exit 0; }; done; true"]
-        stdout: StdioCollector {
-            onStreamFinished: qs.avatarPath = text.trim()
-        }
-    }
 
     // ── The layout: Control Center's, every size it offers ──────────────
     // One grid of four columns, the same saved layout and sizes as the Glass
@@ -485,11 +474,11 @@ Popover {
                     width: 40
                     height: 40
                     Accessible.role: Accessible.StaticText
-                    Accessible.name: Quickshell.env("USER") ?? ""
+                    Accessible.name: Account.name
                     Image {
                         id: avatarImage
                         anchors.fill: parent
-                        source: qs.avatarPath !== "" ? "file://" + qs.avatarPath : ""
+                        source: Account.pictureUrl
                         sourceSize: Qt.size(80, 80)
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true

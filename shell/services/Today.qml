@@ -67,17 +67,7 @@ Singleton {
     onDayChanged: tidyWidgets()
 
     // ── Who it greets ───────────────────────────────────────────────────
-    property string accountName: ""
-    Process {
-        running: true
-        command: ["sh", "-c", "getent passwd \"$(id -un)\" | cut -d: -f5 | cut -d, -f1; id -un"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const l = text.split("\n").map(s => s.trim());
-                root.accountName = l[0] || l[1] || "";
-            }
-        }
-    }
+    readonly property string accountName: Account.name
     // The first name, from Settings → About (Your name) or the account
     readonly property string name: ((cfg.name || accountName).trim().split(/\s+/)[0] ?? "")
     function greeting(d) {

@@ -9,8 +9,8 @@ import qs.services
 import qs.modules.network
 
 // Control Center in the Glass look: the module grid (Tahoe), detail pages in
-// a second popover beside it, and Edit Controls with the gallery beside the
-// grid. The controls, what they do and the layout are ModuleDefs'.
+// a second popover beside it, a footer (you, the battery, Settings, Power,
+// Edit Controls), and Edit Controls with the gallery beside the grid. The controls, what they do and the layout are ModuleDefs'.
 Popover {
     id: cc
     popoverName: "controlCenter"
@@ -364,39 +364,15 @@ Popover {
                 }
             }
 
-            // Edit Controls / Done
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
+            // You, the battery, Settings, Power and Edit Controls (Done
+            // while editing)
+            ControlCenterFooter {
+                width: parent.width
+                screen: cc.screen
+                chip: cc.bare
+                editing: cc.editing
                 opacity: cc.page !== "" ? 0.45 : 1
-                Glass {
-                    visible: cc.bare && !cc.editing
-                    z: -1
-                    anchors.fill: parent
-                    anchors.margins: -shadowMargin
-                    shadowMargin: 10
-                    radius: parent.radius
-                }
                 Behavior on opacity { NumberAnimation { duration: 220 } }
-                width: editLabel.implicitWidth + 28
-                height: 28
-                radius: 14
-                color: cc.editing ? Theme.accent : editMouse.containsMouse ? Theme.color.fillHover : cc.bare ? "transparent" : Theme.color.platter
-                border.width: 1
-                border.color: Qt.alpha("white", Theme.dark ? 0.08 : 0.3)
-                Text {
-                    id: editLabel
-                    anchors.centerIn: parent
-                    text: cc.editing ? "Done" : "Edit Controls"
-                    color: cc.editing ? Theme.color.onAccent : Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.Medium }
-                }
-                MouseArea {
-                    id: editMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Panels.ccEditing = !Panels.ccEditing
-                }
             }
         }
     }
