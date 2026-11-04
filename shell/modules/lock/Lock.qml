@@ -159,7 +159,8 @@ Scope {
         enabled: root.cfg.standby && Island.charging && !System.locked && !System.keepAwake
         onIsIdleChanged: if (isIdle && enabled) System.locked = true
     }
-    readonly property bool canStandBy: cfg.standby && Island.charging
+    readonly property bool canStandBy: cfg.standby && (Island.charging || demoCharging)
+    property bool demoCharging: false // (sandbox only: `lock demo standby`)
     property bool idle: false
     Timer {
         id: idleTimer
@@ -657,6 +658,37 @@ Scope {
         function unlock(): void {
             if (System.sandboxed)
                 System.locked = false;
+        }
+        // Sandbox only, for films and screenshots (it has no charger, reader
+        // or camera): `./dev.sh ipc lock demo standby | wake | finger | face
+        // | match | off` plays StandBy, coming back from it, the reader or
+        // the camera asking, and a match (shown, not unlocked: `lock unlock`
+        // then, so the match can be seen first)
+        function demo(what: string): void {
+            if (!System.sandboxed)
+                return;
+            if (what === "standby") {
+                root.demoCharging = true;
+                root.idle = true;
+            } else if (what === "wake") {
+                root.woke();
+            } else if (what === "finger") {
+                root.faceText = "";
+                root.fingerText = "Touch the fingerprint reader to unlock";
+                root.fingerState = "waiting";
+            } else if (what === "face") {
+                root.fingerText = "";
+                root.faceText = "Looking for your face…";
+            } else if (what === "match") {
+                root.fingerState = "match";
+                root.fingerText = "";
+                root.faceText = "";
+            } else {
+                root.demoCharging = false;
+                root.fingerText = "";
+                root.fingerState = "";
+                root.faceText = "";
+            }
         }
     }
 }

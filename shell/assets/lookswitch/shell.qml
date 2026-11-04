@@ -150,7 +150,7 @@ ShellRoot {
                     }
                     Text {
                         anchors.centerIn: parent
-                        text: "\ue210" // (Phosphor's filled drop)
+                        text: "\ue604" // (Phosphor's filled circle-wavy: the Badge, the logo)
                         color: root.ink
                         font { family: "Phosphor-Fill"; pixelSize: 64 }
                     }

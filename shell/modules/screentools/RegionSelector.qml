@@ -108,7 +108,7 @@ Scope {
                     y: parent.s.y - 1
                     width: parent.s.width + 2
                     height: parent.s.height + 2
-                    visible: parent.s.width > 0 && win.kind === "box" // (a circle shows its stroke instead)
+                    visible: parent.s.width > 0 && win.kind === "box" // (a circle shows only its stroke)
                     color: "transparent"
                     // (Material: a 2 px primary outline)
                     border.width: Theme.material ? 2 : 1
@@ -120,16 +120,17 @@ Scope {
             // Circle to search: the stroke, in the accent with a soft light
             // glow that keeps it apart from a background of the same colour
             // (drawn whole, then faded, so it doesn't build up where the
-            // stroke crosses itself)
+            // stroke crosses itself). It shows from the first pixel, not only
+            // once the drag reads as a circle, so the pen never lags the hand
             Item {
                 anchors.fill: parent
-                visible: win.kind === "circle"
+                visible: win.circling && win.dragging
                 opacity: 0.45
                 layer.enabled: visible
                 Stroke { points: win.stroke; weight: 14; color: "white" }
             }
             Stroke {
-                visible: win.kind === "circle"
+                visible: win.circling && win.dragging
                 points: win.stroke
                 weight: 5
             }
