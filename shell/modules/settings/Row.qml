@@ -15,7 +15,7 @@ Item {
 
     width: parent?.width ?? 0
     readonly property int pad: Theme.material ? 20 : 14
-    implicitHeight: Theme.material ? Math.max(56, labels.implicitHeight + 24, slot.childrenRect.height + 16) : Math.max(44, labels.implicitHeight + 20, slot.childrenRect.height + 16)
+    implicitHeight: Theme.material ? Math.max(56, labels.implicitHeight + 24, slot.height + 16) : Math.max(44, labels.implicitHeight + 20, slot.height + 16)
 
     Icon {
         id: leading
@@ -55,10 +55,19 @@ Item {
     }
     Component.onCompleted: nameControls()
 
+    // (sized by the controls on show: childrenRect counts hidden ones too, so
+    // a row with two buttons, one hidden, had the shown one off its edge)
     Item {
         id: slot
         anchors { right: parent.right; rightMargin: root.pad; verticalCenter: parent.verticalCenter }
-        width: childrenRect.width
-        height: childrenRect.height
+        width: extent(true)
+        height: extent(false)
+        function extent(across) {
+            let e = 0;
+            for (const c of children)
+                if (c.visible)
+                    e = Math.max(e, across ? c.x + c.width : c.y + c.height);
+            return e;
+        }
     }
 }
