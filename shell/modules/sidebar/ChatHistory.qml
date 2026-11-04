@@ -37,14 +37,14 @@ Item {
 
     // The rows shown: { header } or { chat } (AiChats.group). Held still
     // while renaming: rebuilt delegates would drop the field.
-    property var rows: []
+    property var listRows: []
     property real now: Date.now()
-    readonly property var chats: rows.filter(r => r.chat).map(r => r.chat)
+    readonly property var chats: listRows.filter(r => r.chat).map(r => r.chat)
     function rebuild() {
         if (renamingId !== "")
             return;
         const q = query.trim();
-        rows = Chats.group(Chats.filter(Ai.sessions, q, Ai.searchedFor === q ? Ai.searchFound : []), now);
+        listRows = Chats.group(Chats.filter(Ai.sessions, q, Ai.searchedFor === q ? Ai.searchFound : []), now);
         if (selectedId !== "" && !chats.some(c => c.id === selectedId))
             selectedId = "";
     }
@@ -136,7 +136,7 @@ Item {
             return;
         selectedId = c.id;
         list.forceActiveFocus();
-        list.positionViewAtIndex(rows.findIndex(r => r.chat && r.chat.id === c.id), ListView.Contain);
+        list.positionViewAtIndex(listRows.findIndex(r => r.chat && r.chat.id === c.id), ListView.Contain);
     }
 
     Shortcut {
@@ -218,7 +218,7 @@ Item {
         Momentum {}
         anchors { top: searchBox.bottom; topMargin: Theme.material ? 12 : 8; left: parent.left; right: parent.right; bottom: undoBar.shown ? undoBar.top : parent.bottom; bottomMargin: undoBar.shown ? 8 : 0 }
         clip: true
-        model: root.rows
+        model: root.listRows
         boundsBehavior: Flickable.StopAtBounds
         activeFocusOnTab: root.chats.length > 0
         onActiveFocusChanged: if (activeFocus && root.selectedId === "" && root.chats.length) root.selectedId = root.chats[0].id
@@ -237,7 +237,7 @@ Item {
             } else if (e.key === Qt.Key_F2 && id !== "") {
                 root.rename(id);
             } else if ((e.key === Qt.Key_Menu || (e.key === Qt.Key_F10 && (e.modifiers & Qt.ShiftModifier))) && id !== "") {
-                const r = list.itemAtIndex(root.rows.findIndex(x => x.chat && x.chat.id === id));
+                const r = list.itemAtIndex(root.listRows.findIndex(x => x.chat && x.chat.id === id));
                 const c = root.chats.find(x => x.id === id);
                 if (r && c)
                     root.openMenu(c, r, 16, r.height);
@@ -402,7 +402,7 @@ Item {
     Column {
         anchors.centerIn: list
         width: parent.width - 40
-        visible: root.rows.length === 0
+        visible: root.listRows.length === 0
         spacing: 8
         readonly property bool none: Ai.sessions.length === 0
 
