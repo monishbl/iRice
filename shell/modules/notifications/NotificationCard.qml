@@ -118,6 +118,9 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openReply()
                 Keys.onSpacePressed: root.openReply()
+                Accessible.role: Accessible.Button
+                Accessible.name: "Reply"
+                Accessible.onPressAction: root.openReply()
                 border.width: activeFocus ? 2 : 0
                 border.color: Theme.accent
                 Text {
@@ -139,12 +142,26 @@ Item {
                 id: actionRepeater
                 // (the app's own "inline-reply" action is the Reply above)
                 model: root.notification?.actions.filter(a => a.identifier !== "default" && a.identifier !== "inline-reply")
+                // (by keyboard and screen reader too, as in Material's card)
                 Rectangle {
+                    id: actionButton
                     required property var modelData
+                    function run() {
+                        modelData.invoke();
+                        root.acted();
+                    }
                     width: actionLabel.implicitWidth + 24
                     height: 28
                     radius: 14
-                    color: actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                    color: actionMouse.pressed ? Theme.color.fillPressed : actionMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: run()
+                    Keys.onSpacePressed: run()
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData.text
+                    Accessible.onPressAction: run()
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Theme.accent
                     Text {
                         id: actionLabel
                         anchors.centerIn: parent
@@ -156,10 +173,8 @@ Item {
                         id: actionMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: {
-                            parent.modelData.invoke();
-                            root.acted();
-                        }
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: actionButton.run()
                     }
                 }
             }
@@ -220,5 +235,6 @@ Item {
     CloseBadge {
         visible: root.hovered
         onClicked: root.closeRequested()
+        Accessible.name: "Dismiss " + (root.notification?.summary || root.notification?.appName || "notification")
     }
 }

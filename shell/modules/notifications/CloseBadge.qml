@@ -9,6 +9,10 @@ Rectangle {
     property real reach: 0 // (room round it the pointer still hits)
     signal clicked
 
+    Accessible.role: Accessible.Button
+    Accessible.name: "Dismiss"
+    Accessible.onPressAction: root.clicked()
+
     x: -6
     y: -6
     width: 22

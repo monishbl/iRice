@@ -95,22 +95,29 @@ GlassWindow {
                         color: Theme.color.label
                         font { family: Theme.font.family; pixelSize: Theme.font.small }
                     }
+                    Accessible.role: Accessible.Button
+                    Accessible.name: fileCell.path.split("/").pop()
+                    Accessible.onPressAction: downloads.open(fileCell.path, Qt.LeftButton)
                     MouseArea {
                         id: fileMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: m => downloads.open(fileCell.path, m.button)
                     }
-                    // Quick Look without opening the app
+                    // Quick Look without opening the app (shown while the
+                    // pointer is anywhere on the cell, the button included:
+                    // the cell's MouseArea alone loses it over the button)
+                    HoverHandler { id: cellHover }
                     IconButton {
-                        visible: fileMouse.containsMouse || hovered
-                        readonly property bool hovered: false
+                        visible: cellHover.hovered
                         anchors { right: parent.right; top: parent.top; margins: 2 }
                         width: 24
                         height: 24
                         icon: "eye"
                         iconSize: 14
+                        tooltip: "Quick Preview"
                         onClicked: Panels.quickLook(fileCell.path)
                     }
                 }
@@ -132,7 +139,10 @@ GlassWindow {
             width: openLabel.implicitWidth + 28
             height: 28
             radius: 14
-            color: openMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+            color: openMouse.pressed ? Theme.color.fillPressed : openMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+            Accessible.role: Accessible.Button
+            Accessible.name: openLabel.text
+            Accessible.onPressAction: downloads.openFolder()
             Text {
                 id: openLabel
                 anchors.centerIn: parent
@@ -144,6 +154,7 @@ GlassWindow {
                 id: openMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: downloads.openFolder()
             }
         }

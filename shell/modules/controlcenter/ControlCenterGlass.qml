@@ -58,8 +58,14 @@ Popover {
             Panels.ccPage = page;
     }
     dim: page !== "" ? 1 : 0
-    sideOpen: page !== ""
-    onCloseSide: page = ""
+    // Escape leaves a page or the editor first (as Quick Settings does)
+    sideOpen: page !== "" || Panels.ccEditing
+    onCloseSide: {
+        if (page !== "")
+            page = "";
+        else
+            Panels.ccEditing = false;
+    }
     onPressedAt: p => {
         if (page !== "" && !(p.x >= sub.x && p.x < sub.x + sub.width && p.y >= sub.y && p.y < sub.y + sub.height))
             page = "";
