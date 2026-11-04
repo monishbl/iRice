@@ -10,7 +10,12 @@ set -uo pipefail
 # iRice is now Tessera: your settings and data move from iRice's folders
 # (…/irice) to Tessera's, once, before anything reads them
 # (migrate-names.py; the old names stay behind as links)
-python3 -I "$(dirname -- "${BASH_SOURCE[0]}")/migrate-names.py" </dev/null >/dev/null || true
+for b in "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" "${XDG_STATE_HOME:-$HOME/.local/state}" "${XDG_CACHE_HOME:-$HOME/.cache}"; do
+    if [[ -d "$b/irice" && ! -L "$b/irice" ]]; then
+        python3 -I "$(dirname -- "${BASH_SOURCE[0]}")/migrate-names.py" </dev/null >/dev/null || true
+        break
+    fi
+done
 # A session, watchdog or update started before the rename passes the old
 # names (IRICE_ROOT, IRICE_TTY…): the shell and what it starts get the new
 for v in ROOT TTY SANDBOX USER_DIR DEMO LAB NO_NATIVE QS_DEBUG LIVE_RELOAD EVENTS UPDATE_REPO INTRO_PACE; do

@@ -1,5 +1,7 @@
 # Tessera
 
+(Formerly iRice. Coming from it? Your settings move over by themselves; [docs/rename-to-tessera.md](docs/rename-to-tessera.md) has the two commands to run once.)
+
 A glass desktop shell for Hyprland, after macOS, with everything end4's illogical-impulse dots offer and more: Stages, window tiling, Focus modes, an App Drawer and a matching login screen. A second look, Material, follows Android. It's written from scratch in [Quickshell](https://quickshell.org) and tuned for integrated GPUs.
 
 ## What's in it

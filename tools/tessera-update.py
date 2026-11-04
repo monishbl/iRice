@@ -41,6 +41,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_QML = "shell/common/Config.qml"
 THEME_QML = "shell/common/Theme.qml"
 KEYMAP = "hypr/tessera/keymap.json"
+OLD_KEYMAP = "hypr/irice/keymap.json"  # (where it was in a version from before iRice became Tessera)
 MIGRATIONS = "tools/settings-migrations.json"  # {"old.path": "new.path"}
 
 
@@ -368,7 +369,7 @@ def check(config_dir, fetch=True):
     user = load_json(os.path.join(config_dir, "keybinds.json"), {})
     overrides = user.get("keybinds", {}) if isinstance(user.get("keybinds"), dict) else {}
     custom = [s for s in user.get("shortcuts", []) if isinstance(s, dict)]
-    old_k, new_k = keymap(show(base, KEYMAP)), keymap(show(new, KEYMAP))
+    old_k, new_k = keymap(show(base, KEYMAP) or show(base, OLD_KEYMAP)), keymap(show(new, KEYMAP) or show(new, OLD_KEYMAP))
     yours = {}  # canonical keys -> (kind, id, label) you chose
     for bid, c in overrides.items():
         if isinstance(c, dict) and c.get("keys") and not c.get("disabled"):

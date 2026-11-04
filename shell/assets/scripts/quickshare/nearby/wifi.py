@@ -201,7 +201,9 @@ def helper_shields():
     rule while it lasts: qs-wifi-helper.py DBUS_SHIELD). Older copies don't."""
     try:
         with open(helper_script()) as f:
-            return "zzz-tessera-quickshare" in f.read()
+            text = f.read()
+        # (zzz-irice-…: the copy installed before iRice became Tessera)
+        return "zzz-tessera-quickshare" in text or "zzz-irice-quickshare" in text
     except OSError:
         return False
 

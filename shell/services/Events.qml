@@ -25,13 +25,16 @@ Singleton {
     // rebuild: tools/build-native.sh)
     readonly property string olderBinary: Paths.data + "/bin/irice-events"
     property string found: ""
+    property bool canStart: false // (once the command has the binary found: set after it)
     Process {
         running: true
         command: ["sh", "-c", "for b; do [ -x \"$b\" ] && { echo \"$b\"; exit 0; }; done; exit 1", "sh", root.binary, root.olderBinary]
         stdout: StdioCollector {
             onStreamFinished: {
                 root.found = text.trim();
-                if (!root.found) {
+                if (root.found)
+                    Qt.callLater(() => root.canStart = true);
+                else {
                     root.quickEnds = 3; // (not built)
                     root.decided = true;
                 }
@@ -115,7 +118,7 @@ Singleton {
     property bool didStart: false
     KeptProcess {
         id: proc
-        wanted: root.found !== "" && root.quickEnds < 3
+        wanted: root.canStart && root.quickEnds < 3
         command: [root.found]
         stdinEnabled: true // (it ends when this closes: the shell quit)
         onStarted: root.didStart = true

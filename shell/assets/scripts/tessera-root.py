@@ -1252,7 +1252,8 @@ def setup(src, uid, prefix=None, run=subprocess.run):
 # What the helper installed under iRice's name. setup puts Tessera's in
 # place first (FILES above), so there's never a moment without a helper.
 OLD_LIB = "/usr/lib/irice"
-OLD_FILES = ("/usr/share/polkit-1/actions/org.irice.root.policy", "/etc/polkit-1/rules.d/49-irice.rules")
+OLD_FILES = ("/usr/share/polkit-1/actions/org.irice.root.policy", "/etc/polkit-1/rules.d/49-irice.rules",
+             "/etc/dbus-1/system.d/zzz-irice-quickshare.conf")  # (that one: left by a Wi-Fi helper that died)
 OLD_QS_TRUST_RULE = "/etc/polkit-1/rules.d/49-irice-quickshare.rules"
 OLD_FOLDERS = (("/etc/irice", "/etc/tessera"), ("/var/lib/irice", "/var/lib/tessera"))
 # Drop-ins and module options: the same content under Tessera's name

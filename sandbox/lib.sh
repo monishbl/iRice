@@ -18,6 +18,9 @@ else
     TESSERA_RT=/tmp/irice-rt-$TESSERA_ARENA
     TESSERA_HOME="$ROOT/.sandbox/arena-$TESSERA_ARENA/home"
 fi
+# (the same under their old names, for a checkout's scripts from before the
+# rename that source this file: its reload-shell.sh, given this checkout)
+IRICE_ARENA=$TESSERA_ARENA IRICE_RT=$TESSERA_RT IRICE_HOME=$TESSERA_HOME
 
 # PIDs of sandbox processes with the given executable name.
 sandbox_pids() {

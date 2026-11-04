@@ -1343,6 +1343,8 @@ verify() {
     if systemctl is-enabled --quiet greetd 2>/dev/null; then
         if [[ -f /usr/share/tessera/shell/greeter.qml && -f /usr/share/tessera/greeter.lua ]] && id greeter >/dev/null 2>&1 && grep -q tessera /etc/greetd/config.toml 2>/dev/null; then
             ok "Tessera login screen (greetd)"
+        elif [[ -f /usr/share/irice/shell/greeter.qml ]] && grep -q /usr/share/irice/ /etc/greetd/config.toml 2>/dev/null; then
+            meh "The login screen is the one installed before iRice became Tessera (it works)" "./install.sh --only=login"
         else
             bad "greetd is on but the Tessera login screen isn't set up" "run the installer again"
         fi

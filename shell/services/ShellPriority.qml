@@ -23,7 +23,8 @@ Singleton {
     }
     Process {
         id: check
-        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules"]
+        // (irice.rules: installed before iRice became Tessera, until the root setup replaces it)
+        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f /etc/ananicy.d/irice.rules"]
         onExited: code => {
             root.available = code !== 2;
             root.on = code === 0;
