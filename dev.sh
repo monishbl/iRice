@@ -75,7 +75,7 @@ case "${1:-help}" in
     up)
         running && { echo "Sandbox already running."; exit 0; }
         stop_sandbox_apps # left behind by a sandbox that crashed
-        : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
+        [[ "${IRICE_VISIBLE:-0}" == 1 ]] && : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
         [[ -d "$IRICE_HOME" ]] || seed_arena
         # (without the files this shell has open: a smoke check's lock would
         # stay held for as long as the sandbox runs)
@@ -84,15 +84,18 @@ case "${1:-help}" in
                 fd=${fd##*/}
                 ((fd > 2)) && eval "exec $fd>&-"
             done
-            exec setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="$WAYLAND_DISPLAY" \
+            exec setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" \
+                IRICE_VISIBLE="${IRICE_VISIBLE:-0}" IRICE_HOST_AUDIO="${IRICE_HOST_AUDIO:-0}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
-        # Park the sandbox window alone on host workspace 1 (only touches that window).
+        # Visible (IRICE_VISIBLE=1): park the sandbox window alone on host
+        # workspace 1 (only touches that window). Hidden, the default, there's
+        # no window on your desktop to park.
         hpid="$(pgrep -P "$(sandbox_pid)" -x Hyprland | head -1 || true)"
         found=0
-        if [[ $hpid =~ ^[0-9]+$ ]]; then
+        if [[ "${IRICE_VISIBLE:-0}" == 1 && $hpid =~ ^[0-9]+$ ]]; then
             for _ in $(seq 25); do
                 hyprctl -j clients | jq -e ".[] | select(.pid == $hpid)" >/dev/null && { found=1; break; }
                 sleep 0.2
@@ -103,6 +106,8 @@ case "${1:-help}" in
         ws="${IRICE_HOST_WORKSPACE:-1}"
         [[ "$IRICE_ARENA" != 1 ]] && ws='"special:irice-arenas"'
         [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = $ws, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
+        # (once the nested Hyprland answers: hidden, nothing above waited for it)
+        for _ in $(seq 50); do nested hyprctl monitors >/dev/null 2>&1 && break; sleep 0.2; done
         nested hyprctl output create headless IRICE-TEST >/dev/null
         # Layer surfaces in the nested output keep their first size after the host
         # resizes the window, so restart the shell once it has settled.
@@ -214,6 +219,9 @@ Usage: ./dev.sh <command>
   reset-home   Wipe the sandbox home (.sandbox/home)
 Every command works on another identical sandbox with IRICE_ARENA=2..9
 (e.g. IRICE_ARENA=2 ./dev.sh up): its own compositor, shell and home.
+Sandboxes are hidden and silent: they draw into a private headless display
+(see them with shot) and play into a silent Speakers. IRICE_VISIBLE=1 up puts
+the window on your desktop again; IRICE_HOST_AUDIO=1 up uses your real audio.
 EOF
         ;;
 esac

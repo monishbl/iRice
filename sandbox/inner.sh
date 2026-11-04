@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Runs INSIDE the `irice` distrobox. Starts a nested Hyprland in a window on the
-# host compositor, fully isolated from the host session:
+# Runs INSIDE the `irice` distrobox. Starts a nested Hyprland, fully isolated
+# from the host session:
+#   - own display          -> it draws into a private, virtual KWin, so no
+#                             window shows on your desktop and your keyboard and
+#                             pointer never reach it (IRICE_VISIBLE=1: a window
+#                             on the host compositor instead, as it used to be)
+#   - own sound            -> a private PipeWire whose only output is a silent
+#                             "Speakers" (IRICE_HOST_AUDIO=1: your real audio)
 #   - own XDG_RUNTIME_DIR  -> own Hyprland IPC sockets, own Quickshell IPC
 #   - own D-Bus session    -> our notification server / tray never touch the host's
 #   - own HOME             -> set by distrobox (.sandbox/home), host ~/.config untouched
@@ -24,9 +30,27 @@ fi
 
 rm -rf "$RT"
 mkdir -p -m 700 "$RT"
-ln -s "$HOST_RT/$HOST_WL" "$RT/wayland-host"
-# Host audio, so volume/media widgets have something real to show
-if [[ "${IRICE_HOST_AUDIO:-1}" == 1 ]]; then
+helpers=()
+trap '[[ ${#helpers[@]} -gt 0 ]] && kill "${helpers[@]}" 2>/dev/null; true' EXIT
+if [[ "${IRICE_VISIBLE:-0}" == 1 ]]; then
+    ln -s "$HOST_RT/$HOST_WL" "$RT/wayland-host"
+else
+    # KWin's virtual backend: no screen and no input devices, one 1920x1080
+    # output (Hyprland needs Wayland interfaces as new as KWin's; Weston,
+    # cage and sway are too old); its socket in a folder of its own, so it's
+    # never taken for the nested Hyprland's wayland-N (dev.sh's nested). The
+    # nested Hyprland is its only window.
+    mkdir -m 700 "$RT/display"
+    sock=irice-display
+    env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$RT/display" KWIN_COMPOSE=O2ES \
+        kwin_wayland --virtual --width 1920 --height 1080 --socket "$sock" >"$RT/display.log" 2>&1 &
+    helpers+=($!)
+    for _ in $(seq 80); do [[ -S "$RT/display/$sock" ]] && break; sleep 0.1; done
+    [[ -S "$RT/display/$sock" ]] || { echo "inner.sh: the hidden display didn't start, see $RT/display.log" >&2; exit 1; }
+    ln -s "$RT/display/$sock" "$RT/wayland-host"
+fi
+# Host audio (IRICE_HOST_AUDIO=1), so volume/media widgets play for real
+if [[ "${IRICE_HOST_AUDIO:-0}" == 1 ]]; then
     [[ -S "$HOST_RT/pipewire-0" ]] && ln -s "$HOST_RT/pipewire-0" "$RT/pipewire-0"
     # A real directory with the socket linked in: PulseAudio clients refuse a
     # symlinked $XDG_RUNTIME_DIR/pulse ("Too many levels of symbolic links")
@@ -47,5 +71,34 @@ export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket
 
 LOG="$RT/hyprland.log"
 echo "iRice sandbox: runtime $RT, log $LOG"
-dbus-run-session -- bash -c 'echo $$ > "$0/hyprland.pid"; echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/session-bus"; exec start-hyprland -- --config "$1"' \
+# Silent sound (unless IRICE_HOST_AUDIO=1): PipeWire, WirePlumber with every
+# device monitor off (no sound card, Bluetooth or camera is ever touched) and
+# the Pulse server, on this sandbox's own bus and runtime folder, with one
+# null sink named Speakers. Started inside the session bus, before Hyprland.
+AUDIO=""
+if [[ "${IRICE_HOST_AUDIO:-0}" != 1 ]] && command -v pipewire >/dev/null && command -v wireplumber >/dev/null; then
+    cfg="$RT/audio-config"
+    mkdir -p "$cfg/pipewire/pipewire.conf.d" "$cfg/wireplumber/wireplumber.conf.d"
+    cat >"$cfg/pipewire/pipewire.conf.d/irice-speakers.conf" <<'CONF'
+context.objects = [
+    { factory = adapter
+      args = { factory.name = support.null-audio-sink node.name = "irice-speakers" node.description = "Speakers"
+               media.class = Audio/Sink audio.position = [ FL FR ] monitor.channel-volumes = true object.linger = true } }
+]
+CONF
+    cat >"$cfg/wireplumber/wireplumber.conf.d/irice-silent.conf" <<'CONF'
+wireplumber.profiles = {
+    main = {
+        monitor.alsa = disabled
+        monitor.alsa-midi = disabled
+        monitor.bluez = disabled
+        monitor.bluez-midi = disabled
+        monitor.libcamera = disabled
+        monitor.v4l2 = disabled
+    }
+}
+CONF
+    AUDIO="XDG_CONFIG_HOME=$cfg pipewire & XDG_CONFIG_HOME=$cfg wireplumber & XDG_CONFIG_HOME=$cfg pipewire-pulse & sleep 0.5;"
+fi
+dbus-run-session -- bash -c "$AUDIO"' echo $$ > "$0/hyprland.pid"; echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/session-bus"; exec start-hyprland -- --config "$1"' \
     "$RT" "$ROOT/sandbox/hypr/hyprland.lua" >"$LOG" 2>&1
