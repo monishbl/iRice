@@ -27,11 +27,12 @@ Column {
         opacity: root.on ? 1 : 0.45
         Row {
             label: "Size"
-            detail: Config.options.dock.iconSize + " px"
+            detail: (Theme.material ? Math.max(36, Math.min(56, Config.options.dock.iconSize)) : Config.options.dock.iconSize) + " px"
+            // (Material's dock keeps its icons between 36 and 56)
             Slider {
                 width: 220
-                from: 32
-                to: 72
+                from: Theme.material ? 36 : 32
+                to: Theme.material ? 56 : 72
                 stepSize: 2
                 value: Config.options.dock.iconSize
                 onMoved: v => Config.options.dock.iconSize = v
@@ -157,6 +158,7 @@ Column {
             // One slider: its left end is off (the size you had is kept for
             // when it's on again)
             Row {
+                visible: !Theme.material // (Material's dock doesn't magnify)
                 label: "Magnification"
                 detail: Config.options.dock.magnification ? Math.round(Config.options.dock.magnifiedScale * 100) + "% when you point at an icon" : "Off"
                 Column {

@@ -164,6 +164,7 @@ Column {
         Group {
             width: parent.width
             Row {
+                visible: !Theme.material // (Material's lock draws its own tonal cards)
                 label: "Cards and field"
                 detail: "What notifications, Now Playing and the password field are made of"
                 Choice { key: "material"; values: ["glass", "frost", "solid", "system"]; options: ["Glass", "Frost", "Solid", "System"] }
