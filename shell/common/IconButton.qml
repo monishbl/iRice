@@ -11,6 +11,7 @@ Squircle {
     property int iconSize: 16
     property string tooltip
     property string accessibleName: tooltip || icon // icon-only: its tooltip names it
+    readonly property bool hovered: mouse.containsMouse
     signal clicked
 
     implicitWidth: 28
