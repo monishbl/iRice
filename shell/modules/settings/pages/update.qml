@@ -17,6 +17,7 @@ Column {
     spacing: 22
 
     readonly property var report: IriceUpdate.report
+    readonly property int pad: Theme.material ? 20 : 14 // (the lines' edge: a settings Row's)
     readonly property var plan: SoftwareUpdate.plan
     readonly property var job: Updates.job
     readonly property bool over: !!job && job.state !== "running" && !SoftwareUpdate.running
@@ -84,8 +85,8 @@ Column {
         width: parent.width
         title: "What's new in iRice"
         UpdateNotes {
-            x: 14
-            width: parent.width - 28
+            x: page.pad
+            width: parent.width - 2 * page.pad
             topPadding: 14
             bottomPadding: 14
             entries: page.report?.changelog ?? []
@@ -164,7 +165,7 @@ Column {
         opacity: dim ? 0.5 : 1
         Text {
             id: pkgName
-            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: page.pad; verticalCenter: parent.verticalCenter }
             width: Math.min(implicitWidth, parent.width * 0.45)
             elide: Text.ElideRight
             text: line.name
@@ -191,7 +192,7 @@ Column {
             }
         }
         Text {
-            anchors { right: parent.right; rightMargin: 14; left: badgeBox.visible ? badgeBox.right : pkgName.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: page.pad; left: badgeBox.visible ? badgeBox.right : pkgName.right; leftMargin: 12; verticalCenter: parent.verticalCenter }
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideLeft
             visible: line.to !== ""
@@ -203,7 +204,7 @@ Column {
     }
     component PkgHeading: Text {
         width: parent?.width ?? 0
-        leftPadding: 14
+        leftPadding: page.pad
         topPadding: 12
         bottomPadding: 4
         color: Theme.color.label
@@ -214,7 +215,7 @@ Column {
         property int total: 0
         property bool open: false
         visible: total > 8
-        leftPadding: 14
+        leftPadding: page.pad
         topPadding: 2
         bottomPadding: 6
         text: open ? "Show fewer" : "and " + (total - 8) + " more"
@@ -367,7 +368,7 @@ Column {
             width: parent.width
             height: 30
             Text {
-                anchors { left: parent.left; leftMargin: 14; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; leftMargin: page.pad; right: parent.right; rightMargin: page.pad; verticalCenter: parent.verticalCenter }
                 elide: Text.ElideRight
                 textFormat: Text.StyledText
                 text: SoftwareUpdate.steps.map(s => s === SoftwareUpdate.stepNow ? "<b>" + SoftwareUpdate.stepName(s) + "</b>" : SoftwareUpdate.stepName(s)).join("  ·  ")
@@ -379,22 +380,13 @@ Column {
             visible: Updates.running
             width: parent.width
             height: 32
-            Rectangle {
-                anchors { left: parent.left; leftMargin: 14; right: pct.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                height: 6
-                radius: 3
-                color: Theme.color.fill
-                Rectangle {
-                    width: parent.width * Math.max(0.02, Updates.progress)
-                    height: parent.height
-                    radius: 3
-                    color: Theme.accent
-                    Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
-                }
+            WavyProgress {
+                anchors { left: parent.left; leftMargin: page.pad; right: pct.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                value: Math.max(0.02, Updates.progress)
             }
             Text {
                 id: pct
-                anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                anchors { right: parent.right; rightMargin: page.pad; verticalCenter: parent.verticalCenter }
                 text: Math.round(Math.max(0, Updates.progress) * 100) + "%"
                 color: Theme.color.secondary
                 font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
@@ -537,8 +529,8 @@ Column {
         width: parent.width
         title: "What's new"
         UpdateNotes {
-            x: 14
-            width: parent.width - 28
+            x: page.pad
+            width: parent.width - 2 * page.pad
             topPadding: 14
             bottomPadding: 6
             entries: IriceUpdate.result?.changelog ?? []

@@ -284,7 +284,7 @@ Column {
                 height: lineText.implicitHeight + 14
                 Icon {
                     id: lineIcon
-                    x: 14
+                    x: Theme.material ? 20 : 14 // (a Row's edge)
                     anchors.verticalCenter: parent.verticalCenter
                     name: parent.modelData.kind === "added" ? "plus" : parent.modelData.kind === "off" ? "power" : "pencil-simple"
                     size: 12
@@ -292,7 +292,7 @@ Column {
                 }
                 Text {
                     id: lineText
-                    anchors { left: lineIcon.right; leftMargin: 10; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    anchors { left: lineIcon.right; leftMargin: 10; right: parent.right; rightMargin: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                     text: parent.modelData.text
                     wrapMode: Text.Wrap
                     color: Theme.color.label
@@ -328,7 +328,7 @@ Column {
                 height: skipText.implicitHeight + 12
                 Text {
                     id: skipText
-                    anchors { left: parent.left; leftMargin: 36; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; leftMargin: Theme.material ? 42 : 36; right: parent.right; rightMargin: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                     text: parent.modelData.text
                     wrapMode: Text.Wrap
                     color: Theme.color.secondary

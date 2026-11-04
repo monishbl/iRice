@@ -79,11 +79,12 @@ Column {
         readonly property var others: Keymap.gestureConflicts(gesture.fingers, gesture.direction, gesture.id)
         readonly property var def: gesture.custom ? null : Keymap.gestureDefaults.find(d => d.id === gesture.id) ?? null
         width: parent?.width ?? 0
-        height: grCol.implicitHeight + 20
+        height: grCol.implicitHeight + (Theme.material ? 24 : 20)
 
+        // (Material: a settings Row's 20 px edge)
         Column {
             id: grCol
-            anchors { left: parent.left; leftMargin: 14; right: grMenu.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: Theme.material ? 20 : 14; right: grMenu.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
             spacing: 6
             Flow {
                 width: parent.width
@@ -91,20 +92,20 @@ Column {
                 opacity: gr.gesture.disabled ? 0.5 : 1
                 Choice {
                     menu: pageMenu
-                    width: 104
+                    width: Theme.material ? 120 : 104
                     options: page.fingerOptions
                     value: gr.gesture.fingers
                     onChosen: v => Keymap.setGesture(gr.gesture.id, { fingers: v })
                 }
                 Choice {
                     menu: pageMenu
-                    width: 136
+                    width: Theme.material ? 160 : 136
                     options: page.directionOptions
                     value: gr.gesture.direction
                     onChosen: v => Keymap.setGesture(gr.gesture.id, { direction: v })
                 }
                 Icon {
-                    height: 28
+                    height: Theme.material ? 40 : 28 // (centred on the choices)
                     name: "arrow-right"
                     size: 14
                     color: Theme.color.tertiary
@@ -125,12 +126,12 @@ Column {
                 text: what
                 wrapMode: Text.Wrap
                 color: (gr.others.length > 0 || gr.gesture.direction === "hold" && typeof gr.gesture.action === "string") && !gr.gesture.disabled ? Theme.color.warning : Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption }
             }
         }
         IconButton {
             id: grMenu
-            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: Theme.material ? 12 : 8; verticalCenter: parent.verticalCenter }
             icon: "dots-three"
             iconColor: Theme.color.secondary
             tooltip: "Options for this gesture"
@@ -157,7 +158,7 @@ Column {
         width: parent.width
         height: addButton.height // (each look's button height)
         Text {
-            anchors { left: parent.left; leftMargin: 4; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: Theme.material ? 16 : 4; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             text: "Swipe or pinch with several fingers. Changes apply right away."
             elide: Text.ElideRight
             color: Theme.color.secondary
@@ -209,19 +210,19 @@ Column {
         readonly property var others: visible ? Keymap.gestureConflicts(fingers, direction, "") : []
         Item {
             width: parent.width
-            height: draftCol.implicitHeight + 24
+            height: draftCol.implicitHeight + 2 * draftCol.y
             Column {
                 id: draftCol
-                x: 14
-                y: 12
-                width: parent.width - 28
+                x: Theme.material ? 20 : 14
+                y: Theme.material ? 16 : 12
+                width: parent.width - 2 * x
                 spacing: 8
                 Flow {
                     width: parent.width
                     spacing: 8
-                    Choice { menu: pageMenu; width: 104; options: page.fingerOptions; value: draft.fingers; onChosen: v => draft.fingers = v }
-                    Choice { menu: pageMenu; width: 136; options: page.directionOptions; value: draft.direction; onChosen: v => draft.direction = v }
-                    Icon { height: 28; name: "arrow-right"; size: 14; color: Theme.color.tertiary }
+                    Choice { menu: pageMenu; width: Theme.material ? 120 : 104; options: page.fingerOptions; value: draft.fingers; onChosen: v => draft.fingers = v }
+                    Choice { menu: pageMenu; width: Theme.material ? 160 : 136; options: page.directionOptions; value: draft.direction; onChosen: v => draft.direction = v }
+                    Icon { height: Theme.material ? 40 : 28; name: "arrow-right"; size: 14; color: Theme.color.tertiary }
                     Choice { menu: pageMenu; width: 200; options: page.actionsFor(draft.direction); value: draft.action; onChosen: v => draft.action = v }
                 }
                 Text {
@@ -255,7 +256,7 @@ Column {
 
     Text {
         visible: !Keymap.ready
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         text: "Loading gestures…"
         color: Theme.color.secondary
         font { family: Theme.font.family; pixelSize: Theme.font.body }

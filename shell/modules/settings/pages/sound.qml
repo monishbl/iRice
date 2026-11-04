@@ -72,7 +72,7 @@ Column {
                 Icon {
                     visible: Pipewire.defaultAudioSink === parent.parent.modelData
                     name: "check"
-                    size: 16
+                    size: Theme.material ? 24 : 16
                     color: Theme.accent
                 }
             }
@@ -108,7 +108,7 @@ Column {
                 Icon {
                     visible: Pipewire.defaultAudioSource === parent.parent.modelData
                     name: "check"
-                    size: 16
+                    size: Theme.material ? 24 : 16
                     color: Theme.accent
                 }
             }

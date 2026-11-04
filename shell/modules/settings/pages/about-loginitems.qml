@@ -168,42 +168,43 @@ Column {
     }
 
     // ── A login item ────────────────────────────────────────────────────
+    // (Material: a settings Row's edges and type, 20 px in, 16 over 14 px)
     component ItemRow: QQ.Rectangle {
         id: ir
         required property var modelData
         readonly property bool dim: page.skipped(modelData)
         width: parent?.width ?? 0
-        height: 52
+        height: Theme.material ? 64 : 52
         color: "transparent"
         AppIcon {
             id: irIcon
-            x: 14
+            x: Theme.material ? 20 : 14
             anchors.verticalCenter: parent.verticalCenter
-            size: 28
+            size: Theme.material ? 32 : 28
             source: page.iconFor(ir.modelData)
             opacity: ir.dim ? 0.45 : 1
         }
         Column {
-            anchors { left: irIcon.right; leftMargin: 12; right: irControls.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: irIcon.right; leftMargin: Theme.material ? 16 : 12; right: irControls.left; rightMargin: Theme.material ? 16 : 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             Text {
                 width: parent.width
                 text: ir.modelData.name
                 elide: Text.ElideRight
                 color: ir.dim ? Theme.color.secondary : Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
             }
             Text {
                 width: parent.width
                 text: page.statusText(ir.modelData)
                 elide: Text.ElideRight
                 color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption }
             }
         }
         Item {
             id: irControls
-            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: Theme.material ? 12 : 8; verticalCenter: parent.verticalCenter }
             width: (irSwitch.visible ? irSwitch.width + 8 : 0) + irMenu.width
             height: 28
             Switch {
@@ -242,7 +243,7 @@ Column {
     // ── Loading, error, empty ───────────────────────────────────────────
     Text {
         visible: !page.loaded
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         text: "Loading login items…"
         color: Theme.color.secondary
         font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -361,17 +362,17 @@ Column {
                 color: Theme.material ? "transparent" : hitMouse.pressed ? Theme.color.fillPressed : hitMouse.containsMouse ? Theme.color.fill : "transparent"
                 AppIcon {
                     id: hitIcon
-                    x: 14
+                    x: Theme.material ? 20 : 14
                     anchors.verticalCenter: parent.verticalCenter
-                    size: 28
+                    size: Theme.material ? 32 : 28
                     source: Apps.iconFor(hit.modelData)
                 }
                 Text {
-                    anchors { left: hitIcon.right; leftMargin: 12; right: hitAdd.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                    anchors { left: hitIcon.right; leftMargin: Theme.material ? 16 : 12; right: hitAdd.left; rightMargin: Theme.material ? 16 : 12; verticalCenter: parent.verticalCenter }
                     text: hit.modelData.name
                     elide: Text.ElideRight
                     color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.body }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
                 }
                 MouseArea {
                     id: hitMouse
@@ -382,7 +383,7 @@ Column {
                 }
                 SettingsButton {
                     id: hitAdd
-                    anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    anchors { right: parent.right; rightMargin: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                     text: "Add"
                     onClicked: page.addApp(hit.modelData)
                 }

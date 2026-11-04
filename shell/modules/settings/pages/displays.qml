@@ -33,7 +33,7 @@ Column {
 
         QQ.Row {
             id: confirmRow
-            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 14 }
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: Theme.material ? 20 : 14; rightMargin: Theme.material ? 20 : 14 }
             spacing: 12
             Column {
                 width: parent.width - buttons.width - 12

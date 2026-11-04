@@ -201,7 +201,7 @@ Column {
         width: parent.width
         height: 28
         Text {
-            anchors { left: parent.left; leftMargin: 4; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: Theme.material ? 16 : 4; right: addButton.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             text: "Apps open the way you set here. Rules match the window class."
             elide: Text.ElideRight
             color: Theme.color.secondary
@@ -314,7 +314,7 @@ Column {
 
     Text {
         visible: page.view === "pick" && Apps.entries.length === 0 && picker.openApps.length === 0
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         text: "Loading apps…"
         color: Theme.color.secondary
         font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -598,7 +598,7 @@ Column {
     Text {
         visible: page.view === "edit" && sizeGroup.sizeError !== ""
         width: parent.width
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         wrapMode: Text.Wrap
         text: sizeGroup.sizeError
         color: Theme.color.danger
@@ -608,7 +608,7 @@ Column {
     Text {
         visible: page.view === "edit"
         width: parent.width
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         wrapMode: Text.Wrap
         text: "Changes apply to " + page.editName + " windows opened from now on."
         color: Theme.color.tertiary

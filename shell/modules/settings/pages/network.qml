@@ -122,12 +122,12 @@ Column {
         footer: "Runs only when you click. A test takes about 20 seconds and uses up to " + (SpeedTest.backend === "ookla" ? "a few hundred MB" : "about 370 MB on a fast line, less on a slower one") + ". Under load is your ping while the line is busy: if it's much higher than the idle ping, calls and games lag while something downloads."
         Item {
             width: parent.width
-            height: card.implicitHeight + 28
+            height: card.implicitHeight + 2 * card.y
             SpeedTestCard {
                 id: card
-                x: 14
-                y: 14
-                width: parent.width - 28
+                x: Theme.material ? 20 : 14 // (a Row's edges)
+                y: Theme.material ? 16 : 14
+                width: parent.width - 2 * x
                 settingsLink: false
             }
         }
