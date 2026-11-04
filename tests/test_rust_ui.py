@@ -23,7 +23,7 @@ CRATE = ROOT / "native/tessera-ui"
 
 
 def known_surfaces():
-    src = (CRATE / "src/surfaces.rs").read_text()
+    src = (CRATE / "src/surfaces/mod.rs").read_text()
     m = re.search(r"pub const KNOWN: &\[&str\] = &\[([^\]]*)\]", src)
     return re.findall(r'"([a-z]+)"', m.group(1))
 
@@ -50,7 +50,7 @@ class Agreement(unittest.TestCase):
 
     def test_the_shell_reads_what_the_binary_writes(self):
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
-        rs = (CRATE / "src/surfaces.rs").read_text()
+        rs = (CRATE / "src/surfaces/mod.rs").read_text()
         for word in ('"ready"', '"unknown"', '"ui"'):
             self.assertIn(word, qml)
             self.assertIn(word, rs)
