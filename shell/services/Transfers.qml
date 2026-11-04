@@ -144,29 +144,41 @@ Singleton {
     // ── Copies ──────────────────────────────────────────────────────────
     property var copies: []
     property var lastCopy: ({}) // pid -> { pos, at }
+    // irice-events (services/Events) looks itself; without it, transfers.sh
+    EventWatch {
+        source: "copies"
+        active: root.on
+    }
+    Connections {
+        target: Events
+        enabled: root.on
+        function onCopies(items) {
+            root.readCopies(items);
+        }
+    }
     KeptProcess {
         id: copyWatch
-        wanted: root.on
+        wanted: root.on && Events.fallsBack("copies")
         firstWait: 5000
         stdinEnabled: true // the watcher ends when this closes (the shell quit)
         command: [Tools.watcher, decodeURIComponent(Qt.resolvedUrl("../assets/scripts/transfers.sh").toString().replace("file://", ""))]
         stdout: SplitParser {
             onRead: line => {
-                let list;
                 try {
-                    list = JSON.parse(line);
-                } catch (e) {
-                    return;
-                }
-                const now = Date.now(), seen = {};
-                root.copies = list.map(c => {
-                    const last = root.lastCopy[c.pid];
-                    const speed = last && now > last.at && c.pos >= last.pos ? (c.pos - last.pos) * 1000 / (now - last.at) : 0;
-                    seen[c.pid] = { pos: c.pos, at: now };
-                    return { id: "copy" + c.pid, kind: "copy", name: c.file.split("/").pop(), done: c.pos, total: c.size, speed: speed, pid: c.pid, start: c.start, cmd: c.cmd };
-                });
-                root.lastCopy = seen;
+                    root.readCopies(JSON.parse(line));
+                } catch (e) {}
             }
         }
+    }
+    // [{ pid, start, cmd, file, pos, size }]
+    function readCopies(list) {
+        const now = Date.now(), seen = {};
+        copies = list.map(c => {
+            const last = lastCopy[c.pid];
+            const speed = last && now > last.at && c.pos >= last.pos ? (c.pos - last.pos) * 1000 / (now - last.at) : 0;
+            seen[c.pid] = { pos: c.pos, at: now };
+            return { id: "copy" + c.pid, kind: "copy", name: c.file.split("/").pop(), done: c.pos, total: c.size, speed: speed, pid: c.pid, start: c.start, cmd: c.cmd };
+        });
+        lastCopy = seen;
     }
 }

@@ -101,9 +101,23 @@ Singleton {
     // Mice come and go (Bluetooth, receivers): look again when one does. udev
     // says so (one process that waits; asking hyprctl every 15 s all day did
     // the same work 5,760 times a day); without udevadm, now and then
+    EventWatch {
+        source: "udev"
+        active: Config.ready
+        args: ({ subsystems: ["input"] })
+    }
+    Connections {
+        target: Events
+        function onUdev(props) {
+            if (props.SUBSYSTEM === "input" && (props.ACTION === "add" || props.ACTION === "remove"))
+                lookAgain.restart();
+        }
+    }
+    // (without irice-events)
     Process {
-        running: Config.ready && Tools.has("udevadm")
-        command: [Tools.watcher, "udevadm", "monitor", "--udev", "--subsystem-match=input"] // (ends with the shell)
+        running: Config.ready && Tools.has("udevadm") && Events.fallsBack("udev")
+        command: [Tools.watcher, "udevadm", "monitor", "--udev", "--subsystem-match=input"]
+        stdinEnabled: true // (Tools.watcher: it ends with the shell)
         stdout: SplitParser {
             onRead: line => {
                 if (/\b(add|remove)\b/.test(line))
@@ -119,7 +133,7 @@ Singleton {
     Timer {
         interval: 60000
         running: Config.ready
-        repeat: !Tools.has("udevadm")
+        repeat: !Tools.has("udevadm") && !Events.covers("udev")
         triggeredOnStart: true
         onTriggered: reader.running = true
     }

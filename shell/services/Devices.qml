@@ -243,9 +243,23 @@ Singleton {
             root.pendingUsb = null;
         }
     }
+    EventWatch {
+        source: "udev"
+        active: Island.enabled
+        args: ({ subsystems: ["usb", "block"] })
+    }
+    Connections {
+        target: Events
+        enabled: Island.enabled
+        function onUdev(props) {
+            if (props.SUBSYSTEM === "usb" || props.SUBSYSTEM === "block")
+                root.onUdev(props);
+        }
+    }
+    // (without irice-events)
     Process {
         id: udev
-        running: Island.enabled && Tools.has("udevadm") && !udevRetry.running
+        running: Island.enabled && Tools.has("udevadm") && !udevRetry.running && Events.fallsBack("udev")
         stdinEnabled: true
         command: [Tools.watcher, "udevadm", "monitor", "--udev", "--property", "--subsystem-match=usb", "--subsystem-match=block"]
         onExited: udevRetry.start()

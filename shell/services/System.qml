@@ -66,8 +66,14 @@ Singleton {
         respectInhibitors: true // (a playing video counts as use)
     }
     readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && Quickshell.env("IRICE_TTY") !== "1")
+    // (held by irice-events, services/Events; without it, systemd-inhibit)
+    EventWatch {
+        source: "inhibit:idle"
+        active: root.holdAwake
+        args: ({ why: "In use (Caffeine, or this console session)" })
+    }
     Process {
-        running: root.holdAwake
+        running: root.holdAwake && Events.fallsBack("inhibit")
         // (both ends die with the shell, even if it crashes: the inhibitor,
         // and the sleep it holds the inhibition for)
         command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]

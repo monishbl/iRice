@@ -1,5 +1,11 @@
 # iRice changelog
 
+## One process follows the system instead of about thirty · 2026-11-04
+
+- **irice-events**, iRice's first part written in Rust, now does what about thirty small background processes did: it notices sleep and the lid, USB devices and drives, mice coming and going, sound changes, network changes, app badges, Cast devices, and apps using the camera, your location or your screen. It also notices copies in progress and new clipboard history. It holds the "keep awake" and lid settings with logind itself. In the sandbox, the processes under the shell went from 25 (112 MB) to 2 (8 MB); see `docs/benchmarks-events.md`.
+- **Nothing changes in what you see.** Badges, the island's alerts, the privacy dots and the volume all behave as before. If irice-events isn't there (not built yet) or keeps stopping, the shell uses its older watchers, as before.
+- **The installer builds it**, and so do `irice update` and `irice rebuild` (`tools/build-native.sh`, into `~/.local/share/irice/bin`). This needs Rust, which is now among the build packages.
+
 ## App Drawer A–Z picks a whole letter · 2026-11-04
 
 - **Picking a letter on the A–Z index lights up all of its apps** and dims the rest, in both looks, so a letter near the end (where the list can't scroll any further) still shows what it picked. The letter stays marked on the index; pointing at an app of another letter, searching or switching views clears it.

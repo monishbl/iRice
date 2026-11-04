@@ -367,8 +367,22 @@ Scope {
     // every try back; the face camera starts looking then too. (Watched while
     // the lock may use either.)
     property bool sleeping: false
+    readonly property bool watchSleep: Fingerprint.lockScreen || Face.lockScreen
+    EventWatch {
+        source: "login1"
+        active: root.watchSleep
+    }
+    Connections {
+        target: Events
+        enabled: root.watchSleep
+        function onLogin1(kind, args) {
+            if (kind === "PrepareForSleep")
+                root.prepareForSleep(args[0] === true);
+        }
+    }
+    // (without irice-events)
     Process {
-        running: Fingerprint.lockScreen || Face.lockScreen
+        running: root.watchSleep && Events.fallsBack("login1")
         command: [Tools.watcher, "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"]
         stdinEnabled: true
         stdout: SplitParser {

@@ -45,9 +45,27 @@ Singleton {
         counts = c;
         pending = null;
     }
+    // From irice-events (services/Events), already as values
+    EventWatch {
+        source: "unity"
+    }
+    Connections {
+        target: Events
+        function onLauncherEntry(app, props) {
+            root.flush();
+            root.app = app;
+            root.pending = {};
+            if (props.count !== undefined)
+                root.pending.count = parseInt(props.count) || 0;
+            if (props["count-visible"] !== undefined)
+                root.pending.visible = props["count-visible"] === true;
+            root.flush();
+        }
+    }
+    // (without irice-events)
     KeptProcess {
         id: monitor
-        wanted: Tools.has("dbus-monitor")
+        wanted: Tools.has("dbus-monitor") && Events.fallsBack("unity")
         stdinEnabled: true
         command: [Tools.watcher, "dbus-monitor", "--session", "type='signal',interface='com.canonical.Unity.LauncherEntry',member='Update'"]
         stdout: SplitParser {
