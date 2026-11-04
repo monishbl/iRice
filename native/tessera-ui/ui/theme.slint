@@ -1,0 +1,163 @@
+// Tessera's interface in Rust: what every surface shares (the look's tokens,
+// the icon font, small components). Rust fills `Theme` from config.json for
+// both looks (src/theme.rs), as shell/common/Theme.qml does for QML.
+
+// ── Tokens ──────────────────────────────────────────────────────────────────
+export global Theme {
+    in property <bool> material: false;
+    in property <bool> dark: true;
+    in property <string> font: "Inter";
+    in property <length> body: 13px;
+    // Bar
+    in property <color> bar-tint: #1a1a1e60; // Glass: the strip over the plugin's glass
+    in property <color> fg: #ffffffeb;
+    in property <color> pill: transparent; // Material: the groups' tonal pills
+    in property <color> dot: #ffffff; // spaces: dots
+    in property <color> dot-active: #ffffff47; // spaces: the sliding capsule (Glass) / pill (Material)
+    // Menu
+    in property <color> menu-bg: #26262ae0;
+    in property <color> menu-fg: #ffffffeb;
+    in property <color> menu-dim: #ffffff99;
+    in property <color> menu-hover: #0a84ff;
+    in property <color> menu-hover-fg: #ffffff;
+    in property <color> separator: #ffffff1f;
+    in property <color> field-bg: #ffffff14;
+    in property <color> field-focus: #0a84ff;
+    in property <length> menu-radius: 12px;
+    in property <length> item-radius: 6px;
+
+    // ── The shell's general tokens (shell/common/Theme.qml: color, font,
+    // radius), filled by theme.rs for both looks at the contrast Settings asks
+    // Text and lines
+    in property <color> label: #ffffffeb;
+    in property <color> secondary: #ffffff94;
+    in property <color> tertiary: #ffffff57;
+    in property <color> outline: #ffffff6b;
+    // Fills: buttons, tiles, tracks; platter: a grouped block
+    in property <color> fill: #ffffff1a;
+    in property <color> fill-hover: #ffffff29;
+    in property <color> fill-pressed: #ffffff38;
+    in property <color> platter: #ffffff12;
+    in property <color> toggle-off: #ffffff24;
+    // Accent and selection
+    in property <color> accent: #0a84ff;
+    in property <color> on-accent: #ffffff;
+    in property <color> highlight: #0a84ff;
+    in property <color> on-highlight: #ffffff;
+    in property <color> selection: #0a84ff;
+    in property <color> on-selection: #ffffff;
+    // Status
+    in property <color> danger: #ff453a;
+    in property <color> success: #30d158;
+    in property <color> warning: #ff9f0a;
+    // A panel's own colour under its content (Glass: a tint over the
+    // plugin's glass; Material: its surface container)
+    in property <color> panel: #1e1e2273;
+    // Material roles (Material only; the Glass values are fallbacks)
+    in property <color> m3-primary: #0a84ff;
+    in property <color> m3-on-primary: #ffffff;
+    in property <color> m3-primary-container: #0a84ff;
+    in property <color> m3-on-primary-container: #ffffff;
+    in property <color> m3-secondary-container: #ffffff24;
+    in property <color> m3-on-secondary-container: #ffffff;
+    in property <color> m3-tertiary: #0a84ff;
+    in property <color> m3-surface: #1c1c1e;
+    in property <color> m3-surface-container-low: #1c1c1e;
+    in property <color> m3-surface-container: #232327;
+    in property <color> m3-surface-container-high: #2c2c31;
+    in property <color> m3-surface-container-highest: #333338;
+    in property <color> m3-on-surface: #ffffff;
+    in property <color> m3-on-surface-variant: #ffffffa0;
+    in property <color> m3-outline: #ffffff6b;
+    in property <color> m3-outline-variant: #ffffff24;
+    in property <color> m3-error: #ff453a;
+    // Type: sizes (Theme.font)
+    in property <length> caption: 11px;
+    in property <length> small: 12px;
+    in property <length> title: 15px;
+    in property <length> large: 20px;
+    in property <length> display: 24px;
+    // Radii (Theme.radius)
+    in property <length> radius-control: 10px;
+    in property <length> radius-popover: 18px;
+    in property <length> radius-module: 20px;
+    in property <length> radius-panel: 26px;
+    // Motion: the shell's spring (Theme.motion; 0..1, Slint's spring() damping)
+    in property <float> spring: 0.32;
+}
+
+// Phosphor glyphs used here (shell/common/phosphor.js)
+export global Icons {
+    out property <string> info: "\u{e2ce}";
+    out property <string> gear: "\u{e270}";
+    out property <string> lock: "\u{e2fa}";
+    out property <string> moon: "\u{e58e}";
+    out property <string> search: "\u{e30c}";
+}
+
+// (a wrapper, not `inherits Text`: an inherited Text keeps its implicit
+// accessible text role even with `accessible-role: none`, so screen readers
+// read the private-use glyph)
+export component Icon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size: 15px;
+    in property <bool> fill: false;
+    in property <bool> bold: false;
+    preferred-width: t.preferred-width;
+    preferred-height: t.preferred-height;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        font-family: fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// One bar entry: icon and/or label, a rounded highlight on hover and while
+// its menu is open (MenuBarItem.qml)
+export component BarItem inherits Rectangle {
+    in property <string> icon;
+    in property <bool> icon-fill;
+    in property <string> text;
+    in property <bool> bold;
+    in property <bool> active;
+    in property <string> label; // what a screen reader says
+    callback clicked();
+    height: 24px;
+    width: row.preferred-width + 18px;
+    border-radius: Theme.material ? self.height / 2 : 6px;
+    background: Theme.fg.with-alpha(active ? (Theme.material ? 0.16 : 0.22) : touch.pressed ? (Theme.material ? 0.1 : 0.2) : touch.has-hover ? (Theme.material ? 0.08 : 0.12) : 0);
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: label != "" ? label : text;
+    accessible-action-default => { clicked(); }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        if icon != "": Icon {
+            text: icon;
+            fill: icon-fill;
+            color: Theme.fg;
+            font-size: 16px;
+        }
+        if text != "": Text {
+            text: root.text;
+            color: Theme.fg;
+            font-family: Theme.font;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: bold ? (Theme.material ? 600 : 700) : 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+

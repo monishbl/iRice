@@ -257,7 +257,10 @@ pub struct State {
     pub qh: QueueHandle<State>,
     pub loop_handle: LoopHandle<'static, State>,
     pub tx: Sender<Msg>,
-    pub app: crate::App,
+    /// what every surface shares (look, settings, services' data, glass)
+    pub shell: crate::shell::Shell,
+    /// the surfaces drawn here (src/surfaces)
+    pub parts: Vec<Box<dyn crate::shell::Part>>,
     pub started: Instant,
     pub first_frame_logged: bool,
     pub exit: bool,
@@ -270,7 +273,8 @@ impl State {
         egl: Rc<Egl>,
         loop_handle: LoopHandle<'static, State>,
         tx: Sender<Msg>,
-        app: crate::App,
+        shell: crate::shell::Shell,
+        parts: Vec<Box<dyn crate::shell::Part>>,
         started: Instant,
     ) -> Self {
         Self {
@@ -297,7 +301,8 @@ impl State {
             qh,
             loop_handle,
             tx,
-            app,
+            shell,
+            parts,
             started,
             first_frame_logged: false,
             exit: false,
@@ -448,7 +453,7 @@ impl CompositorHandler for State {
                 self.first_frame_logged = true;
                 crate::stats::log_first_frame(self.started);
                 // (on screen: the shell can stop drawing its own)
-                crate::surfaces::announce(&self.app.surfaces);
+                crate::surfaces::announce(&self.shell.surfaces);
             }
         }
     }
@@ -462,12 +467,12 @@ impl OutputHandler for State {
     }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, output: WlOutput) {
         let name = self.outputs.info(&output).and_then(|i| i.name).unwrap_or_default();
-        self.app_output_added(output, name);
+        self.each_part(|p, st| p.output_added(st, &output, &name));
     }
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlOutput) {}
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: WlOutput) {
         if let Some(name) = self.outputs.info(&output).and_then(|i| i.name) {
-            self.app_output_removed(&name);
+            self.each_part(|p, st| p.output_removed(st, &name));
         }
     }
 }
@@ -475,7 +480,7 @@ impl OutputHandler for State {
 impl LayerShellHandler for State {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
         if let Some(s) = self.surfaces.iter().find(|s| &s.layer == layer).cloned() {
-            self.app_surface_closed(&s);
+            self.each_part(|p, st| p.surface_closed(st, &s));
         }
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
@@ -586,7 +591,7 @@ impl KeyboardHandler for State {
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, wl: &WlSurface, _: u32) {
         if let Some(s) = self.find(wl) {
             s.window.dispatch_event(WindowEvent::WindowActiveChanged(false));
-            self.app_keyboard_left(&s);
+            self.each_part(|p, st| p.keyboard_left(st, &s));
         }
         self.keyboard_on = None;
     }

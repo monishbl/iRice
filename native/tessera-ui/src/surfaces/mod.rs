@@ -7,8 +7,19 @@
 //!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
 //! If this process ends, the shell draws them again itself.
 
-/// The surfaces that exist in Rust so far
+pub mod menubar;
+
+/// The surfaces that exist in Rust so far (each has a QML twin that checks
+/// RustUi.drawing with the same name: tests/test_rust_ui.py)
 pub const KNOWN: &[&str] = &["menubar"];
+
+/// A surface's part, by name (one line per surface)
+pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
+    match name {
+        "menubar" => Some(Box::new(menubar::Menubar::default())),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Surfaces {
@@ -41,10 +52,6 @@ impl Surfaces {
         }
     }
 
-    pub fn has(&self, s: &str) -> bool {
-        self.on.contains(&s)
-    }
-
     /// The lines that say what's drawn (on stdout, for the shell)
     pub fn ready_lines(&self) -> Vec<String> {
         let mut out: Vec<String> = self.unknown.iter().map(|s| serde_json::json!({"src": "ui", "kind": "unknown", "surface": s}).to_string()).collect();
@@ -63,10 +70,10 @@ pub fn announce(s: &Surfaces) {
     let _ = out.flush();
 }
 
-/// The screens a bar goes on: config.json's `menubar.screens` (empty: every
-/// screen), as the QML MenuBar's model
-pub fn on_screen(config: &serde_json::Value, output: &str) -> bool {
-    match config["menubar"]["screens"].as_array() {
+/// The screens a surface goes on: a list in config.json (`menubar.screens`,
+/// `dock.screens`…; empty or missing: every screen), as the QML surfaces' models
+pub fn on_screen(list: &serde_json::Value, output: &str) -> bool {
+    match list.as_array() {
         Some(list) if !list.is_empty() => list.iter().any(|s| s.as_str() == Some(output)),
         _ => true,
     }
@@ -91,7 +98,7 @@ mod tests {
         let s = Surfaces::from_args(&args(&["--surfaces", "menubar,dock"]));
         assert_eq!(s.on, vec!["menubar"]);
         assert_eq!(s.unknown, vec!["dock"]);
-        assert!(s.has("menubar") && !s.has("dock"));
+        assert!(s.on.contains(&"menubar") && !s.on.contains(&"dock"));
         let s = Surfaces::from_args(&args(&["--surfaces=dock"]));
         assert!(s.on.is_empty());
         let s = Surfaces::from_args(&args(&["--surfaces", ""]));
@@ -107,10 +114,18 @@ mod tests {
     }
 
     #[test]
-    fn bars_follow_the_screens_setting() {
-        assert!(on_screen(&json!({}), "DP-1"));
-        assert!(on_screen(&json!({"menubar": {"screens": []}}), "DP-1"));
-        assert!(on_screen(&json!({"menubar": {"screens": ["DP-1"]}}), "DP-1"));
-        assert!(!on_screen(&json!({"menubar": {"screens": ["DP-1"]}}), "HDMI-A-1"));
+    fn surfaces_follow_a_screens_setting() {
+        assert!(on_screen(&json!(null), "DP-1"));
+        assert!(on_screen(&json!([]), "DP-1"));
+        assert!(on_screen(&json!(["DP-1"]), "DP-1"));
+        assert!(!on_screen(&json!(["DP-1"]), "HDMI-A-1"));
+    }
+
+    #[test]
+    fn every_known_surface_can_be_made() {
+        for k in KNOWN {
+            assert_eq!(make(k).map(|p| p.name()), Some(*k));
+        }
+        assert!(make("nothing").is_none());
     }
 }

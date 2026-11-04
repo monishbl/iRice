@@ -12,101 +12,77 @@
 //! SIGUSR1 prints frame statistics.
 
 mod a11y;
-mod app;
 mod egl;
 mod env;
-mod hypr;
 mod seed;
-mod settings;
+mod services;
+mod shell;
 mod stats;
-mod status;
 mod surfaces;
 mod theme;
+mod util;
 mod wayland;
 
 pub mod ui {
     slint::include_modules!();
 }
 
-pub use app::App;
 use calloop::signals::{Signal, Signals};
 use calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
+use std::any::Any;
 use std::time::{Duration, Instant};
 use wayland::State;
 
 pub enum Msg {
     Run(Box<dyn FnOnce() + Send>),
     Quit,
-    Hypr(hypr::Snapshot),
-    Battery(status::Battery),
-    Wifi(status::Wifi),
+    /// A service's new reading (any type; the shell keeps the newest of each)
+    Data(Box<dyn Any + Send>),
+    /// A message for one surface's part, by name
+    Part(&'static str, Box<dyn Any + Send>),
     GlassPlugin(bool),
     ConfigChanged,
-    Tick,
-    ToggleMenu(String),
-    MenuActivated(i32, String),
-    MenuDismissed,
-    MenuClosed,
     A11yActivate(u64),
     A11yAction(u64, accesskit::ActionRequest),
 }
 
 fn handle(state: &mut State, msg: Msg) {
-    if crate::env::is_set("DEBUG") {
-        match &msg {
-            Msg::ToggleMenu(o) => eprintln!("debug: toggle menu on {o}"),
-            Msg::MenuClosed => eprintln!("debug: menu closed"),
-            Msg::MenuDismissed => eprintln!("debug: menu dismissed"),
-            _ => {}
-        }
-    }
     match msg {
         Msg::Run(f) => f(),
         Msg::Quit => state.exit = true,
-        Msg::Hypr(s) => {
-            state.app.hypr = s;
-            state.app_refresh();
+        Msg::Data(v) => {
+            let what = state.shell.store(v);
+            state.each_part(|p, st| p.data(st, what));
         }
-        Msg::Battery(b) => {
-            state.app.battery = b;
-            state.app_refresh();
+        Msg::Part(name, m) => {
+            let mut m = Some(m);
+            state.part(name, |p, st| p.message(st, m.take().unwrap()));
         }
-        Msg::Wifi(w) => {
-            state.app.wifi = w;
-            state.app_refresh();
+        Msg::GlassPlugin(ok) => {
+            eprintln!("tessera-ui: glass plugin {}", if ok { "found" } else { "missing (Hyprland's blur instead)" });
+            state.shell.plugin = ok;
+            state.each_part(|p, st| p.plugin_changed(st));
         }
-        Msg::GlassPlugin(ok) => state.app_glass_plugin(ok),
-        Msg::ConfigChanged => state.app_look_changed(),
-        Msg::Tick => state.app_tick(),
-        Msg::ToggleMenu(o) => state.app_toggle_menu(o),
-        Msg::MenuActivated(i, t) => state.app_menu_activated(i, t),
-        Msg::MenuDismissed => state.app_close_menu(),
-        Msg::MenuClosed => state.app_menu_closed(),
+        Msg::ConfigChanged => state.config_changed(),
         Msg::A11yActivate(id) => {
-            for a in state.a11y_all() {
-                if a.id == id {
-                    a.activate();
+            for p in state.parts.iter_mut() {
+                for a in p.a11y() {
+                    if a.id == id {
+                        a.activate();
+                    }
                 }
             }
         }
         Msg::A11yAction(id, r) => {
-            for a in state.a11y_all() {
-                if a.id == id {
-                    a.action(r.clone());
+            for p in state.parts.iter_mut() {
+                for a in p.a11y() {
+                    if a.id == id {
+                        a.action(r.clone());
+                    }
                 }
             }
         }
-    }
-}
-
-impl State {
-    fn a11y_all(&mut self) -> Vec<&mut a11y::A11y> {
-        let mut v: Vec<&mut a11y::A11y> = self.app.bars.iter_mut().filter_map(|b| b.a11y.as_mut()).collect();
-        if let Some(m) = self.app.menu.as_mut().and_then(|m| m.a11y.as_mut()) {
-            v.push(m);
-        }
-        v
     }
 }
 
@@ -198,7 +174,7 @@ fn main() {
     let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1]).expect("signalfd");
     lh
         .insert_source(signals, |ev, _, state: &mut State| match ev.signal() {
-            Signal::SIGUSR1 => state.app_dump_stats(),
+            Signal::SIGUSR1 => state.parts.iter().for_each(|p| p.stats()),
             _ => state.exit = true,
         })
         .unwrap();
@@ -241,12 +217,12 @@ fn main() {
     slint::platform::set_platform(Box::new(wayland::Platform { tx: tx.clone() })).expect("platform");
     register_fonts();
 
-    let glass = hypr::Glass::spawn(tx.clone());
-    let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), App::new(glass, surfaces), started);
-    hypr::spawn_events(tx.clone());
-    status::spawn(tx.clone());
+    let glass = services::hypr::Glass::spawn(tx.clone());
+    let parts: Vec<Box<dyn shell::Part>> = surfaces.on.iter().filter_map(|n| surfaces::make(n)).collect();
+    let shell = shell::Shell::new(tx.clone(), glass, surfaces);
+    let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());
-    state.app_tick();
+    state.each_part(|p, st| p.start(st));
 
     while !state.exit {
         let timeout = if state.wants_frame_soon() {
@@ -262,21 +238,8 @@ fn main() {
         }
         slint::platform::update_timers_and_animations();
         state.render_all();
-        state.app_sync_glass();
-        let kbd = state.keyboard_surface();
-        for b in &mut state.app.bars {
-            let f = kbd.as_ref().is_some_and(|k| std::rc::Rc::ptr_eq(k, &b.surface));
-            if let Some(a) = b.a11y.as_mut() {
-                a.update(false, f);
-            }
-        }
-        if let Some(m) = state.app.menu.as_mut() {
-            let f = kbd.as_ref().is_some_and(|k| std::rc::Rc::ptr_eq(k, &m.surface));
-            if let Some(a) = m.a11y.as_mut() {
-                a.update(false, f);
-            }
-        }
+        state.each_part(|p, st| p.after_frame(st));
     }
-    state.app_quit();
+    state.each_part(|p, st| p.quit(st));
     eprintln!("tessera-ui: bye");
 }

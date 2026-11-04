@@ -89,7 +89,7 @@ const RELEVANT: &[&str] = &[
 pub fn spawn_events(tx: Sender<Msg>) {
     std::thread::spawn(move || loop {
         if let Some(s) = snapshot() {
-            if tx.send(Msg::Hypr(s)).is_err() {
+            if tx.send(Msg::Data(Box::new(s))).is_err() {
                 return;
             }
         }
@@ -112,7 +112,7 @@ pub fn spawn_events(tx: Sender<Msg>) {
             if dirty && r.buffer().is_empty() {
                 dirty = false;
                 if let Some(s) = snapshot() {
-                    if tx.send(Msg::Hypr(s)).is_err() {
+                    if tx.send(Msg::Data(Box::new(s))).is_err() {
                         return;
                     }
                 }

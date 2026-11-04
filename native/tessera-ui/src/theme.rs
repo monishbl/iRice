@@ -18,6 +18,10 @@ pub struct Look {
     pub dark: bool,
     pub seed: String,
     pub style: String,
+    /// Glass's accent, #rrggbb (Settings' swatch, or the wallpaper's)
+    pub accent: String,
+    /// 0 standard, 1 higher, 2 maximum (Theme.qml's contrastLevel)
+    pub contrast: u8,
 }
 
 pub fn config_path() -> PathBuf {
@@ -66,12 +70,53 @@ pub fn look_from(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
     } else {
         BASELINE.into()
     };
-    Look {
-        material,
-        dark: s("mode", "dark") != "light", // ("auto" follows the sun in the shell; dark here)
-        seed,
-        style: s("materialStyle", "tonalSpot"),
+    let dark = s("mode", "dark") != "light"; // ("auto" follows the sun in the shell; dark here)
+    let accent_name = s("accent", "blue");
+    let accent = if accent_name == "wallpaper" {
+        v["wallpaper"]["path"].as_str().filter(|p| !p.is_empty()).and_then(&wallpaper).map_or_else(|| accent_hex("blue", dark), |c| snap_accent(&c, dark))
+    } else {
+        accent_hex(&accent_name, dark)
+    };
+    let contrast = match s("contrast", "standard").as_str() {
+        "maximum" => 2,
+        "higher" => 1,
+        _ if a["increaseContrast"].as_bool().unwrap_or(false) => 1,
+        _ => 0,
+    };
+    Look { material, dark, seed, style: s("materialStyle", "tonalSpot"), accent, contrast }
+}
+
+/// Theme.qml's accents, by name (blue when unknown)
+pub fn accent_hex(name: &str, dark: bool) -> String {
+    let (d, l) = match name {
+        "purple" => ("#BF5AF2", "#AF52DE"),
+        "pink" => ("#FF375F", "#FF2D55"),
+        "red" => ("#FF453A", "#FF3B30"),
+        "orange" => ("#FF9F0A", "#FF9500"),
+        "yellow" => ("#FFD60A", "#FFCC00"),
+        "green" => ("#30D158", "#34C759"),
+        "teal" => ("#40C8E0", "#30B0C7"),
+        "cyan" => ("#64D2FF", "#32ADE6"),
+        "indigo" => ("#5E5CE6", "#5856D6"),
+        "graphite" => ("#98989D", "#8E8E93"),
+        _ => ("#0A84FF", "#007AFF"),
+    };
+    (if dark { d } else { l }).to_string()
+}
+
+/// The wallpaper's colour snapped to the nearest named accent by hue
+/// (graphite when it has hardly any colour), as Wallpaper.qml's snapAccent
+pub fn snap_accent(color: &str, dark: bool) -> String {
+    let rgb = Rgb::from_str(color).unwrap_or(Rgb::new(0x0a, 0x84, 0xff));
+    let hct: Hct = rgb.into();
+    if hct.get_chroma() < 12.0 {
+        return accent_hex("graphite", dark);
     }
+    let names = ["blue", "purple", "pink", "red", "orange", "yellow", "green", "teal", "cyan", "indigo"];
+    let hue = |c: &str| -> f64 { let h: Hct = Rgb::from_str(c).unwrap().into(); h.get_hue() };
+    let dist = |a: f64, b: f64| -> f64 { let d = (a - b).abs() % 360.0; d.min(360.0 - d) };
+    let best = names.iter().min_by(|a, b| dist(hue(&accent_hex(a, dark)), hct.get_hue()).total_cmp(&dist(hue(&accent_hex(b, dark)), hct.get_hue()))).unwrap();
+    accent_hex(best, dark)
 }
 
 const BASELINE: &str = "#6750A4";
@@ -167,6 +212,56 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_field_focus(r("primary"));
         t.set_menu_radius(16.0);
         t.set_item_radius(12.0);
+        let l = |s: f32, h: f32, m: f32| [s, h, m][look.contrast.min(2) as usize];
+        let on = r("onSurface");
+        t.set_label(on);
+        t.set_secondary(r("onSurfaceVariant"));
+        t.set_tertiary(r("onSurfaceVariant").with_alpha(l(0.72, 0.85, 1.0)));
+        t.set_separator(r("outlineVariant").with_alpha(l(0.45, 0.7, 1.0)));
+        t.set_outline(r("outline"));
+        let hi = r("surfaceContainerHighest");
+        t.set_fill(hi);
+        t.set_fill_hover(tint(hi, on, 0.08));
+        t.set_fill_pressed(tint(hi, on, 0.10));
+        t.set_platter(r("surfaceContainerHigh"));
+        t.set_toggle_off(hi);
+        t.set_accent(r("primary"));
+        t.set_on_accent(r("onPrimary"));
+        t.set_highlight(on.with_alpha(0.1));
+        t.set_on_highlight(on);
+        t.set_selection(r("secondaryContainer"));
+        t.set_on_selection(r("onSecondaryContainer"));
+        t.set_danger(r("error"));
+        t.set_success(hex(if look.dark { "#30D158" } else { "#34C759" }));
+        t.set_warning(hex(if look.dark { "#FF9F0A" } else { "#FF9500" }));
+        t.set_panel(r("surfaceContainer"));
+        t.set_m3_primary(r("primary"));
+        t.set_m3_on_primary(r("onPrimary"));
+        t.set_m3_primary_container(r("primaryContainer"));
+        t.set_m3_on_primary_container(r("onPrimaryContainer"));
+        t.set_m3_secondary_container(r("secondaryContainer"));
+        t.set_m3_on_secondary_container(r("onSecondaryContainer"));
+        t.set_m3_tertiary(r("tertiary"));
+        t.set_m3_surface(r("surface"));
+        t.set_m3_surface_container_low(r("surfaceContainerLow"));
+        t.set_m3_surface_container(r("surfaceContainer"));
+        t.set_m3_surface_container_high(r("surfaceContainerHigh"));
+        t.set_m3_surface_container_highest(hi);
+        t.set_m3_on_surface(on);
+        t.set_m3_on_surface_variant(r("onSurfaceVariant"));
+        t.set_m3_outline(r("outline"));
+        t.set_m3_outline_variant(r("outlineVariant"));
+        t.set_m3_error(r("error"));
+        t.set_caption(11.0);
+        t.set_small(12.0);
+        t.set_title(16.0);
+        t.set_large(22.0);
+        t.set_display(28.0);
+        t.set_radius_control(12.0);
+        t.set_radius_popover(28.0);
+        t.set_radius_module(24.0);
+        t.set_radius_panel(28.0);
+        t.set_spring(0.5);
     } else {
         let d = look.dark;
         t.set_font("Inter".into());
@@ -182,15 +277,67 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_menu_bg(if d { rgba(0x1e, 0x1e, 0x22, if plugin { 0.45 } else { 0.85 }) } else { rgba(0xf6, 0xf6, 0xf8, if plugin { 0.5 } else { 0.88 }) });
         t.set_menu_fg(fg);
         t.set_menu_dim(fg.with_alpha(0.55));
-        let blue = if d { hex("#0A84FF") } else { hex("#007AFF") };
-        t.set_menu_hover(blue);
-        t.set_menu_hover_fg(Color::from_rgb_u8(255, 255, 255));
-        t.set_separator(fg.with_alpha(0.14));
         t.set_field_bg(fg.with_alpha(0.08));
-        t.set_field_focus(blue);
         t.set_menu_radius(12.0);
         t.set_item_radius(6.0);
+        let l = |s: f32, h: f32, m: f32| [s, h, m][look.contrast.min(2) as usize];
+        let ink = |a: f32| if d { rgba(255, 255, 255, a) } else { rgba(0, 0, 0, a) };
+        t.set_label(ink(if d { l(0.92, 1.0, 1.0) } else { l(0.85, 0.9, 0.95) }));
+        t.set_secondary(ink(if d { l(0.58, 0.72, 0.85) } else { l(0.52, 0.68, 0.8) }));
+        t.set_tertiary(ink(if d { l(0.34, 0.56, 0.7) } else { l(0.3, 0.6, 0.7) }));
+        t.set_separator(ink(if d { l(0.12, 0.14, 0.16) } else { l(0.1, 0.12, 0.14) }));
+        t.set_outline(ink(if d { 0.42 } else { 0.38 }));
+        t.set_fill(ink(if d { l(0.1, 0.14, 0.18) } else { l(0.06, 0.09, 0.12) }));
+        t.set_fill_hover(ink(if d { l(0.16, 0.2, 0.24) } else { l(0.1, 0.13, 0.16) }));
+        t.set_fill_pressed(ink(if d { l(0.22, 0.26, 0.3) } else { l(0.15, 0.18, 0.21) }));
+        t.set_platter(if d { rgba(255, 255, 255, 0.07) } else { rgba(255, 255, 255, 0.45) });
+        t.set_toggle_off(ink(if d { l(0.14, 0.24, 0.32) } else { l(0.08, 0.16, 0.24) }));
+        let accent = hex(&look.accent);
+        // (near-black on light accents, as Theme.qml's lightAccent: white on them is under 3:1)
+        let on_accent = if contrast_ratio(accent, Color::from_rgb_u8(255, 255, 255)) < 3.0 { hex("#1C1C1E") } else { Color::from_rgb_u8(255, 255, 255) };
+        t.set_accent(accent);
+        t.set_on_accent(on_accent);
+        t.set_highlight(accent);
+        t.set_on_highlight(on_accent);
+        t.set_selection(accent);
+        t.set_on_selection(on_accent);
+        t.set_menu_hover(accent);
+        t.set_menu_hover_fg(on_accent);
+        t.set_field_focus(accent);
+        t.set_danger(hex(if d { "#FF453A" } else { "#FF3B30" }));
+        t.set_success(hex(if d { "#30D158" } else { "#34C759" }));
+        t.set_warning(hex(if d { "#FF9F0A" } else { "#FF9500" }));
+        t.set_panel(if d { rgba(0x1e, 0x1e, 0x22, if plugin { 0.45 } else { 0.85 }) } else { rgba(0xf6, 0xf6, 0xf8, if plugin { 0.5 } else { 0.88 }) });
+        t.set_caption(11.0);
+        t.set_small(12.0);
+        t.set_title(15.0);
+        t.set_large(20.0);
+        t.set_display(24.0);
+        t.set_radius_control(10.0);
+        t.set_radius_popover(18.0);
+        t.set_radius_module(20.0);
+        t.set_radius_panel(26.0);
+        t.set_spring(0.32);
     }
+}
+
+/// `over` laid on `base` at `alpha` (Qt.tint)
+fn tint(base: Color, over: Color, alpha: f32) -> Color {
+    let m = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * alpha).round() as u8;
+    Color::from_argb_u8(base.alpha(), m(base.red(), over.red()), m(base.green(), over.green()), m(base.blue(), over.blue()))
+}
+
+/// WCAG contrast between two opaque colours
+pub fn contrast_ratio(a: Color, b: Color) -> f32 {
+    let lum = |c: Color| {
+        let ch = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * ch(c.red()) + 0.7152 * ch(c.green()) + 0.0722 * ch(c.blue())
+    };
+    let (x, y) = (lum(a), lum(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
 }
 
 /// The plugin's numbers for one glass shape (Theme.glass.preset with the
@@ -229,6 +376,32 @@ mod tests {
 
     fn none(_: &str) -> Option<String> {
         None
+    }
+
+    #[test]
+    fn accents_follow_settings() {
+        let v = json!({"appearance": {"accent": "orange", "mode": "light"}});
+        assert_eq!(look_from(&v, None, none).accent, "#FF9500");
+        assert_eq!(look_from(&json!({}), None, none).accent, "#0A84FF");
+        // the wallpaper's colour, snapped: a sea blue is blue, a leaf green green, grey graphite
+        assert_eq!(snap_accent("#1e6fd9", true), "#0A84FF");
+        assert_eq!(snap_accent("#3f8f2a", true), "#30D158");
+        assert_eq!(snap_accent("#808080", true), "#98989D");
+        let v = json!({"appearance": {"accent": "wallpaper"}, "wallpaper": {"path": "/p.jpg"}});
+        assert_eq!(look_from(&v, None, |_| Some("#3f8f2a".into())).accent, "#30D158");
+    }
+
+    #[test]
+    fn contrast_levels() {
+        assert_eq!(look_from(&json!({}), None, none).contrast, 0);
+        assert_eq!(look_from(&json!({"appearance": {"increaseContrast": true}}), None, none).contrast, 1);
+        assert_eq!(look_from(&json!({"appearance": {"contrast": "maximum"}}), None, none).contrast, 2);
+    }
+
+    #[test]
+    fn light_accents_get_dark_text() {
+        assert!(contrast_ratio(hex("#FFD60A"), Color::from_rgb_u8(255, 255, 255)) < 3.0);
+        assert!(contrast_ratio(hex("#0A84FF"), Color::from_rgb_u8(255, 255, 255)) >= 3.0);
     }
 
     #[test]

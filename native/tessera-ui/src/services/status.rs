@@ -97,6 +97,6 @@ fn wifi(conn: &Connection) -> zbus::Result<Wifi> {
 }
 
 pub fn spawn(tx: Sender<Msg>) {
-    watch(tx.clone(), "org.freedesktop.UPower", battery, Msg::Battery);
-    watch(tx, "org.freedesktop.NetworkManager", wifi, Msg::Wifi);
+    watch(tx.clone(), "org.freedesktop.UPower", battery, |b| Msg::Data(Box::new(b)));
+    watch(tx, "org.freedesktop.NetworkManager", wifi, |w| Msg::Data(Box::new(w)));
 }
