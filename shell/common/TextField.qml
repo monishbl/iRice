@@ -1,8 +1,8 @@
 import QtQuick
 
 // Single-line text field with placeholder. Commits on Enter or focus loss.
-// Material: a filled field (4 px top corners, an underline that turns primary
-// and thicker while typing).
+// Material: FilledField's pill, like the search bar (outlined in primary
+// while typing).
 Squircle {
     id: root
 
@@ -24,7 +24,7 @@ Squircle {
     }
 
     implicitWidth: 220
-    implicitHeight: Theme.material ? 36 : 28
+    implicitHeight: Theme.material ? 40 : 28 // (Material: as Choice, buttons and the other fields)
     radius: Theme.material ? Math.min(height / 2, 28) : Theme.radius.control - 2 // (Material: FilledField's pill)
     color: Theme.material ? "transparent" : Theme.color.fill
     border.width: Theme.material ? 0 : 1

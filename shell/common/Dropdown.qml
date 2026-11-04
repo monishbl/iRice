@@ -49,7 +49,7 @@ Squircle {
     readonly property string currentLabel: options.find(o => o.value === value)?.label ?? String(value ?? "")
 
     implicitWidth: Math.max(140, label.implicitWidth + 40)
-    implicitHeight: Theme.material ? 36 : 28
+    implicitHeight: Theme.material ? 40 : 28 // (Material: as Choice, buttons and the other fields)
     radius: Theme.material ? Math.min(height / 2, 28) : Theme.radius.control - 2 // (Material: FilledField's pill)
     color: Theme.material ? "transparent" : mouse.containsMouse || menu.visible ? Theme.color.fillHover : Theme.color.fill
     readonly property int itemHeight: Theme.material ? 36 : 28

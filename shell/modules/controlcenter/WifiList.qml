@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Networking
 import qs.common
+import qs.modules.settings as S
 import qs.services
 
 // The Wi-Fi networks, for the Wi-Fi menu and Control Center (WifiPage) and
@@ -271,65 +272,36 @@ Column {
                             }
                         }
 
-                        // Inline password prompt
+                        // Inline password prompt (TextField and SettingsButton:
+                        // Material's filled pill and filled button there)
                         Row {
                             visible: root.asking === entry.modelData
                             x: 44
                             spacing: 8
-                            height: visible ? 40 : 0
+                            height: visible ? (Theme.material ? 48 : 40) : 0
 
-                            Squircle {
+                            TextField {
+                                id: password
                                 width: 180
-                                height: 30
+                                height: Theme.material ? 40 : 30
                                 anchors.verticalCenter: parent.verticalCenter
-                                radius: Theme.radius.control
-                                color: Theme.color.fill
-                                border.width: 1
-                                border.color: password.activeFocus ? Theme.accent : Theme.color.separator
-
-                                TextInput {
-                                    id: password
-                                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                    verticalAlignment: TextInput.AlignVCenter
-                                    echoMode: TextInput.Password
-                                    color: Theme.color.label
-                                    font { family: Theme.font.family; pixelSize: Theme.font.body }
-                                    text: root.typed
-                                    onTextChanged: root.typed = text
-                                    onVisibleChanged: if (visible) forceActiveFocus()
-                                    Component.onCompleted: if (visible) forceActiveFocus()
-                                    onAccepted: join.clicked()
-                                    Keys.onEscapePressed: root.asking = null
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: password.text === ""
-                                        text: "Password"
-                                        color: Theme.color.tertiary
-                                        font: password.font
-                                    }
-                                }
+                                secret: true
+                                placeholder: "Password"
+                                commitOnBlur: false
+                                text: root.typed
+                                onTextChanged: root.typed = text
+                                onVisibleChanged: if (visible) focusInput()
+                                Component.onCompleted: if (visible) focusInput()
+                                onCommitted: join.clicked()
+                                Keys.onEscapePressed: root.asking = null
                             }
-                            Squircle {
+                            S.SettingsButton {
                                 id: join
-                                signal clicked
-                                width: 56
-                                height: 30
                                 anchors.verticalCenter: parent.verticalCenter
-                                radius: Theme.radius.control
                                 readonly property bool ready: root.passwordOk(password.text)
-                                color: !ready ? Theme.color.toggleOff : joinMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "Join"
-                                    color: join.ready ? Theme.color.onAccent : Theme.color.tertiary
-                                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-                                }
-                                MouseArea {
-                                    id: joinMouse
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: join.clicked()
-                                }
+                                // (not disabled while not ready: a click says what's missing)
+                                primary: ready
+                                text: "Join"
                                 onClicked: {
                                     if (!ready) {
                                         root.hint = password.text === "" ? "Type the password first." : "Wi-Fi passwords are at least 8 characters.";

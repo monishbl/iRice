@@ -1,5 +1,6 @@
 import QtQuick
 import qs.common
+import qs.modules.settings as S
 import qs.services
 
 // The full join form on the Wi-Fi page: enterprise networks (802.1X: the
@@ -299,8 +300,8 @@ Column {
     }
     Item {
         width: parent.width
-        height: 30
-        FormButton {
+        height: joinButton.height
+        S.SettingsButton {
             anchors { right: joinButton.left; rightMargin: 8 }
             text: "Cancel"
             onClicked: {
@@ -308,11 +309,11 @@ Column {
                 root.done();
             }
         }
-        FormButton {
+        S.SettingsButton {
             id: joinButton
             anchors.right: parent.right
             primary: true
-            enabled: !root.joining
+            busy: root.joining
             text: root.joining ? (WifiJoin.stage === "saving" ? "Saving…" : "Joining…") : "Join network"
             onClicked: root.submit()
         }
@@ -329,25 +330,46 @@ Column {
             font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.Medium }
         }
     }
-    // A chosen file's name, or "Choose file…"
+    // A chosen file's name, or "Choose file…" (Material: a filled pill, as
+    // the fields above it)
     component FileButton: Squircle {
         id: fileButton
         property string path
         signal pick
         width: parent?.width ?? 0
-        height: 28
-        radius: Theme.radius.control - 2
-        color: fileMouse.pressed ? Theme.color.fillPressed : fileMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+        height: Theme.material ? 40 : 28
+        radius: Theme.material ? height / 2 : Theme.radius.control - 2
+        color: Theme.material ? "transparent" : fileMouse.pressed ? Theme.color.fillPressed : fileMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+        activeFocusOnTab: true
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                fileButton.pick();
+                event.accepted = true;
+            }
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: fileButton.path ? root.fileName(fileButton.path) : "Choose file"
+        Accessible.onPressAction: fileButton.pick()
+        FocusRing {
+            radius: fileButton.radius + 4
+        }
+        Loader {
+            anchors.fill: parent
+            active: Theme.material
+            sourceComponent: FilledField {
+                hovered: fileMouse.containsMouse
+            }
+        }
         Icon {
             id: fileIcon
-            x: 10
+            x: Theme.material ? 16 : 10
             anchors.verticalCenter: parent.verticalCenter
             name: "file-text"
             size: 14
             color: Theme.color.secondary
         }
         Text {
-            anchors { left: fileIcon.right; leftMargin: 8; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            anchors { left: fileIcon.right; leftMargin: 8; right: parent.right; rightMargin: Theme.material ? 16 : 10; verticalCenter: parent.verticalCenter }
             elide: Text.ElideMiddle
             text: fileButton.path ? root.fileName(fileButton.path) : "Choose file…"
             color: fileButton.path ? Theme.color.label : Theme.color.secondary
@@ -359,31 +381,6 @@ Column {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: fileButton.pick()
-        }
-    }
-    // Cancel and Join network
-    component FormButton: Squircle {
-        id: button
-        property string text
-        property bool primary: false
-        signal clicked
-        width: buttonLabel.implicitWidth + 24
-        height: 28
-        radius: Theme.radius.control - 2
-        opacity: enabled ? 1 : 0.6
-        color: primary ? (buttonMouse.pressed ? Qt.darker(Theme.accent, 1.15) : Theme.accent) : buttonMouse.pressed ? Theme.color.fillPressed : buttonMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-        Text {
-            id: buttonLabel
-            anchors.centerIn: parent
-            text: button.text
-            color: button.primary ? Theme.color.onAccent : Theme.color.label
-            font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-        }
-        MouseArea {
-            id: buttonMouse
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: button.clicked()
         }
     }
 }

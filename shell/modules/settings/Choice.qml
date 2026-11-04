@@ -3,7 +3,7 @@ import qs.common
 
 // Pop-up button for one of several { value, label } options. Its list opens
 // in the page's ActionMenu (`menu`), so it is never hidden under later rows.
-// Material: a filled field like Dropdown's, its underline primary while open.
+// Material: a filled pill like Dropdown's, outlined in primary while open.
 Squircle {
     id: root
 

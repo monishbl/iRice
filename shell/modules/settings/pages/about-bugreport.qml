@@ -30,13 +30,19 @@ Column {
             color: Theme.color.label
             font { family: Theme.font.family; pixelSize: Theme.font.body }
         }
+        // (Glass: the field's fill and hairline, Material: a filled field, as AI's note)
         Squircle {
             width: parent.width
             height: 88
-            radius: Theme.radius.control
-            color: Theme.color.fill
-            border.width: 1
+            radius: Theme.material ? 20 : Theme.radius.control
+            color: Theme.material ? "transparent" : Theme.color.fill
+            border.width: Theme.material ? 0 : 1
             border.color: area.activeFocus ? Theme.accent : Theme.color.separator
+            Loader {
+                anchors.fill: parent
+                active: Theme.material
+                sourceComponent: FilledField { active: area.activeFocus; radius: 20 }
+            }
             QQC.ScrollView {
                 anchors { fill: parent; margins: 8 }
                 QQC.TextArea {
@@ -78,14 +84,15 @@ Column {
                 onTextChanged: BugReport.title = text
             }
         }
+        // (Material: inset as a Row's label, 20 px)
         Item {
             width: parent.width
-            height: fields.implicitHeight + 24
+            height: fields.implicitHeight + 2 * fields.y
             QQ.Column {
                 id: fields
-                x: 12
-                y: 12
-                width: parent.width - 24
+                x: Theme.material ? 20 : 12
+                y: Theme.material ? 16 : 12
+                width: parent.width - 2 * x
                 spacing: 16
                 Box {
                     label: "What happened"

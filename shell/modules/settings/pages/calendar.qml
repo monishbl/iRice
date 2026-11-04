@@ -192,7 +192,7 @@ Column {
         }
         Row {
             label: ""
-            Rectangle {
+            SettingsButton {
                 id: addButton
                 function add() {
                     const url = urlField.text.trim();
@@ -205,18 +205,9 @@ Column {
                     nameField.text = "";
                     urlField.text = "";
                 }
-                width: addLabel.implicitWidth + 24
-                height: 28
-                radius: 14
-                color: urlField.text.trim() !== "" ? Theme.accent : Theme.color.fill
-                Text {
-                    id: addLabel
-                    anchors.centerIn: parent
-                    text: "Add calendar"
-                    color: urlField.text.trim() !== "" ? Theme.color.onAccent : Theme.color.tertiary
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: addButton.add() }
+                text: "Add calendar"
+                primary: urlField.text.trim() !== ""
+                onClicked: add()
             }
         }
         Text { id: addError; visible: false }
