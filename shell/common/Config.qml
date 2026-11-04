@@ -628,6 +628,13 @@ Singleton {
                 property bool trash: true
                 property real magnifiedScale: 1.45
             }
+
+            // Tessera's interface in Rust (native/tessera-ui, docs/rust-ui-plan.md):
+            // the surfaces it draws in place of this shell's, as they move over
+            // (services/RustUi.qml). Empty: this shell draws everything
+            property JsonObject rust: JsonObject {
+                property list<string> surfaces: [] // menubar (a preview: no island or status menus yet; build it with tools/build-native.sh --ui)
+            }
         }
     }
 }

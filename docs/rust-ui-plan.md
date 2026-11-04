@@ -1,6 +1,6 @@
 # The interface in Rust: plan
 
-Decided 4 November 2026: iRice's interface moves from Quickshell/QML to Rust, all of it, both looks. This file is the plan; it changes as we learn.
+Decided 4 November 2026: Tessera's interface moves from Quickshell/QML to Rust, all of it, both looks. This file is the plan; it changes as we learn.
 
 ## Why, and what we expect
 
@@ -9,13 +9,13 @@ Decided 4 November 2026: iRice's interface moves from Quickshell/QML to Rust, al
 
 ## How we move without breaking your desktop
 
-- **Piece by piece, side by side.** A Rust shell process (`irice-ui`) runs next to the QML shell. Each piece (a "surface": menu bar, dock, notifications, OSD, Control Center, Search, App Drawer, lock, Settings, …) moves when its Rust version matches in both looks; the QML shell then stops drawing it (one switch per surface). Until then the QML one stays.
-- **Same settings, same commands.** `irice-ui` reads and writes the same config.json and state files, answers the same IPC commands (shell-ipc.sh, the smoke check), and uses the same glass plugin protocol, so nothing about your setup changes as pieces move.
+- **Piece by piece, side by side.** A Rust shell process (`tessera-ui`) runs next to the QML shell. Each piece (a "surface": menu bar, dock, notifications, OSD, Control Center, Search, App Drawer, lock, Settings, …) moves when its Rust version matches in both looks; the QML shell then stops drawing it (one switch per surface). Until then the QML one stays.
+- **Same settings, same commands.** `tessera-ui` reads and writes the same config.json and state files, answers the same IPC commands (shell-ipc.sh, the smoke check), and uses the same glass plugin protocol, so nothing about your setup changes as pieces move.
 - **Services first where shared.** System services (battery, network, sound, Bluetooth, notifications server, tray, MPRIS, Hyprland state) are written once in Rust and serve every Rust surface; irice-events is the start of that layer.
 - **The lock screen moves last** (it's the security boundary), with its own review.
 - Each moved surface: tests, the smoke check in both looks, sandbox screenshots shown to you before it reaches your laptop.
 
-## Step 0: pick the toolkit by measurement (now)
+## Step 0: pick the toolkit by measurement (done: Slint)
 
 The same menu bar built twice, each in a worktree, and compared on:
 
@@ -35,6 +35,17 @@ GTK4 (gtk4-rs + gtk4-layer-shell) is the fallback if both fail on layer-shell or
 
 ## After step 0
 
-1. `irice-ui` skeleton: the chosen toolkit, theme tokens for both looks (from Theme.qml / Material colours), config and state readers, the IPC server, the per-surface switch in the QML shell.
+1. `tessera-ui` skeleton: the chosen toolkit, theme tokens for both looks (from Theme.qml / Material colours), config and state readers, the IPC server, the per-surface switch in the QML shell.
 2. Surfaces, roughly cheapest and most-seen first: menu bar, dock, OSD, notifications and banners, Control Center, Search, App Drawer, Today, sidebar (AI, translator), switcher, overview, screen tools, Settings (largest), lock and greeter (last).
 3. When every surface has moved: Quickshell leaves the dependencies; the QML stays in git history.
+
+## Where it stands
+
+- **Step 0, done (4 November 2026): Slint.** Measured in docs/rust-ui-spike-slint.md: about 40% of QML's memory for the same bar, half the CPU per animation, a working screen-reader tree and input methods; layer-shell through a platform of our own. iced (System76's fork) had layer-shell built in, but its panel had no accessibility tree and its input methods were unproven. GTK4 wasn't needed.
+- **Step 1, the skeleton (native/tessera-ui):**
+  - the spike's Slint platform (Wayland layer-shell, EGL, accessibility, input methods), its menu bar and its data threads (Hyprland, UPower, NetworkManager, the glass plugin under either name);
+  - the look from config.json, with Material's colours from the seed (checked against the shell's MaterialColor.js, every role, both modes) and the wallpaper's seed computed in-process with matugen's steps (checked against matugen);
+  - the per-surface switch: Settings' `rust.surfaces` (empty by default), services/RustUi.qml starts `tessera-ui --surfaces …`, and a QML surface steps aside only while tessera-ui says it draws it (`RustUi.drawing(name)`); if tessera-ui ends, the QML one is back;
+  - tests: the crate's (`cargo test`) and tests/test_rust_ui.py (the QML and Rust sides agree on every surface; the default moves nothing; the binary's answers).
+- **Next:** the menu bar to parity (the island, status menus, tray, Now Playing, the Window menu), then the order in "After step 0". The IPC server waits for the first surface that needs a command of its own; until then the QML shell answers them.
+

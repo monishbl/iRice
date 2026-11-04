@@ -1,0 +1,210 @@
+//! Hyprland: its event socket (socket2) for workspace and focus changes, its
+//! request socket for state, dispatches and the glass plugin.
+//! Each request is connect, write, read back to back on a thread of its own:
+//! Hyprland blocks while it waits for a request on a connection it accepted
+//! (see shell/assets/scripts/glass-ipc.py), so the UI thread never holds one.
+
+use crate::Msg;
+use serde::Deserialize;
+use smithay_client_toolkit::reexports::calloop::channel::Sender;
+use std::collections::BTreeMap;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
+
+fn dir() -> Option<PathBuf> {
+    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
+    let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+    Some(PathBuf::from(rt).join("hypr").join(sig))
+}
+
+pub fn request(cmd: &str) -> std::io::Result<String> {
+    let path = dir().ok_or(std::io::ErrorKind::NotFound)?.join(".socket.sock");
+    let mut s = UnixStream::connect(path)?;
+    s.set_read_timeout(Some(Duration::from_secs(3)))?;
+    let mut data = cmd.as_bytes().to_vec();
+    // Hyprland reads 1023-byte chunks and waits for more when one is exactly full
+    if data.len() % 1023 == 0 {
+        data.push(b' ');
+    }
+    s.write_all(&data)?;
+    let mut out = String::new();
+    s.read_to_string(&mut out)?;
+    Ok(out)
+}
+
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct Workspace {
+    pub id: i32,
+    #[serde(default)]
+    pub monitor: String,
+    #[serde(default)]
+    pub windows: u32,
+}
+
+#[derive(Deserialize)]
+struct WsRef {
+    id: i32,
+}
+
+#[derive(Deserialize)]
+struct Monitor {
+    name: String,
+    #[serde(rename = "activeWorkspace")]
+    active: WsRef,
+}
+
+#[derive(Deserialize, Default)]
+struct Client {
+    #[serde(default)]
+    class: String,
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct Snapshot {
+    pub workspaces: Vec<Workspace>,
+    pub active: BTreeMap<String, i32>, // monitor -> its current workspace
+    pub class: String,
+}
+
+fn snapshot() -> Option<Snapshot> {
+    let workspaces: Vec<Workspace> = serde_json::from_str(&request("j/workspaces").ok()?).ok()?;
+    let monitors: Vec<Monitor> = serde_json::from_str(&request("j/monitors").ok()?).ok()?;
+    let client: Client = serde_json::from_str(&request("j/activewindow").ok()?).unwrap_or_default();
+    Some(Snapshot {
+        workspaces,
+        active: monitors.into_iter().map(|m| (m.name, m.active.id)).collect(),
+        class: client.class,
+    })
+}
+
+const RELEVANT: &[&str] = &[
+    "workspacev2>>", "focusedmonv2>>", "activewindow>>", "createworkspacev2>>", "destroyworkspacev2>>",
+    "moveworkspacev2>>", "openwindow>>", "closewindow>>", "movewindowv2>>", "monitoraddedv2>>", "monitorremovedv2>>",
+];
+
+/// Watches socket2; sends a fresh snapshot after each burst of relevant events
+pub fn spawn_events(tx: Sender<Msg>) {
+    std::thread::spawn(move || loop {
+        if let Some(s) = snapshot() {
+            if tx.send(Msg::Hypr(s)).is_err() {
+                return;
+            }
+        }
+        let Some(path) = dir().map(|d| d.join(".socket2.sock")) else { return };
+        let Ok(stream) = UnixStream::connect(path) else {
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        };
+        let mut r = BufReader::new(stream);
+        let mut line = String::new();
+        let mut dirty = false;
+        loop {
+            line.clear();
+            match r.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            dirty |= RELEVANT.iter().any(|p| line.starts_with(p));
+            // coalesce: answer once the burst is read
+            if dirty && r.buffer().is_empty() {
+                dirty = false;
+                if let Some(s) = snapshot() {
+                    if tx.send(Msg::Hypr(s)).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    });
+}
+
+pub fn focus_workspace(id: i32) {
+    std::thread::spawn(move || {
+        let _ = request(&format!("dispatch hl.dsp.focus({{ workspace = {id} }})"));
+    });
+}
+
+// ── the glass plugin ────────────────────────────────────────────────────────
+
+/// The plugin's command: `tessera-glass`, or `irice-glass` from a plugin built
+/// before the rename (which knows only that name); set once it answers
+static GLASS_CMD: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+fn glass_cmd() -> &'static str {
+    GLASS_CMD.get().copied().unwrap_or("tessera-glass")
+}
+
+/// Which name the plugin answers to, if any (its `ping` replies with its name)
+pub fn find_plugin(ask: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
+    ["tessera-glass", "irice-glass"].into_iter().find(|n| ask(&format!("{n} ping")).is_some_and(|a| a.starts_with(n)))
+}
+
+/// Sends glass shapes to the plugin: the newest per surface wins, several go
+/// out as one Hyprland batch (as GlassPlugin.qml does)
+#[derive(Clone)]
+pub struct Glass {
+    tx: mpsc::Sender<(String, String)>,
+}
+
+impl Glass {
+    pub fn spawn(ui: Sender<Msg>) -> Self {
+        let (tx, rx) = mpsc::channel::<(String, String)>();
+        std::thread::spawn(move || {
+            // (TESSERA_GLASS_FORCE=1: send shapes even without the plugin, to see them in TESSERA_DEBUG's log)
+            let found = find_plugin(|c| request(c).ok());
+            if let Some(n) = found {
+                let _ = GLASS_CMD.set(n);
+            }
+            let ok = found.is_some() || crate::env::is_set("GLASS_FORCE");
+            let debug = crate::env::is_set("DEBUG");
+            let _ = ui.send(Msg::GlassPlugin(ok));
+            while let Ok(first) = rx.recv() {
+                let mut pending: BTreeMap<String, String> = BTreeMap::new();
+                pending.insert(first.0, first.1);
+                while let Ok((k, c)) = rx.try_recv() {
+                    pending.insert(k, c);
+                }
+                let cmds: Vec<String> = pending.into_values().collect();
+                let cmd = if cmds.len() == 1 { cmds[0].clone() } else { format!("[[BATCH]]{}", cmds.join(";")) };
+                let answer = request(&cmd);
+                if debug {
+                    eprintln!("debug: glass {cmd} -> {answer:?}");
+                }
+            }
+        });
+        Self { tx }
+    }
+    /// `shapes`: each shape's 19 numbers (see hypr/plugin/tessera-glass/main.cpp)
+    pub fn set(&self, monitor: &str, ns: &str, shapes: &[[f32; 19]]) {
+        let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
+        for s in shapes {
+            for v in s {
+                cmd.push_str(&format!(" {}", (v * 1000.0).round() / 1000.0));
+            }
+        }
+        let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
+    }
+    /// Blocking: used on the way out, so the shapes don't outlive the bar
+    pub fn clear_now(monitor: &str, ns: &str) {
+        let _ = request(&format!("{} set {monitor} {ns} 0", glass_cmd()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_plugin;
+
+    #[test]
+    fn finds_the_plugin_by_either_name() {
+        // Tessera's plugin answers to both names
+        assert_eq!(find_plugin(|c| c.starts_with("tessera-glass").then(|| "tessera-glass 5".into())), Some("tessera-glass"));
+        // one built before the rename knows only irice-glass
+        assert_eq!(find_plugin(|c| c.starts_with("irice-glass").then(|| "irice-glass 5".into())), Some("irice-glass"));
+        // Hyprland without the plugin answers an unknown command with an error
+        assert_eq!(find_plugin(|_| Some("unknown request".into())), None);
+        assert_eq!(find_plugin(|_| None), None);
+    }
+}

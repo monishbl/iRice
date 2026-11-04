@@ -1,0 +1,465 @@
+// Tessera's menu bar in Rust, a preview (rust.surfaces: menubar) (compare shell/modules/menubar/MenuBar.qml,
+// Workspaces.qml, MenuBarItem.qml and MaterialMenu.qml). The same tokens answer
+// for both looks: Rust fills `Theme` from config.json.
+
+// ── Tokens ──────────────────────────────────────────────────────────────────
+export global Theme {
+    in property <bool> material: false;
+    in property <bool> dark: true;
+    in property <string> font: "Inter";
+    in property <length> body: 13px;
+    // Bar
+    in property <color> bar-tint: #1a1a1e60; // Glass: the strip over the plugin's glass
+    in property <color> fg: #ffffffeb;
+    in property <color> pill: transparent; // Material: the groups' tonal pills
+    in property <color> dot: #ffffff; // spaces: dots
+    in property <color> dot-active: #ffffff47; // spaces: the sliding capsule (Glass) / pill (Material)
+    // Menu
+    in property <color> menu-bg: #26262ae0;
+    in property <color> menu-fg: #ffffffeb;
+    in property <color> menu-dim: #ffffff99;
+    in property <color> menu-hover: #0a84ff;
+    in property <color> menu-hover-fg: #ffffff;
+    in property <color> separator: #ffffff1f;
+    in property <color> field-bg: #ffffff14;
+    in property <color> field-focus: #0a84ff;
+    in property <length> menu-radius: 12px;
+    in property <length> item-radius: 6px;
+}
+
+// Phosphor glyphs used here (shell/common/phosphor.js)
+export global Icons {
+    out property <string> info: "\u{e2ce}";
+    out property <string> gear: "\u{e270}";
+    out property <string> lock: "\u{e2fa}";
+    out property <string> moon: "\u{e58e}";
+    out property <string> search: "\u{e30c}";
+}
+
+// (a wrapper, not `inherits Text`: an inherited Text keeps its implicit
+// accessible text role even with `accessible-role: none`, so screen readers
+// read the private-use glyph)
+component Icon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size: 15px;
+    in property <bool> fill: false;
+    in property <bool> bold: false;
+    preferred-width: t.preferred-width;
+    preferred-height: t.preferred-height;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        font-family: fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// One bar entry: icon and/or label, a rounded highlight on hover and while
+// its menu is open (MenuBarItem.qml)
+component BarItem inherits Rectangle {
+    in property <string> icon;
+    in property <bool> icon-fill;
+    in property <string> text;
+    in property <bool> bold;
+    in property <bool> active;
+    in property <string> label; // what a screen reader says
+    callback clicked();
+    height: 24px;
+    width: row.preferred-width + 18px;
+    border-radius: Theme.material ? self.height / 2 : 6px;
+    background: Theme.fg.with-alpha(active ? (Theme.material ? 0.16 : 0.22) : touch.pressed ? (Theme.material ? 0.1 : 0.2) : touch.has-hover ? (Theme.material ? 0.08 : 0.12) : 0);
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: label != "" ? label : text;
+    accessible-action-default => { clicked(); }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        if icon != "": Icon {
+            text: icon;
+            fill: icon-fill;
+            color: Theme.fg;
+            font-size: 16px;
+        }
+        if text != "": Text {
+            text: root.text;
+            color: Theme.fg;
+            font-family: Theme.font;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: bold ? (Theme.material ? 600 : 700) : 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+export struct Space {
+    id: int,
+    occupied: bool,
+}
+
+// Spaces: one slot per space, a capsule that slides to the current one
+// (Workspaces.qml; Material: the page indicator, a primary pill that springs)
+component Spaces inherits Rectangle {
+    in property <[Space]> spaces;
+    in property <int> current; // index into spaces, -1 none
+    callback go(int);
+    property <length> slot: Theme.material ? 16px : 18px;
+    property <length> cap: Theme.material ? 22px : 26px; // the current one's width
+    width: spaces.length * slot + (cap - slot) + 8px;
+    height: 22px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.fg.with-alpha(0.1);
+    accessible-role: tab-list;
+    accessible-label: "Spaces";
+
+    // The capsule: slides between slots (a spring with a little bounce)
+    capsule := Rectangle {
+        visible: current >= 0;
+        x: 4px + max(0, current) * slot;
+        y: (parent.height - self.height) / 2;
+        width: cap;
+        height: Theme.material ? 8px : 18px;
+        border-radius: self.height / 2;
+        background: Theme.dot-active;
+        animate x { duration: 380ms; easing: spring(0.25); }
+    }
+    for s[i] in spaces: Rectangle {
+        // slots right of the current one sit a capsule's extra width further
+        x: 4px + i * slot + (i > current ? cap - slot : 0);
+        width: i == current ? cap : slot;
+        height: parent.height;
+        animate x { duration: 380ms; easing: spring(0.25); }
+        accessible-role: tab;
+        accessible-label: "Space " + s.id + (s.occupied ? ", has windows" : ", empty");
+        accessible-item-selectable: true;
+        accessible-item-selected: i == current;
+        accessible-action-default => { go(s.id); }
+        dot := Rectangle {
+            visible: i != current;
+            width: Theme.material ? 8px : (s.occupied ? 10px : 5px);
+            height: Theme.material ? 8px : 5px;
+            border-radius: self.height / 2;
+            background: Theme.dot.with-alpha(s.occupied ? (Theme.material ? 1 : 0.85) : (Theme.material ? 0.38 : 0.35));
+        }
+        Rectangle {
+            visible: hover.has-hover && i != current;
+            width: parent.width - 2px;
+            height: 18px;
+            border-radius: 9px;
+            background: Theme.fg.with-alpha(Theme.material ? 0.08 : 0.14);
+        }
+        hover := TouchArea {
+            clicked => { go(s.id); }
+        }
+    }
+}
+
+// ── The bar (one per output) ────────────────────────────────────────────────
+export component Bar inherits Window {
+    in property <string> app-name: "Desktop";
+    in property <[Space]> spaces;
+    in property <int> current-space: -1;
+    in property <int> battery: -1; // percent, -1: no battery
+    in property <bool> charging;
+    in property <string> battery-icon: "\u{e0c6}";
+    in property <bool> wifi-shown;
+    in property <string> wifi-icon: "\u{e4ea}";
+    in property <string> wifi-label: "Wi-Fi";
+    in property <string> clock;
+    in property <string> clock-long;
+    in property <string> logo: "\u{e604}"; // the menu icon Settings chose (the Badge)
+    in property <bool> strip; // Glass: a tinted strip behind the bar (menubar.background)
+    in property <bool> menu-open;
+    out property <length> logo-x: left.x + logo.x;
+    callback logo-clicked();
+    callback go(int);
+
+    background: transparent;
+    no-frame: true;
+    title: "Menu bar";
+    preferred-height: 30px;
+    default-font-family: Theme.font;
+
+    // Glass: the translucent strip (the glass plugin draws the glass under it),
+    // when Settings asks for a background; otherwise clear over the wallpaper
+    if !Theme.material && strip: Rectangle {
+        background: Theme.bar-tint;
+    }
+    // Material: tonal pills behind the groups (MenuBar.qml `pills`)
+    if Theme.material: Rectangle {
+        x: left.x - 2px;
+        width: left.width + 4px;
+        y: 2px;
+        height: 26px;
+        border-radius: 13px;
+        background: Theme.pill;
+    }
+    if Theme.material: Rectangle {
+        x: spaces.x - 10px;
+        width: spaces.width + 20px;
+        y: 2px;
+        height: 26px;
+        border-radius: 13px;
+        background: Theme.pill;
+    }
+    if Theme.material: Rectangle {
+        x: right.x - 2px;
+        width: right.width + 4px;
+        y: 2px;
+        height: 26px;
+        border-radius: 13px;
+        background: Theme.pill;
+    }
+
+    left := HorizontalLayout {
+        x: Theme.material ? 6px : 8px;
+        width: self.preferred-width;
+        y: 3px;
+        height: 24px;
+        spacing: 0;
+        logo := BarItem {
+            icon: root.logo;
+            icon-fill: true;
+            label: "System menu";
+            active: menu-open;
+            accessible-expandable: true;
+            accessible-expanded: menu-open;
+            clicked => { logo-clicked(); }
+        }
+        BarItem {
+            text: app-name;
+            bold: true;
+            label: "Active app: " + app-name;
+        }
+    }
+
+    spaces := Spaces {
+        x: (parent.width - self.width) / 2;
+        y: 4px;
+        spaces: root.spaces;
+        current: root.current-space;
+        go(id) => { root.go(id); }
+    }
+
+    right := HorizontalLayout {
+        width: self.preferred-width;
+        x: parent.width - self.width - (Theme.material ? 6px : 8px);
+        y: 3px;
+        height: 24px;
+        spacing: 0;
+        if Theme.material: BarItem { text: clock; label: clock-long; }
+        if battery >= 0: BarItem {
+            icon: battery-icon;
+            text: battery + "%";
+            label: "Battery " + battery + " percent" + (charging ? ", charging" : "");
+        }
+        if wifi-shown: BarItem {
+            icon: wifi-icon;
+            icon-fill: true;
+            label: wifi-label;
+        }
+        if !Theme.material: BarItem { text: clock; label: clock-long; }
+    }
+}
+
+// ── The system menu (its own layer surface) ─────────────────────────────────
+export struct MenuRow {
+    icon: string,
+    text: string,
+    shortcut: string,
+    separator: bool,
+}
+
+export component Menu inherits Window {
+    in property <[MenuRow]> rows;
+    in property <bool> shown; // drives the open/close animation
+    in-out property <int> current: 0; // 0 is the search field, rows start at 1
+    out property <float> openness: shown ? 1 : 0; // (Rust follows it for the glass shape)
+    out property <length> panel-x: panel.x;
+    out property <length> panel-y: panel.y;
+    out property <length> panel-width: panel.width;
+    out property <length> panel-height: panel.height;
+    out property <float> panel-scale: panel.transform-scale;
+    property <length> pad: 4px;
+    property <length> row-h: Theme.material ? 40px : 26px;
+    callback activated(int, string); // row (1-based), search text
+    callback dismissed();
+    callback closed(); // the close animation ended
+
+    background: transparent;
+    no-frame: true;
+    title: "System menu";
+    default-font-family: Theme.font;
+    // the menu plus room for the shadow
+    preferred-width: 260px + 2 * 16px;
+    preferred-height: content.preferred-height + 2 * 16px;
+
+    animate openness {
+        duration: shown ? 420ms : 140ms;
+        easing: shown ? spring(0.3) : ease-in;
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    public function open() {
+        current = 0;
+        field.text = "";
+        field.focus();
+    }
+    function move(d: int) {
+        // skip separators
+        let n = rows.length + 1;
+        let a = Math.mod(current + d + n, n);
+        current = a > 0 && rows[a - 1].separator ? Math.mod(a + d + n, n) : a;
+        if current == 0 { field.focus(); } else { keys.focus(); }
+    }
+    function activate(i: int) {
+        if i > 0 && rows[i - 1].separator { return; }
+        activated(i, field.text);
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.UpArrow { move(-1); return accept; }
+            if e.text == Key.DownArrow || e.text == Key.Tab { move(1); return accept; }
+            if e.text == Key.Escape { dismissed(); return accept; }
+            if e.text == Key.Return { activate(current); return accept; }
+            reject
+        }
+
+        panel := Rectangle {
+            x: 16px;
+            y: 16px + (1 - openness) * -8px;
+            width: 260px;
+            height: content.preferred-height;
+            transform-origin: { x: 18px, y: 0px };
+            transform-scale: 0.92 + 0.08 * openness;
+            opacity: min(1, openness * 1.6);
+            border-radius: Theme.menu-radius;
+            background: Theme.menu-bg;
+            border-width: Theme.material ? 0 : 0.5px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000040;
+            accessible-role: list;
+            accessible-label: "System menu";
+
+            content := VerticalLayout {
+                padding: pad;
+                spacing: Theme.material ? 2px : 0;
+                // The search field (text entry)
+                Rectangle {
+                    height: Theme.material ? 44px : 30px;
+                    border-radius: Theme.material ? 22px : 7px;
+                    background: Theme.field-bg;
+                    border-width: field.has-focus ? 1.5px : 0;
+                    border-color: Theme.field-focus;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 8px;
+                        Icon {
+                            text: Icons.search;
+                            width: 16px;
+                            bold: true;
+                            color: Theme.menu-dim;
+                            font-size: 14px;
+                        }
+                        Rectangle {
+                            field := TextInput {
+                                width: 100%;
+                                color: Theme.menu-fg;
+                                font-size: Theme.material ? 14px : Theme.body;
+                                vertical-alignment: center;
+                                single-line: true;
+                                input-type: search;
+                                accessible-label: "Search";
+                                accessible-placeholder-text: "Search…";
+                                accepted => { activate(0); }
+                                changed has-focus => { if self.has-focus { current = 0; } }
+                                key-pressed(e) => {
+                                    if e.text == Key.Escape { dismissed(); return accept; }
+                                    if e.text == Key.DownArrow || e.text == Key.Tab { move(1); return accept; }
+                                    if e.text == Key.UpArrow { move(-1); return accept; }
+                                    reject
+                                }
+                            }
+                            Text {
+                                visible: field.text == "";
+                                width: 100%;
+                                text: "Search…";
+                                color: Theme.menu-dim;
+                                font-size: Theme.material ? 14px : Theme.body;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+                    }
+                }
+                for r[i] in rows: Rectangle {
+                    height: r.separator ? (Theme.material ? 8px : 11px) : row-h;
+                    if r.separator: Rectangle {
+                        x: Theme.material ? 12px : 10px;
+                        width: parent.width - 2 * self.x;
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+                    if !r.separator: Rectangle {
+                        accessible-role: list-item;
+                        accessible-label: r.text;
+                        accessible-item-selectable: true;
+                        accessible-item-selected: current == i + 1;
+                        accessible-item-index: i;
+                        accessible-action-default => { activate(i + 1); }
+                        border-radius: Theme.material ? self.height / 2 : Theme.item-radius;
+                        background: current == i + 1 ? Theme.menu-hover : transparent;
+                        animate background { duration: 100ms; }
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 10px;
+                            Icon {
+                                text: r.icon;
+                                width: 16px;
+                                color: current == i + 1 ? Theme.menu-hover-fg : Theme.menu-dim;
+                                font-size: 15px;
+                            }
+                            Text {
+                                text: r.text;
+                                color: current == i + 1 ? Theme.menu-hover-fg : Theme.menu-fg;
+                                font-size: Theme.material ? 14px : Theme.body;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                accessible-role: none;
+                            }
+                            Text {
+                                text: r.shortcut;
+                                color: current == i + 1 ? Theme.menu-hover-fg : Theme.menu-dim;
+                                font-size: Theme.material ? 13px : 12px;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+                        TouchArea {
+                            moved => { if self.has-hover { current = i + 1; keys.focus(); } }
+                            changed has-hover => { if self.has-hover { current = i + 1; keys.focus(); } }
+                            clicked => { activate(i + 1); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
