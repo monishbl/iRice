@@ -70,19 +70,23 @@ GreeterWindow {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 4
-            Chevron { visible: win.auth.users.length > 1; name: "caret-left"; onClicked: win.nextUser(-1) }
-            Text {
+            // (as wide as Switch user, so the name stays centred)
+            Item { width: 28; height: 28 }
+            Chevron { visible: win.auth.users.length > 1 && !win.auth.other; name: "caret-left"; onClicked: win.nextUser(-1) }
+            GreeterNameLabel {
+                win: win
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !win.auth.other
                 text: win.person?.full ?? ""
-                color: win.fg
+                textColor: win.fg
                 font { family: win.sans; pixelSize: 20; weight: Font.DemiBold }
+                hoverFill: win.field
             }
-            // "Other user…": the username, typed in
+            // A typed username
             Rectangle {
                 visible: win.auth.other
                 anchors.verticalCenter: parent.verticalCenter
-                width: 300 - 64
+                width: 300 - 2 * (28 + 4)
                 height: 44
                 radius: 22
                 color: win.field
@@ -99,7 +103,8 @@ GreeterWindow {
                     placeholderSize: 15
                 }
             }
-            Chevron { visible: win.auth.users.length > 1; name: "caret-right"; onClicked: win.nextUser(1) }
+            Chevron { visible: win.auth.users.length > 1 && !win.auth.other; name: "caret-right"; onClicked: win.nextUser(1) }
+            Chevron { name: win.auth.other ? "x" : "user-switch"; onClicked: win.auth.other ? win.cancelName() : win.editName() }
         }
         // The field, the fingerprint at its end
         Rectangle {
@@ -244,5 +249,8 @@ GreeterWindow {
             cursorShape: Qt.PointingHandCursor
             onClicked: chev.clicked()
         }
+        Accessible.role: Accessible.Button
+        Accessible.name: ({ "caret-left": "Previous person", "caret-right": "Next person", "user-switch": "Switch user", "x": "Back to the list" })[name] ?? name
+        Accessible.onPressAction: chev.clicked()
     }
 }

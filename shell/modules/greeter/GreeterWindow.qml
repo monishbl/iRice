@@ -12,7 +12,7 @@ PanelWindow {
     id: win
     required property var auth
     property bool primary: false
-    // The style's password field, and its username field ("Other user…")
+    // The style's password field, and its username field (a typed name)
     property Item passwordField: null
     property Item nameField: null
     // A password was refused (the field is already cleared): a style can shake
@@ -37,13 +37,34 @@ PanelWindow {
             passwordField.text = "";
     }
     function nextUser(step) {
-        if (auth.busy || auth.users.length < 2)
+        if (auth.busy || auth.users.length === 0)
+            return;
+        if (auth.other) { // (typing: back to the chosen person)
+            auth.cancelName();
+            return;
+        }
+        if (auth.users.length < 2)
             return;
         auth.user = (auth.user + auth.users.length + step) % auth.users.length;
         clearField();
     }
+    // Type a name (a click on the name, or Switch user): the field, the
+    // name in it selected
+    function editName() {
+        auth.editName();
+        Qt.callLater(() => {
+            nameField?.forceActiveFocus();
+            nameField?.selectAll();
+        });
+    }
     // From the username field to the password (Enter or Tab)
     function toPassword() {
+        auth.pickTyped();
+        passwordField?.forceActiveFocus();
+    }
+    // Esc in the username field: the chosen person again
+    function cancelName() {
+        auth.cancelName();
         passwordField?.forceActiveFocus();
     }
     function nextSession(step) {
@@ -89,11 +110,9 @@ PanelWindow {
                 win.refused();
             }
         }
-        function onUserChanged() {
-            win.clearField();
-            if (win.auth.other)
-                win.nameField?.forceActiveFocus();
-            else
+        function onUserChanged() { win.clearField(); }
+        function onOtherChanged() {
+            if (!win.auth.other && win.nameField?.activeFocus)
                 win.passwordField?.forceActiveFocus();
         }
     }
