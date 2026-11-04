@@ -4558,6 +4558,7 @@ dependencies = [
  "accesskit_unix",
  "calloop 0.14.5",
  "i-slint-core",
+ "image",
  "khronos-egl",
  "libc",
  "material-colors 0.4.2",

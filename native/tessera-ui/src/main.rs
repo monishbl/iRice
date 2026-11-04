@@ -193,20 +193,34 @@ fn main() {
         })
         .unwrap();
 
-    // Ends when stdin (a pipe from whoever started us) closes
+    // Ends when stdin (a pipe from whoever started us) closes. The shell
+    // also writes to it: one JSON line per message for a part,
+    // {"to": "<part>", …} (RustUi.tell), handed to that part as shell::FromShell
     let stdin_is_pipe = unsafe {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
     };
     if stdin_is_pipe {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
+        let mut line: Vec<u8> = Vec::new();
         lh
-            .insert_source(src, |_, _, state: &mut State| {
-                let mut buf = [0u8; 256];
+            .insert_source(src, move |_, _, state: &mut State| {
+                let mut buf = [0u8; 4096];
                 let n = unsafe { libc::read(0, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 if n <= 0 {
                     state.exit = true;
                     return Ok(PostAction::Remove);
+                }
+                line.extend_from_slice(&buf[..n as usize]);
+                while let Some(end) = line.iter().position(|&b| b == b'\n') {
+                    let one: Vec<u8> = line.drain(..=end).collect();
+                    if let Some((to, v)) = shell::from_shell(&one) {
+                        let mut v = Some(v);
+                        state.part(&to, |p, st| p.message(st, Box::new(v.take().unwrap())));
+                    }
+                }
+                if line.len() > 1 << 20 {
+                    line.clear(); // (no newline in a megabyte: not ours)
                 }
                 Ok(PostAction::Continue)
             })

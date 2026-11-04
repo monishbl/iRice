@@ -47,5 +47,6 @@ GTK4 (gtk4-rs + gtk4-layer-shell) is the fallback if both fail on layer-shell or
   - the look from config.json, with Material's colours from the seed (checked against the shell's MaterialColor.js, every role, both modes) and the wallpaper's seed computed in-process with matugen's steps (checked against matugen);
   - the per-surface switch: Settings' `rust.surfaces` (empty by default), services/RustUi.qml starts `tessera-ui --surfaces …`, and a QML surface steps aside only while tessera-ui says it draws it (`RustUi.drawing(name)`); if tessera-ui ends, the QML one is back;
   - tests: the crate's (`cargo test`) and tests/test_rust_ui.py (the QML and Rust sides agree on every surface; the default moves nothing; the binary's answers).
+- **The wallpaper (background) and its picker (wallpaper), previews:** the picture per screen at its pixels with the QML's crossfade, every dynamic mode (time of day, light and dark pair) and a live wallpaper's poster (the video itself stays the QML's); the QML window keeps the desktop's widgets on the bottom layer. The shell tells tessera-ui things over stdin (`RustUi.tell`).
 - **Next:** the menu bar to parity (the island, status menus, tray, Now Playing, the Window menu), then the order in "After step 0". The IPC server waits for the first surface that needs a command of its own; until then the QML shell answers them.
 

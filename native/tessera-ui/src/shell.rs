@@ -73,6 +73,18 @@ impl Shell {
     }
 }
 
+/// A message from the QML shell for one part: a JSON line on tessera-ui's
+/// stdin, `{"to": "<part>", …}` (services/RustUi.qml's `tell`), handed to
+/// that part's `message` (e.g. a panel the shell opened: the wallpaper picker)
+pub struct FromShell(pub serde_json::Value);
+
+/// One stdin line: the part it's for, and the message
+pub fn from_shell(line: &[u8]) -> Option<(String, FromShell)> {
+    let v: serde_json::Value = serde_json::from_slice(line).ok()?;
+    let to = v["to"].as_str()?.to_string();
+    Some((to, FromShell(v)))
+}
+
 /// A surface of the shell, drawn in Rust. Every method has a default: a part
 /// implements what it needs. `st` is the platform (layer surfaces, outputs,
 /// the seat) and `st.shell` the shared state.
@@ -146,5 +158,18 @@ impl State {
         let changed = look != self.shell.look;
         self.shell.look = look;
         self.each_part(|p, st| p.config_changed(st, changed));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_lines_name_their_part() {
+        let (to, m) = from_shell(br#"{"to": "wallpaper", "open": "DP-1"}"#).unwrap();
+        assert_eq!((to.as_str(), m.0["open"].as_str()), ("wallpaper", Some("DP-1")));
+        assert!(from_shell(b"{\"open\": \"DP-1\"}").is_none());
+        assert!(from_shell(b"not json").is_none());
     }
 }

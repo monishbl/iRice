@@ -56,6 +56,20 @@ class Agreement(unittest.TestCase):
             self.assertIn(word, rs)
         self.assertIn('"--surfaces"', qml)
 
+    def test_the_binary_reads_what_the_shell_tells(self):
+        # RustUi.tell writes {"to": surface, …} lines on tessera-ui's stdin;
+        # shell.rs hands them to the part of that name
+        qml = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertRegex(qml, r"proc\.write\(JSON\.stringify\(Object\.assign\(\{ to: name \}")
+        self.assertIn("stdinEnabled: true", qml)
+        rs = (CRATE / "src/shell.rs").read_text()
+        self.assertIn('v["to"]', rs)
+        told = set()
+        for p in qml_files():
+            told |= set(re.findall(r'RustUi\.tell\("([a-z]+)"', p.read_text(errors="replace")))
+        self.assertTrue(told, "nothing tells tessera-ui anything")
+        self.assertEqual(sorted(told - set(known_surfaces())), [], "told to a surface tessera-ui doesn't draw")
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

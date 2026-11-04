@@ -7,16 +7,20 @@
 //!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
 //! If this process ends, the shell draws them again itself.
 
+pub mod background;
 pub mod menubar;
+pub mod wallpaper;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar"];
+pub const KNOWN: &[&str] = &["menubar", "background", "wallpaper"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
     match name {
         "menubar" => Some(Box::new(menubar::Menubar::default())),
+        "background" => Some(Box::new(background::Background::default())),
+        "wallpaper" => Some(Box::new(wallpaper::WallpaperPicker::default())),
         _ => None,
     }
 }

@@ -19,6 +19,13 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // A message for one of its surfaces, while it draws it: a JSON line on
+    // its stdin, {"to": name, …} (tessera-ui's shell::FromShell), e.g. the
+    // wallpaper picker opening on a screen
+    function tell(name, msg) {
+        if (drawing(name))
+            proc.write(JSON.stringify(Object.assign({ to: name }, msg)) + "\n");
+    }
 
     // (armed a moment after the list changes, once `command` has the new
     // list: started in the same instant, it could run with the old one)
