@@ -146,10 +146,6 @@ h2 { font-size: 42px; line-height: 48px; letter-spacing: -0.025em; }
 .tile .shot { position: relative; }
 .tile .shot video { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
 .tile .shot.hd { aspect-ratio: 16 / 9; }
-/* Two looks: the grid under the switch, and three lock clocks in a row */
-.bento.looks { margin-top: 24px; }
-.tile .clocks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: auto; background: var(--border); border-top: 1px solid var(--border); }
-.tile .clocks img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--frame); }
 .tag {
   display: inline-block; vertical-align: 2px; margin-left: 8px; padding: 0 8px; border-radius: 999px;
   background: var(--tag); color: var(--tag-text); font-size: 12px; line-height: 20px; font-weight: 500; letter-spacing: 0;
@@ -356,60 +352,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
     <div class="split reveal" data-split data-a="Glass" data-b="Material" data-start="74">
       <img class="a" src="/media/shots/looks-g.webp" alt="The Glass look over a wall of pastel tiles: Quick Settings open in clear glass that bends the tiles behind it." loading="lazy">
       <img class="b" src="/media/shots/looks-m.webp" alt="The same moment in the Material look: Quick Settings in tones taken from the tiles, with tall sliders and round tiles." loading="lazy">
-    </div>
-
-    <div class="bento looks">
-      <div class="tile w3 reveal">
-        <div class="copy">
-          <h3>Switch in a second.</h3>
-          <p>Pick a look in Settings → Appearance. The shell restarts behind a shape that morphs while it works. Your apps and windows stay open.</p>
-        </div>
-        <div class="shot hd"><video src="/media/clips/look-switch.mp4" poster="/media/clips/look-switch.jpg" muted loop playsinline preload="none" data-auto aria-label="The desktop switches from Glass to Material: a shape morphs in the middle of the screen, then the Material desktop appears."></video></div>
-      </div>
-      <div class="tile w3 reveal">
-        <div class="copy">
-          <h3>A clock that makes room.<span class="tag">Material</span></h3>
-          <p>Large while the lock screen is empty. When music starts or a notification arrives, it moves to the corner, as on Android 17.</p>
-        </div>
-        <div class="shot hd"><video src="/media/clips/m-clock-room.mp4" poster="/media/clips/m-clock-room.jpg" muted loop playsinline preload="none" data-auto aria-label="The Material lock screen: a large two-line clock shrinks to the top left corner as a music player appears."></video></div>
-      </div>
-
-      <div class="tile w4 reveal">
-        <div class="copy">
-          <h3>Five clocks, one swipe.<span class="tag">Material</span></h3>
-          <p>Stacked, Wide, Overlap, Analog or Weather, picked from a carousel over your own wallpaper. Then make the digits thinner or bolder, narrower or wider, rounded or sharp.</p>
-        </div>
-        <div class="shot std"><img src="/media/shots/m-settings-clock.webp" alt="Settings, Lock Screen: a carousel of clock styles with Overlap chosen between Wide and Analog, then Size, Thickness, Width and Digits." loading="lazy" style="object-position: 0 0"></div>
-      </div>
-      <div class="tile w2 reveal">
-        <div class="copy">
-          <h3>Quick Settings, in your colours.<span class="tag">Material</span></h3>
-          <p>Tall sliders and round tiles, tinted from the wallpaper. It springs open, and other players wait beside the one that's playing.</p>
-        </div>
-        <div class="shot" style="flex: 1; min-height: 240px"><img src="/media/shots/qs-tile-m.webp" alt="Material Quick Settings in tones from a tiled wallpaper: Wi-Fi and Bluetooth, a music card, tall brightness and volume sliders and round tiles." loading="lazy" style="object-position: 50% 0"></div>
-      </div>
-
-      <div class="tile w6 reveal">
-        <div class="copy">
-          <h3>Material, all the way through.<span class="tag">Experimental</span></h3>
-          <p>Not a recolour: its own lock screen, App Drawer, Quick Settings, sounds and pointer. If it doesn't start, Tessera goes back to Glass on its own.</p>
-          <div class="chips">
-            <span class="chip">Colours from your wallpaper</span>
-            <span class="chip">Tinted blur</span>
-            <span class="chip">Media carousel</span>
-            <span class="chip">Dynamic lock clock</span>
-            <span class="chip">Material Symbols</span>
-            <span class="chip">Shape morphs</span>
-            <span class="chip">Its own sounds</span>
-            <span class="chip">Two-pane Settings</span>
-          </div>
-        </div>
-        <div class="clocks">
-          <img src="/media/shots/m-clock-stacked.webp" alt="The Stacked clock: 01 over 59 in rounded lavender digits." loading="lazy">
-          <img src="/media/shots/m-clock-overlap.webp" alt="The Overlap clock: 02 and 00, the minutes over the hours' corner in pink." loading="lazy">
-          <img src="/media/shots/m-clock-analog.webp" alt="The Analog clock: two rounded hands on a scalloped dial." loading="lazy">
-        </div>
-      </div>
     </div>
   </section>
 

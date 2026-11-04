@@ -30,22 +30,12 @@ CROPS = {
     "spotlight-time": ((1100, 300, 2740, 1500), 1640),
     "spotlight-days": ((1100, 300, 2740, 1500), 1640),
     "settings-update": ((900, 380, 2940, 1820), 2040),
-    # Two looks: the same desktop (violet-dark), Glass with Control Center,
-    # Material with Quick Settings; then Material's own (Android 17) parts
-    "look-glass": ((0, 0, 3840, 2160), 2400, "g-cc"),
-    "look-material": ((0, 0, 3840, 2160), 2400, "m-qs"),
-    "m-clock-stacked": ((1300, 40, 2540, 980), 720, "m-lock-stacked"),
-    "m-clock-analog": ((1300, 40, 2540, 980), 720, "m-lock-analog"),
-    "m-clock-overlap": ((1300, 40, 2540, 980), 720, "m-lock-overlap"),
-    # (without Settings's sidebar: the Lock Screen page alone)
-    "m-settings-clock": ((1493, 408, 2960, 1808), 1100, "m-settings-clock"),
     "appstore": ((0, 0, 3840, 2160), 2400, "g-appstore"),
     # Tessera's (shots.sh: the same moment in each look, over tiles; the
     # page splits the Quick Settings pair, so both halves get the same crop)
     # (the split: the right half, where Quick Settings is; its divider starts
     # over them)
     "looks-g": ((1920, 0, 3840, 1080), 1920, "qs-g"), "looks-m": ((1920, 0, 3840, 1080), 1920, "qs-m"),
-    "qs-tile-m": ((2960, 0, 3840, 1040), 880, "qs-m"),
     "island-g": ((1440, 0, 2400, 480), 960),
     "share-g": ((1328, 791, 2528, 1391), 1200),
 }
@@ -53,7 +43,7 @@ CROPS = {
 # shows this computer's real network): blurred before cropping
 BLUR = {
     "looks-g": [(3240, 170, 3420, 206)], "hero": [(3240, 170, 3420, 206)],
-    "looks-m": [(3156, 166, 3315, 214)], "qs-tile-m": [(3156, 166, 3315, 214)],
+    "looks-m": [(3156, 166, 3315, 214)],
 }
 
 
