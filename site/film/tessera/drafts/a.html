@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="data:," />
+		<title>Tessera · Two halves</title>
+		<!--
+		Tessera launch film, version A: "Two halves". Calm, split screen: Glass on the
+		left, Material on the right, the seam between them carrying the Badge.
+		Footage: capture/ (the hidden sandbox, seeded demo data). Plan: brief.md,
+		beats.md, copy.md, shots.md, style.md.
+
+		  Open:  node ~/Projects/product-film-kit/tools/serve.mjs site/film   then  /tessera/a.html?player=1
+		  Keys:  Space play/pause · ←/→ 0.5 s (Shift: one frame) · R restart · H player
+
+		  t (s)        shot                                         out
+		  0.0–2.8      A1 the halves meet, the Badge on the seam    pull back
+		  2.8–6.0      A2 the desktop, Glass | Material             the seam sweeps right
+		  6.0–13.0     A3 the look switch (full frame)              the seam comes back
+		  13.0–20.0    A4 the island, both looks                    match cut
+		  20.0–27.0    A5 Quick Settings, both                      whip
+		  27.0–34.0    A6 circle to search: circle | answer         shared element
+		  34.0–41.0    A7 the AI sidebar and its past chats         drop
+		  41.0–47.0    A8 Live Text, both                           the photo flies
+		  47.0–53.0    A9 Quick Share: phone | laptop               match cut (wallpaper)
+		  53.0–58.0    A10 colours follow the wallpaper             the halves part
+		  58.0–62.0    A11 Tessera; the halves drift back (loop)
+		-->
+		<style>
+			@font-face {
+				font-family: 'Sans';
+				src: url('../../../material/assets/fonts/GoogleSansFlex.ttf');
+				font-weight: 100 1000;
+			}
+			@font-face {
+				font-family: 'PhosphorFill';
+				src: url('../../../shell/assets/fonts/Phosphor-Fill.ttf');
+			}
+			:root {
+				--accent: #ffb45c;
+				--bg: #0b0b0e;
+				--tonal: #1f3b2c;
+				--sage: #a8cfb2;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #000;
+				overflow: hidden;
+			}
+			#art {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				width: 1920px;
+				height: 1080px;
+				overflow: hidden;
+				background: var(--bg);
+				font-family: 'Sans', system-ui, sans-serif;
+				color: #fff;
+				transform-origin: 50% 50%;
+			}
+			#world {
+				position: absolute;
+				inset: 0;
+				transform-origin: 0 0;
+			}
+			.layer {
+				position: absolute;
+				inset: 0;
+				overflow: hidden;
+			}
+			.pane {
+				position: absolute;
+				top: 0;
+				width: 960px;
+				height: 1080px;
+				overflow: hidden;
+				background: var(--bg);
+			}
+			.pane.l {
+				left: 0;
+			}
+			.pane.r {
+				left: 960px;
+			}
+			.full {
+				position: absolute;
+				inset: 0;
+				overflow: hidden;
+			}
+			#seam {
+				position: absolute;
+				left: 959px;
+				top: 0;
+				width: 2px;
+				height: 1080px;
+				background: linear-gradient(#fff0, #fff 12%, #fff 88%, #fff0);
+				box-shadow: 0 0 18px 4px rgba(255, 180, 92, 0.55), 0 0 2px 1px rgba(255, 220, 170, 0.9);
+				z-index: 20;
+			}
+			#badge {
+				position: absolute;
+				left: 0;
+				top: 0;
+				font-family: 'PhosphorFill';
+				font-size: 150px;
+				line-height: 1;
+				color: var(--accent);
+				text-shadow: 0 0 40px rgba(255, 180, 92, 0.45);
+				z-index: 21;
+			}
+			.ttl {
+				position: absolute;
+				left: 0;
+				top: 0;
+				font-size: 88px;
+				font-weight: 520;
+				letter-spacing: -0.015em;
+				white-space: nowrap;
+				z-index: 30;
+				text-shadow: 0 2px 30px rgba(0, 0, 0, 0.55);
+			}
+			.scrim {
+				position: absolute;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				height: 380px;
+				background: linear-gradient(#0000, #000a);
+				z-index: 25;
+			}
+			/* A1: the materials, before there's any UI */
+			.glassmat {
+				position: absolute;
+				inset: 0;
+				background: url('capture/seed/photos/wall-sunset-lake.jpg') center / cover;
+				filter: blur(26px) saturate(1.3);
+				transform: scale(1.12);
+			}
+			.frost {
+				position: absolute;
+				inset: 0;
+				background: linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08) 55%, rgba(255, 255, 255, 0.18));
+				box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.45);
+			}
+			.tonalmat {
+				position: absolute;
+				inset: 0;
+				background: radial-gradient(circle at 70% 30%, #2f5a43, var(--tonal) 60%, #13261c);
+			}
+			.cookie {
+				position: absolute;
+				fill: var(--sage);
+				opacity: 0.22;
+			}
+			#name {
+				position: absolute;
+				left: 0;
+				top: 0;
+				font-size: 150px;
+				font-weight: 600;
+				letter-spacing: -0.03em;
+				z-index: 30;
+			}
+			#phone {
+				position: absolute;
+				width: 380px;
+				height: 780px;
+				border-radius: 64px;
+				background: #111;
+				box-shadow: inset 0 0 0 10px #1c1c1f, inset 0 0 0 12px #333, 0 30px 80px rgba(0, 0, 0, 0.6);
+				overflow: hidden;
+			}
+			#phone .scr2 {
+				position: absolute;
+				inset: 14px;
+				border-radius: 52px;
+				overflow: hidden;
+				background: #000;
+			}
+			#phone img.photo {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 100%;
+				height: 62%;
+				object-fit: cover;
+			}
+			#phone .sheet {
+				position: absolute;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				height: 46%;
+				background: #1d1f22;
+				border-radius: 34px 34px 0 0;
+				padding: 26px 26px 0;
+				box-sizing: border-box;
+				font-size: 22px;
+				color: #e8eaed;
+			}
+			#phone .row {
+				display: flex;
+				gap: 18px;
+				margin-top: 22px;
+			}
+			#phone .dev {
+				width: 96px;
+				text-align: center;
+				font-size: 17px;
+				color: #c8cbd0;
+			}
+			#phone .dev i {
+				display: grid;
+				place-items: center;
+				width: 76px;
+				height: 76px;
+				margin: 0 auto 8px;
+				border-radius: 50%;
+				background: #2b2e33;
+				font-style: normal;
+				font-family: 'PhosphorFill';
+				font-size: 34px;
+				color: #9fc6ff;
+			}
+			#phone .dev.on i {
+				background: #9fc6ff;
+				color: #0b2a4a;
+			}
+			#flyer {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 300px;
+				height: 200px;
+				border-radius: 22px;
+				background: url('capture/seed/photos/tram-photo.jpg') center / cover;
+				box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+				z-index: 22;
+			}
+			#player {
+				position: fixed;
+				left: 16px;
+				right: 16px;
+				bottom: 16px;
+				display: flex;
+				gap: 12px;
+				align-items: center;
+				font: 13px system-ui;
+				color: #fff;
+			}
+			#player[hidden] {
+				display: none;
+			}
+			#player input {
+				flex: 1;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="art">
+			<div id="world">
+				<!-- A1 / A11: the two materials -->
+				<div class="layer" id="mats">
+					<div class="pane l" id="matL"><div class="glassmat"></div><div class="frost"></div></div>
+					<div class="pane r" id="matR">
+						<div class="tonalmat"></div>
+						<svg class="cookie" style="left: 520px; top: 120px; width: 520px; height: 520px" viewBox="-1 -1 2 2"><path id="ck1" /></svg>
+						<svg class="cookie" style="left: 80px; top: 640px; width: 300px; height: 300px; opacity: 0.14" viewBox="-1 -1 2 2"><path id="ck2" /></svg>
+					</div>
+				</div>
+				<!-- A2..A10: chapters, each a layer of two panes or one full frame -->
+				<div id="chapters"></div>
+				<div class="scrim" id="scrim"></div>
+				<div id="seam"></div>
+				<div id="badge"></div>
+				<div id="name">Tessera</div>
+				<div id="flyer"></div>
+				<div class="ttl" id="t1">One desktop.</div>
+				<div class="ttl" id="t2">Two looks.</div>
+				<div class="ttl" id="t3">Switch in a second.</div>
+				<div class="ttl" id="t4">The island comes alive.</div>
+				<div class="ttl" id="t5">Everything in one place.</div>
+				<div class="ttl" id="t6">Circle anything.</div>
+				<div class="ttl" id="t7">Ask. Keep every chat.</div>
+				<div class="ttl" id="t8">Copy text from pictures.</div>
+				<div class="ttl" id="t9">Phones and laptops, together.</div>
+				<div class="ttl" id="t10">Colours that follow you.</div>
+			</div>
+		</div>
+		<div id="player" hidden><button type="button">Play</button><input type="range" min="0" value="0" /><span data-time></span></div>
+
+		<script type="module">
+			import { createFilm, keyed, EASE, clamp } from '../../engine/film.js';
+			import { vclip, screen, view, title, loopByDefault, BADGE, W, H } from './shared.js';
+			import { CLIPS, PLATES, REGION } from './clips.js';
+
+			loopByDefault();
+			await document.fonts.ready;
+			const D = 62;
+			const f = createFilm({ duration: D });
+			const $ = (s) => document.querySelector(s);
+			$('#badge').textContent = BADGE;
+
+			/* a scalloped "cookie" for the tonal material */
+			const cookie = (n, a) => {
+				let d = '';
+				for (let i = 0; i <= 240; i++) {
+					const th = (i / 240) * Math.PI * 2, r = 0.86 + a * Math.cos(n * th);
+					d += (i ? 'L' : 'M') + (r * Math.cos(th)).toFixed(4) + ' ' + (r * Math.sin(th)).toFixed(4);
+				}
+				return d + 'Z';
+			};
+			$('#ck1').setAttribute('d', cookie(9, 0.07));
+			$('#ck2').setAttribute('d', cookie(4, 0.1));
+
+			/* ── Chapters: panes with real screens in them ───────────────── */
+			const chapters = $('#chapters');
+			const layer = (t0, t1) => {
+				const el = document.createElement('div');
+				el.className = 'layer';
+				chapters.appendChild(el);
+				f.show(el, t0, t1);
+				return el;
+			};
+			const pane = (parent, side) => {
+				const el = document.createElement('div');
+				el.className = side === 'full' ? 'full' : 'pane ' + side;
+				parent.appendChild(el);
+				return el;
+			};
+			/* a pane showing a look's screen with one clip on its plate, the view keyed */
+			const shot = (parent, side, { look, clip, region, map, at, rate, viewKeys, plate }) => {
+				const p = pane(parent, side);
+				const s = screen(p, { plate: plate || PLATES[look], clip: clip && CLIPS[clip], region: region || (clip && REGION[clip]) });
+				if (s.video) vclip(f, s.video, map ? { map } : { at, rate: rate || 1 });
+				view(f, s.el, side === 'full' ? W : 960, H, viewKeys);
+				return { p, s };
+			};
+
+			/* titles sit centred low, over the seam */
+			const T = (id, t, out, accent = -1) => {
+				f.tw(id, [[0, { x: 960, y: 930 }]]);
+				f.show(id, t - 0.05, out + 0.45);
+				title(f, id, t, { out, accent });
+			};
+
+			/* A1 · 0–2.8: the materials drift together; the seam lights; the Badge */
+			f.show('#mats', 0, 3.4);
+			f.show('#mats', 57.6, D);
+			const matIn = keyed([[0, { d: 430 }], [1.25, { d: 0 }, 'o'], [57.6, { d: 0 }], [58.8, { d: 0 }], [62, { d: 430 }, 'io5']]);
+			f.fx((t) => {
+				const { d } = matIn(t);
+				$('#matL').style.transform = `translateX(${-d}px)`;
+				$('#matR').style.transform = `translateX(${d}px)`;
+				$('#matR').querySelector('svg').style.transform = `rotate(${t * 6}deg)`;
+			});
+			f.tw('#seam', [[0, { o: 0, sy: 0.2 }], [1.05, { o: 0, sy: 0.2 }], [1.5, { o: 1, sy: 1 }, 'o'], [57.8, { o: 1 }], [58.4, { o: 0 }, 'i'], [61.6, { o: 0 }], [62, { o: 0 }]]);
+			f.tw('#badge', [
+				[0, { x: 960, y: 470, s: 0, o: 0 }],
+				[1.7, { x: 960, y: 470, s: 0, o: 0 }],
+				[2.15, { s: 1, o: 1 }, 'back'],
+				[2.8, { x: 960, y: 470, s: 1 }],
+				[3.6, { x: 960, y: 74, s: 0.34 }, 'io5'],
+				[56.8, { x: 960, y: 74, s: 0.34, o: 1 }],
+				[58.2, { x: 960, y: 430, s: 1, o: 1 }, 'io5'],
+				[61.2, { x: 960, y: 430, s: 1, o: 1 }],
+				[61.8, { s: 0.9, o: 0 }, 'i']
+			]);
+			T('#t1', 2.3, 2.9, -1);
+
+			/* A2 · 2.8–6.0: the real desktop, Glass | Material, the camera pulling back */
+			const L2 = layer(2.6, 6.8);
+			f.tw(L2, [[2.6, { o: 0 }], [3.2, { o: 1 }, 'o']]);
+			shot(L2, 'l', { look: 'g', viewKeys: [[2.6, { cx: 960, cy: 540, s: 1.25 }], [6, { cx: 480, cy: 540, s: 1 }, 'io5']] });
+			shot(L2, 'r', { look: 'm', viewKeys: [[2.6, { cx: 960, cy: 540, s: 1.25 }], [6, { cx: 1440, cy: 540, s: 1 }, 'io5']] });
+			T('#t2', 4.4, 5.6, -1);
+
+			/* A3 · 6.0–13.0: the seam sweeps right, uncovering Glass full frame: the switch */
+			const L3 = layer(6.0, 13.2);
+			const sw = shot(L3, 'full', { look: 'g', clip: 'full-switch', plate: PLATES.gfull, map: CLIPS.map['full-switch'], viewKeys: [[6, { cx: 960, cy: 540, s: 1.0 }], [12.4, { cx: 960, cy: 540, s: 1.04 }, 'lin']] });
+			const seamX = keyed([[0, { x: 960 }], [6.0, { x: 960 }], [7.0, { x: 1930 }, 'io5'], [12.4, { x: 1930 }], [13.2, { x: 960 }, 'io5'], [62, { x: 960 }]]);
+			f.fx((t) => {
+				const { x } = seamX(t);
+				$('#seam').style.left = x - 1 + 'px';
+				/* the switch layer shows left of the seam until it has crossed */
+				L3.style.clipPath = t < 7.0 ? `inset(0 ${1920 - x}px 0 0)` : t > 12.4 ? `inset(0 ${1920 - x}px 0 0)` : 'none';
+			});
+			T('#t3', 10.6, 12.3, -1);
+
+			/* A4 · 13.0–20.0: the island in both looks, close */
+			const L4 = layer(12.4, 20.2);
+			shot(L4, 'l', { look: 'g', clip: 'g-island', at: 13.4, viewKeys: [[12.4, { cx: 960, cy: 110, s: 1.05 }], [20, { cx: 960, cy: 100, s: 1.15 }, 'lin']] });
+			shot(L4, 'r', { look: 'm', clip: 'm-island', at: 13.4, viewKeys: [[12.4, { cx: 960, cy: 110, s: 1.05 }], [20, { cx: 960, cy: 100, s: 1.15 }, 'lin']] });
+			T('#t4', 17.4, 19.5, -1);
+
+			/* A5 · 20.0–27.0: Quick Settings in both looks */
+			const L5 = layer(20.0, 27.3);
+			shot(L5, 'l', { look: 'g', clip: 'g-cc', at: 20.0, viewKeys: [[20, { cx: 1700, cy: 300, s: 1.45 }], [27, { cx: 1700, cy: 300, s: 1.55 }, 'lin']] });
+			shot(L5, 'r', { look: 'm', clip: 'm-cc', at: 20.0, viewKeys: [[20, { cx: 1700, cy: 300, s: 1.45 }], [27, { cx: 1700, cy: 300, s: 1.55 }, 'lin']] });
+			T('#t5', 24.6, 26.6, 2);
+			/* whip out */
+			f.tw(L5, [[26.75, { mbx: 0, dx: 0 }], [27.3, { mbx: 60, dx: -400 }, 'i3']]);
+
+			/* A6 · 27.0–34.0: circle (Glass) → the answer (Material) */
+			const L6 = layer(27.0, 34.4);
+			f.tw(L6, [[27.0, { mbx: 60, dx: 400 }], [27.45, { mbx: 0, dx: 0 }, 'o']]);
+			shot(L6, 'l', { look: 'g', clip: 'full-g-circle', plate: PLATES.gfull, at: 27.2, viewKeys: [[27, { cx: 970, cy: 540, s: 0.78 }], [31, { cx: 970, cy: 540, s: 0.86 }, 'io5'], [34.4, { cx: 970, cy: 540, s: 0.86 }]] });
+			shot(L6, 'r', { look: 'm', clip: 'full-m-circle', plate: PLATES.mfull, at: 27.2, viewKeys: [[27, { cx: 300, cy: 540, s: 1.05 }], [34.4, { cx: 290, cy: 540, s: 1.1 }, 'lin']] });
+			T('#t6', 31.6, 33.6, -1);
+
+			/* A7 · 34.0–41.0: the AI sidebar, then its past chats, both looks */
+			const L7 = layer(34.0, 41.3);
+			f.tw(L7, [[34.0, { dx: -960, o: 1 }], [34.7, { dx: 0 }, 'o']]);
+			const a7 = (side, look) => {
+				shot(L7, side, { look, clip: look + '-ask', at: 33.9, rate: 1.25, viewKeys: [[34, { cx: 235, cy: 540, s: 1.0 }], [37.4, { cx: 235, cy: 520, s: 1.08 }, 'lin']] });
+				const c = shot(L7, side, { look, clip: look + '-chats', at: 37.4, viewKeys: [[37.4, { cx: 235, cy: 520, s: 1.08 }], [41.3, { cx: 235, cy: 540, s: 1.12 }, 'lin']] });
+				f.show(c.p, 37.4, 41.3);
+			};
+			a7('l', 'g');
+			a7('r', 'm');
+			T('#t7', 38.6, 40.7, 2);
+
+			/* A8 · 41.0–47.0: Live Text, both looks; pushing into the selection */
+			const L8 = layer(41.0, 47.4);
+			f.tw(L8, [[41.0, { dy: -120, o: 0 }], [41.6, { dy: 0, o: 1 }, 'o']]);
+			shot(L8, 'l', { look: 'g', clip: 'g-livetext', at: 41.2, viewKeys: [[41, { cx: 960, cy: 560, s: 0.68 }], [46.5, { cx: 900, cy: 520, s: 1.0 }, 'io5']] });
+			shot(L8, 'r', { look: 'm', clip: 'm-livetext', at: 41.2, viewKeys: [[41, { cx: 960, cy: 560, s: 0.68 }], [46.5, { cx: 900, cy: 520, s: 1.0 }, 'io5']] });
+			T('#t8', 44.8, 46.8, -1);
+
+			/* A9 · 47.0–53.0: the phone (rebuilt) sends; the laptop receives (Material) */
+			const L9 = layer(47.0, 53.4);
+			const pl = pane(L9, 'l');
+			pl.style.background = 'radial-gradient(circle at 50% 40%, #1d2a33, #0b0b0e 70%)';
+			const ph = document.createElement('div');
+			ph.id = 'phone';
+			ph.innerHTML = `<div class="scr2"><img class="photo" src="capture/seed/photos/tram-photo.jpg"><div class="sheet">Share<div class="row"><div class="dev on"><i></i>Maya's laptop</div><div class="dev"><i></i>Studio TV</div><div class="dev"><i></i>Nearby</div></div></div></div>`;
+			pl.appendChild(ph);
+			f.tw(ph, [[47, { x: 480, y: 600, ry: -18, s: 0.9 }], [48.2, { x: 480, y: 540, ry: 0, s: 1 }, 'o'], [53.4, { x: 480, y: 530, s: 1.03 }, 'lin']]);
+			shot(L9, 'r', { look: 'm', clip: 'm-share', at: 47.6, viewKeys: [[47, { cx: 960, cy: 560, s: 1.0 }], [53.4, { cx: 960, cy: 560, s: 1.08 }, 'lin']] });
+			f.show('#flyer', 47.9, 49.0);
+			f.tw('#flyer', [[47.9, { x: 480, y: 420, s: 0.6, o: 1, r: 0 }], [48.9, { x: 1440, y: 500, s: 0.3, o: 0, r: 8 }, 'io5']]);
+			T('#t9', 50.6, 52.7, -1);
+
+			/* A10 · 53.0–58.0: the wallpaper changes, and the colours follow */
+			const L10 = layer(53.0, 58.8);
+			shot(L10, 'l', { look: 'g', clip: 'full-g-colour', plate: PLATES.gfull, at: 52.9, rate: 1.0, viewKeys: [[53, { cx: 480, cy: 540, s: 1.0 }], [58.8, { cx: 480, cy: 540, s: 1.04 }, 'lin']] });
+			shot(L10, 'r', { look: 'm', clip: 'full-m-colour', plate: PLATES.mfull, at: 52.9, rate: 1.0, viewKeys: [[53, { cx: 1440, cy: 540, s: 1.0 }], [58.8, { cx: 1440, cy: 540, s: 1.04 }, 'lin']] });
+			T('#t10', 55.0, 57.0, 3);
+
+			/* A11 · 58.0–62.0: the halves part; Tessera; the materials drift back (the loop) */
+			const part = keyed([[0, { d: 0 }], [57.8, { d: 0 }], [58.8, { d: 560 }, 'io5'], [62, { d: 560 }]]);
+			f.fx((t) => {
+				const { d } = part(t);
+				L10.querySelectorAll('.pane.l').forEach((p) => (p.style.transform = `translateX(${-d}px)`));
+				L10.querySelectorAll('.pane.r').forEach((p) => (p.style.transform = `translateX(${d}px)`));
+			});
+			f.tw('#mats', [[0, { o: 1 }], [3.0, { o: 1 }], [3.4, { o: 0 }], [57.6, { o: 0 }], [58.8, { o: 0 }], [60.2, { o: 1 }, 'io'], [62, { o: 1 }]]);
+			f.show('#name', 58.4, 61.8);
+			f.tw('#name', [[58.4, { x: 960, y: 640, o: 0, blur: 16, s: 0.96 }], [59.1, { o: 1, blur: 0, s: 1 }, 'o'], [61.1, { o: 1 }], [61.7, { o: 0, blur: 10 }, 'i']]);
+			f.tw('#scrim', [[0, { o: 0 }], [6.2, { o: 0 }], [13.0, { o: 0 }], [13.4, { o: 1 }], [57.6, { o: 1 }], [58.2, { o: 0 }]]);
+
+			f.start();
+		</script>
+	</body>
+</html>

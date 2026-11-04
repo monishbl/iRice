@@ -1,0 +1,2167 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="data:," />
+		<title>Tessera</title>
+		<!--
+		Tessera's launch film: a 75.8 s muted loop, built on the site's iRice hero
+		film (../hero/film.html, which people rated 9/10): its glass opener, its
+		devices and warps, its Captions and Just say it, and its footage where
+		nothing changed. What's new: Tessera's name and Badge; the island and
+		sharing takes recorded again with generic names (capture/: the hidden
+		sandbox, the same framing and leaves); and, recorded too, Search
+		handing a question to the AI sidebar, Circle anything (and its web
+		result), Copy text from pictures, Bedside Mode to an unlock, the glass ramping
+		from flat to its strongest, and Material's colours.
+
+		The warps bend stills of this film: render with ?nowarp=1, save the frames
+		at WARPS' edges (and the Badge wipe's, 66.1 and 67.1) into snap/, then
+		play normally.
+
+		  Footage: capture/capture.sh calm islands fix2 mat fix3 … fix9   (hidden sandbox)
+		           capture/make-frames.sh                               (→ frames/)
+		  Preview: from site/film:  python3 -m http.server 4173
+		           http://localhost:4173/tessera/film.html?player=1
+
+		  t (s)        shot                                          cut out
+		  0.00–4.60    petals; a drop gathers; photos change; it      (the island
+		               leaps up and lands as the island                 matches)
+		  4.60–10.60   the island: charging | notification | Wi-Fi    cuts
+		               | volume | music
+		  10.60–12.20  pull back: the island is on a laptop           (continuous)
+		  12.20–20.20  split: the case opens | the earbuds connect    devices swap
+		  20.20–28.70  a phone sends two photos; the laptop accepts   pull back
+		  28.70–32.60  Phones and laptops, shared: another laptop     whip up
+		  32.60–37.50  Just ask…: four answers                        cut on the bar
+		  37.50–41.60  …ask anything.: Search answers, then grows  whip left
+		               into the sidebar
+		  41.60–46.30  Circle anything: a water lily circled; the     whip left
+		               web result opens round it
+		  46.30–49.50  Copy text from pictures: a poster scanned in   liquid warp
+		               depth, its lines lift off into a card
+		  50.50–53.60  Captions, live                                 bar → island
+		  53.60–56.60  Just say it                                    liquid warp
+		  57.60–62.45  Bedside Mode (widgets, slide, clock), the lock      the lock lifts
+		               screen, the face and the finger, unlocked
+		  62.50–66.10  All in glass: the sliders | Quick Settings     in on the
+		               as the glass ramps; in on the account picture    picture
+		  66.10–67.10  the Badge opens out of it onto Material        (the wipe)
+		  67.10–69.10  Or Material: Quick Settings                    cut to black
+		  69.10–71.30  Colours that follow you: the loader turns,     the Badge opens
+		               a new colour each time, back to the Badge        onto the petals
+		  72.10–75.80  drops on the petals become the Badge; the      (loops to 0)
+		               name is shot onto it
+		-->
+		<style>
+			@font-face {
+				font-family: 'Geist';
+				src: url('../engine/fonts/Geist-Variable.woff2') format('woff2');
+				font-weight: 100 900;
+			}
+			@font-face {
+				font-family: 'Phosphor';
+				src: url('../hero/assets/Phosphor.ttf') format('truetype');
+			}
+			@font-face {
+				font-family: 'Phosphor-Fill';
+				src: url('../hero/assets/Phosphor-Fill.ttf') format('truetype');
+			}
+			:root {
+				--accent: #2997ff;
+				--ink: #f5f5f7;
+				--ink2: rgba(235, 235, 245, 0.66);
+				--ink3: rgba(235, 235, 245, 0.45);
+				--green: #30d158;
+				--red: #ff453a;
+				--blue: #0a84ff;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #000;
+				overflow: hidden;
+			}
+			#art {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				width: 1920px;
+				height: 1080px;
+				overflow: hidden;
+				background: #000;
+				font-family: 'Geist', system-ui, sans-serif;
+				color: var(--ink);
+				transform-origin: 50% 50%;
+				-webkit-font-smoothing: antialiased;
+			}
+			#world {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+				transform-origin: 0 0;
+			}
+			.a {
+				position: absolute;
+				left: 0;
+				top: 0;
+				white-space: nowrap;
+			}
+			.abs {
+				position: absolute;
+			}
+			.ph {
+				font-family: 'Phosphor';
+				font-style: normal;
+				line-height: 1;
+			}
+			.phf {
+				font-family: 'Phosphor-Fill';
+				font-style: normal;
+				line-height: 1;
+			}
+			#gl {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+			}
+			.pill {
+				background: #000;
+				border-radius: 999px;
+				box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.13);
+				overflow: hidden;
+			}
+			.title {
+				font-size: 104px;
+				font-weight: 600;
+				letter-spacing: -0.035em;
+				line-height: 1;
+				text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25);
+			}
+			.title.sm {
+				font-size: 84px;
+			}
+			.acc {
+				color: var(--accent);
+			}
+			#bg {
+				width: 2000px;
+				height: 1125px;
+				background: url('../hero/assets/leaves-blur.jpg') center / cover;
+				filter: brightness(0.6) saturate(1.1);
+			}
+			.card {
+				box-sizing: border-box;
+				overflow: hidden;
+			}
+			.glass {
+				background: rgba(28, 28, 32, 0.5);
+				box-shadow:
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.16),
+					inset 0 1.5px 0 rgba(255, 255, 255, 0.18),
+					0 30px 80px rgba(0, 0, 0, 0.35);
+				backdrop-filter: blur(30px) saturate(1.4);
+			}
+			.in {
+				position: absolute;
+				inset: 0;
+			}
+
+			/* ── the devices (laid out in #dev, a full frame that whips away) ── */
+			#dev {
+				width: 1920px;
+				height: 1080px;
+			}
+			#stage {
+				position: absolute;
+				inset: 0;
+				background: radial-gradient(ellipse 1100px 700px at 50% 55%, #1a1a1e, #08080a 75%);
+			}
+			.panel {
+				position: absolute;
+				overflow: hidden;
+				box-sizing: border-box;
+			}
+			#pL {
+				background: #161618;
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+			}
+			#pR,
+			#pP {
+				background: #ececef;
+			}
+			#lapBox {
+				position: absolute;
+				inset: 0;
+			}
+			/* a thin aluminium laptop: a black glass lid with a silver edge, the base's lip below */
+			.laptop {
+				width: 1440px;
+				height: 826px;
+			}
+			.laptop .lid {
+				position: absolute;
+				left: 98px;
+				top: 0;
+				width: 1244px;
+				height: 796px;
+				border-radius: 38px 38px 12px 12px;
+				background: #050506;
+				box-shadow:
+					0 0 0 2.5px #a7a9b0,
+					0 0 0 4px #55575e;
+			}
+			.laptop .cam {
+				position: absolute;
+				left: 618px;
+				top: 8px;
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #1b1d24;
+				box-shadow: inset 0 0 0 1.5px #2c2f3a;
+			}
+			.laptop .scr {
+				position: absolute;
+				left: 22px;
+				top: 22px;
+				width: 1200px;
+				height: 750px;
+				overflow: hidden;
+				border-radius: 10px 10px 3px 3px;
+				background: #000;
+			}
+			.scr img {
+				position: absolute;
+				display: block;
+			}
+			.laptop .glare {
+				position: absolute;
+				inset: 0;
+				border-radius: inherit;
+				background: linear-gradient(118deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 36%);
+			}
+			.laptop .base {
+				position: absolute;
+				left: 0;
+				top: 793px;
+				width: 1440px;
+				height: 31px;
+				border-radius: 3px 3px 34px 34px / 3px 3px 28px 28px;
+				background: linear-gradient(#f1f2f5, #c9cbd1 30%, #9fa1a8 78%, #74767d);
+			}
+			.laptop .notch {
+				position: absolute;
+				left: 605px;
+				top: 793px;
+				width: 230px;
+				height: 11px;
+				border-radius: 0 0 14px 14px;
+				background: linear-gradient(#9a9ca3, #cfd1d6);
+			}
+			.laptop.dk .lid {
+				box-shadow:
+					0 0 0 2.5px #4a4b51,
+					0 0 0 4px #26272b;
+			}
+			.laptop.dk .base {
+				background: linear-gradient(#6d6e74, #3d3e43 35%, #26272b 80%, #18181b);
+			}
+			.laptop.dk .notch {
+				background: linear-gradient(#1c1c1f, #3a3b40);
+			}
+			/* the other laptop's screen: its own wallpaper, and what arrived */
+			#lap2 .scr {
+				background: url('../hero/assets/p-ocean.jpg') center / cover;
+			}
+			#toast {
+				position: absolute;
+				right: 36px;
+				top: 36px;
+				width: 470px;
+				height: 128px;
+				border-radius: 22px;
+				background: rgba(250, 250, 252, 0.92);
+				box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+				display: flex;
+				align-items: center;
+				gap: 20px;
+				padding: 0 24px;
+				box-sizing: border-box;
+				color: #18181b;
+			}
+			#toast i {
+				width: 80px;
+				height: 80px;
+				border-radius: 14px;
+				background: url('../hero/assets/photo-a.jpg') center / cover;
+				flex: none;
+			}
+			#toast b {
+				display: block;
+				font-size: 28px;
+				font-weight: 600;
+			}
+			#toast span {
+				font-size: 23px;
+				color: #52525b;
+			}
+
+			/* the phone: a black slab with a thin frame, a punch-hole camera */
+			.phone {
+				width: 380px;
+				height: 800px;
+				border-radius: 64px;
+				background: #0b0b0d;
+				box-shadow:
+					0 0 0 3px #4a4b52,
+					0 0 0 5px #222328,
+					0 40px 80px rgba(0, 0, 0, 0.22);
+			}
+			.pscr {
+				position: absolute;
+				inset: 12px;
+				border-radius: 52px;
+				overflow: hidden;
+				background: #0e0e10;
+				color: #f4f4f5;
+			}
+			.pcam {
+				position: absolute;
+				left: 169px;
+				top: 18px;
+				width: 18px;
+				height: 18px;
+				border-radius: 50%;
+				background: #030303;
+				box-shadow: inset 0 0 0 2px #17171c;
+			}
+			.pbar {
+				position: absolute;
+				left: 34px;
+				right: 30px;
+				top: 18px;
+				display: flex;
+				justify-content: space-between;
+				font-size: 17px;
+				font-weight: 600;
+			}
+			.pbar .ph {
+				font-size: 18px;
+				margin-left: 6px;
+			}
+			#pHead {
+				position: absolute;
+				left: 26px;
+				top: 64px;
+				font-size: 24px;
+				font-weight: 600;
+			}
+			#pBig {
+				position: absolute;
+				left: 0;
+				top: 110px;
+				width: 356px;
+				height: 240px;
+				background: url('../hero/assets/photo-a.jpg') center / cover;
+			}
+			.pgrid {
+				position: absolute;
+				left: 6px;
+				top: 356px;
+				display: grid;
+				grid-template-columns: repeat(3, 112px);
+				gap: 4px;
+			}
+			.pgrid i {
+				height: 112px;
+				background-size: cover;
+				background-position: center;
+				position: relative;
+			}
+			.pgrid i.sel::after {
+				content: '';
+				position: absolute;
+				right: 8px;
+				top: 8px;
+				width: 22px;
+				height: 22px;
+				border-radius: 50%;
+				background: var(--blue);
+				box-shadow: 0 0 0 2.5px #fff;
+			}
+			#psheet {
+				position: absolute;
+				left: 0;
+				bottom: 0;
+				width: 356px;
+				height: 440px;
+				border-radius: 32px 32px 0 0;
+				background: #202124;
+				box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4);
+			}
+			#psheet .hd {
+				position: absolute;
+				left: 158px;
+				top: 12px;
+				width: 40px;
+				height: 5px;
+				border-radius: 3px;
+				background: #5f6066;
+			}
+			#psheet .t1 {
+				position: absolute;
+				left: 28px;
+				top: 38px;
+				font-size: 23px;
+				font-weight: 600;
+			}
+			#psheet .t2 {
+				position: absolute;
+				left: 28px;
+				top: 72px;
+				font-size: 16px;
+				color: #a1a1aa;
+			}
+			#psheet .thumbs {
+				position: absolute;
+				right: 26px;
+				top: 38px;
+				display: flex;
+				gap: 6px;
+			}
+			#psheet .thumbs i {
+				width: 52px;
+				height: 52px;
+				border-radius: 12px;
+				background-size: cover;
+				background-position: center;
+			}
+			.av {
+				position: absolute;
+				top: 132px;
+				width: 100px;
+				text-align: center;
+			}
+			.av .disc {
+				position: relative;
+				width: 68px;
+				height: 68px;
+				margin: 0 auto;
+				border-radius: 50%;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 44px;
+			}
+			.av b {
+				display: block;
+				font-size: 15px;
+				font-weight: 600;
+				margin-top: 12px;
+			}
+			.av span {
+				display: block;
+				font-size: 13px;
+				color: #a1a1aa;
+				margin-top: 4px;
+				font-variant-numeric: tabular-nums;
+			}
+			/* (the icons, not the captions under them) */
+			.av .disc > .ph {
+				font-size: 36px;
+				margin-top: 0;
+				color: #e4e4e7;
+			}
+			#avCheck .ph {
+				font-size: 16px;
+				margin-top: 0;
+				color: #fff;
+			}
+			#avRing {
+				position: absolute;
+				left: -8px;
+				top: -8px;
+				width: 84px;
+				height: 84px;
+			}
+			#avCheck {
+				position: absolute;
+				right: -5px;
+				bottom: -5px;
+				width: 28px;
+				height: 28px;
+				border-radius: 50%;
+				background: var(--green);
+				box-shadow: 0 0 0 3px #202124;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 18px;
+				color: #fff;
+			}
+			#tap {
+				position: absolute;
+				width: 68px;
+				height: 68px;
+				border-radius: 50%;
+				background: rgba(255, 255, 255, 0.35);
+			}
+			.fly {
+				width: 150px;
+				height: 112px;
+				border-radius: 16px;
+				background-size: cover;
+				background-position: center;
+				box-shadow:
+					0 18px 40px rgba(0, 0, 0, 0.35),
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.25);
+			}
+
+			/* the earbuds, in their case (like the phone's Fast Pair sheet: a scalloped disc behind) */
+			#case {
+				width: 340px;
+				height: 330px;
+			}
+			#case > div,
+			#case > svg {
+				position: absolute;
+			}
+			#lidBox {
+				left: 20px;
+				top: 70px;
+				width: 300px;
+				height: 104px;
+				perspective: 700px;
+			}
+			#lid {
+				position: absolute;
+				inset: 0;
+				border-radius: 120px 120px 18px 18px / 90px 90px 18px 18px;
+				background: linear-gradient(#ffffff, #eeeef1 60%, #dcdce1);
+				box-shadow:
+					inset 0 2px 0 rgba(255, 255, 255, 0.9),
+					inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+				transform-origin: 50% 100%;
+			}
+			#body {
+				left: 20px;
+				top: 172px;
+				width: 300px;
+				height: 150px;
+				border-radius: 18px 18px 150px 150px / 18px 18px 110px 110px;
+				background: linear-gradient(#f9f9fb, #e7e7eb 45%, #c9cad0);
+				box-shadow:
+					inset 0 2px 0 rgba(0, 0, 0, 0.08),
+					0 26px 40px rgba(0, 0, 0, 0.12);
+			}
+			#body::after {
+				content: '';
+				position: absolute;
+				left: 146px;
+				top: 92px;
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #9b9ca4;
+			}
+			#well {
+				left: 38px;
+				top: 160px;
+				width: 264px;
+				height: 30px;
+				border-radius: 50%;
+				background: radial-gradient(ellipse at 50% 40%, #3a3a40, #1c1c20);
+			}
+			.bud {
+				width: 92px;
+				height: 140px;
+			}
+			#ripple1,
+			#ripple2 {
+				left: 20px;
+				top: 50px;
+				width: 300px;
+				height: 300px;
+				border-radius: 50%;
+				box-shadow: 0 0 0 3px var(--blue);
+			}
+			#chip {
+				height: 64px;
+				padding: 0 28px;
+				border-radius: 999px;
+				background: #fff;
+				box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				font-size: 26px;
+				font-weight: 500;
+				color: #18181b;
+			}
+			#chipDot {
+				width: 14px;
+				height: 14px;
+				border-radius: 50%;
+				background: #a1a1aa;
+			}
+
+			/* Search */
+			#bar .in {
+				display: flex;
+				align-items: center;
+				padding: 0 56px;
+				gap: 30px;
+			}
+			#bar .ph {
+				font-size: 60px;
+				color: var(--ink2);
+			}
+			#query {
+				font-size: 64px;
+				font-weight: 450;
+				letter-spacing: -0.01em;
+			}
+			#caret {
+				width: 4px;
+				height: 70px;
+				background: var(--accent);
+				border-radius: 2px;
+				margin-left: -26px;
+			}
+			#ans {
+				border-radius: 44px;
+				backdrop-filter: blur(30px) saturate(1.3);
+			}
+			#ans .in {
+				display: flex;
+				align-items: center;
+				padding: 0 44px;
+				gap: 40px;
+			}
+			#tile {
+				width: 136px;
+				height: 136px;
+				border-radius: 34px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				flex: none;
+			}
+			#tile .phf {
+				font-size: 76px;
+				color: #fff;
+			}
+			#ansBig {
+				font-size: 96px;
+				font-weight: 650;
+				letter-spacing: -0.02em;
+				font-variant-numeric: tabular-nums;
+				line-height: 1;
+			}
+			#ansSub {
+				font-size: 40px;
+				color: var(--ink2);
+				margin-top: 10px;
+			}
+			/* Search → sidebar: one glass container between the two */
+			#saMorph {
+				position: absolute;
+				overflow: hidden;
+				background: rgba(18, 26, 16, 0.55);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+				backdrop-filter: blur(24px);
+			}
+			#saMorph img {
+				position: absolute;
+				width: 1920px;
+				height: 1080px;
+			}
+			/* All in glass: two cards side by side */
+			.shot.split {
+				width: 800px;
+				height: 760px;
+			}
+			#gL.shot.split {
+				width: 600px;
+			}
+			.blurbox {
+				position: absolute;
+				border-radius: 6px;
+				backdrop-filter: blur(5px);
+			}
+			/* Tessera's recorded screens: a screen floating over the leaves, rounded,
+			   pushing in on what matters (its .inner moves) */
+			.shot {
+				width: 1920px;
+				height: 1080px;
+				border-radius: 44px;
+				overflow: hidden;
+				background: #0b0d0b;
+				box-shadow:
+					0 40px 100px rgba(0, 0, 0, 0.45),
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.15);
+			}
+			.shot .inner {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+				transform-origin: 0 0;
+			}
+			.shot img {
+				position: absolute;
+			}
+			.shot .full {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+			}
+			/* Circle anything: the trail (the shell's own stroke: a 5 px accent line
+			   over a 14 px white glow at 45%), and the web result it opens */
+			#pen path {
+				fill: none;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+			#penGlow {
+				stroke: #fff;
+				stroke-width: 14;
+				opacity: 0.45;
+			}
+			#penLine {
+				stroke: #0a84ff;
+				stroke-width: 5;
+			}
+			#webDim {
+				background: rgba(0, 0, 0, 0.5);
+			}
+			#webWin {
+				position: absolute;
+				left: 330px;
+				top: 170px;
+				width: 1260px;
+				height: 680px;
+				border-radius: 20px;
+				background: #1a1a1d;
+				box-shadow:
+					inset 0 0 0 1px #36363c,
+					0 30px 90px rgba(0, 0, 0, 0.5);
+			}
+			#webBar {
+				position: absolute;
+				left: 330px;
+				top: 170px;
+				width: 1260px;
+				height: 56px;
+				border-bottom: 1px solid #26262a;
+				color: #94949d;
+				font-size: 20px;
+			}
+			#webBar > .ph {
+				position: absolute;
+				top: 18px;
+			}
+			#webBar > .ph:nth-child(1) {
+				left: 24px;
+			}
+			#webBar > .ph:nth-child(2) {
+				left: 56px;
+			}
+			#webBar > .ph:nth-child(3) {
+				left: 88px;
+			}
+			#webAddr {
+				position: absolute;
+				left: 330px;
+				top: 10px;
+				width: 600px;
+				height: 36px;
+				border-radius: 10px;
+				background: #2c2c31;
+				color: #d4d4d8;
+				font-size: 16px;
+				line-height: 36px;
+				box-sizing: border-box;
+				padding-left: 76px;
+			}
+			#webAddr .ph {
+				position: absolute;
+				left: 14px;
+				top: 9px;
+				font-size: 18px;
+				color: #94949d;
+			}
+			#webThumb {
+				position: absolute;
+				left: 40px;
+				top: 6px;
+				width: 24px;
+				height: 24px;
+				border-radius: 6px;
+				background: url('photos/match3.jpg') center / cover;
+			}
+			#webName,
+			#webKind,
+			#webChips,
+			#webHead {
+				position: absolute;
+				left: 370px;
+				color: #ededef;
+			}
+			#webName {
+				top: 568px;
+				font-size: 40px;
+				font-weight: 600;
+				letter-spacing: -0.02em;
+			}
+			#webKind {
+				top: 624px;
+				font-size: 19px;
+				color: #a1a1aa;
+			}
+			#webChips {
+				top: 670px;
+				display: flex;
+				gap: 8px;
+			}
+			#webChips span {
+				font-size: 15px;
+				line-height: 34px;
+				padding: 0 14px;
+				border-radius: 999px;
+				background: #2c2c31;
+				color: #d4d4d8;
+			}
+			#webHead {
+				left: 806px;
+				top: 248px;
+				font-size: 20px;
+				font-weight: 600;
+			}
+			#webGrid {
+				position: absolute;
+				left: 806px;
+				top: 290px;
+				width: 752px;
+				display: grid;
+				grid-template-columns: repeat(3, 240px);
+				gap: 16px;
+			}
+			#webGrid img {
+				position: static;
+				width: 240px;
+				height: 252px;
+				object-fit: cover;
+				border-radius: 14px;
+			}
+			#lift {
+				position: absolute;
+				overflow: hidden;
+			}
+			#lift img {
+				transform-origin: 0 0;
+			}
+			/* Copy text from pictures: the scan, the lines it finds, the card */
+			#scan {
+				position: absolute;
+				left: 431px;
+				top: 163px;
+				width: 1059px;
+				height: 794px;
+				mix-blend-mode: screen;
+			}
+			.hl {
+				position: absolute;
+				border-radius: 8px;
+				background: rgba(10, 132, 255, 0.22);
+				box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.75);
+			}
+			.slice {
+				position: absolute;
+				overflow: hidden;
+				transform-origin: 0 0;
+			}
+			.slice img {
+				left: 0;
+				top: 0;
+				width: 1920px;
+				height: 1080px;
+			}
+			.ttxt {
+				position: absolute;
+				left: 0;
+				top: 0;
+				transform-origin: 0 0;
+				color: #f4f4f6;
+				white-space: pre;
+			}
+			#ltCard {
+				position: absolute;
+				background: rgba(26, 26, 30, 0.78);
+				box-shadow:
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.16),
+					inset 0 1.5px 0 rgba(255, 255, 255, 0.18),
+					0 30px 80px rgba(0, 0, 0, 0.45);
+				backdrop-filter: blur(30px) saturate(1.4);
+			}
+			#ltHead {
+				position: absolute;
+				left: 742px;
+				top: 452px;
+				font-size: 19px;
+				color: #a1a1aa;
+			}
+			#ltHead .ph {
+				margin-right: 10px;
+				vertical-align: -3px;
+				font-size: 22px;
+			}
+			#ltCopy {
+				position: absolute;
+				left: 742px;
+				top: 730px;
+				height: 48px;
+				padding: 0 22px;
+				border-radius: 999px;
+				background: #0a84ff;
+				color: #fff;
+				font-size: 19px;
+				font-weight: 500;
+				line-height: 48px;
+				transform-origin: 50% 50%;
+			}
+			#ltCopy .ph {
+				margin-right: 10px;
+				vertical-align: -3px;
+				font-size: 21px;
+			}
+			/* captions */
+			#vid {
+				width: 1320px;
+				height: 742px;
+				border-radius: 34px;
+				overflow: hidden;
+				box-shadow:
+					0 40px 100px rgba(0, 0, 0, 0.45),
+					inset 0 0 0 1.5px rgba(255, 255, 255, 0.15);
+			}
+			#vidImg {
+				position: absolute;
+				inset: 0;
+				background: url('../hero/assets/p-ocean.jpg') center / cover;
+			}
+			#ccBadge {
+				position: absolute;
+				left: 30px;
+				top: 30px;
+				padding: 12px 22px;
+				border-radius: 999px;
+				background: rgba(0, 0, 0, 0.55);
+				backdrop-filter: blur(16px);
+				font-size: 30px;
+				font-weight: 600;
+				display: flex;
+				gap: 12px;
+				align-items: center;
+			}
+			#ccBadge .ph {
+				font-size: 36px;
+			}
+			#cap {
+				background: rgba(0, 0, 0, 0.74);
+				border-radius: 999px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				overflow: hidden;
+			}
+			#capText {
+				font-size: 46px;
+				font-weight: 500;
+			}
+			/* dictation */
+			#dict {
+				position: absolute;
+				inset: 0;
+				display: flex;
+				align-items: center;
+				padding: 0 44px;
+				gap: 22px;
+			}
+			#dot {
+				width: 22px;
+				height: 22px;
+				border-radius: 50%;
+				background: var(--red);
+				flex: none;
+			}
+			#dictLabel {
+				font-size: 44px;
+				font-weight: 600;
+				flex: 1;
+			}
+			#wave {
+				display: flex;
+				gap: 7px;
+				align-items: center;
+				height: 64px;
+			}
+			#wave i {
+				width: 8px;
+				border-radius: 4px;
+				background: #fff;
+				display: block;
+			}
+			#note .in {
+				padding: 46px 56px;
+			}
+			#noteHead {
+				font-size: 34px;
+				color: var(--ink2);
+				font-weight: 600;
+			}
+			#noteText {
+				font-size: 60px;
+				font-weight: 500;
+				letter-spacing: -0.01em;
+				margin-top: 18px;
+				white-space: normal;
+				line-height: 1.2;
+			}
+			/* Bedside Mode */
+			#clk {
+				font-size: 380px;
+				font-weight: 200;
+				letter-spacing: -0.04em;
+				line-height: 1;
+				font-variant-numeric: tabular-nums;
+				display: flex;
+			}
+			.dig {
+				display: inline-block;
+				position: relative;
+				overflow: hidden;
+				height: 380px;
+			}
+			.dig span {
+				display: block;
+			}
+			#sbDate {
+				font-size: 56px;
+				color: var(--ink2);
+				font-weight: 500;
+			}
+			.sbw {
+				width: 560px;
+				height: 250px;
+				border-radius: 46px;
+				background: rgba(44, 44, 48, 0.75);
+				padding: 40px 46px;
+				box-sizing: border-box;
+			}
+			.sbw .k {
+				font-size: 30px;
+				font-weight: 650;
+				letter-spacing: 0.04em;
+			}
+			.sbw b {
+				display: block;
+				font-size: 54px;
+				font-weight: 600;
+				margin-top: 18px;
+				letter-spacing: -0.01em;
+			}
+			.sbw span {
+				font-size: 36px;
+				color: var(--ink2);
+			}
+			#sbCap {
+				font-size: 48px;
+				color: var(--ink2);
+				font-weight: 500;
+			}
+			/* glass */
+			#vig {
+				width: 1920px;
+				height: 1080px;
+				background: radial-gradient(ellipse 900px 700px at 22% 50%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0) 70%);
+			}
+			/* the end: the name, shot onto the Badge */
+			#word {
+				font-size: 132px;
+				font-weight: 650;
+				letter-spacing: -0.035em;
+				line-height: 1;
+				color: #fff;
+				text-shadow:
+					0 2px 4px rgba(0, 0, 0, 0.12),
+					0 6px 40px rgba(0, 0, 0, 0.28);
+			}
+			#player {
+				position: fixed;
+				left: 16px;
+				right: 16px;
+				bottom: 16px;
+				display: flex;
+				gap: 12px;
+				align-items: center;
+				font: 13px system-ui;
+				color: #fff;
+			}
+			#player[hidden] {
+				display: none;
+			}
+			#player input {
+				flex: 1;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="art">
+			<div id="world">
+				<img id="ccimg" class="a" src="plates/cc-glass.jpg" style="width: 1920px; height: 1080px" data-persp="2400" alt="" />
+				<img id="mClip" class="a clip" style="width: 1920px; height: 1080px" alt="" />
+				<div id="ssid" class="a" style="width: 84px; height: 22px; border-radius: 6px; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px)"></div>
+			</div>
+
+			<div id="bg" class="a"></div>
+			<div id="vig" class="a"></div>
+
+			<!-- the devices -->
+			<div id="dev" class="a">
+				<div id="stage"></div>
+				<div id="pL" class="panel"></div>
+				<div id="pR" class="panel">
+					<svg class="abs" id="cookie" width="600" height="600" viewBox="-300 -300 600 600" style="left: 162px; top: 92px"><path id="cookiePath" fill="#dcdce1" /></svg>
+					<div id="case" class="abs" style="left: 292px; top: 220px">
+						<div id="ripple1"></div>
+						<div id="ripple2"></div>
+						<div id="lidBox"><div id="lid"></div></div>
+						<div id="well"></div>
+						<svg id="budL" class="bud" viewBox="-46 -40 92 140" style="left: 66px; top: 96px"><use href="#budArt" /></svg>
+						<svg id="budR" class="bud" viewBox="-46 -40 92 140" style="left: 182px; top: 96px"><use href="#budArt" transform="scale(-1 1)" /></svg>
+						<div id="body"></div>
+					</div>
+					<div id="chip" class="a"><div id="chipDot"></div><span id="chipText">Pairing mode</span></div>
+				</div>
+				<div id="pP" class="panel"></div>
+				<div id="lapBox">
+					<div id="lap" class="a laptop">
+						<div class="lid">
+							<div class="cam"></div>
+							<div class="scr">
+								<img src="plates/screen.jpg" style="left: 0; top: 0; width: 1200px; height: 750px" alt="" />
+								<img id="ovTop" class="clip" style="left: 400px; top: 0; width: 400px; height: 225px" alt="" />
+								<img id="ovCard" class="clip" style="left: 400px; top: 250px; width: 400px; height: 250px" alt="" />
+								<div class="glare"></div>
+							</div>
+						</div>
+						<div class="base"></div>
+						<div class="notch"></div>
+					</div>
+				</div>
+				<div id="phone" class="a phone">
+					<div class="pscr">
+						<div class="pbar"><span>10:10</span><span><span class="phf">&#xe4ea;</span><span class="phf">&#xe142;</span><span class="phf">&#xe0c0;</span></span></div>
+						<div class="pcam"></div>
+						<div id="pHead">2 selected</div>
+						<div id="pBig"></div>
+						<div class="pgrid">
+							<i class="sel" style="background-image: url('../hero/assets/photo-a.jpg')"></i>
+							<i class="sel" style="background-image: url('../hero/assets/photo-b.jpg')"></i>
+							<i style="background-image: url('../hero/assets/p-leaves.jpg')"></i>
+							<i style="background-image: url('../hero/assets/p-petals.jpg')"></i>
+							<i style="background-image: url('../hero/assets/p-ocean.jpg')"></i>
+							<i style="background-image: url('../hero/assets/leaves.jpg')"></i>
+						</div>
+						<div id="psheet">
+							<div class="hd"></div>
+							<div class="t1">Quick Share</div>
+							<div class="t2">Nearby devices</div>
+							<div class="thumbs"><i style="background-image: url('../hero/assets/photo-a.jpg')"></i><i style="background-image: url('../hero/assets/photo-b.jpg')"></i></div>
+							<div class="av" style="left: 20px">
+								<div id="avDisc" class="disc" style="background: #0a84ff">
+									<span class="ph" style="color: #fff">&#xe586;</span>
+									<svg id="avRing" viewBox="0 0 104 104"><circle cx="52" cy="52" r="49" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="4" /><circle id="avArc" cx="52" cy="52" r="49" fill="none" stroke="#64d2ff" stroke-width="4" stroke-linecap="round" transform="rotate(-90 52 52)" /></svg>
+									<div id="avCheck"><span class="ph" style="font-weight: 700">&#xe182;</span></div>
+								</div>
+								<b>Maya's laptop</b><span id="avState">Laptop</span>
+							</div>
+							<div class="av" style="left: 128px">
+								<div class="disc" style="background: #3a3b40"><span class="ph">&#xe1e6;</span></div>
+								<b>Studio tablet</b><span>Tablet</span>
+							</div>
+							<div class="av" style="left: 236px">
+								<div class="disc" style="background: #3a3b40"><span class="ph">&#xe1e0;</span></div>
+								<b>Sam's phone</b><span>Phone</span>
+							</div>
+							<div id="tap" class="abs" style="left: 36px; top: 132px"></div>
+						</div>
+					</div>
+				</div>
+				<div id="lap2" class="a laptop dk">
+					<div class="lid">
+						<div class="cam"></div>
+						<div class="scr"><div id="toast"><i></i><div><b>2 photos received</b><span>From Maya's laptop</span></div></div></div>
+					</div>
+					<div class="base"></div>
+					<div class="notch"></div>
+				</div>
+				<div id="fly1" class="a fly" style="background-image: url('../hero/assets/photo-a.jpg')"></div>
+				<div id="fly2" class="a fly" style="background-image: url('../hero/assets/photo-b.jpg')"></div>
+				<div id="fly3" class="a fly" style="background-image: url('../hero/assets/photo-a.jpg')"></div>
+				<div id="h1" class="a title sm">Earbuds, found.</div>
+				<div id="h7" class="a title">Phones and laptops, shared.</div>
+			</div>
+
+			<div id="bar" class="a pill card glass" style="width: 1300px; height: 136px">
+				<div class="in"><span class="ph">&#xe30c;</span><span id="query"></span><span id="caret"></span></div>
+			</div>
+			<div id="ans" class="a card" style="width: 1300px; height: 224px">
+				<div class="in">
+					<div id="tile"><span class="phf" id="tileGlyph">&#xe538;</span></div>
+					<div><div id="ansBig">0</div><div id="ansSub">18% of 2450 · Enter copies it</div></div>
+				</div>
+			</div>
+
+			<!-- Tessera's new chapters: whole screens, recorded (a still of the
+			     desktop under each, the recorded region on top where it came from) -->
+			<div id="circ" class="a shot">
+				<div class="inner" id="circIn">
+					<img id="circImg" class="clip" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" />
+					<!-- the selection, undimmed, as the loop is drawn; the pen's trail -->
+					<div id="circSel" class="full"><img src="frames/circle/0005.jpg" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" /></div>
+					<svg id="pen" class="full" viewBox="0 0 1920 1080"><path id="penGlow" /><path id="penLine" /></svg>
+					<!-- Search the web: the circled flower lifts, a browser opens round it -->
+					<div id="webDim" class="full"></div>
+					<div id="web" class="full">
+						<div id="webWin"></div>
+						<div id="webBar">
+							<span class="ph">&#xe138;</span><span class="ph">&#xe13a;</span><span class="ph">&#xe036;</span>
+							<div id="webAddr"><span class="ph">&#xe30c;</span><span id="webThumb"></span>Search by picture</div>
+						</div>
+						<div id="webName">Water lily</div>
+						<div id="webKind">Nymphaea · a flowering plant of still fresh water</div>
+						<div id="webChips"><span>White water lily</span><span>Lily pond</span><span>Pond plants</span></div>
+						<div id="webHead">Visual matches</div>
+						<div id="webGrid">
+							<img src="photos/match1.jpg" alt="" /><img src="photos/match2.jpg" alt="" /><img src="photos/match3.jpg" alt="" />
+							<img src="photos/match4.jpg" alt="" /><img src="photos/match5.jpg" alt="" /><img src="photos/match6.jpg" alt="" />
+						</div>
+					</div>
+					<div id="lift"><img src="frames/circle/0005.jpg" alt="" /></div>
+				</div>
+			</div>
+			<div id="lt" class="a shot">
+				<div class="inner" id="ltIn">
+					<img src="plates/lt-poster.jpg" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" />
+					<!-- the depth scan, over the photo; the lines it finds; the card they become -->
+					<canvas id="scan" width="530" height="397"></canvas>
+					<div id="ltCard"></div>
+					<div id="ltHead"><span class="ph">&#xe6ee;</span>Text from picture</div>
+					<div id="ltCopy"><span class="ph" id="ltCopyIcon">&#xe1ca;</span><span id="ltCopyLabel">Copy text</span></div>
+				</div>
+			</div>
+			<!-- Search answers, then carries the question into the sidebar (recorded;
+			     the hand-over itself is a container morph between two of its frames) -->
+			<div id="sa" class="a shot">
+				<div class="inner" id="saIn">
+					<img id="saImg" class="clip" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" />
+					<div id="saMorph"><img id="saSpot" src="frames/spotask/0194.jpg" alt="" /><img id="saSide" src="frames/spotask/0230.jpg" alt="" /></div>
+				</div>
+			</div>
+			<!-- Captions, live, and Just say it (the iRice film's, as they were) -->
+			<div id="vid" class="a">
+				<div id="vidImg"></div>
+				<div id="ccBadge"><span class="ph">&#xe1a4;</span>Live Captions</div>
+			</div>
+			<div id="cap" class="a"><span id="capText"></span><div id="dict"><div id="dot"></div><div id="dictLabel">Listening…</div><div id="wave"></div></div></div>
+			<div id="note" class="a card glass" style="width: 1240px; height: 330px; border-radius: 48px">
+				<div class="in"><div id="noteHead">Groceries</div><div id="noteText"></div></div>
+			</div>
+			<!-- Bedside Mode, back to the lock screen, the reader and the camera, unlocked (recorded) -->
+			<div id="lk" class="a shot"><div class="inner" id="lkIn"><img id="lkImg" class="clip" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" /><img id="lkSlide" src="frames/lockseq/0040.jpg" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" /></div></div>
+			<!-- All in glass: the sliders | Quick Settings, as the glass ramps (one take) -->
+			<div id="gL" class="a shot split"><div class="inner" id="gLIn"><img id="gLImg" class="clip" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" /></div></div>
+			<div id="gR" class="a shot split">
+				<div class="inner" id="gRIn">
+					<img id="gRImg" class="clip" style="left: 0; top: 0; width: 1920px; height: 1080px" alt="" />
+					<div class="blurbox" style="left: 1622px; top: 86px; width: 86px; height: 22px"></div>
+				</div>
+			</div>
+
+			<!-- Colours that follow you: Material's loader on black, a new colour each turn -->
+			<div id="ldBg" class="a" style="width: 1920px; height: 1080px; background: #000"></div>
+			<svg id="ld" class="a" viewBox="0 0 1920 1080" style="width: 1920px; height: 1080px"><path id="ldPath" /></svg>
+			<div id="hM" class="a title">Everything, at a glance.</div>
+			<div id="h3" class="a title">Just ask…</div>
+			<div id="h4" class="a title">Circle anything.</div>
+			<div id="h5" class="a title">Copy text from pictures.</div>
+			<div id="hAI" class="a title">…ask anything.</div>
+			<div id="hCap" class="a title">Captions, live.</div>
+			<div id="hDict" class="a title">Just say it.</div>
+			<div id="hSB" class="a title">Bedside Mode, while it charges.</div>
+			<div id="hUn" class="a title">Unlocks with a look, or a touch.</div>
+			<div id="h6" class="a title">All in glass.</div>
+			<div id="hMat" class="a title">Or Material.</div>
+			<div id="hRoom" class="a title">Colours that follow you.</div>
+
+			<!-- the glass: above everything but the name written on it -->
+			<canvas id="gl"></canvas>
+			<div id="word" class="a">Tessera</div>
+
+			<svg width="0" height="0" style="position: absolute">
+				<defs>
+					<linearGradient id="budG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" /><stop offset="0.7" stop-color="#f2f2f5" /><stop offset="1" stop-color="#d3d3d9" /></linearGradient>
+					<linearGradient id="stemG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c9c9d0" /><stop offset="0.35" stop-color="#f7f7f9" /><stop offset="1" stop-color="#bdbdc5" /></linearGradient>
+					<!-- one bud, head up and stem down, at 4.6x the battery widget's picture -->
+					<g id="budArt">
+						<rect x="-14" y="10" width="28" height="86" rx="14" fill="url(#stemG)" />
+						<ellipse cx="0" cy="0" rx="42" ry="38" fill="url(#budG)" />
+						<ellipse cx="30" cy="12" rx="9" ry="12" fill="#d4d4da" />
+						<path d="M-28 -14 C-22 -28 -6 -33 8 -30" stroke="#fff" stroke-width="7" stroke-linecap="round" fill="none" />
+					</g>
+				</defs>
+			</svg>
+		</div>
+		<div id="player" hidden><button type="button">Play</button><input type="range" min="0" value="0" /><span data-time></span></div>
+
+		<script type="module">
+			import { createFilm, split, counter, ramp, lerp, clamp, EASE } from '../engine/film.js';
+			import * as R from '../engine/recipes.js';
+			import { createGlass } from './glass.js';
+
+			const NOWARP = new URLSearchParams(location.search).has('nowarp');
+			/* the liquid warps: [t0, t1, still before, still after (or a photo), direction] */
+			const WARPS = [
+				[49.5, 50.5, 'snapD', 'snapCap', [0, -1]],
+				[56.6, 57.6, 'snapDi', 'snapL', [1, 0]],
+			];
+			const images = { petals: '../hero/assets/p-petals.jpg', ocean: '../hero/assets/p-ocean.jpg', isl: '../hero/frames/charge/0001.jpg' };
+			if (!NOWARP) Object.assign(images, { snapD: 'snap/d.jpg', snapCap: 'snap/cap.jpg', snapDi: 'snap/di.jpg', snapL: 'snap/l.jpg', snapG: 'snap/g.jpg', snapQ: 'snap/q.jpg', snapK: 'snap/k.jpg' });
+
+			await document.fonts.load('650 250px Geist');
+			await document.fonts.ready;
+			await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => (i.onload = i.onerror = r)))));
+			const G = await createGlass(document.getElementById('gl'), { images });
+			const f = createFilm({ duration: 75.8 });
+			const E = EASE;
+			const at = (sel, x, y) => f.tw(sel, [[0, { x, y }]]);
+			const $ = f.$;
+
+			/* ═══ footage: real iRice, a frame at a time (clips.sh) ═══════════ */
+			const CLIPN = { charge: 90, note: 116, wifi: 90, vol: 92, music: 165, fastpair: 461, card: 501, mswitch: 290, mqs: 107, mlock: 75, circle: 115, livetext: 198, ask: 295, chats: 130, colour: 237, spotask: 312, lockseq: 316, glassramp: 129 };
+			/* Tessera's own takes (re-recorded with generic names, and the new chapters) are in
+				   frames/; the rest are the original film's, in ../hero/frames/ */
+				const OWN = new Set(['note', 'fastpair', 'card', 'circle', 'livetext', 'ask', 'chats', 'colour', 'mswitch', 'mqs', 'spotask', 'lockseq', 'glassramp', 'vol']);
+				const frame = (c, local) => `${OWN.has(c) ? 'frames' : '../hero/frames'}/${c}/${String(clamp(Math.floor(local * 30 + 1e-4) + 1, 1, CLIPN[c])).padStart(4, '0')}.jpg`;
+			const setSrc = (el, src) => el.getAttribute('src') !== src && el.setAttribute('src', src);
+
+			/* keyframes of plain numbers ([t, {k: v}, ease]); scale `s` interpolates
+			   geometrically, so a zoom feels even all the way */
+			const keys = (K) => {
+				const full = [];
+				for (const [t, v, e] of K) full.push([t, { ...(full.at(-1)?.[1] ?? {}), ...v }, E[e ?? 'io']]);
+				return (t) => {
+					if (t <= full[0][0]) return full[0][1];
+					for (let i = 0; i < full.length - 1; i++) {
+						const [t0, a] = full[i], [t1, b, e] = full[i + 1];
+						if (t < t1) {
+							const p = e(ramp(t, t0, t1)), o = {};
+							for (const k in b) o[k] = k === 's' ? a[k] * Math.pow(b[k] / a[k], p) : lerp(a[k] ?? b[k], b[k], p);
+							return o;
+						}
+					}
+					return full.at(-1)[1];
+				};
+			};
+			const place = (el, x, y, s = 1, extra = '') => {
+				const v = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px) translate(-50%,-50%) scale(${s.toFixed(5)})${extra}`;
+				if (el.style.transform !== v) el.style.transform = v;
+			};
+			const rect = (el, r) => {
+				const st = el.style;
+				st.left = r.l.toFixed(1) + 'px';
+				st.top = r.t.toFixed(1) + 'px';
+				st.width = (r.r - r.l).toFixed(1) + 'px';
+				st.height = (r.b - r.t).toFixed(1) + 'px';
+				st.borderRadius = r.br.toFixed(1) + 'px';
+			};
+
+			/* ═══ the glass: a function of t ══════════════════════════════════ */
+			const CX = 960, CY = 540;
+			const HIT = 73.55; /* the name lands on the Badge */
+			/* the island, as the first recorded frame shows it settled (film px) */
+			const ISL = { x: 958, y: 140, hw: 592, hh: 124, r: 92 };
+			/* droplets gathering (t0 → t1), the body forming (t1 → t2) */
+			const gather = (t, t0, t1, t2) => {
+				const starts = [[790, 470, 74], [1110, 600, 92], [985, 400, 58], [860, 640, 50]];
+				const balls = starts.map(([x, y, r], i) => {
+					const a = E.back(ramp(t, t0 + i * 0.14, t0 + i * 0.14 + 0.4));
+					const m = E.io(ramp(t, t0 + 0.35, t2));
+					const shrink = 1 - E.i(ramp(t, t1, t2));
+					return [lerp(x, CX, m), lerp(y, CY, m), r * a * shrink];
+				});
+				return { balls, rectOn: E.emph(ramp(t, t1, t2)) };
+			};
+			const glassAt = (t) => {
+				/* Glass → Material: Material opens out of the pressed picture in the
+				   Badge's outline, its edge bending what's under it, turning a little */
+				if (t >= 66.1 && t < 67.1 && !NOWARP) {
+					const p = ramp(t, 66.1, 67.1);
+					return { t, a: 'snapG', b: 'snapQ', shock: [960, 540, 1500 * E.io(p) ** 1.15, 0.55 * (1 - ramp(p, 0.75, 1))], shockShape: [0.1, 0.6 * p], kA: 1 + 0.04 * p, kB: 1.04 - 0.04 * p };
+				}
+				/* the loader's last Badge opens onto the petals: the end begins */
+				if (t >= 71.3 && t < 72.1 && !NOWARP) {
+					const p = ramp(t, 71.3, 72.1);
+					return { t, a: 'snapK', b: 'petals', shock: [960, 640, lerp(112, 1500, E.io(p)), 0.5 * (1 - ramp(p, 0.7, 1))], shockShape: [0.1, LDTURN + 0.4 * p], kA: 1 + 0.03 * p, kB: 1.08 };
+				}
+				for (const [t0, t1, a, b, dir] of WARPS)
+					if (t >= t0 && t < t1) return NOWARP ? null : { t, a, b, wipe: E.io(ramp(t, t0, t1)), wipeDir: dir, kA: 1 + 0.02 * ramp(t, t0, t1), kB: 1.02 - 0.02 * ramp(t, t0, t1) };
+				/* the opener: one drop */
+				if (t < 4.6) {
+					const s = { t, glass: 1, wob: (1 - 0.7 * ramp(t, 1.7, 2.8)) * (1 - ramp(t, 4.1, 4.45)), rectR: 150, kA: lerp(1.08, 1.0, E.io(ramp(t, 0, 3.4))) };
+					Object.assign(s, gather(t, 0.3, 1.1, 1.7));
+					/* the photos change beneath it, the last into the desktop the island is on */
+					if (t < 1.7) s.a = 'petals';
+					else if (t < 2.5) Object.assign(s, { a: 'petals', b: 'ocean', wipe: E.io(ramp(t, 1.7, 2.5)), wipeDir: [1, 0] });
+					else if (t < 2.6) s.a = 'ocean';
+					else if (t < 3.4) Object.assign(s, { a: 'ocean', b: 'isl', wipe: E.io(ramp(t, 2.6, 3.4)), wipeDir: [0, 1] });
+					else Object.assign(s, { a: 'isl', kA: 1 });
+					s.disp = 0.2 + 0.8 * E.io(ramp(t, 1.6, 3.4));
+					/* the leap: crouch, rise (stretched), land at the top and spread into the island */
+					let x = CX, y = CY, hw = 150, hh = 150, r = 150;
+					const crouch = E.o(ramp(t, 3.45, 3.65)) * (1 - ramp(t, 3.65, 3.75));
+					hw += 30 * crouch;
+					hh -= 26 * crouch;
+					y += 22 * crouch;
+					const up = ramp(t, 3.65, 4.02);
+					if (up > 0) {
+						const p = E.o2(up);
+						y = lerp(CY, ISL.y + 40, p);
+						const stretch = Math.sin(Math.PI * Math.min(1, up * 1.1));
+						hw = 150 - 34 * stretch;
+						hh = 150 + 48 * stretch;
+					}
+					const land = ramp(t, 4.02, 4.42);
+					if (land > 0) {
+						const p = E.back(land);
+						x = lerp(CX, ISL.x, p);
+						y = lerp(ISL.y + 40, ISL.y, E.o(land));
+						hw = lerp(116, ISL.hw, p);
+						hh = lerp(150, ISL.hh, E.o(land));
+						r = lerp(150, ISL.r, E.o(land));
+					}
+					s.rect = [x, y, hw, hh];
+					s.rectR = r;
+					s.ink = E.io(ramp(t, 4.12, 4.5));
+					s.disp *= 1 - 0.7 * s.ink;
+					/* the landing ripples the desktop under it, and settles before the cut */
+					if (t >= 4.02) Object.assign(s, { b: 'isl', shock: [ISL.x, ISL.y, 1500 * E.o(ramp(t, 4.02, 4.55)), 0.55 * (1 - ramp(t, 4.05, 4.55))] });
+					return s;
+				}
+				/* the end: the drop on the petals, the name on it, then it melts */
+				if (t >= 72.1) {
+					/* the drops gather into the Badge, turning slowly; the name is shot onto
+					   it (HIT): a ring runs out through the glass and the Badge wobbles */
+					const s = { t, a: 'petals', glass: 1, kA: lerp(1.0, 1.08, ramp(t, 71.1, 75.8)) };
+					const g = gather(t, 72.0, 72.6, 73.2);
+					const k = t >= HIT ? Math.exp(-(t - HIT) * 6) : 0;
+					s.balls = g.balls;
+					s.cookie = [CX, CY, 255 * (1 + 0.06 * k * Math.sin((t - HIT) * 30)), g.rectOn];
+					s.cookieTurn = 0.25 * (t - 72.1);
+					s.wob = (1 - 0.88 * ramp(t, 73.0, 73.5)) + 0.9 * k;
+					s.disp = 0.2 + 0.6 * E.io(ramp(t, 72.9, 73.7));
+					if (t >= HIT) Object.assign(s, { b: 'petals', shock: [CX, CY, 1500 * E.o(ramp(t, HIT, HIT + 0.8)), 0.4 * (1 - ramp(t, HIT, HIT + 0.8))] });
+					const melt = E.i(ramp(t, 75.15, 75.65));
+					if (melt > 0) {
+						s.cookie[3] = 1 - melt;
+						s.wob = 0.3 + melt;
+						s.balls = [[CX - 150 * melt, CY - 20 * melt, 80 * Math.sin(Math.PI * melt)], [CX + 170 * melt, CY + 30 * melt, 70 * Math.sin(Math.PI * melt)], [CX + 20, CY - 60 * melt, 50 * Math.sin(Math.PI * melt)]];
+					}
+					s.glass = 1 - ramp(t, 75.6, 75.78);
+					return s;
+				}
+				return null;
+			};
+			const glEl = document.getElementById('gl');
+			f.fx((t) => {
+				const s = glassAt(t);
+				glEl.style.display = s ? '' : 'none';
+				if (s) G.draw(s);
+				/* each landing (the island's, the name's) jolts the frame a little, and settles */
+				const L = t >= HIT ? HIT : 4.02, A = t >= HIT ? 8 : 12;
+				const k = t >= L && t < L + 0.48 ? Math.exp(-(t - L) * 10) : 0;
+				const dy = k * A * Math.sin((t - L) * 75);
+				const v = `translate(0px, ${dy.toFixed(2)}px)`;
+				if (glEl.style.transform !== v) glEl.style.transform = v;
+			});
+			/* the name, shot onto the Badge from in front: it falls in fast, lands, gives a little */
+			f.tw('#word', [[0, { x: 960, y: 548 }]]);
+			f.tw('#word', [[HIT - 0.24, { o: 0, blur: 18, s: 2.3 }], [HIT, { o: 1, blur: 0, s: 1 }, 'i3'], [HIT + 0.07, { s: 0.965 }, 'o'], [HIT + 0.35, { s: 1 }, 'o'], [75.0, { o: 1, blur: 0, s: 1 }], [75.35, { o: 0, blur: 12, s: 1.04 }, 'i']]);
+			f.show('#word', HIT - 0.24, 75.4);
+
+			/* ═══ the devices (4.60–32.90) ═══════════════════════════════════ */
+			f.show('#dev', 4.6, 33.15);
+			f.tw('#dev', [[0, { x: 960, y: 540 }]]);
+			const lapEl = $('#lap'), phoneEl = $('#phone'), lap2El = $('#lap2');
+			const ovTop = $('#ovTop'), ovCard = $('#ovCard');
+
+			/* the montage: real island footage on the laptop's screen, seen up close.
+			   [from, clip, its local time then]: each shot starts a moment before
+			   the island opens, so every cut springs it open again */
+			const SHOTS = [[4.6, 'charge', 0.333], [6.05, 'note', 0.45], [7.55, 'wifi', 0.07], [9.0, 'vol', 0.25], [10.3, 'music', 1.0]];
+			const shotAt = (t) => [...SHOTS].reverse().find((s) => t >= s[0]) ?? SHOTS[0];
+			/* Fast Pair's clip, trimmed in time: the card, the pointer to Connect
+			   (sped up), Connecting…, then the batteries */
+			const fpLocal = (t) => (t < 14.2 ? 0.4 : t < 15.6 ? 0.4 + (t - 14.2) : t < 17.7 ? 1.8 + (t - 15.6) * 2.05 : t < 18.7 ? 6.1 + (t - 17.7) : 9.45 + (t - 18.7));
+			/* the share card's: it asks, the pointer to Accept (sped up), receiving, saved */
+			const cardLocal = (t) => (t < 22.5 ? 0.4 : t < 23.6 ? 0.4 + (t - 22.5) : t < 25.95 ? 1.5 + (t - 23.6) * 1.9 : t < 26.45 ? 5.97 + (t - 25.95) : t < 28.2 ? 6.47 + (t - 26.45) * 1.9 : 9.8 + (t - 28.2));
+			f.fx((t) => {
+				if (t < 11.4) {
+					const [, c, l0] = shotAt(t);
+					setSrc(ovTop, frame(c, l0 + t - shotAt(t)[0]));
+				} else setSrc(ovTop, frame('fastpair', fpLocal(t)));
+				setSrc(ovCard, frame('card', cardLocal(t)));
+			});
+
+			/* the laptop: where a point of it (L, laptop px) is on screen (F), and its scale.
+			   The island is at (720, 51) on it, the share card at (720, 397) */
+			const LAP = keys([
+				[0, { lx: 720, ly: 51.2, fx: ISL.x, fy: ISL.y, s: 4.8 }],
+				[10.6, {}],
+				[12.2, { fx: 960, fy: 257, s: 0.92 }, 'io'],
+				[13.0, { lx: 720, ly: 413, fx: 486, fy: 640, s: 0.6 }, 'io'],
+				[14.4, {}],
+				[15.2, { lx: 720, ly: 51.2, fx: 486, fy: 330, s: 2.6 }, 'io'],
+				[20.2, {}],
+				[21.0, { lx: 720, ly: 413, fx: 1434, fy: 640, s: 0.6 }, 'io'],
+				[22.7, {}],
+				[23.5, { lx: 720, ly: 397, fx: 1434, fy: 610, s: 2.4 }, 'io'],
+				[28.7, {}],
+				[29.4, { lx: 720, ly: 413, fx: 1434, fy: 640, s: 0.6 }, 'io'],
+				[30.1, { fx: 880, fy: 633, s: 0.55 }, 'io'],
+			]);
+			/* each montage shot creeps in a little, about the island */
+			const push = (t) => (t >= 4.6 && t < 10.6 ? 1 + 0.035 * ramp(t, shotAt(t)[0], shotAt(t)[0] + 1.5) : 1);
+			/* the panels: the laptop's (it clips the laptop), the earbuds', the phone's */
+			const FULL = { l: 0, t: 0, r: 1920, b: 1080, br: 0 };
+			const SL = { l: 24, t: 200, r: 948, b: 1056, br: 40 }, SR = { l: 972, t: 200, r: 1896, b: 1056, br: 40 };
+			const PL = keys([[0, FULL], [12.2, {}], [13.0, SL, 'io'], [20.2, {}], [21.0, SR, 'io'], [29.4, {}], [30.0, FULL, 'io']]);
+			const PR = keys([[0, { ...SR, l: 1940, r: 2864 }], [12.4, {}], [13.2, SR, 'o'], [20.1, {}], [20.6, { l: 2900, r: 3824 }, 'i']]);
+			const PP = keys([[0, { ...SL, l: -950, r: -26 }], [20.3, {}], [21.1, SL, 'o']]);
+			const PHONE = keys([[0, { x: -480, y: 628, s: 1 }], [20.3, {}], [21.1, { x: 486 }, 'o'], [29.4, {}], [30.1, { x: 290, y: 560, s: 0.75 }, 'io']]);
+			const LAP2 = keys([[0, { x: 2500, y: 695, s: 0.4 }], [29.6, {}], [30.4, { x: 1580 }, 'o']]);
+			f.fx((t) => {
+				const l = LAP(t), s = l.s * push(t);
+				const fx = l.fx, fy = l.fy;
+				place(lapEl, fx - (l.lx - 720) * s, fy - (l.ly - 413) * s, s);
+				const pl = PL(t);
+				rect($('#pL'), pl);
+				$('#lapBox').style.clipPath = `inset(${pl.t.toFixed(1)}px ${(1920 - pl.r).toFixed(1)}px ${(1080 - pl.b).toFixed(1)}px ${pl.l.toFixed(1)}px round ${pl.br.toFixed(1)}px)`;
+				rect($('#pR'), PR(t));
+				rect($('#pP'), PP(t));
+				const p = PHONE(t);
+				place(phoneEl, p.x, p.y, p.s);
+				const q = LAP2(t);
+				place(lap2El, q.x, q.y, q.s);
+			});
+			f.tw(['#pL', '#pP'], [[29.4, { o: 1 }], [29.95, { o: 0 }, 'io']]);
+			f.show('#pR', 12.3, 20.7);
+			f.show('#phone', 20.2, 33.2);
+			f.show('#lap2', 29.5, 33.2);
+
+			/* ═══ the island, everywhere (4.60–10.60) ════════════════════════ */
+			const hM = split($('#hM'), 'words');
+			hM.at(-1).classList.add('acc');
+			at('#hM', 960, 640);
+			hM.forEach((s, i) => f.tw(s, [[5.0 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [5.0 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+			f.tw('#hM', [[10.1, { o: 1, blur: 0 }], [10.5, { o: 0, blur: 10 }, 'i']]);
+			f.show('#hM', 4.9, 10.55);
+
+			/* ═══ Earbuds, found (12.20–20.20) ═══════════════════════════════ */
+			const title = (sel, t, out, x, y, step = 0.1) => {
+				const w = split($(sel), 'words');
+				w.at(-1).classList.add('acc');
+				f.tw(sel, [[0, { x, y }]]);
+				w.forEach((s, i) => f.tw(s, [[t + i * step, { o: 0, dy: 30, blur: 12 }], [t + i * step + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+				f.show(sel, t, out);
+			};
+			title('#h1', 12.7, 20.3, 960, 104);
+			f.tw('#h1', [[19.95, { o: 1 }], [20.25, { o: 0 }, 'i']]);
+			/* the scalloped disc behind the case */
+			{
+				let d = '';
+				for (let i = 0; i <= 360; i += 2) {
+					const a = (i * Math.PI) / 180, r = 262 + 16 * Math.cos(12 * a);
+					d += `${i ? 'L' : 'M'}${(r * Math.cos(a)).toFixed(1)} ${(r * Math.sin(a)).toFixed(1)}`;
+				}
+				$('#cookiePath').setAttribute('d', d + 'Z');
+			}
+			f.tw('#cookie', [[12.9, { sc: 0.85, o: 0 }], [13.5, { sc: 1, o: 1 }, 'o'], [20.2, { sc: 1.03 }, 'lin']]);
+			f.fx((t) => ($('#cookie').style.rotate = `${(t * 4).toFixed(2)}deg`));
+			/* the lid swings back; the buds pop up and settle */
+			f.fx((t) => {
+				const p = E.o(ramp(t, 13.35, 13.95));
+				$('#lid').style.transform = `translateY(${(-58 * p).toFixed(2)}px) rotateX(${(46 * p).toFixed(2)}deg)`;
+				$('#lid').style.filter = `brightness(${(1 - 0.1 * p).toFixed(3)})`;
+				$('#lidBox').style.zIndex = p > 0.35 ? 0 : 3;
+			});
+			[['#budL', -1, 13.75], ['#budR', 1, 13.85]].forEach(([id, d, t]) => f.tw(id, [[t, { dy: 40, sc: 1 }], [t + 0.45, { dy: -34 }, 'back'], [t + 1.2, { dy: -22 }, 'io']]));
+			f.fx((t) => {
+				[['#budL', -1, 13.75], ['#budR', 1, 13.85]].forEach(([id, d, t0]) => ($(id).style.rotate = `${(d * 9 * E.back(ramp(t, t0, t0 + 0.45))).toFixed(2)}deg`));
+			});
+			/* it says it's here: rings spread from the case until the laptop connects */
+			[['#ripple1', 0], ['#ripple2', 0.7]].forEach(([id, o]) =>
+				f.fx((t) => {
+					const on = t >= 14.1 && t < 18.8;
+					const p = on ? ((t - 14.1 + o) % 1.4) / 1.4 : 0;
+					$(id).style.opacity = on ? (0.55 * (1 - p)).toFixed(3) : 0;
+					$(id).style.transform = `scale(${(0.7 + 0.9 * p).toFixed(4)})`;
+				}),
+			);
+			at('#chip', 462, 690);
+			f.tw('#chip', [[13.6, { o: 0, dy: 10 }], [14.0, { o: 1, dy: 0 }, 'o']]);
+			f.fx((t) => {
+				const [text, c] = t < 17.7 ? ['Pairing mode', '#a1a1aa'] : t < 18.82 ? ['Connecting…', '#0a84ff'] : ['Connected · 80%', '#30d158'];
+				if ($('#chipText').textContent !== text) $('#chipText').textContent = text;
+				$('#chipDot').style.background = c;
+			});
+			f.tw('#chip', [[18.82, { sc: 1 }], [18.9, { sc: 1.06 }, 'o'], [19.1, { sc: 1 }, 'o']]);
+
+			/* ═══ the phone sends two photos (20.20–28.80) ═══════════════════ */
+			f.fx((t) => ($('#psheet').style.transform = `translateY(${(440 * (1 - E.emph(ramp(t, 21.45, 21.95)))).toFixed(2)}px)`));
+			/* the tap on the laptop */
+			f.tw('#tap', [[22.35, { sc: 0.3, o: 0 }], [22.4, { o: 1 }, 'lin'], [22.8, { sc: 1.5, o: 0 }, 'o']]);
+			f.tw('#avDisc', [[22.35, { sc: 1 }], [22.45, { sc: 0.92 }, 'o'], [22.65, { sc: 1 }, 'o']]);
+			const AV = 2 * Math.PI * 49, avArc = $('#avArc');
+			avArc.setAttribute('stroke-dasharray', AV.toFixed(2));
+			f.fx((t) => {
+				let state = 'Laptop', p = 0, spin = 0;
+				if (t >= 28.18) (state = 'Sent'), (p = 1);
+				else if (t >= 26.5) (p = ramp(t, 26.5, 28.15)), (state = `Sending… ${Math.round(p * 100)}%`);
+				else if (t >= 22.4) (state = 'Waiting…'), (p = 0.22), (spin = t * 300);
+				if ($('#avState').textContent !== state) $('#avState').textContent = state;
+				avArc.setAttribute('stroke-dashoffset', (AV * (1 - p)).toFixed(2));
+				$('#avRing').style.opacity = t >= 22.4 && t < 28.6 ? 1 : 0;
+				$('#avRing').style.transform = `rotate(${spin % 360}deg)`;
+			});
+			f.tw('#avCheck', [[28.18, { o: 0, sc: 0.4 }], [28.45, { o: 1, sc: 1 }, 'back']]);
+			/* the photos cross from the phone to the laptop */
+			const arcPos = (p, a, b, lift) => [lerp(a[0], b[0], p), lerp(a[1], b[1], p) - lift * Math.sin(Math.PI * p)];
+			const flyAcross = (sel, t0, t1, a, b, lift, spin) => {
+				f.show(sel, t0, t1);
+				f.fx((t) => {
+					const p = E.io(ramp(t, t0, t1));
+					const [x, y] = arcPos(p, a(t), b(t), lift);
+					place($(sel), x, y, lerp(0.9, 0.45, p), ` rotate(${(spin * Math.sin(Math.PI * p)).toFixed(2)}deg)`);
+					$(sel).style.opacity = (Math.min(1, ramp(t, t0, t0 + 0.15)) * (1 - ramp(t, t1 - 0.15, t1))).toFixed(3);
+				});
+			};
+			const phoneAv = () => [380, 760];
+			const lapCard = () => [1434, 610];
+			flyAcross('#fly1', 26.55, 27.55, phoneAv, lapCard, 260, -8);
+			flyAcross('#fly2', 26.8, 27.8, phoneAv, lapCard, 300, 7);
+
+			/* ═══ Phones and laptops, shared (28.80–32.40) ═══════════════════ */
+			title('#h7', 29.85, 33.2, 960, 150);
+			/* the laptop sends on to the other one */
+			const lapScr = () => [880, 633 - 413 * 0.55 + 22 * 0.55 + 375 * 0.55];
+			const lap2Scr = () => [1580, 695 - 413 * 0.4 + 22 * 0.4 + 375 * 0.4];
+			flyAcross('#fly3', 30.7, 31.6, lapScr, lap2Scr, 220, 6);
+			f.tw('#toast', [[31.5, { o: 0, sc: 0.9 }], [31.85, { o: 1, sc: 1 }, 'back']]);
+
+			/* whip up: the devices leave upward, blurred, and Search rises into their place */
+			const B = 32.6;
+			f.tw('#dev', [[B, { y: 540, mby: 0 }], [B + 0.5, { y: -800, mby: 90 }, 'i']]);
+
+			/* ═══ Just ask (32.40–38.00) ═════════════════════════════════════ */
+			at('#bg', 960, 540);
+			f.show('#bg', B, 66.3);
+			f.tw('#bg', [[B, { s: 1.04 }], [50.0, { s: 1.0 }, 'lin']]);
+			const SA0 = B + 4.9; /* the real Search takes over */
+			f.show('#bar', B + 0.2, SA0);
+			f.tw('#bar', [[B + 0.2, { x: 960, y: 1500, mby: 70 }], [B + 0.75, { y: 470, mby: 0 }, 'o']]);
+			title('#h3', B + 0.45, 38.45, 960, 160);
+			/* "Just ask…" lets go of "Just": the line becomes "…ask anything." */
+			[...$('#h3').children].forEach((w, i) => f.tw(w, [[38.1 + i * 0.06, { o: 1, dy: 0, blur: 0 }], [38.4 + i * 0.06, { o: 0, dy: -20, blur: 10 }, 'i']]));
+			/* the questions: the first typed, then a new one on each beat */
+			const QS = [
+				[B + 1.0, '18% of 2450', 441, '18% of 2450 · Enter copies it', '#ff9f0a', ''],
+				[B + 3.2, '5 km in miles', '3.1069 miles', '5 km · Enter copies it', '#30d158', ''],
+				[B + 3.8, 'time in Tokyo', '6:30 PM', 'Monday in Tokyo · 3 h 30 min ahead', '#0a84ff', ''],
+				[B + 4.4, 'days until christmas', '54 days', 'Friday 25 December 2026', '#ff453a', ''],
+			];
+			const qAt = (t) => [...QS].reverse().find((q) => t >= q[0]) ?? QS[0];
+			f.fx((t) => {
+				const q = qAt(t);
+				const first = q === QS[0];
+				const n = first ? Math.max(0, Math.min(q[1].length, Math.floor((t - B - 1.0) * 13))) : q[1].length;
+				const s = q[1].slice(0, n);
+				if ($('#query').textContent !== s) $('#query').textContent = s;
+				$('#caret').style.opacity = first && n < q[1].length ? 1 : Math.floor(t * 2.4) % 2 ? 0 : 1;
+				const big = typeof q[2] === 'number' ? Math.round(q[2] * E.o(ramp(t, B + 2.05, B + 2.5))).toString() : q[2];
+				if ($('#ansBig').textContent !== big) $('#ansBig').textContent = big;
+				if ($('#ansSub').textContent !== q[3]) $('#ansSub').textContent = q[3];
+				$('#tile').style.background = q[4];
+				if ($('#tileGlyph').textContent !== q[5]) $('#tileGlyph').textContent = q[5];
+				const tint = { '#ff9f0a': '255,159,10', '#30d158': '48,209,88', '#0a84ff': '10,132,255', '#ff453a': '255,69,58' }[q[4]];
+				$('#ans').style.background = `rgba(${tint},0.24)`;
+				$('#ans').style.boxShadow = `inset 0 0 0 2px rgba(${tint},0.55), 0 30px 80px rgba(0,0,0,0.3)`;
+			});
+			f.show('#ans', B + 1.9, SA0);
+			f.tw('#ans', [[B + 1.9, { x: 960, y: 700, o: 0, s: 0.96 }], [B + 2.3, { y: 670, o: 1, s: 1 }, 'o']]);
+			f.tw('#tile', [[B + 1.95, { sc: 0.5, o: 0 }], [B + 2.3, { sc: 1, o: 1 }, 'back']]);
+			/* each new answer is a jump cut: a hard reframe on the beat */
+			f.tw(['#bar', '#ans'], [[B + 3.199, { s: 1 }], [B + 3.2, { s: 1.05 }, 'step'], [B + 3.799, { s: 1.05 }], [B + 3.8, { s: 1 }, 'step'], [B + 4.399, { s: 1 }], [B + 4.4, { s: 1.05 }, 'step']]);
+
+			/* ═══ Tessera's recorded screens: a screen floating over the leaves,
+			   its inner picture moved by keys (sx, sy: the screen point at the
+			   card's centre; k: the zoom) ═══════════════════════════════════════ */
+			const SHOT_S = 0.8; /* the card's own scale: a screen with leaves around it */
+			const inner = (sel, K) => {
+				const el = $(sel);
+				f.fx((t) => {
+					const k = K(t);
+					const v = `translate(${(960 - k.sx * k.k).toFixed(2)}px, ${(540 - k.sy * k.k).toFixed(2)}px) scale(${k.k.toFixed(5)})`;
+					if (el.style.transform !== v) el.style.transform = v;
+				});
+			};
+			/* a clip on an <img>, film time → clip time through a piecewise-linear map */
+			const play = (sel, clip, pts, t0, t1) => {
+				const el = $(sel);
+				f.fx((t) => {
+					if (t < t0 || t >= t1) return;
+					let c = pts[0][1];
+					for (let i = 1; i < pts.length; i++) if (t >= pts[i - 1][0]) c = pts[i - 1][1] + ((Math.min(t, pts[i][0]) - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0])) * (pts[i][1] - pts[i - 1][1]);
+					setSrc(el, frame(clip, c));
+				});
+			};
+
+			/* ═══ Circle anything (38.20–46.30): the lily circled, then the web ═══ */
+			const C = B + 9.3;
+			const CE = 46.3;
+			f.show('#circ', C - 0.3, CE + 0.35);
+			f.tw('#circ', [[C - 0.3, { x: 2900, y: 625, s: 0.74, mbx: 90 }], [C + 0.3, { x: 960, mbx: 0 }, 'o'], [CE - 0.2, { x: 960, mbx: 0 }], [CE + 0.35, { x: -1000, mbx: 100 }, 'i']]);
+			/* the pen: the take's own path (capture.sh fix4, LILYPATH: x, y, ms since the
+			   last point), at the hand's pace. The sandbox's software renderer stalls on
+			   it mid-stroke, so the trail is drawn here, in the shell's stroke style */
+			const PEN = [[1093,448,0],[1080,440,37],[1065,433,35],[1049,427,33],[1033,422,31],[1016,418,29],[999,415,27],[982,412,25],[964,410,24],[945,410,22],[926,412,21],[908,415,20],[890,420,19],[873,427,18],[857,434,17],[842,441,17],[827,450,16],[815,460,16],[805,471,15],[797,482,15],[791,494,15],[787,506,14],[784,517,14],[782,529,14],[781,541,14],[782,553,14],[784,564,14],[789,576,14],[797,586,14],[806,596,14],[816,605,14],[828,614,14],[841,622,14],[855,629,14],[870,635,14],[887,639,14],[905,641,14],[923,641,14],[941,640,14],[959,638,14],[976,636,14],[993,633,14],[1010,629,15],[1026,623,15],[1042,617,15],[1055,609,16],[1068,601,16],[1080,592,17],[1091,582,17],[1101,572,18],[1110,562,19],[1117,550,20],[1121,539,21],[1123,527,22],[1122,515,24],[1119,504,25],[1114,493,27],[1108,482,29],[1101,472,31],[1092,463,33],[1082,454,35],[1070,447,37],[1056,440,40]];
+			const penT = [];
+			PEN.reduce((a, p) => (penT.push((a + p[2]) / 1000), a + p[2]), 0);
+			const PEN0 = C + 0.45;
+			const PEN1 = PEN0 + penT.at(-1);
+			const REL = PEN1 + 0.25; /* let go */
+			const xs = PEN.map((p) => p[0]), ys = PEN.map((p) => p[1]);
+			const SEL = { x: Math.min(...xs) - 12, y: Math.min(...ys) - 12, w: Math.max(...xs) - Math.min(...xs) + 24, h: Math.max(...ys) - Math.min(...ys) + 24 };
+			const lerpR = (a, b, p) => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), w: lerp(a.w, b.w, p), h: lerp(a.h, b.h, p) });
+			const inset = (r, rad) => `inset(${r.y.toFixed(1)}px ${(1920 - r.x - r.w).toFixed(1)}px ${(1080 - r.y - r.h).toFixed(1)}px ${r.x.toFixed(1)}px round ${rad.toFixed(1)}px)`;
+			/* the screen: Quick Preview, circle mode comes on (the take, 1x), held while the
+			   loop is drawn; the take's own finished loop; let go (a frame without the pointer) */
+			f.fx((t) => {
+				if (t < C - 0.3 || t >= CE + 0.35) return;
+				const local = t < PEN0 ? lerp(0.6, 1.8, ramp(t, C - 0.3, PEN0)) : t < PEN1 ? 1.8 : t < REL ? 106 / 30 : 4 / 30;
+				setSrc($('#circImg'), frame('circle', local));
+				const drawing = t >= PEN0 && t < PEN1;
+				$('#pen').style.display = $('#circSel').style.display = drawing ? '' : 'none';
+				if (!drawing) return;
+				const s = t - PEN0, i = penT.findIndex((x) => x > s);
+				const p = ramp(s, penT[i - 1], penT[i]);
+				const pts = PEN.slice(0, i).map((q) => [q[0], q[1]]);
+				pts.push([lerp(PEN[i - 1][0], PEN[i][0], p), lerp(PEN[i - 1][1], PEN[i][1], p)]);
+				const d = 'M' + pts.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('L');
+				$('#penGlow').setAttribute('d', d);
+				$('#penLine').setAttribute('d', d);
+				const px = pts.map((q) => q[0]), py = pts.map((q) => q[1]);
+				const r = { x: Math.min(...px) - 12, y: Math.min(...py) - 12, w: Math.max(...px) - Math.min(...px) + 24, h: Math.max(...py) - Math.min(...py) + 24 };
+				$('#circSel').style.clipPath = r.w > 32 || r.h > 32 ? inset(r, 0) : 'inset(50%)';
+			});
+			/* Search the web: the circled flower lifts off the dimmed screen, a browser
+			   window grows round it from its outline, it settles in as the query, and
+			   the matches arrive */
+			const L0 = REL + 0.1, W0 = L0 + 0.3, W1 = W0 + 0.75;
+			const SLOT = { x: 370, y: 250, w: 400, h: 279 }, WIN = { x: 330, y: 170, w: 1260, h: 680 };
+			$('#lift img').style.cssText = 'left: 0; top: 0; width: 1920px; height: 1080px';
+			f.show('#lift', L0, CE + 0.35);
+			f.show('#webDim', L0, CE + 0.35);
+			f.show('#web', W0, CE + 0.35);
+			f.fx((t) => {
+				if (t < L0 || t >= CE + 0.35) return;
+				const up = E.o(ramp(t, L0, W0)), go = E.io(ramp(t, W0, W1));
+				const r = lerpR(SEL, SLOT, go), sc = r.w / SEL.w, pop = 1 + 0.05 * up * (1 - go);
+				const l = $('#lift');
+				Object.assign(l.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', borderRadius: 14 * Math.max(up, go) + 'px', transform: `scale(${pop.toFixed(4)})`, boxShadow: `0 ${(24 * up * (1 - go)).toFixed(1)}px ${(60 * up).toFixed(1)}px rgba(0,0,0,${(0.5 * up * (1 - go)).toFixed(3)})` });
+				l.firstElementChild.style.transform = `translate(${(-SEL.x * sc).toFixed(2)}px, ${(-SEL.y * sc).toFixed(2)}px) scale(${sc.toFixed(5)})`;
+				$('#webDim').style.opacity = up.toFixed(3);
+				$('#web').style.clipPath = inset(lerpR(SEL, WIN, go), lerp(14, 20, go));
+				$('#webBar').style.opacity = E.o(ramp(t, W0 + 0.35, W0 + 0.65)).toFixed(3);
+				['#webName', '#webKind', '#webChips'].forEach((s, i) => {
+					const q = E.o(ramp(t, W1 - 0.15 + i * 0.08, W1 + 0.3 + i * 0.08));
+					Object.assign($(s).style, { opacity: q.toFixed(3), transform: `translateY(${(14 * (1 - q)).toFixed(2)}px)` });
+				});
+				$('#webHead').style.opacity = E.o(ramp(t, W0 + 0.4, W0 + 0.7)).toFixed(3);
+				[...$('#webGrid').children].forEach((im, i) => {
+					const q = E.o(ramp(t, W0 + 0.45 + i * 0.06, W0 + 0.8 + i * 0.06));
+					Object.assign(im.style, { opacity: q.toFixed(3), transform: `translateY(${(18 * (1 - q)).toFixed(2)}px) scale(${(0.96 + 0.04 * q).toFixed(4)})` });
+				});
+			});
+			/* in on the flower while it's circled, out to the browser as it opens */
+			inner('#circIn', keys([[C - 0.3, { sx: 960, sy: 540, k: 1.1 }], [PEN0, { sx: 952, sy: 528, k: 1.3 }, 'io'], [REL, { k: 1.34 }, 'lin'], [W1, { sx: 960, sy: 510, k: 1.12 }, 'io5'], [CE + 0.35, { k: 1.14 }, 'lin']]));
+			title('#h4', C + 0.35, CE + 0.2, 960, 120);
+			f.tw('#h4', [[CE - 0.15, { o: 1 }], [CE + 0.1, { o: 0 }, 'i']]);
+
+			/* ═══ Copy text from pictures (46.30–49.50): the poster read in depth ═══
+			   A shimmer runs through the photo near to far (its depth map: Depth
+			   Anything V2, capture/seed/photos/poster-depth.png), lighting its contours
+			   and the edges of its type; the lines it reads (tesseract, as Live Text
+			   does) light up, lift off and become a card */
+			const SC0 = CE + 0.45, SC1 = SC0 + 1.1, T0 = SC1 + 0.05, T1 = T0 + 0.8, PRESS = T1 + 0.45;
+			f.show('#lt', CE - 0.25, 50.05);
+			f.tw('#lt', [[CE - 0.25, { x: 2900, y: 640, s: 0.72, mbx: 90 }], [CE + 0.3, { x: 960, mbx: 0 }, 'o']]);
+			const PH = { x: 431, y: 163, w: 1059, h: 794 }; /* the photo, on the screen */
+			const SW = 530, SH = 397;
+			const DEPTH = new Float32Array(SW * SH), EDGE = new Float32Array(SW * SH);
+			{
+				const cv = document.createElement('canvas');
+				cv.width = SW;
+				cv.height = SH;
+				const cx = cv.getContext('2d', { willReadFrequently: true });
+				const dimg = new Image();
+				dimg.src = 'plates/poster-depth.png';
+				await dimg.decode();
+				cx.drawImage(dimg, 0, 0, SW, SH);
+				let px = cx.getImageData(0, 0, SW, SH).data;
+				for (let i = 0; i < SW * SH; i++) DEPTH[i] = px[i * 4] / 255;
+				cx.drawImage($('#ltIn img'), PH.x, PH.y, PH.w, PH.h, 0, 0, SW, SH);
+				px = cx.getImageData(0, 0, SW, SH).data;
+				const L = (x, y) => { const i = (y * SW + x) * 4; return (0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2]) / 255; };
+				for (let y = 1; y < SH - 1; y++)
+					for (let x = 1; x < SW - 1; x++) {
+						const gx = L(x + 1, y) - L(x - 1, y), gy = L(x, y + 1) - L(x, y - 1);
+						EDGE[y * SW + x] = Math.min(1, Math.hypot(gx, gy) * 2.2);
+					}
+			}
+			const scanCx = $('#scan').getContext('2d');
+			const scanImg = scanCx.createImageData(SW, SH);
+			const scanP = (t) => -0.12 + 1.3 * E.io(ramp(t, SC0, SC1));
+			f.fx((t) => {
+				const on = t >= SC0 - 0.05 && t < SC1 + 0.6;
+				$('#scan').style.display = on ? '' : 'none';
+				if (!on) return;
+				const p = scanP(t), fade = 1 - ramp(t, SC1 - 0.1, SC1 + 0.55), o = scanImg.data;
+				for (let y = 0; y < SH; y++) {
+					const yn = y / SH;
+					for (let x = 0; x < SW; x++) {
+						const i = y * SW + x, d = DEPTH[i];
+						const dist = p - (0.62 * yn + 0.38 * (1 - d));
+						const front = Math.exp(-(dist * dist) / 0.0016), after = dist > 0 ? Math.exp(-dist / 0.1) : 0;
+						const fr = d * 18, c = Math.abs(fr - Math.floor(fr) - 0.5);
+						const contour = (c < 0.07 ? 1 - c / 0.07 : 0) * clamp((0.9 - d) / 0.1, 0, 1);
+						const dot = x % 5 === 0 && y % 5 === 0 ? 1 : 0;
+						const I = (front * 0.65 + contour * (front * 1.3 + after * 0.3) + dot * (front * 1.4 + after * 0.35)) * fade;
+						const Wt = EDGE[i] * (front * 1.5 + after * 0.45) * fade;
+						o[i * 4] = Math.min(255, 110 * I + 255 * Wt);
+						o[i * 4 + 1] = Math.min(255, 185 * I + 255 * Wt);
+						o[i * 4 + 2] = Math.min(255, 255 * I + 255 * Wt);
+						o[i * 4 + 3] = 255;
+					}
+				}
+				scanCx.putImageData(scanImg, 0, 0);
+			});
+			/* the lines read, on the photo (r), and as type in the card */
+			const CARD = { x: 710, y: 430, w: 500, h: 380 };
+			const LINES = [
+				{ r: [742, 319, 491, 41], txt: 'BOEKENBEURS', css: 'font-size: 56px; font-weight: 650; letter-spacing: 0.01em; line-height: 1', at: [742, 494] },
+				{ r: [933, 407, 146, 37], txt: '29/10 – 3/11\n6/11 – 11/11', css: 'font-size: 28px; font-weight: 500; line-height: 1.22', at: [742, 576] },
+				{ r: [1090, 407, 142, 38], txt: '2019', css: 'font-size: 70px; font-weight: 650; letter-spacing: -0.01em; line-height: 1', at: [0, 572] },
+				{ r: [1092, 453, 140, 17], txt: 'antwerp expo', css: 'font-size: 26px; font-weight: 500; color: #a9c1ff; line-height: 1', at: [0, 650] },
+			];
+			const ltIn = $('#ltIn'), anchor = $('#ltCard');
+			for (const L of LINES) {
+				const [x, y, w, h] = L.r;
+				L.hl = Object.assign(document.createElement('div'), { className: 'hl' });
+				Object.assign(L.hl.style, { left: x - 6 + 'px', top: y - 5 + 'px', width: w + 12 + 'px', height: h + 10 + 'px' });
+				L.slice = Object.assign(document.createElement('div'), { className: 'slice', innerHTML: '<img src="plates/lt-poster.jpg" alt="">' });
+				Object.assign(L.slice.style, { width: w + 'px', height: h + 'px' });
+				L.slice.firstChild.style.transform = `translate(${-x}px, ${-y}px)`;
+				L.tt = Object.assign(document.createElement('div'), { className: 'ttxt', textContent: L.txt });
+				L.tt.style.cssText += L.css;
+				ltIn.insertBefore(L.hl, anchor);
+				ltIn.append(L.slice, L.tt);
+			}
+			LINES.forEach((L) => ((L.w = L.tt.offsetWidth), (L.h = L.tt.offsetHeight)));
+			/* (2019 and the place sit right of the dates) */
+			LINES[2].at[0] = LINES[3].at[0] = LINES[1].at[0] + LINES[1].w + 30;
+			/* each line lights when the shimmer reaches it */
+			LINES.forEach((L, i) => {
+				const a = 0.62 * ((L.r[1] + L.r[3] / 2 - PH.y) / PH.h);
+				let t = SC0;
+				while (scanP(t) < a && t < SC1) t += 0.01;
+				L.lit = t;
+				L.go = T0 + i * 0.05;
+			});
+			const U = { x: 742 - 18, y: 319 - 18, w: 491 + 36, h: 470 - 319 + 36 };
+			f.fx((t) => {
+				const vis = t >= CE - 0.25 && t < 50.05;
+				for (const L of LINES) {
+					const [x, y, w, h] = L.r;
+					const lit = E.back(ramp(t, L.lit, L.lit + 0.25)), lift = E.o(ramp(t, L.go, L.go + 0.15)), q = E.io(ramp(t, L.go + 0.05, L.go + 0.05 + 0.7));
+					Object.assign(L.hl.style, { display: vis && t >= L.lit ? '' : 'none', opacity: (Math.min(1, lit) * (1 - lift)).toFixed(3), transform: `scale(${(0.92 + 0.08 * lit).toFixed(4)})` });
+					const fly = vis && t >= L.go;
+					L.slice.style.display = L.tt.style.display = fly ? '' : 'none';
+					if (!fly) continue;
+					/* both travel the same path: from the line on the poster to its place in the card */
+					const s0 = 1.05 * lift, sx = lerp(x - w * 0.025 * lift, L.at[0], q), sy = lerp(y - h * 0.025 * lift - 6 * lift, L.at[1], q);
+					const sS = (1 + 0.05 * lift) * Math.pow(L.h / h / (1 + 0.05 * lift), q);
+					const mix = ramp(q, 0.3, 0.8), blur = 5 * Math.sin(Math.PI * mix);
+					Object.assign(L.slice.style, { transform: `translate(${sx.toFixed(2)}px, ${sy.toFixed(2)}px) scale(${sS.toFixed(5)})`, opacity: (1 - mix).toFixed(3), filter: `blur(${(blur / sS).toFixed(2)}px)`, boxShadow: `0 8px 24px rgba(0,0,0,${(0.35 * lift * (1 - q)).toFixed(3)})` });
+					const tS = sS * (h / L.h);
+					Object.assign(L.tt.style, { transform: `translate(${sx.toFixed(2)}px, ${sy.toFixed(2)}px) scale(${tS.toFixed(5)})`, opacity: mix.toFixed(3), filter: `blur(${(blur / tS).toFixed(2)}px)` });
+				}
+				/* the card grows from round the lines to its place */
+				const g = E.io(ramp(t, T0 + 0.05, T1)), r = lerpR(U, CARD, g);
+				Object.assign(anchor.style, { display: vis && t >= T0 ? '' : 'none', left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', borderRadius: lerp(10, 28, g) + 'px', opacity: E.o(ramp(t, T0, T0 + 0.3)).toFixed(3) });
+				const hq = E.o(ramp(t, T1 - 0.25, T1 + 0.1)), bq = E.o(ramp(t, T1 - 0.1, T1 + 0.25));
+				Object.assign($('#ltHead').style, { display: vis ? '' : 'none', opacity: hq.toFixed(3), transform: `translateY(${(10 * (1 - hq)).toFixed(2)}px)` });
+				const press = t >= PRESS && t < PRESS + 0.1 ? 0.97 : 1;
+				Object.assign($('#ltCopy').style, { display: vis ? '' : 'none', opacity: bq.toFixed(3), transform: `translateY(${(12 * (1 - bq)).toFixed(2)}px) scale(${press})` });
+				const done = t >= PRESS + 0.06;
+				$('#ltCopyLabel').textContent = done ? 'Copied' : 'Copy text';
+				$('#ltCopyIcon').textContent = done ? '\ue182' : '\ue1ca';
+			});
+			/* settle on the poster, push in as it's read, follow the lines down to the card */
+			inner('#ltIn', keys([[CE - 0.25, { sx: 960, sy: 560, k: 1.0 }], [SC0, { sx: 960, sy: 540, k: 1.04 }, 'io'], [SC1, { sx: 960, sy: 470, k: 1.2 }, 'io'], [T1, { sx: 960, sy: 610, k: 1.22 }, 'io'], [50.05, { k: 1.25 }, 'lin']]));
+			title('#h5', CE + 0.45, 50.05, 960, 104);
+
+			/* ═══ …ask anything. (37.50–42.10): Search answers, then the sidebar ═══
+			   A hard cut on the beat to the real Search, matched on its bar; the
+			   question typed, its answer streaming in Search (sped up), then the
+			   hand-over: Search's panel grows into the sidebar (a container
+			   morph between the take's last Search frame and its first sidebar
+			   frame; the shell itself swaps them in a frame) */
+			const MO0 = 39.7, MO1 = 40.35; /* the morph */
+			f.show('#sa', SA0, C - 0.3 + 0.55);
+			f.tw('#sa', [[SA0, { x: 960, y: 540, s: 1, mbx: 0 }], [C - 0.3, { x: 960, mbx: 0 }], [C - 0.3 + 0.55, { x: -1000, mbx: 100 }, 'i']]);
+			f.fx((t) => {
+				if (t < SA0 || t >= C + 0.25) return;
+				/* (typed, Enter; "Thinking…" cut short; the answer at 1.7x; then the sidebar) */
+				const local = t < 37.85 ? lerp(1.8, 1.97, ramp(t, SA0, 37.85)) : t < 38.1 ? lerp(1.97, 2.63, ramp(t, 37.85, 38.1)) : t < 39.4 ? lerp(2.63, 4.8, ramp(t, 38.1, 39.4)) : t < MO0 ? lerp(4.8, 5.0, ramp(t, 39.4, MO0)) : t < MO1 ? 0.05 : lerp(7.63, 9.9, ramp(t, MO1, C + 0.25));
+				setSrc($('#saImg'), frame('spotask', local));
+			});
+			const SPR = { x: 622, y: 216, w: 680, h: 262 }, SBR = { x: 4, y: 34, w: 428, h: 1042 };
+			f.fx((t) => {
+				const m = $('#saMorph');
+				const on = t >= MO0 && t < MO1;
+				m.style.display = on ? '' : 'none';
+				if (!on) return;
+				const p = E.io(ramp(t, MO0, MO1)), r = lerpR(SPR, SBR, p);
+				Object.assign(m.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', borderRadius: lerp(22, 20, p) + 'px' });
+				Object.assign($('#saSpot').style, { left: -SPR.x + 'px', top: -SPR.y + 'px', opacity: (1 - ramp(p, 0.1, 0.55)).toFixed(3) });
+				Object.assign($('#saSide').style, { left: -SBR.x + 'px', top: -SBR.y + 'px', opacity: ramp(p, 0.35, 0.85).toFixed(3) });
+			});
+			/* in on the bar (the HTML bar's size), down to the answer, across to the sidebar */
+			inner('#saIn', keys([[SA0, { sx: 962, sy: 281, k: 1.91 }], [38.1, { sx: 962, sy: 300, k: 1.85 }, 'io'], [39.4, { sx: 962, sy: 350, k: 1.7 }, 'io'], [MO0, { k: 1.68 }, 'lin'], [MO1, { sx: 640, sy: 330, k: 1.4 }, 'io'], [C + 0.25, { k: 1.46 }, 'lin']]));
+			/* "…ask anything.", "anything." landing hard: the emphasis */
+			{
+				const w = split($('#hAI'), 'words');
+				w.at(-1).classList.add('acc');
+				f.tw('#hAI', [[0, { x: 960, y: 160 }], [MO0, { x: 960 }], [MO1 + 0.1, { x: 1270 }, 'io']]);
+				f.tw(w[0], [[38.45, { o: 0, dy: 24, blur: 10 }], [38.85, { o: 1, dy: 0, blur: 0 }, 'expo']]);
+				f.tw(w[1], [[38.6, { o: 0, sc: 1.5, blur: 14 }], [38.85, { o: 1, sc: 1, blur: 0 }, 'i3'], [38.95, { sc: 1.06 }, 'o'], [39.3, { sc: 1 }, 'o']]);
+				f.show('#hAI', 38.45, C - 0.3 + 0.35);
+				f.tw('#hAI', [[C - 0.3, { o: 1 }], [C, { o: 0 }, 'i']]);
+			}
+
+			/* ═══ Captions, live (50.30–53.60): the iRice film's, revealed by the warp ═══ */
+			const CAP = 50.6;
+			at('#vid', 960, 600);
+			f.show('#vid', CAP - 1.05, CAP + 3.4);
+			f.tw('#vidImg', [[CAP - 1.2, { sc: 1.14 }], [CAP + 3.4, { sc: 1.0 }, 'lin']]);
+			title('#hCap', CAP + 0.2, CAP + 3.1, 960, 150);
+			f.tw('#hCap', [[CAP + 2.9, { o: 1 }], [CAP + 3.1, { o: 0 }, 'i']]);
+			/* the caption bar rides with the video, then becomes the dictation island */
+			f.show('#cap', CAP - 1.05, 56.65);
+			const CAPY = 600 + 371 - 70;
+			f.tw('#cap', [
+				[CAP - 1.2, { x: 960, y: CAPY, w: 1120, h: 92, br: 46, bg: '#000000' }],
+				[CAP + 3.0, { x: 960, y: CAPY, w: 1120, h: 92, br: 46 }],
+				[CAP + 3.7, { y: 330, w: 640, h: 120, br: 60 }, 'io'],
+			]);
+			const L1 = 'The tide comes in twice a day,'.split(' ');
+			const L2 = 'so the beach is never the same.'.split(' ');
+			f.fx((t) => {
+				let s = '';
+				if (t >= CAP + 1.9) s = L2.slice(0, Math.max(0, Math.min(L2.length, Math.floor((t - CAP - 1.9) / 0.14) + 1))).join(' ');
+				else if (t >= CAP + 0.5) s = L1.slice(0, Math.min(L1.length, Math.floor((t - CAP - 0.5) / 0.14) + 1)).join(' ');
+				if ($('#capText').textContent !== s) $('#capText').textContent = s;
+			});
+			f.tw('#capText', [[CAP + 2.95, { o: 1 }], [CAP + 3.1, { o: 0 }, 'lin']]);
+			f.tw('#vid', [[CAP + 3.0, { s: 1, o: 1 }], [CAP + 3.4, { s: 0.9, o: 0 }, 'i']]);
+
+			/* ═══ Just say it (53.60–56.60) ══════════════════════════════════ */
+			const DI = CAP + 3.0;
+			f.tw('#dict', [[DI + 0.45, { o: 0 }], [DI + 0.75, { o: 1 }, 'o']]);
+			{
+				const wave = $('#wave');
+				for (let i = 0; i < 9; i++) wave.append(document.createElement('i'));
+				f.fx((t) => {
+					[...wave.children].forEach((b, i) => {
+						const h = 14 + 44 * Math.abs(Math.sin(t * 7.3 + i * 0.9) * Math.sin(t * 3.1 + i * 1.7));
+						b.style.height = h.toFixed(1) + 'px';
+					});
+					$('#dot').style.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t * 3));
+				});
+			}
+			title('#hDict', DI + 0.55, 56.65, 960, 150);
+			f.show('#note', DI + 0.55, 56.65);
+			f.tw('#note', [[DI + 0.55, { x: 960, y: 700, o: 0, blur: 14 }], [DI + 1.0, { y: 660, o: 1, blur: 0 }, 'o'], [56.6, { s: 1.03 }, 'lin']]);
+			{
+				const NOTE = 'Pick up oat milk and call mum at six.'.split(' ');
+				f.fx((t) => {
+					const n = Math.max(0, Math.min(NOTE.length, Math.floor((t - DI - 1.0) / 0.17) + 1));
+					const s = t < DI + 1.0 ? '' : NOTE.slice(0, n).join(' ');
+					if ($('#noteText').textContent !== s) $('#noteText').textContent = s;
+				});
+			}
+
+			/* ═══ Bedside Mode, then unlocked (57.60–62.30): one take ════════════════
+			   Bedside Mode's widgets, a slide over to its clock (the shell switches at
+			   once; the slide is the film's), someone back (the shell's own morph
+			   to the lock screen), in on the field as the camera looks and the
+			   reader asks, in close on the match's check, and the lock lifts away
+			   onto the blurred leaves (the waits between them cut short) */
+			const LK = 57.6, SLD = LK + 0.35;
+			f.show('#lk', LK - 0.95, 62.45);
+			f.tw('#lk', [[LK - 1.0, { x: 960, y: 540, s: 1, o: 1 }], [61.95, { s: 1, o: 1 }], [62.45, { s: 1.04, o: 0 }, 'i']]);
+			play('#lkImg', 'lockseq', [[LK - 1.0, 0.1], [SLD, 1.38], [SLD + 0.01, 1.47], [LK + 1.25, 3.2], [LK + 1.95, 4.15], [LK + 2.15, 4.95], [LK + 2.85, 6.4], [LK + 2.95, 6.65], [LK + 3.55, 7.85], [LK + 3.65, 8.0], [62.45, 8.9]], LK - 1.0, 62.45);
+			/* the slide: the widgets out to the left, the clock in from the right */
+			f.fx((t) => {
+				const p = E.io(ramp(t, SLD, SLD + 0.45)), on = t >= SLD && t < SLD + 0.45;
+				$('#lkSlide').style.display = on ? '' : 'none';
+				$('#lkSlide').style.transform = `translateX(${(-1920 * p).toFixed(1)}px)`;
+				$('#lkImg').style.transform = on ? `translateX(${(1920 * (1 - p)).toFixed(1)}px)` : '';
+			});
+			/* (the field: the reader's glyph at 1064, 956) */
+			inner('#lkIn', keys([[LK - 1.0, { sx: 960, sy: 540, k: 1.04 }], [LK + 1.6, { k: 1.0 }, 'lin'], [LK + 2.3, { sx: 1000, sy: 870, k: 2.6 }, 'io'], [LK + 3.4, { sx: 1010, sy: 875, k: 2.7 }, 'lin'], [LK + 3.75, { sx: 1040, sy: 905, k: 3.4 }, 'io'], [62.45, { k: 3.5 }, 'lin']]));
+			title('#hSB', LK - 0.6, LK + 1.65, 960, 150);
+			f.tw('#hSB', [[LK + 1.45, { o: 1 }], [LK + 1.65, { o: 0 }, 'i']]);
+			title('#hUn', LK + 2.05, 62.2, 960, 150);
+			f.tw('#hUn', [[61.95, { o: 1 }], [62.2, { o: 0 }, 'i']]);
+
+			/* ═══ All in glass (62.50–66.10): the sliders | Quick Settings ══════
+			   One take: the Glass page's Advanced sliders and Quick Settings, as
+			   seed/glass-ramp.py takes the glass from flat to its strongest. Then
+			   Quick Settings fills the frame, in on the account picture; pressed,
+			   the Badge opens out of it (glassAt: a ring in the Badge's outline,
+			   bending at its edge) onto Material's Quick Settings */
+			const GS = 62.5, AVT = 65.3, PRS = 65.85, WP0 = 66.1, WP1 = 67.1;
+			/* a card's inner picture, for a card of any size (sx, sy at its centre) */
+			const innerIn = (sel, card, K) => {
+				const el = $(sel), c = $(card);
+				f.fx((t) => {
+					const k = K(t), w = c.offsetWidth, h = c.offsetHeight;
+					const v = `translate(${(w / 2 - k.sx * k.k).toFixed(2)}px, ${(h / 2 - k.sy * k.k).toFixed(2)}px) scale(${k.k.toFixed(5)})`;
+					if (el.style.transform !== v) el.style.transform = v;
+				});
+			};
+			const RAMP = [[GS - 0.2, 0.9], [GS + 0.6, 1.4], [GS + 2.6, 4.0], [WP0, 4.3]];
+			play('#gLImg', 'glassramp', RAMP, GS - 0.2, AVT + 0.6);
+			play('#gRImg', 'glassramp', RAMP, GS - 0.2, WP0 + 0.05);
+			f.show('#gL', GS - 0.2, AVT + 0.6);
+			f.show('#gR', GS - 0.2, WP0 + 0.05);
+			f.tw('#gL', [[GS - 0.2, { x: 538, y: 600, o: 0, s: 0.94, mbx: 0 }], [GS + 0.2, { o: 1, s: 1 }, 'o'], [AVT, { x: 538, mbx: 0 }], [AVT + 0.5, { x: -500, mbx: 80 }, 'i']]);
+			f.tw('#gR', [[GS - 0.1, { x: 1282, y: 600, o: 0, s: 0.94, w: 800, h: 760, br: 44 }], [GS + 0.3, { o: 1, s: 1 }, 'o'], [AVT, { x: 1282, y: 600, w: 800, h: 760, br: 44 }], [AVT + 0.5, { x: 960, y: 540, w: 1920, h: 1080, br: 0 }, 'io']]);
+			innerIn('#gLIn', '#gL', keys([[GS - 0.2, { sx: 1196, sy: 556, k: 1.2 }], [AVT + 0.6, { sy: 552, k: 1.24 }, 'lin']]));
+			/* (in on the picture, pressed: a dip, then back) */
+			innerIn('#gRIn', '#gR', keys([[GS - 0.2, { sx: 1653, sy: 290, k: 1.5 }], [AVT, { sx: 1653, sy: 290, k: 1.55 }, 'lin'], [PRS, { sx: 1580, sy: 484, k: 2.6 }, 'io'], [PRS + 0.08, { k: 2.5 }, 'o'], [WP0 + 0.05, { k: 2.6 }, 'o']]));
+			title('#h6', GS + 0.9, AVT + 0.3, 960, 110);
+			f.tw('#h6', [[AVT + 0.05, { o: 1 }], [AVT + 0.3, { o: 0 }, 'i']]);
+
+			/* ═══ Or Material (67.10–71.10): recorded, a frame at a time ═════ */
+			const mClip = $('#mClip');
+			at('#ssid', 1622, 93);
+			f.show('#ssid', WP1 - 0.05, 69.1);
+			at('#mClip', 960, 540);
+			f.show('#mClip', WP1 - 0.05, 69.1);
+			f.fx((t) => (f.W.style.display = t >= WP1 - 0.05 && t < 69.1 ? '' : 'none'));
+			f.cam([
+				/* Quick Settings, close up, as the Badge opens onto it */
+				[WP1 - 0.05, { cx: 1408, cy: 330, s: 1.9 }, 'step'],
+				[69.1, { s: 1.98 }, 'o'],
+			]);
+			f.fx((t) => {
+				if (t < WP1 - 0.05 || t >= 69.1) return;
+				setSrc(mClip, frame('mqs', 1.35 + 0.6 * Math.max(0, t - WP1)));
+			});
+			const hm = split($('#hMat'), 'words');
+			hm.at(-1).classList.add('acc');
+			f.tw('#hMat', [[0, { x: 600, y: 540 }]]);
+			hm.forEach((s, i) => f.tw(s, [[WP1 + 0.05 + i * 0.1, { o: 0, dy: 30, blur: 12 }], [WP1 + 0.05 + i * 0.1 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo'], [68.85, { o: 1, blur: 0 }], [69.1, { o: 0, blur: 12 }, 'i']]));
+			f.show('#hMat', WP1 + 0.05, 69.1);
+			/* ═══ Colours that follow you (69.10–71.30) ══════════════════════
+			   On black, the line in plain white, and Material's loader: a shape that
+			   turns and morphs (the Badge, sunny, clover, pill, a soft triangle,
+			   the Badge again), taking a new colour from one of the film's
+			   wallpapers at each turn: leaves, ocean, tiles, the lily, the poster,
+			   and last the petals', whose Badge then opens onto them (glassAt) */
+			const LD0 = 69.1, LDN = 300;
+			const SHAPES = [
+				(a) => 1 + 0.1 * Math.cos(8 * a), /* the Badge */
+				(a) => 1 + 0.055 * Math.cos(12 * a), /* sunny */
+				(a) => 1 + 0.2 * Math.cos(4 * a), /* clover */
+				(a) => 0.86 / Math.sqrt((Math.cos(a) / 1.16) ** 2 + (Math.sin(a) / 0.72) ** 2), /* pill */
+				(a) => 1 + 0.13 * Math.cos(3 * a - Math.PI / 2), /* a soft triangle */
+				(a) => 1 + 0.1 * Math.cos(8 * a), /* the Badge */
+			];
+			const TONES = [[143, 209, 139], [138, 196, 255], [242, 168, 140], [246, 193, 214], [183, 178, 255], [244, 185, 166]];
+			const STEP = (k) => LD0 + 0.3 + 0.36 * k; /* each turn starts here, 0.3 s long */
+			const LDTURN = (5 * 2 * Math.PI) / 8 + 0.15; /* where the last Badge's waves end up */
+			at('#ldBg', 960, 540);
+			at('#ld', 960, 540);
+			f.show(['#ldBg', '#ld'], LD0, 71.3 + 0.05);
+			f.fx((t) => {
+				if (t < LD0 || t >= 71.35) return;
+				let k = 0;
+				while (k < 4 && t >= STEP(k + 1)) k++;
+				const p = t < STEP(0) ? 0 : E.io(ramp(t, STEP(k), STEP(k) + 0.3));
+				const from = t < STEP(0) ? 0 : k, to = t < STEP(0) ? 0 : k + 1;
+				/* (a quarter-plus turn with each morph, eased, over a slow drift) */
+				const turn = (t < STEP(0) ? 0 : (k + p) * ((2 * Math.PI) / 8)) + 0.15 * ramp(t, LD0, 71.3);
+				const pop = E.back(ramp(t, LD0, LD0 + 0.3)), R = 112 * pop * (1 + 0.05 * Math.sin(Math.PI * p));
+				let d = '';
+				for (let i = 0; i <= LDN; i++) {
+					const a = (i / LDN) * 2 * Math.PI, r = R * lerp(SHAPES[from](a - turn), SHAPES[to](a - turn), p);
+					d += `${i ? 'L' : 'M'}${(960 + r * Math.cos(a)).toFixed(1)} ${(640 + r * Math.sin(a)).toFixed(1)}`;
+				}
+				const el = $('#ldPath');
+				el.setAttribute('d', d + 'Z');
+				const c = TONES[from].map((v, i) => Math.round(lerp(v, TONES[to][i], p)));
+				el.style.fill = `rgb(${c.join(',')})`;
+			});
+			{
+				const w = split($('#hRoom'), 'words');
+				f.tw('#hRoom', [[0, { x: 960, y: 330 }]]);
+				w.forEach((s, i) => f.tw(s, [[LD0 + 0.1 + i * 0.08, { o: 0, dy: 26, blur: 10 }], [LD0 + 0.1 + i * 0.08 + 0.5, { o: 1, dy: 0, blur: 0 }, 'expo'], [71.0, { o: 1, blur: 0 }], [71.25, { o: 0, blur: 10 }, 'i']]));
+				f.show('#hRoom', LD0 + 0.1, 71.3);
+			}
+
+			f.start();
+			/* a seek isn't drawn until the footage frames it asked for are decoded */
+			const seek0 = window.__film.seek;
+			window.__film.seek = async (v) => {
+				seek0(v);
+				await Promise.all([...document.querySelectorAll('img.clip')].map((i) => i.decode().catch(() => {})));
+			};
+		</script>
+	</body>
+</html>

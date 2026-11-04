@@ -16,6 +16,8 @@
  *   R.blurIn(f, '#hero', 1.2);
  *   R.zoomThrough(f, 3.0, 3.6, 812, 540);   // into the counter of the "o"
  */
+import { split, lerp, ramp, EASE } from './film.js';
+
 const el = (f, s) => (typeof s === 'string' ? f.$(s) : s);
 const isAbs = (e) => e.classList.contains('a');
 const K = (e) => (isAbs(e) ? { s: 's', x: 'x', y: 'y' } : { s: 'sc', x: 'dx', y: 'dy' });
@@ -80,6 +82,23 @@ export function wordAppend(f, lineSel, words, times, { cx = 960, y = 540, dur = 
 	for (let i = 1; i < words.length; i++) keys.push([times[i], { x: xs[i - 1] }], [times[i] + dur, { x: xs[i] }, 'o']);
 	f.tw(line, keys);
 	words.forEach((w, i) => f.tw(w, [[times[i], { o: 0, dy: rise }], [times[i] + dur, { o: 1, dy: 0 }, 'o']]));
+}
+
+/**
+ * A title, word by word: each word rises 30 px out of a 12 px blur (expo out), 0.1 s apart,
+ * with one accent word (the last, by default). The workhorse title of a launch film: used
+ * for every chapter line, so the viewer learns it. Pass `out` to blur it away again.
+ * Splits the element itself, so call it after fonts load. Returns the word spans.
+ */
+export function titleIn(f, sel, t, { x, y, step = 0.1, dur = 0.5, rise = 30, blur = 12, accent = -1, accentClass = 'acc', out, outDur = 0.3 } = {}) {
+	const e = el(f, sel);
+	const words = split(e, 'words');
+	if (accent !== null) words.at(accent)?.classList.add(accentClass);
+	if (x !== undefined) f.tw(e, [[0, { x, y }]]);
+	words.forEach((w, i) => f.tw(w, [[t + i * step, { o: 0, dy: rise, blur }], [t + i * step + dur, { o: 1, dy: 0, blur: 0 }, 'expo']]));
+	if (out !== undefined) f.tw(e, [[out - outDur, { o: 1, blur: 0 }], [out, { o: 0, blur: 10 }, 'i']]);
+	f.show(e, t, out ?? Infinity);
+	return words;
 }
 
 /* ── exits ── */
@@ -195,6 +214,43 @@ export function slotReel(f, reelSel, times, { dur = 0.3, rowH, ease = 'io', fade
 			r.style.filter = d > 0.02 ? `blur(${(d * blur).toFixed(2)}px)` : '';
 			r.style.transform = `scale(${(1 - Math.min(d, 1) * shrink).toFixed(4)})`;
 		});
+	});
+}
+
+/**
+ * Jump cuts on a beat: the same shot reframed by a hard step in scale at each time
+ * (1 → 1.05 → 1 → …), so each new answer or state lands with a cut, not a fade.
+ */
+export function jumpCuts(f, sels, times, { s = 1.05, from = 1 } = {}) {
+	const keys = [];
+	times.forEach((t, i) => {
+		const a = i % 2 ? s : from, b = i % 2 ? from : s;
+		keys.push([t - 0.001, { s: a }], [t, { s: b }, 'step']);
+	});
+	for (const x of Array.isArray(sels) ? sels : [sels]) {
+		const e = el(f, x);
+		f.tw(e, isAbs(e) ? keys : keys.map(([t, v, z]) => [t, { sc: v.s }, z]));
+	}
+}
+
+/**
+ * Fly an element along an arc from a to b (points, or functions of t for moving ends):
+ * a file sent from a phone to a laptop. It rises by `lift` px at mid-flight, scales
+ * s0 → s1, tilts by `spin` degrees and back, and fades in and out at its ends. The
+ * element needs class "a"; its rest transform is replaced while it flies.
+ */
+export function arc(f, sel, t0, t1, a, b, { lift = 260, spin = 0, s0 = 1, s1 = 0.5, ease = 'io', fade = 0.15 } = {}) {
+	const e = el(f, sel);
+	const P = (p, t) => (typeof p === 'function' ? p(t) : p);
+	const E = typeof ease === 'function' ? ease : EASE[ease];
+	f.show(e, t0, t1);
+	return f.fx((t) => {
+		if (t < t0 || t >= t1) return;
+		const p = E(ramp(t, t0, t1)), A = P(a, t), B = P(b, t);
+		const x = lerp(A[0], B[0], p), y = lerp(A[1], B[1], p) - lift * Math.sin(Math.PI * p);
+		const s = lerp(s0, s1, p), r = spin * Math.sin(Math.PI * p);
+		e.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px) translate(-50%,-50%) scale(${s.toFixed(4)}) rotate(${r.toFixed(2)}deg)`;
+		e.style.opacity = (Math.min(1, ramp(t, t0, t0 + fade)) * (1 - ramp(t, t1 - fade, t1))).toFixed(3);
 	});
 }
 

@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" href="data:," />
+		<title>Tessera · Tiles</title>
+		<!--
+		Tessera launch film, version B: "Tiles". Fast (a 120 bpm grid), the looks
+		alternating chapter by chapter; every chapter break shatters the frame into
+		tiles (tesserae) that re-form as the next shot. Footage: capture/ (the hidden
+		sandbox, seeded demo data). Plan: brief.md, beats.md, copy.md, shots.md, style.md.
+
+		  Open:  node ~/Projects/product-film-kit/tools/serve.mjs site/film   then  /tessera/b.html?player=1
+
+		  t (s)      shot                                        out
+		  0.0–2.6    B1 tiles gather into the Badge; "Tessera"   the Badge shrinks to the menu bar
+		  2.6–5.0    B2 the login intro (Glass)                  tiles
+		  5–11       B3 "The island" · Glass                     tiles
+		  11–17      B4 "Your controls" · Material               tiles
+		  17–23      B5 "Two looks" · the switch                 tiles
+		  23–29      B6 "Circle anything" · Glass                tiles
+		  29–35      B7 "Ask anything" · Material                tiles
+		  35–41      B8 "Text in pictures" · Glass               tiles
+		  41–48      B9 "Share across" · phone → Material        tiles
+		  48–54      B10 "Your colours" · Material               tiles → the Badge
+		  54–60      B11 the Badge, "Tessera"; tiles drift (loop)
+		-->
+		<style>
+			@font-face {
+				font-family: 'Sans';
+				src: url('../../../material/assets/fonts/GoogleSansFlex.ttf');
+				font-weight: 100 1000;
+			}
+			@font-face {
+				font-family: 'PhosphorFill';
+				src: url('../../../shell/assets/fonts/Phosphor-Fill.ttf');
+			}
+			:root {
+				--accent: #ffb45c;
+				--bg: #0b0b0e;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #000;
+				overflow: hidden;
+			}
+			#art {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				width: 1920px;
+				height: 1080px;
+				overflow: hidden;
+				background: var(--bg);
+				font-family: 'Sans', system-ui, sans-serif;
+				color: #fff;
+				transform-origin: 50% 50%;
+			}
+			#world {
+				position: absolute;
+				inset: 0;
+				transform-origin: 0 0;
+			}
+			.layer,
+			.full {
+				position: absolute;
+				inset: 0;
+				overflow: hidden;
+			}
+			#ocean {
+				position: absolute;
+				inset: 0;
+				width: 1920px;
+				height: 1080px;
+				object-fit: cover;
+				filter: brightness(0.38) saturate(0.8);
+			}
+			.tile {
+				position: absolute;
+				left: 0;
+				top: 0;
+				border-radius: 14px;
+				will-change: transform, opacity;
+			}
+			.tile.glass {
+				background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18));
+				box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6);
+			}
+			.tile.tonal {
+				background: #a8cfb2;
+			}
+			.tile.deep {
+				background: #1f3b2c;
+				box-shadow: inset 0 0 0 1.5px rgba(168, 207, 178, 0.35);
+			}
+			.tile.amber {
+				background: var(--accent);
+			}
+			#badge {
+				position: absolute;
+				left: 0;
+				top: 0;
+				font-family: 'PhosphorFill';
+				font-size: 560px;
+				line-height: 1;
+				color: var(--accent);
+				z-index: 30;
+			}
+			.card {
+				position: absolute;
+				inset: 0;
+				background: var(--bg);
+				display: grid;
+				place-items: center;
+				z-index: 40;
+			}
+			.card span {
+				display: inline-block;
+				font-size: 132px;
+				font-weight: 620;
+				letter-spacing: -0.03em;
+			}
+			.card b {
+				color: var(--accent);
+				font-weight: 620;
+			}
+			.cap {
+				position: absolute;
+				left: 0;
+				top: 0;
+				font-size: 92px;
+				font-weight: 560;
+				letter-spacing: -0.02em;
+				white-space: nowrap;
+				z-index: 45;
+				text-shadow: 0 4px 36px rgba(0, 0, 0, 0.6);
+			}
+			#shatter {
+				position: absolute;
+				inset: 0;
+				z-index: 60;
+				pointer-events: none;
+			}
+			#phone {
+				position: absolute;
+				width: 400px;
+				height: 820px;
+				border-radius: 66px;
+				background: #111;
+				box-shadow: inset 0 0 0 10px #1c1c1f, inset 0 0 0 12px #333, 0 30px 80px rgba(0, 0, 0, 0.6);
+				overflow: hidden;
+			}
+			#phone .scr2 {
+				position: absolute;
+				inset: 14px;
+				border-radius: 54px;
+				overflow: hidden;
+				background: #000;
+			}
+			#phone img {
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 100%;
+				height: 62%;
+				object-fit: cover;
+			}
+			#phone .sheet {
+				position: absolute;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				height: 46%;
+				background: #1d1f22;
+				border-radius: 34px 34px 0 0;
+				padding: 26px 26px 0;
+				box-sizing: border-box;
+				font-size: 23px;
+				color: #e8eaed;
+			}
+			#phone .row {
+				display: flex;
+				gap: 18px;
+				margin-top: 22px;
+			}
+			#phone .dev {
+				width: 100px;
+				text-align: center;
+				font-size: 17px;
+				color: #c8cbd0;
+			}
+			#phone .dev i {
+				display: grid;
+				place-items: center;
+				width: 78px;
+				height: 78px;
+				margin: 0 auto 8px;
+				border-radius: 50%;
+				background: #2b2e33;
+				font-style: normal;
+				font-family: 'PhosphorFill';
+				font-size: 34px;
+				color: #9fc6ff;
+			}
+			#phone .dev.on i {
+				background: #9fc6ff;
+				color: #0b2a4a;
+			}
+			#player {
+				position: fixed;
+				left: 16px;
+				right: 16px;
+				bottom: 16px;
+				display: flex;
+				gap: 12px;
+				align-items: center;
+				font: 13px system-ui;
+				color: #fff;
+			}
+			#player[hidden] {
+				display: none;
+			}
+			#player input {
+				flex: 1;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="art">
+			<div id="world">
+				<div class="layer" id="open"><video id="ocean" src="clips/ocean.mp4"></video><div id="gather"></div></div>
+				<div id="shots"></div>
+				<div id="badge"></div>
+				<div class="cap" id="name">Tessera</div>
+				<div class="cap" id="c0">One desktop. Two looks.</div>
+				<div id="cards"></div>
+				<div id="shatter"></div>
+			</div>
+		</div>
+		<div id="player" hidden><button type="button">Play</button><input type="range" min="0" value="0" /><span data-time></span></div>
+
+		<script type="module">
+			import { createFilm, keyed, EASE, clamp, rng } from '../../engine/film.js';
+			import { vclip, screen, view, loopByDefault, BADGE, W, H } from './shared.js';
+			import { CLIPS, PLATES, REGION } from './clips.js';
+
+			loopByDefault();
+			await document.fonts.ready;
+			const D = 60;
+			const f = createFilm({ duration: D });
+			const $ = (s) => document.querySelector(s);
+			const R = rng(7);
+			$('#badge').textContent = BADGE;
+
+			/* ── B1 / B11: tiles gather into the Badge's scalloped shape ─────── */
+			const gather = $('#gather');
+			const cell = 34, R0 = 250, CX = 960, CY = 470;
+			const inBadge = (x, y) => {
+				const dx = x - CX, dy = y - CY, th = Math.atan2(dy, dx);
+				return Math.hypot(dx, dy) < R0 * (1 + 0.06 * Math.cos(12 * th));
+			};
+			const kinds = ['glass', 'glass', 'tonal', 'deep', 'amber', 'amber', 'amber'];
+			const G = [];
+			for (let y = CY - R0 * 1.1; y < CY + R0 * 1.1; y += cell)
+				for (let x = CX - R0 * 1.1; x < CX + R0 * 1.1; x += cell)
+					if (inBadge(x + cell / 2, y + cell / 2)) {
+						const el = document.createElement('div');
+						el.className = 'tile ' + kinds[Math.floor(R() * kinds.length)];
+						el.style.width = el.style.height = cell - 4 + 'px';
+						el.style.borderRadius = '8px';
+						gather.appendChild(el);
+						G.push({ el, tx: x, ty: y, sx: R() * 2200 - 140, sy: R() * 1300 - 110, r: R() * 120 - 60, d: R() });
+					}
+			/* drift → rush in → locked (0–1.6); the reverse at the end (58.4–60) */
+			const gat = keyed([[0, { p: 0 }], [0.55, { p: 0 }], [1.35, { p: 1 }, 'expo'], [57.8, { p: 1 }], [59.9, { p: 0 }, 'io5'], [60, { p: 0 }]]);
+			f.fx((t) => {
+				const { p: p0 } = gat(t);
+				const vis = t < 2.0 || t > 54;
+				gather.style.display = vis ? '' : 'none';
+				if (!vis) return;
+				const fade = t < 1.5 ? 1 : t < 1.9 ? 1 - (t - 1.5) / 0.4 : t < 57.6 ? 0 : t < 58 ? (t - 57.6) / 0.4 : 1;
+				for (const g of G) {
+					const p = clamp(p0 * 1.15 - g.d * 0.15);
+					const drift = (t > 30 ? t - 60 : t) * 18;
+					const x = g.sx + drift * (g.d - 0.5) + (g.tx - g.sx) * p, y = g.sy + (g.ty - g.sy) * p;
+					g.el.style.transform = `translate(${x}px, ${y}px) rotate(${g.r * (1 - p)}deg)`;
+					g.el.style.opacity = fade;
+				}
+			});
+			vclip(f, '#ocean', { at: 0, until: 2.8 });
+			vclip(f, $('#ocean'), { at: 54, until: 60.01 });
+			f.show('#open', 0, 3.0);
+			f.show('#open', 54, D);
+			f.tw('#open', [[0, { o: 1 }], [2.6, { o: 1 }], [3.0, { o: 0 }, 'i'], [54, { o: 0 }], [54.6, { o: 1 }, 'o']]);
+
+			/* the Badge: locks over the tiles, then shrinks into the menu bar's corner */
+			f.tw('#badge', [
+				[0, { x: CX, y: CY, s: 0.94, o: 0 }],
+				[1.3, { s: 0.94, o: 0 }],
+				[1.7, { s: 1, o: 1 }, 'back'],
+				[2.6, { x: CX, y: CY, s: 1 }],
+				[3.15, { x: 18, y: 15, s: 0.03 }, 'expo'],
+				[3.3, { o: 0 }],
+				[54.4, { x: CX, y: CY, s: 0.6, o: 0 }],
+				[55.0, { s: 1, o: 1 }, 'back'],
+				[57.6, { s: 1, o: 1 }],
+				[58.1, { s: 0.9, o: 0 }, 'i']
+			]);
+			const slam = (id, t, out, x = 960, y = 880) => {
+				f.show(id, t, out + 0.25);
+				f.tw(id, [[t, { x, y, s: 1.3, o: 0, blur: 14 }], [t + 0.3, { s: 1, o: 1, blur: 0 }, 'expo'], [out, { s: 1, o: 1 }], [out + 0.22, { s: 0.96, o: 0, blur: 6 }, 'i3']]);
+			};
+			$('#name').style.fontSize = '150px';
+			slam('#name', 2.0, 2.55, 960, 840);
+			slam('#name', 55.4, 57.5, 960, 840);
+			$('#c0').innerHTML = 'One desktop. Two <span style="color:var(--accent)">looks.</span>';
+			slam('#c0', 3.6, 4.6);
+
+			/* ── shots: real screens, full frame ────────────────────────── */
+			const shots = $('#shots');
+			const shot = (t0, t1, { look, clip, plate, at, rate, map, viewKeys }) => {
+				const l = document.createElement('div');
+				l.className = 'layer';
+				shots.appendChild(l);
+				f.show(l, t0, t1);
+				const s = screen(l, { plate: plate || PLATES[look], clip: clip && CLIPS[clip], region: clip && REGION[clip] });
+				if (s.video) vclip(f, s.video, map ? { map } : { at, rate: rate || 1, until: t1 + 0.1 });
+				view(f, s.el, W, H, viewKeys);
+				return l;
+			};
+			/* jump cuts: the view holds, then snaps to the next framing on the beat */
+			const jumps = (t0, frames) => frames.map(([dt, k], i) => [t0 + dt, k, i ? 'step' : undefined]).filter(Boolean);
+
+			/* B2: the login intro (the Badge has just become its menu logo) */
+			shot(2.6, 5.0, { look: 'g', clip: 'full-g-intro', plate: PLATES.gfull, at: 2.7, viewKeys: [[2.6, { cx: 960, cy: 540, s: 1.06 }], [5, { cx: 960, cy: 540, s: 1.0 }, 'o']] });
+
+			/* chapter cards: one or two words, slammed in on the beat */
+			const cards = $('#cards');
+			const card = (t, html) => {
+				const c = document.createElement('div');
+				c.className = 'card';
+				c.innerHTML = `<span>${html}</span>`;
+				cards.appendChild(c);
+				f.show(c, t, t + 1.0);
+				f.tw(c.firstChild, [[t, { sc: 1.35, o: 0, blur: 16 }], [t + 0.3, { sc: 1, o: 1, blur: 0 }, 'expo'], [t + 0.78, { sc: 1 }], [t + 1.0, { sc: 0.94, o: 0 }, 'i3']]);
+			};
+
+			/* B3 · 5–11: the island (Glass) */
+			card(5.0, 'The <b>island</b>');
+			shot(6.0, 11.1, { look: 'g', clip: 'g-island', at: 6.0, viewKeys: jumps(6.0, [[0, { cx: 960, cy: 120, s: 1.6 }], [2.0, { cx: 960, cy: 90, s: 2.3 }], [3.5, { cx: 1060, cy: 80, s: 3.0 }]]) });
+			/* B4 · 11–17: Quick Settings (Material) */
+			card(11.0, 'Your <b>controls</b>');
+			shot(12.0, 17.1, { look: 'm', clip: 'm-cc', at: 11.9, viewKeys: jumps(12.0, [[0, { cx: 1500, cy: 360, s: 1.5 }], [2.0, { cx: 1650, cy: 300, s: 2.1 }], [3.5, { cx: 1700, cy: 420, s: 2.6 }]]) });
+			/* B5 · 17–23: the switch, Glass → Material */
+			card(17.0, 'Two <b>looks</b>');
+			shot(18.0, 23.1, { look: 'g', clip: 'full-switch', plate: PLATES.gfull, at: 18.0, rate: 1.3, viewKeys: [[18, { cx: 960, cy: 540, s: 1.0 }], [23, { cx: 960, cy: 540, s: 1.06 }, 'lin']] });
+			/* B6 · 23–29: circle to search (Glass) */
+			card(23.0, 'Circle <b>anything</b>');
+			shot(24.0, 29.1, { look: 'g', clip: 'full-g-circle', plate: PLATES.gfull, at: 23.6, rate: 1.15, viewKeys: jumps(24.0, [[0, { cx: 970, cy: 540, s: 1.1 }], [2.4, { cx: 700, cy: 520, s: 1.0 }]]) });
+			/* B7 · 29–35: the AI sidebar, then past chats (Material) */
+			card(29.0, 'Ask <b>anything</b>');
+			shot(30.0, 32.6, { look: 'm', clip: 'm-ask', at: 29.6, rate: 1.6, viewKeys: [[30, { cx: 400, cy: 520, s: 1.35 }], [32.6, { cx: 400, cy: 480, s: 1.45 }, 'lin']] });
+			shot(32.6, 35.1, { look: 'm', clip: 'm-chats', at: 32.4, viewKeys: [[32.6, { cx: 330, cy: 460, s: 1.6 }], [35, { cx: 330, cy: 500, s: 1.7 }, 'lin']] });
+			/* B8 · 35–41: Live Text (Glass) */
+			card(35.0, 'Text in <b>pictures</b>');
+			shot(36.0, 41.1, { look: 'g', clip: 'g-livetext', at: 35.8, viewKeys: [[36, { cx: 960, cy: 560, s: 1.0 }], [41, { cx: 860, cy: 500, s: 1.5 }, 'io5']] });
+			/* B9 · 41–48: a phone sends; the laptop receives (Material) */
+			card(41.0, 'Share <b>across</b>');
+			const pl = document.createElement('div');
+			pl.className = 'layer';
+			pl.style.background = 'radial-gradient(circle at 50% 40%, #1d2a33, #0b0b0e 70%)';
+			shots.appendChild(pl);
+			f.show(pl, 42.0, 44.0);
+			const ph = document.createElement('div');
+			ph.id = 'phone';
+			ph.innerHTML = `<div class="scr2"><img src="capture/seed/photos/tram-photo.jpg"><div class="sheet">Share<div class="row"><div class="dev on"><i></i>Maya's laptop</div><div class="dev"><i></i>Studio TV</div><div class="dev"><i></i>Nearby</div></div></div></div>`;
+			pl.appendChild(ph);
+			f.tw(ph, [[42, { x: 960, y: 620, s: 0.9, r: -4 }], [42.5, { y: 540, s: 1, r: 0 }, 'expo'], [43.6, { x: 960, y: 540, s: 1.04 }], [44.0, { x: 400, s: 0.9, mbx: 50 }, 'i3']]);
+			const sh = shot(43.8, 48.1, { look: 'm', clip: 'm-share', at: 43.6, viewKeys: [[43.8, { cx: 960, cy: 560, s: 1.3 }], [48, { cx: 960, cy: 560, s: 1.45 }, 'lin']] });
+			f.tw(sh, [[43.8, { dx: 600, mbx: 50 }], [44.2, { dx: 0, mbx: 0 }, 'expo']]);
+			/* B10 · 48–54: the wallpaper changes, and Material's colours follow */
+			card(48.0, 'Your <b>colours</b>');
+			shot(49.0, 54.1, { look: 'm', clip: 'full-m-colour', plate: PLATES.mfull, at: 48.7, rate: 1.3, viewKeys: jumps(49.0, [[0, { cx: 960, cy: 540, s: 1.0 }], [1.5, { cx: 1500, cy: 300, s: 1.6 }], [3.0, { cx: 960, cy: 540, s: 1.0 }]]) });
+
+			/* ── tile shatters at every chapter break ───────────────────── */
+			const sh2 = $('#shatter');
+			const N = 16, M = 9, S = 120;
+			const T2 = [];
+			for (let j = 0; j < M; j++)
+				for (let i = 0; i < N; i++) {
+					const el = document.createElement('div');
+					el.className = 'tile ' + ['glass', 'tonal', 'deep', 'deep', 'amber'][Math.floor(R() * 5)];
+					el.style.width = el.style.height = S - 8 + 'px';
+					sh2.appendChild(el);
+					const x = i * S + 4, y = j * S + 4;
+					T2.push({ el, x, y, d: Math.hypot(x + S / 2 - 960, y + S / 2 - 540) / 1100 + R() * 0.12, r: R() * 50 - 25 });
+				}
+			const breaks = [5.0, 11.0, 17.0, 23.0, 29.0, 35.0, 41.0, 48.0, 54.0];
+			f.fx((t) => {
+				const b = breaks.find((x) => t > x - 0.6 && t < x + 0.6);
+				sh2.style.display = b === undefined ? 'none' : '';
+				if (b === undefined) return;
+				for (const g of T2) {
+					/* in from the centre outwards, then out the same way */
+					const pin = EASE.expo(clamp((t - (b - 0.55 + g.d * 0.3)) / 0.25));
+					const pout = EASE.i3(clamp((t - (b + 0.05 + g.d * 0.3)) / 0.25));
+					const s = pin * (1 - pout);
+					g.el.style.transform = `translate(${g.x}px, ${g.y}px) rotate(${g.r * (1 - s)}deg) scale(${s})`;
+					g.el.style.opacity = s > 0.01 ? 1 : 0;
+				}
+			});
+
+			f.start();
+		</script>
+	</body>
+</html>

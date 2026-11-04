@@ -218,6 +218,68 @@ export function valueAt(pts, t) {
 	return mixAny(pts.at(-1)[1], pts.at(-1)[1], 1);
 }
 
+/**
+ * A keyframed function of plain numbers, for things the tracks don't own (a device's
+ * position and scale driven in an fx, a split-screen panel's rect, a shader's state).
+ * Keys are [t, {name: value}, ease]; a key inherits every value it doesn't name from the
+ * key before it, so `[12.2, {}]` is a hold. `s` interpolates geometrically, so a zoom
+ * reads even all the way.
+ *   const lap = keyed([[0, { x: 960, s: 4.8 }], [10.6, {}], [12.2, { s: 0.9 }, 'io']]);
+ *   f.fx((t) => place(el, lap(t)));
+ */
+export function keyed(K) {
+	const full = [];
+	for (const [t, v, e] of K) full.push([t, { ...(full.at(-1)?.[1] ?? {}), ...v }, easeOf(e)]);
+	return (t) => {
+		if (t <= full[0][0]) return { ...full[0][1] };
+		for (let i = 1; i < full.length; i++) {
+			const [t0, a] = full[i - 1], [t1, b, e] = full[i];
+			if (t < t1) {
+				const p = e(ramp(t, t0, t1)), o = {};
+				for (const k in b) o[k] = !(k in a) ? b[k] : k === 's' && a[k] > 0 && b[k] > 0 ? a[k] * Math.pow(b[k] / a[k], p) : lerp(a[k], b[k], p);
+				return o;
+			}
+		}
+		return { ...full.at(-1)[1] };
+	};
+}
+
+/**
+ * Film time → footage time, piecewise linear through [[filmT, clipT], …]. Trim, hold and
+ * speed up recorded footage without re-encoding it: a pointer's slow travel at 2×, the
+ * wait for a result cut out. Before the first point it holds; after the last it plays on
+ * at 1× (or holds, with { after: 'hold' }).
+ *   remap([[14.2, 0], [15.6, 1.4], [17.7, 5.6], [18.7, 6.6], [18.7, 8.7]])
+ */
+export function remap(points, { after = 'play' } = {}) {
+	const P = [...points].sort((a, b) => a[0] - b[0]);
+	return (t) => {
+		if (t <= P[0][0]) return P[0][1];
+		for (let i = 1; i < P.length; i++) if (t < P[i][0]) return lerp(P[i - 1][1], P[i][1], (t - P[i - 1][0]) / (P[i][0] - P[i - 1][0]));
+		const [tl, cl] = P.at(-1);
+		return after === 'hold' ? cl : cl + (t - tl);
+	};
+}
+
+/** The 1-based frame number shown at local time `local` (s) of an n-frame clip at fps. Clamped. */
+export const frameIndex = (local, fps, n) => clamp(Math.floor(local * fps + 1e-4) + 1, 1, n);
+
+/**
+ * Load a captured clip's clip.json (tools/capture/web.mjs or frames.sh) for f.footage().
+ * `url` is the clip's folder, relative to the film page.
+ *   const tap = await loadClip('capture/clips/new-project');
+ *   f.footage('#screen', tap, { at: 4.6 });
+ *   const click = tap.events.find((e) => e.type === 'click');   // cut on it, aim the cursor at it
+ */
+export async function loadClip(url) {
+	const r = await fetch(`${url}/clip.json`);
+	if (!r.ok) throw new Error(`loadClip: no ${url}/clip.json (run the capture, or frames.sh, first)`);
+	return { ...(await r.json()), url };
+}
+
+/** Whether a list of [t0, t1) ranges covers t. An element shown by several show() calls is visible in any of them. */
+export const within = (ranges, t) => ranges.some(([a, b]) => t >= a && t < b);
+
 const TRANSFORM = ['x', 'y', 's', 'sx', 'sy', 'r', 'rx', 'ry', 'z', 'skx'];
 const FLOW = ['dx', 'dy', 'sc'];
 
@@ -242,6 +304,7 @@ export function createFilm({ duration, width = 1920, height = 1080, world = '#wo
 	const SHOW = [];
 	const CAM = { cx: [], cy: [], s: [], r: [] };
 	const CAMFN = [];
+	const SETTLE = [];
 	const SHAKES = [];
 	let shakeFn = () => 0;
 	let hooks = [];
@@ -266,10 +329,55 @@ export function createFilm({ duration, width = 1920, height = 1080, world = '#wo
 		return api;
 	}
 
-	/** Visible only while t0 <= t < t1 (display: none outside). Keeps heavy scenes out of layout. */
+	/**
+	 * Visible only while t0 <= t < t1 (display: none outside). Keeps heavy scenes out of layout.
+	 * Call it again for another range: the element shows in any of them.
+	 */
 	function show(sel, t0, t1 = Infinity) {
-		for (const el of all(sel)) SHOW.push([el, t0, t1]);
+		for (const el of all(sel)) {
+			let s = SHOW.find((x) => x[0] === el);
+			if (!s) SHOW.push((s = [el, []]));
+			s[1].push([t0, t1]);
+		}
 		return api;
+	}
+
+	/**
+	 * Register fn(t) → a promise the renderer waits for after each seek, before its
+	 * screenshot: an image to decode, a video to seek, a texture to upload. The player
+	 * doesn't wait; only seek() does.
+	 */
+	function settle(fn) {
+		SETTLE.push(fn);
+		return api;
+	}
+
+	/**
+	 * Play recorded footage on an <img>, one frame at a time, so every seek shows the exact
+	 * frame (a <video>'s currentTime is not frame-exact, and seeking it is slow).
+	 * `clip` is the clip.json a capture tool wrote ({ dir, fps, n }), or that object by hand.
+	 *   at:   the film time the clip's first frame plays at (default 0), or
+	 *   map:  film time → clip time, for trims and speed changes (see remap())
+	 *   from, to: only drive the image in this range, so one <img> can play a montage
+	 *         of clips, a footage() call per shot
+	 * Frames are <dir>/0001.jpg …; pass `name: (i) => url` for anything else.
+	 */
+	function footage(sel, clip, { at = 0, map, from = -Infinity, to = Infinity, name } = {}) {
+		const el = $(sel);
+		const { fps = 30, n, ext = 'jpg' } = clip;
+		const dir = clip.url ?? clip.dir;
+		const local = map ?? ((t) => t - at);
+		const url = name ?? ((i) => `${dir}/${String(i).padStart(4, '0')}.${ext}`);
+		if (!n) console.warn('footage: the clip has no frame count (n)', clip);
+		if (!el.dataset.footage) {
+			el.dataset.footage = '1';
+			settle(() => (el.getAttribute('src') ? el.decode().catch(() => {}) : null));
+		}
+		return fx((t) => {
+			if (t < from || t >= to) return;
+			const u = url(frameIndex(local(t), fps, n));
+			if (el.getAttribute('src') !== u) el.setAttribute('src', u);
+		});
 	}
 
 	/** Camera keys: cx, cy = the world point at the frame centre; s = zoom; r = roll (deg). s interpolates in log space, so a zoom feels even. */
@@ -500,7 +608,10 @@ export function createFilm({ duration, width = 1920, height = 1080, world = '#wo
 
 	let drawn = NaN;
 	function render(t) {
-		for (const [el, a, b] of SHOW) el.style.display = t >= a && t < b ? '' : 'none';
+		for (const [el, R] of SHOW) {
+			const d = within(R, t) ? '' : 'none';
+			if (el.style.display !== d) el.style.display = d;
+		}
 		applyCam(t);
 		applyTracks(t);
 		for (const f of FX) f(t);
@@ -576,20 +687,26 @@ export function createFilm({ duration, width = 1920, height = 1080, world = '#wo
 			if (t !== drawn) render(t);
 			requestAnimationFrame(frame);
 		};
-		/* the renderer's contract: DUR, seek(t) that draws synchronously, pause() */
+		/* the renderer's contract: DUR, seek(t) (draws synchronously; returns a promise), pause() */
 		window.__film = {
 			...(window.__film || {}) /* keeps an audioWav() set before start() */,
 			DUR: duration,
 			width,
 			height,
-			seek: (v) => ((t = v), render(v)),
+			/* draws synchronously, then resolves once footage and anything else registered
+			   with settle() is ready: the renderer awaits it before each screenshot */
+			seek: (v) => {
+				t = v;
+				render(v);
+				return Promise.all(SETTLE.map((fn) => fn(v)));
+			},
 			pause: () => ((playing = false), icon())
 		};
 		requestAnimationFrame(frame);
 		return api;
 	}
 
-	const api = { DUR: duration, width, height, W, tw, show, cam, camFn, zoomAbout, shake, shakeWith, fx, homography, camKeys, keysAt, quad, render, box, boxAt, start, camAt, $ };
+	const api = { DUR: duration, width, height, W, tw, show, cam, camFn, zoomAbout, shake, shakeWith, fx, homography, camKeys, keysAt, quad, render, box, boxAt, start, camAt, settle, footage, $ };
 	return api;
 }
 

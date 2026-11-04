@@ -1,0 +1,15 @@
+# Unpacked from the takes (capture/make-frames.sh): not committed
+frames/
+# The takes as recorded, the probes' stills: clips/ holds the takes, compressed
+capture/raw/
+capture/stills/
+# Rendered (the site's copy lives in site/public/media), and the render's progress
+tessera.mp4
+tessera.webm
+render.log
+render-progress.json
+feature-sheet.jpg
+# Only the first drafts used these
+capture/seed/photos/ocean-top.mp4
+capture/seed/photos/wall-*.jpg
+!capture/seed/photos/wall-tiles.jpg
