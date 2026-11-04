@@ -555,8 +555,9 @@ Singleton {
             onStreamFinished: {
                 if (searcher.ran !== searcher.query)
                     return;
-                root.searchFound = text.split("\n").filter(id => Chats.validId(id));
+                // (the words first: the list reads them when the ids change)
                 root.searchedFor = searcher.ran;
+                root.searchFound = text.split("\n").filter(id => Chats.validId(id));
             }
         }
         onExited: {

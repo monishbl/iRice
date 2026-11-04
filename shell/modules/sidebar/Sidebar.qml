@@ -99,6 +99,7 @@ Variants {
 
                         AiChat {
                             anchors.fill: parent
+                            panelScreen: win.screen
                             visible: win.tab === 0
                             active: win.shown && visible
                         }
