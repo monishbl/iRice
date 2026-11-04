@@ -5,10 +5,11 @@ import qs.common
 import Quickshell.Io
 import "AiModels.js" as ModelConfig
 import "AiPrompt.js" as Prompt
+import "AiChats.js" as Chats
 
 // Models and connections are owned by the user in Settings → AI. Streams
 // over XMLHttpRequest, so credentials stay in-process. `chat` drives the UI;
-// `history` is what goes back to the API.
+// `history` is what goes back to the API; `sessions` lists past chats.
 Singleton {
     id: root
 
@@ -26,10 +27,10 @@ Singleton {
     function hasCredential(m) { return m.auth === "none" || AiKeys.has(ModelConfig.credentialProvider(m), m.key); }
     function saveCredential(m, key) { AiKeys.set(m.key, key, m.name + " · " + ModelConfig.credentialLabel(m)); }
 
-    Component.onCompleted: { migrateModels(); migratePrompt(); }
+    Component.onCompleted: { migrateModels(); migratePrompt(); startHistory(); }
     Connections {
         target: Config
-        function onReadyChanged() { root.migrateModels(); root.migratePrompt(); }
+        function onReadyChanged() { root.migrateModels(); root.migratePrompt(); root.startHistory(); }
     }
     // A whole system prompt from before (it replaced iRice's own) becomes the
     // person's note, unless it was the old default
@@ -133,49 +134,437 @@ Singleton {
         Config.options.ai.model = m.key;
     }
 
-    function clear() {
-        stop();
-        chatModel.clear();
-        history = [];
-        save();
+    // ── Chat history ───────────────────────────────────────────────────
+    // Every chat is a session, saved owner-only next to UI state as
+    // ai-chats/<id>.json, with a light index.json for the history list
+    // (AiChats.js has the format). The open chat saves itself as it goes;
+    // one nobody sent anything in isn't kept. Pictures are never stored.
+    // Settings → AI → Chat history can turn saving off: then nothing is
+    // written, and the chat is forgotten a minute after the sidebar closes.
+    readonly property string chatsDir: UiState.dir + "/ai-chats"
+    readonly property string indexPath: chatsDir + "/index.json"
+    readonly property string oldChatPath: UiState.dir + "/ai-chat.json" // (one chat, before history)
+    readonly property bool keepHistory: Config.options.ai.keepHistory
+    property var sessions: [] // the index's entries, newest first
+    property string currentId: "" // the open chat's session ("" until it's first saved)
+    property var trash: [] // deleted, Undo still offered: removed when that ends (or at the next start)
+    property var pendingDelete: null // { entry, wasCurrent }: what Undo brings back
+    property string notice: "" // something to say in the history view (no Undo)
+    property bool historyReady: false
+    property bool chatChanged: false // the open chat has news its file hasn't
+    property bool pendingSave: false // (asked to save before the index was read)
+    property bool touched: false // (a chat was started or opened before the index was read)
+    readonly property var currentEntry: sessions.find(c => c.id === currentId) ?? null
+    // Content landed in the open chat from elsewhere (circle to search,
+    // Spotlight's Continue in chat): the sidebar shows the chat
+    signal wantChat
+
+    function pathOf(id) {
+        return Chats.validId(id) ? chatsDir + "/" + id + ".json" : "";
     }
 
-    // The conversation survives restarts: saved owner-only next to UI state.
-    readonly property string chatPath: UiState.dir + "/ai-chat.json"
-    function save() {
+    // The pencil, /new and /clear: a new chat; the old one stays in history
+    function newChat() {
+        stop();
+        save();
+        touched = true;
+        chatModel.clear();
+        history = [];
+        currentId = "";
+        chatChanged = false;
+        writeIndex();
+    }
+    function clear() {
+        newChat();
+    }
+
+    function savedRows() {
         const rows = [];
         for (let i = 0; i < chatModel.count; i++) {
             const r = chatModel.get(i);
             if (r.status !== "streaming")
                 rows.push({ role: r.role, text: r.text, thinking: r.thinking, status: r.status, model: r.model, image: r.image, search: r.search });
         }
-        // Image data stays in memory only; a saved chat remembers that there was one
-        const pics = h => (h.images ?? (h.image ? [h.image] : [])).length;
-        const turns = history.map(h => pics(h) ? { role: h.role, text: "[" + (pics(h) === 1 ? "A picture was" : pics(h) + " pictures were") + " attached here]\n" + h.text } : h);
-        saver.payload = JSON.stringify({ rows: rows, history: turns });
-        saver.running = true;
+        return rows;
+    }
+    // Writes the open chat when it has news (or `force`: its title or pin
+    // changed), and its line in the index
+    function save(force) {
+        if (!historyReady) {
+            pendingSave = true;
+            return;
+        }
+        if (!keepHistory || (!chatChanged && !force))
+            return;
+        const rows = savedRows();
+        if (!Chats.worthKeeping(rows))
+            return;
+        const now = Date.now();
+        if (currentId === "")
+            currentId = Chats.newId(now, Math.random());
+        const old = currentEntry;
+        const s = Chats.session({
+            id: currentId,
+            title: old?.title ?? Chats.titleFrom(rows.find(r => r.role === "user").text),
+            created: old?.created ?? now,
+            updated: chatChanged || !old ? now : old.updated,
+            model: model.key,
+            modelName: model.id !== "" ? model.name : (old?.modelName ?? ""),
+            pinned: old?.pinned ?? false
+        }, rows, history);
+        queue({ path: pathOf(currentId), payload: JSON.stringify(s) });
+        sessions = Chats.upsert(sessions, Chats.entryOf(s));
+        chatChanged = false;
+        writeIndex();
+    }
+    function writeIndex() {
+        if (historyReady)
+            Qt.callLater(root.flushIndex); // (once, however many changes)
+    }
+    function flushIndex() {
+        queue({ path: indexPath, payload: Chats.indexText(keepHistory ? currentId : "", sessions, trash) });
+    }
+
+    // A saved chat, as the latest write left it (one still waiting to be
+    // written counts)
+    function readSession(id) {
+        const path = pathOf(id);
+        if (path === "")
+            return null;
+        for (let i = jobs.length - 1; i >= 0; i--)
+            if (jobs[i].path === path && jobs[i].payload !== undefined)
+                return parse(jobs[i].payload);
+        if (writer.running && writer.path === path && writer.payload !== "")
+            return parse(writer.payload);
+        return readJson(path);
+    }
+    function parse(text) {
+        try {
+            return text ? JSON.parse(text) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+    // (small files, read at once: no answer can arrive half-way)
+    Component {
+        id: reader
+        FileView {
+            blockAllReads: true
+            printErrors: false
+        }
+    }
+    function readText(path) {
+        const f = reader.createObject(root, { path: path });
+        const t = f.text();
+        f.destroy();
+        return t;
+    }
+    function readJson(path) {
+        return parse(readText(path));
+    }
+    function fillRows(rows, at) {
+        const text = v => typeof v === "string" ? v : "";
+        (rows ?? []).forEach((r, i) => chatModel.insert(at + i, { role: text(r.role) || "note", text: text(r.text), thinking: text(r.thinking), status: text(r.status) || "done", model: text(r.model), image: text(r.image), search: text(r.search) }));
+    }
+
+    // Open a past chat: an answer still coming is stopped (and kept) first.
+    // Its model comes back too, while it's still in the list.
+    function openChat(id) {
+        if (id === currentId)
+            return true;
+        const s = readSession(id);
+        if (!s || !Array.isArray(s.rows)) {
+            sessions = Chats.without(sessions, id);
+            writeIndex();
+            say("Couldn't open that chat: its file is missing or damaged, so it's been taken off the list.");
+            return false;
+        }
+        stop();
+        save();
+        touched = true;
+        chatModel.clear();
+        fillRows(s.rows, 0);
+        history = Array.isArray(s.history) ? s.history : [];
+        currentId = id;
+        chatChanged = false;
+        if (typeof s.model === "string" && models.some(m => m.key === s.model))
+            setModel(s.model);
+        writeIndex();
+        return true;
+    }
+
+    function renameChat(id, title) {
+        const t = Chats.cleanTitle(title);
+        if (t !== "")
+            updateChat(id, { title: t });
+    }
+    function setPinned(id, pinned) {
+        updateChat(id, { pinned: pinned });
+    }
+    function updateChat(id, fields) {
+        if (!sessions.some(c => c.id === id))
+            return;
+        sessions = Chats.patch(sessions, id, fields);
+        if (id === currentId)
+            save(true);
+        else
+            queue({ patch: pathOf(id), fields: fields });
+        writeIndex();
+    }
+
+    // Delete acts at once; Undo brings it back for 8 s, and only then is the
+    // file removed (or at the next start, if the shell stops first). The
+    // open chat clears to a new one.
+    function deleteChat(id) {
+        finishDelete(); // (an earlier deletion is final now)
+        const wasCurrent = id === currentId;
+        if (wasCurrent) {
+            stop();
+            save(); // (so Undo brings back all of it)
+        }
+        const entry = sessions.find(c => c.id === id);
+        if (!entry)
+            return;
+        if (wasCurrent)
+            discardCurrent();
+        sessions = Chats.without(sessions, id);
+        trash = [id];
+        pendingDelete = { entry: entry, wasCurrent: wasCurrent };
+        notice = "";
+        deleteTimer.restart();
+        writeIndex();
+    }
+    function undoDelete() {
+        const p = pendingDelete;
+        if (!p)
+            return;
+        deleteTimer.stop();
+        pendingDelete = null;
+        trash = [];
+        sessions = Chats.upsert(sessions, p.entry);
+        writeIndex();
+        if (p.wasCurrent && chatModel.count === 0 && !busy)
+            openChat(p.entry.id);
+    }
+    function finishDelete() {
+        const p = pendingDelete;
+        if (!p)
+            return;
+        deleteTimer.stop();
+        pendingDelete = null;
+        queue({ paths: [pathOf(p.entry.id)] });
+        trash = [];
+        writeIndex();
+    }
+    Timer {
+        id: deleteTimer
+        interval: 8000
+        onTriggered: root.finishDelete()
+    }
+    // The open chat, gone without saving (it was deleted)
+    function discardCurrent() {
+        flushTimer.stop();
+        if (xhr) {
+            const x = xhr;
+            xhr = null;
+            x.abort();
+        }
+        chatModel.clear();
+        history = [];
+        currentId = "";
+        chatChanged = false;
+    }
+
+    // Settings → AI → Delete all chats (it asks first: there's no Undo),
+    // pinned ones too
+    function deleteAllChats() {
+        deleteTimer.stop();
+        pendingDelete = null;
+        discardCurrent();
+        sessions = [];
+        trash = [];
+        queue({ clear: chatsDir });
+        writeIndex();
+    }
+
+    // Settings → AI → Delete chats older than: by their last message, never
+    // the pinned or open ones
+    function pruneOld() {
+        if (!historyReady)
+            return;
+        const drop = Chats.prune(sessions, Config.options.ai.historyDays, Date.now(), [currentId]);
+        if (drop.length === 0)
+            return;
+        sessions = sessions.filter(c => drop.indexOf(c.id) < 0);
+        queue({ paths: drop.map(pathOf) });
+        writeIndex();
+    }
+    Connections {
+        target: Config.options.ai
+        function onHistoryDaysChanged() { root.pruneOld(); }
+        function onKeepHistoryChanged() { root.writeIndex(); }
+    }
+    Timer {
+        interval: 6 * 3600 * 1000
+        running: root.historyReady && Config.options.ai.historyDays > 0
+        repeat: true
+        onTriggered: root.pruneOld()
+    }
+    // History off: the chat lives only while it's in use
+    Timer {
+        interval: 60000
+        running: !root.keepHistory && Panels.open !== "sidebar" && chatModel.count > 0 && !root.busy
+        onTriggered: root.newChat()
+    }
+
+    function say(text) {
+        notice = text;
+        noticeTimer.restart();
+    }
+    Timer {
+        id: noticeTimer
+        interval: 5000
+        onTriggered: root.notice = ""
+    }
+
+    // Read the index once: chats left in the trash go now, the old single
+    // chat becomes the first session, and the chat that was open comes back
+    // (above anything already there: circle to search can send its first
+    // message before this has run).
+    function startHistory() {
+        if (historyReady || !Config.ready)
+            return;
+        const idx = Chats.parseIndex(readText(indexPath)) ?? { current: "", trash: [], chats: [] };
+        sessions = idx.chats;
+        let dirty = idx.trash.length > 0;
+        if (idx.trash.length)
+            queue({ paths: idx.trash.filter(id => !sessions.some(c => c.id === id)).map(pathOf) });
+        const old = readJson(oldChatPath);
+        if (old !== null) {
+            const now = Date.now();
+            const s = Chats.migrate(old, Chats.newId(now, Math.random()), now);
+            if (s) {
+                queue({ path: pathOf(s.id), payload: JSON.stringify(s) });
+                sessions = Chats.upsert(sessions, Chats.entryOf(s));
+                if (idx.current === "")
+                    idx.current = s.id;
+            }
+            queue({ paths: [oldChatPath] });
+            dirty = true;
+        }
+        historyReady = true;
+        if (keepHistory && idx.current !== "" && !touched) {
+            const s = readSession(idx.current);
+            if (s && Array.isArray(s.rows)) {
+                fillRows(s.rows, 0);
+                history = (Array.isArray(s.history) ? s.history : []).concat(history);
+                currentId = idx.current;
+            }
+        }
+        pruneOld();
+        if (pendingSave || chatChanged) {
+            pendingSave = false;
+            save();
+        }
+        if (dirty)
+            writeIndex();
+    }
+    Component.onDestruction: {
+        if (trash.length)
+            Quickshell.execDetached(["rm", "-f", "--"].concat(trash.map(pathOf)));
+    }
+
+    // Writes, one at a time in order: { path, payload } (owner-only, whole
+    // or not at all), { patch: path, fields } (a saved chat's title or pin),
+    // { paths } (removed) or { clear: folder } (every chat in it removed)
+    property var jobs: []
+    function queue(job) {
+        if ((job.path ?? job.patch ?? "x") === "")
+            return;
+        jobs = jobs.concat([job]);
+        runNext();
+    }
+    function runNext() {
+        if (writer.running || jobs.length === 0)
+            return;
+        const j = jobs[0];
+        jobs = jobs.slice(1);
+        let payload = j.payload;
+        let path = j.path ?? j.patch ?? "";
+        if (j.patch !== undefined) {
+            const s = readJson(j.patch);
+            if (!s)
+                return runNext();
+            payload = JSON.stringify(Object.assign(s, j.fields));
+        }
+        writer.path = payload !== undefined ? path : "";
+        writer.payload = payload ?? "";
+        writer.stdinEnabled = payload !== undefined;
+        writer.command = payload !== undefined ? ["sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" && cat > \"$1.tmp\" && mv -f \"$1.tmp\" \"$1\"", "sh", path]
+            : j.clear !== undefined ? ["sh", "-c", "rm -f -- \"$1\"/*.json \"$1\"/*.tmp", "sh", j.clear]
+            : ["rm", "-f", "--"].concat(j.paths.filter(p => p !== ""));
+        writer.running = true;
     }
     Process {
-        id: saver
+        id: writer
+        property string path
         property string payload
-        command: ["sh", "-c", "umask 077; cat > \"$1\"", "sh", root.chatPath]
+        onStarted: {
+            if (stdinEnabled) {
+                write(payload);
+                stdinEnabled = false;
+            }
+        }
+        onExited: {
+            path = "";
+            payload = "";
+            Qt.callLater(root.runNext);
+        }
+    }
+
+    // Search through whole chats (ai-chat-search.py), for words past the
+    // index's preview: the ids it found for `searchedFor`
+    property var searchFound: []
+    property string searchedFor: ""
+    readonly property bool searching: searcher.running
+    function searchChats(query) {
+        const q = query.trim();
+        searcher.query = q;
+        if (q === "") {
+            searchFound = [];
+            searchedFor = "";
+        } else if (searcher.running) {
+            searcher.again = true;
+        } else {
+            searcher.running = true;
+        }
+    }
+    Process {
+        id: searcher
+        property string query
+        property string ran
+        property bool again: false
+        command: ["python3", "-I", Quickshell.shellDir + "/assets/scripts/ai-chat-search.py", root.chatsDir]
         stdinEnabled: true
         onStarted: {
-            write(payload);
+            ran = query;
+            write(query);
             stdinEnabled = false;
         }
-        onExited: stdinEnabled = true
-    }
-    FileView {
-        path: root.chatPath
-        onLoaded: {
-            try {
-                const j = JSON.parse(text());
-                // (above anything already there: circle to search can send
-                // its first message before this has loaded)
-                (j.rows ?? []).forEach((r, i) => chatModel.insert(i, Object.assign({ image: "", search: "" }, r)));
-                root.history = (j.history ?? []).concat(root.history);
-            } catch (e) {}
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (searcher.ran !== searcher.query)
+                    return;
+                root.searchFound = text.split("\n").filter(id => Chats.validId(id));
+                root.searchedFor = searcher.ran;
+            }
+        }
+        onExited: {
+            stdinEnabled = true;
+            if (again && query !== "") {
+                again = false;
+                running = true;
+            }
         }
     }
 
@@ -202,15 +591,16 @@ Singleton {
         attach(Object.assign({ lens: true }, picture));
         if (attachments.some(a => a.path === picture.path))
             submit("");
+        wantChat();
     }
 
-    // Slash commands: /clear, /model <id>, /key <key>
+    // Slash commands: /new (or /clear), /model <id>, /key <key>
     function submit(text) {
         const t = text.trim() || (attachments.some(a => a.lens) ? circleQuestion : attachments.length === 1 ? "What's in this picture?" : attachments.length > 1 ? "What's in these pictures?" : "");
         if (t === "" || busy)
             return;
-        if (t === "/clear")
-            return clear();
+        if (t === "/new" || t === "/clear")
+            return newChat();
         if (t.startsWith("/model ")) {
             const id = t.slice(7).trim();
             const m = models.find(x => x.key === id || x.id === id || x.name.toLowerCase() === id.toLowerCase());
@@ -310,6 +700,7 @@ Singleton {
         if (imgs.length)
             turn.images = imgs.map(i => ({ data: i.data, mediaType: i.mediaType }));
         history = history.concat([turn]);
+        chatChanged = true;
         // (row image: the previews' paths, one per line)
         chatModel.append({ role: "user", text: text, thinking: "", status: "done", model: "", image: imgs.map(i => i.path).join("\n"), search: "" });
         chatModel.append({ role: "assistant", text: "", thinking: "", status: "streaming", model: model.name, image: "", search: imgs.find(i => i.lens)?.path ?? "" });
@@ -385,12 +776,14 @@ Singleton {
             chatModel.setProperty(i, "text", "");
             chatModel.setProperty(i, "status", "refused");
             history = history.slice(0, -1);
+            save();
             return;
         }
         if (status === "error") {
             chatModel.setProperty(i, "status", "error");
             chatModel.setProperty(i, "text", parser.error);
             history = history.slice(0, -1);
+            save();
             return;
         }
         if (parser.text === "" && status === "stopped") {
@@ -412,6 +805,7 @@ Singleton {
         chatModel.setProperty(i, "status", "error");
         chatModel.setProperty(i, "text", errorText(status, body));
         history = history.slice(0, -1);
+        save();
     }
 
     function errorText(status, body) {
@@ -484,14 +878,16 @@ Singleton {
         quick.busy = false;
     }
 
-    // Move the quick exchange into the sidebar chat
+    // Move the quick exchange into the sidebar chat (the open one)
     function continueQuick() {
         if (quick.answer === "" || busy)
             return;
         history = history.concat([{ role: "user", text: quick.question }, { role: "assistant", text: quick.answer }]);
         chatModel.append({ role: "user", text: quick.question, thinking: "", status: "done", model: "", image: "", search: "" });
         chatModel.append({ role: "assistant", text: quick.answer, thinking: "", status: "done", model: model.name, image: "", search: "" });
+        chatChanged = true;
         save();
+        wantChat();
         Panels.sidebarTab = 0;
         Panels.show("sidebar");
     }

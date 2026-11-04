@@ -340,6 +340,10 @@ Singleton {
                 property string style: "balanced" // balanced | concise | friendly | professional | playful
                 property string customInstructions: ""
                 property string systemPrompt: "" // (legacy: a whole prompt; moved into customInstructions once)
+                // Chat history (the sidebar's past chats): kept unless switched
+                // off; older ones deleted after this many days (0: never; pinned kept)
+                property bool keepHistory: true
+                property int historyDays: 0
                 // Legacy user models, imported once into models above.
                 property list<var> extraModels: []
             }
