@@ -10,6 +10,15 @@ import qs.common
 // copy of a surface only while tessera-ui says it draws it (drawing(name));
 // when tessera-ui isn't built, ends, or never says so, this shell draws it.
 // It ends when this shell does (its stdin closes).
+//
+// Panels it draws (the emoji picker, the clipboard…) still open through
+// Panels, from their shortcut, IPC, Spotlight or Control Center: their
+// PanelLoader steps aside (`elsewhere: RustUi.drawing(name)`) and this
+// forwards each open and close to tessera-ui, a JSON line on its stdin
+// ({"cmd":"open","surface":"emoji","screen":"DP-1"}, {"cmd":"close",…}). It
+// answers on stdout when a panel closed itself ("closed": Panels follows)
+// and asks for what only this shell does ("call": the short list below).
+// The protocol: native/tessera-ui/src/shell.rs.
 Singleton {
     id: root
 
@@ -55,9 +64,75 @@ Singleton {
         }
         if (e.src !== "ui")
             return;
-        if (e.kind === "ready")
+        if (e.kind === "ready") {
             drawn = e.surfaces ?? [];
-        else if (e.kind === "unknown")
+            forwarded = "";
+            Qt.callLater(follow); // (a panel already open moves over)
+        } else if (e.kind === "unknown") {
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
+        } else if (e.kind === "closed") {
+            // it closed itself (Esc, a click outside, a pick)
+            if (forwarded === e.surface)
+                forwarded = "";
+            if (Panels.open === e.surface)
+                Panels.close();
+        } else if (e.kind === "call") {
+            call(e.call, e.args ?? []);
+        }
+    }
+
+    // ── Panels drawn in Rust: their opening and closing ─────────────────
+    property string forwarded: "" // the panel tessera-ui was told to open
+    property string forwardedScreen: ""
+    function send(o) {
+        if (proc.running)
+            proc.write(JSON.stringify(o) + "\n");
+    }
+    function follow() {
+        const want = Panels.open !== "" && drawing(Panels.open) ? Panels.open : "";
+        const scr = want !== "" ? (Panels.screen?.name ?? "") : "";
+        if (forwarded !== "" && forwarded !== want)
+            send({ cmd: "close", surface: forwarded });
+        if (want !== "" && (want !== forwarded || scr !== forwardedScreen))
+            send({ cmd: "open", surface: want, screen: scr });
+        forwarded = want;
+        forwardedScreen = scr;
+    }
+    Connections {
+        target: Panels
+        // (later: Panels.show sets the panel, then its screen)
+        function onOpenChanged() {
+            Qt.callLater(root.follow);
+        }
+        function onScreenChanged() {
+            Qt.callLater(root.follow);
+        }
+    }
+    onDrawnChanged: if (drawn.length === 0) forwarded = ""
+
+    // What a panel drawn in Rust asks of this shell (its files, its windows)
+    function call(name, a) {
+        switch (name) {
+        case "clipboard.refresh":
+            Clipboard.refresh(); // (it stamps new entries with when they came)
+            break;
+        case "clipboard.pin":
+            if (a[0]?.id !== undefined)
+                Clipboard.pin({ id: String(a[0].id), text: String(a[0].text ?? ""), image: String(a[0].image ?? "") });
+            break;
+        case "clipboard.unpin":
+            if (a[0])
+                Clipboard.unpin(a[0]);
+            break;
+        case "panels.openSettings":
+            Panels.openSettings(a[0], a[1]);
+            break;
+        case "launch.open":
+            if (/^https:\/\//.test(a[0] ?? ""))
+                Launch.open(a[0]);
+            break;
+        default:
+            console.warn("tessera-ui: no call " + name);
+        }
     }
 }

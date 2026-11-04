@@ -5,7 +5,8 @@
 //! stdin, and messages from the data threads).
 //!
 //!   tessera-ui [--surfaces a,b]  draw these (default: all it has); ends on SIGTERM/SIGINT,
-//!                                or when stdin, a pipe, closes (the shell that started it quit)
+//!                                or when stdin, a pipe, closes (the shell that started it quit);
+//!                                the shell's commands on stdin, a JSON line each (src/shell.rs)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
@@ -193,20 +194,27 @@ fn main() {
         })
         .unwrap();
 
-    // Ends when stdin (a pipe from whoever started us) closes
+    // The shell's commands, a JSON line each (src/shell.rs); ends when stdin
+    // (a pipe from whoever started us) closes
     let stdin_is_pipe = unsafe {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
     };
     if stdin_is_pipe {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
+        let mut lines = shell::Lines::default();
         lh
-            .insert_source(src, |_, _, state: &mut State| {
-                let mut buf = [0u8; 256];
+            .insert_source(src, move |_, _, state: &mut State| {
+                let mut buf = [0u8; 4096];
                 let n = unsafe { libc::read(0, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 if n <= 0 {
                     state.exit = true;
                     return Ok(PostAction::Remove);
+                }
+                for l in lines.feed(&buf[..n as usize]) {
+                    if let Some(c) = shell::Command::parse(&l) {
+                        state.command(c);
+                    }
                 }
                 Ok(PostAction::Continue)
             })

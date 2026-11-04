@@ -1,0 +1,242 @@
+// Small controls more than one surface uses, both looks (compare the QML in
+// shell/common: KeyCombo.qml, IconButton.qml, Spinner.qml, MaterialShape.qml,
+// and the search fields of the emoji picker and clipboard panel).
+
+import { Theme, Icon } from "theme.slint";
+
+// A ghost icon button (IconButton.qml): transparent, a fill on hover, darker
+// pressed. Material: round, a state layer in the icon's colour, squaring off
+// while pressed.
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> fill;
+    in property <color> icon-color: Theme.secondary;
+    in property <length> icon-size: 16px;
+    in property <string> label;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+    background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
+    animate background { duration: 150ms; }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    Icon {
+        text: icon;
+        fill: root.fill;
+        color: icon-color;
+        font-size: icon-size;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A search field: magnifier, the text, a placeholder, and (clearable) a
+// clear button. Keys reach `key` first (return true: handled), so a panel
+// can drive its list from the field, as the QML panels do.
+// Material: a pill in surface container high; Glass: a fill, outlined in the
+// accent while focused.
+export component SearchField inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> clearable: true;
+    in-out property <string> text <=> input.text;
+    out property <bool> focused: input.has-focus;
+    callback edited(string);
+    callback key(KeyEvent) -> bool;
+
+    public function focus-field() {
+        input.focus();
+    }
+    public function set-text(t: string) {
+        input.text = t;
+    }
+
+    height: 36px;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+    background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+    border-width: Theme.material ? 0 : 1px;
+    border-color: input.has-focus ? Theme.accent : transparent;
+
+    Icon {
+        x: Theme.material ? 14px : 10px;
+        width: 16px;
+        text: "\u{e30c}";
+        font-size: 16px;
+        color: Theme.tertiary;
+    }
+    Rectangle {
+        x: Theme.material ? 40px : 34px;
+        width: parent.width - self.x - (clear.visible ? 36px : Theme.material ? 16px : 10px);
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body + 1px;
+            vertical-alignment: center;
+            single-line: true;
+            input-type: search;
+            accessible-label: root.placeholder;
+            accessible-placeholder-text: root.placeholder;
+            edited => { root.edited(self.text); }
+            key-pressed(e) => {
+                if root.key(e) { return accept; }
+                reject
+            }
+        }
+        if input.text == "": Text {
+            width: 100%;
+            height: 100%;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body + 1px;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+    clear := IconButton {
+        visible: clearable && input.text != "";
+        x: parent.width - self.width - 4px;
+        y: (parent.height - self.height) / 2;
+        icon: "\u{e4f8}";
+        fill: true;
+        icon-color: Theme.tertiary;
+        label: "Clear search";
+        clicked => {
+            input.text = "";
+            root.edited("");
+            input.focus();
+        }
+    }
+}
+
+// One key cap (KeyCombo.qml)
+export component Keycap inherits Rectangle {
+    in property <string> text;
+    width: max(24px, label.preferred-width + 12px);
+    height: 22px;
+    border-radius: 6px;
+    background: Theme.fill;
+    border-width: 1px;
+    border-color: Theme.separator;
+    label := Text {
+        text: root.text;
+        color: Theme.label;
+        font-size: Theme.small;
+        font-weight: 500;
+        accessible-role: none;
+    }
+}
+
+// Key caps and what they do: "Enter Insert"
+export component KeyHint inherits HorizontalLayout {
+    in property <[string]> keys;
+    in property <string> text;
+    spacing: 4px;
+    accessible-role: AccessibleRole.text;
+    accessible-label: text;
+    for k in keys: Keycap { text: k; }
+    Text {
+        text: root.text;
+        color: Theme.tertiary;
+        font-size: Theme.small;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// Loading: a spinning ring (Glass: the circle-notch icon; Material: its
+// loading indicator, an arc that grows and shrinks as it turns)
+export component Busy inherits Rectangle {
+    width: Theme.material ? 40px : 24px;
+    height: self.width;
+    accessible-role: progress-indicator;
+    accessible-label: "Loading";
+    property <duration> t: animation-tick();
+    property <float> turn: mod(t / 900ms, 1);
+    if !Theme.material: Text {
+        text: "\u{eb44}";
+        font-family: "Phosphor";
+        font-size: 24px;
+        color: Theme.tertiary;
+        transform-rotation: turn * 360deg;
+        accessible-role: none;
+    }
+    if Theme.material: Path {
+        width: 40px;
+        height: 40px;
+        viewbox-width: 40;
+        viewbox-height: 40;
+        stroke: Theme.m3-primary;
+        stroke-width: 4px;
+        property <float> a: mod(root.t / 1333ms, 1) * 360;
+        property <float> sweep: 40 + 220 * abs(sin(mod(root.t / 2666ms, 1) * 180deg));
+        transform-rotation: a * 1deg;
+        MoveTo { x: 20 + 16 * cos(0deg); y: 20 + 16 * sin(0deg); }
+        ArcTo { x: 20 + 16 * cos(sweep * 1deg); y: 20 + 16 * sin(sweep * 1deg); radius-x: 16; radius-y: 16; large-arc: sweep > 180; sweep: true; }
+    }
+}
+
+// Material's empty states: an icon on a shape (cookie, clover, burst: the
+// outline from Rust, src/surfaces/shapes.rs)
+export component StateShape inherits Rectangle {
+    in property <string> outline; // SVG path commands in a 0..100 box
+    in property <string> icon;
+    in property <color> shape-color;
+    in property <color> icon-color;
+    in property <length> icon-size: 28px;
+    width: 64px;
+    height: 64px;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: outline;
+        fill: shape-color;
+    }
+    Icon {
+        text: icon;
+        font-size: icon-size;
+        color: icon-color;
+    }
+}
+
+// A text button for empty and error states (PickerButton.qml): primary
+// (accent) or secondary (fill); Material: a filled or tonal pill, its
+// corners tightening while pressed
+export component TextButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    callback clicked();
+    property <color> ink: Theme.material ? (primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : primary ? Theme.on-accent : Theme.label;
+    width: label.preferred-width + (Theme.material ? 40px : 32px);
+    height: Theme.material ? 40px : 36px;
+    border-radius: Theme.material ? (touch.pressed ? 12px : self.height / 2) : Theme.radius-control;
+    animate border-radius { duration: 200ms; easing: spring(0.3); }
+    background: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container).mix(ink, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+        : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: ink;
+        font-size: Theme.body;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

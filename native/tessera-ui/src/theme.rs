@@ -252,6 +252,13 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_outline(r("outline"));
         t.set_m3_outline_variant(r("outlineVariant"));
         t.set_m3_error(r("error"));
+        t.set_m3_on_error(r("onError"));
+        t.set_m3_error_container(r("errorContainer"));
+        t.set_m3_on_error_container(r("onErrorContainer"));
+        t.set_m3_inverse_surface(r("inverseSurface"));
+        t.set_m3_inverse_on_surface(r("inverseOnSurface"));
+        t.set_m3_shadow(r("shadow"));
+        t.set_glass_solid(r("surfaceContainer"));
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);
@@ -308,6 +315,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_success(hex(if d { "#30D158" } else { "#34C759" }));
         t.set_warning(hex(if d { "#FF9F0A" } else { "#FF9500" }));
         t.set_panel(if d { rgba(0x1e, 0x1e, 0x22, if plugin { 0.45 } else { 0.85 }) } else { rgba(0xf6, 0xf6, 0xf8, if plugin { 0.5 } else { 0.88 }) });
+        t.set_glass_solid(hex(if d { "#26262A" } else { "#F2F2F5" }));
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(15.0);

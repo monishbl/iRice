@@ -7,16 +7,21 @@
 //!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
 //! If this process ends, the shell draws them again itself.
 
+pub mod clipboard;
+pub mod emoji;
 pub mod menubar;
+pub mod shapes;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar"];
+pub const KNOWN: &[&str] = &["menubar", "emoji", "clipboard"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
     match name {
         "menubar" => Some(Box::new(menubar::Menubar::default())),
+        "emoji" => Some(Box::new(emoji::Emoji::default())),
+        "clipboard" => Some(Box::new(clipboard::Clipboard::default())),
         _ => None,
     }
 }
