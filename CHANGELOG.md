@@ -1,5 +1,10 @@
 # iRice changelog
 
+## A quiet start, and any username at login · 2026-11-04
+
+- **No more console text between the boot splash and your desktop.** The splash's last frame stays until the login screen draws, the login screen's compositor logs to the journal (`journalctl -t irice-greeter`) instead of onto the screen, and the console is cleared with its cursor hidden. On GRUB, `quiet` is added to the kernel line, so boot messages stay off the screen too (`/etc/default/grub` is kept as `.pre-irice`; other boot loaders get a note). Run `./install.sh --only=login` once to get it; `irice uninstall` puts it all back.
+- **Log in as anyone:** every login screen style ends its list of people with **Other user…**, which takes a username (Up or Down, or the arrows by the name, reach it). Enter or Tab goes on to the password. It's there even on a computer with one account, and the login screen remembers a typed name for next time.
+
 ## Live Text · 2026-11-04
 
 - **Select the text in a screenshot or picture**, like on a phone: the screenshot editor's Select text tool (S) and Quick Preview's Text button (T) let you drag across words, double-click a line, copy with Ctrl+C or Copy text, or take everything with Copy all text. The floating thumbnail has Copy text too. Tesseract reads it on this computer; nothing is uploaded.

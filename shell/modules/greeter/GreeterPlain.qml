@@ -14,6 +14,7 @@ import "../../common/phosphor.js" as Phosphor
 GreeterWindow {
     id: win
     passwordField: input
+    nameField: nameInput
     onRefused: shake.restart()
 
     readonly property string sans: "Inter"
@@ -51,14 +52,14 @@ GreeterWindow {
             Text {
                 anchors.centerIn: parent
                 visible: picture.status !== Image.Ready
-                text: (win.person?.full ?? "?").charAt(0).toUpperCase()
+                text: ((win.auth.other ? win.auth.otherName : win.person?.full) || "?").charAt(0).toUpperCase()
                 color: win.fg
                 font { family: win.sans; pixelSize: 40; weight: Font.DemiBold }
             }
             Image {
                 id: picture
                 anchors.fill: parent
-                source: win.auth.avatar(win.person?.name ?? "")
+                source: win.auth.avatar(win.pictureName)
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(192, 192)
                 asynchronous: true
@@ -72,9 +73,31 @@ GreeterWindow {
             Chevron { visible: win.auth.users.length > 1; name: "caret-left"; onClicked: win.nextUser(-1) }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: win.person?.full ?? "No users"
+                visible: !win.auth.other
+                text: win.person?.full ?? ""
                 color: win.fg
                 font { family: win.sans; pixelSize: 20; weight: Font.DemiBold }
+            }
+            // "Other user…": the username, typed in
+            Rectangle {
+                visible: win.auth.other
+                anchors.verticalCenter: parent.verticalCenter
+                width: 300 - 64
+                height: 44
+                radius: 22
+                color: win.field
+                border.width: nameInput.activeFocus ? 1 : 0
+                border.color: "#3A3A40"
+                GreeterNameInput {
+                    id: nameInput
+                    win: win
+                    x: 18
+                    width: parent.width - 2 * 18
+                    color: win.fg
+                    font { family: win.sans; pixelSize: 16 }
+                    placeholderColor: "#6B6B74"
+                    placeholderSize: 15
+                }
             }
             Chevron { visible: win.auth.users.length > 1; name: "caret-right"; onClicked: win.nextUser(1) }
         }

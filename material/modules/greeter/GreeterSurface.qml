@@ -19,6 +19,7 @@ import qs.modules.lock as LockUi
 GreeterWindow {
     id: win
     passwordField: input
+    nameField: nameInput
     onRefused: shakeAnim.restart()
     readonly property var m3: Theme.m3
     readonly property var cfg: Config.options.lock
@@ -30,7 +31,7 @@ GreeterWindow {
     // The pill opens on a key or a mouse move and closes 10 s after the
     // last one, unless something's typed (or being checked, or wrong)
     property bool typing: false
-    readonly property bool open: typing || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
+    readonly property bool open: typing || win.auth.other || input.text !== "" || win.auth.busy || win.auth.error !== "" || win.powerChoice !== ""
     property real openT: open ? 1 : 0
     Behavior on openT {
         MaterialSpring { epsilon: 0.002 }
@@ -118,6 +119,31 @@ GreeterWindow {
             }
         }
 
+        // The username, for "Other user…" (in its own pill, above)
+        Rectangle {
+            visible: win.auth.other
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 360
+            height: 56
+            radius: height / 2
+            color: win.m3.surfaceContainerHigh
+            border.width: nameInput.activeFocus ? 2 : 0
+            border.color: win.m3.primary
+            GreeterNameInput {
+                id: nameInput
+                win: win
+                x: 24
+                width: parent.width - 48
+                color: win.m3.onSurface
+                font { family: Theme.font.family; pixelSize: 18 }
+                placeholderColor: win.m3.onSurfaceVariant
+                placeholderSize: 16
+                selectionColor: win.m3.primary
+                selectedTextColor: win.m3.onPrimary
+                onTextChanged: win.wake()
+            }
+        }
+
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
@@ -159,7 +185,7 @@ GreeterWindow {
                         Image {
                             id: avatarImage
                             anchors.fill: parent
-                            source: win.auth.avatar(win.person?.name ?? "")
+                            source: win.auth.avatar(win.pictureName)
                             fillMode: Image.PreserveAspectCrop
                             sourceSize: Qt.size(120, 120)
                             asynchronous: true
@@ -187,7 +213,7 @@ GreeterWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 240)
                         elide: Text.ElideRight
-                        text: win.person?.full ?? "No users"
+                        text: win.person?.full ?? ""
                         color: win.m3.onSurface
                         opacity: 1 - win.openT
                         visible: opacity > 0.01

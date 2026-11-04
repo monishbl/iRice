@@ -13,11 +13,13 @@ import Quickshell.Services.Greetd
 // PAM to ask for it; typing is never held up. Without greetd (or with
 // IRICE_GREETER_MOCK=1) it runs a mock that accepts the password "irice",
 // for trying the greeter in a normal session (Escape quits it there).
+// The last entry in users is "Other user…": a username typed in (otherName),
+// for an account not on the list (or a computer with just one).
 QtObject {
     id: root
 
     readonly property bool mock: Quickshell.env("IRICE_GREETER_MOCK") === "1" || !Greetd.available
-    property var users: [] // [{ name, full }]
+    property var users: [{ name: "", full: "Other user…", other: true }] // [{ name, full, other }]
     property var sessions: [] // [{ name, exec }]
     property int user: 0
     property int session: 0
@@ -31,14 +33,23 @@ QtObject {
     property bool asked: false
     // What PAM says that isn't a question (the fingerprint reader's words)
     property string message: ""
+    // "Other user…": the username typed in
+    property string otherName: ""
+    readonly property bool other: users[user]?.other === true
+    // Who logs in: the chosen person's username, or the one typed in
+    readonly property string userName: other ? otherName.trim() : (users[user]?.name ?? "")
     // The reader: "" (none heard of) | waiting | miss
     property string finger: ""
 
     readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice-greeter.json"
 
     function login(password) {
-        if (busy || users.length === 0)
+        if (busy)
             return;
+        if (userName === "") {
+            error = "Type your username first.";
+            return;
+        }
         error = "";
         busy = true;
         if (mock) {
@@ -57,11 +68,11 @@ QtObject {
     // Opens the conversation for the chosen user (again after a failure, so
     // the reader listens again)
     function begin() {
-        if (mock || open || users.length === 0)
+        if (mock || open || userName === "")
             return;
         open = true;
         asked = false;
-        Greetd.createSession(users[user].name);
+        Greetd.createSession(userName);
     }
     function restart() {
         if (mock)
@@ -75,6 +86,7 @@ QtObject {
         beginTimer.restart();
     }
     onUserChanged: restart()
+    onOtherNameChanged: if (other) restart()
     property Timer beginTimer: Timer {
         interval: 300
         onTriggered: root.begin()
@@ -91,7 +103,7 @@ QtObject {
             restart();
             return;
         }
-        remember.setText(JSON.stringify({ user: users[user]?.name ?? "", session: s?.name ?? "" }));
+        remember.setText(JSON.stringify({ user: userName, session: s?.name ?? "" }));
         success = true;
         if (mock) {
             console.log("greeter (mock): would launch", s?.exec);
@@ -166,7 +178,7 @@ QtObject {
     property FileView passwd: FileView {
         path: "/etc/passwd"
         onLoaded: {
-            root.users = text().split("\n").map(l => l.split(":")).filter(f => f.length >= 7 && +f[2] >= 1000 && +f[2] < 60000 && !/(nologin|false)$/.test(f[6])).map(f => ({ name: f[0], full: (f[4] ?? "").split(",")[0] || f[0] }));
+            root.users = text().split("\n").map(l => l.split(":")).filter(f => f.length >= 7 && +f[2] >= 1000 && +f[2] < 60000 && !/(nologin|false)$/.test(f[6])).map(f => ({ name: f[0], full: (f[4] ?? "").split(",")[0] || f[0] })).concat([{ name: "", full: "Other user…", other: true }]);
             root.restoreLast();
             root.beginTimer.restart();
         }
@@ -208,10 +220,14 @@ QtObject {
     function restoreLast() {
         try {
             const j = JSON.parse(remember.text());
-            const u = users.findIndex(x => x.name === j.user);
+            const u = users.findIndex(x => !x.other && x.name === j.user);
             const s = sessions.findIndex(x => x.name === j.session);
-            if (u >= 0)
+            if (u >= 0) {
                 user = u;
+            } else if (j.user) { // (last time, a username typed in)
+                otherName = j.user;
+                user = users.length - 1;
+            }
             if (s >= 0)
                 session = s;
         } catch (e) {}

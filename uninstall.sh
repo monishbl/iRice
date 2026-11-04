@@ -57,6 +57,16 @@ if [[ -d /usr/share/irice ]]; then
         run sudo mv /etc/greetd/config.toml.pre-irice /etc/greetd/config.toml
     fi
 fi
+# The quiet start (install.sh's quiet_boot): Plymouth quits as before, and
+# GRUB's kernel line is as it was
+if [[ -f /etc/systemd/system/plymouth-quit.service.d/irice.conf ]]; then
+    run sudo rm -f /etc/systemd/system/plymouth-quit.service.d/irice.conf
+    run sudo systemctl daemon-reload
+fi
+if [[ -f /etc/default/grub.pre-irice ]]; then
+    run sudo mv /etc/default/grub.pre-irice /etc/default/grub
+    command -v grub-mkconfig >/dev/null && run sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null
+fi
 # Unlocking the keyring at login (install.sh's lines under its marker, in the
 # login screen's or the console's PAM file), and the copies made before
 for f in /etc/pam.d/greetd /etc/pam.d/login; do
