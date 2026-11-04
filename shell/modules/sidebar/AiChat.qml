@@ -6,15 +6,75 @@ import qs.modules.controlcenter
 import qs.services
 
 // AI chat: model picker, conversation, composer. Enter sends, Shift+Enter
-// adds a line. /clear, /model <id>, /key <key> work in the composer.
+// adds a line. /new (or /clear), /model <id>, /key <key> work in the composer.
 // Pictures (up to 4 a message): the + button, a screenshot, Ctrl+V or a drop.
+// The clock beside the pencil shows past chats (ChatHistory) in its place.
 Item {
     id: root
 
     property bool active: false
-    onActiveChanged: if (active) Qt.callLater(() => composer.forceActiveFocus())
+    property var panelScreen: null
+    onActiveChanged: {
+        if (active)
+            Qt.callLater(() => composer.forceActiveFocus());
+        else
+            historyOpen = false;
+    }
 
-    // Header: model picker + new chat
+    // Past chats, in place of the chat (back arrow or Escape returns)
+    property bool historyOpen: false
+    readonly property bool canShowHistory: Ai.keepHistory && (Ai.sessions.length > 0 || Ai.pendingDelete !== null)
+    function showHistory(on) {
+        modelMenu.visible = false;
+        shotMenu.visible = false;
+        historyOpen = on;
+        if (on)
+            pastChats.enter();
+        else
+            Qt.callLater(() => composer.forceActiveFocus());
+    }
+    Connections {
+        target: Ai
+        function onWantChat() { root.showHistory(false); }
+        function onKeepHistoryChanged() { if (!Ai.keepHistory) root.showHistory(false); }
+    }
+
+    // A round header button: tonal in Material, the fill in Glass
+    component HeaderButton: Rectangle {
+        id: hb
+        property string icon
+        property string label
+        signal clicked
+        width: header.height
+        height: header.height
+        transform: Theme.material ? hbFx.effects : []
+        ElasticControl { id: hbFx; pressed: hbMouse.pressed; enabled: Theme.material }
+        radius: Theme.material && hbMouse.pressed ? 8 : height / 2
+        Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
+        color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, hbMouse.pressed ? 0.1 : hbMouse.containsMouse ? 0.08 : 0))
+            : hbMouse.pressed ? Theme.color.fillPressed : hbMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
+        activeFocusOnTab: visible
+        Keys.onPressed: e => {
+            if (!e.isAutoRepeat && (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
+                hb.clicked();
+                e.accepted = true;
+            }
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: label
+        Accessible.onPressAction: hb.clicked()
+        FocusRing { radius: hb.radius + 4 }
+        Icon { anchors.centerIn: parent; name: hb.icon; size: 15; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label }
+        MouseArea {
+            id: hbMouse
+            anchors { fill: parent; margins: -6 } // (44 px to hit)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: hb.clicked()
+        }
+    }
+
+    // Header: model picker, past chats and new chat (in past chats: back)
     Item {
         id: header
         width: parent.width
@@ -24,6 +84,7 @@ Item {
         // container while its menu is open)
         Rectangle {
             id: picker
+            visible: !root.historyOpen
             height: header.height
             width: pickerRow.implicitWidth + 24
             radius: Theme.material ? (modelMenu.visible ? height / 2 : 12) : 15
@@ -51,24 +112,48 @@ Item {
             }
         }
 
-        // (Material: a tonal icon button)
-        Rectangle {
+        // In past chats: back to the chat, and what this is
+        IconButton {
+            id: backButton
+            visible: root.historyOpen
+            anchors.verticalCenter: parent.verticalCenter
+            x: -4
+            width: Theme.material ? 40 : 30
+            height: width
+            icon: "arrow-left"
+            iconSize: Theme.material ? 20 : 16
+            iconColor: Theme.color.label
+            tooltip: "Back to chat"
+            onClicked: root.showHistory(false)
+        }
+        Text {
+            visible: root.historyOpen
+            anchors { left: backButton.right; leftMargin: Theme.material ? 8 : 4; verticalCenter: parent.verticalCenter }
+            text: "Chats"
+            color: Theme.color.label
+            font { family: Theme.font.family; pixelSize: Theme.font.title; weight: Theme.material ? Font.Normal : Font.DemiBold }
+            Accessible.role: Accessible.Heading
+            Accessible.name: "Past chats"
+        }
+
+        Row {
             anchors.right: parent.right
-            width: header.height
-            height: header.height
-            transform: Theme.material ? pressFx1.effects : []
-            ElasticControl { id: pressFx1; pressed: newMouse.pressed; enabled: Theme.material }
-            radius: Theme.material && newMouse.pressed ? 8 : height / 2
-            Behavior on radius { enabled: Theme.material; MaterialSpring { speed: "fast"; epsilon: 0.1 } }
-            visible: Ai.chat.count > 0
-            color: Theme.material ? Qt.tint(Theme.m3.secondaryContainer, Qt.alpha(Theme.m3.onSecondaryContainer, newMouse.pressed ? 0.1 : newMouse.containsMouse ? 0.08 : 0))
-                : newMouse.containsMouse ? Theme.color.fillHover : Theme.color.fill
-            Icon { anchors.centerIn: parent; name: "note-pencil"; size: 15; color: Theme.material ? Theme.m3.onSecondaryContainer : Theme.color.label }
-            MouseArea {
-                id: newMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Ai.clear()
+            spacing: 8
+            // (Material: tonal icon buttons)
+            HeaderButton {
+                visible: root.canShowHistory && !root.historyOpen
+                icon: "clock-counter-clockwise"
+                label: "Show past chats"
+                onClicked: root.showHistory(true)
+            }
+            HeaderButton {
+                visible: Ai.chat.count > 0
+                icon: "note-pencil"
+                label: "Start a new chat"
+                onClicked: {
+                    Ai.newChat();
+                    root.showHistory(false);
+                }
             }
         }
     }
@@ -77,7 +162,7 @@ Item {
     Column {
         anchors.centerIn: list
         width: parent.width - 40
-        visible: Ai.chat.count === 0
+        visible: Ai.chat.count === 0 && !root.historyOpen
         spacing: 8
 
         Icon { anchors.horizontalCenter: parent.horizontalCenter; visible: !Theme.material; name: "sparkle"; fill: true; size: 34; color: Theme.color.tertiary }
@@ -173,6 +258,7 @@ Item {
 
     ListView {
         id: list
+        visible: !root.historyOpen
 
         Momentum {}
         anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: blind.visible ? blind.top : pictures.visible ? pictures.top : composerBox.top; bottomMargin: 10 }
@@ -195,7 +281,7 @@ Item {
         id: blind
         readonly property var canSee: Ai.visionModels.find(m => Ai.hasCredential(m)) ?? Ai.visionModels[0] ?? null
         readonly property string lensPicture: Ai.attachments.find(a => a.lens)?.path ?? ""
-        visible: Ai.attachments.length > 0 && (!Ai.configured || !Ai.model.vision)
+        visible: Ai.attachments.length > 0 && (!Ai.configured || !Ai.model.vision) && !root.historyOpen
         anchors { left: parent.left; right: parent.right; bottom: pictures.top; bottomMargin: 10 }
         spacing: 8
         Text {
@@ -231,7 +317,7 @@ Item {
     // Pictures waiting to go with the next message, each with its remove button
     Row {
         id: pictures
-        visible: Ai.attachments.length > 0
+        visible: Ai.attachments.length > 0 && !root.historyOpen
         anchors { left: parent.left; bottom: composerBox.top; bottomMargin: 8 }
         spacing: 8
         Repeater {
@@ -277,6 +363,7 @@ Item {
     // Files dropped on the chat: the pictures among them
     DropArea {
         anchors.fill: parent
+        enabled: !root.historyOpen
         keys: ["text/uri-list"]
         onEntered: drag => drag.accepted = drag.hasUrls
         onDropped: drop => {
@@ -304,6 +391,7 @@ Item {
     // Composer
     Squircle {
         id: composerBox
+        visible: !root.historyOpen
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         // (Material: a pill in surface container high, no outline)
         height: Math.min(150, composer.contentHeight + (Theme.material ? 32 : 22))
@@ -440,6 +528,23 @@ Item {
                 }
             }
         }
+    }
+
+    // A chat deleted in past chats, still offered back
+    UndoBar {
+        visible: shown && !root.historyOpen
+        anchors { left: parent.left; right: parent.right; bottom: composerBox.top; bottomMargin: 10 }
+        z: 5
+    }
+
+    // Past chats
+    ChatHistory {
+        id: pastChats
+        visible: root.historyOpen
+        panelScreen: root.panelScreen
+        anchors { top: header.bottom; topMargin: 12; left: parent.left; right: parent.right; bottom: parent.bottom }
+        onBack: root.showHistory(false)
+        onOpened: root.showHistory(false)
     }
 
     // Screenshot menu: above the composer's screenshot button

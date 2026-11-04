@@ -20,6 +20,7 @@ Column {
     readonly property bool visionNow: vision ?? Ai.normalizeModel({ provider: provider, id: modelField.text }).vision
     property string message: ""
     property bool messageIsError: false
+    property bool confirmingDeleteAll: false
 
     // A removed model can come back for a few seconds; its credential is
     // forgotten only after that
@@ -308,6 +309,60 @@ Column {
                         // (kept to the length that's sent)
                         onTextChanged: if (length > Prompt.MAX_NOTE) remove(Prompt.MAX_NOTE, length)
                         onEditingFinished: Config.options.ai.customInstructions = Prompt.clean(text)
+                    }
+                }
+            }
+        }
+    }
+
+    // Past chats (the sidebar's clock). Deleting them all can't be undone,
+    // so it asks first, here, saying how many (pinned ones too).
+    Group {
+        width: parent.width
+        title: "Chat history"
+        footer: "Chats are saved on this computer only, readable by you alone. Pictures are never saved."
+        Row {
+            label: "Keep chat history"
+            detail: Config.options.ai.keepHistory ? "Past chats are in the sidebar, under the clock" : "Chats aren't saved: each is forgotten a minute after the sidebar closes"
+            Switch { checked: Config.options.ai.keepHistory; onToggled: Config.options.ai.keepHistory = !checked }
+        }
+        Row {
+            label: "Delete chats older than"
+            detail: "Pinned chats are always kept"
+            Dropdown {
+                width: 200
+                options: [{ value: 0, label: "Never" }, { value: 30, label: "30 days" }, { value: 90, label: "90 days" }]
+                value: Config.options.ai.historyDays
+                onChosen: v => Config.options.ai.historyDays = v
+            }
+        }
+        Row {
+            readonly property int count: Ai.sessions.length
+            readonly property int pinned: Ai.sessions.filter(c => c.pinned).length
+            // (a plain caption, so Settings search finds it; the count and the question below it)
+            label: "Saved chats"
+            detail: !root.confirmingDeleteAll ? (count === 0 ? "None yet" : count === 1 ? "1 chat" + (pinned ? ", pinned" : "") : count + " chats" + (pinned ? ", " + pinned + " pinned" : ""))
+                : (count === 1 ? "Delete 1 chat? " : "Delete " + count + " chats? ") + "This can't be undone." + (pinned === 0 ? "" : pinned === count ? (count === 1 ? " It's pinned, and goes too." : " They're all pinned, and go too.") : pinned === 1 ? " Your pinned chat goes too." : " Your " + pinned + " pinned chats go too.")
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    id: keepChats
+                    visible: root.confirmingDeleteAll
+                    text: "Keep chats"
+                    onClicked: root.confirmingDeleteAll = false
+                }
+                SettingsButton {
+                    text: root.confirmingDeleteAll ? (Ai.sessions.length === 1 ? "Delete 1 chat" : "Delete " + Ai.sessions.length + " chats") : "Delete all chats"
+                    danger: true
+                    enabled: Ai.sessions.length > 0
+                    onClicked: {
+                        if (!root.confirmingDeleteAll) {
+                            root.confirmingDeleteAll = true;
+                            keepChats.forceActiveFocus();
+                            return;
+                        }
+                        root.confirmingDeleteAll = false;
+                        Ai.deleteAllChats();
                     }
                 }
             }
