@@ -13,7 +13,7 @@ import os
 import shutil
 import sys
 
-SKIP_DIRS = {".git", "__pycache__", "build"}  # (native/build: launch-shell.sh adds it by path)
+SKIP_DIRS = {".git", "__pycache__", "build"}  # (native/build: one link to the folder, below)
 SKIP_EXT = (".pyc",)
 
 
@@ -43,6 +43,13 @@ def build(shell, material, root):
         dest = os.path.join(tmp, rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.symlink(target, dest)
+    # The native helpers' build, as one link to the folder: launch-shell.sh
+    # adds its QML module by path, but helpers found from the root (the
+    # glass plugin's compiled glass-ipc) would otherwise fall back to Python
+    native = os.path.join(shell, "native", "build")
+    if os.path.isdir(native):
+        os.makedirs(os.path.join(tmp, "native"), exist_ok=True)
+        os.symlink(native, os.path.join(tmp, "native", "build"))
     old = root + ".old"
     shutil.rmtree(old, ignore_errors=True)
     if os.path.lexists(root):

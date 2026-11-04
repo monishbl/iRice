@@ -63,6 +63,10 @@ class Root(unittest.TestCase):
             want = {str(p.relative_to(SHELL)) for p in SHELL.rglob("*") if p.is_file() and "build" not in p.relative_to(SHELL).parts and "__pycache__" not in p.parts and p.suffix != ".pyc"}
             want |= {str(p.relative_to(MATERIAL)) for p in MATERIAL.rglob("*") if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"}
             have = {str(p.relative_to(root)) for p in root.rglob("*") if p.is_symlink()}
+            # (and the native helpers' build, as one link to the folder)
+            if (SHELL / "native/build").is_dir():
+                want.add("native/build")
+                self.assertEqual(os.path.realpath(root / "native/build"), str((SHELL / "native/build").resolve()))
             self.assertEqual(have, want)
 
     def test_scripts_find_the_checkout_from_it(self):
