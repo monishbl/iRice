@@ -48,15 +48,15 @@ Column {
         }
     }
 
-    // (Material's lock screen has one layout; what its notifications do is
-    // the footer)
+    // (in Material, the layout says what each does in its detail, and what
+    // the notifications do is the footer)
     Group {
         width: parent.width
         footer: Theme.material ? ({ shelf: "Under the clock: which apps have notifications, and the newest one. Now Playing sits over your account.", column: "Beside the clock, like a tablet: Now Playing and the latest notifications.", icons: "Under the clock, only which apps have notifications. Now Playing sits over your account." })[Config.options.lock.notifications] ?? ""
             : Config.options.lock.layout === "macos" ? "The clock up top; your picture, name and the password field at the bottom." : "A large clock with small widgets, Now Playing and your notifications, like iPhone."
         Row {
-            visible: !Theme.material
             label: "Layout"
+            detail: Theme.material ? (Config.options.lock.layout === "macos" ? "The clock and the date, nothing under them" : "Weather, your next event and to-dos under the clock; the battery in the corner") : ""
             Choice { key: "layout"; values: ["ios", "macos"]; options: ["Widgets", "Classic"] }
         }
         Row {

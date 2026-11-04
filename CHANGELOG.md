@@ -5,7 +5,7 @@
 - **Material's controls everywhere in Material.** The Wi-Fi password field and Join button, the full Wi-Fi join form, Calendar's Add calendar, Report a Bug's boxes and the shortcut recorder were still Glass's; they're Material's filled pills and buttons now. Chips that turn things on and off (the menu bar's screens, a Focus schedule's days, the island's live pieces, a shortcut's modifier keys) are Material's filter chips, with a tick when on.
 - **Settings line up.** In the Material look, lists of their own (shortcuts, gestures, login items, Software Update's packages, the speed test) sit on the same edges as every other row, with the same type; fields and drop-downs are as tall as the buttons beside them; a row whose button changes (Connect or Open Online Accounts, Install) keeps it on the row's edge in both looks.
 - **Switched-off choices look switched off**, readable in Material and visible in Glass (they didn't look any different before).
-- **Settings that do nothing in Material are hidden there:** dock magnification and the lock screen's Cards and field. A Classic lock layout picked in Glass no longer takes the battery, weather and next event off Material's lock screen.
+- **Settings that do nothing in Material are hidden there:** dock magnification and the lock screen's Cards and field. The lock screen's Layout (Widgets or Classic) now shows in Material too, saying what each gives you there, so a Classic picked in Glass can be changed back from Material.
 - **Glass catches up:** Escape leaves Edit Controls before it closes Quick Settings; a notification's buttons work by keyboard and are named for screen readers; the Downloads stack's Quick Preview button stays while you point at it.
 
 ## Live Text · 2026-11-04

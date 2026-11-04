@@ -7,12 +7,12 @@ import qs.services
 // One screen of the lock in the Material look, as Android 16's lock screen
 // (LockSurface loads it in place of the Glass content; the wallpaper,
 // StandBy and every rule about locking stay LockSurface's and Lock.qml's):
-// the big clock (hours over minutes) with the date, weather and a smartspace
-// line (next event, open to-dos) under it; on a wide screen, like a Pixel
-// tablet, notifications and Now Playing in a column on the right; the
-// battery in the top corner. (One layout: Glass's Widgets/Classic choice,
-// lock.layout, is hidden in Material, so a Classic picked in Glass mustn't
-// take the battery, weather and smartspace away here.)
+//   ios    the big clock (hours over minutes) with the date, weather and a
+//          smartspace line (next event, open to-dos) under it; on a wide
+//          screen, like a Pixel tablet, notifications and Now Playing in a
+//          column on the right; the battery in the top corner
+//   macos  the clock centred; avatar, name and the field at the bottom, Now
+//          Playing above them
 // Notifications are a shelf of app icons, or compact cards with "Show
 // previews" on. The field is a pill under the avatar (a cookie); the
 // fingerprint reader is a round target under it that pulses as it listens,
@@ -29,6 +29,7 @@ Item {
     readonly property var lockScope: host.lockScope
     readonly property var cfg: host.cfg
     readonly property var m3: Theme.m3
+    readonly property bool ios: host.ios
     // Where notifications and Now Playing go (lock.notifications):
     //   shelf   under the clock: the apps' icons and the newest as a card;
     //           Now Playing as a slim player over the account pill
@@ -47,7 +48,7 @@ Item {
     readonly property color ink2: darkInk ? m3.onSecondaryFixedVariant : m3.secondaryFixedDim
 
     // The clock, as the owner's lock → StandBy morph needs it
-    readonly property int clockSize: Math.round(split ? Math.min(height * 0.2, width * 0.12) : Math.min(height * 0.17, width * 0.2))
+    readonly property int clockSize: Math.round(split ? Math.min(height * 0.2, width * 0.12) : Math.min(height * (ios ? 0.17 : 0.15), width * 0.2))
     readonly property real clockWeight: cfg.clockWeight ?? 640
     readonly property real clockWidth: cfg.clockWidth ?? 112
     readonly property rect clockRect: Qt.rect(header.x + clock.x, header.y + clock.y, clock.width, clock.height)
@@ -115,7 +116,7 @@ Item {
 
         // ── Battery, in the corner like Android's status bar ────────────
         Row {
-            visible: Island.hasBattery
+            visible: root.ios && Island.hasBattery
             anchors { right: parent.right; rightMargin: 24 }
             y: 30 - root.part
             spacing: 4
@@ -141,7 +142,7 @@ Item {
             // (large: centred, or on the left of a wide screen; small: the
             // top left corner)
             readonly property real largeX: root.split ? Math.round(root.width * 0.08) : Math.round((root.width - width) / 2)
-            readonly property real largeY: Math.round(root.height * (root.split ? 0.14 : 0.09))
+            readonly property real largeY: Math.round(root.height * (root.split ? 0.14 : root.ios ? 0.09 : 0.11))
             x: largeX + (Math.max(48, Math.round(root.width * 0.04)) - largeX) * root.smallT
             y: largeY + (72 - largeY) * root.smallT + root.rise - root.part
             spacing: 20 - 8 * root.smallT
@@ -187,7 +188,7 @@ Item {
                         font { family: Theme.font.family; pixelSize: 18; weight: Font.Medium }
                     }
                     Row {
-                        visible: Weather.ready
+                        visible: root.ios && Weather.ready
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 4
                         Icon {
@@ -208,7 +209,7 @@ Item {
                 // Smartspace: the next event and the open to-dos
                 Row {
                     id: smartspace
-                    visible: next !== null || todo > 0
+                    visible: root.ios && (next !== null || todo > 0)
                     anchors.horizontalCenter: root.leftAligned ? undefined : parent.horizontalCenter
                     spacing: 16
                     readonly property var next: Calendar.upcoming(1)[0] ?? null
