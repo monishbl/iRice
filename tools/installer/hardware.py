@@ -194,7 +194,8 @@ def plan(f):
     out.append(item("build-plugin", G[2], "Glass plugin for Hyprland " + (f.get("hyprland") or "(installed next)"),
                     "Compiled against this Hyprland, so the glass and window controls match it exactly", locked=True))
     out.append(item("build-native", G[2], "Native helpers for this Qt",
-                    "Faster glass sync and requests than the fall-backs; built for the Qt installed here", locked=True))
+                    "Faster glass sync and requests than the fall-backs, built for the Qt installed here; "
+                    "and irice-events, one process that follows the system for the shell", locked=True))
     out.append(item("build-shaders", G[2], "Shaders", "Compiled once for this machine's Qt", locked=True))
 
     # Tuning

@@ -2,7 +2,7 @@
 # irice: look after an iRice install.
 #   irice doctor            check that everything is in place and running
 #   irice update            get the latest iRice and install it
-#   irice rebuild [--load]  rebuild the glass plugin, shaders and native helpers (after a Hyprland or Qt update)
+#   irice rebuild [--load]  rebuild the glass plugin, shaders, native helpers and irice-events (after a Hyprland or Qt update)
 #   irice repair            restart the shell (duplicated bars, a frozen shell); apps keep running
 #   irice undo-update       go back to before the last update (works from a text console too)
 #   irice logs              the shell's log
@@ -53,6 +53,7 @@ case "${1:-help}" in
             fi
             echo "Native helpers rebuilt; restart the shell to use them (irice repair)"
         fi
+        "$SRC/tools/build-native.sh" && echo "irice-events rebuilt; restart the shell to use it (irice repair)"
         pacman -Q hyprland 2>/dev/null | awk '{print $2}' | sed 's/-[0-9.]*$//; s/^[0-9]*://; s/\.r[0-9].*//' >"$DATA/irice/irice-glass.built-for"
         ;;
     repair)

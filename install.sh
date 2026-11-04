@@ -509,7 +509,7 @@ show_plan() {
     else
         plan_row Hardware "nothing chosen"
     fi
-    plan_row Builds "shaders, the glass plugin and native helpers, for this machine ($DATA/irice)"
+    plan_row Builds "shaders, the glass plugin, native helpers and irice-events, for this machine ($DATA/irice)"
     plan_row Files "$CONFIG/quickshell/irice and $CONFIG/hypr (the current ones copied to $DATA/irice/backups first;"
     plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-irice), $BIN/irice"
     [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/irice/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
@@ -846,6 +846,10 @@ build() {
     # them the shell uses its QML and Python fall-backs.
     say "  Building the native helpers…"
     run "$ROOT/shell/native/build.sh" || note "Native helpers skipped: the shell uses its slower fall-backs (rebuild later with: irice rebuild)"
+    # irice-events, the one process that follows the system for the shell.
+    # Optional too: without it the shell runs a watcher per thing it follows.
+    say "  Building irice-events…"
+    run "$ROOT/tools/build-native.sh" || note "irice-events skipped: the shell uses its separate watchers (rebuild later with: irice rebuild)"
 }
 
 # ~/.local/bin on your PATH (for the irice command), in bash, zsh and fish

@@ -90,6 +90,7 @@ fi
 # until you log out), and the installer's bookkeeping. Settings in ~/.config/irice stay.
 run rm -f "$DATA/irice/irice-glass.so" "$DATA/irice/irice-glass.so.new" "$DATA/irice/irice-glass.built-for"
 run rm -rf "$DATA/irice/src"
+run rm -f "$DATA/irice/bin/irice-events" "$DATA/irice/bin/irice-events.new"
 run rm -f "$DATA/irice/source" "$DATA/irice/previous-login-manager"
 # The irice command, and starting Hyprland from tty1
 run rm -f "$HOME/.local/bin/irice" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/irice.fish" \

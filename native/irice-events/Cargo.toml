@@ -1,0 +1,22 @@
+[package]
+name = "irice-events"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "iRice's event supervisor: system events as JSON lines for the shell"
+publish = false
+
+# Few and well known: D-Bus (pure Rust), JSON, and the C library's calls.
+# udev, PulseAudio, inotify and netlink are spoken directly (no C libraries).
+[dependencies]
+libc = "0.2.191"
+serde = "1"
+serde_json = "1.0.154"
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
