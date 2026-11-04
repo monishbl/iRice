@@ -1,5 +1,10 @@
 # iRice changelog
 
+## App Drawer A–Z picks a whole letter · 2026-11-04
+
+- **Picking a letter on the A–Z index lights up all of its apps** and dims the rest, in both looks, so a letter near the end (where the list can't scroll any further) still shows what it picked. The letter stays marked on the index; pointing at an app of another letter, searching or switching views clears it.
+- **Material's A–Z index no longer runs under the More button**: Y and Z were hidden behind it with a full alphabet.
+
 ## Glass catches up with Material · 2026-11-04
 
 - **Control Center has a footer:** your picture, the battery and its percentage, then Settings, Power and Edit Controls as round glass buttons under the controls. While you edit, the pencil turns into **Done**.

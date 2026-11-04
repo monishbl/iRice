@@ -121,4 +121,18 @@ QtObject {
                 l = x.letter;
         return l;
     }
+    // A letter picked on the scrubber: all its apps are highlighted (the
+    // rest dimmed) and its first selected, even where the list can't scroll
+    // that far; pointing at an app of another letter, searching or another
+    // view drops it
+    property string picked: ""
+    function pick(x) {
+        picked = x.letter;
+        selected = x.index;
+    }
+    function inPicked(i) {
+        return picked !== "" && letterAt(i) === picked;
+    }
+    onSelectedChanged: if (picked !== "" && letterAt(selected) !== picked) picked = ""
+    onAlphabeticalChanged: picked = ""
 }

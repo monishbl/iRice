@@ -343,6 +343,8 @@ Variants {
                             required property var modelData
                             required property int index
                             readonly property bool isSelected: index === lib.selected
+                            // (a letter picked on the scrubber: its apps lit, the rest dimmed)
+                            readonly property bool lit: lib.inPicked(index)
                             width: grid.cellWidth
                             height: grid.cellHeight
 
@@ -377,7 +379,9 @@ Variants {
                                 property real corner: cell.isSelected ? 36 : 20
                                 Behavior on corner { SpringAnimation { spring: Theme.motion.springFast.spring; damping: Theme.motion.springFast.damping; epsilon: 0.1 } }
                                 radius: Math.max(0, corner)
-                                color: cell.isSelected ? Theme.m3.secondaryContainer : "transparent"
+                                color: cell.isSelected || cell.lit ? Theme.m3.secondaryContainer : "transparent"
+                                opacity: lib.picked !== "" && !cell.lit ? 0.4 : 1
+                                Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                                 Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                                 Accessible.role: Accessible.Button
                                 Accessible.name: lib.showingApps ? cell.modelData.name : ""
@@ -387,7 +391,7 @@ Variants {
                                 Rectangle {
                                     anchors.fill: parent
                                     radius: parent.radius
-                                    color: cell.isSelected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
+                                    color: cell.isSelected || cell.lit ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
                                     opacity: appMouse.pressed ? 0.1 : appMouse.containsMouse ? 0.08 : 0
                                     Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                                 }
@@ -409,7 +413,7 @@ Variants {
                                     horizontalAlignment: Text.AlignHCenter
                                     text: lib.showingApps ? cell.modelData.name : ""
                                     elide: Text.ElideRight
-                                    color: cell.isSelected ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
+                                    color: cell.isSelected || cell.lit ? Theme.m3.onSecondaryContainer : Theme.m3.onSurface
                                     font { family: Theme.font.family; pixelSize: 13; weight: cell.isSelected ? Font.Medium : Font.Normal }
                                 }
                                 MouseArea {
@@ -505,7 +509,8 @@ Variants {
                     Item {
                         id: scrubber
                         visible: win.alphabetical && letters.length > 1 && grid.contentHeight > grid.height
-                        anchors { right: parent.right; top: grid.top; bottom: grid.bottom }
+                        // (its foot clear of the More button in the corner)
+                        anchors { right: parent.right; top: grid.top; bottom: grid.bottom; bottomMargin: 64 }
                         width: 28
 
                         readonly property var letters: lib.letters
@@ -517,7 +522,7 @@ Variants {
                             const x = letters[k];
                             if (!x)
                                 return;
-                            lib.selected = x.index;
+                            lib.pick(x);
                             grid.lead(x.index);
                         }
 
@@ -529,7 +534,7 @@ Variants {
                                 model: scrubber.letters
                                 Item {
                                     required property var modelData
-                                    readonly property bool marked: modelData.letter === scrubber.current
+                                    readonly property bool marked: modelData.letter === (lib.picked || scrubber.current)
                                     width: scrubber.width
                                     height: scrubber.step
                                     Rectangle {

@@ -187,6 +187,8 @@ Variants {
                     required property var modelData
                     required property int index
                     readonly property bool isSelected: index === lib.selected
+                    // (a letter picked on the scrubber: its apps lit, the rest dimmed)
+                    readonly property bool lit: lib.inPicked(index)
                     width: grid.cellWidth
                     height: grid.cellHeight
 
@@ -197,7 +199,9 @@ Variants {
                         width: 104
                         height: 104
                         radius: Theme.radius.module
-                        color: cell.isSelected ? Qt.alpha(Theme.accent, Theme.dark ? 0.3 : 0.16) : appMouse.containsMouse ? Theme.color.fill : "transparent"
+                        color: cell.isSelected || cell.lit ? Qt.alpha(Theme.accent, Theme.dark ? 0.3 : 0.16) : appMouse.containsMouse ? Theme.color.fill : "transparent"
+                        opacity: lib.picked !== "" && !cell.lit ? 0.4 : 1
+                        Behavior on opacity { NumberAnimation { duration: Theme.motion.hover } }
                         AppIcon {
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: 12
@@ -309,7 +313,7 @@ Variants {
                     const x = lib.letters[Math.max(0, Math.min(lib.letters.length - 1, Math.floor((y - letterColumn.y) / step)))];
                     if (!x)
                         return;
-                    lib.selected = x.index;
+                    lib.pick(x);
                     grid.lead(x.index);
                 }
 
@@ -322,13 +326,13 @@ Variants {
                         Item {
                             required property var modelData
                             required property int index
-                            readonly property bool marked: modelData.letter === scrubber.current
+                            readonly property bool marked: modelData.letter === (lib.picked || scrubber.current)
                             width: scrubber.width
                             height: scrubber.step
                             Accessible.role: Accessible.Button
                             Accessible.name: "Jump to " + modelData.letter
                             Accessible.onPressAction: {
-                                lib.selected = modelData.index;
+                                lib.pick(modelData);
                                 grid.lead(modelData.index);
                             }
                             Rectangle {
