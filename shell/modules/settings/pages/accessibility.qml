@@ -61,8 +61,7 @@ Column {
             labelColor: Captions.error !== "" ? Theme.color.danger : Theme.color.label
             Segmented {
                 width: 380
-                enabled: Captions.ready || Captions.enabled
-                opacity: enabled ? 1 : 0.4 // (until it's installed: the row says what's missing)
+                enabled: Captions.ready || Captions.enabled // (until it's installed: the row says what's missing)
                 readonly property var values: ["off", "bar", "video", "island", "strip"]
                 options: ["Off", "Floating", "Over video", "Island", "Bottom"]
                 current: !Captions.enabled ? 0 : Math.max(1, values.indexOf(Captions.placement))

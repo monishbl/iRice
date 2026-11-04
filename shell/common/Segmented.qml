@@ -3,23 +3,30 @@ import QtQuick
 // Segmented control: a track with a sliding selection pill. Material: Material
 // 3 Expressive's connected button group (segments 2 px apart, round outer
 // ends, 8 px inner corners; the chosen one fills and turns fully round).
+// Disabled, it fades (Material: its segments in onSurface at 12%, the
+// labels at 38%); `off` lists segments that can't be chosen on their own.
 Rectangle {
     id: root
 
     property var options: [] // labels
+    property var off: [] // indexes that can't be chosen (an app that isn't installed)
     property int current: 0
     property string accessibleName
     signal selected(int index)
 
     implicitHeight: Theme.material ? 36 : 30
+    opacity: enabled || Theme.material ? 1 : 0.45
     activeFocusOnTab: true
     Keys.onPressed: event => {
         const k = event.key;
-        const i = k === Qt.Key_Left || k === Qt.Key_Up ? current - 1 : k === Qt.Key_Right || k === Qt.Key_Down ? current + 1
+        const step = k === Qt.Key_Left || k === Qt.Key_Up || k === Qt.Key_End ? -1 : 1;
+        let i = k === Qt.Key_Left || k === Qt.Key_Up ? current - 1 : k === Qt.Key_Right || k === Qt.Key_Down ? current + 1
             : k === Qt.Key_Home ? 0 : k === Qt.Key_End ? options.length - 1 : -2;
         if (i !== -2) {
+            while (off.includes(i) && i >= 0 && i < options.length)
+                i += step; // (past the ones that can't be chosen)
             const c = Math.max(0, Math.min(options.length - 1, i));
-            if (c !== current)
+            if (c !== current && !off.includes(c))
                 root.selected(c);
             event.accepted = true;
         }
@@ -102,6 +109,7 @@ Rectangle {
                 required property string modelData
                 required property int index
                 readonly property bool chosen: index === root.current
+                readonly property bool usable: root.enabled && !root.off.includes(index)
                 width: root.widths[index] ?? 0
                 height: root.height
                 // Material: the segment's own button
@@ -122,7 +130,7 @@ Rectangle {
                         bottomLeftRadius: topLeftRadius
                         topRightRadius: Math.max(0, Math.min(full, rightR))
                         bottomRightRadius: topRightRadius
-                        color: segment.chosen ? Theme.m3.primary : Theme.m3.surfaceContainerHighest
+                        color: !root.enabled ? Qt.alpha(Theme.m3.onSurface, segment.chosen ? 0.12 : 0.06) : segment.chosen ? Theme.m3.primary : Theme.m3.surfaceContainerHighest
                         Behavior on color { ColorAnimation { duration: 150 } }
                         Rectangle {
                             anchors.fill: parent
@@ -141,7 +149,8 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     text: parent.modelData
-                    color: Theme.material ? (parent.chosen ? Theme.m3.onPrimary : Theme.m3.onSurfaceVariant) : parent.index === root.current ? Theme.color.label : Theme.color.secondary
+                    color: Theme.material ? (!parent.usable ? Qt.alpha(Theme.m3.onSurface, 0.38) : parent.chosen ? Theme.m3.onPrimary : Theme.m3.onSurfaceVariant)
+                        : !parent.usable ? Theme.color.tertiary : parent.index === root.current ? Theme.color.label : Theme.color.secondary
                     font: metrics.font
                 }
                 Accessible.role: Accessible.PageTab
@@ -151,6 +160,7 @@ Rectangle {
                 MouseArea {
                     id: segMouse
                     anchors.fill: parent
+                    enabled: parent.usable
                     hoverEnabled: Theme.material
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.selected(parent.index)

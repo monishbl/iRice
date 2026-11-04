@@ -98,21 +98,22 @@ Column {
         Squircle {
             anchors { fill: parent; margins: 2 }
             visible: br.activeFocus
-            radius: Theme.radius.item
+            radius: Theme.material ? 4 : Theme.radius.item
             color: "transparent"
-            border.width: 2
-            border.color: Theme.accent
+            border.width: Theme.material ? 3 : 2
+            border.color: Theme.material ? Theme.m3.secondary : Theme.accent
         }
+        // (as a settings Row: Material's 20 px edge, 16 px title, 14 px summary)
         Column {
             id: brText
-            anchors { left: parent.left; leftMargin: 14; right: brKeys.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: Theme.material ? 20 : 14; right: brKeys.left; rightMargin: Theme.material ? 16 : 12; verticalCenter: parent.verticalCenter }
             spacing: 2
             Text {
                 width: parent.width
                 text: br.bind.label
                 elide: Text.ElideRight
                 color: br.bind.disabled ? Theme.color.secondary : Theme.color.label
-                font { family: Theme.font.family; pixelSize: Theme.font.body }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body }
             }
             Text {
                 width: parent.width
@@ -121,7 +122,7 @@ Column {
                 text: what
                 elide: Text.ElideRight
                 color: Theme.color.secondary
-                font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                font { family: Theme.font.family; pixelSize: Theme.material ? 14 : Theme.font.caption }
             }
         }
         KeyCombo {
@@ -140,7 +141,7 @@ Column {
         }
         IconButton {
             id: brMenu
-            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { right: parent.right; rightMargin: Theme.material ? 12 : 8; verticalCenter: parent.verticalCenter }
             icon: "dots-three"
             iconColor: brMouse.containsMouse || pageMenu.anchor === brMenu && pageMenu.shown ? Theme.color.label : Theme.color.tertiary
             tooltip: "Options for " + br.bind.label
@@ -202,7 +203,7 @@ Column {
 
     Text {
         visible: page.view === "list" && !Keymap.ready
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         text: "Loading shortcuts…"
         color: Theme.color.secondary
         font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -265,51 +266,6 @@ Column {
         visible: page.view === "list" && Keymap.ready
         width: parent.width
         sections: ["keybinds", "shortcuts", "gestures"]
-    }
-
-    // ── Screenshots ──────────────────────────────────────────────────────
-    component EditorPicker: Rectangle {
-        id: ep
-        property var options: []
-        property var off: [] // indexes that can't be chosen
-        property int current: 0
-        signal selected(int index)
-        implicitHeight: 30
-        radius: height / 2
-        color: Theme.color.toggleOff
-        readonly property real segment: (width - 4) / Math.max(1, options.length)
-        Rectangle {
-            x: 2 + ep.current * ep.segment
-            y: 2
-            width: ep.segment
-            height: ep.height - 4
-            radius: height / 2
-            color: Theme.material ? Theme.m3.secondaryContainer : Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : "white"
-            Behavior on x { XAnimator { duration: Theme.motion.popover; easing.type: Easing.OutCubic } }
-        }
-        Repeater {
-            model: ep.options
-            Item {
-                required property string modelData
-                required property int index
-                readonly property bool usable: !ep.off.includes(index)
-                x: 2 + index * ep.segment
-                width: ep.segment
-                height: ep.height
-                Text {
-                    anchors.centerIn: parent
-                    text: parent.modelData
-                    color: !parent.usable ? Theme.color.tertiary : parent.index === ep.current ? Theme.color.label : Theme.color.secondary
-                    font { family: Theme.font.family; pixelSize: Theme.font.small; weight: Font.DemiBold }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: parent.usable
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: ep.selected(parent.index)
-                }
-            }
-        }
     }
 
     // ── Form ─────────────────────────────────────────────────────────────
@@ -456,14 +412,15 @@ Column {
         width: parent.width
         title: "Keys"
         footer: "Most combinations go to the window manager before Settings sees them, so turn the modifiers on here and press only the last key."
+        // (the form's parts sit on a Row's edges: Material's 20 px, Glass's 14)
         Item {
             width: parent.width
-            height: recorder.implicitHeight + 28
+            height: recorder.implicitHeight + 2 * recorder.y
             ShortcutRecorder {
                 id: recorder
-                x: 14
-                y: 14
-                width: parent.width - 28
+                x: Theme.material ? 20 : 14
+                y: Theme.material ? 16 : 14
+                width: parent.width - 2 * x
                 onEdited: form.error = ""
             }
         }
@@ -498,10 +455,10 @@ Column {
         title: "Action"
         Item {
             width: parent.width
-            height: 54
+            height: Theme.material ? 64 : 54
             Segmented {
                 id: kindPicker
-                anchors { left: parent.left; right: parent.right; margins: 14; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; right: parent.right; margins: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                 readonly property var kinds: ["app", "role", "shell", "command"]
                 options: ["App", "Default app", "iRice action", "Command"]
                 current: Math.max(0, kinds.indexOf(form.kind))
@@ -552,10 +509,10 @@ Column {
         Item {
             visible: form.kind === "app"
             width: parent.width
-            height: 48
+            height: Theme.material ? 56 : 48
             TextField {
                 id: appSearch
-                anchors { left: parent.left; right: parent.right; margins: 14; verticalCenter: parent.verticalCenter }
+                anchors { left: parent.left; right: parent.right; margins: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                 placeholder: "Search apps"
                 commitOnBlur: false
             }
@@ -605,21 +562,21 @@ Column {
                 }
                 AppIcon {
                     id: appIcon
-                    x: 14
+                    x: Theme.material ? 20 : 14
                     anchors.verticalCenter: parent.verticalCenter
                     size: 24
                     source: Apps.iconFor(appRow.modelData)
                 }
                 Text {
-                    anchors { left: appIcon.right; leftMargin: 10; right: appCheck.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                    anchors { left: appIcon.right; leftMargin: Theme.material ? 16 : 10; right: appCheck.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
                     text: appRow.modelData.name
                     elide: Text.ElideRight
                     color: Theme.color.label
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; weight: appRow.chosen ? Font.DemiBold : Font.Normal }
+                    font { family: Theme.font.family; pixelSize: Theme.material ? 16 : Theme.font.body; weight: appRow.chosen ? Font.DemiBold : Font.Normal }
                 }
                 Icon {
                     id: appCheck
-                    anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    anchors { right: parent.right; rightMargin: Theme.material ? 20 : 14; verticalCenter: parent.verticalCenter }
                     visible: appRow.chosen
                     name: "check"
                     bold: true
@@ -674,7 +631,7 @@ Column {
     Text {
         visible: page.view === "form" && form.error !== ""
         width: parent.width
-        leftPadding: 4
+        leftPadding: Theme.material ? 16 : 4 // (on the captions' edge)
         wrapMode: Text.Wrap
         text: form.error
         color: Theme.color.danger
@@ -713,7 +670,7 @@ Column {
             footer: Tools.has("swappy") ? "" : "Install swappy to use it as the markup editor."
             Row {
                 label: "Markup editor"
-                EditorPicker {
+                Segmented {
                     width: 200
                     options: ["iRice", "Swappy"]
                     off: Tools.has("swappy") ? [] : [1]
