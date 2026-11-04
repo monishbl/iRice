@@ -64,7 +64,7 @@ Scope {
             color: "transparent"
             anchors { top: true; bottom: true; left: true; right: true }
             exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "irice:region"
+            WlrLayershell.namespace: "tessera:region"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 

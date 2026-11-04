@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iRice's interactive installer: full screen, arrow keys (./install.sh
+"""Tessera's interactive installer: full screen, arrow keys (./install.sh
 offers it, or ./install.sh --tui).
 
 It asks everything first (look, light or dark, login screen, icon themes,
@@ -45,7 +45,7 @@ except ImportError:  # (install.sh offers to install it; this is the way out if 
 
 
 def load_hardware():
-    spec = importlib.util.spec_from_file_location("irice_hardware", os.path.join(HERE, "hardware.py"))
+    spec = importlib.util.spec_from_file_location("tessera_hardware", os.path.join(HERE, "hardware.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -123,13 +123,13 @@ class Installer:
                            ("light", "Light", ""), ("dark", "Dark", "")], "auto")
         keep = ("keep", "Keep " + dm, "Your login screen stays; pick Hyprland there") if dm else \
             ("keep", "No login screen", "Hyprland starts when you log in on the first console (tty1)")
-        self.login = Radio([("look", "iRice, following the look", "Glass or Material, like the lock screen"),
-                            ("text", "iRice, text", "A clock and a password field on your wallpaper"),
-                            ("plain", "iRice, plain", "The smallest: a name and a password")]
+        self.login = Radio([("look", "Tessera, following the look", "Glass or Material, like the lock screen"),
+                            ("text", "Tessera, text", "A clock and a password field on your wallpaper"),
+                            ("plain", "Tessera, plain", "The smallest: a name and a password")]
                            + [keep], "keep" if dm else "look")
         if dm:
-            # (another login screen is only replaced when you pick an iRice one;
-            # it's turned off, not removed, and irice uninstall turns it back on)
+            # (another login screen is only replaced when you pick a Tessera one;
+            # it's turned off, not removed, and tessera uninstall turns it back on)
             self.login.options[:3] = [(v, l, d + "; " + dm + " is turned off") for v, l, d in self.login.options[:3]]
         self.icons = Checks([{"id": i, "label": label, "ticked": False,
                               "detail": "installed" if ICON_PACKAGES[i] in have else "from the " + src,
@@ -145,10 +145,10 @@ class Installer:
         system_items = []
         if facts.get("pulseaudio"):
             system_items.append({"id": "pulse", "label": "Replace PulseAudio with PipeWire", "ticked": True,
-                                 "detail": "iRice's sound needs PipeWire, which can't be installed next to it. Unticked, the install stops before packages"})
+                                 "detail": "Tessera's sound needs PipeWire, which can't be installed next to it. Unticked, the install stops before packages"})
         if facts.get("network"):
             system_items.append({"id": "network", "label": "Switch the network from {} to NetworkManager".format(facts["network"]),
-                                 "ticked": True, "detail": "iRice's Wi-Fi menus use it; takes effect after a reboot. Unticked, " + facts["network"] + " stays"})
+                                 "ticked": True, "detail": "Tessera's Wi-Fi menus use it; takes effect after a reboot. Unticked, " + facts["network"] + " stays"})
         self.system = Checks(system_items)
         items = hardware.plan(facts)
         self.hw_groups = hardware.GROUPS
@@ -247,7 +247,7 @@ class Installer:
             self.checks.append((s[0], s[2:]))
         elif s.startswith("! "):
             self.warnings.append(s[2:])
-        elif s.startswith("iRice is ready") or s.startswith("iRice is installed"):
+        elif s.startswith("Tessera is ready") or s.startswith("Tessera is installed"):
             self.result = s
 
     def finish(self, code):
@@ -259,7 +259,7 @@ class Installer:
     def render(self, width=100, height=40, spin=0):
         side = width >= 76
         body = self.body(height, spin)
-        head = Text.assemble(("iRice setup", "bold"), ("   " + self.pages[self.page][1], "dim") if not side else "")
+        head = Text.assemble(("Tessera setup", "bold"), ("   " + self.pages[self.page][1], "dim") if not side else "")
         if side:
             nav = Table.grid(padding=(0, 1))
             for i, (_, title) in enumerate(self.pages):
@@ -299,7 +299,7 @@ class Installer:
         titles = {"look": ("Choose a look", "Settings → Appearance changes it any time."),
                   "mode": ("Light or dark", ""),
                   "login": ("The login screen", "Only what you pick changes; the current one is never removed."),
-                  "icons": ("Icon themes (optional)", "Without one, iRice styles the apps' own icons. Tick any you'd like as well."),
+                  "icons": ("Icon themes (optional)", "Without one, Tessera styles the apps' own icons. Tick any you'd like as well."),
                   "extras": ("Extras (optional)", ""),
                   "system": ("Your system", "These replace or turn off something of yours, so they're up to you."),
                   "hardware": ("This computer", "Only what's missing for the hardware found here. Asked ones start unticked.")}
@@ -353,7 +353,7 @@ class Installer:
             rows.add_row(Text("Face", style="dim"), Text(f["ir_camera"]["name"]))
         if f.get("hyprland"):
             rows.add_row(Text("Hyprland", style="dim"), Text(f["hyprland"]))
-        return Group(Text("Set up iRice", style="bold"),
+        return Group(Text("Set up Tessera", style="bold"),
                      Text("A few choices, then the whole plan. Nothing changes until you choose Install.", style="dim"),
                      Text(""), rows, Text(""),
                      Text("Your Hyprland config and anything else replaced is backed up first; "
@@ -368,7 +368,7 @@ class Installer:
         out += [Text(line) for line in shown]
         if self.scroll + room < len(lines):
             out.append(Text("  … {} more (↓)".format(len(lines) - self.scroll - room), style="dim"))
-        out += [Text(""), Text.assemble(("  " + ("Finish" if self.dry else "Install iRice") + "  ", "bold white on " + ACCENT),
+        out += [Text(""), Text.assemble(("  " + ("Finish" if self.dry else "Install Tessera") + "  ", "bold white on " + ACCENT),
                                         ("   enter", "dim"))]
         return Group(*out)
 
@@ -390,7 +390,7 @@ class Installer:
 
     def summary(self, log):
         """What happened, for the scrollback after the full screen closes."""
-        out = [Text(self.result or ("iRice is installed." if self.code == 0 else "The install stopped."), style="bold"), Text("")]
+        out = [Text(self.result or ("Tessera is installed." if self.code == 0 else "The install stopped."), style="bold"), Text("")]
         t = Table.grid(padding=(0, 1))
         for st in self.steps:
             m, style = {"ok": ("✓", OK), "failed": ("✗", BAD), "skipped": ("–", "dim"), "run": ("…", "dim")}[st["state"]]
@@ -404,7 +404,7 @@ class Installer:
             out += [Text(""), Text("Notes", style="bold")]
             out += [Text("  ! " + w, style="dim") for w in self.warnings[-8:]]
         out += [Text(""), Text("Restart to begin. Super+/ lists the shortcuts; Super+, opens Settings.", style="dim"),
-                Text("The irice command: irice doctor, irice update, irice rebuild, irice repair, irice uninstall.", style="dim"),
+                Text("The tessera command: tessera doctor, tessera update, tessera rebuild, tessera repair, tessera uninstall.", style="dim"),
                 Text("Log: " + log, style="dim")]
         return Group(*out)
 
@@ -525,7 +525,7 @@ def interactive(ins):
         except KeyboardInterrupt:
             ins.finish(130)
             code = 130
-        log = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "irice", "install.log")
+        log = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "tessera", "install.log")
         console.print(ins.summary(log))
         return code
     except KeyboardInterrupt:

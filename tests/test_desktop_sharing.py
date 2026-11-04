@@ -35,7 +35,7 @@ def ini(path):
 
 class DesktopSharingTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='irice-sharing-test-')
+        self.temp = tempfile.TemporaryDirectory(prefix='tessera-sharing-test-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.cfg = self.root / 'config'
@@ -157,7 +157,7 @@ class DesktopSharingTests(unittest.TestCase):
                 result = subprocess.run(['bash', str(SCRIPTS / 'app-theme.sh'), mode, '#0a84ff', source, '', 'qt', 'dark' if mode == 'off' else mode], env=self.env, capture_output=True, text=True, timeout=20)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 scheme = ini(self.cfg / 'dolphinrc')['UiSettings']['ColorScheme']
-                self.assertEqual(scheme, 'iRice' if mode != 'off' else 'iRiceDesktopDark')
+                self.assertEqual(scheme, 'Tessera' if mode != 'off' else 'TesseraDesktopDark')
                 qt = ini(self.cfg / 'qt6ct/qt6ct.conf')['Appearance']
                 self.assertGreater(Path(qt['color_scheme_path']).stat().st_size, 0)
 

@@ -4,7 +4,7 @@
 Every 5 minutes the shell runs `app-energy.py sample`: it reads each
 process's total CPU time from /proc, works out how much each one used since
 the last look, adds that up by app and keeps an hour of these 5-minute
-amounts in $XDG_STATE_HOME/irice/app-energy.json. While the page is open,
+amounts in $XDG_STATE_HOME/tessera/app-energy.json. While the page is open,
 `app-energy.py report` adds the time since the last look (without saving)
 and prints the apps that used the most, as JSON.
 
@@ -22,13 +22,20 @@ import sys
 import tempfile
 import time
 
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
+
 HOUR = 3600
 TICK = os.sysconf("SC_CLK_TCK")
 
 
 def state_path():
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return os.path.join(base, "irice", "app-energy.json")
+    return os.path.join(app_dir(base), "app-energy.json")
 
 
 def read_procs(root="/proc"):

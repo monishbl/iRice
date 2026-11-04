@@ -28,7 +28,7 @@ Singleton {
     property bool asking: false // (the stamp's answers count only when a check asked)
     readonly property int quiet: 30000 // no events for this long: check
     readonly property int repairEvery: 600000
-    readonly property string stamp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-hyprland-link-repair"
+    readonly property string stamp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-hyprland-link-repair"
 
     Connections {
         target: Hyprland
@@ -89,7 +89,7 @@ Singleton {
     function repairIfDue(last) {
         if (!asking)
             return; // (the stamp loading as the shell starts)
-        if (Quickshell.env("IRICE_SANDBOX") !== "1" && Date.now() - last >= repairEvery) {
+        if ((Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1" && Date.now() - last >= repairEvery) {
             console.warn("HyprlandLink: Hyprland's events stopped arriving: restarting the shell");
             stampFile.setText(String(Date.now())); // (while the path is set)
             Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/repair-shell.sh"]);

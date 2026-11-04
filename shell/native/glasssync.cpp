@@ -8,7 +8,7 @@
 
 namespace {
 
-using irice::GlassSender;
+using tessera::GlassSender;
 
 void appendNumber(QString& out, double v) {
     if (!out.isEmpty())
@@ -44,6 +44,14 @@ void GlassSync::setNs(const QString& n) {
         return;
     m_ns = n;
     emit nsChanged();
+    resend();
+}
+
+void GlassSync::setPlugin(const QString& p) {
+    if (p == m_plugin || p.isEmpty())
+        return;
+    m_plugin = p;
+    emit pluginChanged();
     resend();
 }
 
@@ -194,7 +202,7 @@ QString GlassSync::shapeOf(const Entry& e) const {
 
 void GlassSync::send(const QString& monitor, const QString& body) {
     const QString key = monitor + QLatin1Char('\n') + m_ns;
-    GlassSender::get().submit(key.toStdString(), (QStringLiteral("irice-glass set ") + monitor + QLatin1Char(' ') + m_ns + QLatin1Char(' ') + body).toStdString());
+    GlassSender::get().submit(key.toStdString(), (m_plugin + QStringLiteral(" set ") + monitor + QLatin1Char(' ') + m_ns + QLatin1Char(' ') + body).toStdString());
     m_sent++;
     emit sentChanged();
 }

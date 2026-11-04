@@ -149,7 +149,7 @@ Singleton {
         onRunningChanged: if (running) root.camError = ""
     }
     property string camError: ""
-    // The virtual camera: one password (irice-root phonecam on)
+    // The virtual camera: one password (tessera-root phonecam on)
     property bool camSetting: false
     function setUpCam() {
         if (camSetup.running)
@@ -164,12 +164,12 @@ Singleton {
     }
     Process {
         id: camSetup
-        command: ["pkexec", "/usr/lib/irice/irice-root", "phonecam", "on"]
+        command: RootHelper.command(["phonecam", "on"])
         stderr: StdioCollector { id: setupErr }
         onExited: code => {
             root.camSetting = false;
             if (code !== 0 && code !== 126)
-                root.camError = setupErr.text.replace(/^irice-root: /, "").trim() || "The virtual camera couldn't be set up. Update iRice, then try again.";
+                root.camError = setupErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "The virtual camera couldn't be set up. Update Tessera, then try again.";
             root.checkCam();
         }
     }

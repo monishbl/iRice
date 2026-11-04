@@ -72,7 +72,7 @@ Singleton {
         }, 15000)
     }
 
-    // The boot menu's snapshots, on or off (iRice's root helper: one password)
+    // The boot menu's snapshots, on or off (Tessera's root helper: one password)
     property bool busy: false
     property string error: ""
     function setMenu(on) {
@@ -84,7 +84,7 @@ Singleton {
             return;
         }
         busy = true;
-        menuProc.command = ["pkexec", "/usr/lib/irice/irice-root", "bootmenu", on ? "on" : "off"];
+        menuProc.command = RootHelper.command(["bootmenu", on ? "on" : "off"]);
         menuProc.running = true;
     }
     Process {
@@ -94,7 +94,7 @@ Singleton {
             root.busy = false;
             if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (menuErr.text.replace(/^irice-root: /, "").trim() || "That didn't change. Update iRice, then try again.");
+                    : (menuErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

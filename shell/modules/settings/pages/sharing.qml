@@ -22,7 +22,7 @@ Column {
     // Bluetooth asking phones to pair (the firewall: SharingPorts)
     property var system: ({}) // { pairing: { risk }, passwordless }
     property string fixing: "" // "pairing" while its fix (and any password prompt) runs
-    // Once an update installed iRice's root helper, the fixes don't ask
+    // Once an update installed Tessera's root helper, the fixes don't ask
     readonly property string askNote: system.passwordless ? "" : " asks for your password and"
     property string fixError: ""
     readonly property string checkScript: decodeURIComponent(Qt.resolvedUrl("../../../assets/scripts/sharing-check.py").toString().replace("file://", ""))
@@ -83,7 +83,7 @@ Column {
     Group {
         width: parent.width
         title: "Nearby sharing"
-        footer: !LocalSend.available ? "Sharing needs Python 3 and openssl (for encrypted transfers)." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. With a firewall on, iRice lets nearby devices through it only while you're visible or sharing, and closes it after." + (LocalSend.error ? " " + LocalSend.error : "")
+        footer: !LocalSend.available ? "Sharing needs Python 3 and openssl (for encrypted transfers)." : "Works with LocalSend on phones and computers on the same network. Files you accept go to Downloads. With a firewall on, Tessera lets nearby devices through it only while you're visible or sharing, and closes it after." + (LocalSend.error ? " " + LocalSend.error : "")
         Row {
             label: "Send files"
             detail: "Choose files, then a nearby device: one running LocalSend, or an Android phone with Quick Share. Receiving can stay off."
@@ -208,7 +208,7 @@ Column {
         title: "Share from anywhere"
         footer: page.fmError !== "" ? page.fmError
             : page.managers.some(m => m.found) ? "Right-click files in these file managers to send them to a nearby device. The menus can be removed any time; nothing else in them changes."
-            : "No supported file manager found (Files, Dolphin, Thunar or Nemo). iRice's own desktop and Downloads stack have Share… either way."
+            : "No supported file manager found (Files, Dolphin, Thunar or Nemo). Tessera's own desktop and Downloads stack have Share… either way."
         Repeater {
             model: page.managers.filter(m => m.found || m.installed)
             Row {

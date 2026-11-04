@@ -37,7 +37,7 @@ Scope {
     function show(k, dev) {
         if (!armed)
             return;
-        // (set with iRice's own sliders: you're looking at the control)
+        // (set with Tessera's own sliders: you're looking at the control)
         if (!dev && Date.now() < (k === "brightness" ? Brightness.quietUntil : Audio.quietUntil))
             return;
         device = dev ?? "";
@@ -302,7 +302,7 @@ Scope {
             }
             screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
             visible: fade > 0
-            WlrLayershell.namespace: "irice:fshud"
+            WlrLayershell.namespace: "tessera:fshud"
             WlrLayershell.layer: WlrLayer.Overlay
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
@@ -367,11 +367,11 @@ Scope {
         }
     }
 
-    // Media keys: bind XF86 keys to hl.dsp.global("irice:<name>")
-    GlobalShortcut { appid: "irice"; name: "volumeUp"; onPressed: { Audio.setVolume(Audio.volume + 0.05); Sounds.play("volumeKeys"); } }
-    GlobalShortcut { appid: "irice"; name: "volumeDown"; onPressed: { Audio.setVolume(Audio.volume - 0.05); Sounds.play("volumeKeys"); } }
-    GlobalShortcut { appid: "irice"; name: "volumeMute"; onPressed: Audio.toggleMute() }
-    GlobalShortcut { appid: "irice"; name: "micMute"; onPressed: Audio.toggleMic() }
-    GlobalShortcut { appid: "irice"; name: "brightnessUp"; onPressed: if (Brightness.available) Brightness.set(Brightness.value + 0.05) } // (no backlight: no OSD either)
-    GlobalShortcut { appid: "irice"; name: "brightnessDown"; onPressed: if (Brightness.available) Brightness.set(Brightness.value - 0.05) }
+    // Media keys: bind XF86 keys to hl.dsp.global("tessera:<name>")
+    GlobalShortcut { appid: "tessera"; name: "volumeUp"; onPressed: { Audio.setVolume(Audio.volume + 0.05); Sounds.play("volumeKeys"); } }
+    GlobalShortcut { appid: "tessera"; name: "volumeDown"; onPressed: { Audio.setVolume(Audio.volume - 0.05); Sounds.play("volumeKeys"); } }
+    GlobalShortcut { appid: "tessera"; name: "volumeMute"; onPressed: Audio.toggleMute() }
+    GlobalShortcut { appid: "tessera"; name: "micMute"; onPressed: Audio.toggleMic() }
+    GlobalShortcut { appid: "tessera"; name: "brightnessUp"; onPressed: if (Brightness.available) Brightness.set(Brightness.value + 0.05) } // (no backlight: no OSD either)
+    GlobalShortcut { appid: "tessera"; name: "brightnessDown"; onPressed: if (Brightness.available) Brightness.set(Brightness.value - 0.05) }
 }

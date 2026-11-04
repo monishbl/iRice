@@ -4,7 +4,7 @@ app does, and prints what comes back (the reply text, actions, closing).
 
     tools/test-notify.py [--resident] [--placeholder TEXT] [--seconds N]
 
-Run it inside an iRice session (or the dev sandbox) to try Reply in the
+Run it inside a Tessera session (or the dev sandbox) to try Reply in the
 banner, Notification Center and the island. It waits up to N seconds
 (default 120) for a reply, then exits.
 """
@@ -35,7 +35,7 @@ def main():
         print("The notification server doesn't offer inline replies.", file=sys.stderr)
 
     hints = {"x-kde-reply-placeholder-text": GLib.Variant("s", args.placeholder),
-             "desktop-entry": GLib.Variant("s", "org.irice.test")}
+             "desktop-entry": GLib.Variant("s", "org.tessera.test")}
     if args.resident:
         hints["resident"] = GLib.Variant("b", True)
     nid = bus.call_sync(BUS, PATH, BUS, "Notify",

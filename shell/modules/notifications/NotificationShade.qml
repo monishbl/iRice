@@ -15,7 +15,7 @@ Column {
     id: root
 
     spacing: 16
-    // Notifications, or island alerts in the iRice group
+    // Notifications, or island alerts in the Tessera group
     readonly property bool anything: Notifications.list.length > 0 || Island.history.length > 0
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
@@ -250,7 +250,7 @@ Column {
                                         icon: "x"
                                         iconSize: 18
                                         iconColor: Theme.m3.onSurfaceVariant
-                                        accessibleName: entry.modelData.group.island ? "Clear iRice alerts" : "Clear " + entry.modelData.group.app
+                                        accessibleName: entry.modelData.group.island ? "Clear Tessera alerts" : "Clear " + entry.modelData.group.app
                                         onClicked: {
                                             if (entry.modelData.group.island)
                                                 Island.clearHistory();

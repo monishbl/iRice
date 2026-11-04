@@ -1,10 +1,19 @@
--- iRice sandbox compositor (nested Hyprland only, never the host).
--- Loads the real iRice modules from ../../hypr with ALT as the modifier,
+-- Tessera sandbox compositor (nested Hyprland only, never the host).
+-- Loads the real Tessera modules from ../../hypr with ALT as the modifier,
 -- because the host Hyprland swallows SUPER.
 
-local root = os.getenv("IRICE_ROOT")
-IRICE_MOD = "ALT"
-IRICE_HYPR_DIR = root .. "/hypr/irice"
+local root = (os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT"))
+-- Tessera's folder under base, or iRice's while it hasn't been moved yet
+-- (the shell moves it at its next start: migrate-names.py)
+local function appDir(base)
+    local f = io.open(base .. "/tessera/config.json", "r")
+    if f then f:close(); return base .. "/tessera" end
+    f = io.open(base .. "/irice/config.json", "r")
+    if f then f:close(); return base .. "/irice" end
+    return base .. "/tessera"
+end
+TESSERA_MOD = "ALT"
+TESSERA_HYPR_DIR = root .. "/hypr/tessera"
 
 hl.monitor({ output = "WAYLAND-1", mode = "preferred", position = "0x0", scale = 1 })
 -- Headless test output (created by dev.sh up). It renders even when the sandbox
@@ -17,21 +26,22 @@ hl.config({
     ecosystem = { no_update_news = true, no_donation_nag = true }
 })
 
-dofile(root .. "/hypr/irice/look.lua")
-pcall(dofile, root .. "/hypr/irice/cursor.lua") -- macOS cursor when installed
-pcall(dofile, root .. "/hypr/irice/findpointer.lua") -- shake to find the pointer
-pcall(dofile, root .. "/hypr/irice/tabs.lua") -- window tabs
-dofile(root .. "/hypr/irice/rules.lua")
-pcall(dofile, (os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/irice/window-rules.lua")
-dofile(root .. "/hypr/irice/keybinds.lua")
-dofile(root .. "/hypr/irice/gestures.lua")
-pcall(dofile, root .. "/hypr/irice/titlebars.lua") -- only with the hyprbars plugin
--- Liquid Glass plugin straight from the repo build (make -C hypr/plugin/irice-glass)
-IRICE_GLASS_PLUGIN = root .. "/hypr/plugin/irice-glass/irice-glass.so"
-pcall(dofile, root .. "/hypr/irice/glass.lua")
+dofile(root .. "/hypr/tessera/look.lua")
+pcall(dofile, root .. "/hypr/tessera/cursor.lua") -- macOS cursor when installed
+pcall(dofile, root .. "/hypr/tessera/findpointer.lua") -- shake to find the pointer
+pcall(dofile, root .. "/hypr/tessera/tabs.lua") -- window tabs
+dofile(root .. "/hypr/tessera/rules.lua")
+pcall(dofile, appDir(os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/window-rules.lua")
+dofile(root .. "/hypr/tessera/keybinds.lua")
+dofile(root .. "/hypr/tessera/gestures.lua")
+pcall(dofile, root .. "/hypr/tessera/titlebars.lua") -- only with the hyprbars plugin
+-- Liquid Glass plugin straight from the repo build (make -C hypr/plugin/tessera-glass)
+-- (or the one built there while Tessera was called iRice, until it's rebuilt)
+TESSERA_GLASS_PLUGIN = { root .. "/hypr/plugin/tessera-glass/tessera-glass.so", root .. "/hypr/plugin/irice-glass/irice-glass.so" }
+pcall(dofile, root .. "/hypr/tessera/glass.lua")
 
 -- (MOD + SHIFT + R is recording, MOD + Return the terminal: see keybinds.lua)
-hl.bind(IRICE_MOD .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd(root .. "/sandbox/reload-shell.sh"), { description = "Sandbox: Reload shell" })
+hl.bind(TESSERA_MOD .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd(root .. "/sandbox/reload-shell.sh"), { description = "Sandbox: Reload shell" })
 
 hl.on("hyprland.start", function()
     hl.exec_cmd("'" .. root .. "/shell/assets/scripts/launch-shell.sh' -p '" .. root .. "/shell'")

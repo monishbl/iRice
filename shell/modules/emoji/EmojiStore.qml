@@ -9,7 +9,7 @@ import qs.common
 // (assets/data/emoji.json, from tools/gen-emoji-data.py), search, what you
 // use most, skin tones per emoji, and putting a pick into the app you were in.
 // The data loads on first open and stays (about 160 KB of JSON).
-// Usage and tones live in $XDG_STATE_HOME/irice/emoji.json, apart from
+// Usage and tones live in $XDG_STATE_HOME/tessera/emoji.json, apart from
 // UiState, so this module owns its file.
 Singleton {
     id: root

@@ -15,7 +15,7 @@ import qs.services
 // MaterialDisplayConfirm).
 Scope {
     Variants {
-        model: Displays.identifying || Displays.confirming ? Quickshell.screens.filter(s => !/^(HEADLESS|IRICE-)/.test(s.name)) : []
+        model: Displays.identifying || Displays.confirming ? Quickshell.screens.filter(s => !/^(HEADLESS|TESSERA-)/.test(s.name)) : []
 
         Scope {
             id: perScreen

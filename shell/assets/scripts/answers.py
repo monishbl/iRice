@@ -9,7 +9,7 @@ zones, units and currency. Plain arithmetic ("2+2") is Spotlight's own.
 An answer: {"kind": "math" | "date" | "time" | "unit" | "currency",
 "title": the answer, "subtitle": what it answers, "copy": what Enter
 copies}. Currency rates are the European Central Bank's (frankfurter.app,
-no key), fetched at most once a day and kept in ~/.cache/irice/rates.json.
+no key), fetched at most once a day and kept in ~/.cache/tessera/rates.json.
 """
 import ast
 import datetime as dt
@@ -22,6 +22,13 @@ import time
 import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo, available_timezones
+
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
 
 # ── Numbers in words ─────────────────────────────────────────────────────
 SMALL = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen "
@@ -361,7 +368,7 @@ CURRENCY_NAMES = {"dollar": "USD", "dollars": "USD", "usd": "USD", "$": "USD", "
                   "€": "EUR", "rupee": "INR", "rupees": "INR", "rs": "INR", "inr": "INR", "₹": "INR", "pound": "GBP",
                   "pounds": "GBP", "gbp": "GBP", "£": "GBP", "yen": "JPY", "jpy": "JPY", "¥": "JPY", "yuan": "CNY",
                   "rmb": "CNY", "dirham": "AED", "dirhams": "AED", "won": "KRW"}
-RATES_FILE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "irice" / "rates.json"
+RATES_FILE = Path(app_dir(str(Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")))) / "rates.json"
 
 
 def rates(fetch=True):

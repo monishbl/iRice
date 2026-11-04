@@ -71,7 +71,7 @@ Singleton {
         else
             loadingMore = true;
         const country = (Qt.locale().name.split("_")[1] ?? "us").toLowerCase();
-        const params = ["page=" + p, "per_page=24", "customer_id=" + encodeURIComponent(EmojiStore.customerId || "irice"), "locale=" + country, "content_filter=" + encodeURIComponent(filter), "format_filter=gif,jpg"];
+        const params = ["page=" + p, "per_page=24", "customer_id=" + encodeURIComponent(EmojiStore.customerId || "tessera"), "locale=" + country, "content_filter=" + encodeURIComponent(filter), "format_filter=gif,jpg"];
         if (query !== "")
             params.unshift("q=" + encodeURIComponent(query));
         const url = "https://api.klipy.com/api/v1/" + encodeURIComponent(key.trim()) + "/gifs/" + (query === "" ? "trending" : "search") + "?" + params.join("&");

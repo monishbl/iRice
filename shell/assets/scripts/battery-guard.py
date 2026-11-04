@@ -7,7 +7,7 @@ Settings → Battery & Power → Critical battery. The shell warns at 10% and
 Caffeine on (that only holds off idle sleep, not this). Sleep, never
 hibernate.
 
-It runs as a systemd user service (irice-battery-guard.service, installed by
+It runs as a systemd user service (tessera-battery-guard.service, installed by
 battery-guard-install.sh) and only reacts: UPower tells it when the battery
 changes (PropertiesChanged on its display device), so it costs nothing in
 between. It asks logind to suspend once per discharge: after a wake on a
@@ -66,7 +66,7 @@ def main():
             return
         if done["armed"] and should_sleep(p, s, args.sleep_at):
             done["armed"] = False
-            subprocess.run(["notify-send", "-u", "critical", "-a", "iRice", "Battery empty",
+            subprocess.run(["notify-send", "-u", "critical", "-a", "Tessera", "Battery empty",
                             f"Sleeping at {p:.0f}% so you don't lose your work. Plug in to keep going."],
                            check=False, timeout=5)
             try:

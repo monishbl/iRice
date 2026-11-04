@@ -6,9 +6,9 @@
 #   idle-action.sh <ac|battery|any> <dim|undim|lock|off|on|sleep>
 #   idle-action.sh before-sleep | after-sleep     (the password-after-sleep grace)
 # The lock command and the grace come from the files start-idle.sh writes
-# next to its hypridle config ($IRICE_IDLE_DIR).
+# next to its hypridle config ($TESSERA_IDLE_DIR).
 set -uo pipefail
-dir=${IRICE_IDLE_DIR:-}
+dir=${TESSERA_IDLE_DIR:-${IRICE_IDLE_DIR:-}}
 
 # On the charger? A computer with no mains supply at all (a desktop) counts
 # as on the charger.

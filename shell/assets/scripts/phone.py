@@ -34,7 +34,7 @@ import time
 
 
 def adb():
-    return os.environ.get("IRICE_ADB") or shutil.which("adb")
+    return os.environ.get("TESSERA_ADB") or shutil.which("adb")
 
 
 def emit(obj):
@@ -120,7 +120,7 @@ def qr_svg(text):
     exe = shutil.which("qrencode")
     if not exe:
         return ""
-    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "irice")
+    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "tessera")
     os.makedirs(d, mode=0o700, exist_ok=True)
     path = os.path.join(d, "phone-pair-" + secrets.token_hex(4) + ".svg")
     r = subprocess.run([exe, "-t", "SVG", "-m", "1", "-o", path], input=text, text=True, capture_output=True)
@@ -146,7 +146,7 @@ def pair(limit=180):
     if not exe or not shutil.which("avahi-browse"):
         emit({"ok": False, "error": "Pairing needs adb (android-tools) and avahi."})
         return 1
-    name = "irice-" + secrets.token_hex(3)
+    name = "tessera-" + secrets.token_hex(3)
     password = "".join(secrets.choice("0123456789") for _ in range(6))
     path = qr_svg(f"WIFI:T:ADB;S:{name};P:{password};;")
     if not path:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iRice's Quick Share service as receiver over Bluetooth only (no mDNS), as
+"""Tessera's Quick Share service as receiver over Bluetooth only (no mDNS), as
 when the phone is on another network. Accepts everything; events on stdout.
 
   blerx.py NAME [noupgrade]
@@ -15,7 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(REPO) + "/shell/assets/scripts/quickshare")
-os.environ.setdefault("IRICE_QS_DEBUG", "1")
+os.environ.setdefault("TESSERA_QS_DEBUG", "1")
 
 from nearby.bluez import Bluetooth  # noqa: E402
 from nearby.gbus import GioBus  # noqa: E402

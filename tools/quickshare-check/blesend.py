@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iRice's Quick Share service sending over Bluetooth only (no mDNS, and the
+"""Tessera's Quick Share service sending over Bluetooth only (no mDNS, and the
 shared network left out), as when the phone is on another network: the
 phone hosts its Wi-Fi link and NetworkManager joins it.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(REPO) + "/shell/assets/scripts/quickshare")
-os.environ.setdefault("IRICE_QS_DEBUG", "1")
+os.environ.setdefault("TESSERA_QS_DEBUG", "1")
 
 from nearby import wifi  # noqa: E402
 from nearby.bluez import Bluetooth  # noqa: E402

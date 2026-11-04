@@ -61,7 +61,7 @@ Column {
     Group {
         width: parent.width
         title: "Speech model"
-        footer: "Bigger models make fewer mistakes but take longer after you stop talking. Models are downloaded once and kept in ~/.local/share/irice/whisper."
+        footer: "Bigger models make fewer mistakes but take longer after you stop talking. Models are downloaded once and kept in ~/.local/share/tessera/whisper."
 
         Repeater {
             model: Dictation.models

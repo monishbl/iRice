@@ -1,4 +1,4 @@
-# iRice: later
+# Tessera: later
 
 ## Built 31 Oct: check on real hardware
 
@@ -28,7 +28,7 @@ All pushed, tested in the sandbox; these parts need the real laptop:
   after the next real update, check the section lists it, then Go Back and
   confirm the password dialog and pacman -U of the cached versions (a test
   with curl/mesa found both in /var/cache/pacman/pkg). The recovery window
-  (shell stopping 3x in 15 min after an update) and `irice undo-update` from a
+  (shell stopping 3x in 15 min after an update) and `tessera undo-update` from a
   text console were only checked up to the password. Snapshots in the boot
   menu: the switch turns grub-btrfsd on (it's off on this laptop); then the
   GRUB "snapshots" submenu, booting one, and the island's notice. Keeping a
@@ -104,7 +104,7 @@ Realme GT Neo 3T (Android 14, Play services 26.34) over USB adb, both ways:
 - Phone → computer, same Wi-Fi: works (found over mDNS or Bluetooth; a
   3 MB photo moves to the network and arrives in 0.3 s, byte-identical).
 - Phone → computer, no shared network: the phone finds it over Bluetooth
-  and joins iRice's NetworkManager hotspot within a second; it then needs
+  and joins Tessera's NetworkManager hotspot within a second; it then needs
   DHCP, which ufw blocked here (the firewall fix now opens 67/udp, and
   Quick Share runs it once the update installs the new root helper).
   **Check after updating:** send a photo from a phone that's on another
@@ -139,7 +139,7 @@ Realme GT Neo 3T (Android 14, Play services 26.34) over USB adb, both ways:
 - BenQ speakers in Control Center → Sound.
 - Claude Desktop: Quick Entry stays open and looks right; no wallet prompt (sign in once).
 - Webex: Super+Q closes the window and keeps it in the tray (open it, press Super+Q, report).
-- Island: flick/×/Esc to dismiss, Recent list, the iRice group in Notification Center.
+- Island: flick/×/Esc to dismiss, Recent list, the Tessera group in Notification Center.
 - Battery & Power: the 20% prompt, sleeping at 3%, lid actions, new idle timers taking effect.
 - Google: several accounts, editing events, offline changes (needs a real account).
 - Replies with your real messaging apps.

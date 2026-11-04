@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Colours apps to match iRice (Settings → Appearance → Match apps), with
+# Colours apps to match Tessera (Settings → Appearance → Match apps), with
 # matugen: from the accent colour or the wallpaper, light or dark.
 #   app-theme.sh <dark|light|off> <accent #rrggbb> <source: accent|wallpaper> <wallpaper path> <targets: gtk,qt,terminals,browsers> [desktop dark|light]
 # Writes its own colour files and adds one include line (once) to each app's
@@ -25,13 +25,13 @@ fi
 
 # The generated files (and where their template is)
 declare -A out=(
-    [gtk3]="$CFG/gtk-3.0/irice-colors.css|gtk.css|gtk"
-    [gtk4]="$CFG/gtk-4.0/irice-colors.css|gtk.css|gtk"
-    [qt6ct]="$CFG/qt6ct/colors/iRice.conf|qt6ct.conf|qt"
-    [kde]="$DATA/color-schemes/iRice.colors|kde.colors|qt"
-    [foot]="$CFG/foot/irice-colors.ini|foot.ini|terminals"
-    [kitty]="$CFG/kitty/irice-colors.conf|kitty.conf|terminals"
-    [alacritty]="$CFG/alacritty/irice-colors.toml|alacritty.toml|terminals"
+    [gtk3]="$CFG/gtk-3.0/tessera-colors.css|gtk.css|gtk"
+    [gtk4]="$CFG/gtk-4.0/tessera-colors.css|gtk.css|gtk"
+    [qt6ct]="$CFG/qt6ct/colors/Tessera.conf|qt6ct.conf|qt"
+    [kde]="$DATA/color-schemes/Tessera.colors|kde.colors|qt"
+    [foot]="$CFG/foot/tessera-colors.ini|foot.ini|terminals"
+    [kitty]="$CFG/kitty/tessera-colors.conf|kitty.conf|terminals"
+    [alacritty]="$CFG/alacritty/tessera-colors.toml|alacritty.toml|terminals"
     [pywal]="$CACHE/wal/colors.json|pywal.json|browsers"
 )
 
@@ -52,7 +52,7 @@ else
 fi
 a="${accent#\#}"
 accent_rgb="$((16#${a:0:2})),$((16#${a:2:2})),$((16#${a:4:2}))"
-extra=$(printf '{"irice":{"accent":"#%s","accent_stripped":"%s","accent_rgb":"%s","wallpaper":"%s","red":"%s","green":"%s","yellow":"%s","blue":"%s","magenta":"%s","cyan":"%s"}}' \
+extra=$(printf '{"tessera":{"accent":"#%s","accent_stripped":"%s","accent_rgb":"%s","wallpaper":"%s","red":"%s","green":"%s","yellow":"%s","blue":"%s","magenta":"%s","cyan":"%s"}}' \
     "$a" "$a" "$accent_rgb" "${wall//\"/}" "$red" "$green" "$yellow" "$blue" "$magenta" "$cyan")
 
 # A matugen config with just the wanted targets
@@ -73,19 +73,26 @@ else
 fi
 
 # Include the colours (once) in each app's own config
+# (configs that include iRice's files, from before it became Tessera, include
+# Tessera's instead, and the old files go: both would colour the apps)
+for f in "$CFG/gtk-3.0/gtk.css" "$CFG/gtk-4.0/gtk.css" "$CFG/foot/foot.ini" "$CFG/kitty/kitty.conf" "$CFG/alacritty/alacritty.toml"; do
+    [[ -f "$f" ]] && grep -qF "irice-colors" "$f" && sed -i 's/irice-colors/tessera-colors/g' "$f"
+done
+rm -f "$CFG/gtk-3.0/irice-colors.css" "$CFG/gtk-4.0/irice-colors.css" "$CFG/foot/irice-colors.ini" "$CFG/kitty/irice-colors.conf" \
+    "$CFG/alacritty/irice-colors.toml" "$CFG/qt6ct/colors/iRice.conf" "$DATA/color-schemes/iRice.colors"
 include() { # file, line, [create if missing]
     local f="$1" line="$2"
     if [[ -f "$f" ]]; then
-        grep -qF "irice-colors" "$f" || printf '%s\n%s' "$line" "$(cat "$f")" >"$f"
+        grep -qF "tessera-colors" "$f" || printf '%s\n%s' "$line" "$(cat "$f")" >"$f"
     elif [[ "${3:-}" == create ]]; then
         mkdir -p "$(dirname "$f")" && printf '%s\n' "$line" >"$f"
     fi
 }
 if want gtk; then
-    include "$CFG/gtk-3.0/gtk.css" "@import 'irice-colors.css';" create
-    include "$CFG/gtk-4.0/gtk.css" "@import 'irice-colors.css';" create
+    include "$CFG/gtk-3.0/gtk.css" "@import 'tessera-colors.css';" create
+    include "$CFG/gtk-4.0/gtk.css" "@import 'tessera-colors.css';" create
     # GTK apps follow light/dark too, on Adwaita (coloured by the files
-    # above); a MacTahoe theme set by an older iRice is put back to it, any
+    # above); a MacTahoe theme set by an older Tessera is put back to it, any
     # other theme you chose is left alone
     if command -v gsettings >/dev/null; then
         gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" 2>/dev/null
@@ -96,17 +103,17 @@ if want gtk; then
     fi
 fi
 if want qt; then
-    python3 -I "$DESKTOP" "$desktop_mode" --scheme "$DATA/color-schemes/iRice.colors"
+    python3 -I "$DESKTOP" "$desktop_mode" --scheme "$DATA/color-schemes/Tessera.colors"
 fi
 if want terminals; then
-    command -v foot >/dev/null && include "$CFG/foot/foot.ini" "include=$CFG/foot/irice-colors.ini" create
-    command -v kitty >/dev/null && include "$CFG/kitty/kitty.conf" "include irice-colors.conf" create
+    command -v foot >/dev/null && include "$CFG/foot/foot.ini" "include=$CFG/foot/tessera-colors.ini" create
+    command -v kitty >/dev/null && include "$CFG/kitty/kitty.conf" "include tessera-colors.conf" create
     if command -v alacritty >/dev/null; then
         f="$CFG/alacritty/alacritty.toml"
         if [[ ! -f "$f" ]]; then
-            printf '[general]\nimport = ["%s"]\n' "$CFG/alacritty/irice-colors.toml" >"$f"
-        elif ! grep -qF "irice-colors" "$f" && ! grep -q '^\[general\]' "$f"; then
-            printf '[general]\nimport = ["%s"]\n\n%s' "$CFG/alacritty/irice-colors.toml" "$(cat "$f")" >"$f"
+            printf '[general]\nimport = ["%s"]\n' "$CFG/alacritty/tessera-colors.toml" >"$f"
+        elif ! grep -qF "tessera-colors" "$f" && ! grep -q '^\[general\]' "$f"; then
+            printf '[general]\nimport = ["%s"]\n\n%s' "$CFG/alacritty/tessera-colors.toml" "$(cat "$f")" >"$f"
         fi
     fi
     command -v pkill >/dev/null && pkill -USR1 -x kitty 2>/dev/null # kitty reloads its config

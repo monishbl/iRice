@@ -246,7 +246,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatTime(clock.now, TimeFormat.hmShort)
                         color: Theme.dark ? "white" : root.m.onSurface
-                        font { family: "iRice Sans Flex"; pixelSize: Math.max(6, 2.6 * root.u); weight: Font.Medium }
+                        font { family: "Tessera Sans Flex"; pixelSize: Math.max(6, 2.6 * root.u); weight: Font.Medium }
                     }
                     Row {
                         anchors { right: parent.right; rightMargin: 2.4 * root.u; verticalCenter: parent.verticalCenter }
@@ -277,7 +277,7 @@ Item {
                         anchors.centerIn: parent
                         text: Qt.formatTime(clock.now, TimeFormat.hmShort)
                         color: root.m.onPrimaryContainer ?? "#21005D"
-                        font { family: "iRice Sans Flex"; pixelSize: Math.max(8, 6 * root.u); weight: Font.DemiBold }
+                        font { family: "Tessera Sans Flex"; pixelSize: Math.max(8, 6 * root.u); weight: Font.DemiBold }
                     }
                 }
                 // Quick Settings, top right

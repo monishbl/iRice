@@ -13,9 +13,9 @@ LINK = (ROOT / "shell/services/HyprlandLink.qml").read_text()
 class HyprlandLink(unittest.TestCase):
     def test_both_looks_start_it(self):
         # (both roots run the one shell, which starts it)
-        self.assertIn("HyprlandLink.linked", (ROOT / "shell/IriceShell.qml").read_text())
+        self.assertIn("HyprlandLink.linked", (ROOT / "shell/TesseraShell.qml").read_text())
         for p in ("shell/shell.qml", "material/shell.qml"):
-            self.assertIn("IriceShell {}", (ROOT / p).read_text(), p)
+            self.assertIn("TesseraShell {}", (ROOT / p).read_text(), p)
 
     def test_it_checks_only_when_quiet_and_rereads_state(self):
         self.assertIn("onRawEvent", LINK)
@@ -24,7 +24,7 @@ class HyprlandLink(unittest.TestCase):
             self.assertIn(f"Hyprland.{f}()", LINK)
 
     def test_repairs_are_rare_and_never_in_the_sandbox(self):
-        self.assertRegex(LINK, r'Quickshell\.env\("IRICE_SANDBOX"\) !== "1"')
+        self.assertRegex(LINK, r'\(Quickshell\.env\("TESSERA_SANDBOX"\) \|\| Quickshell\.env\("IRICE_SANDBOX"\)\) !== "1"')
         every = int(re.search(r"repairEvery:\s*(\d+)", LINK).group(1))
         self.assertGreaterEqual(every, 600000)
         self.assertIn("repair-shell.sh", LINK)
@@ -36,7 +36,7 @@ class HyprlandLink(unittest.TestCase):
         self.assertNotIn("lastwindow", LINK)
         self.assertNotIn("activeToplevel", LINK)
         self.assertIn("drifted", LINK)  # (a first mismatch only re-reads the state)
-        self.assertIn("irice-hyprland-link-repair", LINK)  # (the limit kept in a file)
+        self.assertIn("tessera-hyprland-link-repair", LINK)  # (the limit kept in a file)
         self.assertRegex(LINK, r"if \(!asking\)\s*return")
 
 

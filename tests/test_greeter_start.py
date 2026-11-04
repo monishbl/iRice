@@ -15,8 +15,8 @@ SCRIPT = ROOT / "shell/assets/scripts/greeter-start.sh"
 # Says how it was started; the Material root "fails" when FAKE_FAIL is set
 FAKE_QS = r'''#!/bin/sh
 cfg=""
-[ -n "$XDG_CONFIG_HOME" ] && cfg=$(cat "$XDG_CONFIG_HOME/irice/config.json")
-printf '%s\t%s\t%s\n' "$IRICE_GREETER_STYLE" "$2" "$cfg" >> "$FAKE_LOG"
+[ -n "$XDG_CONFIG_HOME" ] && cfg=$(cat "$XDG_CONFIG_HOME/tessera/config.json")
+printf '%s\t%s\t%s\n' "$TESSERA_GREETER_STYLE" "$2" "$cfg" >> "$FAKE_LOG"
 case "$2" in *material-shell*) [ -n "$FAKE_FAIL" ] && exit 3 ;; esac
 exit 0
 '''
@@ -42,7 +42,7 @@ class GreeterStart(unittest.TestCase):
     def start(self, look=None, **env):
         if look is not None:
             (self.share / "greeter.json").write_text(json.dumps(look))
-        e = dict(os.environ, IRICE_SHARE=str(self.share), IRICE_QS=str(self.qs), FAKE_LOG=str(self.log), XDG_RUNTIME_DIR=str(self.d / "run"), **env)
+        e = dict(os.environ, TESSERA_SHARE=str(self.share), TESSERA_QS=str(self.qs), FAKE_LOG=str(self.log), XDG_RUNTIME_DIR=str(self.d / "run"), **env)
         r = subprocess.run(["bash", str(SCRIPT)], env=e, capture_output=True, text=True, timeout=60)
         runs = [line.split("\t") for line in self.log.read_text().splitlines()] if self.log.exists() else []
         return r, runs

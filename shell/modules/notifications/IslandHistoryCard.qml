@@ -4,7 +4,7 @@ import qs.common
 import qs.services
 import "NotificationGroups.js" as NotificationGroups
 
-// One island alert (`alert`) in Notification Center's iRice group (Island.history),
+// One island alert (`alert`) in Notification Center's Tessera group (Island.history),
 // laid out like a NotificationCard: its icon, what kind of alert and when,
 // the title and detail. A close button on hover; the alert's own button
 // (Open a download or a drive) while the shell remembers it.

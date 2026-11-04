@@ -37,8 +37,9 @@ def handle(pid, start):
 def carries(pid, token):
     # The watcher's environment as it was started (children inherit it);
     # only readable for our own processes
-    want = b'IRICE_WATCH_TOKEN=' + token.encode()
-    return want in Path('/proc', str(pid), 'environ').read_bytes().split(b'\0')
+    # (IRICE_WATCH_TOKEN: a watcher started before iRice became Tessera)
+    env = Path('/proc', str(pid), 'environ').read_bytes().split(b'\0')
+    return any(name + b'=' + token.encode() in env for name in (b'TESSERA_WATCH_TOKEN', b'IRICE_WATCH_TOKEN'))
 
 
 def stop_group(group, start, token=None, dry=False):
@@ -91,8 +92,9 @@ def stop_group(group, start, token=None, dry=False):
 
 
 def reap(dry):
-    directory = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid()))) / 'irice-watchers'
-    for record in directory.glob('*'):
+    run = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid())))
+    # (irice-watchers: written by a shell from before iRice became Tessera)
+    for record in [*(run / 'tessera-watchers').glob('*'), *(run / 'irice-watchers').glob('*')]:
         alive = False
         try:
             wrapper, born, group, start, *token = record.read_text().split()

@@ -7,12 +7,18 @@ import tempfile
 # anything else keyed to $XDG_RUNTIME_DIR) goes to a throwaway directory, and
 # a debug flag the user set for a real phone test doesn't turn tests' traffic
 # into lines in their log.
-_runtime = tempfile.mkdtemp(prefix="irice-tests-run-")
+_runtime = tempfile.mkdtemp(prefix="tessera-tests-run-")
 os.environ["XDG_RUNTIME_DIR"] = _runtime
-os.environ.pop("IRICE_QS_DEBUG", None)
+os.environ.pop("TESSERA_QS_DEBUG", None)
+# Nor the session's own markers: a test runs as if outside any Tessera
+# session (IRICE_*: the same, set by a session started before iRice became
+# Tessera, which the scripts still read)
+for _var in list(os.environ):
+    if _var.startswith("IRICE_") or _var in ("TESSERA_ROOT", "TESSERA_TTY", "TESSERA_SANDBOX", "TESSERA_USER_DIR", "TESSERA_SHELL"):
+        os.environ.pop(_var, None)
 # Nor the real system's configuration (firewall, BlueZ): the sharing checks
 # read /etc and /usr under this, empty unless a test fills it
-os.environ["IRICE_SYSTEM_ROOT"] = tempfile.mkdtemp(prefix="irice-tests-root-")
+os.environ["TESSERA_SYSTEM_ROOT"] = tempfile.mkdtemp(prefix="tessera-tests-root-")
 
 # Nor the real screen: a shell or preview a test starts (on purpose, or by a
 # launcher that found the real Quickshell) must never draw on the person's
@@ -33,7 +39,7 @@ def pytest_sessionstart(session):
 
 def pytest_sessionfinish(session, exitstatus):
     """Stops shells a test started and left running (anything named
-    irice-shell or qs, started during the run, whose runtime folder is a
+    tessera-shell or qs, started during the run, whose runtime folder is a
     temporary one: never the person's own shell in /run/user)."""
     import signal
     import time
@@ -46,7 +52,7 @@ def pytest_sessionfinish(session, exitstatus):
         try:
             with open(f"/proc/{pid}/comm") as f:
                 comm = f.read().strip()
-            if comm not in ("irice-shell", "qs", "quickshell"):
+            if comm not in ("tessera-shell", "irice-shell", "qs", "quickshell"):
                 continue
             with open(f"/proc/{pid}/environ", "rb") as f:
                 env = dict(e.split(b"=", 1) for e in f.read().split(b"\0") if b"=" in e)

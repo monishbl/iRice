@@ -22,7 +22,7 @@ PanelWindow {
     screen: dock.screen
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "irice:stack"
+    WlrLayershell.namespace: "tessera:stack"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     anchors { top: true; bottom: true; left: true; right: true }

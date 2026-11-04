@@ -47,7 +47,7 @@ Singleton {
         const wins = Windows.on(ws);
         stashed = wins.map(t => ({ address: addr(t), ws: ws }));
         for (const s of stashed)
-            Hyprland.dispatch("hl.dsp.window.move({ workspace = \"special:irice-desktop\", follow = false, window = \"address:" + s.address + "\" })");
+            Hyprland.dispatch("hl.dsp.window.move({ workspace = \"special:tessera-desktop\", follow = false, window = \"address:" + s.address + "\" })");
     }
     function restoreDesktop() {
         const list = stashed;

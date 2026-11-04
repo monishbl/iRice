@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Reads end4 (illogical-impulse) keybinds and gestures and prints them as
-iRice binds, for Settings → Keyboard Shortcuts → Import from end4.
+Tessera binds, for Settings → Keyboard Shortcuts → Import from end4.
 
   python3 -I import-end4.py KEYBINDS.lua [MORE.lua ...] -- GENERAL.lua [MORE.lua ...]
 
@@ -15,7 +15,7 @@ written. Prints one JSON object:
     "ignored":  N,            binds inside for loops (the defaults cover them)
     "files":    [ paths read ], "missing": [ paths not found ] }
 
-Actions use iRice's format (hypr/irice/keymap.json): {shell}, {app}, {exec},
+Actions use Tessera's format (hypr/tessera/keymap.json): {shell}, {app}, {exec},
 {dsp} or {zoom}. "fallback" marks a skipped bind that only runs when end4's
 shell isn't running, on keys that another bind already imports.
 """
@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-# end4's quickshell:NAME globals → iRice shell actions
+# end4's quickshell:NAME globals → Tessera shell actions
 SHELL = {
     "searchToggleRelease": "spotlight",
     "searchToggle": "spotlight",
@@ -48,7 +48,7 @@ SHELL = {
     "lock": "lock",
 }
 
-# end4's app variables (hyprland/variables.lua) → iRice default-app roles
+# end4's app variables (hyprland/variables.lua) → Tessera default-app roles
 ROLES = {
     "terminal": "terminal",
     "fileManager": "files",
@@ -64,7 +64,7 @@ ROLES = {
 END4_NAMES = {"qsScripts", "hyprScripts", "qsIsAlive", "qsIpcCall"}
 END4_TEXT = ("$qsConfig", "${qsConfig}", "/.config/hypr/hyprland/scripts", "/.config/hypr/custom/", "/.config/quickshell/")
 
-# end4 commands iRice does itself: same keys, iRice's action (checked in order)
+# end4 commands Tessera does itself: same keys, Tessera's action (checked in order)
 EQUIVALENTS = [
     (re.compile(r"brightness increment"), {"shell": "brightnessUp"}),
     (re.compile(r"brightness decrement"), {"shell": "brightnessDown"}),
@@ -298,8 +298,8 @@ def action_of(expr, env):
             short = name.split(":", 1)[1]
             if short in SHELL:
                 return {"shell": SHELL[short]}, None
-            return None, "end4 shell action " + short + " has no iRice match"
-        if name.startswith("irice:"):
+            return None, "end4 shell action " + short + " has no Tessera match"
+        if name.startswith("tessera:"):
             return {"shell": name.split(":", 1)[1]}, None
         return {"dsp": e}, None
     m = re.fullmatch(r"hl\.dsp\.exec_cmd\((.*)\)", e, re.S)
@@ -309,7 +309,7 @@ def action_of(expr, env):
             return {"app": ROLES[arg]}, None
         if arg == "settingsApp":
             return {"shell": "settings"}, None
-        # Known end4 commands first: some use end4 variables but iRice does the same thing
+        # Known end4 commands first: some use end4 variables but Tessera does the same thing
         raw = evaluate(arg, env, lenient=True)
         if raw.text is not None:
             for rx, act in EQUIVALENTS:
@@ -468,7 +468,7 @@ def handle_gesture(call, stack, out):
         if m and m.group(1) in SHELL:
             action = {"shell": SHELL[m.group(1)]}
         elif m:
-            reason = "end4 shell action " + m.group(1) + " has no iRice match"
+            reason = "end4 shell action " + m.group(1) + " has no Tessera match"
         else:
             reason = "runs Lua code"
     if "loop" in stack or not fingers or not direction or action is None:
@@ -488,7 +488,7 @@ def main(argv):
         scan(os.path.expanduser(p), "binds", out)
     for p in gesture_files:
         scan(os.path.expanduser(p), "gestures", out)
-    # Two binds on the same keys (end4 runs both): keep the one iRice does
+    # Two binds on the same keys (end4 runs both): keep the one Tessera does
     # itself (a shell action), else the first
     first = {}
     for b in out["binds"]:

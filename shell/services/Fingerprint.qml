@@ -6,10 +6,10 @@ import qs.common
 
 // Fingerprints (assets/scripts/fingerprint.py): the reader and what it
 // still needs, the fingers enrolled, and where a finger is accepted.
-//   - iRice's lock screen: its own PAM file (assets/pam/irice-fingerprint),
+//   - Tessera's lock screen: its own PAM file (assets/pam/tessera-fingerprint),
 //     next to the password, no root: lock.fingerprint
 //   - password prompts, sudo, the login screen: a line in that PAM file,
-//     through iRice's root helper (`irice-root fingerprint on|off …`, the
+//     through Tessera's root helper (`tessera-root fingerprint on|off …`, the
 //     password once per change)
 // Installing what the reader needs goes through Software Update's job (one
 // password; AUR packages through yay or paru).
@@ -174,7 +174,6 @@ Singleton {
     // ── Where else a finger is accepted (root helper, the password) ─────
     property string pamBusy: "" // polkit | sudo | login while it changes
     property string pamError: ""
-    readonly property string rootHelper: "/usr/lib/irice/irice-root"
     function setPam(where, on) {
         if (pamProc.running)
             return;
@@ -184,7 +183,7 @@ Singleton {
             return;
         }
         pamBusy = where;
-        pamProc.command = ["pkexec", rootHelper, "fingerprint", on ? "on" : "off", where];
+        pamProc.command = RootHelper.command(["fingerprint", on ? "on" : "off", where]);
         pamProc.running = true;
     }
     Process {
@@ -193,7 +192,7 @@ Singleton {
         onExited: code => {
             if (code !== 0 && code !== 126)
                 root.pamError = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (pamErr.text.replace(/^irice-root: /, "").trim() || "That didn't change. Update iRice, then try again.");
+                    : (pamErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
             root.pamBusy = "";
             root.refresh();
         }

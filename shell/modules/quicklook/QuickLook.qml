@@ -340,7 +340,7 @@ Scope {
                     property string pagePng: ""
                     Process {
                         running: win.kind === "pdf" && Tools.has("pdftoppm")
-                        command: ["sh", "-c", "d=\"${XDG_CACHE_HOME:-$HOME/.cache}/irice/quicklook\"; mkdir -p \"$d\"; o=\"$d/$(printf '%s' \"$1\" | md5sum | cut -c1-16)\"; [ -f \"$o.png\" ] || pdftoppm -png -r 110 -f 1 -l 1 -singlefile -- \"$1\" \"$o\" 2>/dev/null; echo \"$o.png\"", "sh", win.path]
+                        command: ["sh", "-c", "d=\"${XDG_CACHE_HOME:-$HOME/.cache}/tessera/quicklook\"; mkdir -p \"$d\"; o=\"$d/$(printf '%s' \"$1\" | md5sum | cut -c1-16)\"; [ -f \"$o.png\" ] || pdftoppm -png -r 110 -f 1 -l 1 -singlefile -- \"$1\" \"$o\" 2>/dev/null; echo \"$o.png\"", "sh", win.path]
                         stdout: StdioCollector { onStreamFinished: body.pagePng = text.trim() }
                     }
                     Image {

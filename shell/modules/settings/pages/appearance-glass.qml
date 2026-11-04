@@ -32,7 +32,7 @@ Column {
         visible: !Theme.material
         width: parent.width
         title: "Glass"
-        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the irice-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges." : Theme.glass.material === "frosted" ? "Frost (the default) blurs what's behind, with a thin lens at the edges: light on the GPU. Glass is the full engine, bending what's behind it live." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
+        footer: Theme.glass.lensAmount > 0.5 && !GlassPlugin.available ? "Glass needs the tessera-glass Hyprland plugin; until it's built, it looks frosted." : Theme.glass.material === "liquid" ? "Glass bends whatever is behind it, live, with light catching the edges." : Theme.glass.material === "frosted" ? "Frost (the default) blurs what's behind, with a thin lens at the edges: light on the GPU. Glass is the full engine, bending what's behind it live." : Theme.glass.material === "solid" ? "Solid turns transparency off, everywhere." : "Your own mix of lens, frost and solid. Advanced… changes it."
         Row {
             label: "Material"
             Flow { // (Row here is the settings row)
@@ -302,7 +302,7 @@ Column {
     Group {
         width: parent.width
         title: "Match apps"
-        footer: !AppTheme.available ? "Install matugen to colour your apps to match." : Config.options.appearance.appTheme === "off" ? "Apps keep their own colours." : "Apps get colours from your " + (Config.options.appearance.appTheme === "wallpaper" ? "wallpaper" : "accent colour") + ", light or dark with iRice. Open apps update when they can; others on their next start. Turning this off removes the colours again."
+        footer: !AppTheme.available ? "Install matugen to colour your apps to match." : Config.options.appearance.appTheme === "off" ? "Apps keep their own colours." : "Apps get colours from your " + (Config.options.appearance.appTheme === "wallpaper" ? "wallpaper" : "accent colour") + ", light or dark with Tessera. Open apps update when they can; others on their next start. Turning this off removes the colours again."
         Row {
             label: "Colours from"
             Segmented {
@@ -366,7 +366,7 @@ Column {
                         id: buildMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("IRICE_ROOT") || (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/irice/src") + "/tools/build-plugin.sh"], true)
+                        onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", ((Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) || Paths.data + "/src") + "/tools/build-plugin.sh"], true)
                     }
                 }
                 Icon {

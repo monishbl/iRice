@@ -7,18 +7,18 @@ import Quickshell.Services.Greetd
 // Login logic for the greeter: users from /etc/passwd, sessions from
 // wayland-sessions, and the greetd conversation. The conversation starts as
 // soon as a user is chosen, not when Enter is pressed, so a fingerprint
-// reader (pam_fprintd in greetd's PAM file: irice-root fingerprint on login)
+// reader (pam_fprintd in greetd's PAM file: tessera-root fingerprint on login)
 // listens straight away: its words ("Place your finger…") are `message`,
 // and a finger logs in by itself. A password typed meanwhile waits for
 // PAM to ask for it; typing is never held up. Without greetd (or with
-// IRICE_GREETER_MOCK=1) it runs a mock that accepts the password "irice",
+// TESSERA_GREETER_MOCK=1) it runs a mock that accepts the password "tessera",
 // for trying the greeter in a normal session (Escape quits it there).
 // The name can also be typed (other, otherName): any account, listed or
 // not; a typed name that's on the list becomes that person again.
 QtObject {
     id: root
 
-    readonly property bool mock: Quickshell.env("IRICE_GREETER_MOCK") === "1" || !Greetd.available
+    readonly property bool mock: Quickshell.env("TESSERA_GREETER_MOCK") === "1" || !Greetd.available
     property var users: [] // [{ name, full }]
     property var sessions: [] // [{ name, exec }]
     property int user: 0
@@ -42,7 +42,7 @@ QtObject {
     // The reader: "" (none heard of) | waiting | miss
     property string finger: ""
 
-    readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice-greeter.json"
+    readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/tessera-greeter.json"
 
     function login(password) {
         if (busy)
@@ -179,7 +179,7 @@ QtObject {
         interval: 600
         onTriggered: {
             root.busy = false;
-            if (password === "irice")
+            if (password === "tessera")
                 root.launch();
             else
                 root.error = "Incorrect password. Try again.";
@@ -215,9 +215,9 @@ QtObject {
         stdout: StdioCollector {
             onStreamFinished: {
                 const list = text.split("\n").filter(l => l.includes("\t")).map(l => ({ name: l.split("\t")[0], exec: l.split("\t")[1] }));
-                // iRice's own session first, then Hyprland (what iRice runs
-                // on): a first login starts iRice, not a bare Hyprland
-                const rank = s => /irice/i.test(s.name) ? 0 : /hyprland/i.test(s.name) ? 1 : 2;
+                // Tessera's own session first, then Hyprland (what Tessera runs
+                // on): a first login starts Tessera, not a bare Hyprland
+                const rank = s => /tessera/i.test(s.name) ? 0 : /hyprland/i.test(s.name) ? 1 : 2;
                 list.sort((a, b) => (rank(a) - rank(b)) || a.name.localeCompare(b.name));
                 root.sessions = list.length > 0 ? list : [{ name: "Hyprland", exec: "Hyprland" }];
                 root.restoreLast();

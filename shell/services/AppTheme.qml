@@ -6,10 +6,10 @@ import Quickshell.Io
 import qs.common
 
 // Match apps (Settings → Appearance): GTK, Qt, terminal and browser colours
-// follow iRice's accent or the wallpaper, light or dark, through matugen
+// follow Tessera's accent or the wallpaper, light or dark, through matugen
 // (assets/scripts/app-theme.sh). Re-applied a moment after any of those
 // change; turning it off empties the generated colour files. Desktop light/dark
-// preferences and Dolphin's palette follow iRice even when Match apps is off.
+// preferences and Dolphin's palette follow Tessera even when Match apps is off.
 // In the Material look, matching apps (accent or wallpaper alike) takes the
 // shell's own Material palette, Theme.m3: matugen's scheme is an older spec
 // whose colours differ from the shell's, so the script fills the templates
@@ -17,8 +17,8 @@ import qs.common
 //
 // The Material look also brings the rest of the system along here: window
 // corners, border and shadow (Hyprland), the window controls the
-// irice-glass plugin draws, and the pointer (Material pointer). Glass's are
-// hypr/irice/look.lua's and cursor.lua's, set at login.
+// tessera-glass plugin draws, and the pointer (Material pointer). Glass's are
+// hypr/tessera/look.lua's and cursor.lua's, set at login.
 Singleton {
     id: root
 
@@ -94,7 +94,7 @@ Singleton {
         System.hyprEval('hl.config({ general = { col = { active_border = "rgba(' + hex(Theme.m3.primary) + '33)", inactive_border = "rgba(' + hex(Theme.m3.outlineVariant) + '26)" } }, decoration = { rounding_power = 2.0, shadow = { range = 18, render_power = 3, offset = { 0, 4 }, color = "rgba(000000' + (Theme.dark ? "59" : "2e") + ')" }' + (CoolDown.lightBlur ? '' : ', blur = { size = 4, passes = 2 }') + ' } })');
     }
 
-    // Window controls the irice-glass plugin draws: round icon buttons on a
+    // Window controls the tessera-glass plugin draws: round icon buttons on a
     // tonal pill in Material (Glass keeps the plugin's own traffic lights).
     // A plugin built before this answers "unknown verb" and keeps its
     // traffic lights.
@@ -108,7 +108,7 @@ Singleton {
     function sendControlsStyle() {
         if (!GlassPlugin.available || controlsStyle === "")
             return;
-        GlassPlugin.command("controls-style", "irice-glass controls-style " + controlsStyle);
+        GlassPlugin.command("controls-style", GlassPlugin.name + " controls-style " + controlsStyle);
     }
 
     // ── The pointer ────────────────────────────────────────────────────

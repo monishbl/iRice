@@ -2,9 +2,9 @@
 # The Material look's generated assets:
 #  - material/assets/fonts/MaterialSymbolsRounded.ttf: Material Symbols Rounded
 #    (variable: FILL, GRAD, opsz, wght), cut down to the icons in
-#    tools/material-symbols-map.txt and renamed "iRice Symbols" (NOTICE there)
+#    tools/material-symbols-map.txt and renamed "Tessera Symbols" (NOTICE there)
 #  - shell/common/material-symbols.js: Phosphor name -> Material Symbols glyph
-#  - material/assets/fonts/GoogleSansFlex.ttf (variable), renamed "iRice Sans Flex"
+#  - material/assets/fonts/GoogleSansFlex.ttf (variable), renamed "Tessera Sans Flex"
 #    (its outlines unchanged)
 #  - shell/common/MaterialColor.js (shared: the look previews use it too): Google's material-color-utilities bundled
 #    for QML (colour schemes from a seed colour, 2025 spec)
@@ -49,11 +49,11 @@ from fontTools.ttLib import TTFont
 f = TTFont(sys.argv[1])
 for r in f["name"].names:
     if r.nameID in (1, 3, 4, 6, 16):
-        r.string = r.toUnicode().replace("Material Symbols Rounded", "iRice Symbols").replace("MaterialSymbolsRounded", "iRiceSymbols")
+        r.string = r.toUnicode().replace("Material Symbols Rounded", "Tessera Symbols").replace("MaterialSymbolsRounded", "TesseraSymbols")
 f.save(sys.argv[2])
 PY
 
-# Google Sans Flex under its own family name too, "iRice Sans Flex": another
+# Google Sans Flex under its own family name too, "Tessera Sans Flex": another
 # copy installed with the same name (end4's has other axes) shaped text with
 # its glyph numbers and drew it with ours, garbling it
 uv run -q --with fonttools python3 -I - "$T/gsf.ttf" "$FONTS/GoogleSansFlex.ttf" <<'PY'
@@ -62,7 +62,7 @@ from fontTools.ttLib import TTFont
 f = TTFont(sys.argv[1])
 for r in f["name"].names:
     if r.nameID in (1, 3, 4, 6, 16, 21, 25):
-        r.string = r.toUnicode().replace("Google Sans Flex", "iRice Sans Flex").replace("GoogleSansFlex", "iRiceSansFlex")
+        r.string = r.toUnicode().replace("Google Sans Flex", "Tessera Sans Flex").replace("GoogleSansFlex", "TesseraSansFlex")
 f.save(sys.argv[2])
 PY
 

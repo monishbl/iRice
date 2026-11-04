@@ -4,7 +4,7 @@ sessions and so on):
 - open-app.sh runs a command in whichever terminal is chosen or installed,
   each with its own way to take a command and to hold the window open
 - conflicts.py names another bar, notification daemon or a second hypridle
-  from what Hyprland and /proc say, and leaves iRice's own alone
+  from what Hyprland and /proc say, and leaves Tessera's own alone
 - system-stack.sh escapes unit names the way systemd's D-Bus paths want
 """
 import json
@@ -35,7 +35,7 @@ class TerminalTests(unittest.TestCase):
             cfg = Path(d) / "cfg"
             cfg.mkdir()
             (cfg / "config.json").write_text(json.dumps(config if config is not None else {"defaultApps": {"terminal": terminal}}))
-            e = {"PATH": f"{bins}:/usr/bin:/bin", "IRICE_USER_DIR": str(cfg), "HOME": d}
+            e = {"PATH": f"{bins}:/usr/bin:/bin", "TESSERA_USER_DIR": str(cfg), "HOME": d}
             e.update(env or {})
             out = subprocess.run(["bash", str(SCRIPTS / "open-app.sh"), "terminal", *args], capture_output=True, text=True, env=e, timeout=10)
             return out.stdout.splitlines()
@@ -76,17 +76,17 @@ class ConflictTests(unittest.TestCase):
             out = subprocess.run(["python3", "-I", str(SCRIPTS / "conflicts.py")], capture_output=True, text=True, env=env, timeout=20)
             return json.loads(out.stdout)
 
-    def test_another_bar_is_named_and_irice_layers_are_not(self):
+    def test_another_bar_is_named_and_tessera_layers_are_not(self):
         layers = {"DP-1": {"levels": {
-            "0": [{"namespace": "irice:wallpaper", "pid": 1}],
-            "2": [{"namespace": "irice:menubar", "pid": 1}, {"namespace": "waybar", "pid": 999999999}, {"namespace": "waybar", "pid": 999999999}],
+            "0": [{"namespace": "tessera:wallpaper", "pid": 1}],
+            "2": [{"namespace": "tessera:menubar", "pid": 1}, {"namespace": "waybar", "pid": 999999999}, {"namespace": "waybar", "pid": 999999999}],
             "3": [{"namespace": "hyprpicker", "pid": 999999998}]}}}
         found = self.check(layers)
         self.assertEqual([f["id"] for f in found], ["bar:waybar"])
         self.assertIn("waybar", found[0]["fix"])
 
     def test_nothing_else_running_is_quiet(self):
-        self.assertEqual(self.check({"DP-1": {"levels": {"2": [{"namespace": "irice:dock", "pid": 1}]}}}), [])
+        self.assertEqual(self.check({"DP-1": {"levels": {"2": [{"namespace": "tessera:dock", "pid": 1}]}}}), [])
 
 
 class SystemStackTests(unittest.TestCase):

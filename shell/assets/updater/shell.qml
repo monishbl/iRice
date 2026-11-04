@@ -98,7 +98,7 @@ ShellRoot {
             anchors { top: true; bottom: true; left: true; right: true }
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "irice:update"
+            WlrLayershell.namespace: "tessera:update"
             WlrLayershell.keyboardFocus: root.phase === "error" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             color: "transparent"
             // Clicks do nothing while it works (only the error screen's Close
@@ -140,7 +140,7 @@ ShellRoot {
                     Item { width: 1; height: 28 }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.phase === "error" ? root.step : root.phase === "done" ? "iRice is up to date" : root.phase === "restart" ? "iRice is restarting" : "iRice is updating"
+                        text: root.phase === "error" ? root.step : root.phase === "done" ? "Tessera is up to date" : root.phase === "restart" ? "Tessera is restarting" : "Tessera is updating"
                         color: "#EDEDEF"
                         font { family: "Inter"; pixelSize: 14; weight: Font.Medium }
                     }

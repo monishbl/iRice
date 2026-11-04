@@ -65,7 +65,7 @@ except ImportError:
 bus = Gio.bus_get_sync(Gio.BusType.SESSION)
 loop = GLib.MainLoop()
 result = {}
-token = "irice%d" % os.getpid()
+token = "tessera%d" % os.getpid()
 sender = bus.get_unique_name()[1:].replace(".", "_")
 handle = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
 

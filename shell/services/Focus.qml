@@ -9,7 +9,7 @@ import qs.common
 // silences notification banners except from allowed apps (critical ones always
 // show), and can switch the wallpaper and light/dark mode while it's on. Modes
 // can run on a schedule or for a while ("for 1 hour", "until this evening").
-// Modes live in ~/.config/irice/focus.json (plain JSON: Quickshell 0.2's
+// Modes live in ~/.config/tessera/focus.json (plain JSON: Quickshell 0.2's
 // JsonAdapter can't hold lists of objects safely).
 Singleton {
     id: root

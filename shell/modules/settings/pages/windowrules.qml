@@ -132,7 +132,7 @@ Column {
         width: parent.width
         Row {
             label: !WindowRules.available ? "Window rules aren't set up" : "Rules weren't saved"
-            detail: !WindowRules.available ? "The windowRules section is missing from the iRice config. Update iRice, then open this page again." : WindowRules.error
+            detail: !WindowRules.available ? "The windowRules section is missing from the Tessera config. Update Tessera, then open this page again." : WindowRules.error
         }
     }
 

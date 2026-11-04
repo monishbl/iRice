@@ -5,18 +5,18 @@ import qs.common
 import qs.modules.settings
 import qs.services
 
-// Software Update: one Check for updates, one plan, one Update for iRice and
+// Software Update: one Check for updates, one plan, one Update for Tessera and
 // the system together (services/SoftwareUpdate.qml; nothing is checked on
-// its own). The plan lists what's new in iRice and every conflict to decide,
-// the system's updates, iRice's packages, and Hyprland when the new one isn't
-// supported yet; Update runs the system part, then iRice's, with one
+// its own). The plan lists what's new in Tessera and every conflict to decide,
+// the system's updates, Tessera's packages, and Hyprland when the new one isn't
+// supported yet; Update runs the system part, then Tessera's, with one
 // progress view (it keeps going with this window closed).
 Column {
     id: page
     width: parent?.width ?? 0
     spacing: 22
 
-    readonly property var report: IriceUpdate.report
+    readonly property var report: TesseraUpdate.report
     readonly property int pad: Theme.material ? 20 : 14 // (the lines' edge: a settings Row's)
     readonly property var plan: SoftwareUpdate.plan
     readonly property var job: Updates.job
@@ -31,7 +31,7 @@ Column {
         { kind: "preset", title: "Your glass material", footer: "Keeping your look saves it as a Custom material." },
         { kind: "shortcut", title: "Shortcut clashes", footer: "The update brings a shortcut on keys you already use." },
         { kind: "removed", title: "Settings that change name or go away", footer: "You changed these, and the update renames or no longer has them." },
-        { kind: "code", title: "Files you changed", footer: "You changed these iRice files, and the update changes them too. Keep mine drops the update's change to that file; Use the update's sets yours aside in the backup folder; Merge both is offered when the two fit together." }
+        { kind: "code", title: "Files you changed", footer: "You changed these Tessera files, and the update changes them too. Keep mine drops the update's change to that file; Use the update's sets yours aside in the backup folder; Merge both is offered when the two fit together." }
     ]
     function plural(n, word) {
         return n + " " + word + (n === 1 ? "" : "s");
@@ -40,10 +40,10 @@ Column {
     // ── Status, and Check for updates ───────────────────────────────────
     Group {
         width: parent.width
-        footer: !IriceUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of iRice); the system part is simulated." : IriceUpdate.result ? "iRice was updated. Your settings and shortcuts were backed up" + (IriceUpdate.result.backup ? " to " + IriceUpdate.result.backup.replace(Quickshell.env("HOME"), "~") : "") + "." : "Nothing is checked on its own. Checking downloads nothing but the package lists."
+        footer: !TesseraUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of Tessera); the system part is simulated." : TesseraUpdate.result ? "Tessera was updated. Your settings and shortcuts were backed up" + (TesseraUpdate.result.backup ? " to " + TesseraUpdate.result.backup.replace(Quickshell.env("HOME"), "~") : "") + "." : "Nothing is checked on its own. Checking downloads nothing but the package lists."
         Row {
             label: SoftwareUpdate.running ? "Updating…" : SoftwareUpdate.checking ? "Checking for updates…" : !SoftwareUpdate.checked ? "Software Update" : SoftwareUpdate.anything ? "Updates are ready" : "Everything is up to date"
-            detail: !SoftwareUpdate.checked ? "iRice and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "iRice " + page.report.current + (IriceUpdate.available ? " → " + page.report.latest : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
+            detail: !SoftwareUpdate.checked ? "Tessera and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "Tessera " + page.report.current + (TesseraUpdate.available ? " → " + page.report.latest : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
             SettingsButton {
                 visible: !SoftwareUpdate.running
                 text: SoftwareUpdate.checked ? "Check again" : "Check for updates"
@@ -67,11 +67,11 @@ Column {
 
     // Errors say what happened and what to do
     Group {
-        visible: IriceUpdate.error !== "" && !SoftwareUpdate.running
+        visible: TesseraUpdate.error !== "" && !SoftwareUpdate.running
         width: parent.width
         Row {
-            label: "iRice's part can't go ahead"
-            detail: IriceUpdate.error
+            label: "Tessera's part can't go ahead"
+            detail: TesseraUpdate.error
             SettingsButton {
                 text: "Try again"
                 onClicked: SoftwareUpdate.check()
@@ -79,11 +79,11 @@ Column {
         }
     }
 
-    // ── The plan: iRice ─────────────────────────────────────────────────
+    // ── The plan: Tessera ─────────────────────────────────────────────────
     Group {
-        visible: page.showPlan && IriceUpdate.available && ((page.report?.changelog?.length ?? 0) > 0 || (page.report?.notes?.length ?? 0) > 0)
+        visible: page.showPlan && TesseraUpdate.available && ((page.report?.changelog?.length ?? 0) > 0 || (page.report?.notes?.length ?? 0) > 0)
         width: parent.width
-        title: "What's new in iRice"
+        title: "What's new in Tessera"
         UpdateNotes {
             x: page.pad
             width: parent.width - 2 * page.pad
@@ -94,7 +94,7 @@ Column {
         }
     }
     Repeater {
-        model: page.showPlan && IriceUpdate.available ? page.kinds.filter(k => IriceUpdate.conflicts.some(c => c.kind === k.kind)) : []
+        model: page.showPlan && TesseraUpdate.available ? page.kinds.filter(k => TesseraUpdate.conflicts.some(c => c.kind === k.kind)) : []
         Group {
             id: section
             required property var modelData
@@ -102,7 +102,7 @@ Column {
             title: modelData.title
             footer: modelData.footer
             Repeater {
-                model: IriceUpdate.conflicts.filter(c => c.kind === section.modelData.kind)
+                model: TesseraUpdate.conflicts.filter(c => c.kind === section.modelData.kind)
                 Row {
                     id: conflict
                     required property var modelData
@@ -124,22 +124,22 @@ Column {
                         width: Math.max(implicitWidth, 260)
                         options: conflict.modelData.choices.map(ch => conflict.short(ch))
                         // (-1 until chosen: nothing is picked for you)
-                        current: conflict.modelData.choices.indexOf(IriceUpdate.choices[conflict.modelData.id])
-                        onSelected: i => IriceUpdate.choose(conflict.modelData.id, conflict.modelData.choices[i])
+                        current: conflict.modelData.choices.indexOf(TesseraUpdate.choices[conflict.modelData.id])
+                        onSelected: i => TesseraUpdate.choose(conflict.modelData.id, conflict.modelData.choices[i])
                     }
                 }
             }
         }
     }
 
-    // ── The plan: Hyprland newer than this iRice supports ───────────────
+    // ── The plan: Hyprland newer than this Tessera supports ───────────────
     Group {
         visible: page.showPlan && SoftwareUpdate.hyprTooNew
         width: parent.width
         title: "Hyprland"
-        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.heldHypr.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the glass plugin can't be built for it, glass falls back to frosted until iRice catches up." : "This iRice is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
+        footer: SoftwareUpdate.hold === 1 ? "Held for this update only: " + SoftwareUpdate.heldHypr.join(", ") + ". Asked again next time." : SoftwareUpdate.hold === 0 ? "If the glass plugin can't be built for it, glass falls back to frosted until Tessera catches up." : "This Tessera is tested with Hyprland " + (SoftwareUpdate.compat?.hyprland?.max ?? "") + "."
         Row {
-            label: "Hyprland " + SoftwareUpdate.hyprShort + " isn't supported by this iRice yet"
+            label: "Hyprland " + SoftwareUpdate.hyprShort + " isn't supported by this Tessera yet"
             detail: "Choose what to do for this update."
             Segmented {
                 width: Math.max(implicitWidth, 300)
@@ -151,14 +151,14 @@ Column {
     }
 
     // ── The plan: packages affected ─────────────────────────────────────
-    // System (name · old → new, repo or AUR, held ones greyed), what iRice
+    // System (name · old → new, repo or AUR, held ones greyed), what Tessera
     // adds (and why) and drops; long lists show 8 and "and N more"
     component PkgLine: Item {
         id: line
         property string name
         property string from
         property string to
-        property string badge // AUR | held for iRice | a reason
+        property string badge // AUR | held for Tessera | a reason
         property bool dim: false
         width: parent?.width ?? 0
         height: 26
@@ -228,10 +228,10 @@ Column {
         }
     }
     Group {
-        visible: page.showPlan && (page.plan.system || page.plan.aur || IriceUpdate.packages.missing.length > 0 || IriceUpdate.packages.dropped.length > 0)
+        visible: page.showPlan && (page.plan.system || page.plan.aur || TesseraUpdate.packages.missing.length > 0 || TesseraUpdate.packages.dropped.length > 0)
         width: parent.width
         title: "Packages affected"
-        footer: SoftwareUpdate.snapshot !== "" ? "A snapshot is taken first (" + SoftwareUpdate.snapshot + "). Afterwards you can go back to the versions you have now, below." : "Afterwards you can go back to the versions you have now, below: pacman keeps them in its cache. iRice backs up your settings."
+        footer: SoftwareUpdate.snapshot !== "" ? "A snapshot is taken first (" + SoftwareUpdate.snapshot + "). Afterwards you can go back to the versions you have now, below." : "Afterwards you can go back to the versions you have now, below: pacman keeps them in its cache. Tessera backs up your settings."
         Column {
             width: parent.width
             bottomPadding: 8
@@ -249,7 +249,7 @@ Column {
                     name: modelData.name
                     from: modelData.from
                     to: modelData.to
-                    badge: isHeld ? (SoftwareUpdate.heldHypr.includes(modelData.name) ? "held for iRice" : "skipped · you went back from it") : modelData.aur ? (SoftwareUpdate.includeAur ? "AUR" : "AUR · not included") : ""
+                    badge: isHeld ? (SoftwareUpdate.heldHypr.includes(modelData.name) ? "held for Tessera" : "skipped · you went back from it") : modelData.aur ? (SoftwareUpdate.includeAur ? "AUR" : "AUR · not included") : ""
                     dim: isHeld || (modelData.aur && !SoftwareUpdate.includeAur)
                 }
             }
@@ -257,30 +257,30 @@ Column {
                 id: sysMore
                 total: parent.sys.length
             }
-            // iRice adds
+            // Tessera adds
             PkgHeading {
-                visible: IriceUpdate.packages.missing.length > 0
-                text: "iRice adds"
+                visible: TesseraUpdate.packages.missing.length > 0
+                text: "Tessera adds"
             }
             Repeater {
-                model: addMore.open ? IriceUpdate.packages.missing : IriceUpdate.packages.missing.slice(0, 8)
+                model: addMore.open ? TesseraUpdate.packages.missing : TesseraUpdate.packages.missing.slice(0, 8)
                 PkgLine {
                     required property string modelData
                     name: modelData
-                    to: IriceUpdate.packages.reasons?.[modelData] ?? ""
+                    to: TesseraUpdate.packages.reasons?.[modelData] ?? ""
                 }
             }
             More {
                 id: addMore
-                total: IriceUpdate.packages.missing.length
+                total: TesseraUpdate.packages.missing.length
             }
-            // iRice drops
+            // Tessera drops
             PkgHeading {
-                visible: IriceUpdate.packages.dropped.length > 0
-                text: "iRice drops"
+                visible: TesseraUpdate.packages.dropped.length > 0
+                text: "Tessera drops"
             }
             Repeater {
-                model: dropMore.open ? IriceUpdate.packages.dropped : IriceUpdate.packages.dropped.slice(0, 8)
+                model: dropMore.open ? TesseraUpdate.packages.dropped : TesseraUpdate.packages.dropped.slice(0, 8)
                 PkgLine {
                     required property string modelData
                     name: modelData
@@ -290,7 +290,7 @@ Column {
             }
             More {
                 id: dropMore
-                total: IriceUpdate.packages.dropped.length
+                total: TesseraUpdate.packages.dropped.length
             }
         }
         Row {
@@ -303,8 +303,8 @@ Column {
             }
         }
         Row {
-            visible: IriceUpdate.packages.dropped.length > 0
-            label: "Remove packages iRice no longer uses"
+            visible: TesseraUpdate.packages.dropped.length > 0
+            label: "Remove packages Tessera no longer uses"
             detail: "Turn off if you use them yourself."
             Switch {
                 checked: SoftwareUpdate.removeDropped
@@ -317,10 +317,10 @@ Column {
     Group {
         visible: page.showPlan
         width: parent.width
-        footer: "Your system is updated first, then iRice, which restarts the shell; your apps keep running. Your password is asked once, at the start."
+        footer: "Your system is updated first, then Tessera, which restarts the shell; your apps keep running. Your password is asked once, at the start."
         Row {
             label: SoftwareUpdate.undecided > 0 ? page.plural(SoftwareUpdate.undecided, "thing") + " left to decide" : "Ready to update"
-            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "iRice's packages" : "", page.plan.setup && !page.plan.irice ? "iRice's system helper (for the firewall fix, Quick Share and more)" : "", page.plan.irice ? "iRice" : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
+            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "Tessera's packages" : "", page.plan.setup && !page.plan.tessera ? "Tessera's system helper (for the firewall fix, Quick Share and more)" : "", page.plan.tessera ? "Tessera" : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
             SettingsButton {
                 text: "Update"
                 icon: "arrow-circle-up"
@@ -340,7 +340,7 @@ Column {
         title: "Update"
         footer: Updates.fake ? "In the dev sandbox the update is simulated; nothing is installed." : SoftwareUpdate.running ? "Keeps going if you close Settings; the island shows how far it is." : ""
         Row {
-            label: Updates.interrupted ? "The last update was interrupted" : SoftwareUpdate.running ? (IriceUpdate.applying ? "Updating iRice" : page.job?.text || "Updating") : page.job?.state === "done" ? (page.job.kind === "undo" ? "Back to the earlier versions" : (page.job.upgraded?.length ?? 0) > 0 ? page.plural(page.job.upgraded.length, "package") + " updated" : "Updated") : page.job?.text ?? ""
+            label: Updates.interrupted ? "The last update was interrupted" : SoftwareUpdate.running ? (TesseraUpdate.applying ? "Updating Tessera" : page.job?.text || "Updating") : page.job?.state === "done" ? (page.job.kind === "undo" ? "Back to the earlier versions" : (page.job.upgraded?.length ?? 0) > 0 ? page.plural(page.job.upgraded.length, "package") + " updated" : "Updated") : page.job?.text ?? ""
             detail: Updates.interrupted ? "Update again to finish; pacman picks up where it stopped." : SoftwareUpdate.running ? (page.job?.phase === "auth" ? "Enter your password in the dialog." : page.job?.package ?? "") : page.job?.state === "error" ? page.job.error : page.job?.restart ? "Restart to finish: the kernel or system libraries changed." : ""
             QQ.Row {
                 spacing: 8
@@ -437,7 +437,7 @@ Column {
         visible: !SoftwareUpdate.running && (fromSnapshot || SoftwareUpdate.undoCount > 0 || SoftwareUpdate.skippedAll.length > 0 || BootSnapshots.canMenu)
         width: parent.width
         title: "Going back"
-        footer: fromSnapshot ? "" : "If the desktop doesn't start after an update, iRice offers to go back on its own. From a text console (Ctrl+Alt+F3), run: irice undo-update"
+        footer: fromSnapshot ? "" : "If the desktop doesn't start after an update, Tessera offers to go back on its own. From a text console (Ctrl+Alt+F3), run: tessera undo-update"
         property bool asking: false // (Go Back pressed once: what it does, then Go Back again)
 
         // Started from a snapshot
@@ -523,9 +523,9 @@ Column {
         }
     }
 
-    // ── After an iRice update: what's new, until Done ───────────────────
+    // ── After a Tessera update: what's new, until Done ───────────────────
     Group {
-        visible: !!IriceUpdate.result && !SoftwareUpdate.running && ((IriceUpdate.result.changelog?.length ?? 0) > 0 || (IriceUpdate.result.notes?.length ?? 0) > 0)
+        visible: !!TesseraUpdate.result && !SoftwareUpdate.running && ((TesseraUpdate.result.changelog?.length ?? 0) > 0 || (TesseraUpdate.result.notes?.length ?? 0) > 0)
         width: parent.width
         title: "What's new"
         UpdateNotes {
@@ -533,14 +533,14 @@ Column {
             width: parent.width - 2 * page.pad
             topPadding: 14
             bottomPadding: 6
-            entries: IriceUpdate.result?.changelog ?? []
-            fallback: IriceUpdate.result?.notes ?? []
+            entries: TesseraUpdate.result?.changelog ?? []
+            fallback: TesseraUpdate.result?.notes ?? []
         }
         Row {
-            label: "Updated to " + (IriceUpdate.result?.now ?? "")
+            label: "Updated to " + (TesseraUpdate.result?.now ?? "")
             SettingsButton {
                 text: "Done"
-                onClicked: IriceUpdate.dismissResult()
+                onClicked: TesseraUpdate.dismissResult()
             }
         }
     }

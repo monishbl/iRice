@@ -17,7 +17,7 @@ PanelWindow {
     screen: target
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "irice:display-identify"
+    WlrLayershell.namespace: "tessera:display-identify"
     WlrLayershell.layer: WlrLayer.Overlay
     anchors { top: true; left: true }
     margins { top: 48 - m; left: 32 - m }

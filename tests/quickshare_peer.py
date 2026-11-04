@@ -1,4 +1,4 @@
-"""A stand-in for an Android phone, for iRice's Quick Share tests.
+"""A stand-in for an Android phone, for Tessera's Quick Share tests.
 
 It speaks the protocol from the specification side, written directly
 against the protobufs and `cryptography` rather than through the engine's

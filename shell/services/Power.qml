@@ -14,7 +14,7 @@ import "PowerPolicy.js" as Policy
 // power daemon themselves, and one answer wins (PowerPolicy.resolve):
 // Cool-down when hot, then the battery saver, then your own choice or Game
 // Mode, whichever came last. Each request has an owner, a reason and
-// optionally an end. A change made outside iRice (powerprofilesctl) counts
+// optionally an end. A change made outside Tessera (powerprofilesctl) counts
 // as your choice. The dev sandbox never sets the mode: it shares the
 // machine's power daemon. Without power-profiles-daemon (TLP or
 // auto-cpufreq manage power, or nothing does: Backends.ppd) there are no
@@ -88,7 +88,7 @@ Singleton {
     // in the first seconds after a start: the daemon's first report is the
     // profile left from before (a battery saver or cool-down that ended
     // with the old shell), which would otherwise be saved as your choice;
-    // iRice's own answer is put back instead.
+    // Tessera's own answer is put back instead.
     property string applied: ""
     property real appliedAt: 0
     onModeChanged: apply()
@@ -111,7 +111,7 @@ Singleton {
                 root.apply(); // (left from before this start)
                 return;
             }
-            // Changed outside iRice: your choice now
+            // Changed outside Tessera: your choice now
             root.applied = seen;
             root.setMode(seen);
         }
@@ -185,7 +185,7 @@ Singleton {
         if (Island.enabled)
             Island.post(Object.assign({ kind: "custom", icon: icon, title: title, subtitle: text, color: Theme.color.danger }, action ? { action: action, onAction: act } : {}), 15000);
         else
-            Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "iRice", title, text]);
+            Quickshell.execDetached(["notify-send", "-u", "critical", "-a", "Tessera", title, text]);
     }
     // A note when it's full (the charger can come out)
     Connections {
@@ -209,7 +209,7 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 root.guardActive = text.trim() === "active";
-                root.guardError = root.cfg.critical && !root.guardActive ? "The battery guard isn't running. Check that systemd's user session is working (systemctl --user status irice-battery-guard)." : "";
+                root.guardError = root.cfg.critical && !root.guardActive ? "The battery guard isn't running. Check that systemd's user session is working (systemctl --user status tessera-battery-guard)." : "";
             }
         }
     }
@@ -245,7 +245,7 @@ Singleton {
     function writeIdle() {
         const lines = Policy.idleListeners(cfg).map(l => l.source + " " + l.action + " " + l.timeout);
         lines.push("grace " + Math.max(0, cfg.passwordAfterSleep));
-        idleWriter.command = ["sh", "-c", "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/irice-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; \"$4\" \"$3\" && echo own || echo ok", "sh", idleFile, lines.join("\n"), userHypridle, ownHypridleScript];
+        idleWriter.command = ["sh", "-c", "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera irice; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok", "sh", idleFile, lines.join("\n"), userHypridle, ownHypridleScript];
         idleWriter.running = true;
     }
     Process {
@@ -258,12 +258,12 @@ Singleton {
     // ── Lid ─────────────────────────────────────────────────────────────
     // Closing the lid is logind's to handle (it sleeps), unless a setting
     // here says otherwise (or Caffeine is on, and keeps it awake): then
-    // iRice holds a handle-lid-switch inhibitor and acts itself, and the
+    // Tessera holds a handle-lid-switch inhibitor and acts itself, and the
     // built-in screen goes off until the lid opens. If the shell isn't running the inhibitor goes with
     // it and logind sleeps as usual, so the lid never does nothing by
     // accident.
     readonly property bool lidMine: !sandboxed && hasBattery && Policy.lidNeedsInhibit(cfg, System.keepAwake)
-    // (irice-events holds the inhibitor and hears the lid; without it,
+    // (tessera-events holds the inhibitor and hears the lid; without it,
     // systemd-inhibit and gdbus monitor do)
     EventWatch {
         source: "inhibit:handle-lid-switch"
@@ -285,7 +285,7 @@ Singleton {
     }
     Process {
         running: root.lidMine && Events.fallsBack("inhibit")
-        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=handle-lid-switch", "--who=iRice", "--why=Lid settings (Battery & Power)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=handle-lid-switch", "--who=Tessera", "--why=Lid settings (Battery & Power)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
     }
     Process {
         running: root.lidMine && Events.fallsBack("login1")

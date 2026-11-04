@@ -50,7 +50,7 @@ class Drive(unittest.TestCase):
             (t / "bin" / name).write_text(text)
             (t / "bin" / name).chmod(0o755)
         self.env = dict(os.environ, HOME=str(t / "home"), FAKE_DIR=str(t), PATH=str(t / "bin") + ":" + os.environ["PATH"],
-                        IRICE_RCLONE=str(t / "bin" / "rclone"), IRICE_MOUNTINFO=str(t / "mountinfo"))
+                        TESSERA_RCLONE=str(t / "bin" / "rclone"), TESSERA_MOUNTINFO=str(t / "mountinfo"))
         (t / "mountinfo").write_text("")
         self.t = t
 
@@ -66,10 +66,10 @@ class Drive(unittest.TestCase):
         r = self.run_("connect", "gdrive")
         self.assertTrue(r["ok"], r)
         calls = (self.t / "calls").read_text()
-        self.assertIn("config create irice-gdrive drive scope drive config_is_local true", calls)
+        self.assertIn("config create tessera-gdrive drive scope drive config_is_local true", calls)
         units = (self.t / "units").read_text()
-        self.assertIn("--unit=irice-drive-gdrive", units)
-        self.assertIn("mount irice-gdrive: " + str(self.t / "home" / "Google Drive"), units)
+        self.assertIn("--unit=tessera-drive-gdrive", units)
+        self.assertIn("mount tessera-gdrive: " + str(self.t / "home" / "Google Drive"), units)
         self.assertIn("--vfs-cache-mode full", units)
         st = self.run_("status")
         self.assertTrue(st["drives"]["gdrive"]["connected"])

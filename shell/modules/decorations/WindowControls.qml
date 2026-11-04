@@ -12,7 +12,7 @@ import qs.services
 // In the Material look they're round icon buttons instead of traffic lights
 // (minimize, maximize, close, as ChromeOS and Android draw a window's), and
 // resting on maximize opens the grid.
-// With the irice-glass plugin the compositor draws the pill (it can't lag
+// With the tessera-glass plugin the compositor draws the pill (it can't lag
 // behind a moving window); this then only shows the tile grid, when the
 // plugin reports a rest on the green button.
 Variants {
@@ -54,7 +54,7 @@ Variants {
             target: Hyprland
             enabled: win.pluginMode
             function onRawEvent(event) {
-                if (event.name !== "irice-controls")
+                if (event.name !== "tessera-controls" && event.name !== "irice-controls") // (irice: a glass plugin built before the rename)
                     return;
                 const [kind, addr, x, y] = event.data.split(",");
                 const mx = win.monitor?.x ?? 0, my = win.monitor?.y ?? 0;

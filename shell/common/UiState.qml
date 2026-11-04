@@ -4,14 +4,14 @@ import Quickshell
 import Quickshell.Io
 
 // Remembered UI state (not settings): overlay widget layout, pins, crosshair
-// style, floating image, to-dos. Lives in $XDG_STATE_HOME/irice/state.json.
+// style, floating image, to-dos. Lives in $XDG_STATE_HOME/tessera/state.json.
 // Read and written as plain JSON (no JsonAdapter: Quickshell 0.2 can crash
 // deserialising var properties). Assign whole values to trigger a save,
 // e.g. UiState.data.todos = [...].
 Singleton {
     id: root
 
-    readonly property string dir: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/irice"
+    readonly property string dir: Paths.state
     readonly property QtObject data: store
 
     QtObject {

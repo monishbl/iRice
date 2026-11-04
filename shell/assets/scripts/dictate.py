@@ -13,7 +13,7 @@ the computer.
                                    {"ok", "text", "error"}; LANG is a code
                                    ("en") or "auto". The recording is deleted.
 
-Models live in $XDG_DATA_HOME/irice/whisper (ggml-MODEL.bin), downloaded
+Models live in $XDG_DATA_HOME/tessera/whisper (ggml-MODEL.bin), downloaded
 from whisper.cpp's own Hugging Face repository.
 """
 import json
@@ -24,6 +24,13 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
 
 # name: (label, size in MB)
 MODELS = {
@@ -41,7 +48,7 @@ MAGIC = b"lmgg"  # a ggml model file's first bytes
 
 def model_dir():
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return os.path.join(base, "irice", "whisper")
+    return os.path.join(app_dir(base), "whisper")
 
 
 def model_path(name):
@@ -77,7 +84,7 @@ def download(name, opener=urllib.request.urlopen):
     dest = model_path(name)
     part = dest + ".part"
     try:
-        req = urllib.request.Request(URL.format(name), headers={"User-Agent": "iRice"})
+        req = urllib.request.Request(URL.format(name), headers={"User-Agent": "Tessera"})
         with opener(req, timeout=30) as r, open(part, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0)
             done, shown = 0, -1

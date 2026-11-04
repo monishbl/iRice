@@ -304,7 +304,7 @@ Singleton {
     }
     // ── History ─────────────────────────────────────────────────────────
     // Every alert that isn't a notification (those are in Notification Center
-    // already), newest first, for Notification Center's iRice group and the
+    // already), newest first, for Notification Center's Tessera group and the
     // open island's Recent list. The same thing again within a minute (a
     // device that reconnects) updates its line. Kept across shell reloads
     // like the notifications are; buttons only while the shell runs.

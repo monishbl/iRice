@@ -26,7 +26,7 @@ ROLES = {
     "onPrimary": "#304060", "primaryContainer": "#425274", "secondary": "#c0c6d9", "secondaryContainer": "#3c4253",
     "tertiary": "#e3c2f2", "error": "#ff6e84",
 }
-EXTRA = {"irice": {"accent": "#b6c6ee", "accent_stripped": "b6c6ee", "accent_rgb": "182,198,238", "wallpaper": "/w.jpg",
+EXTRA = {"tessera": {"accent": "#b6c6ee", "accent_stripped": "b6c6ee", "accent_rgb": "182,198,238", "wallpaper": "/w.jpg",
                    "red": "F87171", "green": "4ADE80", "yellow": "FBBF24", "blue": "60A5FA", "magenta": "E087CE", "cyan": "25C2C2"}}
 
 
@@ -44,8 +44,8 @@ class Fill(unittest.TestCase):
                           "{{colors.primary.light.red}},{{colors.primary.default.green}},{{colors.primary.default.blue}}", self.roles(), EXTRA)
         self.assertEqual(out, "#b6c6ee b6c6ee 182,198,238")
 
-    def test_irice_values(self):
-        self.assertEqual(render.fill("{{irice.accent}}|{{irice.red}}", self.roles(), EXTRA), "#b6c6ee|F87171")
+    def test_tessera_values(self):
+        self.assertEqual(render.fill("{{tessera.accent}}|{{tessera.red}}", self.roles(), EXTRA), "#b6c6ee|F87171")
 
     def test_white_on_accent_becomes_on_primary(self):
         # Material's primary is light in dark mode: white text on it wouldn't read
@@ -84,7 +84,7 @@ class Fill(unittest.TestCase):
 
 class Command(unittest.TestCase):
     def setUp(self):
-        self.dir = Path(tempfile.mkdtemp(prefix="irice-render-"))
+        self.dir = Path(tempfile.mkdtemp(prefix="tessera-render-"))
 
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -94,7 +94,7 @@ class Command(unittest.TestCase):
                               capture_output=True, text=True)
 
     def test_writes_outputs(self):
-        out = self.dir / "kitty" / "irice-colors.conf"
+        out = self.dir / "kitty" / "tessera-colors.conf"
         r = self.run_script(f"{THEMING / 'kitty.conf'}={out}")
         self.assertEqual(r.returncode, 0, r.stderr)
         text = out.read_text()

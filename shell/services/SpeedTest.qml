@@ -299,7 +299,7 @@ Singleton {
         store.setText(JSON.stringify({ history: [] }, null, 2));
     }
 
-    readonly property string dir: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/irice"
+    readonly property string dir: Paths.state
     Process {
         running: true
         command: ["mkdir", "-p", root.dir]

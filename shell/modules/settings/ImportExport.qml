@@ -6,7 +6,7 @@ import qs.modules.settings // (after QtQuick: Row is the settings row)
 // Import and export for Keyboard Shortcuts and Trackpad, one row per section
 // (keybinds = changes to defaults, shortcuts = your own, gestures), plus
 // "Export all" and "Import from end4". Files are
-//   { "irice-keybinds": 1, "keybinds"?, "shortcuts"?, "gestures"? }
+//   { "tessera-keybinds": 1, "keybinds"?, "shortcuts"?, "gestures"? }
 // Imports show what will change first; Apply makes it so, with Undo after.
 // The file dialog is zenity or kdialog when installed, else a path field.
 Column {
@@ -41,7 +41,7 @@ Column {
     }
 
     function defaultPath(secs) {
-        return "~/Documents/" + (secs.length === 1 && secs[0] === "gestures" ? "irice-gestures.json" : "irice-shortcuts.json");
+        return "~/Documents/" + (secs.length === 1 && secs[0] === "gestures" ? "tessera-gestures.json" : "tessera-shortcuts.json");
     }
     function clear() {
         error = "";
@@ -191,7 +191,7 @@ Column {
                 TextField {
                     id: pathField
                     width: 260
-                    placeholder: "~/Documents/irice-shortcuts.json"
+                    placeholder: "~/Documents/tessera-shortcuts.json"
                     commitOnBlur: false
                     onCommitted: go.clicked()
                 }

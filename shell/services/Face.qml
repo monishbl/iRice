@@ -8,7 +8,7 @@ import qs.common
 // (howdy-next, from the AUR) with the laptop's infrared camera, next to the
 // password and the fingerprint. Offered only with an IR camera: a photo or
 // a screen can't fool one the way it fools a plain webcam. Setting it up,
-// adding and removing faces go through iRice's root helper (the password).
+// adding and removing faces go through Tessera's root helper (the password).
 Singleton {
     id: root
 
@@ -18,7 +18,7 @@ Singleton {
     readonly property bool hasCamera: camera !== null
     readonly property bool installed: (info.howdy ?? false) && (info.pam ?? false)
     // The camera Howdy uses: from its config, or (howdy-next keeps that
-    // root's to read) the one iRice set it up with
+    // root's to read) the one Tessera set it up with
     readonly property string device: (info.private ?? false) ? (Config.options.lock.faceDevice ?? "") : (info.device ?? "")
     readonly property bool setUp: installed && device !== "" && (info.models ?? false)
     // Faces added (kept here: Howdy's own list is root's to read)
@@ -75,7 +75,7 @@ Singleton {
             return;
         }
         busy = job;
-        rootJob.command = ["pkexec", "/usr/lib/irice/irice-root", "face"].concat(job === "setup" ? ["setup", camera.path] : [job]);
+        rootJob.command = RootHelper.command(["face"]).concat(job === "setup" ? ["setup", camera.path] : [job]);
         rootJob.running = true;
     }
     function setUpCamera() {
@@ -105,8 +105,8 @@ Singleton {
             } else if (code !== 126) { // (126: the password prompt was cancelled)
                 const said = (jobErr.text + "\n" + jobOut.text).trim().split("\n").filter(l => l.trim() !== "").pop() ?? "";
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : job === "add" ? "No face was found. Look at the camera, then try again. If the camera's infrared light stays off, it needs linux-enable-ir-emitter (AUR) set up once in a terminal: sudo linux-enable-ir-emitter configure." + (said ? " (" + said.replace(/^irice-root: /, "") + ")" : "")
-                    : said.replace(/^irice-root: /, "") || "That didn't work. Update iRice, then try again.";
+                    : job === "add" ? "No face was found. Look at the camera, then try again. If the camera's infrared light stays off, it needs linux-enable-ir-emitter (AUR) set up once in a terminal: sudo linux-enable-ir-emitter configure." + (said ? " (" + said.replace(/^(tessera|irice)-root: /, "") + ")" : "")
+                    : said.replace(/^(tessera|irice)-root: /, "") || "That didn't work. Update Tessera, then try again.";
             }
             root.refresh();
         }

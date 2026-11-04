@@ -6,11 +6,18 @@ chance before falling back (service.py). What happened is remembered per
 phone (by its name: endpoint ids change every time) and per link:
 FAILS_TO_SKIP failures in a row and that link is left out for that phone
 for SKIP_FOR seconds; one success forgets its failures. Stored in
-$XDG_STATE_HOME/irice/quickshare-links.json (names and counts only).
+$XDG_STATE_HOME/tessera/quickshare-links.json (names and counts only).
 """
 import json
 import os
 import time
+
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
 
 FAILS_TO_SKIP = 2
 SKIP_FOR = 24 * 3600
@@ -19,7 +26,7 @@ MAX_PEERS = 64  # (oldest forgotten first)
 
 def default_path():
     state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return os.path.join(state, "irice", "quickshare-links.json")
+    return os.path.join(app_dir(state), "quickshare-links.json")
 
 
 class LinkMemory:

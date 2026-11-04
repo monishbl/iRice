@@ -1,7 +1,7 @@
 """The installer's decisions, against fake commands on PATH: the versions it
 reads from compat.json, where the "start Hyprland on tty1" lines go for your
 login shell, the keyboard layout it writes (tools/keyboard-lua.sh) and the
-packages Software Update would install (tools/irice-packages.sh). Nothing
+packages Software Update would install (tools/tessera-packages.sh). Nothing
 real is installed or asked; install.sh's functions are run on their own."""
 import os
 import subprocess
@@ -68,7 +68,7 @@ class InstallerFunctions(Fakes):
         self.assertEqual(profile("/bin/bash", ".profile"), "~/.profile")  # (bash reads that one when there's no .bash_profile)
         self.assertEqual(profile("/usr/bin/bash", ".bash_profile", ".profile"), "~/.bash_profile")
         self.assertEqual(profile("/usr/bin/zsh"), "~/.zprofile")
-        self.assertEqual(profile("/usr/bin/fish"), "~/.config/fish/conf.d/irice-start-hyprland.fish")
+        self.assertEqual(profile("/usr/bin/fish"), "~/.config/fish/conf.d/tessera-start-hyprland.fish")
         self.assertEqual(profile("/bin/dash"), "~/.profile")
 
 
@@ -94,9 +94,9 @@ class SetupFunctions(Fakes):
         self.assertEqual(code, 0)
         lines = out.splitlines()
         i = lines.index("auth       include      system-local-login")
-        self.assertEqual(lines[i + 1:i + 3], ["# irice: unlock the keyring with the login password",
+        self.assertEqual(lines[i + 1:i + 3], ["# tessera: unlock the keyring with the login password",
                                               "-auth      optional     pam_gnome_keyring.so"])
-        self.assertEqual(lines[-2:], ["# irice: unlock the keyring with the login password",
+        self.assertEqual(lines[-2:], ["# tessera: unlock the keyring with the login password",
                                       "-session   optional     pam_gnome_keyring.so auto_start"])
         # once only; never next to KWallet's; nothing for a missing file
         pam.write_text(out)
@@ -106,7 +106,7 @@ class SetupFunctions(Fakes):
         self.assertEqual(self.fn(["pam_with_keyring"], f"pam_with_keyring {self.d}/none")[0], 1)
         # uninstall.sh's sed takes exactly those lines out again
         pam.write_text(out)
-        subprocess.run(["sed", "-i", "/# irice: unlock the keyring/,+1d", str(pam)], check=True)
+        subprocess.run(["sed", "-i", "/# tessera: unlock the keyring/,+1d", str(pam)], check=True)
         self.assertEqual(pam.read_text(), self.GREETD)
 
     def gpus(self, *vendors, nvidia=None, lspci=""):
@@ -121,7 +121,7 @@ class SetupFunctions(Fakes):
             (sys_root / "sys/module/nvidia").mkdir(parents=True)
             (sys_root / "sys/module/nvidia/version").write_text(nvidia + "\n")
         self.fake("lspci", f"printf '%s\\n' '{lspci}'\n")
-        env = {"IRICE_SYSTEM_ROOT": str(sys_root)}
+        env = {"TESSERA_SYSTEM_ROOT": str(sys_root)}
         vendors_out = self.fn(["gpu_vendors"], "gpu_vendors", **env)[1]
         code, lua = self.fn(["gpu_lua"], f'gpu_lua "$(cat <<"EOF"\n{vendors_out}EOF\n)"', **env)
         return vendors_out.split(), code, lua
@@ -179,7 +179,7 @@ class OldConfig(Fakes):
         hypr = self.home / ".config/hypr"
         hypr.mkdir(parents=True)
         (hypr / "monitors.conf").write_text("monitor = DP-1, 2560x1440@144, 0x0, 1.25\nmonitor = HDMI-A-1, disable\n")
-        (hypr / "hyprland.conf.pre-irice").write_text(textwrap.dedent("""\
+        (hypr / "hyprland.conf.pre-tessera").write_text(textwrap.dedent("""\
             # my config
             $terminal = kitty
             source = ~/.config/hypr/monitors.conf
@@ -195,19 +195,19 @@ class OldConfig(Fakes):
                 }
             }
             """))
-        out = hypr / "irice/from-your-old-config.lua"
+        out = hypr / "tessera/from-your-old-config.lua"
         out.parent.mkdir()
-        p = subprocess.run(["python3", "-I", str(ROOT / "tools/old-hypr-config.py"), str(hypr / "hyprland.conf.pre-irice"), str(out)],
+        p = subprocess.run(["python3", "-I", str(ROOT / "tools/old-hypr-config.py"), str(hypr / "hyprland.conf.pre-tessera"), str(out)],
                            env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("2 display lines, keyboard de (nodeadkeys), 2 env lines (NVIDIA: LIBVA_DRIVER_NAME), 2 exec-once", p.stdout)
-        self.assertIn("~/.config/hypr/irice/from-your-old-config.lua", p.stdout)
+        self.assertIn("~/.config/hypr/tessera/from-your-old-config.lua", p.stdout)
         lua = out.read_text()
         self.assertIn('-- hl.monitor({ output = "DP-1", mode = "2560x1440@144", position = "0x0", scale = 1.25 })', lua)
         self.assertIn("-- (by hand, from: monitor = HDMI-A-1, disable)", lua)
         self.assertIn('-- hl.config({ input = { kb_layout = "de", kb_variant = "nodeadkeys" } })', lua)
         self.assertIn('-- hl.env("XCURSOR_SIZE", "24")', lua)
-        self.assertIn('hl.exec_cmd("waybar") end) -- (iRice does this itself)', lua)
+        self.assertIn('hl.exec_cmd("waybar") end) -- (Tessera does this itself)', lua)
         self.assertIn('hl.exec_cmd("kitty --class \\"dropdown\\" # not a comment")', lua)
         # every line is off
         self.assertEqual([l for l in lua.splitlines() if l and not l.startswith("--")], [])
@@ -228,7 +228,7 @@ class QtTheme(Fakes):
         cfg = self.home / ".config"
 
         def chosen():
-            return subprocess.run(["bash", "-c", fn + "\nqt6ct_chosen"], env=dict(self.env, IRICE_SYSTEM_ROOT=str(self.d / "root")),
+            return subprocess.run(["bash", "-c", fn + "\nqt6ct_chosen"], env=dict(self.env, TESSERA_SYSTEM_ROOT=str(self.d / "root")),
                                   capture_output=True, timeout=10).returncode == 0
         (plugins / "KDEPlasmaPlatformTheme6.so").write_text("")
         self.assertFalse(chosen())  # (no qt6ct)
@@ -247,7 +247,7 @@ class QtTheme(Fakes):
 class KeyboardLayout(Fakes):
     def write(self, status):
         self.fake("localectl", f"cat <<'EOF'\n{status}\nEOF\n")
-        out = self.d / "irice/keyboard.lua"
+        out = self.d / "tessera/keyboard.lua"
         p = subprocess.run([str(ROOT / "tools/keyboard-lua.sh"), str(out)], env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(p.returncode, 0, p.stderr)
         return out.read_text() if out.exists() else None, p.stdout
@@ -269,7 +269,7 @@ class KeyboardLayout(Fakes):
 
 class PackagesForSoftwareUpdate(Fakes):
     def status(self, installed=""):
-        # pacman: nothing iRice lists is installed except what's named; every
+        # pacman: nothing Tessera lists is installed except what's named; every
         # package is in the repositories
         self.fake("pacman", f'''
             case "$1" in
@@ -279,7 +279,7 @@ class PackagesForSoftwareUpdate(Fakes):
             esac
         ''')
         self.fake("systemctl", "exit 3\n")
-        p = subprocess.run([str(ROOT / "tools/irice-packages.sh"), "status"], env=self.env, capture_output=True, text=True, timeout=30)
+        p = subprocess.run([str(ROOT / "tools/tessera-packages.sh"), "status"], env=self.env, capture_output=True, text=True, timeout=30)
         import json
         return json.loads(p.stdout)["missing"]
 

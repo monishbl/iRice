@@ -115,11 +115,11 @@ Column {
             }
             Row {
                 label: "Window tabs"
-                detail: Config.options.appearance.windowTabs === "finder" ? "Tabs with icons, drawn by iRice" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
+                detail: Config.options.appearance.windowTabs === "finder" ? "Tabs with icons, drawn by Tessera" + (GlassPlugin.available ? "" : " (needs the glass plugin to know the front tab)") : "Hyprland's tab bar, restyled; smoothest"
                 Segmented {
                     width: 300
                     readonly property var values: ["hyprland", "finder"]
-                    options: ["Hyprland", "iRice"]
+                    options: ["Hyprland", "Tessera"]
                     current: Math.max(0, values.indexOf(Config.options.appearance.windowTabs))
                     onSelected: i => Config.options.appearance.windowTabs = values[i]
                 }

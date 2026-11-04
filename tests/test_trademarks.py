@@ -1,16 +1,16 @@
-"""iRice's own features don't wear other companies' product names.
+"""Tessera's own features don't wear other companies' product names.
 
 Renamed on 3 November 2026 (SECURITY-AUDIT.md section 7): Spotlight is
 Search, Mission Control All Windows, App Exposé App Windows, App Library the
 App Drawer, Stage Manager Stages, StandBy Bedside Mode, Smart Stack Widget
 Stack, Quick Look Quick Preview, App Store Software, Control Center Quick
-Settings, Liquid Glass Glass, and "Tahoe" names nothing of iRice's.
+Settings, Liquid Glass Glass, and "Tahoe" names nothing of Tessera's.
 
 What's read, as the person sees it:
   - QML and JS in shell/ and material/: every string literal outside comments
     (labels, titles, tooltips, details, notifications, SettingsMap's names)
-  - the keymap and gestures (hypr/irice/*.json) and their generator
-  - Python, shell and C++ strings the installer, `irice`, the health check
+  - the keymap and gestures (hypr/tessera/*.json) and their generator
+  - Python, shell and C++ strings the installer, `tessera`, the health check
     and the scripts show or send (docstrings and comments aren't shown)
   - the website (site/: visible text and alt, aria-label, title and meta
     text) and README.md
@@ -20,12 +20,12 @@ Allowed on purpose:
     search's former names (SettingsMap.formerNames), so a search for an old
     name still finds the feature;
   - Apple's own wallpaper files, named as Apple names them ("Tahoe Light.jpg")
-    when iRice downloads or looks for them;
+    when Tessera downloads or looks for them;
   - ids, config keys, IPC names and file names (spotlight, missionControl,
     stageManager, standby, tahoe-day.jpg): they're lower or camel case and
     never shown, and renaming them would break people's settings.
 
-Saying what iRice works with, by its owner's name, is fine and not checked:
+Saying what Tessera works with, by its owner's name, is fine and not checked:
 "works with Android's Quick Share", "Search an area with Google Lens",
 "Sign in with your iCloud account", "like macOS", "Material You colours".
 """
@@ -176,7 +176,7 @@ def shell_lines(src):
 class UserFacingText(unittest.TestCase):
     def check(self, found):
         found = [f"{where}: {', '.join(sorted(set(h)))}: {text.strip()[:120]!r}" for where, text, h in found if h]
-        self.assertEqual(found, [], "another company's product name as an iRice name:\n" + "\n".join(found))
+        self.assertEqual(found, [], "another company's product name as a Tessera name:\n" + "\n".join(found))
 
     def test_qml_and_js(self):
         found = []
@@ -203,7 +203,7 @@ class UserFacingText(unittest.TestCase):
             elif isinstance(v, list):
                 for i, x in enumerate(v):
                     walk(x, f"{where}[{i}]")
-        for p in files("hypr/irice/*.json"):
+        for p in files("hypr/tessera/*.json"):
             walk(json.loads(p.read_text(encoding="utf-8")), rel(p))
         self.check(found)
 
@@ -218,7 +218,7 @@ class UserFacingText(unittest.TestCase):
 
     def test_shell_scripts_and_installer(self):
         found = []
-        scripts = files("*.sh", "tools/*.sh", "tools/irice", "shell/assets/scripts/**/*.sh", "material/assets/scripts/**/*.sh", "site/build.sh", "site/public/get", "site/package/*.sh")
+        scripts = files("*.sh", "tools/*.sh", "tools/tessera", "shell/assets/scripts/**/*.sh", "material/assets/scripts/**/*.sh", "site/build.sh", "site/public/get", "site/package/*.sh")
         for p in scripts:
             for no, s in shell_lines(p.read_text(encoding="utf-8")):
                 found.append((f"{rel(p)}:{no}", s, hits(s)))

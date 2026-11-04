@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.common
 
 // Window decorations: none, window controls, or hyprbars title bars
-// (optional plugin). Window controls are drawn by the irice-glass plugin when
+// (optional plugin). Window controls are drawn by the tessera-glass plugin when
 // it's loaded (they move with the window on the same frame); otherwise the
 // shell draws them (WindowControls.qml). Title bars switch live via hyprctl.
 Singleton {
@@ -31,11 +31,11 @@ Singleton {
     function applyControls() {
         if (!GlassPlugin.available)
             return;
-        GlassPlugin.command("controls", "irice-glass controls " + (pluginControls ? "on " + (Theme.dark ? "dark" : "light") : "off"));
+        GlassPlugin.command("controls", GlassPlugin.name + " controls " + (pluginControls ? "on " + (Theme.dark ? "dark" : "light") : "off"));
         // The traffic lights again after the Material look (it sends its own
         // style, material/services/AppTheme; the plugin outlives the shell)
         if (!Theme.material)
-            GlassPlugin.command("controls-style", "irice-glass controls-style glass");
+            GlassPlugin.command("controls-style", GlassPlugin.name + " controls-style glass");
     }
 
     function apply() {

@@ -94,7 +94,7 @@ Singleton {
         }
     }
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "captions"
         description: "Live captions on or off"
         onPressed: root.toggle()

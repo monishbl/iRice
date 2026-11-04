@@ -1,14 +1,14 @@
-# iRice's native helpers (built by build.sh into build/):
-#   IRice.Native  QML module: GlassSync, the compositor glass shapes kept in
+# Tessera's native helpers (built by build.sh into build/):
+#   Tessera.Native  QML module: GlassSync, the compositor glass shapes kept in
 #                 step from C++ (see glasssync.h)
 #   glass-ipc     the request helper (C version of assets/scripts/glass-ipc.py)
-#   goa-signin    adds a Google account to GNOME Online Accounts from iRice's
+#   goa-signin    adds a Google account to GNOME Online Accounts from Tessera's
 #                 Settings (see goa-signin.c); built when GOA's backend
 #                 library is installed
 # The shell works without them (QML and Python fall-backs); launch-shell.sh
 # puts build/qml on the import path when it's there.
 cmake_minimum_required(VERSION 3.21)
-project(irice-native LANGUAGES C CXX)
+project(tessera-native LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,14 +19,14 @@ endif()
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick)
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_qml_module(irice_native
-    URI IRice.Native
+qt_add_qml_module(tessera_native
+    URI Tessera.Native
     VERSION 1.0
-    PLUGIN_TARGET irice_native
-    OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/IRice/Native
+    PLUGIN_TARGET tessera_native
+    OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/Tessera/Native
     SOURCES glasssync.h glasssync.cpp glasssender.hpp
 )
-target_link_libraries(irice_native PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_link_libraries(tessera_native PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 
 add_executable(glass-ipc glass-ipc.c)
 set_target_properties(glass-ipc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

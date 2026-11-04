@@ -41,7 +41,10 @@ SLOW_RTT = 25  # ms: a shared network slower than this goes after Wi-Fi Direct
 SPEED_SAMPLE = 3  # seconds between speed checks on a shared network
 SLOW_RATE = 3_000_000  # bytes/s: below this twice in a row, a big transfer asks for Wi-Fi Direct
 WORTH_MOVING = 50_000_000  # bytes still to go for that to be worth it
-TRUSTED = "/etc/irice/quickshare-trusted"  # (Settings: fast transfers without asking: no password mid-transfer)
+TRUSTED = "/etc/tessera/quickshare-trusted"  # (Settings: fast transfers without asking: no password mid-transfer)
+# (where it was while Tessera was called iRice, until the root setup moves it)
+if not os.path.exists(TRUSTED) and os.path.exists("/etc/irice/quickshare-trusted"):
+    TRUSTED = "/etc/irice/quickshare-trusted"
 TWIN_WAIT = 8  # a phone the network can't reach: how long to look for it over Bluetooth
 PATH_MEDIUMS = {"lan": "wifi_lan", "direct": "wifi_direct", "hotspot": "wifi_hotspot", "nm": "wifi_hotspot"}
 JOIN_KEYS = {wifi.CR.WIFI_LAN: "join-lan", wifi.CR.WIFI_DIRECT: "join-direct", wifi.CR.WIFI_HOTSPOT: "join-hotspot"}

@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=tessera-frost
+Description=Tessera: For Glass: the badge on a frosted glass tile, soft lights drifting behind it and a light sweeping across.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tessera-frost
+ScriptFile=/usr/share/plymouth/themes/tessera-frost/tessera-frost.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11

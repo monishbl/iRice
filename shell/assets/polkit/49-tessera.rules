@@ -1,0 +1,30 @@
+// Tessera: the root helper's small fixed jobs run without a password for an
+// administrator (wheel) sitting at this computer, in the session on screen:
+// the login screen's wallpaper and look, the fixes in System health and
+// Settings → Sharing, the shell's priority (Settings → Battery & Power), and
+// the firewall's fixed ports for sharing, opened while you're visible to
+// others and closed after (services/SharingPorts.qml, on its own).
+// Each is its own action (org.tessera.root.policy), picked by pkexec from the
+// exact first argument; the helper checks the rest.
+// Updates (org.tessera.root.update), Quick Share's Wi-Fi helper (it makes and
+// joins Wi-Fi networks) and anything else keep asking, once, as they start.
+polkit.addRule(function (action, subject) {
+    var silent = {
+        "org.tessera.root.wallpaper": "wallpaper",
+        "org.tessera.root.login-look": "login-look",
+        "org.tessera.root.fix": "fix",
+        "org.tessera.root.priority": "priority",
+        "org.tessera.root.sharing-ports": "sharing-ports"
+    };
+    if (!silent.hasOwnProperty(action.id))
+        return polkit.Result.NOT_HANDLED;
+    if (action.lookup("program") !== "/usr/lib/tessera/tessera-root")
+        return polkit.Result.NOT_HANDLED;
+    // (pkexec's command line, for display only; checked too, never trusted alone)
+    var words = String(action.lookup("command_line") || "").split(" ");
+    if (words[0] !== "/usr/lib/tessera/tessera-root" || words[1] !== silent[action.id])
+        return polkit.Result.NOT_HANDLED;
+    if (subject.active && subject.local && subject.isInGroup("wheel"))
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+});

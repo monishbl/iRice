@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Starts the iRice login screen in the greeter's compositor (hypr/greeter.lua
+# Starts the Tessera login screen in the greeter's compositor (hypr/greeter.lua
 # runs it as greetd's "greeter" user, from ./install.sh --greeter's copy in
-# /usr/share/irice). Its look comes from greeter.json there (Settings → Lock
-# Screen → Login screen writes it through irice-root login-look): the style,
+# /usr/share/tessera). Its look comes from greeter.json there (Settings → Lock
+# Screen → Login screen writes it through tessera-root login-look): the style,
 #   look   the look you last used: Glass (shell/) or Material (its root,
 #          assembled here from shell/ and material/)
 #   text   ly's: a box of fields in monospace, keyboard first
@@ -11,11 +11,11 @@
 # (the greeter can't read your home). A login screen that doesn't start
 # (quits with an error within 10 s) gives way to the text one, so there's
 # always a way in. Returns when the greeter quits (you logged in).
-#   greeter-start.sh            (IRICE_SHARE: another copy, for tests)
+#   greeter-start.sh            (TESSERA_SHARE: another copy, for tests)
 set -u
-SHARE="${IRICE_SHARE:-/usr/share/irice}"
-QS="${IRICE_QS:-qs}"
-T="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/irice-greeter.XXXXXX")" || T=""
+SHARE="${TESSERA_SHARE:-/usr/share/tessera}"
+QS="${TESSERA_QS:-qs}"
+T="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/tessera-greeter.XXXXXX")" || T=""
 [[ -n $T ]] && trap 'rm -rf "$T"' EXIT
 
 # The look, and a config.json for it (unknown or missing: the text one)
@@ -34,8 +34,8 @@ config = {
     "wallpaper": {"path": wall},
 }
 if os.path.isdir(out):
-    os.makedirs(os.path.join(out, "config", "irice"), exist_ok=True)
-    with open(os.path.join(out, "config", "irice", "config.json"), "w") as f:
+    os.makedirs(os.path.join(out, "config", "tessera"), exist_ok=True)
+    with open(os.path.join(out, "config", "tessera", "config.json"), "w") as f:
         json.dump(config, f)
 print(style, look, "1" if g.get("clock24") is True else "0")
 PY
@@ -48,7 +48,7 @@ if [[ $STYLE == look && $LOOK == material && -f "$SHARE/material/shell.qml" && -
 fi
 
 run() { # style, root
-    local env=(IRICE_GREETER_STYLE="$1" IRICE_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" IRICE_GREETER_CLOCK24="${CLOCK24:-0}")
+    local env=(TESSERA_GREETER_STYLE="$1" TESSERA_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" TESSERA_GREETER_CLOCK24="${CLOCK24:-0}")
     [[ -n $T ]] && env+=(XDG_CONFIG_HOME="$T/config" XDG_CACHE_HOME="$T/cache")
     env "${env[@]}" "$QS" -p "$2/greeter.qml"
 }

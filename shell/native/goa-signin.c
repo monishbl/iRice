@@ -1,5 +1,5 @@
-// Adds a Google account to GNOME Online Accounts straight from iRice's
-// Settings, without the GNOME Settings app (which iRice doesn't need, and
+// Adds a Google account to GNOME Online Accounts straight from Tessera's
+// Settings, without the GNOME Settings app (which Tessera doesn't need, and
 // which opened on a page you then had to find Google on).
 //
 // It asks GNOME Online Accounts' own Google provider to add an account, as
@@ -8,7 +8,7 @@
 // result back to this process over D-Bus (it owns
 // org.gnome.OnlineAccounts.OAuth2 while the dialog waits). The account is
 // then GOA's like any other, with Calendar and Tasks access (GOA's Google
-// scope includes both); iRice never sees a password or refresh token.
+// scope includes both); Tessera never sees a password or refresh token.
 //
 // The dialog has a "Sign In" button before it opens the browser; it's pressed
 // for you, so connecting is one click in Settings. What's printed (one line
@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
         argc = 1;
     }
     adw_init();
-    AdwApplication* a = adw_application_new("org.irice.GoogleSignIn", G_APPLICATION_NON_UNIQUE);
+    AdwApplication* a = adw_application_new("org.tessera.GoogleSignIn", G_APPLICATION_NON_UNIQUE);
     app = G_APPLICATION(a);
     g_signal_connect(a, "activate", G_CALLBACK(activate), NULL);
     int status = g_application_run(app, argc, argv);

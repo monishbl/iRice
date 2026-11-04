@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=tessera-orbit
+Description=Tessera: The badge inside a thin ring, with a light chasing round it that grows and shrinks.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tessera-orbit
+ScriptFile=/usr/share/plymouth/themes/tessera-orbit/tessera-orbit.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11

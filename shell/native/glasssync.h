@@ -1,5 +1,5 @@
 #pragma once
-// GlassSync: keeps one window's glass shapes in the irice-glass Hyprland
+// GlassSync: keeps one window's glass shapes in the tessera-glass Hyprland
 // plugin up to date, from C++. It replaces the QML path (GlassWindow.syncGlass
 // and Glass.pluginShape, run from a per-frame timer for a while after every
 // change) with work done only on frames the window actually draws:
@@ -34,6 +34,9 @@ class GlassSync : public QQuickItem {
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
     // Plugin version: 2+ takes gloss (a 19th number per shape)
     Q_PROPERTY(int version READ version WRITE setVersion NOTIFY versionChanged)
+    // The name the loaded plugin answers to (services/GlassPlugin.qml: a
+    // plugin built before iRice became Tessera knows only irice-glass)
+    Q_PROPERTY(QString plugin READ plugin WRITE setPlugin NOTIFY pluginChanged)
     // Requests sent so far (diagnostics)
     Q_PROPERTY(int sent READ sent NOTIFY sentChanged)
 
@@ -50,6 +53,8 @@ public:
     int     version() const { return m_version; }
     void    setVersion(int v);
     int     sent() const { return m_sent; }
+    QString plugin() const { return m_plugin; }
+    void    setPlugin(const QString& p);
 
     Q_INVOKABLE void add(QQuickItem* glass);
     Q_INVOKABLE void remove(QQuickItem* glass);
@@ -65,6 +70,7 @@ signals:
     void nsChanged();
     void activeChanged();
     void versionChanged();
+    void pluginChanged();
     void sentChanged();
 
 protected:
@@ -84,6 +90,7 @@ private:
     QPointer<QQuickWindow>  m_window;
     QMetaObject::Connection m_frameConn;
     QString                 m_monitor, m_ns;
+    QString                 m_plugin = QStringLiteral("tessera-glass");
     bool                    m_active  = false;
     int                     m_version = 2;
     int                     m_sent    = 0;

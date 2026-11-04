@@ -31,7 +31,7 @@ Scope {
                     anchors { top: true; bottom: true; left: true; right: true }
                     exclusionMode: ExclusionMode.Ignore
                     WlrLayershell.layer: WlrLayer.Overlay
-                    WlrLayershell.namespace: "irice:display-connect"
+                    WlrLayershell.namespace: "tessera:display-connect"
                     mask: Region {} // clicks go through
                     color: "transparent"
 

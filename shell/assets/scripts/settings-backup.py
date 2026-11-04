@@ -1,25 +1,25 @@
 #!/usr/bin/python3 -I
-"""Your iRice setup in one file, and back (Settings → About → Back up and
+"""Your Tessera setup in one file, and back (Settings → About → Back up and
 restore):
 
   settings-backup.py export <folder> --config DIR [--shell DIR]
   settings-backup.py inspect <file>
   settings-backup.py restore <file> --config DIR [--shell DIR] [--pictures DIR] [--no-undo]
 
-The file ("iRice settings YYYY-MM-DD.irice", 0600) is a gzipped tar of
+The file ("Tessera settings YYYY-MM-DD.tessera", 0600) is a gzipped tar of
   manifest.json   what's in it: the format, when, the home it came from,
                   where each wallpaper went
   config.json     the settings, without keys, tokens or passwords, accounts
                   (Google, iCloud, Microsoft) or this computer's displays
   keybinds.json   the shortcuts and gestures you changed
   focus.json      the Focus modes (not whether one is on)
-  wallpapers/…    the pictures in use that aren't iRice's own (the bundled
+  wallpapers/…    the pictures in use that aren't Tessera's own (the bundled
                   ones go by name)
 Restore keeps this computer's own keys, accounts, displays and sharing
 name, moves paths from the old home to this one, puts carried pictures in
 ~/Pictures/Wallpapers/Restored, and turns off a time-of-day folder or live
 video that isn't here. Before it writes anything it saves the setup it
-replaces to <config>/backups/before-restore-<stamp>.irice (Undo restores
+replaces to <config>/backups/before-restore-<stamp>.tessera (Undo restores
 that with --no-undo). Files are written whole (a temporary file, then
 renamed): a running shell never reads half of one.
 
@@ -160,7 +160,7 @@ def bundled_dirs(shell):
 
 
 def bundled_name(path):
-    """The bundled picture's name if this is one of iRice's own (in any
+    """The bundled picture's name if this is one of Tessera's own (in any
     install: shell/ or material/ assets, or the Material look's root)."""
     if isinstance(path, str) and "/assets/wallpapers/" in path:
         return os.path.basename(path)
@@ -268,7 +268,7 @@ def build(config_dir, carry=True):
         members["keybinds.json"] = json.dumps(keybinds, indent=2).encode()
     members["config.json"] = json.dumps(config, indent=2).encode()
     manifest = {
-        "app": "iRice", "format": FORMAT, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "app": "Tessera", "format": FORMAT, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "home": os.path.expanduser("~"), "wallpapers": pictures,
     }
     members["manifest.json"] = json.dumps(manifest, indent=2).encode()
@@ -292,14 +292,14 @@ def export(folder, config_dir, name=None, carry=True):
     if not os.path.isdir(folder):
         raise Refused("That folder isn't there any more. Choose another folder and try again.")
     if not os.access(folder, os.W_OK):
-        raise Refused("iRice can't write to that folder. Choose a folder in your home, like Documents.")
-    out = unique(folder, name or "iRice settings %s.irice" % time.strftime("%Y-%m-%d"))
+        raise Refused("Tessera can't write to that folder. Choose a folder in your home, like Documents.")
+    out = unique(folder, name or "Tessera settings %s.tessera" % time.strftime("%Y-%m-%d"))
     write_whole(out, pack(build(config_dir, carry)))
     return out
 
 
 # ── Reading a file ──────────────────────────────────────────────────────
-NOT_IRICE = "This isn't an iRice settings file, or it's damaged. Choose a file made with Back Up Settings."
+NOT_TESSERA = "This isn't a Tessera settings file, or it's damaged. Choose a file made with Back Up Settings."
 
 
 def unpack(path):
@@ -307,48 +307,49 @@ def unpack(path):
     files, within the size limits."""
     try:
         if os.path.getsize(path) > MAX_TOTAL + MAX_JSON * 4:
-            raise Refused("That file is too large to be iRice settings. Choose a file made with Back Up Settings.")
+            raise Refused("That file is too large to be Tessera settings. Choose a file made with Back Up Settings.")
         tar = tarfile.open(path, mode="r:gz")
     except (OSError, tarfile.TarError, EOFError):
-        raise Refused(NOT_IRICE)
+        raise Refused(NOT_TESSERA)
     members, total = {}, 0
     with tar:
         try:
             for info in tar:
                 name = info.name
                 if name.startswith(("/", "./")) or ".." in name.split("/") or "\\" in name:
-                    raise Refused(NOT_IRICE)
+                    raise Refused(NOT_TESSERA)
                 if name not in JSON_FILES and not PICTURE_NAME.match(name):
-                    raise Refused(NOT_IRICE)
+                    raise Refused(NOT_TESSERA)
                 if not info.isreg() or name in members:
-                    raise Refused(NOT_IRICE)
+                    raise Refused(NOT_TESSERA)
                 limit = MAX_JSON if name in JSON_FILES else MAX_PICTURE
                 if info.size > limit or total + info.size > MAX_TOTAL:
                     raise Refused("A part of that file is too large. Choose a file made with Back Up Settings.")
                 f = tar.extractfile(info)
                 data = f.read(limit + 1) if f else b""
                 if len(data) != info.size:
-                    raise Refused(NOT_IRICE)
+                    raise Refused(NOT_TESSERA)
                 total += len(data)
                 members[name] = data
         except (tarfile.TarError, EOFError, OSError):
-            raise Refused(NOT_IRICE)
+            raise Refused(NOT_TESSERA)
     try:
         manifest = json.loads(members.get("manifest.json", b""))
         config = json.loads(members.get("config.json", b""))
     except ValueError:
-        raise Refused(NOT_IRICE)
-    if not isinstance(manifest, dict) or manifest.get("app") != "iRice" or not isinstance(config, dict):
-        raise Refused(NOT_IRICE)
+        raise Refused(NOT_TESSERA)
+    # ("iRice": made before iRice became Tessera, the same settings)
+    if not isinstance(manifest, dict) or manifest.get("app") not in ("Tessera", "iRice") or not isinstance(config, dict):
+        raise Refused(NOT_TESSERA)
     if not isinstance(manifest.get("format"), int) or manifest["format"] > FORMAT:
-        raise Refused("That file was made by a newer iRice. Update iRice (Settings → Software Update), then try again.")
+        raise Refused("That file was made by a newer Tessera. Update Tessera (Settings → Software Update), then try again.")
     parsed = {"manifest": manifest, "config": config, "keybinds": None, "focus": None, "pictures": {}}
     for key in ("keybinds", "focus"):
         if key + ".json" in members:
             try:
                 parsed[key] = json.loads(members[key + ".json"])
             except ValueError:
-                raise Refused(NOT_IRICE)
+                raise Refused(NOT_TESSERA)
     parsed["pictures"] = {n: d for n, d in members.items() if n.startswith("wallpapers/")}
     return parsed
 
@@ -367,7 +368,7 @@ def summary(parsed):
         "created": parsed["manifest"].get("created", ""),
         "look": ap.get("look", "glass"),
         "mode": ap.get("mode", ""),
-        "wallpaper": os.path.basename(picture) if picture else ("Changes through the day" if wp.get("dynamic") == "time" else "iRice's own"),
+        "wallpaper": os.path.basename(picture) if picture else ("Changes through the day" if wp.get("dynamic") == "time" else "Tessera's own"),
         "shortcuts": shortcuts,
         "focusModes": [m.get("name", "") for m in focus_modes(parsed["focus"])],
         "pictures": len(parsed["pictures"]),
@@ -390,7 +391,7 @@ def restore(path, config_dir, shell=None, pictures_dir=None, undo=True):
     if undo:
         backups = os.path.join(config_dir, "backups")
         os.makedirs(backups, mode=0o700, exist_ok=True)
-        undo_file = export(backups, config_dir, "before-restore-%s.irice" % time.strftime("%Y%m%d-%H%M%S"), carry=False)
+        undo_file = export(backups, config_dir, "before-restore-%s.tessera" % time.strftime("%Y%m%d-%H%M%S"), carry=False)
 
     config = merge_local(rehome(scrub_config(parsed["config"]), old_home, home), current)
     focus = rehome(parsed["focus"], old_home, home) if parsed["focus"] is not None else None
@@ -415,7 +416,7 @@ def restore(path, config_dir, shell=None, pictures_dir=None, undo=True):
             if "wallpaper." + key in placed:
                 wp[key] = placed["wallpaper." + key]
             elif wp.get(key) and not os.path.isfile(wp[key]):
-                wp[key] = ""  # (iRice's own picture then)
+                wp[key] = ""  # (Tessera's own picture then)
         if wp.get("dynamicFolder") and not os.path.isdir(wp["dynamicFolder"]):
             skipped.append("the time-of-day wallpaper folder")
             wp["dynamicFolder"] = ""
@@ -461,7 +462,7 @@ def restore(path, config_dir, shell=None, pictures_dir=None, undo=True):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(description="Back up and restore iRice settings")
+    ap = argparse.ArgumentParser(description="Back up and restore Tessera settings")
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("export")
     e.add_argument("folder")

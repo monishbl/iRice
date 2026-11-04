@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The system part of Software Update's one Update button, without a
-terminal: a snapshot, pacman -Syu, iRice's missing packages, removing the
-ones it dropped, then AUR updates with yay or paru. The iRice part follows,
+terminal: a snapshot, pacman -Syu, Tessera's missing packages, removing the
+ones it dropped, then AUR updates with yay or paru. The Tessera part follows,
 started by the shell once this is done (services/SoftwareUpdate.qml).
 
     sysupdate.py run [--fake] [--system] [--snapshot snapper|timeshift]
@@ -17,26 +17,26 @@ offers (a fingerprint reader's). Same single password.
     sysupdate.py undo-check     JSON: what going back would do (Settings)
     sysupdate.py undo --terminal
                                 the same in a terminal, asking first
-                                (irice undo-update, the recovery screen)
+                                (tessera undo-update, the recovery screen)
     sysupdate.py cancel         stop it while it's still waiting for the password
-    sysupdate.py helper-status  exit 0 when iRice's root helper is installed
+    sysupdate.py helper-status  exit 0 when Tessera's root helper is installed
                                 and the same as this folder's
 
 Everything that needs root is one pkexec (one password, asked at the
-start, never in the middle): iRice's root helper (irice-root.py update),
+start, never in the middle): Tessera's root helper (tessera-root.py update),
 with the steps in order: snapshot → its own files when they changed
-(setup: /usr/lib/irice, the polkit action and rule) → pacman -Syu [--ignore
+(setup: /usr/lib/tessera, the polkit action and rule) → pacman -Syu [--ignore
 held] → pacman -S --needed <missing> → pacman -Rns <dropped>. It stops at the
-first failure. The installed copy (/usr/lib/irice/irice-root) runs when it's
+first failure. The installed copy (/usr/lib/tessera/tessera-root) runs when it's
 up to date; otherwise this folder's, which installs itself (setup).
 AUR updates run after it as you, while the root part waits: yay/paru get
---sudo irice-sudo, which hands each pacman command to this job over a
+--sudo tessera-sudo, which hands each pacman command to this job over a
 socket only it can use (sudo.sock, 0600, with a secret for this run), and
 this job to the root part over its stdin (a socket pair). The root part
 runs pacman alone, its arguments checked, and ends when this job closes
 its end. No second password.
 
-Everything goes to $XDG_RUNTIME_DIR/irice-sysupdate/:
+Everything goes to $XDG_RUNTIME_DIR/tessera-sysupdate/:
     status.json  what's happening, rewritten whole on each change (the shell
                  reads it: Updates.qml); survives shell restarts
     log          the full output, as a terminal would show it
@@ -46,9 +46,9 @@ Everything goes to $XDG_RUNTIME_DIR/irice-sysupdate/:
     lock         held (flock) for the whole run: one update at a time; a
                  status that says "running" with the lock free was interrupted
     auth.pid     the pkexec waiting for the password
-    sudo.sock    irice-sudo's way in, during the AUR step only
+    sudo.sock    tessera-sudo's way in, during the AUR step only
 
-Root comes from pkexec, so the password is asked by iRice's own dialog (its
+Root comes from pkexec, so the password is asked by Tessera's own dialog (its
 polkit agent). The job must run in the login session (setsid from the shell,
 not systemd-run --user): polkit finds the agent through the session.
 Cancel only works while pkexec waits for the password. The root part's first
@@ -57,7 +57,7 @@ runs as root, can't be signalled by us, and stopping a transaction midway
 would break the system anyway. Cancel signals only the job holding the lock,
 checked by its start time (a stale pid may belong to anything by now).
 
---fake (or IRICE_FAKE_SYSUPDATE=1, and always in the dev sandbox) replays a
+--fake (or TESSERA_FAKE_SYSUPDATE=1, and always in the dev sandbox) replays a
 canned pacman run with delays: the whole UI, nothing installed.
 """
 import fcntl
@@ -78,7 +78,7 @@ import threading
 import time
 
 RUN = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-DIR = os.path.join(RUN, "irice-sysupdate")
+DIR = os.path.join(RUN, "tessera-sysupdate")
 STATUS = os.path.join(DIR, "status.json")
 LOG = os.path.join(DIR, "log")
 LOCK = os.path.join(DIR, "lock")
@@ -87,10 +87,10 @@ ROOTLOG = os.path.join(DIR, "root.log")
 SUDO_SOCKET = os.path.join(DIR, "sudo.sock")
 HERE = os.path.dirname(os.path.realpath(__file__))  # (the real folder, from the Material look's links too)
 SHELL = os.path.dirname(os.path.dirname(HERE))  # (where the root helper's setup reads from)
-SHIM = os.path.join(HERE, "irice-sudo")
-SOURCE = os.path.join(HERE, "irice-root.py")  # the root helper, as installed by setup
-SYSTEM = os.environ.get("IRICE_SYSTEM_ROOT", "/")  # (tests)
-INSTALLED = os.path.join(SYSTEM, "usr/lib/irice/irice-root")
+SHIM = os.path.join(HERE, "tessera-sudo")
+SOURCE = os.path.join(HERE, "tessera-root.py")  # the root helper, as installed by setup
+SYSTEM = os.environ.get("TESSERA_SYSTEM_ROOT", "/")  # (tests)
+INSTALLED = os.path.join(SYSTEM, "usr/lib/tessera/tessera-root")
 DBLOCK = "/var/lib/pacman/db.lck"
 # Updated packages that want a restart to take effect
 RESTART = re.compile(r"^(linux(-[a-z0-9]+)?|linux-firmware.*|systemd|systemd-libs|glibc|mesa|lib32-mesa|nvidia.*|amd-ucode|intel-ucode|dbus|dbus-broker.*)$")
@@ -168,7 +168,7 @@ def begin(step):
     total = sum(WEIGHT.get(x, 10) for x in steps)
     before = sum(WEIGHT.get(x, 10) for x in steps[:steps.index(step)]) if step in steps else 0
     span = (100 * before / total, 100 * (before + WEIGHT.get(step, 10)) / total)
-    text = {"snapshot": "Taking a snapshot", "setup": "Setting up iRice's system helper", "system": "Checking for updates", "packages": "Installing iRice's packages",
+    text = {"snapshot": "Taking a snapshot", "setup": "Setting up Tessera's system helper", "system": "Checking for updates", "packages": "Installing Tessera's packages",
             "remove": "Removing unused packages", "aur": "Updating from the AUR",
             "undo": "Going back to the earlier versions"}.get(step, step)
     set_(step=step, phase=step if step != "system" else "sync", text=text, done=0, total=0, percent=at(0, 0, 0))
@@ -334,8 +334,8 @@ def aur_setup():
 
 def bootstrap_yay(env):
     """yay-bin from the AUR, built as you (makepkg), installed through the
-    root part (irice-sudo pacman -U). Returns 0 when yay is there."""
-    work = tempfile.mkdtemp(prefix="irice-yay-")
+    root part (tessera-sudo pacman -U). Returns 0 when yay is there."""
+    work = tempfile.mkdtemp(prefix="tessera-yay-")
     try:
         out("==> Getting yay (an AUR helper) first")
         code = stream(["git", "clone", "--depth", "1", "https://aur.archlinux.org/yay-bin.git", os.path.join(work, "yay-bin")], aur=True, env=env)
@@ -386,7 +386,7 @@ FAKE = [
 FAKE_STEP = {
     "undo": [(0.4, "loading packages..."), (0.3, "warning: downgrading package mesa (25.2.1-1 => 25.1.6-1)"),
              (0.3, ":: Processing package changes..."), (0.6, "(1/2) downgrading mesa"), (0.6, "(2/2) downgrading lib32-mesa")],
-    "snapshot": [(0.8, "Creating snapshot: Before iRice update"), (0.6, "Snapshot 412 created")],
+    "snapshot": [(0.8, "Creating snapshot: Before Tessera update"), (0.6, "Snapshot 412 created")],
     "packages": [(0.4, "resolving dependencies..."), (0.3, ":: Processing package changes..."),
                  (0.8, "(1/1) installing gpu-screen-recorder")],
     "remove": [(0.4, "checking dependencies..."), (0.6, "(1/1) removing mactahoe-gtk-theme")],
@@ -422,7 +422,9 @@ def fake_run(plan):
 # and paru's, for AUR packages; else Arch's own archive): your files and
 # settings aren't touched, packages the update added stay. A version you
 # went back from is then skipped by Software Update until a newer one comes.
-STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "irice")
+_state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+STATE_DIR = os.path.join(_state, "irice" if not os.path.exists(os.path.join(_state, "tessera")) and os.path.isdir(os.path.join(_state, "irice")) else "tessera")
 HISTORY = os.path.join(STATE_DIR, "updates.json")
 KEEP = 5
 ARCHIVE = "https://archive.archlinux.org/packages"
@@ -529,7 +531,7 @@ def in_archive(name, ver, opener=None):
         for ext in ("zst", "xz"):
             url = f"{ARCHIVE}/{name[0]}/{name}/{name}-{ver}-{arch}.pkg.tar.{ext}"
             try:
-                with opener(urllib.request.Request(url, method="HEAD", headers={"User-Agent": "iRice"}), timeout=10) as r:
+                with opener(urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Tessera"}), timeout=10) as r:
                     if r.status == 200:
                         return url
             except Exception:  # noqa: BLE001 (404, offline: not there)
@@ -578,7 +580,7 @@ FAKE_UNDO = {"at": time.time() - 3 * 3600, "packages": [{"name": "mesa", "from":
 
 
 def undo_terminal():
-    """irice undo-update: the same, in a terminal (the desktop may not be
+    """tessera undo-update: the same, in a terminal (the desktop may not be
     there), asking first. pkexec asks for the password right there."""
     plan = undo_plan()
     if not plan:
@@ -615,7 +617,7 @@ def undo_terminal():
 
 
 # ── The root helper ─────────────────────────────────────────────────────
-# The system part runs before the iRice part downloads the new version: its
+# The system part runs before the Tessera part downloads the new version: its
 # setup step would install this (older) folder's helper, which then stayed
 # one update behind (a fix in the new version, like the firewall's DHCP
 # rule, did nothing until the next update). With --incoming REF it installs
@@ -625,7 +627,7 @@ REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@~^-]{0,200}$")
 
 def stage_incoming(ref):
     """The files the helper's setup installs, from git REF (the version the
-    iRice part installs next), in the run folder: its path, or None."""
+    Tessera part installs next), in the run folder: its path, or None."""
     if not REF.match(ref or ""):
         return None
     repo = os.path.dirname(SHELL)
@@ -650,11 +652,11 @@ def stage_incoming(ref):
     return out
 
 
-LOGIN_COPY = "/usr/share/irice/shell"  # the login screen's (./install.sh --greeter)
+LOGIN_COPY = "/usr/share/tessera/shell"  # the login screen's (./install.sh --greeter)
 
 
 def stage_login_tree(repo, ref, out, copy=LOGIN_COPY):
-    """Where the login screen has its own copy of iRice, the whole of the
+    """Where the login screen has its own copy of Tessera, the whole of the
     incoming version too (<out>/tree: shell, material and greeter.lua), for
     the helper's setup to refresh it from. Without it, the copy stays."""
     if not os.path.isdir(copy):
@@ -675,7 +677,7 @@ def stage_login_tree(repo, ref, out, copy=LOGIN_COPY):
 
 
 def root_helper():
-    spec = importlib.util.spec_from_file_location("irice_root", SOURCE)
+    spec = importlib.util.spec_from_file_location("tessera_root", SOURCE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -740,7 +742,7 @@ def root_command(plan, broker):
 
 # ── The AUR step's pacman commands ──────────────────────────────────────
 class Broker:
-    """sudo.sock, for irice-sudo (started by yay/paru): each request, with
+    """sudo.sock, for tessera-sudo (started by yay/paru): each request, with
     this run's secret and from this user, goes to the root part over chan;
     its answer comes back the same way. One at a time."""
 
@@ -767,7 +769,7 @@ class Broker:
         self.thread.start()
 
     def env(self, env):
-        return dict(env, IRICE_SUDO_SOCKET=SUDO_SOCKET, IRICE_SUDO_TOKEN=self.token)
+        return dict(env, TESSERA_SUDO_SOCKET=SUDO_SOCKET, TESSERA_SUDO_TOKEN=self.token)
 
     def serve(self):
         while not self.stop.is_set():
@@ -793,17 +795,17 @@ class Broker:
             except (OSError, ValueError):
                 return
             if uid != os.getuid() or not hmac.compare_digest(str(req.get("token", "")), self.token):
-                send({"out": "irice-sudo: not this update's\n"})
+                send({"out": "tessera-sudo: not this update's\n"})
                 send({"exit": 1})
                 return
             with self.lock:
                 try:
                     self.chan.sendall((json.dumps({"argv": req.get("argv"), "cwd": req.get("cwd")}) + "\n").encode())
                 except OSError:
-                    send({"out": "irice-sudo: the update's root part has stopped\n"})
+                    send({"out": "tessera-sudo: the update's root part has stopped\n"})
                     send({"exit": 1})
                     return
-                # Everything up to its exit code, even if irice-sudo went away
+                # Everything up to its exit code, even if tessera-sudo went away
                 # (so the next answer is the next request's)
                 for line in self.answers:
                     try:
@@ -815,7 +817,7 @@ class Broker:
                             return
                     except ValueError:
                         pass
-                send({"out": "irice-sudo: the update's root part has stopped\n"})
+                send({"out": "tessera-sudo: the update's root part has stopped\n"})
                 send({"exit": 1})
 
     def close(self):
@@ -842,7 +844,7 @@ def end_root(chan):
 
 
 # ── The real run ────────────────────────────────────────────────────────
-# The root part: irice-root.py update. Exit codes say which step failed
+# The root part: tessera-root.py update. Exit codes say which step failed
 # (20 snapshot, 21 system, 22 install, 23 remove); "@@step" lines mark
 # where it is, "@@root-done" that it's waiting for the AUR step.
 # A package name: never starting with "-" (it would pass as a pacman option)
@@ -918,7 +920,7 @@ def real_run(plan):
                               ". Include them in Software Update, or update later. " + tail(3))
             return finish("error", "The system update didn't finish", tail())
         if code == 22:
-            return finish("error", "iRice's packages didn't install", "Your system is updated. " + tail())
+            return finish("error", "Tessera's packages didn't install", "Your system is updated. " + tail())
         if code == 24:
             return finish("error", "Going back didn't finish",
                           "Nothing was changed. " + tail(3))
@@ -980,7 +982,7 @@ def run(fake, plan):
     state["steps"] = plan["steps"]
     state["kind"] = plan["kind"]
     state["ignore"] = plan["ignore"]
-    state["then"] = plan["then"]  # what the shell does after (the iRice part)
+    state["then"] = plan["then"]  # what the shell does after (the Tessera part)
     state["pidStart"] = start_time(os.getpid())
     save()
 
@@ -1108,7 +1110,7 @@ def plan_of(a, fake=False):
     if p["snapshot"] and not fake and installed(AUTOSNAP[p["snapshot"]]):
         p["snapshot"] = ""
     # Not power-profiles-daemon next to another power manager (they'd fight;
-    # TLP's package conflicts with it): tools/irice-packages.sh leaves it out too
+    # TLP's package conflicts with it): tools/tessera-packages.sh leaves it out too
     if "power-profiles-daemon" in p["install"] and not fake and other_power_manager():
         p["install"].remove("power-profiles-daemon")
     then = a[a.index("--then") + 1] if "--then" in a and a.index("--then") + 1 < len(a) else "null"
@@ -1117,7 +1119,7 @@ def plan_of(a, fake=False):
     except ValueError:
         p["then"] = None
     # The root helper's own files, when they changed (never in the sandbox):
-    # the incoming version's when an iRice update follows
+    # the incoming version's when a Tessera update follows
     incoming = a[a.index("--incoming") + 1] if "--incoming" in a and a.index("--incoming") + 1 < len(a) else ""
     os.makedirs(DIR, exist_ok=True)
     p["setup_dir"] = (stage_incoming(incoming) if incoming and not fake else None) or SHELL
@@ -1143,7 +1145,7 @@ def undo_plan_of(snap, fake):
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["undo-check"]:
-        fake = os.environ.get("IRICE_FAKE_SYSUPDATE") == "1" or os.environ.get("IRICE_SANDBOX") == "1"
+        fake = os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or (os.environ.get("TESSERA_SANDBOX") or os.environ.get("IRICE_SANDBOX")) == "1"
         h = history()
         print(json.dumps(dict(FAKE_UNDO if fake else undo_plan(h), skip=h["skip"])))
         sys.exit(0)
@@ -1161,5 +1163,5 @@ if __name__ == "__main__":
         current = helper_current(stage_incoming(ref) if ref else None)
         print(json.dumps({"current": current}))
         sys.exit(0 if current else 1)
-    fake = "--fake" in a or os.environ.get("IRICE_FAKE_SYSUPDATE") == "1" or os.environ.get("IRICE_SANDBOX") == "1"
+    fake = "--fake" in a or os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or (os.environ.get("TESSERA_SANDBOX") or os.environ.get("IRICE_SANDBOX")) == "1"
     sys.exit(run(fake, plan_of(a, fake)))

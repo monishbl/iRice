@@ -14,7 +14,7 @@ howdy-next keeps /etc/howdy root's (0750: users' face models are in it), so
 this, running as you, usually can't see the camera it's set to: "private",
 and the shell goes by what it set up itself (Config lock.faceDevice).
 
-Adding a face and setting Howdy up need root: irice-root face …
+Adding a face and setting Howdy up need root: tessera-root face …
 """
 import glob
 import json
@@ -23,7 +23,7 @@ import re
 import shutil
 import sys
 
-ROOT = os.environ.get("IRICE_SYSTEM_ROOT", "/")
+ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
 CONFIG = "/etc/howdy/config.ini"
 PAM_MODULES = ("/usr/lib/security/pam_howdy.so", "/lib/security/pam_howdy.so")
 ONNX_DIR = "/usr/share/howdy/models"

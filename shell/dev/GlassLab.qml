@@ -5,7 +5,7 @@ import qs.common
 import qs.glass
 
 // Shader tuning bench: glass shapes over the busiest parts of the wallpaper.
-// Loaded only when IRICE_LAB=1.
+// Loaded only when TESSERA_LAB=1.
 GlassWindow {
     name: "lab"
     screen: Quickshell.screens.find(s => s.name === "IRICE-TEST") ?? Quickshell.screens[0]

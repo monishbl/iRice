@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Repair the iRice shell without touching your apps or windows.
+# Repair the Tessera shell without touching your apps or windows.
 #
 # Fixes duplicated bars and docks, a frozen or half-drawn shell, and leftovers
 # from an earlier session that ended badly:
-#   1. stops iRice shells (and tty test-session watchdogs) whose compositor
+#   1. stops Tessera shells (and tty test-session watchdogs) whose compositor
 #      is gone: they latch onto the next session's display and draw twice
 #   2. replaces this session's shell(s) with exactly one fresh shell, started
 #      with the same command and environment as before
@@ -11,13 +11,13 @@
 #      sends its own)
 # Settings, layout, clipboard and the rest live in files, so nothing is lost.
 # Run from the system menu (Repair Shell), Super+Ctrl+Escape, or a terminal.
-# Only iRice is touched: other Quickshell configs (like end4's) are left alone.
+# Only Tessera is touched: other Quickshell configs (like end4's) are left alone.
 set -uo pipefail
 
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:-}"
 SHELL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-LOG="$RUN/irice-repair.log"
+LOG="$RUN/tessera-repair.log"
 exec >>"$LOG" 2>&1
 echo "== $(date '+%F %T') repair (session ${SIG:-unknown})"
 
@@ -32,22 +32,23 @@ alive() {
         XDG_RUNTIME_DIR="$run" HYPRLAND_INSTANCE_SIGNATURE="$sig" timeout 3 hyprctl version >/dev/null 2>&1
 }
 
-# Is this Quickshell process an iRice shell?
-is_irice() {
+# Is this Quickshell process a Tessera shell?
+is_tessera() {
     local c
     c="$(cmd_of "$1")"
-    [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+irice([[:space:]]|$) ]] && return 0
+    # (-c irice, -c tessera: installed before and after iRice became Tessera)
+    [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+(tessera|irice)([[:space:]]|$) ]] && return 0
     [[ "$c" == *" -p $SHELL_DIR "* || "$c" == *" --path $SHELL_DIR "* ]] && return 0
-    [[ "$c" =~ -p[[:space:]]+[^[:space:]]*/[Ii][Rr]ice/shell([[:space:]]|$) ]] && return 0
+    [[ "$c" =~ -p[[:space:]]+[^[:space:]]*/([Tt]essera|[Ii][Rr]ice)/shell([[:space:]]|$) ]] && return 0
     # (started by launch-shell.sh: the Material look runs from its own root)
-    env_of "$1" | grep -qx "IRICE_SHELL=1" && return 0
-    env_of "$1" | grep -qx "IRICE_TTY=1"
+    env_of "$1" | grep -qx -e "TESSERA_SHELL=1" -e "IRICE_SHELL=1" && return 0
+    env_of "$1" | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
 }
 
 shells() {
     local p
-    for p in $(pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
-        is_irice "$p" && echo "$p"
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+        is_tessera "$p" && echo "$p"
     done | sort -n
 }
 
@@ -90,16 +91,22 @@ else
     tcmd=()
 fi
 tty_ctl=""
-if [[ -n "$template" ]] && env_of "$template" | grep -qx "IRICE_TTY=1"; then
-    tty_ctl="$(var_of "$template" IRICE_ROOT)/sandbox/tty-shell.sh"
+if [[ -n "$template" ]] && env_of "$template" | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"; then
+    troot="$(var_of "$template" TESSERA_ROOT)"
+    [[ -n "$troot" ]] || troot="$(var_of "$template" IRICE_ROOT)" # (a shell started before iRice became Tessera)
+    tty_ctl="$troot/sandbox/tty-shell.sh"
     [[ -x "$tty_ctl" ]] || tty_ctl=""
 fi
 
 # Hold the shell lock while swapping (keep-shell.sh mustn't start one in the
 # gap); the test session's own starter takes it itself
 if [[ -z "$tty_ctl" && -d "$RUN/hypr/$SIG" ]]; then
-    exec 7>"$RUN/hypr/$SIG/irice-shell.lock"
+    exec 7>"$RUN/hypr/$SIG/tessera-shell.lock"
     flock -w 10 7
+    # (and the one its starters used while Tessera was called iRice: one may
+    # still run in this session until the next login)
+    exec 6>"$RUN/hypr/$SIG/irice-shell.lock"
+    flock -w 10 6
 fi
 
 if [[ ${#mine[@]} -gt 0 ]]; then
@@ -114,7 +121,8 @@ if [[ ${#mine[@]} -gt 0 ]]; then
 fi
 
 # 3. Glass shapes from the old shells (the new one sends its own)
-alive "$SIG" && hyprctl irice-glass clear >/dev/null 2>&1
+# (a plugin built while Tessera was called iRice answers to irice-glass)
+alive "$SIG" && { hyprctl tessera-glass clear >/dev/null 2>&1; hyprctl irice-glass clear >/dev/null 2>&1; }
 
 if [[ -n "$tty_ctl" ]]; then
     env -i "${tenv[@]}" "$tty_ctl" start # the test session's own starter (locked, no duplicates)
@@ -123,20 +131,20 @@ elif [[ ${#tcmd[@]} -gt 0 ]]; then
     # (so a theme changed in Settings applies)
     fresh=()
     for e in "${tenv[@]}"; do [[ $e == QS_ICON_THEME=* ]] || fresh+=("$e"); done
-    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 7>&-
-elif [[ -n "${IRICE_ROOT:-}" && -f "$IRICE_ROOT/shell/shell.qml" ]]; then
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$IRICE_ROOT/shell" >/dev/null 2>&1 7>&-
+    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 7>&- 6>&-
+elif [[ -n "${TESSERA_ROOT:-${IRICE_ROOT:-}}" && -f "${TESSERA_ROOT:-$IRICE_ROOT}/shell/shell.qml" ]]; then
+    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "${TESSERA_ROOT:-$IRICE_ROOT}/shell" >/dev/null 2>&1 7>&- 6>&-
 else
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c irice >/dev/null 2>&1 7>&-
+    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c tessera >/dev/null 2>&1 7>&- 6>&-
 fi
 sleep 2 # let it register, then let keep-shell.sh look again
-exec 7>&-
+exec 7>&- 6>&-
 echo "started a fresh shell; removed $removed stale and $extra duplicate"
 
 # Tell the user once the new shell can show it (not when switching looks:
-# IRICE_REPAIR_QUIET=1, switch-look.sh)
-[[ ${IRICE_REPAIR_QUIET:-0} == 1 ]] && exit 0
+# TESSERA_REPAIR_QUIET=1, switch-look.sh)
+[[ ${TESSERA_REPAIR_QUIET:-0} == 1 ]] && exit 0
 sleep 4
 msg="Your windows and apps weren't touched."
 (( removed + extra > 0 )) && msg="Removed $((removed + extra)) extra $( (( removed + extra == 1 )) && echo shell || echo shells). $msg"
-notify-send -a iRice -i view-refresh "Shell repaired" "$msg" 2>/dev/null || true
+notify-send -a Tessera -i view-refresh "Shell repaired" "$msg" 2>/dev/null || true

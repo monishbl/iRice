@@ -7,7 +7,7 @@ import qs.common
 // Emoji picker (Super+Period): emoji, kaomoji, text symbols and GIFs, opened
 // near the pointer in the app you're typing in. Enter or click types the pick
 // into that app and copies it; Shift copies only. Panel name: "emoji".
-//   keybind:  hl.dsp.global("irice:emoji")
+//   keybind:  hl.dsp.global("tessera:emoji")
 //   IPC:      qs ipc call emoji toggle | open | close
 Scope {
     id: root
@@ -27,7 +27,7 @@ Scope {
     }
 
     GlobalShortcut {
-        appid: "irice"
+        appid: "tessera"
         name: "emoji"
         description: "Emoji, kaomoji, symbols and GIFs"
         onPressed: Panels.toggle("emoji", root.focusedScreen())

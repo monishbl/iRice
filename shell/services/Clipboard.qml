@@ -18,7 +18,7 @@ Singleton {
     // [{ id, text, image }] newest first; image = preview path for binary entries
     property var items: []
     readonly property var pins: UiState.data.clipPins // [{ text } | { image }]
-    readonly property string previewDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-clip"
+    readonly property string previewDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-clip"
     readonly property string pinDir: UiState.dir + "/clip-pins"
 
     function refresh() {
@@ -33,7 +33,7 @@ Singleton {
     property var stamps: ({}) // cliphist id -> ms since epoch (0: from before)
     // The history the session's watcher (wl-paste --watch cliphist store)
     // writes: your usual ~/.cache/cliphist/db. Named on every call, because
-    // the iRice session gives the shell a cache folder of its own and a
+    // the Tessera session gives the shell a cache folder of its own and a
     // restart (an update) could start it without the hint pointing back here
     readonly property string db: Quickshell.env("CLIPHIST_DB_PATH") || (Quickshell.env("HOME") + "/.cache/cliphist/db")
     property bool stampsLoaded: false
@@ -61,7 +61,7 @@ Singleton {
         interval: 1000
         onTriggered: stampFile.setText(JSON.stringify(root.stamps))
     }
-    // A new copy: list again shortly (cliphist stores it first). irice-events
+    // A new copy: list again shortly (cliphist stores it first). tessera-events
     // (services/Events) sees cliphist's database written; without it,
     // wl-paste --watch says something was copied.
     EventWatch {

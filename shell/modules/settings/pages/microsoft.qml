@@ -30,7 +30,7 @@ Column {
         footer: CloudAccounts.lastError !== "" && !CloudAccounts.busy && CloudAccounts.errorFrom !== "icloud" ? CloudAccounts.lastError
             : page.signingHere ? "Sign in to Microsoft in your browser, then come back here…"
             : page.microsoft.length > 0 ? "Outlook calendars and To Do sync when you sign in, unlock or open Notification Center, and every 15 minutes while you use the computer."
-            : "Your password stays with Microsoft: iRice uses the account through GNOME Online Accounts and never sees it. Work or school accounts may need their admin's approval."
+            : "Your password stays with Microsoft: Tessera uses the account through GNOME Online Accounts and never sees it. Work or school accounts may need their admin's approval."
         Repeater {
             model: page.microsoft
             Row {
@@ -48,7 +48,7 @@ Column {
         Row {
             visible: page.microsoft.length === 0 && Needs.checked && (!Needs.goa || !Needs.goaMicrosoft)
             label: !Needs.goa ? "GNOME Online Accounts is needed" : "GNOME Online Accounts is too old"
-            detail: "Microsoft sign-in goes through GNOME Online Accounts (3.50 or newer), so iRice never sees your password. It asks for your password once."
+            detail: "Microsoft sign-in goes through GNOME Online Accounts (3.50 or newer), so Tessera never sees your password. It asks for your password once."
             SettingsButton {
                 text: Needs.installing ? "Installing…" : !Needs.goa ? "Install" : "Update"
                 icon: "download-simple"
@@ -59,8 +59,8 @@ Column {
         }
         Row {
             visible: page.microsoft.length === 0 && Needs.checked && Needs.goa && Needs.goaMicrosoft && !Needs.goaSignin
-            label: Needs.building ? "Building iRice's sign-in helper…" : "iRice's sign-in helper isn't built yet"
-            detail: Needs.buildError !== "" ? Needs.buildError : "It's built on this computer, with iRice's other native helpers (a minute or two)."
+            label: Needs.building ? "Building Tessera's sign-in helper…" : "Tessera's sign-in helper isn't built yet"
+            detail: Needs.buildError !== "" ? Needs.buildError : "It's built on this computer, with Tessera's other native helpers (a minute or two)."
             labelColor: Needs.buildError !== "" ? Theme.color.danger : Theme.color.label
             SettingsButton { text: Needs.building ? "Building…" : "Build It"; busy: Needs.building; onClicked: Needs.buildNative() }
         }

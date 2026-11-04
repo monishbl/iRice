@@ -1044,7 +1044,7 @@ Platter {
                         + (editor.editing.e.cloud && editor.editing.e.recurring ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). Change repeating events on your phone or on the web."
                             : editor.editing.e.google || editor.editing.e.cloud ? "\nFrom " + editor.editing.e.calendar + " (" + editor.editing.e.accountName + "). You can view this calendar but not change it."
                             : "\nFrom " + editor.editing.e.calendar + ", a subscribed calendar (read-only).")
-                        + (editor.editing.e.repeatUnsupported ? "\nThis event repeats in a way iRice can't show yet, so only its first date is here. Your calendar app has the rest." : "") : ""
+                        + (editor.editing.e.repeatUnsupported ? "\nThis event repeats in a way Tessera can't show yet, so only its first date is here. Your calendar app has the rest." : "") : ""
                     color: Theme.color.secondary
                     font { family: Theme.font.family; pixelSize: Theme.font.small }
                 }

@@ -6,7 +6,7 @@ import Quickshell
 //   aliases  a window class with no desktop file of its own -> the app's
 //            desktop entry id, so the dock and the switcher show the right
 //            name and icon (Webex's windows say "CiscoCollabHost")
-//   env      extra environment when iRice starts the app. Webex bundles its
+//   env      extra environment when Tessera starts the app. Webex bundles its
 //            own Qt Wayland compositor for its embedded views; on Wayland
 //            those come up as a stray window of their own, so it runs
 //            through XWayland, where it behaves.

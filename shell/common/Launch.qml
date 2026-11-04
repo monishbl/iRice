@@ -5,7 +5,7 @@ import Quickshell
 // Starts apps and opens files and links, each app in a scope of its own
 // under the user's app.slice (assets/scripts/app-scope.sh), so an app
 // working flat out shares the CPU with the desktop instead of taking it
-// from Hyprland and this shell (without systemd: started directly). In the tty session (dev.sh tty, IRICE_TTY=1) the shell runs
+// from Hyprland and this shell (without systemd: started directly). In the tty session (dev.sh tty, TESSERA_TTY=1) the shell runs
 // with sandbox config, data and state folders, and anything it starts would
 // inherit them: apps would miss their settings and open links with whatever
 // registered itself in the sandbox. There, those variables are dropped first,
@@ -13,8 +13,8 @@ import Quickshell
 Singleton {
     id: root
 
-    readonly property bool tty: Quickshell.env("IRICE_TTY") === "1"
-    readonly property var scrub: tty ? ["env", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "XDG_STATE_HOME", "-u", "XDG_CACHE_HOME", "-u", "IRICE_SANDBOX", "-u", "IRICE_ROOT", "-u", "IRICE_TTY", "-u", "QML_IMPORT_PATH", "-u", "QML2_IMPORT_PATH"] : []
+    readonly property bool tty: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
+    readonly property var scrub: tty ? ["env", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "XDG_STATE_HOME", "-u", "XDG_CACHE_HOME", "-u", "TESSERA_SANDBOX", "-u", "TESSERA_ROOT", "-u", "TESSERA_TTY", "-u", "IRICE_SANDBOX", "-u", "IRICE_ROOT", "-u", "IRICE_TTY", "-u", "QML_IMPORT_PATH", "-u", "QML2_IMPORT_PATH"] : []
 
     // A command line for something that starts apps
     function wrap(cmd) {
@@ -52,7 +52,7 @@ Singleton {
     // command ends (to read its output)
     readonly property string openApp: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/open-app.sh").toString().replace("file://", ""))
     function terminalCommand(args, hold) {
-        return ["env", "IRICE_USER_DIR=" + Config.dir, "bash", openApp, "terminal"].concat(hold ? ["--hold"] : [], ["--"], args);
+        return ["env", "TESSERA_USER_DIR=" + Config.dir, "bash", openApp, "terminal"].concat(hold ? ["--hold"] : [], ["--"], args);
     }
     function terminal(args, hold) {
         run(terminalCommand(args, hold), "terminal");

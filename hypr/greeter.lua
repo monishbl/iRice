@@ -1,6 +1,6 @@
--- iRice login screen: the compositor greetd runs for its "greeter" user
--- (installed to /usr/share/irice by ./install.sh --greeter). It shows the
--- iRice greeter and exits once you log in, so greetd can start your session.
+-- Tessera login screen: the compositor greetd runs for its "greeter" user
+-- (installed to /usr/share/tessera by ./install.sh --greeter). It shows the
+-- Tessera greeter and exits once you log in, so greetd can start your session.
 
 hl.config({
     general = { gaps_in = 0, gaps_out = 0, border_size = 0 },
@@ -13,12 +13,12 @@ hl.config({
     ecosystem = { no_update_news = true, no_donation_nag = true }
 })
 
-hl.layer_rule({ match = { namespace = "irice:.*" }, blur = true })
-hl.layer_rule({ match = { namespace = "irice:.*" }, ignore_alpha = 0.4 })
-hl.layer_rule({ match = { namespace = "irice:wallpaper" }, blur = false })
+hl.layer_rule({ match = { namespace = "tessera:.*" }, blur = true })
+hl.layer_rule({ match = { namespace = "tessera:.*" }, ignore_alpha = 0.4 })
+hl.layer_rule({ match = { namespace = "tessera:wallpaper" }, blur = false })
 
 -- The login screen in its style (greeter-start.sh reads greeter.json; a copy
 -- from before it had one starts the shell's greeter as it is)
 hl.on("hyprland.start", function()
-    hl.exec_cmd("sh -c 'S=/usr/share/irice/shell/assets/scripts/greeter-start.sh; if [ -f \"$S\" ]; then bash \"$S\"; else IRICE_GREETER_WALLPAPER=/usr/share/irice/wallpaper.jpg qs -p /usr/share/irice/shell/greeter.qml; fi; hyprctl dispatch \"hl.dsp.exit()\"'")
+    hl.exec_cmd("sh -c 'S=/usr/share/tessera/shell/assets/scripts/greeter-start.sh; if [ -f \"$S\" ]; then bash \"$S\"; else TESSERA_GREETER_WALLPAPER=/usr/share/tessera/wallpaper.jpg qs -p /usr/share/tessera/shell/greeter.qml; fi; hyprctl dispatch \"hl.dsp.exit()\"'")
 end)

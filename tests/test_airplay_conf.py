@@ -1,11 +1,11 @@
-"""assets/pipewire/irice-airplay.conf: the AirPlay client iRice runs
+"""assets/pipewire/tessera-airplay.conf: the AirPlay client Tessera runs
 (services/AirPlay.qml). Only speakers on the network: never this computer's
 own (raop.discover-local stays off), and nothing besides discovery."""
 import re
 import unittest
 from pathlib import Path
 
-CONF = Path(__file__).resolve().parent.parent / "shell/assets/pipewire/irice-airplay.conf"
+CONF = Path(__file__).resolve().parent.parent / "shell/assets/pipewire/tessera-airplay.conf"
 
 
 class AirPlayConf(unittest.TestCase):

@@ -21,7 +21,7 @@ Variants {
         required property var modelData
         screen: modelData
 
-        WlrLayershell.namespace: "irice:wallpaper"
+        WlrLayershell.namespace: "tessera:wallpaper"
         WlrLayershell.layer: WlrLayer.Background
         // A note on the desktop takes typing (focus only when clicked)
         WlrLayershell.keyboardFocus: desktopWidgets.visible && desktopWidgets.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None

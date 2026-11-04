@@ -43,7 +43,7 @@ class Scripted(unittest.TestCase):
 
     def test_the_defaults(self):
         frames, cmd = self.run_tui("enter enter enter enter enter enter enter")
-        self.assertIn("Set up iRice", frames[0])
+        self.assertIn("Set up Tessera", frames[0])
         self.assertIn("Choose a look", frames[1])
         self.assertIn("Review the plan", frames[-2])
         self.assertTrue(cmd[0].endswith("install.sh"))
@@ -111,31 +111,31 @@ class Scripted(unittest.TestCase):
 class Progress(unittest.TestCase):
     """install.sh's output (no colours: it isn't a terminal) as steps."""
     OUTPUT = """
-iRice  A glass desktop for Hyprland
+Tessera  A glass desktop for Hyprland
 
 [1/14] Checking your system
   System: Arch Linux, x86_64
 [2/14] Safety snapshot
-  No snapper or Timeshift set up: no snapshot (what iRice replaces is backed up as it goes).
+  No snapper or Timeshift set up: no snapshot (what Tessera replaces is backed up as it goes).
 [3/14] Installing packages
   Updating the system and installing 90 packages (already installed ones are kept)…
 [8/14] For this computer (optional)
   Fingerprint: Broadcom ControlVault 3
   ! Fingerprint: Broadcom ControlVault 3 didn't finish (see above); the rest goes on.
-[10/14] Installing iRice
-  ✗ Installing iRice didn't finish. Details are in /home/x/.cache/irice/install.log
+[10/14] Installing Tessera
+  ✗ Installing Tessera didn't finish. Details are in /home/x/.cache/tessera/install.log
   ! Skipped (optional).
 [✓] Checking the result
   ✓ Hyprland 0.56.2
   ! The glass plugin isn't built (glass looks frosted)
-      → irice rebuild
-  ✓ App icons: the apps' own, styled by iRice
+      → tessera rebuild
+  ✓ App icons: the apps' own, styled by Tessera
 
-iRice is installed, with problems above.
+Tessera is installed, with problems above.
 """
 
     def test_steps_checks_and_summary(self):
-        spec = importlib.util.spec_from_file_location("irice_tui", TUI)
+        spec = importlib.util.spec_from_file_location("tessera_tui", TUI)
         tui = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tui)
         ins = tui.Installer(FACTS, [], {"apps_missing": False, "walls_ready": True})
@@ -145,18 +145,18 @@ iRice is installed, with problems above.
         ins.finish(1)
         states = [(s["title"], s["state"]) for s in ins.steps]
         self.assertEqual(states, [("Checking your system", "ok"), ("Safety snapshot", "ok"), ("Installing packages", "ok"),
-                                  ("For this computer (optional)", "ok"), ("Installing iRice", "skipped"),
+                                  ("For this computer (optional)", "ok"), ("Installing Tessera", "skipped"),
                                   ("Checking the result", "failed")])
         self.assertIn(("!", "The glass plugin isn't built (glass looks frosted)"), ins.checks)
         self.assertIn("Fingerprint: Broadcom ControlVault 3 didn't finish (see above); the rest goes on.", ins.warnings)
-        self.assertEqual(ins.result, "iRice is installed, with problems above.")
+        self.assertEqual(ins.result, "Tessera is installed, with problems above.")
         from rich.console import Console
         import io
         c = Console(file=io.StringIO(), width=100, color_system=None)
         c.print(ins.render(100, 40))
         c.print(ins.summary("/tmp/install.log"))
         text = c.file.getvalue()
-        self.assertIn("Installing iRice: skipped", text)
+        self.assertIn("Installing Tessera: skipped", text)
         self.assertIn("To look at", text)
 
 

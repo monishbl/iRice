@@ -144,7 +144,7 @@ Singleton {
     // ── Copies ──────────────────────────────────────────────────────────
     property var copies: []
     property var lastCopy: ({}) // pid -> { pos, at }
-    // irice-events (services/Events) looks itself; without it, transfers.sh
+    // tessera-events (services/Events) looks itself; without it, transfers.sh
     EventWatch {
         source: "copies"
         active: root.on

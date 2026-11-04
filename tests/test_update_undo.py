@@ -91,7 +91,7 @@ class History(unittest.TestCase):
 class RootChecksFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
-        self.r = load(SCRIPTS / "irice-root.py", "irice_root_undo")
+        self.r = load(SCRIPTS / "tessera-root.py", "tessera_root_undo")
         self.cache = Path(self.dir.name, "cache")
         self.cache.mkdir()
         self.ok = self.cache / "mesa-1.0-1-x86_64_v3.pkg.tar.zst"
@@ -164,7 +164,7 @@ class HelperCurrent(unittest.TestCase):
             rules.chmod(0o000)  # (as on a real system: 0700 root)
             try:
                 self.assertTrue(su.helper_current())
-                Path(d, "usr/lib/irice/irice-root").write_text("older")
+                Path(d, "usr/lib/tessera/tessera-root").write_text("older")
                 self.assertFalse(su.helper_current())
             finally:
                 rules.chmod(0o755)
@@ -180,10 +180,10 @@ class HelperCurrent(unittest.TestCase):
             self.assertTrue(su.helper_current())  # (no ananicy-cpp)
             Path(d, "etc/ananicy.d").mkdir()
             self.assertFalse(su.helper_current())  # (its rule is missing)
-            Path(d, "etc/ananicy.d/irice.rules").write_bytes(su.root_helper().ANANICY_TEXT)
+            Path(d, "etc/ananicy.d/tessera.rules").write_bytes(su.root_helper().ANANICY_TEXT)
             self.assertTrue(su.helper_current())
             # Turned off in Settings: no rule, and none is missing
-            Path(d, "etc/ananicy.d/irice.rules").unlink()
-            Path(d, "etc/irice").mkdir()
-            Path(d, "etc/irice/priority-off").write_text("off")
+            Path(d, "etc/ananicy.d/tessera.rules").unlink()
+            Path(d, "etc/tessera").mkdir()
+            Path(d, "etc/tessera/priority-off").write_text("off")
             self.assertTrue(su.helper_current())

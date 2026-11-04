@@ -7,7 +7,7 @@ import qs.services
 // macOS-style screenshot markup. After a screenshot, a thumbnail floats in at
 // the bottom right for 5 s (hover pauses it, drag it out to drop the file,
 // swipe right to dismiss); clicking it opens the editor. Used when
-// Config.options.screenshot.editor is "irice" (the default); "swappy" keeps
+// Config.options.screenshot.editor is "tessera" (the default); "swappy" keeps
 // the old flow. This object owns the editing session, so edits survive the
 // editor window being unloaded (Delete has Undo).
 //
@@ -15,7 +15,7 @@ import qs.services
 Scope {
     id: root
 
-    readonly property bool enabled: (Config.options.screenshot.editor ?? "irice") !== "swappy"
+    readonly property bool enabled: (Config.options.screenshot.editor ?? "tessera") !== "swappy"
     readonly property bool thumbnails: Config.options.screenshot.thumbnail ?? true
 
     // ---- Session ----------------------------------------------------------

@@ -9,8 +9,8 @@ import qs.common
 // Software Update → Check for updates), and the system part of the update,
 // without a terminal (SoftwareUpdate plans it): assets/scripts/sysupdate.py runs
 // detached (it keeps going with Settings closed, and across shell restarts)
-// and writes its progress to $XDG_RUNTIME_DIR/irice-sysupdate/, read here.
-// The password is asked once, at the start, by iRice's own dialog (pkexec →
+// and writes its progress to $XDG_RUNTIME_DIR/tessera-sysupdate/, read here.
+// The password is asked once, at the start, by Tessera's own dialog (pkexec →
 // the polkit agent); the AUR step's pacman commands go through the same root
 // part, so it never asks again in the middle.
 // In the dev sandbox the update is simulated (nothing is installed).
@@ -25,8 +25,8 @@ Singleton {
     property bool checking: false
     readonly property int total: count + aurCount
 
-    readonly property bool fake: Quickshell.env("IRICE_SANDBOX") === "1" || Quickshell.env("IRICE_FAKE_SYSUPDATE") === "1"
-    readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-sysupdate"
+    readonly property bool fake: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1" || Quickshell.env("TESSERA_FAKE_SYSUPDATE") === "1"
+    readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-sysupdate"
     readonly property string script: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/sysupdate.py").toString().replace("file://", ""))
 
     // ── The update job ──────────────────────────────────────────────────
@@ -51,7 +51,7 @@ Singleton {
         interrupted = false;
         log = "";
         logSize = 0;
-        // setsid, in this login session (so pkexec finds iRice's password
+        // setsid, in this login session (so pkexec finds Tessera's password
         // dialog through polkit); not tied to the shell
         Quickshell.execDetached(["setsid", "-f", "python3", "-I", script, "run"].concat(args ?? []).concat(fake ? ["--fake"] : []));
         requested = Date.now() / 1000;
@@ -185,8 +185,8 @@ Singleton {
         if (j.state === "cancelled")
             return;
         const ok = j.state === "done";
-        // iRice's part follows (its update screen): no alert in between
-        if (ok && (j.then?.irice || (j.then?.rebuild?.length ?? 0) > 0))
+        // Tessera's part follows (its update screen): no alert in between
+        if (ok && (j.then?.tessera || (j.then?.rebuild?.length ?? 0) > 0))
             return;
         const n = (j.upgraded ?? []).length;
         const back = j.kind === "undo";
@@ -195,7 +195,7 @@ Singleton {
         if (Island.enabled && Island.wants("sysupdate"))
             Island.post({ kind: "sysupdate", icon: ok ? (j.restart ? "arrow-clockwise" : "check-circle") : "warning-circle", title: title, subtitle: sub, color: ok ? Theme.accents.green : Theme.color.danger, action: ok && j.restart ? "Restart" : "Details", onAction: () => ok && j.restart ? Quickshell.execDetached(["systemctl", "reboot"]) : Panels.openSettings("update") }, 8000);
         else
-            Quickshell.execDetached(["notify-send", "-a", "iRice", "-i", ok ? "system-software-update" : "dialog-error", title, sub]);
+            Quickshell.execDetached(["notify-send", "-a", "Tessera", "-i", ok ? "system-software-update" : "dialog-error", title, sub]);
     }
 
     // ── What's available ────────────────────────────────────────────────

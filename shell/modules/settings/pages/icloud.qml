@@ -63,7 +63,7 @@ Column {
         Row {
             visible: page.icloud.length === 0
             label: "1. Make an app-specific password"
-            detail: "At account.apple.com: Sign-In and Security → App-Specific Passwords → add one named iRice. It looks like abcd-efgh-ijkl-mnop."
+            detail: "At account.apple.com: Sign-In and Security → App-Specific Passwords → add one named Tessera. It looks like abcd-efgh-ijkl-mnop."
             SettingsButton { text: "Open account.apple.com"; icon: "arrow-square-out"; onClicked: Launch.open("https://account.apple.com/account/manage") }
         }
         Row {

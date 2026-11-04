@@ -43,7 +43,7 @@ def pos():
 
 def meta():
     t, a, al = TRACKS[state["i"]]
-    m = {"mpris:trackid": GLib.Variant("o", "/irice/track/%d" % state["i"]), "xesam:title": GLib.Variant("s", t),
+    m = {"mpris:trackid": GLib.Variant("o", "/tessera/track/%d" % state["i"]), "xesam:title": GLib.Variant("s", t),
          "xesam:artist": GLib.Variant("as", [a]), "xesam:album": GLib.Variant("s", al), "mpris:length": GLib.Variant("x", 210 * 1000000)}
     if ART:
         m["mpris:artUrl"] = GLib.Variant("s", ART)
@@ -103,5 +103,5 @@ def acquired(c, name):
         c.register_object("/org/mpris/MediaPlayer2", i, call, get, setp)
 
 
-Gio.bus_own_name(Gio.BusType.SESSION, "org.mpris.MediaPlayer2." + os.environ.get("FAKEPLAYER_NAME", "irice_test"), Gio.BusNameOwnerFlags.NONE, acquired, None, None)
+Gio.bus_own_name(Gio.BusType.SESSION, "org.mpris.MediaPlayer2." + os.environ.get("FAKEPLAYER_NAME", "tessera_test"), Gio.BusNameOwnerFlags.NONE, acquired, None, None)
 GLib.MainLoop().run()

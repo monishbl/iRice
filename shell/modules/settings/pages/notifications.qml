@@ -27,7 +27,7 @@ Column {
             page: "notifications/island"
         }
     }
-    // A sound event: switch, Play, and your own file instead of iRice's
+    // A sound event: switch, Play, and your own file instead of Tessera's
     component SoundRow: Row {
         id: srow
         required property string key

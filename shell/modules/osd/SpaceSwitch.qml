@@ -114,7 +114,7 @@ Scope {
                     anchors { top: true; bottom: true; left: true; right: true }
                     exclusionMode: ExclusionMode.Ignore
                     WlrLayershell.layer: WlrLayer.Overlay
-                    WlrLayershell.namespace: "irice:dim"
+                    WlrLayershell.namespace: "tessera:dim"
                     mask: Region {} // clicks go through
                     color: "transparent"
 

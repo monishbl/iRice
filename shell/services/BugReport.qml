@@ -9,14 +9,14 @@ import qs.common
 // gesture, Spotlight). The screenshot is taken first, before anything of the
 // report shows, so it has the screen as it was. The log and system info are
 // gathered and scrubbed by assets/scripts/bug-report.py, and shown in full
-// before anything is sent; each can be left out. Sent to iRice's report
+// before anything is sent; each can be left out. Sent to Tessera's report
 // server, which files a GitHub issue; if that fails, the report can be
 // copied or opened on GitHub instead.
 Singleton {
     id: root
 
     readonly property string script: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/bug-report.py").toString().replace("file://", ""))
-    readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-bug-report"
+    readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-bug-report"
     readonly property string shot: dir + "/screen.png"
 
     // The form (kept while Settings is closed and reopened)

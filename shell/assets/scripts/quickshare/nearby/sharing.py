@@ -2,7 +2,7 @@
 
 Both sides first exchange PairedKeyEncryption and PairedKeyResult frames.
 Those prove "this is one of my contacts' devices" with keys tied to a
-Google account; iRice has none, so it sends random data and answers
+Google account; Tessera has none, so it sends random data and answers
 UNABLE, as for any stranger with visibility set to Everyone. Then:
   sender    INTRODUCTION: the files (name, size, type, payload id), texts
             and Wi-Fi networks on offer
@@ -174,7 +174,7 @@ class Receive(Session):
         wifi = list(i.wifi_credentials_metadata)
         if not files and not texts and not wifi:
             await self._respond(RESP.UNSUPPORTED_ATTACHMENT_TYPE)
-            raise Declined("only shares apps or streams, which iRice can't receive")
+            raise Declined("only shares apps or streams, which Tessera can't receive")
         if len(files) + len(texts) + len(wifi) > MAX_ITEMS or any(f.size < 0 for f in files):
             await self._respond(RESP.REJECT)
             raise Declined("too many items")

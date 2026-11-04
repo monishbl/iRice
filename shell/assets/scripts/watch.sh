@@ -10,20 +10,20 @@
 #     busy, every time the shell restarted
 #   - the watcher's leader gets SIGTERM if this wrapper dies, even by SIGKILL
 #   - this wrapper ends when its stdin closes (the shell quit)
-#   - each group is written down in $XDG_RUNTIME_DIR/irice-watchers/<group>
+#   - each group is written down in $XDG_RUNTIME_DIR/tessera-watchers/<group>
 #     (this wrapper and the group's leader, with their start times, and a
-#     random token the watcher gets as IRICE_WATCH_TOKEN), so a new shell can
+#     random token the watcher gets as TESSERA_WATCH_TOKEN), so a new shell can
 #     end any group whose wrapper is gone (reap-watchers.sh). Once the leader
 #     has exited, only members carrying that token count as ours. A daemon a
 #     watcher happens to start (a sound server, say) leaves the group, so it
 #     isn't one of ours to end even though it inherited the token.
 # Usage: watch.sh <command> [args...]   (the Process needs stdinEnabled: true)
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-REC="$RUN/irice-watchers"
+REC="$RUN/tessera-watchers"
 started() { awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$1/stat" 2>/dev/null; }
 
 token=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
-cmd=(env --default-signal=PIPE IRICE_WATCH_TOKEN="$token" "$@")
+cmd=(env --default-signal=PIPE TESSERA_WATCH_TOKEN="$token" "$@")
 command -v setpriv >/dev/null 2>&1 && cmd=(setpriv --pdeathsig TERM -- "${cmd[@]}")
 set -m # (background jobs get their own process group: the group is the watcher)
 "${cmd[@]}" </dev/null &

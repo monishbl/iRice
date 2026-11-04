@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# iRice dev entry point (run on the host). Everything runs inside the `irice`
+# Tessera dev entry point (run on the host). Everything runs inside the `tessera`
 # distrobox against a nested Hyprland; the host session is never touched.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# This folder, always: inside an iRice session the environment says where
-# *that* iRice is (IRICE_ROOT), and the sandbox would run that copy instead
-export IRICE_ROOT="$ROOT"
+# This folder, always: inside a Tessera session the environment says where
+# *that* Tessera is (TESSERA_ROOT), and the sandbox would run that copy instead
+export TESSERA_ROOT="$ROOT"
 BOX=irice
 source "$ROOT/sandbox/lib.sh"
-RT="$IRICE_RT"
+RT="$TESSERA_RT"
 PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
       quickshell qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-5compat qt6-wayland qt6-shadertools
       pipewire wireplumber pipewire-pulse networkmanager bluez-utils upower libsecret brightnessctl playerctl
@@ -22,9 +22,9 @@ PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
 # (the arena's own home: distrobox gives every session the first one's)
 box() {
     if (($#)); then
-        distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" \
-            XDG_CONFIG_HOME="$IRICE_HOME/.config" XDG_CACHE_HOME="$IRICE_HOME/.cache" \
-            XDG_DATA_HOME="$IRICE_HOME/.local/share" XDG_STATE_HOME="$IRICE_HOME/.local/state" "$@"
+        distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" \
+            XDG_CONFIG_HOME="$TESSERA_HOME/.config" XDG_CACHE_HOME="$TESSERA_HOME/.cache" \
+            XDG_DATA_HOME="$TESSERA_HOME/.local/share" XDG_STATE_HOME="$TESSERA_HOME/.local/state" "$@"
     else
         distrobox enter "$BOX"
     fi
@@ -54,15 +54,15 @@ running() { sandbox_pid >/dev/null; }
 # A new arena's home: the first sandbox's, without the big app folders, so its
 # shell looks the same (settings, desktop files, icons, wallpapers)
 seed_arena() {
-    [[ "$IRICE_ARENA" == 1 ]] && return 0
-    echo "Seeding arena $IRICE_ARENA's home from .sandbox/home"
-    mkdir -p "$IRICE_HOME"
+    [[ "$TESSERA_ARENA" == 1 ]] && return 0
+    echo "Seeding arena $TESSERA_ARENA's home from .sandbox/home"
+    mkdir -p "$TESSERA_HOME"
     rsync -a --exclude=/.cache --exclude=/.copilot --exclude=/.vscode-oss --exclude=/.vscode-oss-shared \
         --exclude=/live-test.mp4 --exclude=/.local/share/containers --exclude=/.local/share/Trash \
         --exclude=/.local/share/baloo --exclude=/.config/discord --exclude=/.config/zen --exclude=/.config/Codex \
         --exclude=/.config/mozilla --exclude=/.config/sh.cider.genten --exclude='/.config/Code - OSS' \
         --exclude=/.config/Electron --exclude=/.config/autostart \
-        "$ROOT/.sandbox/home/" "$IRICE_HOME/"
+        "$ROOT/.sandbox/home/" "$TESSERA_HOME/"
 }
 
 case "${1:-help}" in
@@ -75,8 +75,8 @@ case "${1:-help}" in
     up)
         running && { echo "Sandbox already running."; exit 0; }
         stop_sandbox_apps # left behind by a sandbox that crashed
-        [[ "${IRICE_VISIBLE:-0}" == 1 ]] && : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
-        [[ -d "$IRICE_HOME" ]] || seed_arena
+        [[ "${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" == 1 ]] && : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
+        [[ -d "$TESSERA_HOME" ]] || seed_arena
         # (without the files this shell has open: a smoke check's lock would
         # stay held for as long as the sandbox runs)
         (
@@ -84,18 +84,18 @@ case "${1:-help}" in
                 fd=${fd##*/}
                 ((fd > 2)) && eval "exec $fd>&-"
             done
-            exec setsid -f distrobox enter "$BOX" -- env HOME="$IRICE_HOME" IRICE_ARENA="$IRICE_ARENA" IRICE_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" \
-                IRICE_VISIBLE="${IRICE_VISIBLE:-0}" IRICE_HOST_AUDIO="${IRICE_HOST_AUDIO:-0}" \
+            exec setsid -f distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" \
+                TESSERA_VISIBLE="${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
         running || { echo "Sandbox failed to start, see $RT/hyprland.log"; exit 1; }
-        # Visible (IRICE_VISIBLE=1): park the sandbox window alone on host
+        # Visible (TESSERA_VISIBLE=1): park the sandbox window alone on host
         # workspace 1 (only touches that window). Hidden, the default, there's
         # no window on your desktop to park.
         hpid="$(pgrep -P "$(sandbox_pid)" -x Hyprland | head -1 || true)"
         found=0
-        if [[ "${IRICE_VISIBLE:-0}" == 1 && $hpid =~ ^[0-9]+$ ]]; then
+        if [[ "${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" == 1 && $hpid =~ ^[0-9]+$ ]]; then
             for _ in $(seq 25); do
                 hyprctl -j clients | jq -e ".[] | select(.pid == $hpid)" >/dev/null && { found=1; break; }
                 sleep 0.2
@@ -103,8 +103,8 @@ case "${1:-help}" in
         fi
         # Only when that exact window exists; never a bare "pid:" to the real compositor
         # (other arenas out of sight, on a special workspace of their own)
-        ws="${IRICE_HOST_WORKSPACE:-1}"
-        [[ "$IRICE_ARENA" != 1 ]] && ws='"special:irice-arenas"'
+        ws="${TESSERA_HOST_WORKSPACE:-${IRICE_HOST_WORKSPACE:-1}}"
+        [[ "$TESSERA_ARENA" != 1 ]] && ws='"special:irice-arenas"'
         [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = $ws, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
         # (once the nested Hyprland answers: hidden, nothing above waited for it)
         for _ in $(seq 50); do nested hyprctl monitors >/dev/null 2>&1 && break; sleep 0.2; done
@@ -121,7 +121,7 @@ case "${1:-help}" in
             || echo "Sandbox not running."
         ;;
     status)  running && echo "running (pid $(sandbox_pid))" || echo "stopped" ;;
-    reload)  "$ROOT/tools/build-shaders.sh" && nested env IRICE_LAB="${IRICE_LAB:-0}" "$ROOT/sandbox/reload-shell.sh" ;;
+    reload)  "$ROOT/tools/build-shaders.sh" && nested env TESSERA_LAB="${TESSERA_LAB:-${IRICE_LAB:-0}}" "$ROOT/sandbox/reload-shell.sh" ;;
     # Screenshots come from the headless IRICE-TEST output, which renders even
     # while the sandbox window is on a hidden host workspace.
     shot)    nested timeout 15 grim -o IRICE-TEST "${2:-$RT/shot.png}" && echo "${2:-$RT/shot.png}" ;;
@@ -137,7 +137,7 @@ case "${1:-help}" in
         # Ends a ./dev.sh tty session from anywhere (another console, or your
         # normal desktop) when it's frozen. Matches only processes whose
         # executable is Hyprland/start-hyprland/dbus-run-session started with
-        # sandbox/hypr/tty.lua, or that carry the session's IRICE_TTY=1 marker.
+        # sandbox/hypr/tty.lua, or that carry the session's TESSERA_TTY=1 marker.
         #   ./dev.sh tty-stop [--force] [--dry-run]
         sig=TERM dry=0
         for a in "${@:2}"; do
@@ -152,10 +152,10 @@ case "${1:-help}" in
             case "$comm" in
                 Hyprland|start-hyprland|dbus-run-sessio*)
                     tr '\0' ' ' <"$d/cmdline" 2>/dev/null | grep -q "sandbox/hypr/tty.lua" && pids="$pids $p" ;;
-                irice-shell|qs|quickshell|bash|sh|wl-paste)
+                tessera-shell|irice-shell|qs|quickshell|bash|sh|wl-paste)
                     # The marker, or the session's own tty-shell.sh (a script's
                     # exports don't show in its own /proc environ)
-                    { { tr '\0' '\n' <"$d/environ"; } 2>/dev/null | grep -qx "IRICE_TTY=1" ||
+                    { { tr '\0' '\n' <"$d/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1" ||
                         tr '\0' ' ' <"$d/cmdline" 2>/dev/null | grep -q "sandbox/tty-shell.sh"; } && pids="$pids $p" ;;
             esac
         done
@@ -185,7 +185,7 @@ case "${1:-help}" in
             exit 1
         fi
         running && kill "$(sandbox_pid)" 2>/dev/null || true
-        export IRICE_ROOT="$ROOT"
+        export TESSERA_ROOT="$ROOT"
         # Don't redirect XDG dirs here: podman keeps its containers under
         # XDG_DATA_HOME. The shell runs in the container, whose HOME is
         # .sandbox/home, so its config/state/cache stay isolated anyway.
@@ -197,14 +197,14 @@ case "${1:-help}" in
         ;;
     reset-home)
         running && { echo "Stop the sandbox first."; exit 1; }
-        rm -rf "$IRICE_HOME" && mkdir -p "$IRICE_HOME" && echo "Sandbox home wiped ($IRICE_HOME)."
+        rm -rf "$TESSERA_HOME" && mkdir -p "$TESSERA_HOME" && echo "Sandbox home wiped ($TESSERA_HOME)."
         ;;
     *)
         cat <<EOF
 Usage: ./dev.sh <command>
   create       Create the irice distrobox and install the toolchain
   up | down    Start / stop the nested Hyprland sandbox
-  tty          Start a real (non-nested) iRice session; run from a text console
+  tty          Start a real (non-nested) Tessera session; run from a text console
   tty-stop     End a (frozen) tty session from anywhere [--force] [--dry-run]
   status       Show whether the sandbox is running
   reload       Restart the sandbox Quickshell
@@ -217,11 +217,11 @@ Usage: ./dev.sh <command>
   enter        Open a shell in the container
   logs [n]     Tail the sandbox Hyprland and Quickshell logs
   reset-home   Wipe the sandbox home (.sandbox/home)
-Every command works on another identical sandbox with IRICE_ARENA=2..9
-(e.g. IRICE_ARENA=2 ./dev.sh up): its own compositor, shell and home.
+Every command works on another identical sandbox with TESSERA_ARENA=2..9 (or IRICE_ARENA)
+(e.g. TESSERA_ARENA=2 ./dev.sh up): its own compositor, shell and home.
 Sandboxes are hidden and silent: they draw into a private headless display
-(see them with shot) and play into a silent Speakers. IRICE_VISIBLE=1 up puts
-the window on your desktop again; IRICE_HOST_AUDIO=1 up uses your real audio.
+(see them with shot) and play into a silent Speakers. TESSERA_VISIBLE=1 up puts
+the window on your desktop again; TESSERA_HOST_AUDIO=1 up uses your real audio.
 EOF
         ;;
 esac

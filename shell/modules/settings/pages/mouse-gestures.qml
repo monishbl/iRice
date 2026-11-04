@@ -4,7 +4,7 @@ import qs.modules.settings
 import qs.services
 
 // Trackpad: the gestures, each "fingers + direction → action", changed right
-// in the row. Defaults come from hypr/irice/gestures.json; changes and your
+// in the row. Defaults come from hypr/tessera/gestures.json; changes and your
 // own gestures live in keybinds.json next to the keyboard shortcuts (see
 // services/Keymap.qml) and apply as soon as they're saved.
 Column {
@@ -28,7 +28,7 @@ Column {
     readonly property var directionOptions: Keymap.directions.map(d => ({ value: d.name, label: d.label }))
     readonly property var shellActionOptions: Keymap.shellActions.map(a => ({ value: { shell: a.name }, label: a.label }))
     readonly property var actionOptions: Keymap.gestureActions.map(a => ({ value: a.name, label: a.label })).concat(shellActionOptions)
-    // (a long press runs iRice actions only: Hyprland's own need a swipe)
+    // (a long press runs Tessera actions only: Hyprland's own need a swipe)
     function actionsFor(direction) {
         return direction === "hold" ? shellActionOptions : actionOptions;
     }
@@ -121,7 +121,7 @@ Column {
             }
             Text {
                 width: parent.width
-                readonly property string what: gr.gesture.disabled ? "Off" : gr.gesture.direction === "hold" && typeof gr.gesture.action === "string" ? "A long press runs iRice actions only. Choose one on the right." : gr.others.length > 0 ? "Clashes with " + gr.others[0].text + " (" + gr.others[0].actionText + "). Change the fingers or direction." : gr.gesture.changed && gr.def ? "Changed · was " + gr.def.fingers + " fingers, " + Keymap.directionLabel(gr.def.direction).toLowerCase() + " → " + Keymap.describeGesture(gr.def.action) : ""
+                readonly property string what: gr.gesture.disabled ? "Off" : gr.gesture.direction === "hold" && typeof gr.gesture.action === "string" ? "A long press runs Tessera actions only. Choose one on the right." : gr.others.length > 0 ? "Clashes with " + gr.others[0].text + " (" + gr.others[0].actionText + "). Change the fingers or direction." : gr.gesture.changed && gr.def ? "Changed · was " + gr.def.fingers + " fingers, " + Keymap.directionLabel(gr.def.direction).toLowerCase() + " → " + Keymap.describeGesture(gr.def.action) : ""
                 visible: what !== ""
                 text: what
                 wrapMode: Text.Wrap
@@ -266,11 +266,11 @@ Column {
         visible: Keymap.ready
         width: parent.width
         title: "Gestures"
-        footer: "“Left or right” covers both directions, “Any direction” every swipe, “Pinch or spread” both pinches. A long press (fingers resting still) needs iRice's glass plugin."
+        footer: "“Left or right” covers both directions, “Any direction” every swipe, “Pinch or spread” both pinches. A long press (fingers resting still) needs Tessera's glass plugin."
         Row {
             visible: Keymap.gestures.length === 0
             label: "No gestures"
-            detail: Keymap.gestureDefaults.length === 0 ? "iRice's default gestures weren't found (" + Keymap.hyprDir + "/gestures.json). Reinstall iRice to get them back." : "Add one to switch spaces, open Overview and more."
+            detail: Keymap.gestureDefaults.length === 0 ? "Tessera's default gestures weren't found (" + Keymap.hyprDir + "/gestures.json). Reinstall Tessera to get them back." : "Add one to switch spaces, open Overview and more."
         }
         Repeater {
             model: Keymap.gestures

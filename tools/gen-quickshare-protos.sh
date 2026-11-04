@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates the Python modules for iRice's Quick Share engine from the
+# Regenerates the Python modules for Tessera's Quick Share engine from the
 # vendored Google .proto files (shell/assets/quickshare/proto, see its NOTICE).
 # The generated code is checked in, so this is only needed after updating the
 # .proto files or when the installed protobuf runtime is older than the one

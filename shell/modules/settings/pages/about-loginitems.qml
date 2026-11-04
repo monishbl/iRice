@@ -26,7 +26,7 @@ Column {
     property bool loaded: false
     property string loadError: ""
     readonly property bool startAtLogin: Config.options.loginItems.startAtLogin
-    // Skipped by iRice whatever the switch says: their own group, greyed
+    // Skipped by Tessera whatever the switch says: their own group, greyed
     function skipped(it) {
         return it.status === "skipped" || it.skippedWhenOn !== "";
     }
@@ -391,12 +391,12 @@ Column {
         }
     }
 
-    // ── Skipped by iRice ────────────────────────────────────────────────
+    // ── Skipped by Tessera ────────────────────────────────────────────────
     Group {
         visible: page.ignored.length > 0
         width: parent.width
-        title: "Not started by iRice"
-        footer: "These ask to start with your session, but iRice leaves them out: it does their job itself, they're for another desktop, or they aren't installed."
+        title: "Not started by Tessera"
+        footer: "These ask to start with your session, but Tessera leaves them out: it does their job itself, they're for another desktop, or they aren't installed."
         Repeater {
             model: ScriptModel { values: page.ignored }
             ItemRow {}

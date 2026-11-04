@@ -3,7 +3,7 @@ import Quickshell
 import qs.common
 import qs.services
 
-// Settings → Lock & Login Screen → Boot animation: the system's own, iRice's
+// Settings → Lock & Login Screen → Boot animation: the system's own, Tessera's
 // designs (a still of each, made with them: assets/plymouth/thumbnails) and
 // none, as cards; picking one sets it (BootSplash: the password, then about
 // a minute while the boot image is rebuilt). Both looks.

@@ -20,6 +20,6 @@ if [[ -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]] && command -v sys
     [[ -n "$id" ]] || id="${1##*/}"
     id=$(printf '%s' "${id%.desktop}" | tr -c 'A-Za-z0-9_.' '_' | cut -c1-60)
     exec systemd-run --user --scope --quiet --collect --slice=app.slice \
-        --unit="app-irice-${id:-app}-$(printf '%04x%04x' $RANDOM $RANDOM).scope" --description="${id:-app}" -- "$@"
+        --unit="app-tessera-${id:-app}-$(printf '%04x%04x' $RANDOM $RANDOM).scope" --description="${id:-app}" -- "$@"
 fi
 exec "$@"

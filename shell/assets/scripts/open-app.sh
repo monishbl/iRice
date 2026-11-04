@@ -5,7 +5,7 @@
 #       --hold keeps the window open after it ends, to read its output)
 # The choice from Settings → Default apps (config.json "defaultApps.<role>",
 # a command) wins; otherwise the first one installed from the list below.
-# IRICE_USER_DIR overrides where config.json is (the tty test session).
+# TESSERA_USER_DIR overrides where config.json is (the tty test session).
 role="${1:-terminal}"
 shift
 hold=0
@@ -13,7 +13,9 @@ if [[ "$role" == terminal ]]; then
     [[ "${1:-}" == --hold ]] && { hold=1; shift; }
     [[ "${1:-}" == -- ]] && shift
 fi
-cfgdir="${IRICE_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/irice}"
+cfgdir="${TESSERA_USER_DIR:-${IRICE_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/tessera}}"
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+[[ ! -e "$cfgdir" && -d "${cfgdir%/tessera}/irice" ]] && cfgdir="${cfgdir%/tessera}/irice"
 
 chosen=""
 if [[ -f "$cfgdir/config.json" ]] && command -v python3 >/dev/null; then
@@ -78,7 +80,7 @@ if [[ "$role" == terminal ]]; then
         if command -v xdg-terminal-exec >/dev/null 2>&1; then
             exec xdg-terminal-exec "$@"
         fi
-        notify-send -a iRice "No terminal" "Install one (kitty, foot, alacritty…), or choose it in Settings → Default apps." 2>/dev/null
+        notify-send -a Tessera "No terminal" "Install one (kitty, foot, alacritty…), or choose it in Settings → Default apps." 2>/dev/null
         exit 1
     fi
     (($# == 0)) && exec sh -c "$term"
@@ -92,7 +94,7 @@ first() {
             exec sh -c "$c"
         fi
     done
-    notify-send -a iRice "No app for $role" "Install one, or choose it in Settings → Default apps." 2>/dev/null
+    notify-send -a Tessera "No app for $role" "Install one, or choose it in Settings → Default apps." 2>/dev/null
     exit 1
 }
 

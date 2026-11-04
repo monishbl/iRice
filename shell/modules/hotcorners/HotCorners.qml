@@ -81,7 +81,7 @@ Scope {
                     implicitHeight: 3
                     color: "transparent"
                     exclusionMode: ExclusionMode.Ignore
-                    WlrLayershell.namespace: "irice:hotcorner"
+                    WlrLayershell.namespace: "tessera:hotcorner"
                     WlrLayershell.layer: WlrLayer.Overlay
                     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 

@@ -1,0 +1,10 @@
+[Plymouth Theme]
+Name=tessera-bloom
+Description=Tessera: For Material: the badge on a shape that morphs through Material's loading shapes, turning as it goes.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tessera-bloom
+ScriptFile=/usr/share/plymouth/themes/tessera-bloom/tessera-bloom.script
+ConsoleLogBackgroundColor=0x0a0a0b
+Font=Inter 11

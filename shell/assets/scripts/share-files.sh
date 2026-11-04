@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Opens iRice's share sheet with these files: what the file managers'
+# Opens Tessera's share sheet with these files: what the file managers'
 # "Share…" entries run (file-manager-share.sh installs them).
 #   share-files.sh <path or file:// URI>...
 # Each is passed as a file:// URI, percent-encoded, one per line, so any
@@ -9,13 +9,14 @@ set -uo pipefail
 [[ $# -gt 0 ]] || exit 0
 SHELL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 
-# The same Quickshell the shell runs on (iRice's own build when there is one;
+# The same Quickshell the shell runs on (Tessera's own build when there is one;
 # see launch-shell.sh): asking it over IPC needs the same version
 QS=qs
-for d in "${XDG_DATA_HOME:-}" "$HOME/.local/share"; do
-    if [[ -n "$d" && -x "$d/irice/quickshell/bin/qs" && -d "$d/irice/quickshell/lib/qt6/qml/Quickshell" ]]; then
-        QS="$d/irice/quickshell/bin/qs"
-        export QML_IMPORT_PATH="$d/irice/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
+# (…/irice: Tessera's folder from before it was renamed, not moved yet)
+for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+    if [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]]; then
+        QS="$d/quickshell/bin/qs"
+        export QML_IMPORT_PATH="$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
         break
     fi
 done

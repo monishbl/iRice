@@ -4,7 +4,7 @@ import qs.common
 import qs.modules.settings
 import qs.services
 
-// Settings → About → System health: each service iRice uses, checked when
+// Settings → About → System health: each service Tessera uses, checked when
 // the page opens (services/Health.qml), with how to fix what's broken.
 Column {
     id: page
@@ -15,7 +15,7 @@ Column {
     Component.onCompleted: Health.check()
     // A fix that runs as administrator is confirmed first: the row shows
     // exactly what will run, and only the second press runs it (asking for
-    // the password until an update installed iRice's root helper)
+    // the password until an update installed Tessera's root helper)
     property string confirming: ""
 
     // What a status looks like: colour and a word, never colour alone
@@ -37,7 +37,7 @@ Column {
                 : Health.attention.length === 1 ? "1 thing needs attention"
                 : Health.attention.length + " things need attention"
             labelColor: Health.attention.some(c => c.status === "fail") ? Theme.color.danger : Theme.color.label
-            detail: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "Every service iRice uses is answering." : Health.attention.map(c => c.name).join(", ")
+            detail: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "Every service Tessera uses is answering." : Health.attention.map(c => c.name).join(", ")
             QQ.Row {
                 spacing: 8
                 SettingsButton {
@@ -56,12 +56,12 @@ Column {
         }
     }
 
-    // Things also running that do iRice's job twice (services/Conflicts.qml)
+    // Things also running that do Tessera's job twice (services/Conflicts.qml)
     Group {
         visible: Conflicts.found.length > 0
         width: parent.width
         title: "Also running"
-        footer: "These do jobs iRice already does, so things can happen twice or not show. Stop the ones you don't need; iRice doesn't stop them for you."
+        footer: "These do jobs Tessera already does, so things can happen twice or not show. Stop the ones you don't need; Tessera doesn't stop them for you."
         Repeater {
             model: Conflicts.found
             Row {

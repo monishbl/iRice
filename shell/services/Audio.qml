@@ -19,7 +19,7 @@ Singleton {
     }
     readonly property string icon: muted || volume === 0 ? "speaker-x" : volume < 0.34 ? "speaker-none" : volume < 0.67 ? "speaker-low" : "speaker-high"
 
-    // Changes made with iRice's own sliders and buttons (`quiet`) don't pop
+    // Changes made with Tessera's own sliders and buttons (`quiet`) don't pop
     // up the volume bar (Osd): you're looking at the control already. Keys,
     // the menu bar's scroll and other apps' changes still do.
     property real quietUntil: 0

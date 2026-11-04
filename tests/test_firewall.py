@@ -1,4 +1,4 @@
-"""Sharing through a firewall: what irice-root.py's sharing-ports job does
+"""Sharing through a firewall: what tessera-root.py's sharing-ports job does
 with ufw, firewalld, nftables and iptables (against fake ones on PATH: the
 calls are recorded; its /run and /etc are a temporary folder), how
 sharing-check.py tells the firewalls apart and notes what's open (for this
@@ -27,7 +27,7 @@ def load(name, path):
     return m
 
 
-R = load("irice_root_ports", SCRIPTS / "irice-root.py")
+R = load("tessera_root_ports", SCRIPTS / "tessera-root.py")
 
 # What `nft list chains` prints on Arch's default nftables.conf, with an
 # iptables-nft table next to it (docker's, say)
@@ -53,7 +53,8 @@ table bridge br {
 """
 
 # `ufw status numbered` after the permanent fix before sharing-ports, with
-# rules of the person's own (one of them on mDNS's port, one called "mDNS")
+# rules of the person's own (one of them on mDNS's port, one called "mDNS");
+# ours tagged as before iRice became Tessera (iRice …) and after (Tessera …)
 UFW = """\
 Status: active
 
@@ -66,17 +67,18 @@ Status: active
 [ 5] 67/udp                     ALLOW IN    Anywhere                   # iRice Quick Share hotspot (DHCP)
 [ 6] 5000/udp                   ALLOW IN    Anywhere                   # mDNS
 [ 7] 22/tcp (v6)                ALLOW IN    Anywhere (v6)
-[ 8] 53317:53320/tcp (v6)       ALLOW IN    Anywhere (v6)              # iRice sharing
+[ 8] 53317:53320/tcp (v6)       ALLOW IN    Anywhere (v6)              # Tessera sharing
 [ 9] 5353/udp (v6)              ALLOW IN    Anywhere (v6)              # mDNS
 """
 
 # An input chain with an old rule of ours (the fix before: 53317-53320), one
-# still wanted while visible (mDNS), and the person's ssh
+# still wanted while visible (mDNS), and the person's ssh (the old one tagged
+# as before iRice became Tessera)
 NFT_CHAIN = """\
 table inet filter {
 	chain input {
 		type filter hook input priority filter; policy drop;
-		udp dport 5353 accept comment "irice sharing" # handle 9
+		udp dport 5353 accept comment "tessera sharing" # handle 9
 		tcp dport 53317-53320 accept comment "irice sharing" # handle 7
 		tcp dport 22 accept # handle 3
 	}
@@ -89,7 +91,7 @@ Chain INPUT (policy DROP)
 num  target     prot opt source               destination
 1    ACCEPT     6    --  0.0.0.0/0            0.0.0.0/0            tcp dpts:53317:53320 /* irice sharing */
 2    ACCEPT     6    --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
-3    ACCEPT     17   --  0.0.0.0/0            0.0.0.0/0            udp dpt:5353 /* irice sharing */
+3    ACCEPT     17   --  0.0.0.0/0            0.0.0.0/0            udp dpt:5353 /* tessera sharing */
 """
 
 # One stand-in for nft, iptables, ip6tables, systemctl, ufw, firewall-cmd and
@@ -154,7 +156,7 @@ class Fakes(unittest.TestCase):
         for name, text in (("chains", CHAINS), ("ufw", UFW), ("nft", NFT_CHAIN), ("ipt", IPT)):
             (d / name).write_text(text)
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(self.home),
-                        XDG_STATE_HOME=str(self.home / ".local/state"), IRICE_SYSTEM_ROOT=str(self.sysroot),
+                        XDG_STATE_HOME=str(self.home / ".local/state"), TESSERA_SYSTEM_ROOT=str(self.sysroot),
                         FAKE_LOG=str(self.log), FAKE_CHAINS=str(d / "chains"), FAKE_UFW=str(d / "ufw"),
                         FAKE_NFT=str(d / "nft"), FAKE_IPT=str(d / "ipt"), FAKE_UNITS="")
 
@@ -166,7 +168,7 @@ class Fakes(unittest.TestCase):
 
 
 class SharingPortsJob(Fakes):
-    """irice-root sharing-ports open <sets> | close: exactly the sets asked
+    """tessera-root sharing-ports open <sets> | close: exactly the sets asked
     for, runtime rules where the firewall has them, only ours taken out, and
     the permanent fix before it migrated away."""
 
@@ -185,14 +187,14 @@ class SharingPortsJob(Fakes):
         # the fix before's 53317-53320 and LocalSend's 53317, last first;
         # mDNS and DHCP stay (wanted); the person's rules are never touched
         self.assertEqual(self.changes(calls, "ufw"), ["ufw --force delete 8", "ufw --force delete 3", "ufw --force delete 2",
-                                                      "ufw allow 53318:53319/tcp comment iRice sharing"])
+                                                      "ufw allow 53318:53319/tcp comment Tessera sharing"])
         _, calls = self.ports([], FAKE_UNITS="ufw")
         self.assertEqual(self.changes(calls, "ufw"), [f"ufw --force delete {n}" for n in (9, 8, 5, 4, 3, 2)])
 
     def test_ufw_leaves_a_port_someone_allowed_to_them(self):
         (self.d / "ufw").write_text("Status: active\n\n[ 1] 53317/tcp                  ALLOW IN    Anywhere\n")
         _, calls = self.ports(["localsend"], FAKE_UNITS="ufw")
-        self.assertEqual(self.changes(calls, "ufw"), ["ufw allow 53317/udp comment iRice sharing"])
+        self.assertEqual(self.changes(calls, "ufw"), ["ufw allow 53317/udp comment Tessera sharing"])
         _, calls = self.ports([], FAKE_UNITS="ufw")
         self.assertEqual(self.changes(calls, "ufw"), [])
 
@@ -204,7 +206,7 @@ class SharingPortsJob(Fakes):
         self.assertEqual([c for c in calls if "--add" in c], ["firewall-cmd --add-port=53318-53319/tcp", "firewall-cmd --add-port=67/udp"])
         self.assertFalse([c for c in calls if "--reload" in c or ("--permanent" in c and "--add" in c)], calls)
         # (5353/udp was there already, ours or not: left alone, now and at close)
-        added = self.prefix / "run/irice/sharing-ports"
+        added = self.prefix / "run/tessera/sharing-ports"
         self.assertEqual(added.read_text().split(), ["53318-53319/tcp", "67/udp"])
         _, calls = self.ports([], FAKE_UNITS="firewalld")
         self.assertEqual(self.changes(calls, "firewall-cmd"), ["firewall-cmd --remove-port=53318-53319/tcp", "firewall-cmd --remove-port=67/udp"])
@@ -224,8 +226,8 @@ class SharingPortsJob(Fakes):
         done, calls = self.ports(["quickshare", "mdns"], FAKE_UNITS="nftables")
         self.assertEqual(self.changes(calls, "nft"), [
             "nft delete rule inet filter input handle 7",
-            'nft insert rule inet filter input tcp dport 53318-53319 accept comment "irice sharing"',
-            'nft insert rule inet filter input udp dport 67 accept comment "irice sharing"'])
+            'nft insert rule inet filter input tcp dport 53318-53319 accept comment "tessera sharing"',
+            'nft insert rule inet filter input udp dport 67 accept comment "tessera sharing"'])
         self.assertFalse((drop / "irice.nft").exists())  # (the fix before's, loaded at every boot)
         self.assertIn("removed /etc/nftables.d/irice.nft", done)
         self.assertFalse([c for c in calls if " -f " in c or "add table" in c], calls)
@@ -236,8 +238,8 @@ class SharingPortsJob(Fakes):
         _, calls = self.ports(["localsend"], FAKE_UNITS="iptables")
         self.assertEqual(self.changes(calls, "iptables", "ip6tables"), [
             "iptables -D INPUT 3", "iptables -D INPUT 1",
-            "iptables -I INPUT -p tcp --dport 53317 -m comment --comment irice sharing -j ACCEPT",
-            "iptables -I INPUT -p udp --dport 53317 -m comment --comment irice sharing -j ACCEPT"])  # (ip6tables.service isn't on)
+            "iptables -I INPUT -p tcp --dport 53317 -m comment --comment tessera sharing -j ACCEPT",
+            "iptables -I INPUT -p udp --dport 53317 -m comment --comment tessera sharing -j ACCEPT"])  # (ip6tables.service isn't on)
         self.assertFalse([c for c in calls if "save" in c], calls)
 
     def test_no_firewall_changes_nothing(self):
@@ -266,7 +268,7 @@ class Detection(Fakes):
         (self.sysroot / "usr/bin" / name).write_text("")
 
     def helper(self):
-        h = self.sysroot / "usr/lib/irice/irice-root"
+        h = self.sysroot / "usr/lib/tessera/tessera-root"
         h.parent.mkdir(parents=True, exist_ok=True)
         h.write_text("#!/bin/sh\n")
         h.chmod(0o755)
@@ -315,7 +317,7 @@ class Detection(Fakes):
         self.sharing("ports", "mdns,quickshare", "visible to Everyone")
         self.assertEqual(len(self.pkexecs()), 1)
         # After a restart nftables starts closed (its rules were runtime only)
-        note = self.home / ".local/state/irice/sharing-ports.json"
+        note = self.home / ".local/state/tessera/sharing-ports.json"
         n = json.loads(note.read_text())
         note.write_text(json.dumps(dict(n, boot="another-boot")))
         f = self.status()

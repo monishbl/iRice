@@ -28,7 +28,7 @@ Singleton {
         keepAwake = on;
         Island.post({ kind: "custom", icon: "coffee", title: on ? "Caffeine on" : "Caffeine off", subtitle: on ? (minutes > 0 ? "Staying awake for " + (minutes >= 60 ? (minutes / 60) + (minutes === 60 ? " hour" : " hours") : minutes + " min") : "Staying awake until you turn it off") : "Sleeps when idle again", color: Theme.accents.orange });
     }
-    // qs -c irice ipc call caffeine toggle | on <minutes, 0 = until off> | off
+    // qs -c tessera ipc call caffeine toggle | on <minutes, 0 = until off> | off
     IpcHandler {
         target: "caffeine"
         function toggle(): void { root.setKeepAwake(!root.keepAwake, 0); }
@@ -61,12 +61,12 @@ Singleton {
     // choosing Sleep, always does.
     IdleMonitor {
         id: inUse
-        enabled: Quickshell.env("IRICE_TTY") === "1"
+        enabled: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
         timeout: 120
         respectInhibitors: true // (a playing video counts as use)
     }
-    readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && Quickshell.env("IRICE_TTY") !== "1")
-    // (held by irice-events, services/Events; without it, systemd-inhibit)
+    readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) !== "1")
+    // (held by tessera-events, services/Events; without it, systemd-inhibit)
     EventWatch {
         source: "inhibit:idle"
         active: root.holdAwake
@@ -76,7 +76,7 @@ Singleton {
         running: root.holdAwake && Events.fallsBack("inhibit")
         // (both ends die with the shell, even if it crashes: the inhibitor,
         // and the sleep it holds the inhibition for)
-        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=iRice", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=Tessera", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"]
     }
     readonly property string keepAwakeStatus: !keepAwake ? "" : keepAwakeUntil > 0 ? "Until " + Qt.formatTime(new Date(keepAwakeUntil), TimeFormat.hm) : "Until off"
     Timer {
@@ -111,7 +111,7 @@ Singleton {
 
     // In the dev sandbox, systemctl would reach the real machine through the
     // shared system bus, so power actions only report what they would do.
-    readonly property bool sandboxed: Quickshell.env("IRICE_SANDBOX") === "1"
+    readonly property bool sandboxed: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
     readonly property var powerCommands: ({
             "sleep": ["systemctl", "suspend"],
             "restart": ["systemctl", "reboot"],
@@ -131,7 +131,7 @@ Singleton {
         if (!cmd)
             return;
         if (sandboxed)
-            Quickshell.execDetached(["notify-send", "-a", "iRice sandbox", "Skipped " + action, cmd.join(" ")]);
+            Quickshell.execDetached(["notify-send", "-a", "Tessera sandbox", "Skipped " + action, cmd.join(" ")]);
         else if (action === "sleep") {
             sleepPending = true;
             locked = true;
@@ -164,23 +164,25 @@ Singleton {
             if (!root.sleepPending)
                 return;
             root.sleepPending = false;
-            Quickshell.execDetached(["notify-send", "-a", "iRice", "-i", "system-lock-screen", "Didn't sleep", "The screen couldn't be locked, so the computer stayed awake. Lock it first (Super+L), then choose Sleep."]);
+            Quickshell.execDetached(["notify-send", "-a", "Tessera", "-i", "system-lock-screen", "Didn't sleep", "The screen couldn't be locked, so the computer stayed awake. Lock it first (Super+L), then choose Sleep."]);
         }
     }
     property bool locked: false
     // Remembered for this Hyprland session, so a shell that restarts while the
     // screen is locked (a crash, a repair) locks again straight away
-    readonly property string lockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
+    readonly property string lockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
+    // (the mark a shell from before iRice became Tessera left: it counts too)
+    readonly property string oldLockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     onLockedChanged: {
         if (!locked) {
             sleepPending = false;
             sleepGuard.stop();
         }
-        Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark]);
+        Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark, oldLockMark]);
     }
     Process {
         running: true
-        command: ["test", "-e", root.lockMark]
+        command: ["sh", "-c", "[ -e \"$1\" ] || [ -e \"$2\" ]", "sh", root.lockMark, root.oldLockMark]
         onExited: code => {
             if (code === 0)
                 root.locked = true;
@@ -199,7 +201,7 @@ Singleton {
         // (the reload's configreloaded event re-applies corners and the shader)
     }
 
-    // The window tab style is read by the Hyprland config (hypr/irice/tabs.lua):
+    // The window tab style is read by the Hyprland config (hypr/tessera/tabs.lua):
     // reload it once the change is saved
     Connections {
         target: Config.options.appearance

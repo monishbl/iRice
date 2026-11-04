@@ -4,29 +4,29 @@ import Quickshell
 import Quickshell.Io
 import qs.common
 
-// Software Update's one button: iRice and the system together, in a safe
+// Software Update's one button: Tessera and the system together, in a safe
 // order. Nothing is checked on its own; Check for updates looks at:
-//   iRice    git fetch (IriceUpdate: what's new, conflicts to decide), and the
+//   Tessera    git fetch (TesseraUpdate: what's new, conflicts to decide), and the
 //            new version's compat.json (tested Hyprland) and packages.sh
 //   system   checkupdates, and yay/paru -Qua for the AUR (Updates)
-//   packages iRice's missing ones, and ones it dropped (a checkbox)
+//   packages Tessera's missing ones, and ones it dropped (a checkbox)
 // and makes one plan. Update runs it:
 //   1. the system part (sysupdate.py; one password, at the start, for
-//      everything as root): snapshot (snapper / timeshift on btrfs) → iRice's
+//      everything as root): snapshot (snapper / timeshift on btrfs) → Tessera's
 //      root helper when it changed → pacman -Syu [holding Hyprland back if
-//      you chose to] → iRice's missing packages → the dropped ones; then the
+//      you chose to] → Tessera's missing packages → the dropped ones; then the
 //      AUR (built as you; its pacman steps go through the same root part)
-//   2. iRice (IriceUpdate.launch → update-run.sh's screen): the new version,
+//   2. Tessera (TesseraUpdate.launch → update-run.sh's screen): the new version,
 //      rebuilt against what's now installed (the glass plugin too when
 //      Hyprland changed), and the shell restarts
-// System first, so iRice builds against the final versions; if it fails,
-// iRice isn't touched. Only one part when only one has changes.
+// System first, so Tessera builds against the final versions; if it fails,
+// Tessera isn't touched. Only one part when only one has changes.
 Singleton {
     id: root
 
     // ── Check ───────────────────────────────────────────────────────────
     property bool checked: false // a check finished (this session)
-    readonly property bool checking: IriceUpdate.checking || Updates.checking || IriceUpdate.packagesChecking || compatPending || compatProc.running || hyprProc.running || snapProc.running || helperProc.running
+    readonly property bool checking: TesseraUpdate.checking || Updates.checking || TesseraUpdate.packagesChecking || compatPending || compatProc.running || hyprProc.running || snapProc.running || helperProc.running
     onCheckingChanged: if (!checking && asked) {
         asked = false;
         checked = true;
@@ -38,18 +38,18 @@ Singleton {
         clearFinished();
         asked = true;
         hold = -1;
-        // This check's compat.json is read once the iRice check has said which
+        // This check's compat.json is read once the Tessera check has said which
         // version would be installed; until then the plan can't be trusted
         // (an old compat could let an untested Hyprland through unasked)
         compat = null;
         compatPending = true;
-        IriceUpdate.check(); // (fetches, then reads the new version's packages)
+        TesseraUpdate.check(); // (fetches, then reads the new version's packages)
         Updates.refresh();
         hyprProc.running = true;
         snapProc.running = true;
         helperProc.running = true;
     }
-    // A new check: the last run's result (Updated, iRice's notes) gives way
+    // A new check: the last run's result (Updated, Tessera's notes) gives way
     // to what's found now, instead of hiding it until Done. A restart that
     // run needed is still asked for.
     property bool restartPending: false
@@ -59,21 +59,21 @@ Singleton {
         if (Updates.job && Updates.job.state === "done" && Updates.job.restart)
             restartPending = true;
         Updates.dismiss();
-        IriceUpdate.dismissResult();
+        TesseraUpdate.dismissResult();
     }
 
     // The tested Hyprland range of the version that would be installed
     property var compat: null
     property bool compatPending: false // a check is waiting for its compat.json
     function readCompat() {
-        if (!compatPending || compatProc.running || IriceUpdate.checking)
+        if (!compatPending || compatProc.running || TesseraUpdate.checking)
             return;
-        const r = IriceUpdate.report;
+        const r = TesseraUpdate.report;
         compatProc.ref = r?.available ? (r.upstream ?? "HEAD") : "HEAD";
         compatProc.running = true;
     }
     Connections {
-        target: IriceUpdate
+        target: TesseraUpdate
         function onReportChanged() { root.readCompat(); }
         // (the report may not change, e.g. the same result or an error)
         function onCheckingChanged() { root.readCompat(); }
@@ -81,7 +81,7 @@ Singleton {
     Process {
         id: compatProc
         property string ref: "HEAD"
-        command: ["git", "-C", IriceUpdate.repo, "show", ref + ":compat.json"]
+        command: ["git", "-C", TesseraUpdate.repo, "show", ref + ":compat.json"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -108,13 +108,13 @@ Singleton {
         stdout: StdioCollector { onStreamFinished: root.snapshot = root.fakeRun ? "snapper" : text.trim() }
     }
 
-    // iRice's root helper (/usr/lib/irice) is missing or older than this
+    // Tessera's root helper (/usr/lib/tessera) is missing or older than this
     // folder's: the update's root part installs it (one password then,
-    // none for the small fixes afterwards), even when only iRice changes
+    // none for the small fixes afterwards), even when only Tessera changes
     property bool helperCurrent: true
-    // (against the version an iRice update would install: the update's root
+    // (against the version a Tessera update would install: the update's root
     // step installs the helper as that version has it)
-    readonly property string incoming: IriceUpdate.report?.available ? (IriceUpdate.report.upstream ?? "") : ""
+    readonly property string incoming: TesseraUpdate.report?.available ? (TesseraUpdate.report.upstream ?? "") : ""
     onIncomingChanged: if (!helperProc.running) helperProc.running = true
     Process {
         id: helperProc
@@ -138,7 +138,7 @@ Singleton {
     }
     readonly property var hyprUpdate: Updates.list.find(p => p.name === "hyprland") ?? null
     readonly property string hyprMax: compat?.hyprland?.max ?? ""
-    // The repo's Hyprland is newer than this iRice is tested with
+    // The repo's Hyprland is newer than this Tessera is tested with
     readonly property bool hyprTooNew: !!hyprUpdate && hyprMax !== "" && cmp(parts(hyprUpdate.to), parts(hyprMax)) > 0
     readonly property string hyprShort: hyprUpdate ? parts(hyprUpdate.to).slice(0, 2).join(".") : ""
     readonly property string hyprNow: hyprInstalled !== "" ? parts(hyprInstalled).slice(0, 2).join(".") : ""
@@ -196,9 +196,9 @@ Singleton {
     readonly property var plan: {
         const sysCount = Updates.list.filter(p => !held.includes(p.name)).length;
         const aurCount = Updates.aurList.filter(p => !held.includes(p.name)).length;
-        const pk = IriceUpdate.packages;
+        const pk = TesseraUpdate.packages;
         return {
-            irice: IriceUpdate.available,
+            tessera: TesseraUpdate.available,
             system: sysCount > 0 || root.fakeRun, // (the sandbox's simulated run can always be tried)
             aur: includeAur && aurCount > 0,
             install: pk.missing ?? [],
@@ -210,25 +210,25 @@ Singleton {
             aurCount: aurCount
         };
     }
-    readonly property bool anything: plan.irice || plan.system || plan.aur || plan.install.length > 0 || plan.remove.length > 0 || (plan.setup && !root.fakeRun)
-    readonly property int undecided: (plan.irice ? IriceUpdate.undecided : 0) + (hyprTooNew && hold === -1 ? 1 : 0)
-    readonly property bool canUpdate: checked && !checking && anything && undecided === 0 && !running && (IriceUpdate.allowed || fakeRun)
-    // The steps, for the progress view: the system job's, then iRice's
+    readonly property bool anything: plan.tessera || plan.system || plan.aur || plan.install.length > 0 || plan.remove.length > 0 || (plan.setup && !root.fakeRun)
+    readonly property int undecided: (plan.tessera ? TesseraUpdate.undecided : 0) + (hyprTooNew && hold === -1 ? 1 : 0)
+    readonly property bool canUpdate: checked && !checking && anything && undecided === 0 && !running && (TesseraUpdate.allowed || fakeRun)
+    // The steps, for the progress view: the system job's, then Tessera's
     readonly property var steps: {
         const s = (Updates.job?.steps ?? []).slice();
         const then = Updates.job?.then;
-        if (then?.irice || (then?.rebuild?.length ?? 0) > 0 || IriceUpdate.applying)
-            s.push("irice", "restart");
+        if (then?.tessera || (then?.rebuild?.length ?? 0) > 0 || TesseraUpdate.applying)
+            s.push("tessera", "restart");
         return s;
     }
-    readonly property string stepNow: IriceUpdate.applying ? "irice" : Updates.running ? (Updates.job?.step || "") : ""
+    readonly property string stepNow: TesseraUpdate.applying ? "tessera" : Updates.running ? (Updates.job?.step || "") : ""
     function stepName(s) {
-        return ({ snapshot: "Snapshot", setup: "Helper", system: "System", packages: "iRice packages", remove: "Unused packages", aur: "AUR", irice: "iRice", restart: "Restart" })[s] ?? s;
+        return ({ snapshot: "Snapshot", setup: "Helper", system: "System", packages: "Tessera packages", remove: "Unused packages", aur: "AUR", tessera: "Tessera", restart: "Restart" })[s] ?? s;
     }
 
     // ── Update ──────────────────────────────────────────────────────────
     readonly property bool fakeRun: Updates.fake
-    readonly property bool running: Updates.running || IriceUpdate.applying
+    readonly property bool running: Updates.running || TesseraUpdate.applying
     function update() {
         if (!canUpdate)
             return;
@@ -246,8 +246,8 @@ Singleton {
             args.push("--remove", p.remove.join(","));
         if (p.aur)
             args.push("--aur");
-        const after = { irice: p.irice, rebuild: p.rebuild, at: Date.now() / 1000 };
-        // (the root helper's setup rides along with an iRice update too, so
+        const after = { tessera: p.tessera, rebuild: p.rebuild, at: Date.now() / 1000 };
+        // (the root helper's setup rides along with a Tessera update too, so
         // its one password comes when you asked for an update)
         // (and an outdated helper on its own: what needs its newer jobs, like
         // sharing's ports, waits until it's installed)
@@ -259,25 +259,25 @@ Singleton {
         if (rootPart)
             Updates.update(args.concat(["--then", JSON.stringify(after)]));
         else
-            IriceUpdate.launch(after.rebuild);
+            TesseraUpdate.launch(after.rebuild);
     }
     function cancel() {
         Updates.cancel();
     }
 
-    // The system part finished: the iRice part (or not)
+    // The system part finished: the Tessera part (or not)
     Connections {
         target: Updates
         function onFinished(j) {
             root.checkUndo(); // (a new update to go back from, or one gone back from)
             const after = j.then;
-            if (j.state !== "done" || !after || !(after.irice || (after.rebuild ?? []).length > 0))
+            if (j.state !== "done" || !after || !(after.tessera || (after.rebuild ?? []).length > 0))
                 return;
             if (root.fakeRun) {
-                Quickshell.execDetached(["notify-send", "-a", "iRice", "Sandbox", "The iRice part would run now (update-run.sh: the update screen, rebuild " + ((after.rebuild ?? []).join(", ") || "nothing") + ", restart)."]);
+                Quickshell.execDetached(["notify-send", "-a", "Tessera", "Sandbox", "The Tessera part would run now (update-run.sh: the update screen, rebuild " + ((after.rebuild ?? []).join(", ") || "nothing") + ", restart)."]);
                 return;
             }
-            IriceUpdate.launch(after.rebuild ?? []);
+            TesseraUpdate.launch(after.rebuild ?? []);
         }
     }
 }

@@ -48,7 +48,7 @@ GATT_CHAR = "org.bluez.GattCharacteristic1"
 ADV = "org.bluez.LEAdvertisement1"
 ADV_MANAGER = "org.bluez.LEAdvertisingManager1"
 GATT_MANAGER = "org.bluez.GattManager1"
-ROOT = "/org/irice/quickshare"
+ROOT = "/org/tessera/quickshare"
 SERVICE_PATH = ROOT + "/service0"
 SLOT_PATH = SERVICE_PATH + "/char0"
 WRITE_PATH = SERVICE_PATH + "/char1"
@@ -312,8 +312,8 @@ class Bluetooth:
 
     def l2cap_psm(self):
         """The PSM phones can open an L2CAP channel on (listening from now
-        until unserve), or 0 without L2CAP (IRICE_QS_NO_L2CAP=1: GATT only)."""
-        if os.environ.get("IRICE_QS_NO_L2CAP") == "1":
+        until unserve), or 0 without L2CAP (TESSERA_QS_NO_L2CAP=1: GATT only)."""
+        if (os.environ.get("TESSERA_QS_NO_L2CAP") or os.environ.get("IRICE_QS_NO_L2CAP")) == "1":
             return 0
         if self.l2cap is None:
             self.l2cap = L2capServer(lambda transport: self.on_session(transport), lambda: self.slot_value, log=self._log)

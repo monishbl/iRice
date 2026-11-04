@@ -3,7 +3,7 @@
 
 Settings → Sharing and install.sh run this. The menu entry runs
 share-files.sh (next to this script) with the selected files, which opens
-iRice's share sheet with them. Only our own entry is ever written or
+Tessera's share sheet with them. Only our own entry is ever written or
 removed: a file manager's other menu items, and anything you added
 yourself, are left exactly as they were.
 
@@ -11,13 +11,14 @@ yourself, are left exactly as they were.
     file-manager-share.py install [names]   add the entry (all found, or just these)
     file-manager-share.py remove [names]    take it out again
 
-    Nautilus  ~/.local/share/nautilus-python/extensions/irice-share.py when
+    Nautilus  ~/.local/share/nautilus-python/extensions/tessera-share.py when
               nautilus-python is installed, else a Scripts entry
               (~/.local/share/nautilus/scripts/), which needs no extension
-    Dolphin   ~/.local/share/kio/servicemenus/irice-share.desktop
+    Dolphin   ~/.local/share/kio/servicemenus/tessera-share.desktop
     Thunar    an action in ~/.config/Thunar/uca.xml (merged, not replaced)
-    Nemo      ~/.local/share/nemo/actions/irice-share.nemo_action
+    Nemo      ~/.local/share/nemo/actions/tessera-share.nemo_action
 """
+import contextlib
 import json
 import os
 import shutil
@@ -28,23 +29,39 @@ from pathlib import Path
 
 LABEL = "Send to a nearby device…"
 SCRIPT = Path(__file__).resolve().parent / "share-files.sh"
-UCA_ID = "irice-share"  # our action's unique id in Thunar's uca.xml
+UCA_ID = "tessera-share"  # our action's unique id in Thunar's uca.xml
+OLD_UCA_ID = "irice-share"  # (its id while Tessera was called iRice)
 
 
-# The file managers' own folders. In the iRice login session (IRICE_TTY=1)
+# The file managers' own folders. In the Tessera login session (TESSERA_TTY=1)
 # the shell keeps its config and data apart (sandbox/tty-shell.sh), but the
 # apps it starts get the usual ones (Launch.qml leaves out XDG_*_HOME), so
 # that's where their menus go.
 def data_home():
-    if os.environ.get("IRICE_TTY") == "1":
+    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
         return Path.home() / ".local/share"
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
 
 
 def config_home():
-    if os.environ.get("IRICE_TTY") == "1":
+    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
         return Path.home() / ".config"
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+
+def renamed_menus():
+    """Menus written while Tessera was called iRice (irice-share…): written
+    again under Tessera's name, so a file manager never shows both."""
+    for k, m in MANAGERS.items():
+        olds = [p.with_name(p.name.replace("tessera-share", "irice-share")) for p in m["paths"]()]
+        olds = [p for p in olds if p.name.startswith("irice-share") and p.exists()]
+        if olds:
+            m["install"]()
+            for p in olds:
+                p.unlink()
+    with contextlib.suppress(SystemExit, OSError):
+        if uca_path().exists() and any((a.findtext("unique-id") or "") == OLD_UCA_ID for a in uca_load().getroot().findall("action")):
+            thunar_install()
 
 
 def move_old_menus():
@@ -92,24 +109,24 @@ def nautilus_python():
 # ── Each file manager: found, its files, how to add and remove ───────────
 
 def nautilus_paths():
-    return [data_home() / "nautilus-python/extensions/irice-share.py", data_home() / "nautilus/scripts" / LABEL]
+    return [data_home() / "nautilus-python/extensions/tessera-share.py", data_home() / "nautilus/scripts" / LABEL]
 
 
 def nautilus_install():
     ext, script = nautilus_paths()
     if nautilus_python():
-        write(ext, f'''# iRice: "{LABEL}" in Nautilus (file-manager-share.py installed this)
+        write(ext, f'''# Tessera: "{LABEL}" in Nautilus (file-manager-share.py installed this)
 import subprocess
 from gi.repository import GObject, Nautilus
 
 SCRIPT = {str(SCRIPT)!r}
 
 
-class IriceShare(GObject.GObject, Nautilus.MenuProvider):
+class TesseraShare(GObject.GObject, Nautilus.MenuProvider):
     def get_file_items(self, files):
         if not files:
             return []
-        item = Nautilus.MenuItem(name="IriceShare::send", label={LABEL!r})
+        item = Nautilus.MenuItem(name="TesseraShare::send", label={LABEL!r})
         item.connect("activate", lambda _item, fs=files: subprocess.Popen([SCRIPT] + [f.get_uri() for f in fs]))
         return [item]
 ''')
@@ -118,7 +135,7 @@ class IriceShare(GObject.GObject, Nautilus.MenuProvider):
     else:
         # Scripts menu: Nautilus hands the selection over as URIs, one per line
         write(script, f'''#!/usr/bin/env bash
-# iRice: send these to a nearby device (file-manager-share.py installed this)
+# Tessera: send these to a nearby device (file-manager-share.py installed this)
 mapfile -t uris <<< "$NAUTILUS_SCRIPT_SELECTED_URIS"
 exec {quoted(SCRIPT)} "${{uris[@]}}"
 ''', executable=True)
@@ -127,7 +144,7 @@ exec {quoted(SCRIPT)} "${{uris[@]}}"
 
 
 def dolphin_paths():
-    return [data_home() / "kio/servicemenus/irice-share.desktop"]
+    return [data_home() / "kio/servicemenus/tessera-share.desktop"]
 
 
 def dolphin_install():
@@ -147,7 +164,7 @@ Exec={quoted(SCRIPT)} %U
 
 
 def nemo_paths():
-    return [data_home() / "nemo/actions/irice-share.nemo_action"]
+    return [data_home() / "nemo/actions/tessera-share.nemo_action"]
 
 
 def nemo_install():
@@ -176,7 +193,7 @@ def uca_load():
 
 
 def uca_ours(tree):
-    return [a for a in tree.getroot().findall("action") if (a.findtext("unique-id") or "") == UCA_ID]
+    return [a for a in tree.getroot().findall("action") if (a.findtext("unique-id") or "") in (UCA_ID, OLD_UCA_ID)]
 
 
 def uca_save(tree):
@@ -253,6 +270,7 @@ def main(argv):
         return 2
     cmd, names = argv[0], argv[1:]
     move_old_menus()
+    renamed_menus()
     if cmd == "status":
         print(json.dumps(status()))
         return 0

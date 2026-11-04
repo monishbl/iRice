@@ -93,7 +93,7 @@ Singleton {
             return;
         }
         error = "";
-        wav = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice/dictation-" + Date.now() + ".wav";
+        wav = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera/dictation-" + Date.now() + ".wav";
         // (PipeWire's recorder, else PulseAudio's, else ALSA's: each stops cleanly on SIGINT)
         // (setpriv: the microphone is let go if the shell dies mid-dictation)
         recorder.command = ["setpriv", "--pdeathsig", "INT", "--", "sh", "-c", "umask 077; mkdir -p \"$(dirname \"$1\")\" || exit 1; "

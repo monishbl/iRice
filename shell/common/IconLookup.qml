@@ -8,15 +8,15 @@ import Quickshell.Io
 // icon showed as a pink and black box. This checks first, tries the usual
 // name variants, then falls back to a generic icon (or "", which draws
 // nothing, never a broken texture).
-// Names are looked up in iRice's own index of the icon theme first
-// (assets/scripts/icon-index.py, cached in ~/.cache/irice): Qt's theme lookup
+// Names are looked up in Tessera's own index of the icon theme first
+// (assets/scripts/icon-index.py, cached in ~/.cache/tessera): Qt's theme lookup
 // depends on the platform theme and desktop settings and can find nothing
 // (blank Downloads, Trash and file icons); file paths always load.
 Singleton {
     id: root
 
     readonly property string theme: Quickshell.env("QS_ICON_THEME") || "hicolor"
-    readonly property string cacheFile: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/irice/icon-index-" + theme + ".tsv"
+    readonly property string cacheFile: Paths.cache + "/icon-index-" + theme + ".tsv"
     property var index: ({}) // name -> file
     FileView {
         id: cache

@@ -2,18 +2,21 @@
 # distrobox shares the host PID namespace, so sandbox processes are identified by
 # their environment: only they run with XDG_RUNTIME_DIR=/tmp/irice-rt. Host
 # processes (e.g. the real end4 `qs -c ii`) can never match.
-# IRICE_ARENA=2, 3, … is another identical sandbox beside the first, with its
+# TESSERA_ARENA=2, 3, … is another identical sandbox beside the first, with its
 # own runtime folder (/tmp/irice-rt-N) and home (.sandbox/arena-N/home), so
 # checks can run side by side. 1 (the default) is the usual sandbox.
 
-IRICE_ARENA="${IRICE_ARENA:-1}"
-[[ "$IRICE_ARENA" =~ ^[1-9]$ ]] || { echo "IRICE_ARENA must be 1-9" >&2; exit 2; }
-if [[ "$IRICE_ARENA" == 1 ]]; then
-    IRICE_RT=/tmp/irice-rt
-    IRICE_HOME="$ROOT/.sandbox/home"
+# (IRICE_ARENA: its name before iRice became Tessera. The runtime folders,
+# /tmp/irice-rt*, and the headless IRICE-TEST output keep their names: every
+# checkout, from before the rename or after, shares the same arenas safely)
+TESSERA_ARENA="${TESSERA_ARENA:-${IRICE_ARENA:-1}}"
+[[ "$TESSERA_ARENA" =~ ^[1-9]$ ]] || { echo "TESSERA_ARENA must be 1-9" >&2; exit 2; }
+if [[ "$TESSERA_ARENA" == 1 ]]; then
+    TESSERA_RT=/tmp/irice-rt
+    TESSERA_HOME="$ROOT/.sandbox/home"
 else
-    IRICE_RT=/tmp/irice-rt-$IRICE_ARENA
-    IRICE_HOME="$ROOT/.sandbox/arena-$IRICE_ARENA/home"
+    TESSERA_RT=/tmp/irice-rt-$TESSERA_ARENA
+    TESSERA_HOME="$ROOT/.sandbox/arena-$TESSERA_ARENA/home"
 fi
 
 # PIDs of sandbox processes with the given executable name.
@@ -21,7 +24,7 @@ sandbox_pids() {
     local name="$1" pid
     for pid in $(pgrep -x "$name"); do
         # Unreadable environ (host processes, from inside the container) = not ours.
-        if { tr '\0' '\n' <"/proc/$pid/environ"; } 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$IRICE_RT"; then
+        if { tr '\0' '\n' <"/proc/$pid/environ"; } 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$TESSERA_RT"; then
             echo "$pid"
         fi
     done
@@ -37,9 +40,9 @@ stop_sandbox_apps() {
     for pid in $(pgrep -u "$(id -u)"); do
         [[ $pid == "$$" || $pid == "$PPID" ]] && continue
         case "$(cat "/proc/$pid/comm" 2>/dev/null)" in
-            Hyprland | start-hyprland | irice-shell | qs | quickshell | "") continue ;;
+            Hyprland | start-hyprland | tessera-shell | irice-shell | qs | quickshell | "") continue ;;
         esac
-        grep -qzx "XDG_RUNTIME_DIR=$IRICE_RT" "/proc/$pid/environ" 2>/dev/null && pids+=" $pid"
+        grep -qzx "XDG_RUNTIME_DIR=$TESSERA_RT" "/proc/$pid/environ" 2>/dev/null && pids+=" $pid"
     done
     [[ -z "$pids" ]] && return 0
     kill $pids 2>/dev/null || true
@@ -55,8 +58,8 @@ stop_sandbox_apps() {
 stop_sandbox_shells() {
     local pids
     # (not the look-switching or update screens: they cover the restart)
-    pids="$(for p in $(sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell); do
-        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/irice-look\.' -e '/irice-update\.' || echo "$p"
+    pids="$(for p in $(sandbox_pids tessera-shell; sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell); do
+        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/tessera-look\.' -e '/tessera-update\.' || echo "$p"
     done)"
     [[ -z "$pids" ]] && return 0
     kill $pids 2>/dev/null || true

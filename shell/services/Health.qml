@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.common
 
 // System health (Settings → About → System health): whether the services
-// iRice uses actually answer, through assets/scripts/health-check.py. Only
+// Tessera uses actually answer, through assets/scripts/health-check.py. Only
 // checked when asked (the page opening, Check again, Spotlight), never in
 // the background. A broken check says how to fix it; restarting a user
 // service can be done from the page.
@@ -23,7 +23,7 @@ Singleton {
     property string fixing: "" // the check whose fix is running
     property string error: ""
     readonly property var attention: checks.filter(c => c.status === "fail" || c.status === "warn")
-    readonly property var groups: ["Sound", "Network & sharing", "Power", "Desktop", "iRice itself"]
+    readonly property var groups: ["Sound", "Network & sharing", "Power", "Desktop", "Tessera itself"]
 
     function args() {
         return ["--polkit", polkit].concat(Google.connected ? ["--google"] : []);

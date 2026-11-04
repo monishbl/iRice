@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.common
 
-// Things also running that do iRice's job twice (assets/scripts/conflicts.py):
+// Things also running that do Tessera's job twice (assets/scripts/conflicts.py):
 // another notification daemon, another bar or shell, a second hypridle or
 // clipboard recorder, user services that start those. Looked at once, 10 s
 // after the shell starts (once the session's autostart has settled), and
@@ -74,7 +74,7 @@ Singleton {
             kind: "custom",
             icon: "warning",
             title: title.charAt(0).toUpperCase() + title.slice(1),
-            subtitle: list.length === 1 ? list[0].short : running.length > 0 ? "Also running, doing what iRice does" : "Start with your session, doing what iRice does",
+            subtitle: list.length === 1 ? list[0].short : running.length > 0 ? "Also running, doing what Tessera does" : "Start with your session, doing what Tessera does",
             color: Theme.accents.orange,
             action: "Review",
             onAction: () => root.review(),

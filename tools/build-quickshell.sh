@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds iRice its own Quickshell (a release, against your current Qt) into
-# ~/.local/share/irice/quickshell, and iRice uses it from then on. For when the
+# Builds Tessera its own Quickshell (a release, against your current Qt) into
+# ~/.local/share/tessera/quickshell, and Tessera uses it from then on. For when the
 # system's Quickshell is pinned by another setup (end4's dots pin an older
 # commit) and is out of step with Qt after an update ("built against Qt X but
 # the system has Qt Y ... likely to cause crashes"). Nothing system-wide
@@ -8,7 +8,10 @@
 #   tools/build-quickshell.sh [version]     (default v0.3.2)
 set -euo pipefail
 VER="${1:-v0.3.2}"
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}/irice"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# (iRice's folders, from before it became Tessera, move over first: never both)
+python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" || true
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/tessera"
 SRC="$DATA/build/quickshell"
 PREFIX="$DATA/quickshell"
 for c in git cmake ninja; do command -v "$c" >/dev/null || { echo "Needs $c (sudo pacman -S --needed git cmake ninja)"; exit 1; }; done
@@ -21,7 +24,7 @@ if [[ "$(git -C "$SRC" describe --tags --exact-match 2>/dev/null)" != "$VER" ]];
 fi
 cmake -S "$SRC" -B "$SRC/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" -DINSTALL_QML_PREFIX=lib/qt6/qml \
-    -DDISTRIBUTOR="iRice (local build)" -DDISTRIBUTOR_DEBUGINFO_AVAILABLE=NO
+    -DDISTRIBUTOR="Tessera (local build)" -DDISTRIBUTOR_DEBUGINFO_AVAILABLE=NO
 nice -n 10 cmake --build "$SRC/build"
 # Install into a staging copy of the real path (Quickshell's install writes
 # absolute paths, so --prefix can't redirect it), then swap it in whole: the
@@ -35,4 +38,4 @@ rm -rf "$PREFIX.old"
 mv "$STAGE$PREFIX" "$PREFIX"
 rm -rf "$PREFIX.old" "$STAGE"
 [[ -x "$PREFIX/bin/qs" && -d "$PREFIX/lib/qt6/qml/Quickshell" ]] || { echo "Install incomplete in $PREFIX"; exit 1; }
-echo "iRice now uses $("$PREFIX/bin/qs" --version | head -1) from $PREFIX (takes effect when the shell restarts: Super+Ctrl+Escape)."
+echo "Tessera now uses $("$PREFIX/bin/qs" --version | head -1) from $PREFIX (takes effect when the shell restarts: Super+Ctrl+Escape)."

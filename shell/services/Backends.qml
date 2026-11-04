@@ -6,7 +6,7 @@ import Quickshell.Bluetooth
 import Quickshell.Networking
 import qs.common
 
-// What this computer actually runs underneath iRice, so a feature whose
+// What this computer actually runs underneath Tessera, so a feature whose
 // backend isn't there says so (and how to fix it, where there's a fix)
 // instead of quietly not working (assets/scripts/system-stack.sh):
 //   - Wi-Fi: Quickshell.Networking only speaks NetworkManager; with iwd,
@@ -79,13 +79,13 @@ Singleton {
     readonly property string netManagerName: netNames[netManager] ?? ""
     readonly property bool hasWifiHardware: (found.wifi_iface ?? "") !== ""
     readonly property bool wifiLinkUp: found.wifi_up === "1"
-    // iRice's Wi-Fi menus can't work: the reason, else ""
+    // Tessera's Wi-Fi menus can't work: the reason, else ""
     readonly property bool wifiUnmanaged: ready && !nmActive
-    readonly property string wifiTitle: !wifiUnmanaged ? "" : netManager === "networkmanager" ? "Restart iRice for Wi-Fi" : netManagerName !== "" ? "Wi-Fi is managed by " + netManagerName : "No network service is running"
+    readonly property string wifiTitle: !wifiUnmanaged ? "" : netManager === "networkmanager" ? "Restart Tessera for Wi-Fi" : netManagerName !== "" ? "Wi-Fi is managed by " + netManagerName : "No network service is running"
     readonly property string wifiReason: !wifiUnmanaged ? ""
-        : netManager === "networkmanager" ? "NetworkManager started after iRice did. Restart iRice (Settings → About) to use its Wi-Fi menus."
-        : netManagerName !== "" ? "iRice's Wi-Fi menus need NetworkManager. Use " + (wifiApp !== "" ? wifiAppName : netManagerName + "'s own tools") + " to choose a network."
-        : nmInstalled ? "iRice's Wi-Fi menus need NetworkManager, which is installed but not running." : "iRice's Wi-Fi menus need NetworkManager. Install networkmanager, or set up another network service."
+        : netManager === "networkmanager" ? "NetworkManager started after Tessera did. Restart Tessera (Settings → About) to use its Wi-Fi menus."
+        : netManagerName !== "" ? "Tessera's Wi-Fi menus need NetworkManager. Use " + (wifiApp !== "" ? wifiAppName : netManagerName + "'s own tools") + " to choose a network."
+        : nmInstalled ? "Tessera's Wi-Fi menus need NetworkManager, which is installed but not running." : "Tessera's Wi-Fi menus need NetworkManager. Install networkmanager, or set up another network service."
     readonly property string wifiShort: !wifiUnmanaged ? "" : netManagerName !== "" && netManager !== "networkmanager" ? "Managed by " + netManagerName : "Needs NetworkManager"
     readonly property bool nmInstalled: found.nm_installed === "1"
     // NetworkManager is installed, nothing else runs: it can just be started
@@ -115,7 +115,7 @@ Singleton {
     // Short, for a tile or a disabled row: "Managed by TLP" | "Needs power-profiles-daemon"
     readonly property string powerShort: ppd ? "" : powerDaemon !== "" ? "Managed by " + powerDaemonName : "Needs power-profiles-daemon"
     readonly property string powerReason: ppd ? ""
-        : powerDaemon !== "" ? powerDaemonName + " manages power on this computer, so iRice doesn't switch energy modes. Change them in " + powerDaemonName + "'s own settings."
+        : powerDaemon !== "" ? powerDaemonName + " manages power on this computer, so Tessera doesn't switch energy modes. Change them in " + powerDaemonName + "'s own settings."
         : ppdInstalled ? "Energy modes need power-profiles-daemon, which is turned off for good (masked). sudo systemctl unmask power-profiles-daemon turns it back on."
         : "Energy modes need power-profiles-daemon. Install power-profiles-daemon to use Low Power and Performance."
 
@@ -168,7 +168,7 @@ Singleton {
                 return;
             }
             btFixing = true;
-            Health.fix("bluetooth"); // systemctl enable --now bluetooth, through iRice's root helper
+            Health.fix("bluetooth"); // systemctl enable --now bluetooth, through Tessera's root helper
         } else if (btFix === "unblock") {
             btFixing = true;
             unblock.running = true;

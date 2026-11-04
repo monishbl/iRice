@@ -1,7 +1,7 @@
 """Quick Share transfers end to end, over real sockets on 127.0.0.1.
 
 A stand-in phone (quickshare_peer.py, written from the protocol side)
-sends to iRice's receiver and receives from iRice's sender: accepting,
+sends to Tessera's receiver and receives from Tessera's sender: accepting,
 declining, cancelling halfway, hostile file names, name clashes and a file
 large enough to span many chunks.
 """

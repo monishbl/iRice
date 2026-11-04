@@ -255,7 +255,7 @@ GlassWindow {
             send(s.path);
             return;
         }
-        const tmp = runtime + "/irice-markup.png";
+        const tmp = runtime + "/tessera-markup.png";
         flattenTo(tmp, ok => ok ? send(tmp) : fail("copy", "Couldn't copy the screenshot", "There wasn't room to prepare the image. Free some memory, then try again."));
     }
 
@@ -269,7 +269,7 @@ GlassWindow {
         }
         // The edited image, under the screenshot's name, for the recipient
         busy = "share";
-        const dir = runtime + "/irice-share";
+        const dir = runtime + "/tessera-share";
         const file = dir + "/" + baseName(s.path);
         job(["mkdir", "-p", dir], code => {
             if (code !== 0)

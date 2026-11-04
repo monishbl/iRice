@@ -40,7 +40,7 @@ Column {
             status: "Checking your account…", sync: "Syncing Calendar and Tasks…",
             signin: page.accounts.length > 0 ? "Connecting your account…" : "Sign in to Google in your browser, then come back here…",
             connectDesktop: "Connecting your account…", connect: "Sign in to Google in your browser, then come back here…",
-            configure: "Importing the client…", disconnect: "Disconnecting…", forget: "Removing iRice's copy of your account data…",
+            configure: "Importing the client…", disconnect: "Disconnecting…", forget: "Removing Tessera's copy of your account data…",
             eventAdd: "Adding the event…", eventInsert: "Adding the event…", eventPatch: "Saving the event…", eventDelete: "Deleting the event…",
             taskAdd: "Adding the task…", taskUpdate: "Saving the task…", taskDelete: "Deleting the task…", flush: "Sending your changes to Google…"
         })[Google.operation] ?? "Working…"
@@ -52,8 +52,8 @@ Column {
             : Google.busy ? page.working
             : Google.outbox > 0 ? (Google.outbox === 1 ? "1 change is" : Google.outbox + " changes are") + " waiting to reach Google. They're sent when you're back online."
             : Google.connected ? "Calendar and Tasks sync when you sign in, unlock, or open Notification Center, and every 15 minutes while you use the computer. Only changes are fetched."
-            : page.canSignIn || page.accounts.length > 0 ? "Your password stays with Google: iRice uses the account through GNOME Online Accounts and never sees it."
-            : "Connecting from here needs iRice's native helpers (Software Update builds them). Until then, add your Google account in Online Accounts, then come back."
+            : page.canSignIn || page.accounts.length > 0 ? "Your password stays with Google: Tessera uses the account through GNOME Online Accounts and never sees it."
+            : "Connecting from here needs Tessera's native helpers (Software Update builds them). Until then, add your Google account in Online Accounts, then come back."
 
         // Connected accounts, each on its own
         Repeater {
@@ -208,11 +208,11 @@ Column {
             }
         }
         // Advanced: your own OAuth client instead of Online Accounts, and
-        // removing iRice's copy without reaching Google
+        // removing Tessera's copy without reaching Google
         Group {
             width: parent.width
             title: "Advanced"
-            footer: page.advanced ? "A Desktop app OAuth client from your own Google Cloud project, with the Calendar and Tasks APIs enabled. iRice keeps its tokens privately on this computer." : ""
+            footer: page.advanced ? "A Desktop app OAuth client from your own Google Cloud project, with the Calendar and Tasks APIs enabled. Tessera keeps its tokens privately on this computer." : ""
             Row {
                 label: "Use your own OAuth client"
                 detail: "Instead of GNOME Online Accounts"
@@ -243,7 +243,7 @@ Column {
                 Row {
                     id: forget
                     required property var modelData
-                    label: "Remove iRice's copy" + (Google.accounts.length > 1 ? " of " + modelData.identity : "")
+                    label: "Remove Tessera's copy" + (Google.accounts.length > 1 ? " of " + modelData.identity : "")
                     detail: "Deletes the synced data and unsent changes on this computer without contacting Google (for when you're offline)"
                     SettingsButton { text: "Remove local data"; enabled: !Google.busy; onClicked: Google.run({ cmd: "forget", account: forget.modelData.id }) }
                 }

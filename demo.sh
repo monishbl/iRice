@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Show iRice for real, on its own console, without touching your desktop.
+# Show Tessera for real, on its own console, without touching your desktop.
 #
 #   ./demo.sh           from a text console: checks, then starts the demo
 #   ./demo.sh --check   only the checks (works from anywhere; rehearse with it)
 #
 # How: switch to a free console (Ctrl+Alt+F3), log in, cd to this folder and
-# run ./demo.sh. It starts a real Hyprland session with iRice (the same one as
-# ./dev.sh tty: your own ~/.config is never used or changed; iRice keeps its
+# run ./demo.sh. It starts a real Hyprland session with Tessera (the same one as
+# ./dev.sh tty: your own ~/.config is never used or changed; Tessera keeps its
 # settings in .sandbox/home), then a track starts playing and a few
 # notifications arrive. Super+Shift+Escape ends it; then go back to your
 # desktop with Ctrl+Alt+F1 or F2 (whichever it's on).
@@ -21,7 +21,7 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$1"; WARN=$((WARN + 1)); }
 bad() { printf '  \033[31m✗\033[0m %s\n' "$1"; FAIL=$((FAIL + 1)); }
 FAIL=0 WARN=0
 
-echo "iRice demo: checking…"
+echo "Tessera demo: checking…"
 
 # Hyprland, and the glass plugin built for this version
 if command -v Hyprland >/dev/null && command -v start-hyprland >/dev/null; then
@@ -30,18 +30,18 @@ if command -v Hyprland >/dev/null && command -v start-hyprland >/dev/null; then
 else
     bad "Hyprland isn't installed (needs Hyprland and start-hyprland)"
 fi
-so="$ROOT/hypr/plugin/irice-glass/irice-glass.so"
+so="$ROOT/hypr/plugin/tessera-glass/tessera-glass.so"
 if [[ ! -f "$so" ]]; then
-    bad "Glass plugin isn't built: run  make -C hypr/plugin/irice-glass  (needs the Hyprland headers)"
+    bad "Glass plugin isn't built: run  make -C hypr/plugin/tessera-glass  (needs the Hyprland headers)"
 elif [[ -f /usr/include/hyprland/src/version.h && "$so" -ot /usr/include/hyprland/src/version.h ]]; then
-    warn "Glass plugin is older than your Hyprland: rebuild with  make -C hypr/plugin/irice-glass  (glass falls back to frosted otherwise)"
+    warn "Glass plugin is older than your Hyprland: rebuild with  make -C hypr/plugin/tessera-glass  (glass falls back to frosted otherwise)"
 else
     ok "Glass plugin built"
 fi
 
-# Quickshell: iRice's own build, or the system one
-if [[ -x "$HOME/.local/share/irice/quickshell/bin/qs" ]]; then
-    ok "Quickshell (iRice build)"
+# Quickshell: Tessera's own build, or the system one
+if [[ -x "$HOME/.local/share/tessera/quickshell/bin/qs" || -x "$HOME/.local/share/irice/quickshell/bin/qs" ]]; then
+    ok "Quickshell (Tessera build)"
 elif command -v qs >/dev/null; then
     ok "Quickshell ($(qs --version 2>/dev/null | head -1))"
 else
@@ -54,7 +54,7 @@ grep -qi '^Inter' <<<"$fonts" && ok "Inter font" || warn "Inter font missing: te
 grep -qi 'emoji' <<<"$fonts" && ok "Emoji font" || warn "No colour emoji font (noto-fonts-emoji)"
 command -v notify-send >/dev/null && ok "notify-send" || warn "notify-send missing: no demo notifications"
 python3 -c 'import gi' 2>/dev/null && ok "Now Playing demo track (python-gobject)" || warn "python-gobject missing: no demo track"
-[[ -f "$ROOT/.sandbox/home/.config/irice/config.json" ]] && ok "Settings (from .sandbox/home)" || warn "No saved settings yet: iRice starts with its defaults"
+[[ -f "$ROOT/.sandbox/home/.config/tessera/config.json" ]] && ok "Settings (from .sandbox/home)" || warn "No saved settings yet: Tessera starts with its defaults"
 
 # Power
 if bat=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | head -1) && [[ -n "$bat" ]]; then
@@ -85,7 +85,7 @@ fi
 
 cat <<'EOF'
 
-Starting iRice. In the demo:
+Starting Tessera. In the demo:
   Super+Space          Search               Alt+Tab               switch windows
   Super+Alt+C          Quick Settings       Click the menu bar    Wi-Fi, battery, Now Playing
   Super+.              Emoji picker         Super+Return          terminal
@@ -96,7 +96,7 @@ sleep 3
 # The nested dev sandbox shares the settings: stop it first
 "$ROOT/dev.sh" status 2>/dev/null | grep -q running && "$ROOT/dev.sh" down >/dev/null 2>&1
 
-export IRICE_ROOT="$ROOT" IRICE_DEMO=1
+export TESSERA_ROOT="$ROOT" TESSERA_DEMO=1
 export HYPRLAND_NO_SD_VARS=1 # don't touch the user systemd your usual desktop shares (sandbox/hypr/tty.lua)
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN GEMINI_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY
 dbus-run-session -- start-hyprland -- --config "$ROOT/sandbox/hypr/tty.lua"
@@ -104,7 +104,7 @@ code=$?
 
 # Anything the demo started that outlived the session
 for p in $(pgrep -f "sandbox/demo-extras.sh|sandbox/tools/fakeplayer.py"); do
-    tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "IRICE_DEMO=1" && kill "$p" 2>/dev/null
+    tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx -e "TESSERA_DEMO=1" -e "IRICE_DEMO=1" && kill "$p" 2>/dev/null
 done
 
 echo

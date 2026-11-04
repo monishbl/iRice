@@ -47,7 +47,7 @@ function lidAction(onAc, externalDisplays, cfg, caffeine) {
     const act = onAc && externalDisplays > 0 ? (cfg.lidExternal ?? "nothing") : ((onAc ? cfg.lidAc : cfg.lidBattery) ?? "sleep");
     return caffeine && act === "sleep" ? (cfg.lidCaffeine ?? "lock") : act;
 }
-// iRice only takes the lid over from logind (an inhibitor) when some setting
+// Tessera only takes the lid over from logind (an inhibitor) when some setting
 // isn't logind's own default: sleep, except docked; or Caffeine is on and
 // keeps it awake
 function lidNeedsInhibit(cfg, caffeine) {

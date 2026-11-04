@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iCloud and Microsoft 365 for iRice (services/CloudAccounts.qml): one
+"""iCloud and Microsoft 365 for Tessera (services/CloudAccounts.qml): one
 request per run, JSON on stdin, one JSON line out (the accounts' state, and
 an "error" when something went wrong).
 
@@ -13,7 +13,7 @@ an "error" when something went wrong).
     changed: change those on the iPhone.
   Microsoft 365: Outlook calendars and Microsoft To Do over Microsoft Graph,
     signed in through GNOME Online Accounts (its Microsoft 365 account:
-    calendars and tasks read/write), so iRice never holds a password or a
+    calendars and tasks read/write), so Tessera never holds a password or a
     refresh token. Graph repeats events itself (calendarView); occurrences
     of a series are shown, not changed.
 
@@ -29,7 +29,7 @@ Requests: {"cmd": "status"} | {"cmd": "sync"} |
   fields: {title, start, end (ms), allDay, location, notes} for events;
   {text, done, date ("yyyy-mm-dd" or "")} for tasks.
 
-What's kept (0600 in a 0700 directory, $XDG_STATE_HOME/irice/cloud):
+What's kept (0600 in a 0700 directory, $XDG_STATE_HOME/tessera/cloud):
 accounts.json (who, never secrets) and cache.json (the last sync).
 No third-party dependencies.
 """
@@ -49,6 +49,13 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
+
+def app_dir(base):
+    """Tessera's folder under base, or iRice's while it hasn't been moved yet
+    (the shell moves it as it starts: migrate-names.py)."""
+    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
+    return old if not os.path.exists(new) and os.path.isdir(old) else new
+
 ICLOUD = "https://caldav.icloud.com/"
 ICLOUD_CARD = "https://contacts.icloud.com/"
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -67,7 +74,7 @@ class Offline(Failed):
 
 def state_dir():
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    d = os.path.join(base, "irice", "cloud")
+    d = os.path.join(app_dir(base), "cloud")
     os.makedirs(d, mode=0o700, exist_ok=True)
     return d
 
@@ -91,11 +98,11 @@ def write(name, value):
 
 # ── Secrets: the keyring (secret-tool) ──────────────────────────────────
 class Secrets:
-    """The Secret Service through secret-tool. (IRICE_CLOUD_SECRET_FILE, a
+    """The Secret Service through secret-tool. (TESSERA_CLOUD_SECRET_FILE, a
     JSON file instead, is for the tests only.)"""
 
     def __init__(self):
-        self.file = os.environ.get("IRICE_CLOUD_SECRET_FILE")
+        self.file = os.environ.get("TESSERA_CLOUD_SECRET_FILE")
 
     def _load(self):
         try:
@@ -111,7 +118,7 @@ class Secrets:
             with open(self.file, "w") as f:
                 json.dump(d, f)
             return
-        r = subprocess.run(["secret-tool", "store", "--label", f"iRice: iCloud ({account})", "service", "irice-icloud",
+        r = subprocess.run(["secret-tool", "store", "--label", f"Tessera: iCloud ({account})", "service", "tessera-icloud",
                             "account", account], input=secret, text=True, capture_output=True, timeout=60)
         if r.returncode != 0:
             raise Failed("Couldn't save the password in your keyring. Check that a keyring (GNOME Keyring or KWallet) is running.")
@@ -119,9 +126,13 @@ class Secrets:
     def lookup(self, account):
         if self.file:
             return self._load().get(account)
-        r = subprocess.run(["secret-tool", "lookup", "service", "irice-icloud", "account", account],
-                           capture_output=True, text=True, timeout=60)
-        return r.stdout if r.returncode == 0 and r.stdout else None
+        # (irice-icloud: kept while Tessera was called iRice)
+        for service in ("tessera-icloud", "irice-icloud"):
+            r = subprocess.run(["secret-tool", "lookup", "service", service, "account", account],
+                               capture_output=True, text=True, timeout=60)
+            if r.returncode == 0 and r.stdout:
+                return r.stdout
+        return None
 
     def clear(self, account):
         if self.file:
@@ -130,8 +141,9 @@ class Secrets:
             with open(self.file, "w") as f:
                 json.dump(d, f)
             return
-        subprocess.run(["secret-tool", "clear", "service", "irice-icloud", "account", account],
-                       capture_output=True, timeout=60)
+        for service in ("tessera-icloud", "irice-icloud"):
+            subprocess.run(["secret-tool", "clear", "service", service, "account", account],
+                           capture_output=True, timeout=60)
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
@@ -207,7 +219,7 @@ def new_ics(uid, fields):
     end = fields.get("end") or fields["start"]
     if fields.get("allDay") and end <= fields["start"]:
         end = fields["start"] + 86400000
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//iRice//Calendar//EN", "BEGIN:VEVENT", "UID:" + uid,
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tessera//Calendar//EN", "BEGIN:VEVENT", "UID:" + uid,
              "DTSTAMP:" + now, "CREATED:" + now, "LAST-MODIFIED:" + now,
              "DTSTART" + ics_time(fields["start"], fields.get("allDay")), "DTEND" + ics_time(end, fields.get("allDay")),
              "SUMMARY:" + ics_escape(fields.get("title", ""))]
@@ -453,7 +465,7 @@ class OnlineAccounts:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
             return bus.call_sync(self.name, path, interface, method, None, None, Gio.DBusCallFlags.NONE, 30000, None).unpack()
         except Exception:
-            raise Failed("Online Accounts can't give iRice access now. Sign in to Microsoft 365 again in Settings.") from None
+            raise Failed("Online Accounts can't give Tessera access now. Sign in to Microsoft 365 again in Settings.") from None
 
     def access(self, path):
         self.call(path, self.name + ".Account", "EnsureCredentials")
@@ -772,7 +784,7 @@ def main():
     except Failed as e:
         out["error"] = str(e)
     except (KeyError, TypeError) as e:
-        out["error"] = f"iRice sent an incomplete request ({e})."
+        out["error"] = f"Tessera sent an incomplete request ({e})."
     except Exception as e:  # noqa: BLE001 (the shell always gets an answer)
         out["error"] = f"Something went wrong: {e}"
     out.update(hub.state(), cmd=cmd)

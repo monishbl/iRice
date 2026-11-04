@@ -13,7 +13,7 @@ Column {
 
     Group {
         width: parent.width
-        Row { label: "iRice"; Text { text: "1.0"; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
+        Row { label: "Tessera"; Text { text: "1.0"; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "System"; Text { text: SystemInfo.osName; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row { label: "Computer name"; Text { text: SystemInfo.hostname; color: Theme.color.secondary; font { family: Theme.font.family; pixelSize: Theme.font.body } } }
         Row {
@@ -35,7 +35,7 @@ Column {
         SubpageLink {
             icon: "heartbeat"
             label: "System health"
-            detail: "Whether the services iRice uses are working, and how to fix them"
+            detail: "Whether the services Tessera uses are working, and how to fix them"
             value: Health.checks.length === 0 ? "" : Health.attention.length === 0 ? "All good" : Health.attention.length + " to check"
             page: "about/health"
         }
@@ -48,13 +48,13 @@ Column {
         SubpageLink {
             icon: "bug"
             label: "Report a Bug"
-            detail: "Tell iRice what went wrong, with what helps fix it"
+            detail: "Tell Tessera what went wrong, with what helps fix it"
             page: "about/bugreport"
         }
     }
     Group {
         width: parent.width
-        footer: "Settings live in ~/.config/irice/config.json and apply as you change them."
+        footer: "Settings live in ~/.config/tessera/config.json and apply as you change them."
         Row {
             label: "Welcome screen"
             detail: "Pick the look, light or dark, and a wallpaper again"
@@ -128,7 +128,7 @@ Column {
             });
         }
         function choose() {
-            FilePicker.pick({ title: "Choose an iRice settings file", start: "~/Documents", filter: "iRice settings|*.irice" }, file => {
+            FilePicker.pick({ title: "Choose a Tessera settings file", start: "~/Documents", filter: "Tessera settings|*.tessera *.irice" }, file => {
                 status = "Reading…";
                 pending = null;
                 run(["inspect", file], out => {
@@ -178,7 +178,7 @@ Column {
 
         Row {
             label: "Back up"
-            detail: "Saves “iRice settings " + Qt.formatDate(new Date(), "yyyy-MM-dd") + ".irice” in a folder you choose"
+            detail: "Saves “Tessera settings " + Qt.formatDate(new Date(), "yyyy-MM-dd") + ".tessera” in a folder you choose"
             PageButton { text: "Back Up Settings…"; enabled: !backup.busy; onClicked: backup.backUp() }
         }
         Row {

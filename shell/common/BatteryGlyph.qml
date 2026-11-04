@@ -103,7 +103,7 @@ Canvas {
                 ctx.fillText(text, cx, cy + 0.5);
             }
             if (mark !== "") {
-                ctx.font = markSize + "px 'iRice Symbols'";
+                ctx.font = markSize + "px 'Tessera Symbols'";
                 ctx.fillStyle = charging || plugged ? fillColor : color;
                 ctx.fillText(Symbols.glyphs[mark] ?? "", w + 1 + nubW + 2 + markSize / 2, cy);
             }

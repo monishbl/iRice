@@ -1,10 +1,10 @@
 # Roadmap
 
-How iRice covers each end4 (illogical-impulse) feature, and what's left.
+How Tessera covers each end4 (illogical-impulse) feature, and what's left.
 
 ## Foundation
 - [x] Nested sandbox with a headless test output (`./dev.sh`)
-- [x] Design tokens, persisted config (`~/.config/irice/config.json`, live-reloaded)
+- [x] Design tokens, persisted config (`~/.config/tessera/config.json`, live-reloaded)
 - [x] Liquid glass shader: wallpaper refraction, specular rim, dispersion, soft shadow
 - [x] Frosted tier (compositor blur via `BackgroundEffect.blurRegion`) and `auto` (liquid over wallpaper, frosted over windows)
 - [x] About This Computer
@@ -13,7 +13,7 @@ How iRice covers each end4 (illogical-impulse) feature, and what's left.
 - [x] Performance: lazy panels, shared baked backdrop, 4 always-on windows per screen, ~0.1% idle CPU
 - [x] Wallpaper accent extraction → "wallpaper" accent in Settings
 
-## Shell (end4 equivalent → iRice)
+## Shell (end4 equivalent → Tessera)
 - [x] Bar → menu bar (system menu, app name, status items, clock)
 - [x] Dock → glass dock with magnification, running dots, launch bounce
 - [x] Right sidebar toggles/sliders → Control Center
@@ -79,7 +79,7 @@ Done:
 - [x] Super+Shift+S screenshot of an area
 - [x] Sandbox virtual pointer for real hover/click tests
 
-- [x] Hyprland glass plugin (irice-glass): Liquid / Frosted / Solid presets, Lens setting (Thin / Depth / Auto), Frosted fallback without it
+- [x] Hyprland glass plugin (tessera-glass): Liquid / Frosted / Solid presets, Lens setting (Thin / Depth / Auto), Frosted fallback without it
 - [x] Window controls drawn by the plugin; benchmarked against hyprbars and the shell pill (all within noise; only the plugin keeps up with moving windows)
 - [x] Dynamic island: space dots, compact live activity, expanding events, hover card; resources only when tight; optional HUD
 - [x] Tahoe Control Center layout with Edit Controls (add, remove, resize, drag)

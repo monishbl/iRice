@@ -65,7 +65,7 @@ FAKE_NMCLI = textwrap.dedent(r'''
 
 class WifiEnterprise(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="irice-wifi-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="tessera-wifi-")
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
         (root / "bin").mkdir()
@@ -80,7 +80,7 @@ class WifiEnterprise(unittest.TestCase):
         self.bundle = root / "bundle.crt"
         self.bundle.write_text("-----BEGIN CERTIFICATE-----\n")
         self.env = dict(os.environ, PATH=f"{root / 'bin'}:{os.environ['PATH']}", FAKE_NM_STATE=str(self.state), XDG_RUNTIME_DIR=str(self.runtime),
-                        IRICE_CA_BUNDLE=str(self.bundle))
+                        TESSERA_CA_BUNDLE=str(self.bundle))
 
     def run_script(self, *args, request=None, **env):
         e = dict(self.env, **env)
@@ -116,7 +116,7 @@ class WifiEnterprise(unittest.TestCase):
 
     def test_system_certificates_without_a_bundle_file(self):
         req = {"ssid": "eduroam", "security": "enterprise", "eap": "peap", "identity": "me", "password": "p", "ca": "system"}
-        r, out = self.run_script("join", request=req, IRICE_CA_BUNDLE="none")
+        r, out = self.run_script("join", request=req, TESSERA_CA_BUNDLE="none")
         stdin = [c for c in self.calls() if c["argv"][:2] == ["connection", "edit"]][0]["stdin"]
         self.assertIn("set 802-1x.system-ca-certs yes", stdin)
 

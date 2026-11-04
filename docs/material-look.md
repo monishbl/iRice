@@ -22,7 +22,7 @@ Second round of decisions (same day):
 - **Settings** in Material: Android two-pane (a list with tonal circle icons
   and a pill on the current page; a headline, a search pill, Expressive
   segmented lists).
-- **Switching** looks shows a screen: the iRice mark morphs from a glass
+- **Switching** looks shows a screen: the Tessera mark morphs from a glass
   squircle through Material's shapes into a cookie (or back) over the
   blurred wallpaper while the shell restyles out of sight.
 - **Pickers:** live preview cards (`common/LookPreview.qml`) at the top of
@@ -46,20 +46,20 @@ and switched live; it broke Control Center on real hardware and was reverted
 - **`material/`** holds only the Material look's own files, in the same
   layout as `shell/`: its look switch (`common/Look.js`, which makes
   `Theme.material` true), its entry point (`shell.qml`, which starts the
-  same `shell/IriceShell.qml`), the panels it still redesigns
+  same `shell/TesseraShell.qml`), the panels it still redesigns
   (`modules/`), fonts, sounds, wallpapers. The Theme, controls, surfaces
   and services are one set of files in `shell/` that branch on
   `Theme.material`; with it the one Theme answers with Material's colour
   roles (`Theme.m3`), type, shapes and motion.
 - **The Material root** is assembled at every start by
   `shell/assets/scripts/material-root.py` into
-  `$XDG_CACHE_HOME/irice/material-shell`: a link for every file of
+  `$XDG_CACHE_HOME/tessera/material-shell`: a link for every file of
   `shell/`, except where `material/` has its own. Quickshell resolves
   `qs.common` inside the root it runs, so a Glass file used unchanged picks
   up the Material Theme. Services and settings data are the same files.
 - **Starting:** `launch-shell.sh` reads `appearance.look` and starts the
   Glass folder or the Material root (whatever the arguments named), marks the
-  shell `IRICE_SHELL=1`, and for Material starts a guard: no lock screen
+  shell `TESSERA_SHELL=1`, and for Material starts a guard: no lock screen
   answering within 20 s (or the shell quits first) → back to Glass, with a
   notification. A broken Material can't leave you without a shell.
 - **Switching** restarts the shell: `switch-look.sh` shows a separate
@@ -75,12 +75,12 @@ and switched live; it broke Control Center on real hardware and was reverted
   GreeterSurface.qml` in the Android 17 lock style), text (ly's) or plain.
   The greeter can't read your home, so `services/LoginScreen.qml` sends the
   style, the look, light or dark, the seed and the clock to
-  `/usr/share/irice/greeter.json` (irice-root login-look), and
+  `/usr/share/tessera/greeter.json` (tessera-root login-look), and
   `assets/scripts/greeter-start.sh` turns that into the greeter's own
   config.json, assembling the Material root from the login screen's copies
   of shell/ and material/ (which every update's setup refreshes). A login
   screen that won't start gives way to the text one.
-- **Not in v2 yet:** the irice-glass plugin's Material window controls are
+- **Not in v2 yet:** the tessera-glass plugin's Material window controls are
   left out.
 - **Lesson kept:** Material's pull is 0, and Glass's ElasticPull divides by
   it (0/0 → NaN → a pressed panel never drew again). Material has its own

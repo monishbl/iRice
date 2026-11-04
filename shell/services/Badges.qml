@@ -45,7 +45,7 @@ Singleton {
         counts = c;
         pending = null;
     }
-    // From irice-events (services/Events), already as values
+    // From tessera-events (services/Events), already as values
     EventWatch {
         source: "unity"
     }
@@ -62,7 +62,7 @@ Singleton {
             root.flush();
         }
     }
-    // (without irice-events)
+    // (without tessera-events)
     KeptProcess {
         id: monitor
         wanted: Tools.has("dbus-monitor") && Events.fallsBack("unity")

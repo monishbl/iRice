@@ -2,7 +2,7 @@
 # Your keyboard layout as the system has it (localectl: what the console and
 # login screens use), written as Hyprland Lua. hyprland.lua loads it after
 # its "us" default; custom.lua still wins over it. Run by install.sh (into
-# ~/.config/hypr/irice) and tools/setup-tty.sh (for the test session).
+# ~/.config/hypr/tessera) and tools/setup-tty.sh (for the test session).
 #   tools/keyboard-lua.sh <file>   writes it, or removes it when no layout is set;
 #                                  prints what it did
 set -uo pipefail
@@ -31,7 +31,7 @@ fields="kb_layout = \"$layout\""
 [[ -n "$options" ]] && fields+=", kb_options = \"$options\""
 mkdir -p "$(dirname "$out")"
 cat >"$out.tmp" <<LUA
--- Written by iRice from your system's keyboard layout (localectl status); it's
+-- Written by Tessera from your system's keyboard layout (localectl status); it's
 -- written again each time the installer runs. To change it: localectl
 -- set-x11-keymap <layout> [model] [variant] [options], or set kb_layout in
 -- ~/.config/hypr/custom.lua, which wins over this.

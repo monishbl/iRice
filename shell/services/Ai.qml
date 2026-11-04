@@ -32,7 +32,7 @@ Singleton {
         target: Config
         function onReadyChanged() { root.migrateModels(); root.migratePrompt(); root.startHistory(); }
     }
-    // A whole system prompt from before (it replaced iRice's own) becomes the
+    // A whole system prompt from before (it replaced Tessera's own) becomes the
     // person's note, unless it was the old default
     readonly property string oldDefaultPrompt: "You are a helpful assistant in a Linux desktop sidebar (Hyprland). Be concise and direct. Use Markdown: short paragraphs, lists where they help, and fenced code blocks for commands or code."
     function migratePrompt() {
@@ -731,7 +731,7 @@ Singleton {
         x.send(JSON.stringify(req.body));
     }
 
-    // Every request carries iRice's system prompt (AiPrompt.js): the
+    // Every request carries Tessera's system prompt (AiPrompt.js): the
     // person's style and note go inside it, never in its place
     function buildRequest(m, turns, opts) {
         const credential = AiKeys.get(ModelConfig.credentialProvider(m), m.key);

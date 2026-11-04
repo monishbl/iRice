@@ -14,26 +14,26 @@ class StartupTests(unittest.TestCase):
     def test_tap_has_explicit_release_for_real_and_nested_modifier(self):
         script=r'''
 local root, mod = arg[1], arg[2]
-IRICE_MOD=mod
-IRICE_HYPR_DIR=root .. '/hypr/irice'
-IRICE_USER_DIR='/nonexistent-irice-test-config'
+TESSERA_MOD=mod
+TESSERA_HYPR_DIR=root .. '/hypr/tessera'
+TESSERA_USER_DIR='/nonexistent-tessera-test-config'
 local records={}
 hl={dsp=setmetatable({}, {__index=function(_, key) return function(...) return {kind=key,args={...}} end end}),
  bind=function(keys,action,opts) table.insert(records,{keys=keys,action=action,opts=opts}) end}
-dofile(root .. '/hypr/irice/keybinds.lua')
+dofile(root .. '/hypr/tessera/keybinds.lua')
 local press, release, cancel, overview = false,false,false,false
 for _,r in ipairs(records) do
  if type(r.action)=='table' and r.action.kind=='global' then
   local name=r.action.args[1]
-  if name=='irice:superTap' and r.opts.release then
+  if name=='tessera:superTap' and r.opts.release then
    assert(r.keys==(mod=='SUPER' and 'Super_L' or 'Alt_L'))
    assert(r.opts.ignore_mods and r.opts.non_consuming)
    release=true
-  elseif name=='irice:superTap' then
+  elseif name=='tessera:superTap' then
    assert(r.keys==(mod=='SUPER' and 'Super_L' or 'Alt_L'), 'tap press must match the pre-modifier keydown mask')
    press=true
-  elseif name=='irice:superTapCancel' then cancel=true
-  elseif name=='irice:overview' then overview=true end
+  elseif name=='tessera:superTapCancel' then cancel=true
+  elseif name=='tessera:overview' then overview=true end
  end
 end
 assert(press and release and cancel)
@@ -50,7 +50,7 @@ if mod=='SUPER' then assert(overview) end
             p=Path(d); (p/'bin').mkdir()
             (p/'bin/qs').write_text('#!/bin/sh\nprintf "%s" "$QT_QPA_PLATFORMTHEME"\n')
             (p/'bin/qs').chmod(0o755)
-            env=dict(os.environ, HOME=d, XDG_CONFIG_HOME=str(p/'config'), XDG_DATA_HOME=str(p/'data'), PATH=str(p/'bin')+':'+os.environ['PATH'], IRICE_SANDBOX='1', IRICE_TTY='0')
+            env=dict(os.environ, HOME=d, XDG_CONFIG_HOME=str(p/'config'), XDG_DATA_HOME=str(p/'data'), PATH=str(p/'bin')+':'+os.environ['PATH'], TESSERA_SANDBOX='1', TESSERA_TTY='0')
             for supplied, expected in [('', 'kde'), ('qt6ct', 'qt6ct')]:
                 env['QT_QPA_PLATFORMTHEME']=supplied
                 result=subprocess.run(['bash',str(ROOT/'shell/assets/scripts/launch-shell.sh')],env=env,capture_output=True,text=True,timeout=8)

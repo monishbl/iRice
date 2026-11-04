@@ -45,9 +45,9 @@ Singleton {
         return (m.transform ?? 0) % 2 ? { x: m.x, y: m.y, w: h, h: w } : { x: m.x, y: m.y, w: w, h: h };
     }
     // (the sandbox's own test output counts there, so hotplug can be tried)
-    readonly property bool sandbox: Quickshell.env("IRICE_SANDBOX") === "1"
+    readonly property bool sandbox: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
     function ignored(name) {
-        return !name || /^HEADLESS/.test(name) || (/^IRICE-/.test(name) && !sandbox);
+        return !name || /^HEADLESS/.test(name) || (/^TESSERA-/.test(name) && !sandbox);
     }
     // Reduced motion: no travel (the effect fades, windows just come over)
     readonly property bool still: Config.ready && Config.options.appearance.reduceMotion === true

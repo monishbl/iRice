@@ -1,7 +1,7 @@
 """Back up and restore settings (settings-backup.py): what leaves the computer
 (no keys, accounts or displays), what restore keeps (this computer's own),
 paths moved to the new home, bundled wallpapers found in this install, the
-Undo copy, and files that aren't iRice's refused."""
+Undo copy, and files that aren't Tessera's refused."""
 import importlib.util
 import io
 import json
@@ -36,7 +36,7 @@ class Backup(unittest.TestCase):
         (self.shell / "assets/wallpapers/tahoe-dusk.jpg").write_bytes(b"jpg")
         (self.root / "install/material/assets/wallpapers").mkdir(parents=True)
         (self.root / "install/material/assets/wallpapers/material-dark.jpg").write_bytes(b"jpg")
-        self.config = self.home / ".config/irice"
+        self.config = self.home / ".config/tessera"
         self.config.mkdir(parents=True)
         self.out = self.root / "out"
         self.out.mkdir()
@@ -68,7 +68,7 @@ class Backup(unittest.TestCase):
             "ai": {"models": [json.dumps({"id": "m", "apiKey": "SECRET-2", "name": "Mine"}), "not json"], "extraModels": [{"key": "SECRET-3"}]},
         })
         f = self.sb.export(str(self.out), str(self.config))
-        self.assertTrue(os.path.basename(f).startswith("iRice settings "))
+        self.assertTrue(os.path.basename(f).startswith("Tessera settings "))
         self.assertEqual(os.stat(f).st_mode & 0o777, 0o600)
         m = self.members(f)
         self.assertNotIn(b"SECRET", b"".join(m.values()))
@@ -82,14 +82,14 @@ class Backup(unittest.TestCase):
         self.assertNotEqual(self.sb.export(str(self.out), str(self.config)), f)
 
     def make_backup(self, config, home="/home/olduser", focus=None, keybinds=None, pictures=None, extra=None):
-        manifest = {"app": "iRice", "format": 1, "created": "2026-11-03T10:00:00", "home": home, "wallpapers": pictures or {}}
+        manifest = {"app": "Tessera", "format": 1, "created": "2026-11-03T10:00:00", "home": home, "wallpapers": pictures or {}}
         files = {"manifest.json": json.dumps(manifest).encode(), "config.json": json.dumps(config).encode()}
         if focus is not None:
             files["focus.json"] = json.dumps(focus).encode()
         if keybinds is not None:
             files["keybinds.json"] = json.dumps(keybinds).encode()
         files.update(extra or {})
-        p = self.root / "b.irice"
+        p = self.root / "b.tessera"
         with tarfile.open(p, "w:gz") as t:
             for n, d in files.items():
                 i = tarfile.TarInfo(n)
@@ -151,7 +151,7 @@ class Backup(unittest.TestCase):
         self.assertEqual(self.read("config.json")["appearance"]["look"], "glass")
         self.assertEqual(len(os.listdir(self.config / "backups")), 1)
 
-    def test_files_that_arent_irices_are_refused(self):
+    def test_files_that_arent_tesseras_are_refused(self):
         self.write("config.json", {"keep": 1})
         bad = [
             {"../evil": b"x"},
@@ -164,9 +164,9 @@ class Backup(unittest.TestCase):
             with self.assertRaises(self.sb.Refused):
                 self.sb.restore(b, str(self.config), str(self.shell))
         # A link inside
-        p = self.root / "link.irice"
+        p = self.root / "link.tessera"
         with tarfile.open(p, "w:gz") as t:
-            for n, d in (("manifest.json", json.dumps({"app": "iRice", "format": 1}).encode()), ("config.json", b"{}")):
+            for n, d in (("manifest.json", json.dumps({"app": "Tessera", "format": 1}).encode()), ("config.json", b"{}")):
                 i = tarfile.TarInfo(n)
                 i.size = len(d)
                 t.addfile(i, io.BytesIO(d))
@@ -177,15 +177,15 @@ class Backup(unittest.TestCase):
         with self.assertRaises(self.sb.Refused):
             self.sb.restore(str(p), str(self.config), str(self.shell))
         # Not an archive; a newer format
-        (self.root / "x.irice").write_text("hello")
+        (self.root / "x.tessera").write_text("hello")
         with self.assertRaises(self.sb.Refused):
-            self.sb.unpack(str(self.root / "x.irice"))
+            self.sb.unpack(str(self.root / "x.tessera"))
         b = self.make_backup({})
         with tarfile.open(b, "r:gz"):
             pass
-        newer = self.root / "n.irice"
+        newer = self.root / "n.tessera"
         with tarfile.open(newer, "w:gz") as t:
-            d = json.dumps({"app": "iRice", "format": 99}).encode()
+            d = json.dumps({"app": "Tessera", "format": 99}).encode()
             i = tarfile.TarInfo("manifest.json")
             i.size = len(d)
             t.addfile(i, io.BytesIO(d))
@@ -212,7 +212,7 @@ class Backup(unittest.TestCase):
         self.write("config.json", {})
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            code = self.sb.main(["inspect", str(self.root / "missing.irice")])
+            code = self.sb.main(["inspect", str(self.root / "missing.tessera")])
         self.assertEqual(code, 1)
         out = json.loads(buf.getvalue())
         self.assertFalse(out["ok"])

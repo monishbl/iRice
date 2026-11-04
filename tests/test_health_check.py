@@ -59,7 +59,7 @@ elif name == "busctl":
     elif "GetConnectionUnixProcessID" in args: print("u " + os.environ.get("FAKE_SHELL_PID", "1"))
     else: sys.exit(1)
 elif name == "hyprctl":
-    if "irice-glass" in args: print("irice-glass " + os.environ.get("FAKE_PLUGIN", "4"))
+    if "tessera-glass" in args: print("tessera-glass " + os.environ.get("FAKE_PLUGIN", "4"))
     elif "version" in args: print('{"tag": "' + os.environ.get("FAKE_HYPR", "v0.56.2") + '"}')
 elif name == "qs":
     print("Quickshell " + os.environ.get("FAKE_QS", "0.3.2") + " (revision x)")
@@ -68,7 +68,7 @@ else:
 '''
 COMMANDS = ["pkexec", "pactl", "pw-cli", "systemctl", "nmcli", "busctl", "pgrep", "hyprctl", "qs", "cliphist", "gpu-screen-recorder", "wf-recorder"]
 SCHEMA = {"id": str, "name": str, "group": str, "status": str, "detail": str, "fix": str, "canFix": bool, "fixRoot": bool, "fixCommand": str}
-GROUPS = {"Sound", "Network & sharing", "Power", "Desktop", "iRice itself"}
+GROUPS = {"Sound", "Network & sharing", "Power", "Desktop", "Tessera itself"}
 
 
 class HealthCheck(unittest.TestCase):
@@ -87,7 +87,7 @@ class HealthCheck(unittest.TestCase):
         (self.home / ".local/state").mkdir(parents=True)
         self.log = d / "calls"
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(self.home), XDG_STATE_HOME=str(self.home / ".local/state"),
-                        XDG_RUNTIME_DIR=str(d), IRICE_SYSTEM_ROOT=str(d / "root"), FAKE_MODE="ok", FAKE_SHELL_PID="4242", FAKE_LOG=str(self.log))
+                        XDG_RUNTIME_DIR=str(d), TESSERA_SYSTEM_ROOT=str(d / "root"), FAKE_MODE="ok", FAKE_SHELL_PID="4242", FAKE_LOG=str(self.log))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -175,33 +175,33 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(self.rows(FAKE_QS="0.3.3")["quickshell"]["status"], "ok")  # newer than the minimum
         old = self.rows(FAKE_QS="0.2.1")["quickshell"]
         self.assertEqual(old["status"], "warn")
-        self.assertIn("older than iRice needs", old["detail"])
+        self.assertIn("older than Tessera needs", old["detail"])
         self.assertIn("tools/build-quickshell.sh", old["fix"])  # (Software Update doesn't build it)
         self.assertNotIn("Software Update", old["fix"])
-        # iRice's own build, out of step with this iRice: rebuild it
-        own = self.home / ".local/share/irice/quickshell/bin/qs"
+        # Tessera's own build, out of step with this Tessera: rebuild it
+        own = self.home / ".local/share/tessera/quickshell/bin/qs"
         own.parent.mkdir(parents=True)
         own.symlink_to(self.bin / "fake")
         r = self.rows(FAKE_QS="0.3.1")["quickshell"]
         self.assertEqual(r["status"], "warn")
         self.assertIn("Rebuild it", r["fix"])
-        self.assertEqual(self.rows()["quickshell"]["detail"], "0.3.2 (iRice's own build)")
+        self.assertEqual(self.rows()["quickshell"]["detail"], "0.3.2 (Tessera's own build)")
 
     def test_a_hyprland_newer_than_tested_says_so(self):
         r = self.rows(FAKE_HYPR="v0.57.0")["hyprland"]
         self.assertEqual(r["status"], "warn")
-        self.assertIn("newer than iRice is tested with (0.56.x)", r["detail"])
+        self.assertIn("newer than Tessera is tested with (0.56.x)", r["detail"])
         self.assertIn("older than", self.rows(FAKE_HYPR="v0.55.1")["hyprland"]["detail"])
 
     def test_an_installed_shell_reads_compat_from_the_recorded_source(self):
         # (an installed copy has no compat.json next to it: the installer's
-        # record of where iRice came from leads to it)
-        shell = self.home / ".config/quickshell/irice/assets/scripts"
+        # record of where Tessera came from leads to it)
+        shell = self.home / ".config/quickshell/tessera/assets/scripts"
         shell.mkdir(parents=True)
-        for name in ("health-check.py", "sharing-check.py", "irice-root.py", "bug-report.py"):
+        for name in ("health-check.py", "sharing-check.py", "tessera-root.py", "bug-report.py"):
             (shell / name).write_text((SCRIPT.parent / name).read_text())
-        (self.home / ".local/share/irice").mkdir(parents=True)
-        (self.home / ".local/share/irice/source").write_text(str(ROOT) + "\n")
+        (self.home / ".local/share/tessera").mkdir(parents=True)
+        (self.home / ".local/share/tessera/source").write_text(str(ROOT) + "\n")
         out = subprocess.run([sys.executable, "-I", str(shell / "health-check.py"), "--shell-pid", "4242"],
                              env=dict(self.env, FAKE_HYPR="v0.57.0"), capture_output=True, text=True, timeout=20)
         rows = {r["id"]: r for r in json.loads(out.stdout)}
@@ -211,7 +211,7 @@ class HealthCheck(unittest.TestCase):
         rows = self.rows(FAKE_DOWN="nmcli,busctl:ActiveProfile", FAKE_UNITS="iwd,wireplumber")
         nm = rows["networkmanager"]
         self.assertEqual(nm["status"], "off")
-        self.assertEqual(nm["detail"], "Network managed by iwd; iRice's Wi-Fi menus need NetworkManager")
+        self.assertEqual(nm["detail"], "Network managed by iwd; Tessera's Wi-Fi menus need NetworkManager")
         self.assertFalse(nm["canFix"])
         self.assertEqual(rows["profiles"]["status"], "fail")  # nothing else manages power: broken
         # NetworkManager turned on (over iwd) but not running: still broken, with its fix
@@ -261,7 +261,7 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(rows["btpairing"]["status"], "warn")
         self.assertIn("--noplugin=rap,vcp,micp,mcp,bass", rows["btpairing"]["fixCommand"])
         # The helper installed: the shell opens them while you're visible
-        helper = self.sysroot / "usr/lib/irice/irice-root"
+        helper = self.sysroot / "usr/lib/tessera/tessera-root"
         helper.parent.mkdir(parents=True)
         helper.write_text("#!/bin/sh\n")
         helper.chmod(0o755)
@@ -283,7 +283,7 @@ class HealthCheck(unittest.TestCase):
         self.assertTrue(self.log.read_text().rstrip().endswith(f"pkexec {helper} sharing-ports open localsend"))
         self.assertEqual(self.rows()["firewall"]["status"], "ok")
         (self.sysroot / "etc/systemd/system/bluetooth.service.d").mkdir(parents=True)
-        dropin = self.sysroot / "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"
+        dropin = self.sysroot / "etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf"
         # the first version left out only rap: phones still asked to pair
         dropin.write_text("[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap\n")
         self.assertEqual(self.rows()["btpairing"]["status"], "warn")
@@ -293,10 +293,10 @@ class HealthCheck(unittest.TestCase):
     def test_root_fixes_go_through_the_installed_helper(self):
         rows = self.rows(FAKE_MODE="fail")
         self.assertTrue(rows["avahi"]["fixPassword"])  # not installed yet: the password
-        helper = self.sysroot / "usr/lib/irice/irice-root"
+        helper = self.sysroot / "usr/lib/tessera/tessera-root"
         helper.parent.mkdir(parents=True)
         # (the installed helper is this folder's, as Software Update leaves it)
-        helper.write_bytes((ROOT / "shell/assets/scripts/irice-root.py").read_bytes())
+        helper.write_bytes((ROOT / "shell/assets/scripts/tessera-root.py").read_bytes())
         helper.chmod(0o755)
         rows = self.rows(FAKE_MODE="fail")
         self.assertTrue(rows["avahi"]["fixRoot"])  # (still confirmed first)

@@ -18,9 +18,9 @@ PanelWindow {
     // A password was refused (the field is already cleared): a style can shake
     signal refused
     // 24-hour time (Settings → Appearance), passed in by greeter-start.sh
-    readonly property bool h24: Quickshell.env("IRICE_GREETER_CLOCK24") === "1"
+    readonly property bool h24: Quickshell.env("TESSERA_GREETER_CLOCK24") === "1"
     color: "black"
-    WlrLayershell.namespace: "irice-greeter"
+    WlrLayershell.namespace: "tessera-greeter"
     WlrLayershell.layer: auth.mock ? WlrLayer.Overlay : WlrLayer.Top // (a preview covers the menu bar too)
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.keyboardFocus: primary ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -29,7 +29,7 @@ PanelWindow {
     readonly property var person: auth.users[auth.user] ?? null
     // The picture's name (AccountsService's), the typed one for "Other user…"
     readonly property string pictureName: auth.other ? "" : auth.userName
-    readonly property string wallpaper: Quickshell.env("IRICE_GREETER_WALLPAPER") || "/usr/share/irice/wallpaper.jpg"
+    readonly property string wallpaper: Quickshell.env("TESSERA_GREETER_WALLPAPER") || "/usr/share/tessera/wallpaper.jpg"
     property string powerChoice: ""
 
     function clearField() {

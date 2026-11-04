@@ -16,7 +16,7 @@ Text {
 
     readonly property string symbol: Theme.material ? (Symbols.glyphs[name] ?? "") : ""
     text: symbol !== "" ? symbol : (Phosphor.glyphs[name] ?? "")
-    font.family: symbol !== "" ? "iRice Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor"
+    font.family: symbol !== "" ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor"
     // (Material Symbols are drawn a little larger: their glyphs sit inside a
     // padded square, Phosphor's fill it)
     font.pixelSize: symbol !== "" ? Math.round(size * 1.2) : size

@@ -39,9 +39,11 @@ def merge(directory):
         if not isinstance(state, dict):
             os.replace(path, path.with_name('state.json.corrupt-' + time.strftime('%Y%m%d-%H%M%S')))
             state = {}
-        if not isinstance(state.get('_irice_revisions'), dict):
-            state['_irice_revisions'] = {}
-        revisions = state.setdefault('_irice_revisions', {})
+        if not isinstance(state.get('_tessera_revisions'), dict):
+            # (named _irice_revisions before iRice became Tessera)
+            old = state.pop('_irice_revisions', None)
+            state['_tessera_revisions'] = old if isinstance(old, dict) else {}
+        revisions = state.setdefault('_tessera_revisions', {})
         consumed = []
         for journal in pending.glob('*.json'):
             try:

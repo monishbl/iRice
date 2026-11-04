@@ -33,7 +33,7 @@ LazyLoader {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.namespace: "irice:shelf-zone"
+        WlrLayershell.namespace: "tessera:shelf-zone"
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         anchors.top: true
         margins.top: 4
