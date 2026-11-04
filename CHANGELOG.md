@@ -1,5 +1,14 @@
 # iRice changelog
 
+## Past chats in the AI sidebar · 2026-11-04
+
+- **New chat no longer throws the old one away.** Every chat is kept, and the clock beside the pencil shows them: grouped Pinned, Today, Yesterday, Previous 7 days and by month, each with when you last used it and its model, the open one marked. Click one to carry on where you left off (with its model, if you still have it); an answer still coming in the chat you're leaving is stopped and kept first. `/new` starts a new chat, as the pencil and `/clear` do.
+- **Search** finds chats by their title or anything said in them.
+- **Rename, Pin and Delete** from a chat's "…" button, a right-click or a long press. Rename happens in place (Enter keeps it, Esc cancels). Delete acts at once and offers **Undo** for 8 seconds; deleting the open chat starts a new one.
+- **By keyboard:** Up and Down move, Enter opens, Delete deletes, F2 renames, the Menu key opens the menu, typing searches, Escape goes back to the chat.
+- **What's saved, and where:** a chat is kept once you've sent something in it, as owner-only files in `~/.local/state/irice/ai-chats`. Pictures are never saved, only a note that there were some. Titles are your first question, cut to a line; no model is asked to write them. Your one chat from before becomes the first past chat.
+- **Settings → AI → Chat history:** turn **Keep chat history** off and nothing is saved (a chat is forgotten a minute after the sidebar closes, and the clock goes away); **Delete chats older than** 30 or 90 days, pinned chats always kept; **Delete all chats** asks first, saying how many, pinned ones included, since it can't be undone.
+
 ## App Drawer A–Z picks a whole letter · 2026-11-04
 
 - **Picking a letter on the A–Z index lights up all of its apps** and dims the rest, in both looks, so a letter near the end (where the list can't scroll any further) still shows what it picked. The letter stays marked on the index; pointing at an app of another letter, searching or switching views clears it.
