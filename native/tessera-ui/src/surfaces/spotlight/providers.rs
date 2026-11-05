@@ -13,14 +13,6 @@ use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::OnceLock;
 
-/// A program on $PATH (Tools.has)
-pub fn has(tool: &str) -> bool {
-    std::env::var("PATH").unwrap_or_default().split(':').filter(|d| !d.is_empty()).any(|d| {
-        let p = PathBuf::from(d).join(tool);
-        std::fs::metadata(&p).is_ok_and(|m| m.is_file())
-    })
-}
-
 fn shell_file(rel: &str) -> Option<PathBuf> {
     crate::services::apps::shell_file(rel)
 }
@@ -115,7 +107,7 @@ pub fn parse_definition(word: &str, json: &str) -> Definition {
 }
 
 pub fn define(word: &str) -> Definition {
-    let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{}", super::rank::url_encode(word));
+    let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{}", crate::surfaces::emoji::klipy::encode(word));
     let out = Command::new("curl").args(["-sf", "--max-time", "5", &url]).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
     parse_definition(word, &out)
 }

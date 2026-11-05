@@ -565,6 +565,12 @@ Singleton {
         if (f)
             f();
     }
+    // ">command" typed in the Rust search: query()'s own row runs it
+    function rustCommand(cmd) {
+        const r = query(">" + cmd)[0];
+        if (r && r.section === "Command")
+            r.run();
+    }
     function rustAction(title) {
         const a = actions.concat(castActions).find(x => x.title === title);
         if (a)

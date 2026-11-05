@@ -115,4 +115,6 @@ function run() {
     return out;
 }
 
-process.stdout.write(JSON.stringify(run(), null, 1) + "\n");
+// (one entry a line: small, and a change reads as a change)
+const out = run();
+process.stdout.write("{\n" + Object.keys(out).map(k => JSON.stringify(k) + ": [\n" + out[k].map(x => JSON.stringify(x)).join(",\n") + "\n]").join(",\n") + "\n}\n");

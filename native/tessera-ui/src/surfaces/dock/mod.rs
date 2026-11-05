@@ -133,7 +133,7 @@ fn trash_dir() -> PathBuf {
     data.join("Trash/files")
 }
 
-fn on_path(bin: &str) -> bool {
+pub(crate) fn on_path(bin: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }
 

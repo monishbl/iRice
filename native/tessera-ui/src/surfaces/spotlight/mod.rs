@@ -28,7 +28,12 @@
 //! - springs are Slint's spring() easing at the QML spring's feel, and the
 //!   rows' entrance is an eased stagger, not a spring each;
 //! - no tooltips on the field's buttons; Glass's Tab to the buttons is a
-//!   focus ring the panel draws (the field keeps the keyboard).
+//!   focus ring the panel draws (the field keeps the keyboard);
+//! - Material's loading row shows the shared Busy arc, not the QML's
+//!   morphing loading indicator.
+//! And one not Slint's: apps with exactly the same score keep the order of
+//! the desktop-file scan; Quickshell's list is in hash order (not the same
+//! from one run to the next), so such ties can come out in another order.
 
 pub mod layout;
 pub mod providers;
@@ -39,6 +44,7 @@ use crate::services::apps::Apps;
 use crate::services::hypr::Glass;
 use crate::services::icons::Icons;
 use crate::shell::{Command, Part};
+use crate::surfaces::shapes;
 use crate::theme;
 use crate::ui;
 use crate::wayland::{Spec, State, Surface};
@@ -177,24 +183,6 @@ pub fn sub_line(r: &Row, material: bool, card: bool) -> String {
         return body;
     }
     [body.as_str(), card_hint(r)].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" · ")
-}
-
-/// Material shapes the shared outlines lack (MaterialShapes.js' sunny and
-/// cookie12), as polar waves like src/surfaces/shapes.rs
-pub fn outline(name: &str) -> String {
-    let (n, a, r) = match name {
-        "sunny" => (8.0, 0.09, 45.0),
-        "cookie12" => (12.0, 0.05, 47.0),
-        other => return crate::surfaces::shapes::outline(other),
-    };
-    let mut d = String::new();
-    for i in 0..=180 {
-        let t = i as f64 / 180.0 * std::f64::consts::TAU;
-        let rr: f64 = r * (1.0 + a * (n * t).cos());
-        let (x, y) = (50.0 + rr * (t - std::f64::consts::FRAC_PI_2).cos(), 50.0 + rr * (t - std::f64::consts::FRAC_PI_2).sin());
-        d += &format!("{}{x:.2} {y:.2} ", if i == 0 { "M " } else { "L " });
-    }
-    d + "Z"
 }
 
 /// The shell's rows, from its extras line
@@ -440,9 +428,9 @@ impl Spotlight {
         ui.set_g_back(glyph("caret-left", m, false, false));
         ui.set_g_eye(glyph("eye", m, false, false));
         ui.set_g_spark(glyph("sparkle", false, true, false));
-        ui.set_cookie9(outline("cookie9").into());
-        ui.set_cookie12(outline("cookie12").into());
-        ui.set_sunny(outline("sunny").into());
+        ui.set_cookie9(shapes::outline("cookie9").into());
+        ui.set_cookie12(shapes::outline("cookie12").into());
+        ui.set_sunny(shapes::outline("sunny").into());
         ui.set_emoji_font(crate::surfaces::emoji::emoji_font(&st.shell.cfg, &[]).into());
         let t = ui.global::<ui::Theme>();
         let accent = t.get_accent();
@@ -454,12 +442,10 @@ impl Spotlight {
             ui.set_accent_tint(r("secondaryContainer"));
             ui.set_accent_ink(r("primary"));
         } else {
-            let white = slint::Color::from_rgb_u8(255, 255, 255);
             // (Theme.accentTint: the accent faintly in dark mode, a pale shade of it in light)
             let pale = slint::Color::from_argb_u8(230, mixc(accent.red(), 255, 0.8), mixc(accent.green(), 255, 0.8), mixc(accent.blue(), 255, 0.8));
             ui.set_accent_tint(if look.dark { accent.with_alpha(0.26) } else { pale });
             ui.set_accent_ink(accent);
-            let _ = white;
         }
         ui.set_scrim(t.get_m3_scrim());
         ui.set_glass_fill(glass_fill(st.shell.plugin, look.dark));
@@ -837,7 +823,7 @@ impl Spotlight {
                 }
             }
             Run::Url(u) => crate::shell::ask("launch.open", json!([u])),
-            Run::Terminal(c) => crate::shell::ask("launch.terminal", json!([c])),
+            Run::Terminal(c) => crate::shell::ask("search.command", json!([c])),
             Run::File(p) => crate::shell::ask("files.open", json!([p])),
             Run::Action(t) => crate::shell::ask("search.action", json!([t])),
             Run::Shell(k) => crate::shell::ask("search.run", json!([k])),
@@ -997,9 +983,9 @@ impl Part for Spotlight {
     fn start(&mut self, st: &mut State) {
         st.shell.want("apps");
         st.shell.want("icons");
-        self.qalc = providers::has("qalc");
-        self.plocate = providers::has("plocate");
-        self.rg = providers::has("rg");
+        self.qalc = crate::surfaces::dock::on_path("qalc");
+        self.plocate = crate::surfaces::dock::on_path("plocate");
+        self.rg = crate::surfaces::dock::on_path("rg");
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {
@@ -1348,12 +1334,5 @@ mod tests {
         assert_eq!(glass_fill(false, true).alpha(), (0.62f32 * 255.0).round() as u8);
         assert!(glass_fill(false, false).red() > 240);
     }
-
-    #[test]
-    fn shapes() {
-        for n in ["sunny", "cookie12", "cookie9"] {
-            let d = outline(n);
-            assert!(d.starts_with("M ") && d.ends_with('Z'), "{n}");
-        }
     }
 }

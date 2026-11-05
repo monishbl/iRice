@@ -173,9 +173,8 @@ Singleton {
             if (String(a[0] ?? "").startsWith("/"))
                 Files.open(String(a[0]));
             break;
-        case "launch.terminal":
-            if (String(a[0] ?? "") !== "")
-                Launch.terminal(["sh", "-c", String(a[0])], true);
+        case "search.command":
+            Search.rustCommand(String(a[0] ?? ""));
             break;
         default:
             console.warn("tessera-ui: no call " + name);

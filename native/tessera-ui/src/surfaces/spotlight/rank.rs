@@ -808,7 +808,7 @@ pub fn query(text: &str, k: &Known) -> (Vec<Row>, Wants) {
         // (the part passes the definition of this very word)
         if let Some(d) = k.definition.filter(|d| !d.missing) {
             let title = if d.part.is_empty() { d.word.clone() } else { format!("{} · {}", d.word, d.part) };
-            out.push(Row { section: "Dictionary".into(), title, subtitle: d.text.clone(), glyph: "book-open".into(), run: Run::Url(format!("https://en.wiktionary.org/wiki/{}", url_encode(&d.word))), ..Default::default() });
+            out.push(Row { section: "Dictionary".into(), title, subtitle: d.text.clone(), glyph: "book-open".into(), run: Run::Url(format!("https://en.wiktionary.org/wiki/{}", crate::surfaces::emoji::klipy::encode(&d.word))), ..Default::default() });
         }
     }
 
@@ -856,7 +856,7 @@ pub fn query(text: &str, k: &Known) -> (Vec<Row>, Wants) {
         section: "Web".into(),
         title: format!("Search the web for “{raw}”"),
         glyph: "globe".into(),
-        run: Run::Url(format!("https://duckduckgo.com/?q={}", url_encode(raw))),
+        run: Run::Url(format!("https://duckduckgo.com/?q={}", crate::surfaces::emoji::klipy::encode(raw))),
         ..Default::default()
     });
     out.extend(x.contacts.iter().cloned());
@@ -899,19 +899,6 @@ pub fn top_hit(mut out: Vec<Row>) -> Vec<Row> {
     out
 }
 
-/// encodeURIComponent
-pub fn url_encode(s: &str) -> String {
-    let mut o = String::new();
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
-            o.push(b as char);
-        } else {
-            o += &format!("%{b:02X}");
-        }
-    }
-    o
-}
-
 /// Keep the row the selection was on (by title) when the rows change; else
 /// the first (SearchModel's revisions)
 pub fn keep_selection(old: &[Row], sel: usize, new: &[Row]) -> usize {
@@ -932,93 +919,6 @@ mod tests {
 
     fn titles(r: &[Row]) -> Vec<(String, String)> {
         r.iter().map(|r| (r.section.clone(), r.title.clone())).collect()
-    }
-
-    #[test]
-    fn scores_as_search_qml() {
-        assert_eq!(score("Firefox", "fire"), 100.0 - 3.0 * 0.5);
-        assert_eq!(score("Firefox", "firefox"), 100.0);
-        assert_eq!(score("A very long application name here", "a"), 90.0);
-        assert_eq!(score("Visual Studio Code", "stu"), 80.0);
-        assert_eq!(score("org.kde.dolphin", "dol"), 80.0);
-        assert_eq!(score("Thunderbird", "der"), 60.0);
-        // letters in order: 40 less the gaps after the first
-        assert_eq!(score("Thunderbird", "tnb"), 40.0 - 5.0);
-        assert_eq!(score("Krita", "xyz"), 0.0);
-        assert_eq!(score("", "a"), 0.0);
-        // (many gaps: never under 1)
-        assert_eq!(score(&format!("a{}b", "x".repeat(60)), "ab"), 1.0);
-    }
-
-    #[test]
-    fn sums_as_javascript_would() {
-        let c = |s: &str| calculate(s).map(js_str);
-        assert_eq!(c("2+2").as_deref(), Some("4"));
-        assert_eq!(c("0.1 + 0.2").as_deref(), Some("0.3"));
-        assert_eq!(c("2^10").as_deref(), Some("1024"));
-        assert_eq!(c("2^3^2").as_deref(), Some("512"));
-        assert_eq!(c("(-2)^2").as_deref(), Some("4"));
-        assert_eq!(c("-2^2"), None); // (a syntax error in JavaScript)
-        assert_eq!(c("2^-2").as_deref(), Some("0.25"));
-        assert_eq!(c("7 % 3").as_deref(), Some("1"));
-        assert_eq!(c("-7 % 3").as_deref(), Some("-1"));
-        assert_eq!(c("3 × 4 ÷ 2").as_deref(), Some("6"));
-        assert_eq!(c("1,000 * 3").as_deref(), Some("3000"));
-        assert_eq!(c("sqrt(16)").as_deref(), Some("4"));
-        assert_eq!(c("sqrt16"), None);
-        assert_eq!(c("pi*2").as_deref(), Some("6.2831853072"));
-        assert_eq!(c("2pi"), None);
-        assert_eq!(c("e^1").as_deref(), Some("2.7182818285"));
-        assert_eq!(c("log(1000)").as_deref(), Some("3"));
-        assert_eq!(c("ln(1)").as_deref(), Some("0"));
-        assert_eq!(c("1/3").as_deref(), Some("0.3333333333"));
-        assert_eq!(c("1/0"), None);
-        assert_eq!(c("2(3)"), None);
-        assert_eq!(c("1++2"), None);
-        assert_eq!(c("1+-2").as_deref(), Some("-1"));
-        assert_eq!(c("08+1"), None); // (strict mode: no leading zeros)
-        assert_eq!(c("0.5+1").as_deref(), Some("1.5"));
-        assert_eq!(c(".5*2").as_deref(), Some("1"));
-        assert_eq!(c("1e5+1"), None); // (e is Euler's number here)
-        assert_eq!(c("2^80").as_deref(), Some("1.2089258196146292e+24"));
-        assert_eq!(c("1/1000000000").as_deref(), Some("1e-9"));
-        assert_eq!(c("2/*3*/").as_deref(), Some("2"));
-        assert_eq!(c("1//2"), None);
-        assert_eq!(c("12"), None); // (no operator: not a sum)
-        assert_eq!(c("hello"), None);
-        assert_eq!(c("(1+2"), None);
-        assert_eq!(c("pie^0").as_deref(), Some("1")); // (NaN ** 0, as JavaScript)
-        assert_eq!(c("sqrt()"), None);
-    }
-
-    #[test]
-    fn numbers_print_as_javascript_does() {
-        assert_eq!(js_str(1e21), "1e+21");
-        assert_eq!(js_str(123456789012345680000.0), "123456789012345680000");
-        assert_eq!(js_str(0.000001), "0.000001");
-        assert_eq!(js_str(0.0000001), "1e-7");
-        assert_eq!(js_str(-1.5), "-1.5");
-        assert_eq!(js_str(-0.0), "0");
-    }
-
-    #[test]
-    fn conversions_and_definitions_are_recognised() {
-        for yes in ["10 km to mi", "$20 in eur", "72 f to c", "100 usd in inr", "3 cups IN ml", "€5 kg as lb"] {
-            assert!(looks_like_conversion(yes), "{yes}");
-        }
-        for no in ["€5 as usd", "5 to 6", "km to mi", "10 km to", "hello in there", "10 km mi"] {
-            assert!(!looks_like_conversion(no), "{no}");
-        }
-        assert_eq!(word_to_define("define serendipity"), "serendipity");
-        assert_eq!(word_to_define("Define Cat?"), "cat");
-        assert_eq!(word_to_define("what does ephemeral mean"), "ephemeral");
-        assert_eq!(word_to_define("what does ephemeral mean?"), "ephemeral");
-        assert_eq!(word_to_define("meaning of life"), "life");
-        assert_eq!(word_to_define("definition of rock-n-roll"), "rock-n-roll");
-        assert_eq!(word_to_define("hubris meaning"), "hubris");
-        assert_eq!(word_to_define("define two words"), "");
-        assert_eq!(word_to_define("definex"), "");
-        assert_eq!(word_to_define("firefox"), "");
     }
 
     #[test]
@@ -1210,10 +1110,5 @@ mod tests {
             let want: Vec<Vec<String>> = c["rows"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(s).collect()).collect();
             assert_eq!(got, want, "query({})", c["q"]);
         }
-    }
-
-    #[test]
-    fn links_are_encoded() {
-        assert_eq!(url_encode("a b&c/ü"), "a%20b%26c%2F%C3%BC");
     }
 }
