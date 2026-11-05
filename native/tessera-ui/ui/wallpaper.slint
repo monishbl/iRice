@@ -187,13 +187,15 @@ export component WallpaperPicker inherits Window {
             height: root.height - 2 * m;
             opacity: progress;
             border-radius: Theme.radius-panel;
-            background: on-glass ? transparent : Theme.panel;
+            // (Material, see-through: its surface at the panel alpha, Theme.veil)
+            background: on-glass ? transparent : Theme.material ? Theme.panel.with-alpha(Theme.panel-alpha) : Theme.panel;
             border-width: Theme.material || on-glass ? 0 : 0.5px;
             border-color: Theme.separator;
             // (Glass.qml's shadow: Material's solid surface, glass a little lighter)
             drop-shadow-blur: 24px;
             drop-shadow-offset-y: 6px;
-            drop-shadow-color: Theme.material ? (Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
+            // (none in Material while see-through: Hyprland would blur it into a rim)
+            drop-shadow-color: Theme.material ? (Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
 
             title := Text {
                 x: 14px;
