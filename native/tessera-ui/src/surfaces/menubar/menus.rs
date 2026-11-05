@@ -252,6 +252,20 @@ pub fn width(rows: &[Row]) -> f32 {
     rows.iter().map(|r| r.text.chars().count() as f32 * 7.5 + if r.shortcut.is_empty() { 0.0 } else { 60.0 } + 48.0).fold(220.0, f32::max)
 }
 
+/// Material's menu width (MaterialMenu.qml's contentWidth: at least 232,
+/// room for each row's text, shortcut and tick)
+pub fn material_width(rows: &[Row]) -> f32 {
+    let checks = rows.iter().any(|r| r.checked == Some(true));
+    rows.iter()
+        .map(|r| {
+            r.text.encode_utf16().count() as f32 * 7.4
+                + if r.shortcut.is_empty() { 0.0 } else { r.shortcut.encode_utf16().count() as f32 * 7.0 + 28.0 }
+                + if checks { 28.0 } else { 0.0 }
+                + 40.0
+        })
+        .fold(232.0, f32::max)
+}
+
 /// Arrow keys: the next row that can be chosen, from `from` (-1: none yet)
 pub fn step(rows: &[Row], from: i32, d: i32) -> i32 {
     let n = rows.len() as i32;
@@ -266,10 +280,36 @@ pub fn step(rows: &[Row], from: i32, d: i32) -> i32 {
     from
 }
 
+/// Where the menu's panel sits on the screen (glass/Popover.qml): under its
+/// item's left edge (Material's 4 px further left, MaterialMenu), but never
+/// nearer a screen edge than the glass's shadow margin, 24
+pub fn panel_x(item_x: f32, panel_w: f32, screen_w: f32, material: bool) -> f32 {
+    let target = if material { item_x - 4.0 } else { item_x };
+    target.min(screen_w - panel_w - 24.0).max(24.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn material_menus_are_as_wide_as_the_qml_ones() {
+        let row = |t: &str, k: &str| Row { text: t.into(), shortcut: k.into(), separator: false, header: false, checked: None, enabled: true, tiles: Vec::new(), keep_open: false, action: Action::None };
+        assert_eq!(material_width(&[row("Sleep", "")]), 232.0);
+        // "Repair Shell" and its shortcut, as the system menu has them
+        let w = material_width(&[row("Repair Shell", "Super+Ctrl+Esc")]);
+        assert!((w - (12.0 * 7.4 + 14.0 * 7.0 + 28.0 + 40.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn menus_keep_off_the_screen_edges() {
+        // the system menu, at the bar's left: 24 in, as the QML one
+        assert_eq!(panel_x(8.0, 230.0, 1920.0, false), 24.0);
+        assert_eq!(panel_x(100.0, 230.0, 1920.0, false), 100.0);
+        assert_eq!(panel_x(100.0, 230.0, 1920.0, true), 96.0);
+        assert_eq!(panel_x(1800.0, 230.0, 1920.0, false), 1666.0);
+    }
 
     #[test]
     fn shortcuts_in_each_style() {

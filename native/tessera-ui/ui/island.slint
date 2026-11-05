@@ -6,7 +6,38 @@
 // a gradient, its album art isn't faded at the edges, and the alerts' glyphs
 // pop in without their ripples, shakes and flips.)
 
-import { Theme, Icon } from "theme.slint";
+import { Theme } from "theme.slint";
+
+// The Material look's icons: a Material Symbol where the shell has one for
+// the Phosphor glyph (common/Icon.qml, material-symbols.js; Rust answers
+// with icons::symbol), 1.2x the size. (Slint sets no font axes: symbols draw
+// with the font's default fill, outlined where Icon.qml fills them.)
+export global Symbols {
+    pure callback of(string) -> string;
+}
+
+export component SymIcon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size: 15px;
+    in property <bool> fill: false;
+    in property <bool> bold: false;
+    property <string> sym: Theme.material && root.text != "" ? Symbols.of(root.text) : "";
+    preferred-width: t.preferred-width;
+    preferred-height: t.preferred-height;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: sym != "" ? sym : root.text;
+        color: root.color;
+        font-size: sym != "" ? round(root.font-size * 1.2 / 1px) * 1px : root.font-size;
+        font-family: sym != "" ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        font-weight: sym != "" && bold ? 600 : 400;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
 
 export struct Chip {
     id: int,
@@ -49,7 +80,7 @@ export component Spaces inherits Rectangle {
     width: strip-w + 8px;
     height: 22px;
     border-radius: self.height / 2;
-    background: plain ? transparent : Theme.material ? Theme.m3-surface-container-high : ink.with-alpha(0.1);
+    background: plain ? transparent : Theme.material ? Theme.pill : ink.with-alpha(0.1);
     accessible-role: tab-list;
     accessible-label: "Spaces";
 
@@ -68,7 +99,7 @@ export component Spaces inherits Rectangle {
         width: 12px;
         height: parent.height;
         opacity: left-more ? 1 : 0.25;
-        Icon {
+        SymIcon {
             y: left-hot ? -2px : 0;
             height: parent.height;
             text: "\u{e138}"; // caret-left
@@ -93,7 +124,7 @@ export component Spaces inherits Rectangle {
         width: 12px;
         height: parent.height;
         opacity: right-more ? 1 : 0.25;
-        Icon {
+        SymIcon {
             y: right-hot ? -2px : 0;
             height: parent.height;
             text: "\u{e13a}"; // caret-right
@@ -305,7 +336,7 @@ component IconButton inherits Rectangle {
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }
-    Icon {
+    SymIcon {
         text: icon;
         fill: root.fill;
         font-size: size;
@@ -342,13 +373,32 @@ component AlertView inherits Rectangle {
 
     // ── HUD
     if a.hud: Rectangle {
-        Icon {
+        SymIcon {
             x: 6px;
             width: 18px;
             text: a.icon;
             fill: true;
             font-size: 18px;
             color: ink;
+        }
+        // (the symbol mutes, not brightness's)
+        TouchArea {
+            x: 0;
+            width: 30px;
+            mouse-cursor: pointer;
+            clicked => { root.act(a.uid, "mute"); }
+        }
+        // the outputs, inputs or displays (IslandLevels opens them inline;
+        // here: the shell's Sound menu, or the Control Center for displays)
+        IconButton {
+            x: parent.width - self.width - 2px;
+            y: (parent.height - self.height) / 2;
+            width: 28px;
+            height: 28px;
+            icon: "\u{e136}"; // caret-down
+            ink: root.ink;
+            label: "Outputs";
+            clicked => { root.act(a.uid, "levels " + (self.absolute-position.x / 1px)); }
         }
         if a.device != "": Text {
             x: 34px;
@@ -422,7 +472,7 @@ component AlertView inherits Rectangle {
                 source: a.picture;
                 image-fit: contain;
             }
-            if !a.has-art && !a.has-picture: Icon {
+            if !a.has-art && !a.has-picture: SymIcon {
                 text: a.icon;
                 fill: true;
                 font-size: round(parent.width * (a.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48) / 1px) * 1px;
@@ -666,7 +716,7 @@ component LiveInfo inherits HorizontalLayout {
                 background: Theme.material ? Theme.m3-on-error : Theme.danger;
                 opacity: 0.675 + 0.325 * Math.cos(tick * 83ms / 700ms * 180deg);
             }
-            if !live.has-art && live.kind != "recording": Icon {
+            if !live.has-art && live.kind != "recording": SymIcon {
                 text: live.icon;
                 fill: true;
                 font-size: Theme.material ? 12px : 14px;
@@ -818,7 +868,9 @@ export component Island inherits Rectangle {
             border-radius: radius;
             opacity: bare ? 0 : 1;
             animate opacity { duration: Theme.hover; }
-            background: hot && expanded ? Theme.m3-surface-container-high.mix(Theme.m3-error, 0.86) : event-inside ? Theme.m3-surface-container-highest : Theme.m3-surface-container-high;
+            // (Theme.veil: see-through with Material's transparency)
+            property <color> solid: hot && expanded ? Theme.m3-surface-container-high.mix(Theme.m3-error, 0.86) : event-inside ? Theme.m3-surface-container-highest : Theme.m3-surface-container-high;
+            background: Theme.blur ? solid.with-alpha(Theme.panel-alpha) : solid;
             animate background { duration: Theme.popover; }
             drop-shadow-blur: expanded || mode == 3 ? 12px : 0;
             drop-shadow-offset-y: 2px;
@@ -937,7 +989,7 @@ export component Island inherits Rectangle {
                     spacing: 8px;
                     opacity: mode == 3 ? 1 : 0;
                     animate opacity { duration: Theme.hover; }
-                    Icon {
+                    SymIcon {
                         text: pill-icon;
                         fill: true;
                         font-size: 16px;
@@ -991,7 +1043,7 @@ export component Island inherits Rectangle {
                                     source: live.art;
                                     image-fit: cover;
                                 }
-                                if !live.has-art: Icon {
+                                if !live.has-art: SymIcon {
                                     text: live.icon;
                                     fill: true;
                                     font-size: 20px;

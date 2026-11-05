@@ -205,7 +205,8 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_bar_tint(Color::from_argb_u8(0, 0, 0, 0));
         t.set_fg(r("onSurface"));
         // (MenuBar.qml's pillColor: the island's own surface, surfaceContainerHigh)
-        t.set_pill(r("surfaceContainerHigh"));
+        // (veiled: see-through with Material's transparency, Theme.veil)
+        t.set_pill(if look.transparency > 0.0 { r("surfaceContainerHigh").with_alpha(1.0 - 0.55 * look.transparency) } else { r("surfaceContainerHigh") });
         t.set_dot(r("onSurfaceVariant"));
         t.set_dot_active(r("primary"));
         t.set_menu_bg(r("surfaceContainer"));

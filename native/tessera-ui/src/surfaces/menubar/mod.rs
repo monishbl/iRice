@@ -12,7 +12,16 @@
 //! touch swipes down from the bar, the drop shelf as a drop target, sliding
 //! from a QML popover onto a Rust item, the island's Recent list, its alerts
 //! card below an open island, Esc on an alert, the open music player's art
-//! as the island itself, a scrolling song title.)
+//! as the island itself, a scrolling song title; the HUD's outputs list
+//! inline (its button opens the shell's Sound menu, or the Control Center
+//! for displays).)
+//! Where Slint differs: no font features, so the clock's digits aren't
+//! tabular (a few px narrower); no font axes, so Material Symbols draw with
+//! the font's default fill (outlined where Icon.qml fills them); Material's
+//! see-through menus (materialTransparency) stay opaque, without the veil's
+//! blur. Qt draws Google Sans Flex at one weight whatever the QML asks
+//! (Material's app name and card titles look regular there); this bar draws
+//! the weights MenuBarItem.qml asks for.
 
 pub mod island;
 pub mod items;
@@ -804,7 +813,7 @@ impl Menubar {
                 last,
             })
             .collect();
-        m.ui.set_menu_w(menus::width(&rows) + if material { 20.0 } else { 0.0 });
+        m.ui.set_menu_w(if material { menus::material_width(&rows) } else { menus::width(&rows) });
         m.ui.set_any_checks(rows.iter().any(|r| r.checked == Some(true)));
         m.ui.set_rows(ModelRc::new(VecModel::from(ui_rows)));
         m.rows = rows;
@@ -826,7 +835,6 @@ impl Menubar {
             self.close_menu(st);
             return;
         }
-        let left = (x - 16.0).max(0.0) as i32;
         if self.menu.as_ref().is_some_and(|m| m.output != output) {
             let m = self.menu.take().unwrap();
             st.drop_surface(&m.surface);
@@ -842,10 +850,11 @@ impl Menubar {
                 // (from the screen's top, over the bar's reserved strip)
                 exclusive: -1,
                 keyboard: KeyboardInteractivity::OnDemand,
-                margin_left: left,
+                margin_left: 0,
             });
             let ui = ui::Menu::new().expect("Menu");
             st.shell.apply_theme(&ui.global::<ui::Theme>());
+            ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
             let to = st.shell.sender(NAME);
             let (to2, to3, to4, to5) = (to.clone(), to.clone(), to.clone(), to.clone());
             ui.on_activated(move |i| to(Box::new(M::MenuActivated(i))));
@@ -861,8 +870,13 @@ impl Menubar {
         let material = st.shell.look.material;
         let m = self.menu.as_mut().unwrap();
         m.kind = kind.clone();
-        m.surface.layer.set_margin(0, 0, 0, left);
         Self::show_rows(m, rows, material);
+        // (the surface starts 16 px left of the panel, room for its shadow)
+        let screen_w = self.bars.iter().find(|b| b.output == output).map_or(1920.0, |b| b.surface.logical_size().0 as f32);
+        let px = menus::panel_x(x, m.ui.get_panel_width(), screen_w, material);
+        let left = (px - 16.0).max(0.0);
+        m.surface.layer.set_margin(0, 0, 0, left as i32);
+        m.ui.set_panel_left(px - left.floor());
         if let MenuKind::Tray(key, path) = &kind {
             self.tray_menu = key.clone();
             tray::menu(key, path, st.shell.sender(NAME));
@@ -871,7 +885,6 @@ impl Menubar {
         // (shown afresh: hidden, it needs its size again to be mapped)
         m.size_sent = (0, 0);
         m.region_sent.clear();
-        m.ui.set_panel_left(if x < 16.0 { x.max(0.0) } else { 16.0 });
         Self::resize_menu(m);
         m.open = true;
         m.ui.set_shown(true);
@@ -1027,6 +1040,11 @@ impl Menubar {
         self.island.alerts.iter().find(|a| a.uid == uid as u64).map(|a| a.qml_uid).unwrap_or(0)
     }
 
+    /// The HUD showing: volume | mic | brightness
+    fn hud_kind(&self) -> Option<String> {
+        self.island.alerts.iter().find(|a| a.kind() == "hud").map(|a| a.event["hud"].as_str().unwrap_or("volume").to_string())
+    }
+
     fn island_control(&mut self, st: &mut State, i: i32) {
         let Some(a) = self.island.primary().cloned() else { return };
         if a.kind == "music" {
@@ -1119,6 +1137,23 @@ impl Menubar {
                 }
             }
             M::IslandControl(i) => self.island_control(st, i),
+            // the HUD's symbol: mute (not brightness)
+            M::IslandAct(_, which) if which == "mute" => match self.hud_kind().as_deref() {
+                Some("brightness") => {}
+                Some("mic") => bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]),
+                _ => bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]),
+            },
+            // the HUD's button: the outputs or inputs (the shell's Sound menu
+            // under it), the displays (the Control Center's brightness)
+            M::IslandAct(_, which) if which.starts_with("levels ") => {
+                let x: f32 = which[7..].parse().unwrap_or(0.0);
+                let output = self.bars.iter().find(|b| b.hovered).or(self.bars.first()).map(|b| b.output.clone()).unwrap_or_default();
+                if self.hud_kind().as_deref() == Some("brightness") {
+                    bridge::call(&["rustui", "act", "page", &format!(" {output}")]);
+                } else {
+                    bridge::call(&["rustui", "act", "toggleAt", &format!("soundMenu {output} {}", x.round())]);
+                }
+            }
             M::IslandAct(uid, which) => {
                 let q = self.qml_uid(uid);
                 bridge::call(&["rustui", "act", "islandAct", &format!("{q} {which}")]);
@@ -1135,8 +1170,7 @@ impl Menubar {
             }
             M::IslandLevel(v) => {
                 let v = v.clamp(0.0, 1.0);
-                let hud = self.island.alerts.iter().find(|a| a.kind() == "hud").map(|a| a.event["hud"].as_str().unwrap_or("volume").to_string());
-                match hud.as_deref() {
+                match self.hud_kind().as_deref() {
                     Some("brightness") => bridge::run(&["brightnessctl", "-q", "set", &format!("{}%", (v * 100.0).round().max(1.0))]),
                     Some("mic") => bridge::run(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", &format!("{v:.2}")]),
                     _ => bridge::run(&["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", &format!("{v:.2}")]),
@@ -1254,6 +1288,7 @@ impl Part for Menubar {
         let surface = st.prepare_surface(Self::spec(output, name, height, exclusive, layer));
         let ui = ui::Bar::new().expect("Bar");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
+        ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
         let out = name.to_string();
         let to = st.shell.sender(NAME);
         {

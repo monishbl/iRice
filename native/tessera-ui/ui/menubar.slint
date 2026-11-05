@@ -5,10 +5,10 @@
 // (Slint draws no cut-outs: the battery's bolt and its number inside are
 // outlined instead of cut out of the fill.)
 
-import { Theme, Icons, Icon } from "theme.slint";
-import { Spaces, Chip, Island, Live, Ctl, AlertRow, Ring } from "island.slint";
+import { Theme, Icons } from "theme.slint";
+import { Spaces, Chip, Island, Live, Ctl, AlertRow, Ring, Symbols, SymIcon } from "island.slint";
 
-export { Chip, Live, Ctl, AlertRow, Ring }
+export { Chip, Live, Ctl, AlertRow, Ring, Symbols }
 
 // One item on the right (items.rs: Entry)
 export struct Entry {
@@ -57,7 +57,7 @@ component BatteryGlyph inherits Rectangle {
     property <bool> beside: mark != "" && (show-percent || Theme.material);
     property <length> beside-size: Theme.material ? mark-size : round(size * 0.95 / 1px) * 1px;
     property <color> green: Theme.dark ? #6DD58C : #1E8E3E;
-    property <color> fill-color: low-power ? Theme.yellow : Theme.material && (charging || plugged) ? green : !charging && !plugged && round(level * 100) <= 20 ? Theme.danger : ink;
+    property <color> fill-color: low-power ? Theme.yellow : Theme.material && (charging || plugged) ? green : !charging && !plugged && level <= 0.2 ? Theme.danger : ink;
     property <color> faint: ink.with-alpha(Theme.material ? 0.3 : 0.35);
     width: cap-w + 1px + nub-w + (beside ? 2px + beside-size : 0);
     height: 16px;
@@ -90,29 +90,35 @@ component BatteryGlyph inherits Rectangle {
         border-radius: nub-w / 2;
         background: faint;
     }
-    // Glass: the bolt over the capsule, outlined so it reads over the fill
-    if mark != "" && !beside: Icon {
-        x: (cap-w - self.width) / 2;
+    // Glass: the bolt over the capsule with a gap round it (BatteryGlyph
+    // cuts it out; Slint can't, so the gap is the bolt drawn eight times a
+    // pixel off each way, in a shade that reads as the wallpaper's)
+    for o in [{x: -1.25, y: 0}, {x: 1.25, y: 0}, {x: 0, y: -1.25}, {x: 0, y: 1.25}, {x: -1, y: -1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: 1, y: 1}]: SymIcon {
+        visible: mark != "" && !beside;
+        x: (cap-w - mark-size) / 2 + o.x * 1px;
+        y: o.y * 1px;
         width: mark-size;
+        height: parent.height;
         text: mark;
         fill: true;
-        font-size: mark-size + 3px;
-        color: ink-dark ? #ffffffb3 : #000000a0;
+        font-size: mark-size;
+        color: ink-dark ? #ffffff80 : #00000040;
     }
-    if mark != "" && !beside: Icon {
-        x: (cap-w - self.width) / 2;
+    if mark != "" && !beside: SymIcon {
+        x: (cap-w - mark-size) / 2;
         width: mark-size;
         text: mark;
         fill: true;
         font-size: mark-size;
         color: ink;
     }
-    if beside: Icon {
+    if beside: SymIcon {
         x: cap-w + 1px + nub-w + 2px;
         width: beside-size;
         text: mark;
         fill: true;
-        font-size: beside-size;
+        // (Material: the symbol at the mark's own size, not SymIcon's 1.2x)
+        font-size: Theme.material ? beside-size / 1.2 : beside-size;
         color: Theme.material && (charging || plugged) ? fill-color : ink;
     }
 }
@@ -157,7 +163,7 @@ component Item inherits Rectangle {
             alignment: center;
             if e.indicator == "bellDot" || e.indicator == "bellCount": Rectangle {
                 width: 15px;
-                Icon {
+                SymIcon {
                     text: "\u{e0ce}"; // bell
                     fill: true;
                     font-size: 14px;
@@ -226,20 +232,20 @@ component Item inherits Rectangle {
         // Wi-Fi: the arcs faint, the lit ones as strong as the signal
         if e.glyph == 2: Rectangle {
             width: 16px;
-            Icon {
+            SymIcon {
                 text: e.wifi-on ? "\u{e4ea}" : "\u{e4f2}"; // wifi-high | wifi-slash
                 fill: true;
                 font-size: 16px;
                 color: e.wifi-on ? root.tone.with-alpha(0.35) : root.tone;
             }
-            if e.wifi-on && e.wifi-lit != "": Icon {
+            if e.wifi-on && e.wifi-lit != "": SymIcon {
                 text: e.wifi-lit;
                 fill: true;
                 font-size: 16px;
                 color: root.tone;
             }
         }
-        if e.icon != "": Icon {
+        if e.icon != "": SymIcon {
             text: e.icon;
             fill: e.fill;
             bold: e.bold;
@@ -275,10 +281,10 @@ component Item inherits Rectangle {
         icons := HorizontalLayout {
             alignment: center;
             spacing: 2px;
-            if e.camera: Icon { text: "\u{e4da}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
-            if e.mic: Icon { text: "\u{e326}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
-            if e.location: Icon { text: "\u{eade}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
-            if e.share: Icon { text: "\u{e404}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
+            if e.camera: SymIcon { text: "\u{e4da}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
+            if e.mic: SymIcon { text: "\u{e326}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
+            if e.location: SymIcon { text: "\u{eade}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
+            if e.share: SymIcon { text: "\u{e404}"; fill: true; font-size: 12px; color: Theme.m3-on-tertiary-container; }
         }
     }
     // A count bubble (the shelf's items)
@@ -324,7 +330,7 @@ component LeftItem inherits Rectangle {
     }
     row := HorizontalLayout {
         alignment: center;
-        if icon != "": Icon {
+        if icon != "": SymIcon {
             text: icon;
             fill: true;
             font-size: 16px;
@@ -855,7 +861,7 @@ export component Menu inherits Window {
                             ? (r.checked ? (hot ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, 0.92) : Theme.m3-tertiary-container) : hot ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
                             : (hot ? Theme.highlight : transparent);
                         animate background { duration: 100ms; }
-                        if r.checked: Icon {
+                        if r.checked: SymIcon {
                             x: Theme.material ? 12px : 6px;
                             width: 16px;
                             text: "\u{e182}"; // check
