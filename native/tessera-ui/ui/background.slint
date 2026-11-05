@@ -1,0 +1,71 @@
+// The wallpaper, one window per screen on the background layer
+// (src/surfaces/background; compare shell/modules/background/Background.qml).
+// Two pictures, as the QML's two buffers: a new one fades in over the one
+// before (700 ms, ease in and out), which keeps showing underneath until
+// then and is let go afterwards. Black behind, as the QML's window.
+//
+// `fade` (following `target`) only ever goes up, by one per new picture;
+// each picture starts fading in when `fade` passes its `-from` value (so
+// one animated number drives both, and a new picture never needs an instant
+// reset).
+
+export component Background inherits Window {
+    in property <image> a;
+    in property <image> b;
+    in property <float> a-from: -1;
+    in property <float> b-from: -2;
+    in property <float> target: 0; // where the fade is headed
+    // the first picture of a screen plugged in later: 120 ms, ease-out cubic
+    // (Background.qml's firstFade once the desktop has started)
+    in property <bool> quick;
+    // The lock's settle, LockFx's own curve (src/surfaces/background:
+    // Settle): `desktop` runs linearly from desk-from to 1 over desk-ms from
+    // settle-start(), and the scale is 1 + 0.05 (1 - ease-out-cubic(desktop))
+    in property <bool> zoom-on: true;
+    in property <float> desk-from: 1;
+    in property <int> desk-ms: 0;
+    in property <bool> settling; // (while true it redraws every frame)
+    property <duration> desk-start;
+    public function settle-start() { desk-start = animation-tick(); }
+    property <float> desk: settling ? clamp(desk-from + (1 - desk-from) * ((animation-tick() - desk-start) / 1ms) / max(1, desk-ms), 0, 1) : desk-from;
+    property <float> scale: zoom-on ? 1 + 0.05 * pow(1 - desk, 3) : 1;
+    property <float> fade: target;
+    // the newest is fully in (Rust lets the one below go)
+    callback faded();
+
+    background: black;
+    no-frame: true;
+    title: "Wallpaper";
+    accessible-role: none;
+
+    animate fade {
+        duration: quick ? 120ms : 700ms;
+        easing: quick ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
+    }
+    changed fade => {
+        if fade >= max(a-from, b-from) + 0.999 { faded(); }
+    }
+
+    Image {
+        source: a;
+        width: 100%;
+        height: 100%;
+        image-fit: fill;
+        opacity: clamp(fade - a-from, 0, 1);
+        visible: self.opacity > 0;
+        z: a-from > b-from ? 1 : 0;
+        transform-scale: scale;
+        accessible-role: none;
+    }
+    Image {
+        source: b;
+        width: 100%;
+        height: 100%;
+        image-fit: fill;
+        opacity: clamp(fade - b-from, 0, 1);
+        visible: self.opacity > 0;
+        z: b-from > a-from ? 1 : 0;
+        transform-scale: scale;
+        accessible-role: none;
+    }
+}

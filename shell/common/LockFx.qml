@@ -28,6 +28,9 @@ Singleton {
     property bool intro: false
     readonly property real settle: intro ? 1 - ease((desktop - 0.2) / 0.8) : 0
     signal playIntro // (Settings' Play Intro)
+    // Each step below, for a wallpaper drawn elsewhere (tessera-ui's
+    // background eases its own scale): "prepare", "reveal" (over ms), "rest"
+    signal stepped(string step, int ms)
 
     function ease(t) { // ease-out cubic
         const c = Math.max(0, Math.min(1, t));
@@ -53,16 +56,19 @@ Singleton {
         anim.stop();
         zoom = withZoom;
         desktop = 0;
+        stepped("prepare", 0);
     }
     function reveal(ms) {
         anim.stop();
         anim.to = 1;
         anim.duration = ms;
         anim.start();
+        stepped("reveal", ms);
     }
     function rest() {
         anim.stop();
         desktop = 1;
+        stepped("rest", 0);
     }
 
     NumberAnimation {

@@ -105,6 +105,29 @@ class Agreement(unittest.TestCase):
         for word in ('v["hush"]', 'v["preview"]'):
             self.assertIn(word, osd_rs)
 
+    def test_the_wallpaper_and_its_picker(self):
+        # the picker is a panel (its PanelLoader steps aside; choosing and
+        # Open folder are the shell's); the background hears the day's sun
+        # and the lock's settle from Background.qml, which moves its own
+        # window up to the bottom layer, clear, while Rust draws the picture
+        picker = (ROOT / "shell/modules/wallpaper/WallpaperPicker.qml").read_text()
+        self.assertIn('elsewhere: RustUi.drawing("wallpaper")', picker)
+        bg = (ROOT / "shell/modules/background/Background.qml").read_text()
+        self.assertIn('RustUi.drawing("background")', bg)
+        self.assertIn("rust ? WlrLayer.Bottom : WlrLayer.Background", bg)
+        for word in ('RustUi.tell("background", { sunrise:', 'RustUi.tell("wallpaper", { sunrise:', 'RustUi.tell("background", { settle: step'):
+            self.assertIn(word, bg)
+        lockfx = (ROOT / "shell/common/LockFx.qml").read_text()
+        for step in ("prepare", "reveal", "rest"):
+            self.assertIn(f'stepped("{step}"', lockfx)
+        rs = (CRATE / "src/surfaces/background/mod.rs").read_text()
+        for word in ('"prepare"', '"reveal"', '"rest"', 'v["settle"]', 'v["zoom"]', 'v["ms"]'):
+            self.assertIn(word, rs)
+        self.assertIn('v["sunrise"]', (CRATE / "src/surfaces/background/wallpaper.rs").read_text())
+        # (the namespaces the Hyprland rules keep unblurred)
+        rules = (ROOT / "hypr/tessera/rules.lua").read_text()
+        self.assertRegex(rules, r"namespace = \"tessera:\([^)]*\bbackground\b")
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

@@ -9,6 +9,9 @@ import qs.glass
 
 // Wallpaper picker: a glass strip above the dock. Arrow keys move, Enter
 // applies, Esc closes. Lists the wallpaper folder plus the bundled wallpapers.
+// While tessera-ui draws it (rust.surfaces: wallpaper) this one never loads:
+// Panels' opening goes there (services/RustUi.qml); it hears the day's
+// sunrise and sunset from Background.qml.
 Variants {
     model: Quickshell.screens
 
@@ -17,6 +20,7 @@ Variants {
         required property var modelData
         panel: "wallpaper"
         screen: modelData
+        elsewhere: RustUi.drawing("wallpaper")
 
         GlassWindow {
             id: win

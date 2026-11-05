@@ -150,6 +150,13 @@ Singleton {
             if (/^https:\/\//.test(a[0] ?? ""))
                 Launch.open(a[0]);
             break;
+        case "wallpaper.set":
+            if (typeof a[0] === "string" && a[0].startsWith("/"))
+                Wallpaper.set(a[0]);
+            break;
+        case "wallpaper.openFolder":
+            Files.openFolder(Wallpaper.directory);
+            break;
         default:
             console.warn("tessera-ui: no call " + name);
         }
