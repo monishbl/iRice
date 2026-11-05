@@ -52,7 +52,15 @@ pub fn read_json() -> Value {
 }
 
 pub fn read() -> Look {
-    let v = read_json();
+    let mut v = read_json();
+    // The seed and a wallpaper accent come from the picture showing now (the
+    // bundled default when none is chosen, the dynamic one, a live poster), as
+    // the shell's do, not only from the chosen file
+    let material = crate::env::var("LOOK").as_deref().unwrap_or(v["appearance"]["look"].as_str().unwrap_or("glass")) == "material";
+    let showing = crate::surfaces::background::wallpaper::showing_now(&v, material);
+    if v["wallpaper"].is_object() || v["wallpaper"].is_null() {
+        v["wallpaper"]["path"] = Value::String(showing);
+    }
     // TESSERA_LOOK=glass|material overrides (to measure both looks from one config)
     look_from(&v, crate::env::var("LOOK").as_deref(), wallpaper_seed)
 }
@@ -250,6 +258,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_secondary_container(r("secondaryContainer"));
         t.set_m3_on_secondary_container(r("onSecondaryContainer"));
         t.set_m3_tertiary(r("tertiary"));
+        t.set_m3_on_tertiary(r("onTertiary"));
         t.set_m3_surface(r("surface"));
         t.set_m3_surface_container_low(r("surfaceContainerLow"));
         t.set_m3_surface_container(r("surfaceContainer"));
@@ -261,7 +270,6 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_outline_variant(r("outlineVariant"));
         t.set_m3_error(r("error"));
         t.set_m3_on_error(r("onError"));
-        t.set_m3_secondary(r("secondary"));
         t.set_m3_error_container(r("errorContainer"));
         t.set_m3_on_error_container(r("onErrorContainer"));
         t.set_m3_tertiary_container(r("tertiaryContainer"));
@@ -279,6 +287,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(r("surfaceContainer"));
         t.set_blur(look.transparency > 0.0);
         t.set_panel_alpha(1.0 - 0.55 * look.transparency);
+        t.set_control_alpha(1.0 - 0.4 * look.transparency);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);
@@ -343,6 +352,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(hex(if d { "#26262A" } else { "#F2F2F5" }));
         t.set_blur(false);
         t.set_panel_alpha(1.0);
+        t.set_control_alpha(1.0);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(15.0);

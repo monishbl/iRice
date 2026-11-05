@@ -62,6 +62,7 @@ export global Theme {
     in property <color> m3-secondary-container: #ffffff24;
     in property <color> m3-on-secondary-container: #ffffff;
     in property <color> m3-tertiary: #0a84ff;
+    in property <color> m3-on-tertiary: #ffffff; // (Today: the weather icon on its shape)
     in property <color> m3-surface: #1c1c1e;
     in property <color> m3-surface-container-low: #1c1c1e;
     in property <color> m3-surface-container: #232327;
@@ -99,6 +100,8 @@ export global Theme {
     // materialTransparency; Theme.veil(c) is c.with-alpha(panel-alpha))
     in property <bool> blur: false;
     in property <float> panel-alpha: 1;
+    // (Theme.qml's controlAlpha: Material's container roles, see-through as far as Transparency says)
+    in property <float> control-alpha: 1;
     // Type: sizes (Theme.font)
     in property <length> caption: 11px;
     in property <length> small: 12px;

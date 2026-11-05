@@ -1,0 +1,1423 @@
+// Today, the morning screen, in Rust (rust.surfaces: today): compare
+// shell/modules/today/TodayScreen.qml (the frost, the panel, the entrances),
+// TodayContent.qml (Glass), MaterialTodayContent.qml (Material), TodayButton
+// and TodayOptions.qml. Rust (src/surfaces/today) works out what shows and
+// drives the entrance and exit (the panel's rectangle, the frost, the rows'
+// stagger, frame by frame); this draws it.
+
+import { Theme } from "theme.slint";
+
+export struct TEvent {
+    time: string,
+    title: string,
+    color: color,
+    past: bool,
+}
+
+export struct TTodo {
+    key: string,
+    text: string,
+    due: string,
+    overdue: bool,
+}
+
+export struct THour {
+    time: string,
+    icon: string, // the glyph (Phosphor in Glass, a Material Symbol in Material)
+    rain: string, // "" when under 20%
+    temp: string,
+}
+
+// What the day holds, and what its controls do (one per window)
+export global Day {
+    in property <float> rows: 1; // 0 → 1: the rows rise in one after another
+    in property <string> greeting;
+    in property <string> date;
+    in property <string> cookie-month;
+    in property <string> cookie-day;
+    in property <string> summary;
+    in property <[TEvent]> events;
+    in property <[TEvent]> events-five; // (Glass lists five)
+    in property <[TTodo]> todos;
+    in property <string> todos-empty;
+    in property <bool> weather-ready;
+    in property <string> weather-icon;
+    in property <string> weather-temp;
+    in property <string> weather-condition;
+    in property <string> weather-hilo; // Glass: "High 14° · Low 6°"
+    in property <string> weather-rain; // Glass: "64% rain" ("" none)
+    in property <string> weather-line; // Material: "H 14° · L 6° · 64% rain"
+    in property <string> weather-problem;
+    in property <[THour]> hours;
+    in property <bool> pin-shown: true;
+    in property <color> rain-color: #0a84ff; // Theme.accents.blue
+    // Material's shapes (SVG outlines in a 0..100 box)
+    in property <string> cookie-shape;
+    in property <string> sun-shape;
+    // Options
+    in property <bool> options-open;
+    in property <int> mode;
+    in property <int> entrance;
+    in property <string> mode-hint;
+    in property <string> entrance-hint;
+    in property <string> name;
+    in property <string> name-placeholder;
+    in property <string> name-hint;
+    in property <bool> chime;
+
+    callback close();
+    callback pin();
+    callback options();
+    callback toggle-todo(string);
+    callback set-mode(int);
+    callback set-entrance(int);
+    callback set-name(string);
+    callback set-chime(bool);
+    callback options-done();
+
+    // Row n of the stagger: 40 ms apart, each fading in over 300 ms
+    public pure function appear(order: int) -> float {
+        return clamp((rows * 620 - order * 40) / 300, 0, 1);
+    }
+}
+
+// Rises 8 px as it fades in (its order in the stagger)
+component Rise inherits Rectangle {
+    in property <int> order;
+    in property <float> dim: 1;
+    out property <float> k: Day.appear(order);
+    opacity: k * dim;
+    Rectangle {
+        y: pow(1 - k, 3) * 8px;
+        width: 100%;
+        height: 100%;
+        @children
+    }
+}
+
+// A focus ring 2 px off its control (Material: 3 px, in secondary)
+component Ring inherits Rectangle {
+    in property <length> pw;
+    in property <length> ph;
+    in property <length> radius;
+    property <length> out: Theme.material ? 5px : 4px;
+    x: -out;
+    y: -out;
+    width: pw + 2 * out;
+    height: ph + 2 * out;
+    border-radius: radius;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+}
+
+// An icon: Phosphor (Glass, `fill` takes the filled set) or a Material
+// Symbol at 1.2× (Material; the font's FILL axis isn't reachable from Slint)
+component Glyph inherits Text {
+    in property <length> size: 16px;
+    in property <bool> fill;
+    in property <bool> bold;
+    font-family: Theme.material ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+    font-size: Theme.material ? round(size * 1.2 / 1px) * 1px : size;
+    font-weight: Theme.material && bold ? 600 : 400;
+    horizontal-alignment: center;
+    vertical-alignment: center;
+    accessible-role: none;
+}
+
+// TodayButton.qml (Glass) and MaterialTodayContent's MButton: verb + object,
+// primary (accent / filled) or secondary (fill / tonal). Click, Enter or
+// Space; Tab moves between them
+component DayButton inherits FocusScope {
+    in property <string> text;
+    in property <string> icon; // the glyph, "" none
+    in property <bool> primary;
+    callback activated();
+    property <color> ink: Theme.material ? (primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : primary ? Theme.on-accent : Theme.label;
+    property <color> base: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container.with-alpha(Theme.control-alpha)) : primary ? Theme.accent : Theme.fill;
+    focus-on-click: false;
+    width: row.preferred-width + (Theme.material ? 48px : 32px);
+    height: Theme.material ? 40px : 36px;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { activated(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            activated();
+            return accept;
+        }
+        reject
+    }
+    body := Rectangle {
+        width: 100%;
+        height: 100%;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: touch.pressed ? (Theme.material ? 1 + min(0.06, 10px / self.width) : 0.97) : 1;
+        animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.3) : ease-out; }
+        border-radius: Theme.material ? (touch.pressed ? 12px : 20px) : Theme.radius-control;
+        animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        background: Theme.material ? base.mix(ink, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+            : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+            : touch.has-hover || touch.pressed ? Theme.fill-hover : Theme.fill;
+        animate background { duration: 150ms; }
+        row := HorizontalLayout {
+            alignment: center;
+            spacing: Theme.material ? 8px : 6px;
+            if icon != "": Glyph {
+                text: icon;
+                size: Theme.material ? 18px : 16px;
+                color: ink;
+            }
+            Text {
+                text: root.text;
+                color: ink;
+                font-size: 14px;
+                font-weight: 500;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        if root.has-focus: Ring {
+            pw: parent.width;
+            ph: parent.height;
+            radius: parent.border-radius + (Theme.material ? 5px : 4px);
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.activated(); }
+        }
+    }
+}
+
+// ── Glass: TodayContent.qml ─────────────────────────────────────────────
+component SectionTitle inherits Text {
+    color: Theme.secondary;
+    font-size: Theme.body;
+    font-weight: 600;
+    accessible-role: none;
+}
+
+component GlassDay inherits Rectangle {
+    public function focus-buttons() { close.focus(); }
+    property <length> pad: 32px;
+
+    // ── Greeting ──
+    head := Rise {
+        order: 0;
+        x: pad;
+        y: pad;
+        width: parent.width - 2 * pad - now.width - 16px;
+        height: hello.preferred-height + 8px + date.preferred-height;
+        hello := Text {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: self.preferred-height;
+            text: Day.greeting;
+            overflow: elide;
+            color: Theme.label;
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+            accessible-role: AccessibleRole.text;
+        }
+        date := Text {
+            x: 0;
+            y: hello.preferred-height + 8px;
+            height: self.preferred-height;
+            text: Day.date;
+            color: Theme.secondary;
+            font-size: 14px;
+        }
+    }
+    // The weather now, top right
+    now := Rise {
+        order: 0;
+        visible: Day.weather-ready;
+        width: now-row.preferred-width;
+        height: now-row.preferred-height;
+        x: parent.width - pad - self.width;
+        y: pad;
+        now-row := HorizontalLayout {
+            spacing: 10px;
+            Glyph {
+                text: Day.weather-icon;
+                fill: true;
+                size: 24px;
+                color: Theme.label;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: Day.weather-temp;
+                    color: Theme.label;
+                    font-size: 24px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: Day.weather-condition;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+        }
+    }
+
+    // ── Left: events and to-dos ──
+    property <length> col-y: head.y + head.height + 32px;
+    property <int> nev: min(5, Day.events.length);
+    VerticalLayout {
+        x: pad;
+        y: col-y;
+        width: parent.width - 2 * pad - 240px - 32px;
+        height: self.preferred-height;
+        spacing: 4px;
+        Rise {
+            order: 1;
+            height: 20px;
+            SectionTitle { x: 0; y: 0; text: "Today"; }
+        }
+        if Day.events.length == 0: Rise {
+            order: 2;
+            height: 36px;
+            Text {
+                x: 0;
+                text: "Nothing on your calendar today";
+                color: Theme.tertiary;
+                font-size: 14px;
+            }
+        }
+        for e[i] in Day.events-five: Rise {
+            order: 2 + i;
+            dim: e.past ? 0.5 : 1;
+            height: 36px;
+            accessible-role: AccessibleRole.text;
+            accessible-label: e.time + ", " + e.title;
+            time := Text {
+                x: 0;
+                width: 132px;
+                text: e.time;
+                color: Theme.secondary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            bar := Rectangle {
+                x: 132px;
+                width: 3px;
+                height: 18px;
+                border-radius: 1.5px;
+                background: e.color.alpha > 0 ? e.color : Theme.accent;
+            }
+            Text {
+                x: 145px;
+                width: parent.width - self.x;
+                text: e.title;
+                overflow: elide;
+                color: Theme.label;
+                font-size: 14px;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        Rectangle { height: 20px; }
+        Rise {
+            order: 3 + nev;
+            height: 20px;
+            SectionTitle { x: 0; y: 0; text: "To-dos"; }
+        }
+        if Day.todos.length == 0: Rise {
+            order: 4 + nev;
+            height: 36px;
+            Text {
+                x: 0;
+                text: Day.todos-empty;
+                color: Theme.tertiary;
+                font-size: 14px;
+            }
+        }
+        for t[i] in Day.todos: Rise {
+            order: 4 + nev + i;
+            height: 36px;
+            tick := Rectangle {
+                x: 0;
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                border-width: 1.5px;
+                border-color: tick-touch.has-hover ? Theme.accent : Theme.tertiary;
+                accessible-role: checkbox;
+                accessible-checkable: true;
+                accessible-checked: false;
+                accessible-label: t.text;
+                accessible-action-default => { Day.toggle-todo(t.key); }
+                tick-touch := TouchArea {
+                    x: -8px;
+                    y: -8px;
+                    width: parent.width + 16px;
+                    height: parent.height + 16px;
+                    mouse-cursor: pointer;
+                    clicked => { Day.toggle-todo(t.key); }
+                }
+            }
+            due := Text {
+                visible: t.due != "";
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                text: t.due;
+                color: t.overdue ? Theme.danger : Theme.secondary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+            }
+            Text {
+                x: 30px;
+                width: parent.width - 30px - (t.due != "" ? due.width + 8px : 0);
+                text: t.text;
+                overflow: elide;
+                color: Theme.label;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ── Right: the weather through the day ──
+    VerticalLayout {
+        x: parent.width - pad - 240px;
+        y: col-y;
+        width: 240px;
+        height: self.preferred-height;
+        spacing: 4px;
+        Rise {
+            order: 1;
+            height: 20px;
+            SectionTitle { x: 0; y: 0; text: "Weather"; }
+        }
+        if !Day.weather-ready: Rise {
+            order: 2;
+            height: 36px;
+            Text {
+                x: 0;
+                width: parent.width;
+                text: Day.weather-problem;
+                wrap: word-wrap;
+                color: Theme.tertiary;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+        if Day.weather-ready: Rise {
+            order: 2;
+            height: 36px;
+            Text {
+                x: 0;
+                text: Day.weather-hilo;
+                color: Theme.label;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+            if Day.weather-rain != "": Text {
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                text: Day.weather-rain;
+                color: Theme.secondary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+            }
+        }
+        for h[i] in Day.weather-ready ? Day.hours : []: Rise {
+            order: 3 + i;
+            height: 32px;
+            Text {
+                x: 0;
+                width: 64px;
+                text: h.time;
+                color: Theme.secondary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+            }
+            Glyph {
+                x: 72px;
+                width: 16px;
+                text: h.icon;
+                fill: true;
+                size: 16px;
+                color: Theme.label;
+            }
+            if h.rain != "": Text {
+                x: 104px;
+                text: h.rain;
+                color: Day.rain-color;
+                font-size: Theme.small;
+                vertical-alignment: center;
+            }
+            Text {
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                text: h.temp;
+                color: Theme.label;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ── Buttons ──
+    Rise {
+        order: 10;
+        width: buttons.preferred-width;
+        height: 36px;
+        x: parent.width - pad - self.width;
+        y: parent.height - pad - self.height;
+        buttons := HorizontalLayout {
+            spacing: 12px;
+            DayButton {
+                text: "Options";
+                icon: "\u{e434}";
+                activated => { Day.options(); }
+            }
+            if Day.pin-shown: DayButton {
+                text: "Pin for today";
+                icon: "\u{e3e2}";
+                activated => { Day.pin(); }
+            }
+            close := DayButton {
+                text: "Close";
+                primary: true;
+                activated => { Day.close(); }
+            }
+        }
+    }
+}
+
+// ── Material: MaterialTodayContent.qml ──────────────────────────────────
+component Heading inherits Text {
+    x: 20px;
+    y: 16px;
+    height: 24px;
+    color: Theme.m3-on-surface;
+    font-size: Theme.title;
+    font-weight: 500; // (Font.DemiBold: Qt draws Google Sans Flex's at about 500)
+    vertical-alignment: center;
+}
+
+component Shape inherits Rectangle {
+    in property <float> spin; // degrees
+    in property <string> commands;
+    in property <brush> fill;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: root.commands;
+        fill: root.fill;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-rotation: root.spin * 1deg;
+    }
+}
+
+component MaterialCheck inherits FocusScope {
+    in property <string> label;
+    callback toggled();
+    focus-on-click: false;
+    width: 18px;
+    height: 18px;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: false;
+    accessible-label: label;
+    accessible-action-default => { toggled(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            toggled();
+            return accept;
+        }
+        reject
+    }
+    if touch.has-hover || touch.pressed: Rectangle {
+        x: -9px;
+        y: -9px;
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        background: Theme.m3-on-surface.with-alpha(touch.pressed ? 0.1 : 0.08);
+    }
+    Rectangle {
+        border-radius: 4px;
+        border-width: 2px;
+        border-color: Theme.m3-on-surface-variant;
+    }
+    if root.has-focus: Ring { pw: parent.width; ph: parent.height; radius: 8px; }
+    touch := TouchArea {
+        x: -9px;
+        y: -9px;
+        width: 36px;
+        height: 36px;
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+component MaterialDay inherits Rectangle {
+    public function focus-buttons() { close.focus(); }
+    property <length> pad: 24px;
+    property <length> gap: 16px;
+    property <length> side-w: min(300px, round(self.width * 0.36 / 1px) * 1px);
+    property <length> main-w: self.width - 2 * pad - side-w - gap;
+    property <length> hero-h: max(136px, min(176px, round(self.height * 0.28 / 1px) * 1px));
+    property <length> lower-y: pad + hero-h + gap;
+    property <length> buttons-y: self.height - pad - 40px;
+    property <length> lower-h: buttons-y - gap - lower-y;
+
+    // ── The greeting: primaryContainer, the date in a cookie ──
+    hero := Rise {
+        order: 0;
+        x: pad;
+        y: pad;
+        width: main-w;
+        height: hero-h;
+        Rectangle {
+            border-radius: 28px;
+            background: Theme.m3-primary-container.with-alpha(Theme.control-alpha);
+        }
+        cookie := Rectangle {
+            x: 20px;
+            width: min(120px, parent.height - 40px);
+            height: self.width;
+            Shape {
+                width: 100%;
+                height: 100%;
+                commands: Day.cookie-shape;
+                fill: Theme.m3-primary;
+                spin: (1 - hero.k) * -40;
+            }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: Day.cookie-month;
+                    horizontal-alignment: center;
+                    color: Theme.m3-on-primary;
+                    font-size: Theme.small;
+                    font-weight: 500;
+                    letter-spacing: 1px;
+                }
+                Text {
+                    text: Day.cookie-day;
+                    horizontal-alignment: center;
+                    color: Theme.m3-on-primary;
+                    font-size: 44px;
+                    font-weight: 500;
+                }
+            }
+        }
+        VerticalLayout {
+            x: cookie.x + cookie.width + 24px;
+            width: parent.width - self.x - 24px;
+            alignment: center;
+            spacing: 4px;
+            Text {
+                text: Day.greeting;
+                overflow: elide;
+                color: Theme.m3-on-primary-container;
+                font-size: 28px;
+                font-weight: 500;
+                letter-spacing: -0.2px;
+            }
+            Text {
+                text: Day.date;
+                overflow: elide;
+                color: Theme.m3-on-primary-container;
+                font-size: 16px;
+            }
+            Rectangle { height: 4px; } // (its topPadding 8, less the spacing)
+            Text {
+                text: Day.summary;
+                overflow: elide;
+                color: Theme.m3-on-primary-container.with-alpha(0.8);
+                font-size: 14px;
+                font-weight: 500;
+            }
+        }
+    }
+
+    // ── The weather now: tertiaryContainer around a sunny shape ──
+    wcard := Rise {
+        order: 1;
+        x: pad + main-w + gap;
+        y: pad;
+        width: side-w;
+        height: hero-h;
+        Rectangle {
+            border-radius: 28px;
+            background: Theme.m3-tertiary-container.with-alpha(Theme.control-alpha);
+        }
+        sun := Rectangle {
+            x: 20px;
+            width: min(96px, parent.height - 48px);
+            height: self.width;
+            Shape {
+                width: 100%;
+                height: 100%;
+                commands: Day.sun-shape;
+                fill: Theme.m3-tertiary;
+                spin: (1 - wcard.k) * 45;
+            }
+            Glyph {
+                text: Day.weather-icon;
+                fill: true;
+                size: round(sun.width * 0.42 / 1px) * 1px;
+                color: Theme.m3-on-tertiary;
+            }
+        }
+        VerticalLayout {
+            x: sun.x + sun.width + 16px;
+            width: parent.width - self.x - 20px;
+            alignment: center;
+            spacing: 2px;
+            if Day.weather-ready: Text {
+                text: Day.weather-temp;
+                color: Theme.m3-on-tertiary-container;
+                font-size: 40px;
+                font-weight: 500;
+            }
+            if Day.weather-ready: Text {
+                text: Day.weather-condition;
+                overflow: elide;
+                color: Theme.m3-on-tertiary-container;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            if Day.weather-ready: Text {
+                text: Day.weather-line;
+                overflow: elide;
+                color: Theme.m3-on-tertiary-container.with-alpha(0.8);
+                font-size: Theme.small;
+            }
+            if !Day.weather-ready: Text {
+                text: Day.weather-problem;
+                wrap: word-wrap;
+                color: Theme.m3-on-tertiary-container;
+                font-size: 14px;
+            }
+        }
+    }
+
+    // ── Today's events ──
+    property <length> card-w: (main-w - gap) / 2;
+    property <int> ev-fits: max(1, floor((lower-h - 68px) / 52px));
+    Rise {
+        order: 2;
+        x: pad;
+        y: lower-y;
+        width: card-w;
+        height: lower-h;
+        Rectangle {
+            border-radius: 24px;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
+        }
+        Heading { text: "Today"; }
+        if Day.events.length == 0: Text {
+            x: 20px;
+            y: 52px;
+            width: parent.width - 40px;
+            text: "Nothing on your calendar today";
+            wrap: word-wrap;
+            color: Theme.m3-on-surface-variant;
+            font-size: 14px;
+        }
+        for e[i] in Day.events: Rectangle {
+            visible: i < ev-fits;
+            x: 12px;
+            y: 52px + i * 52px;
+            width: parent.width - 24px;
+            height: 48px;
+            border-radius: 12px;
+            background: Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha);
+            opacity: e.past ? 0.5 : 1;
+            accessible-role: AccessibleRole.text;
+            accessible-label: e.title + ", " + e.time;
+            Rectangle {
+                x: 10px;
+                width: 4px;
+                height: parent.height - 20px;
+                border-radius: 2px;
+                background: e.color.alpha > 0 ? e.color : Theme.m3-primary;
+            }
+            VerticalLayout {
+                x: 24px;
+                width: parent.width - 36px;
+                alignment: center;
+                Text {
+                    text: e.title;
+                    overflow: elide;
+                    color: Theme.m3-on-surface;
+                    font-size: 14px;
+                    font-weight: 500;
+                    accessible-role: none;
+                }
+                Text {
+                    text: e.time;
+                    overflow: elide;
+                    color: Theme.m3-on-surface-variant;
+                    font-size: Theme.small;
+                    accessible-role: none;
+                }
+            }
+        }
+        if Day.events.length > ev-fits: Text {
+            x: 20px;
+            y: parent.height - 14px - self.height;
+            text: "+" + (Day.events.length - ev-fits) + " more";
+            color: Theme.m3-on-surface-variant;
+            font-size: Theme.small;
+            font-weight: 500;
+        }
+    }
+
+    // ── Open to-dos ──
+    property <int> todo-fits: max(1, floor((lower-h - 68px) / 48px));
+    Rise {
+        order: 3;
+        x: pad + card-w + gap;
+        y: lower-y;
+        width: card-w;
+        height: lower-h;
+        Rectangle {
+            border-radius: 24px;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
+        }
+        Heading { text: "To-dos"; }
+        if Day.todos.length == 0: Text {
+            x: 20px;
+            y: 52px;
+            width: parent.width - 40px;
+            text: Day.todos-empty;
+            wrap: word-wrap;
+            color: Theme.m3-on-surface-variant;
+            font-size: 14px;
+        }
+        for t[i] in Day.todos: Rectangle {
+            visible: i < todo-fits;
+            x: 20px;
+            y: 52px + i * 48px;
+            width: parent.width - 40px;
+            height: 48px;
+            tick := MaterialCheck {
+                x: 0;
+                label: t.text;
+                toggled => { Day.toggle-todo(t.key); }
+            }
+            due := Text {
+                visible: t.due != "";
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                text: t.due;
+                color: t.overdue ? Theme.m3-error : Theme.m3-on-surface-variant;
+                font-size: Theme.small;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+            Text {
+                x: 34px;
+                width: parent.width - 34px - (t.due != "" ? due.width + 8px : 0);
+                text: t.text;
+                overflow: elide;
+                color: Theme.m3-on-surface;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ── The hours ahead ──
+    Rise {
+        order: 4;
+        x: pad + main-w + gap;
+        y: lower-y;
+        width: side-w;
+        height: lower-h;
+        Rectangle {
+            border-radius: 24px;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
+        }
+        Heading { text: "Later today"; }
+        if !Day.weather-ready: Text {
+            x: 20px;
+            y: 52px;
+            width: parent.width - 40px;
+            text: "The forecast shows here once the weather is available.";
+            wrap: word-wrap;
+            color: Theme.m3-on-surface-variant;
+            font-size: 14px;
+        }
+        for h[i] in Day.weather-ready ? Day.hours : []: Rectangle {
+            x: 20px;
+            y: 52px + i * 44px;
+            width: parent.width - 40px;
+            height: 44px;
+            Text {
+                x: 0;
+                width: 72px;
+                text: h.time;
+                color: Theme.m3-on-surface-variant;
+                font-size: 14px;
+                vertical-alignment: center;
+            }
+            Glyph {
+                x: 80px;
+                width: 20px;
+                text: h.icon;
+                fill: true;
+                size: 20px;
+                color: Theme.m3-on-surface;
+            }
+            if h.rain != "": Text {
+                x: 112px;
+                text: h.rain;
+                color: Theme.m3-primary;
+                font-size: Theme.small;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+            Text {
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                text: h.temp;
+                color: Theme.m3-on-surface;
+                font-size: 14px;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ── Buttons ──
+    Rise {
+        order: 6;
+        width: mbuttons.preferred-width;
+        height: 40px;
+        x: parent.width - pad - self.width;
+        y: buttons-y;
+        mbuttons := HorizontalLayout {
+            spacing: 8px;
+            DayButton {
+                text: "Options";
+                icon: "\u{e429}";
+                activated => { Day.options(); }
+            }
+            if Day.pin-shown: DayButton {
+                text: "Pin for today";
+                icon: "\u{f10d}";
+                activated => { Day.pin(); }
+            }
+            close := DayButton {
+                text: "Close";
+                primary: true;
+                activated => { Day.close(); }
+            }
+        }
+    }
+}
+
+// ── Options: TodayOptions.qml ───────────────────────────────────────────
+
+// Segmented.qml: a track with a sliding selection pill (Glass); Material 3
+// Expressive's connected button group (2 px apart, round outer ends, 8 px
+// inner corners; the chosen one fills and turns fully round). Arrow keys,
+// Home and End choose.
+component Segmented inherits FocusScope {
+    in property <[string]> options;
+    in property <int> current;
+    in property <string> label;
+    callback selected(int);
+    property <length> gap: Theme.material ? 2px : 0px;
+    property <length> pill-x;
+    property <length> pill-w;
+    focus-on-click: false;
+    height: Theme.material ? 36px : 30px;
+    accessible-role: tab-list;
+    accessible-label: label;
+    accessible-description: options[current];
+    key-pressed(e) => {
+        if e.text == Key.LeftArrow || e.text == Key.UpArrow {
+            if current > 0 { selected(current - 1); }
+            return accept;
+        }
+        if e.text == Key.RightArrow || e.text == Key.DownArrow {
+            if current < options.length - 1 { selected(current + 1); }
+            return accept;
+        }
+        if e.text == Key.Home { selected(0); return accept; }
+        if e.text == Key.End { selected(options.length - 1); return accept; }
+        reject
+    }
+    Rectangle {
+        border-radius: self.height / 2;
+        background: Theme.material ? transparent : Theme.toggle-off;
+    }
+    // Glass: the sliding selection pill
+    if !Theme.material: Rectangle {
+        x: root.pill-x;
+        y: 2px;
+        width: root.pill-w;
+        height: root.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff33 : #ffffff;
+        animate x, width { duration: 220ms; easing: cubic-bezier(0.2, 0.9, 0.1, 1); }
+    }
+    HorizontalLayout {
+        x: 2px;
+        width: root.width - 4px;
+        spacing: root.gap;
+        for o[i] in options: Rectangle {
+            property <bool> chosen: i == root.current;
+            property <length> full: self.height / 2;
+            property <length> inner: chosen ? full : seg-touch.pressed ? 4px : 8px;
+            horizontal-stretch: 1;
+            preferred-width: label-text.preferred-width + 24px;
+            init => { if chosen { root.pill-x = self.x + 2px; root.pill-w = self.width; } }
+            changed chosen => { if chosen { root.pill-x = self.x + 2px; root.pill-w = self.width; } }
+            changed x => { if chosen { root.pill-x = self.x + 2px; root.pill-w = self.width; } }
+            changed width => { if chosen { root.pill-x = self.x + 2px; root.pill-w = self.width; } }
+            accessible-role: tab;
+            accessible-label: o;
+            accessible-item-selectable: true;
+            accessible-item-selected: chosen;
+            accessible-action-default => { root.selected(i); }
+            if Theme.material: Rectangle {
+                border-top-left-radius: i == 0 ? parent.full : parent.inner;
+                border-bottom-left-radius: self.border-top-left-radius;
+                border-top-right-radius: i == root.options.length - 1 ? parent.full : parent.inner;
+                border-bottom-right-radius: self.border-top-right-radius;
+                animate border-top-left-radius, border-top-right-radius, border-bottom-left-radius, border-bottom-right-radius { duration: 250ms; easing: spring(0.54); }
+                background: (parent.chosen ? Theme.m3-primary : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha)).mix(parent.chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant, seg-touch.pressed ? 0.9 : seg-touch.has-hover ? 0.92 : 1);
+                animate background { duration: 150ms; }
+            }
+            label-text := Text {
+                width: min(self.preferred-width, parent.width - 12px);
+                text: o;
+                overflow: elide;
+                horizontal-alignment: center;
+                color: Theme.material ? (parent.chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : parent.chosen ? Theme.label : Theme.secondary;
+                font-size: Theme.material ? Theme.body : Theme.small;
+                font-weight: Theme.material ? 500 : 600;
+                accessible-role: none;
+            }
+            seg-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.selected(i); }
+            }
+        }
+    }
+    if root.has-focus: Ring { pw: parent.width; ph: parent.height; radius: root.height / 2 + (Theme.material ? 5px : 4px); }
+}
+
+// Switch.qml
+component Toggle inherits FocusScope {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled();
+    focus-on-click: false;
+    width: Theme.material ? 52px : 38px;
+    height: Theme.material ? 32px : 22px;
+    accessible-role: switch;
+    accessible-label: label;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-action-default => { toggled(); }
+    key-pressed(e) => {
+        if e.text == " " || e.text == Key.Return {
+            toggled();
+            return accept;
+        }
+        reject
+    }
+    if root.has-focus: Ring { pw: parent.width; ph: parent.height; radius: root.height / 2 + (Theme.material ? 5px : 4px); }
+    if !Theme.material: Rectangle {
+        border-radius: self.height / 2;
+        background: root.checked ? Theme.accent : Theme.toggle-off;
+        animate background { duration: 150ms; }
+        Rectangle {
+            x: root.checked ? parent.width - self.width - 2px : 2px;
+            y: 2px;
+            width: parent.height - 4px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: white;
+            animate x { duration: 220ms; easing: cubic-bezier(0.2, 0.9, 0.1, 1); }
+        }
+    }
+    if Theme.material: Rectangle {
+        border-radius: self.height / 2;
+        background: root.checked ? Theme.m3-primary : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha);
+        border-width: root.checked ? 0 : 2px;
+        border-color: Theme.m3-outline;
+        animate background { duration: 150ms; }
+        property <length> size: touch.pressed ? 28px : root.checked ? 24px : 16px;
+        property <length> cx: root.checked ? self.width - 16px : 16px;
+        animate size, cx { duration: 250ms; easing: spring(0.54); }
+        if touch.has-hover || touch.pressed: Rectangle {
+            x: parent.cx - 20px;
+            y: (parent.height - 40px) / 2;
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            background: (root.checked ? Theme.m3-primary : Theme.m3-on-surface).with-alpha(touch.pressed ? 0.1 : 0.08);
+        }
+        Rectangle {
+            x: parent.cx - parent.size / 2;
+            y: (parent.height - parent.size) / 2;
+            width: parent.size;
+            height: parent.size;
+            border-radius: self.width / 2;
+            background: root.checked ? Theme.m3-on-primary : touch.has-hover || touch.pressed ? Theme.m3-on-surface-variant : Theme.m3-outline;
+            animate background { duration: 150ms; }
+            if root.checked: Glyph {
+                text: "\u{e668}";
+                bold: true;
+                size: 13px;
+                color: Theme.m3-on-primary-container;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+// TextField.qml (Material: FilledField's pill)
+component NameField inherits Rectangle {
+    in property <string> placeholder;
+    in property <string> label;
+    in-out property <string> text <=> input.text;
+    out property <bool> editing: input.has-focus;
+    callback committed(string);
+    public function focus-field() { input.focus(); }
+    public function set-text(t: string) { input.text = t; }
+    height: Theme.material ? 40px : 28px;
+    border-radius: Theme.material ? min(self.height / 2, 28px) : Theme.radius-control - 2px;
+    background: Theme.material ? (hover.has-hover && !input.has-focus ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha)) : Theme.fill;
+    border-width: Theme.material ? (input.has-focus ? 2px : 0) : 1px;
+    border-color: Theme.material ? Theme.m3-primary : input.has-focus ? Theme.accent : Theme.separator;
+    hover := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            vertical-alignment: center;
+            single-line: true;
+            accessible-label: root.label;
+            accessible-placeholder-text: root.placeholder;
+            accepted => { root.committed(self.text); }
+            changed has-focus => { if !self.has-focus { root.committed(self.text); } }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+component OptionLabel inherits Text {
+    wrap: word-wrap;
+    color: Theme.label;
+    font-size: Theme.body;
+    font-weight: 500;
+}
+
+component OptionHint inherits Text {
+    wrap: word-wrap;
+    color: Theme.secondary;
+    font-size: Theme.small;
+}
+
+component OptionsSheet inherits FocusScope {
+    in property <length> sheet-radius;
+    property <length> inner-w: self.width - 64px;
+    public function begin() {
+        name-field.set-text(Day.name);
+        mode-choice.focus();
+    }
+    function done() {
+        if name-field.editing { Day.set-name(name-field.text); }
+        Day.options-done();
+    }
+    focus-on-click: false;
+    key-pressed(e) => {
+        if e.text == Key.Escape {
+            Day.options-done();
+            return accept;
+        }
+        reject
+    }
+    // The panel's own colour, so the day doesn't show through
+    Rectangle {
+        border-radius: sheet-radius;
+        background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1C1C1F : #F5F5F7;
+    }
+    TouchArea {} // (clicks stay on the sheet)
+    Flickable {
+        x: 32px;
+        y: 32px;
+        width: parent.width - 64px;
+        height: parent.height - 64px - done-button.height - 16px;
+        content-height: list.preferred-height;
+        content-width: self.width;
+        list := VerticalLayout {
+            width: root.inner-w;
+            alignment: start;
+            spacing: 20px;
+            Text {
+                text: "Today options";
+                color: Theme.label;
+                font-size: Theme.material ? 22px : Theme.large;
+                font-weight: Theme.material ? 400 : 600;
+                accessible-role: AccessibleRole.text;
+            }
+            VerticalLayout {
+                spacing: 8px;
+                OptionLabel { text: "Show Today"; }
+                HorizontalLayout {
+                    alignment: start;
+                    mode-choice := Segmented {
+                        width: min(root.inner-w, 400px);
+                        label: "Show Today";
+                        options: ["Every morning", "Widget", "Both", "Off"];
+                        current: Day.mode;
+                        selected(i) => { Day.set-mode(i); }
+                    }
+                }
+                OptionHint { text: Day.mode-hint; }
+            }
+            VerticalLayout {
+                spacing: 8px;
+                OptionLabel { text: "Entrance"; }
+                HorizontalLayout {
+                    alignment: start;
+                    Segmented {
+                        width: min(root.inner-w, 320px);
+                        label: "Entrance";
+                        options: ["Bloom", "Shrink", "Drop"];
+                        current: Day.entrance;
+                        selected(i) => { Day.set-entrance(i); }
+                    }
+                }
+                OptionHint { text: Day.entrance-hint; }
+            }
+            VerticalLayout {
+                spacing: 8px;
+                OptionLabel { text: "Your name"; }
+                HorizontalLayout {
+                    alignment: start;
+                    name-field := NameField {
+                        width: min(root.inner-w, 320px);
+                        label: "Your name";
+                        placeholder: Day.name-placeholder;
+                        committed(t) => { Day.set-name(t); }
+                    }
+                }
+                OptionHint { text: Day.name-hint; }
+            }
+            HorizontalLayout {
+                spacing: 16px;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    OptionLabel { text: "Chime"; }
+                    OptionHint { text: "A sound as it opens, from your sound style"; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Toggle {
+                        label: "Chime";
+                        checked: Day.chime;
+                        toggled => { Day.set-chime(!Day.chime); }
+                    }
+                }
+            }
+        }
+    }
+    // Done: back to the day (a name being typed is kept)
+    done-button := FocusScope {
+        focus-on-click: false;
+        width: done-label.preferred-width + (Theme.material ? 48px : 32px);
+        height: Theme.material ? 40px : 36px;
+        x: parent.width - 32px - self.width;
+        y: parent.height - 32px - self.height;
+        accessible-role: button;
+        accessible-label: "Done";
+        accessible-action-default => { root.done(); }
+        key-pressed(e) => {
+            if e.text == Key.Return || e.text == " " {
+                root.done();
+                return accept;
+            }
+            reject
+        }
+        Rectangle {
+            border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+            background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, done-touch.pressed ? 0.9 : done-touch.has-hover ? 0.92 : 1)
+                : done-touch.pressed ? Theme.accent.darker(0.15) : done-touch.has-hover ? Theme.accent.brighter(0.08) : Theme.accent;
+            animate background { duration: 150ms; }
+            done-label := Text {
+                text: "Done";
+                color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+                font-size: Theme.material ? 14px : Theme.small;
+                font-weight: Theme.material ? 500 : 600;
+                accessible-role: none;
+            }
+        }
+        if done-button.has-focus: Ring { pw: parent.width; ph: parent.height; radius: (Theme.material ? parent.height / 2 : Theme.radius-control) + (Theme.material ? 5px : 4px); }
+        done-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.done(); }
+        }
+    }
+}
+
+// ── The window ──────────────────────────────────────────────────────────
+export component TodayScreen inherits Window {
+    // The panel's rectangle and look, the frost and the drop's ring (Rust
+    // drives them through the entrance and the exit)
+    in property <length> px;
+    in property <length> py;
+    in property <length> pw: 860px;
+    in property <length> ph: 620px;
+    in property <length> pr: 34px;
+    in property <float> panel-opacity;
+    in property <float> frost;
+    in property <float> content-blur;
+    in property <float> ripple;
+    in property <bool> drop;
+    // the content's size (laid out at the final size: nothing reflows as the panel grows)
+    in property <length> tw: 860px;
+    in property <length> th: 620px;
+    in property <length> target-radius: 34px;
+    in property <image> backdrop;
+    in property <bool> on-glass; // Glass: the plugin draws the glass under the panel
+
+    background: transparent;
+    no-frame: true;
+    title: "Today";
+    default-font-family: Theme.font;
+
+    public function focus-day() {
+        if Day.options-open {
+            sheet.begin();
+        } else if Theme.material {
+            mday.focus-buttons();
+        } else {
+            gday.focus-buttons();
+        }
+    }
+    public function begin-options() { sheet.begin(); }
+
+    // Esc and Enter close (a focused button takes its own Enter first)
+    keys := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if e.text == Key.Escape || e.text == Key.Return {
+                Day.close();
+                return accept;
+            }
+            reject
+        }
+
+        // ── The frost behind: your wallpaper, blurred, over everything ──
+        Rectangle {
+            opacity: root.frost;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.backdrop;
+                image-fit: cover;
+            }
+            Rectangle {
+                background: Theme.material ? Theme.m3-surface.with-alpha(Theme.dark ? 0.5 : 0.4) : Theme.dark ? #0000006b : #ffffff4d;
+            }
+        }
+        // Clicks outside the panel do nothing (Esc or Close put it away)
+        TouchArea {
+            scroll-event(e) => { accept }
+        }
+
+        // The drop's landing: a soft ring spreading from where it lands
+        if root.drop && root.ripple > 0 && root.ripple < 1: Rectangle {
+            property <length> d: 44px + root.ripple * min(root.width, root.height) * 0.9;
+            x: root.width / 2 - self.d / 2;
+            y: root.height / 2 - self.d / 2;
+            width: self.d;
+            height: self.d;
+            border-radius: self.d / 2;
+            border-width: 1.5px + 10px * (1 - root.ripple);
+            border-color: Theme.material ? Theme.m3-primary-container.with-alpha(0.5 * (1 - root.ripple)) : #ffffff.with-alpha(0.22 * (1 - root.ripple));
+        }
+
+        // ── The panel ──
+        panel := Rectangle {
+            x: root.px;
+            y: root.py;
+            width: root.pw;
+            height: root.ph;
+            opacity: root.panel-opacity;
+            // Material: its solid tonal surface (Settings' transparency
+            // shows the frost through); Glass on the plugin's glass: a soft
+            // surface and a hairline make it its own layer over the frost
+            if !Theme.material && !root.on-glass: Rectangle {
+                border-radius: root.pr;
+                background: Theme.panel;
+            }
+            Rectangle {
+                border-radius: root.pr;
+                background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha)
+                    : Theme.dark ? #1212146b : #ffffff73;
+                border-width: Theme.material ? 0 : 1px;
+                border-color: Theme.dark ? #ffffff1a : #00000014;
+                drop-shadow-blur: Theme.material ? 32px : 0;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-color: Theme.material ? #0000002e : transparent;
+            }
+            Rectangle {
+                clip: true;
+                content := Rectangle {
+                    x: (parent.width - root.tw) / 2;
+                    y: (parent.height - root.th) / 2;
+                    width: root.tw;
+                    height: root.th;
+                    // (QML blurs the content as it condenses; Slint can't: it fades instead)
+                    opacity: 1 - 0.6 * root.content-blur;
+                    gday := GlassDay {
+                        visible: !Theme.material;
+                        width: 100%;
+                        height: 100%;
+                    }
+                    mday := MaterialDay {
+                        visible: Theme.material;
+                        width: 100%;
+                        height: 100%;
+                    }
+                    sheet := OptionsSheet {
+                        visible: Day.options-open;
+                        sheet-radius: Theme.material ? 28px : root.target-radius;
+                    }
+                }
+            }
+        }
+    }
+}

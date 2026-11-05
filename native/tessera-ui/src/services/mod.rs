@@ -23,6 +23,9 @@
 //!   wallpaper::sample   is the wallpaper light under the bar (wallpaper::WallTop)
 //!   bridge   the QML shell's own state, from its lines on stdin (main.rs),
 //!            and calls back into it (shell-ipc.sh)
+//!   calendar your events and file subscriptions (calendar::Calendar)
+//!   todos    your to-dos on this computer (todos::Todos)
+//!   weather  wttr.in's weather (weather::Weather)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
 pub mod apps;
@@ -40,6 +43,9 @@ pub mod notify;
 pub mod status;
 pub mod tray;
 pub mod wallpaper;
+pub mod calendar;
+pub mod todos;
+pub mod weather;
 
 use crate::Msg;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
@@ -58,6 +64,9 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "audio" => audio::spawn(tx),
         "brightness" => brightness::spawn(tx),
         "notify" => notify::spawn(tx),
+        "calendar" => calendar::spawn(tx),
+        "todos" => todos::spawn(tx),
+        "weather" => weather::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }
