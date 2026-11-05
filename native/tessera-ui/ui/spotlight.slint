@@ -10,6 +10,12 @@
 import { Theme } from "theme.slint";
 import { Busy } from "widgets.slint";
 
+// Material's see-through containers (Theme.qml's controlAlpha: Settings'
+// transparency; the shared Theme has the panel's, 1 - 0.55 t)
+global SLook {
+    out property <float> ca: 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55;
+}
+
 // A glyph as Icon.qml picks it (Material: a Material Symbol, 1.2× the size)
 export struct SGlyph {
     text: string,
@@ -112,7 +118,7 @@ component MButton inherits Rectangle {
     width: label.preferred-width + 2 * round(self.height * 0.6 / 1px) * 1px;
     border-radius: touch.pressed ? min(12px, self.height / 2) : self.height / 2;
     animate border-radius { duration: 250ms; easing: spring(0.4); }
-    background: filled ? Theme.m3-primary : Theme.m3-secondary-container;
+    background: filled ? Theme.m3-primary : Theme.m3-secondary-container.with-alpha(SLook.ca);
     animate background { duration: 150ms; }
     accessible-role: button;
     accessible-label: text;
@@ -364,7 +370,7 @@ component MRow inherits Rectangle {
     border-top-right-radius: top-r;
     border-bottom-left-radius: bottom-r;
     border-bottom-right-radius: bottom-r;
-    background: selected ? Theme.m3-secondary-container : root.surface-bright;
+    background: selected ? Theme.m3-secondary-container.with-alpha(SLook.ca) : root.surface-bright.with-alpha(SLook.ca);
     in property <color> surface-bright;
     animate background { duration: 150ms; }
     accessible-role: list-item;
@@ -394,7 +400,7 @@ component MRow inherits Rectangle {
         width: 40px;
         height: 40px;
         outline: selected ? cookie9 : "";
-        tint: selected ? (r.has-icon ? Theme.m3-primary-container : Theme.m3-primary) : Theme.m3-surface-container-highest;
+        tint: selected ? (r.has-icon ? Theme.m3-primary-container.with-alpha(SLook.ca) : Theme.m3-primary) : Theme.m3-surface-container-highest.with-alpha(SLook.ca);
     }
     if r.has-icon && !r.loading: Image {
         x: lead.x + 7px;
@@ -506,7 +512,7 @@ component MHero inherits Rectangle {
     in property <color> on-tertiary;
     callback activate();
     property <bool> answer: r.hero-kind == 2;
-    property <color> container: answer ? Theme.m3-tertiary-container : Theme.m3-primary-container;
+    property <color> container: (answer ? Theme.m3-tertiary-container : Theme.m3-primary-container).with-alpha(SLook.ca);
     property <color> content: answer ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container;
     property <color> strong: answer ? Theme.m3-tertiary : Theme.m3-primary;
     property <color> on-strong: answer ? on-tertiary : Theme.m3-on-primary;
@@ -534,7 +540,7 @@ component MHero inherits Rectangle {
         width: 64px;
         height: 64px;
         outline: selected ? outline-selected : r.has-icon ? outline-picture : outline-glyph;
-        tint: r.has-icon ? surface-bright : strong;
+        tint: r.has-icon ? surface-bright.with-alpha(SLook.ca) : strong;
     }
     if r.has-icon: Image {
         x: lead.x + 12px;
@@ -661,6 +667,8 @@ export component SpotlightPanel inherits Window {
     in property <color> scrim: black;
     in property <color> accent-tint: Theme.accent.with-alpha(0.26);
     in property <color> accent-ink: Theme.accent;
+    // Glass: clear over the plugin's glass (it tints), else the frosted fallback's tint
+    in property <color> glass-fill: Theme.panel;
     // Material's rows come in one after another as the list appears
     in property <bool> introducing;
 
@@ -748,7 +756,7 @@ export component SpotlightPanel inherits Window {
             y: 64px;
             height: min(content-h, 440px) + 16px;
             border-radius: 24px;
-            background: Theme.panel;
+            background: glass-fill;
             border-width: 0.5px;
             border-color: Theme.separator;
             TouchArea { }
@@ -799,7 +807,7 @@ export component SpotlightPanel inherits Window {
             y: 64px;
             height: g-body.preferred-height + 32px;
             border-radius: 24px;
-            background: Theme.panel;
+            background: glass-fill;
             border-width: 0.5px;
             border-color: Theme.separator;
             TouchArea { }
@@ -873,11 +881,8 @@ export component SpotlightPanel inherits Window {
         // ── Material: the search view, the bar on top, the results below ──
         if Theme.material: Rectangle {
             border-radius: 28px;
-            background: m-open ? Theme.m3-surface-container : Theme.m3-surface-container-high;
+            background: (m-open ? Theme.m3-surface-container : Theme.m3-surface-container-high).with-alpha(SLook.ca);
             animate background { duration: 150ms; }
-            drop-shadow-blur: 24px;
-            drop-shadow-offset-y: 6px;
-            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12);
             TouchArea { }
             Rectangle {
                 y: 56px;
@@ -964,7 +969,7 @@ export component SpotlightPanel inherits Window {
                             }
                             if !parent.thinking: MShape {
                                 outline: sunny;
-                                tint: Theme.m3-primary-container;
+                                tint: Theme.m3-primary-container.with-alpha(SLook.ca);
                             }
                             if !parent.thinking: SIcon {
                                 glyph: g-ask-on;
@@ -1025,9 +1030,10 @@ export component SpotlightPanel inherits Window {
 
         // ── The field (Glass's glass pill; Material's search bar) ──
         bar := Rectangle {
+            y: 0;
             height: 56px;
             border-radius: 28px;
-            background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+            background: Theme.material ? Theme.m3-surface-container-high.with-alpha(SLook.ca) : glass-fill;
             border-width: Theme.material ? 0 : 0.5px;
             border-color: Theme.separator;
             TouchArea { }

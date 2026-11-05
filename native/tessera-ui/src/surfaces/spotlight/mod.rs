@@ -462,6 +462,7 @@ impl Spotlight {
             let _ = white;
         }
         ui.set_scrim(t.get_m3_scrim());
+        ui.set_glass_fill(glass_fill(st.shell.plugin, look.dark));
         ui.set_placeholder(if m { "Search apps, files and the web" } else { "Search" }.into());
         self.icons.clear();
         self.pending.clear();
@@ -968,6 +969,18 @@ impl Spotlight {
     }
 }
 
+/// Glass's panels: over the plugin's glass nothing (the plugin tints it, the
+/// QML item draws only its shadow); without it, the frosted fallback's tint
+/// (Theme.glass.frost) over Hyprland's blur
+pub fn glass_fill(plugin: bool, dark: bool) -> slint::Color {
+    let c = |r: f32, g: f32, b: f32, a: f32| slint::Color::from_argb_f32(a, r, g, b);
+    match (plugin, dark) {
+        (true, _) => c(0.0, 0.0, 0.0, 0.0),
+        (false, true) => c(0.11, 0.11, 0.13, 0.62),
+        (false, false) => c(0.97, 0.97, 0.98, 0.66),
+    }
+}
+
 fn rgb(c: slint::Color) -> [u8; 3] {
     [c.red(), c.green(), c.blue()]
 }
@@ -1013,6 +1026,7 @@ impl Part for Spotlight {
     fn plugin_changed(&mut self, st: &mut State) {
         if let Some(w) = &mut self.win {
             st.shell.apply_theme(&w.ui.global::<ui::Theme>());
+            w.ui.set_glass_fill(glass_fill(st.shell.plugin, st.shell.look.dark));
             w.glass_sent.clear();
         }
     }
@@ -1326,6 +1340,13 @@ mod tests {
         assert_eq!(x.q, "gimp");
         assert_eq!((x.store[0].title.as_str(), &x.store[0].run, x.store[0].icon.as_str()), ("GIMP", &Run::Shell("r3".into()), "/x/gimp.png"));
         assert!(x.intents.is_empty() && x.notes.is_empty());
+    }
+
+    #[test]
+    fn glass_is_clear_over_the_plugin() {
+        assert_eq!(glass_fill(true, true).alpha(), 0);
+        assert_eq!(glass_fill(false, true).alpha(), (0.62f32 * 255.0).round() as u8);
+        assert!(glass_fill(false, false).red() > 240);
     }
 
     #[test]

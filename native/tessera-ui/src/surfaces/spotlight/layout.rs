@@ -11,7 +11,7 @@ pub const GLASS_BIG: [&str; 5] = ["Calculator", "Answer", "Conversion", "Diction
 pub const HERO: [&str; 6] = ["Top Hit", "Calculator", "Answer", "Conversion", "Dictionary", "Do"];
 
 /// A heading's line (Glass: Inter 11 px; Material: label large, 14 px)
-pub const GLASS_HEAD_LINE: f32 = 13.0;
+pub const GLASS_HEAD_LINE: f32 = 14.0;
 pub const MATERIAL_HEAD_LINE: f32 = 18.0;
 /// The lists' most (then they scroll)
 pub const GLASS_MAX: f32 = 440.0;
@@ -119,13 +119,13 @@ mod tests {
         assert!(e[0].card && e[0].head.is_empty());
         assert_eq!((e[0].h, e[1].y), (90.0, 90.0));
         // a heading over each section (10 above it after the first)
-        assert_eq!((e[1].head.as_str(), e[1].head_y, e[1].row_y), ("Applications", 10.0, 27.0));
+        assert_eq!((e[1].head.as_str(), e[1].head_y, e[1].row_y), ("Applications", 10.0, 28.0));
         assert_eq!((e[2].head.as_str(), e[2].h), ("", 40.0));
-        assert_eq!(h, 90.0 + 67.0 + 40.0 + 67.0);
+        assert_eq!(h, 90.0 + 68.0 + 40.0 + 68.0);
         // the top hit is a row in Glass, its heading 2 from the top
         let (e, _) = glass(&rows(&["Top Hit", "Applications"]));
         assert!(!e[0].card);
-        assert_eq!((e[0].head.as_str(), e[0].head_y, e[0].row_y), ("Top Hit", 2.0, 19.0));
+        assert_eq!((e[0].head.as_str(), e[0].head_y, e[0].row_y), ("Top Hit", 2.0, 20.0));
     }
 
     #[test]
