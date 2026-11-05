@@ -39,10 +39,15 @@ export struct Banner {
     front: bool,
     entered: bool, // false only while it's being added (the entrance runs from there)
     leaving: bool, // the exit runs, then Rust removes it
+    // Notification Center: one of the island's alerts (its glyph on a badge
+    // tinted with its colour, IslandHistoryCard.qml / MaterialAlertCard.qml)
+    alert: bool,
+    glyph: string,
+    glyph-color: color,
 }
 
 // The close button over a Glass card's top-left corner (CloseBadge.qml)
-component CloseBadge inherits Rectangle {
+export component CloseBadge inherits Rectangle {
     in property <string> label;
     callback clicked();
     x: -6px;
@@ -74,7 +79,7 @@ component CloseBadge inherits Rectangle {
 }
 
 // A Glass action: a filled capsule (NotificationCard.qml's buttons)
-component GlassButton inherits Rectangle {
+export component GlassButton inherits Rectangle {
     in property <string> text;
     callback clicked();
     width: label.preferred-width + 24px;
@@ -100,7 +105,7 @@ component GlassButton inherits Rectangle {
 }
 
 // A Material action: a tonal pill whose corners tighten while pressed
-component MaterialPill inherits Rectangle {
+export component MaterialPill inherits Rectangle {
     in property <string> text;
     in property <string> icon;
     in property <length> h: 32px;
@@ -140,7 +145,7 @@ component MaterialPill inherits Rectangle {
 }
 
 // ── A card's content, Glass (NotificationCard.qml) ──────────────────────────
-component GlassCard {
+export component GlassCard {
     in property <Banner> b;
     in property <bool> hovered;
     callback activated();
@@ -166,6 +171,30 @@ component GlassCard {
         height: 36px;
         source: b.icon;
         image-fit: contain;
+        accessible-role: none;
+    }
+    if b.alert && !b.has-icon: Rectangle {
+        x: 12px;
+        y: 12px;
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        background: b.glyph-color.with-alpha(0.18);
+        Icon {
+            text: b.glyph;
+            fill: true;
+            font-size: 20px;
+            color: b.glyph-color;
+        }
+    }
+    // (the body's height as Text wraps it: StyledText's own is short)
+    gmeasure := Text {
+        property <length> line: self.font-size * 1.2;
+        visible: false;
+        width: root.width - 70px;
+        text: b.body-plain;
+        font-size: Theme.body;
+        wrap: word-wrap;
         accessible-role: none;
     }
     col := VerticalLayout {
@@ -204,7 +233,9 @@ component GlassCard {
         // (its own width, not only the layout's: a wrapping text measures
         // its height against it, and the layout's comes too late for that)
         if b.body-plain != "": StyledText {
-            width: 290px;
+            width: root.width - 70px;
+            // (its own measure under-counts wrapped lines: the plain text's)
+            height: min(gmeasure.preferred-height, 4 * gmeasure.line);
             text: b.body;
             default-color: Theme.label;
             default-font-size: Theme.body;
@@ -294,7 +325,7 @@ component GlassCard {
         }
         if b.error != "" || b.sent: Text {
             text: b.error != "" ? b.error : "Sent";
-            width: 290px;
+            width: root.width - 70px;
             color: b.error != "" ? Theme.danger : Theme.secondary;
             font-size: Theme.small;
             wrap: word-wrap;
@@ -307,10 +338,55 @@ component GlassCard {
     }
 }
 
+// A stack's expander, Material (MaterialExpander.qml): the count and a
+// chevron in a small tonal pill; open, the chevron alone, turned up
+export component Expander inherits Rectangle {
+    in property <int> count;
+    in property <bool> open;
+    callback clicked();
+    width: open ? 34px : 52px;
+    height: 28px;
+    border-radius: 14px;
+    background: Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1).with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1);
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: open ? "Show less" : "Show all " + count;
+    accessible-action-default => { clicked(); }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 2px;
+        if !open && count > 1: Text {
+            text: count;
+            color: Theme.m3-on-surface;
+            font-size: Theme.small;
+            font-weight: 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        Icon {
+            text: "\u{e136}"; // caret-down
+            font-size: 18px;
+            color: Theme.m3-on-surface;
+            transform-rotation: open ? 180deg : 0deg;
+            animate transform-rotation { duration: 300ms; easing: spring(0.5); }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 // ── A card's content, Material (MaterialNotificationCard.qml) ───────────────
-component MaterialCard {
+export component MaterialCard {
     in property <Banner> b;
     in property <bool> hovered;
+    // A stack in Notification Center (MaterialCardCorner.qml): its count and
+    // chevron top right; collapsed, a click anywhere opens it
+    in property <int> group-count: 1;
+    in property <bool> group-open;
+    in property <bool> tap-expands;
+    callback group-toggled();
     callback activated();
     callback close();
     callback action(string);
@@ -324,16 +400,25 @@ component MaterialCard {
 
     TouchArea {
         enabled: !b.replying;
-        clicked => { activated(); }
+        clicked => {
+            if tap-expands { group-toggled(); } else { activated(); }
+        }
     }
     // The app's icon on a tonal circle, or the sender's picture filling it
+    // (an alert: its glyph on a circle tinted with its colour)
     Rectangle {
         x: 16px;
         y: 16px;
         width: 40px;
         height: 40px;
         border-radius: 20px;
-        background: b.picture ? transparent : Theme.m3-secondary-container; // (a picture fills the circle itself)
+        background: b.picture ? transparent : b.alert ? Theme.m3-surface-container-highest.mix(b.glyph-color, 0.78) : Theme.m3-secondary-container; // (a picture fills the circle itself)
+        if b.alert && !b.has-icon: Icon {
+            text: b.glyph;
+            fill: true;
+            font-size: 20px;
+            color: b.glyph-color;
+        }
         clip: b.picture;
         if b.has-icon: Image {
             x: b.picture ? 0 : 8px;
@@ -345,9 +430,16 @@ component MaterialCard {
             accessible-role: none;
         }
     }
-    // Top right: close, while hovered (MaterialCardCorner.qml)
+    // Top right: close, while hovered, and a stack's expander (MaterialCardCorner.qml)
+    if group-count > 1: Expander {
+        x: parent.width - 12px - self.width;
+        y: 12px;
+        count: group-count;
+        open: group-open;
+        clicked => { group-toggled(); }
+    }
     if hovered: Rectangle {
-        x: parent.width - 12px - 28px;
+        x: parent.width - 12px - 28px - (group-count > 1 ? 4px + (group-open ? 34px : 52px) : 0);
         y: 12px;
         width: 28px;
         height: 28px;
@@ -366,6 +458,15 @@ component MaterialCard {
             clicked => { close(); }
         }
     }
+    mmeasure := Text {
+        property <length> line: self.font-size * 1.2;
+        visible: false;
+        width: root.width - 84px;
+        text: b.body-plain;
+        font-size: 14px;
+        wrap: word-wrap;
+        accessible-role: none;
+    }
     col := VerticalLayout {
         x: 68px;
         y: 16px;
@@ -374,7 +475,7 @@ component MaterialCard {
         spacing: 2px;
         // App · time (beside the corner button)
         HorizontalLayout {
-            padding-right: hovered ? 32px : 0;
+            padding-right: (hovered ? 32px : 0) + (group-count > 1 ? (group-open ? 38px : 56px) : 0);
             Text {
                 height: 20px;
                 text: b.app + (b.time != "" ? " · " + b.time : "");
@@ -395,7 +496,8 @@ component MaterialCard {
             accessible-role: none;
         }
         if b.body-plain != "": StyledText {
-            width: 276px;
+            width: root.width - 84px;
+            height: min(mmeasure.preferred-height, 4 * mmeasure.line);
             text: b.body;
             default-color: Theme.m3-on-surface-variant;
             default-font-size: 14px;
@@ -502,7 +604,7 @@ component MaterialCard {
         }
         if b.error != "" || b.sent: Text {
             text: b.error != "" ? b.error : "Sent";
-            width: 276px;
+            width: root.width - 84px;
             color: b.error != "" ? Theme.m3-error : Theme.m3-on-surface-variant;
             font-size: 12px;
             wrap: word-wrap;
@@ -580,12 +682,13 @@ export component Banners inherits Window {
             // Glass: no plugin (Hyprland's blur behind the window): a tint;
             // Material: its tonal card, elevation 3 when it's in front
             border-radius: Theme.material ? 24px : 22px;
-            background: Theme.material ? Theme.m3-surface-container-high : glass-plugin ? transparent : Theme.panel;
+            // (Material, see-through: Theme.qml's controlAlpha on its containers)
+            background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : glass-plugin ? transparent : Theme.panel;
             border-width: !Theme.material && !glass-plugin ? 0.5px : 0;
             border-color: Theme.separator;
             drop-shadow-blur: Theme.material && live ? 16px : 0;
             drop-shadow-offset-y: 4px;
-            drop-shadow-color: Theme.material ? #000000.with-alpha(Theme.dark ? 0.42 : 0.18) : transparent;
+            drop-shadow-color: Theme.material && live ? #000000.with-alpha(Theme.dark ? 0.42 : 0.18) : transparent; // (no blur still draws it, hard)
             accessible-role: list-item;
             accessible-label: b.app + ": " + b.summary + (b.body-plain != "" ? ". " + b.body-plain : "");
             accessible-action-default => { root.activated(b.id); }

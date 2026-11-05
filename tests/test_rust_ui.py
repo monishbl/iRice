@@ -132,6 +132,24 @@ class Agreement(unittest.TestCase):
         for route in re.findall(r'n\.route === "([a-z]+)"', qml):
             self.assertIn(f'Route::{route.capitalize()} => "{route}"', (CRATE / "src/surfaces/notifications/model.rs").read_text())
 
+    def test_notification_center_moves_with_the_notifications(self):
+        # Panels opens it as before; the QML one steps aside while tessera-ui
+        # serves notifications, and every act the panel asks for is answered
+        nc = (ROOT / "shell/modules/notifications/NotificationCenter.qml").read_text()
+        self.assertIn('elsewhere: RustUi.drawing("notifications")', nc)
+        qml = (ROOT / "shell/services/Notifications.qml").read_text()
+        self.assertIn('cmd: "open", surface: "notifications"', qml)
+        self.assertIn('e.kind === "nc"', qml)
+        panel = (CRATE / "src/surfaces/notifications/panel.rs").read_text()
+        acts = set(re.findall(r'\bnc\("([a-z.]+)"', panel))
+        answered = set(re.findall(r'case "([a-z.]+)":', qml))
+        self.assertTrue(acts, "the panel asks nothing")
+        self.assertEqual(sorted(acts - answered), [], "acts the shell doesn't answer")
+        # (the timer's buttons, whose acts come from the markup)
+        slint = (CRATE / "ui/notification-center.slint").read_text()
+        for act in re.findall(r'act\("([a-z.]+)"\)', slint):
+            self.assertIn(f'case "{act}":', qml)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

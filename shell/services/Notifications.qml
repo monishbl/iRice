@@ -3,6 +3,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
 import qs.common
+import "../common/phosphor.js" as Phosphor
+import "../modules/notifications/NotificationGroups.js" as NotificationGroups
 
 // Notification daemon. Everything received is kept for Notification Center
 // until dismissed (the newest 200); new ones also show as banners unless Do Not Disturb is on
@@ -409,6 +411,8 @@ Singleton {
         function onMessage(e) {
             if (e.kind === "notifications")
                 root.fromRust(e.list ?? []);
+            else if (e.kind === "nc")
+                root.ncAct(e);
         }
     }
     function toRust(id, o) {
@@ -559,6 +563,201 @@ Singleton {
         mirrorById = m;
         mirror = mirror.filter(x => x !== o);
         closeMirrored(o, reason);
+    }
+
+    // ── Notification Center drawn by tessera-ui ─────────────────────────
+    // While it serves them it draws Notification Center too
+    // (native/tessera-ui/src/surfaces/notifications/panel.rs): Panels still
+    // opens and closes it (the clock, the hot corner, IPC); each is passed on
+    // as a command line, with the widgets' data (Calendar, Todos, Timers,
+    // the island's alerts) while it's open. It asks for what only this shell
+    // does as {"kind":"nc","act":…} lines (ncAct below).
+    readonly property bool rustCenter: rustServes && Panels.open === "notificationCenter"
+    readonly property string rustCenterScreen: rustCenter ? (Panels.screen?.name ?? "") : ""
+    onRustCenterChanged: forwardCenter()
+    onRustCenterScreenChanged: forwardCenter()
+    function forwardCenter() {
+        if (rustCenter) {
+            RustUi.send({ cmd: "open", surface: "notifications", screen: rustCenterScreen });
+            if (rustWidgets)
+                RustUi.send(rustWidgets);
+            sendCalendar();
+        } else {
+            if (rustServes)
+                RustUi.send({ cmd: "close", surface: "notifications" });
+            ncFine(false);
+        }
+    }
+    property var ncUndo: null // a to-do just deleted, offered back for a few seconds
+    Timer {
+        id: ncUndoTimer
+        interval: 8000
+        onTriggered: root.ncUndo = null
+    }
+    property bool ncFineOn: false // (the stopwatch's hundredths, while it's shown)
+    function ncFine(on) {
+        if (on === ncFineOn)
+            return;
+        ncFineOn = on;
+        Timers.swFine = Math.max(0, Timers.swFine + (on ? 1 : -1));
+    }
+    readonly property var rustWidgets: !rustCenter ? null : ({
+            to: "notifications",
+            do: "widgets",
+            tab: Panels.ncTab,
+            focus: Focus.on ? (Focus.mode?.name ?? "Focus") + " is on" : "",
+            alerts: Island.history.map(a => ({
+                        hid: a.hid,
+                        kind: NotificationGroups.kindOf(a),
+                        glyph: Phosphor.glyphs[a.icon ?? "bell"] ?? Phosphor.glyphs["bell"],
+                        color: String(a.color ?? Theme.accent),
+                        picture: a.picture ?? "",
+                        title: a.title ?? "",
+                        detail: [a.subtitle ?? "", a.battery !== undefined ? "Battery " + Math.round(a.battery * 100) + "%" : "", (a.times ?? 1) > 1 ? a.times + " times" : ""].filter(x => !!x).join(" · "),
+                        at: a.at ?? 0,
+                        act: Island.historyActs[a.hid]?.text ?? ""
+                    })),
+            todos: Todos.list.map(t => ({
+                        key: t.key,
+                        text: t.text ?? "",
+                        done: !!t.done,
+                        due: [Todos.dueLabel(t), t.google ? "Google · " + t.listName : ""].filter(Boolean).join(" · "),
+                        overdue: !!Todos.overdue(t)
+                    })),
+            undo: ncUndo?.text ?? "",
+            timer: { remaining: Timers.format(Timers.remaining), phase: Timers.phase, progress: Timers.progress, running: Timers.running, completed: Timers.completed },
+            sw: { elapsed: Timers.formatMs(Timers.swElapsed), running: Timers.swRunning, laps: Timers.laps.map((l, i) => ({ name: "Lap " + (Timers.laps.length - i), time: Timers.formatMs(l) })) }
+        })
+    onRustWidgetsChanged: if (rustWidgets) RustUi.send(rustWidgets)
+    // The calendar's days it shows ({from, to, day}: "y-mm-dd", `to` the day
+    // after): CalendarWidget.qml's marks, everyDay and items
+    property var ncCal: null
+    function sendCalendar() {
+        if (!rustCenter || !ncCal)
+            return;
+        void Calendar.local, Calendar.remote;
+        const p = s => {
+            const [y, m, d] = s.split("-").map(Number);
+            return new Date(y, m - 1, d);
+        };
+        const key = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+        const first = p(ncCal.from), to = p(ncCal.to), day = p(ncCal.day);
+        const list = Calendar.between(first, to);
+        const daily = Calendar.dailyIn(list, first, to);
+        const marks = {};
+        const mark = k => marks[k] = marks[k] ?? { colors: [], todos: 0 };
+        for (const e of list) {
+            if (daily[Calendar.seriesOf(e)])
+                continue;
+            const d = new Date(e.start.getFullYear(), e.start.getMonth(), e.start.getDate());
+            let end = e.allDay ? new Date(e.end.getTime() - 1) : e.end;
+            end = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            for (; d <= end; d.setDate(d.getDate() + 1)) {
+                const c = String(e.color || Theme.accent);
+                if (!mark(key(d)).colors.includes(c))
+                    mark(key(d)).colors.push(c);
+            }
+        }
+        for (const t of Todos.list)
+            if (t.due && !t.done)
+                mark(key(new Date(t.due))).todos++;
+        const event = e => ({ kind: "event", title: e.title ?? "", sub: Calendar.timeText(e) + (e.location ? " · " + e.location : "") + (e.calendar ? " · " + e.calendar : ""), color: String(e.color || Theme.accent), key: String(e.id ?? "") });
+        const todo = t => ({ kind: "todo", title: t.text ?? "", sub: "To-do" + (t.allDay ? "" : " · " + Qt.formatTime(new Date(t.due), TimeFormat.hm)), done: !!t.done, key: t.key });
+        // (the week: a few of what's on each day, then "+N more")
+        if ((to - first) / 86400000 <= 7.5)
+            for (const d = new Date(first); d < to; d.setDate(d.getDate() + 1)) {
+                const evs = Calendar.eventsOn(d), tds = Todos.on(d).filter(t => !t.done);
+                const m = mark(key(d));
+                m.lines = evs.slice(0, 4).map(event).concat(tds.slice(0, 3).map(todo));
+                m.more = evs.length + tds.length - m.lines.length;
+            }
+        RustUi.send({
+            to: "notifications",
+            do: "calendar",
+            marks: marks,
+            everyDay: Object.values(daily).map(d => d.title).join(", "),
+            items: Calendar.eventsOn(day).map(event).concat(Todos.on(day).map(todo))
+        });
+    }
+    Connections {
+        target: Calendar
+        function onLocalChanged() { root.sendCalendar(); }
+        function onRemoteChanged() { root.sendCalendar(); }
+    }
+    Connections {
+        target: Todos
+        function onListChanged() { root.sendCalendar(); }
+    }
+    // What Notification Center asks of this shell
+    function ncAct(e) {
+        switch (e.act) {
+        case "close":
+            if (Panels.open === "notificationCenter")
+                Panels.close();
+            break;
+        case "manage":
+            Panels.openSettings("notifications");
+            break;
+        case "tab":
+            Panels.ncTab = e.tab ?? 0;
+            break;
+        case "calendar":
+            ncCal = { from: e.from, to: e.to, day: e.day };
+            sendCalendar();
+            break;
+        case "todo.add":
+            if ((e.text ?? "").trim() !== "")
+                Todos.add(e.text);
+            break;
+        case "todo.toggle": {
+            const t = Todos.find(e.key);
+            if (t)
+                Todos.update(t, { done: !t.done });
+            break;
+        }
+        case "todo.rename":
+            if ((e.text ?? "").trim() !== "")
+                Todos.update(e.key, { text: e.text.trim() });
+            break;
+        case "todo.remove":
+            ncUndo = Todos.remove(e.key);
+            ncUndoTimer.restart();
+            break;
+        case "todo.restore":
+            Todos.restore(ncUndo);
+            ncUndo = null;
+            break;
+        case "timer.toggle":
+            Timers.toggle();
+            break;
+        case "timer.skip":
+            Timers.skip();
+            break;
+        case "timer.reset":
+            Timers.reset();
+            break;
+        case "sw.toggle":
+            Timers.swToggle();
+            break;
+        case "sw.lap":
+            Timers.swLap();
+            break;
+        case "sw.reset":
+            Timers.swReset();
+            break;
+        case "sw.fine":
+            ncFine(!!e.on && rustCenter);
+            break;
+        case "island.forget":
+            Island.forget(e.hid);
+            break;
+        case "island.clear":
+            Island.clearHistory();
+            break;
+        case "alert.act":
+            Island.historyActs[e.hid]?.act?.();
+            break;
+        }
     }
 
     LazyLoader {

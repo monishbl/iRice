@@ -15,6 +15,8 @@ Variants {
         required property var modelData
         panel: "notificationCenter"
         screen: modelData
+        // (tessera-ui draws it while it serves notifications: services/Notifications.qml)
+        elsewhere: RustUi.drawing("notifications")
 
         Popover {
             id: nc

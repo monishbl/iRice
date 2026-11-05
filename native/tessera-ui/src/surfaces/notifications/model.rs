@@ -306,7 +306,6 @@ pub fn time_label(at_ms: i64, now_ms: i64, clock: impl Fn(i64) -> String) -> Str
 
 /// Notification Center's groups (NotificationGroups.js): by app, newest group
 /// first, each newest first. `list` is oldest first, as the server keeps it
-#[allow(dead_code)] // (Notification Center, when it moves to Rust; QML groups the mirror)
 pub fn groups(list: &[Note]) -> Vec<(String, Vec<&Note>)> {
     let mut out: Vec<(String, Vec<&Note>)> = Vec::new();
     for n in list.iter().rev() {

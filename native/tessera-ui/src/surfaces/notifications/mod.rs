@@ -14,10 +14,10 @@
 //! except critical ones and its allowed apps. Messaging apps' Reply opens a
 //! composer in the card (the banner takes the keyboard meanwhile).
 //!
-//! The QML shell while this serves (the hand-over, services/notify.rs): its
-//! Notification Center, lock screen, menu bar bell and island still read
-//! Notifications.qml, which mirrors this part's list instead of running its
-//! own server:
+//! Notification Center is drawn here too (panel.rs, center.rs). The QML shell
+//! while this serves (the hand-over, services/notify.rs): its lock screen,
+//! menu bar bell and island still read Notifications.qml, which mirrors this
+//! part's list instead of running its own server:
 //!   - out, on stdout (RustUi.qml passes it on), whenever the list changes,
 //!     once the shell said hello:
 //!       {"src":"ui","kind":"notifications","list":[Note…]}
@@ -32,6 +32,8 @@
 //!       {"to":"notifications","do":"reply","id":N,"text":"…"}
 //!       {"to":"notifications","do":"clear"}
 //!       {"to":"notifications","do":"banner","id":N}    the island couldn't take it
+//!       {"to":"notifications","do":"widgets"|"calendar",…}  Notification
+//!                    Center's widgets (panel.rs)
 //!       {"to":"notifications","do":"shell","covered":bool,"osd":bool}
 //!                    Notification Center or Control Center is open on the
 //!                    banners' screen (they hide), the OSD shows (they move down)
@@ -44,8 +46,10 @@
 //! shell listens, Material's wavy progress (a straight track here), and
 //! Glass's own shadow around each card (the plugin's glass only).
 
+pub mod center;
 pub mod markup;
 pub mod model;
+mod panel;
 
 use crate::services::hypr::{Glass, Snapshot};
 use crate::services::notify::{self, Event};
@@ -139,6 +143,9 @@ pub struct Notifications {
     enter: slint::Timer,
     publish: slint::Timer,
     save: slint::Timer,
+    // Notification Center (panel.rs)
+    nc: panel::Panel,
+    nc_open: bool,
 }
 
 fn now_ms() -> i64 {
@@ -531,6 +538,22 @@ impl Notifications {
 
     fn row(&mut self, st: &State, s: &Shown, place: (f32, f32, f32), index: usize) -> ui::Banner {
         let n = self.store.get(s.id).cloned().unwrap_or_default();
+        ui::Banner {
+            index: index as i32,
+            ty: place.0,
+            tscale: place.1,
+            tfade: place.2,
+            front: index == 0,
+            entered: s.entered,
+            leaving: s.leaving,
+            ..self.card(st, &n, Some(s))
+        }
+    }
+
+    /// A notification's card (a banner's, or Notification Center's), with
+    /// its composer's state
+    fn card(&mut self, st: &State, n: &Note, s: Option<&Shown>) -> ui::Banner {
+        let n = n.clone();
         let icons = &mut self.icons;
         let mut lookup = |name: &str| icons.entry(name.to_string()).or_insert_with(|| theme_icon(name)).clone();
         let src = icon_source(&n, &mut lookup);
@@ -542,7 +565,7 @@ impl Notifications {
         let h24 = st.shell.cfg["appearance"]["clock24"].as_bool().unwrap_or(false);
         let plain = markup::plain(&n.body);
         ui::Banner {
-            id: s.id as i32,
+            id: n.id as i32,
             app_upper: app.to_uppercase().into(),
             app: app.into(),
             time: model::time_label(n.at, now_ms(), |t| clock_at(t, h24)).into(),
@@ -555,18 +578,12 @@ impl Notifications {
             buttons: ModelRc::new(VecModel::from(n.buttons().iter().map(|a| ui::NoteButton { key: a.id.clone().into(), text: a.text.clone().into() }).collect::<Vec<_>>())),
             can_reply: n.has_inline_reply,
             placeholder: n.inline_reply_placeholder.clone().into(),
-            replying: s.replying,
-            sent: s.sent,
-            error: s.error.clone().into(),
-            draft: self.drafts.get(&s.id).cloned().unwrap_or_default().into(),
+            replying: s.is_some_and(|s| s.replying),
+            sent: s.is_some_and(|s| s.sent),
+            error: s.map(|s| s.error.clone()).unwrap_or_default().into(),
+            draft: self.drafts.get(&n.id).cloned().unwrap_or_default().into(),
             progress: if n.value >= 0 { n.value as f32 / 100.0 } else { -1.0 },
-            index: index as i32,
-            ty: place.0,
-            tscale: place.1,
-            tfade: place.2,
-            front: index == 0,
-            entered: s.entered,
-            leaving: s.leaving,
+            ..Default::default()
         }
     }
 
@@ -581,7 +598,7 @@ impl Notifications {
         let default_h = if material { 96.0 } else { 90.0 };
         let heights: Vec<f32> = self.banners.iter().map(|s| self.heights.get(&s.id).copied().unwrap_or(default_h)).collect();
         let (places, content) = stack(&heights, self.expanded, material);
-        let want = count > 0 && !self.covered;
+        let want = count > 0 && !self.covered && !self.nc_open;
         if want && self.win.is_none() {
             self.make_window(st);
         }
@@ -652,6 +669,9 @@ impl Notifications {
             w.glass_sent.clear();
         }
         self.timers(st);
+        if self.nc_open {
+            self.nc_refresh(st);
+        }
         if count > 0 && !self.clock.running() {
             self.arm(st, &self.clock, 30_000, || M::Clock);
         }
@@ -730,6 +750,9 @@ impl Notifications {
                     self.refresh(st);
                 }
             }
+            // Notification Center's widgets and calendar (panel.rs)
+            "widgets" => self.nc_shell(st, c),
+            "calendar" => self.nc_shell(st, c),
             "shell" => {
                 self.covered = c["covered"].as_bool().unwrap_or(false);
                 self.osd = c["osd"].as_bool().unwrap_or(false);
@@ -760,6 +783,16 @@ impl Notifications {
     }
 }
 
+/// A link in a notification's body (http(s) and mailto only: markup.rs)
+fn open_link(url: &str) {
+    if markup::link_allowed(url) {
+        let url = url.trim().to_string();
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new("xdg-open").arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().and_then(|mut c| c.wait());
+        });
+    }
+}
+
 thread_local! {
     static BUS_ID: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
 }
@@ -776,7 +809,19 @@ impl Part for Notifications {
         st.shell.want("notify");
     }
 
+    /// Notification Center: opened and closed through the shell's Panels
+    fn command(&mut self, st: &mut State, cmd: &crate::shell::Command) {
+        self.nc_command(st, cmd);
+    }
+
+    fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
+        // (a banner writing a reply just lets go of the keyboard; the
+        // composer and its draft stay)
+        self.nc_keyboard_left(st, s);
+    }
+
     fn output_removed(&mut self, st: &mut State, name: &str) {
+        self.nc_output_removed(st, name);
         if self.win.as_ref().is_some_and(|w| w.output == name) {
             self.drop_window(st);
             self.refresh(st);
@@ -784,6 +829,10 @@ impl Part for Notifications {
     }
 
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
+        if self.nc_owns(s) {
+            let name = s.output.clone();
+            self.nc_output_removed(st, &name);
+        }
         if self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
             self.drop_window(st);
         }
@@ -798,6 +847,9 @@ impl Part for Notifications {
                 w.glass_sent.clear();
             }
             self.heights.clear();
+            self.nc_theme(st);
+        } else if self.nc_open {
+            self.nc_refresh(st);
         }
         self.refresh(st);
     }
@@ -807,6 +859,7 @@ impl Part for Notifications {
             st.shell.apply_theme(&w.ui.global::<ui::Theme>());
             w.glass_sent.clear();
         }
+        self.nc_theme(st);
         self.refresh(st);
     }
 
@@ -866,6 +919,10 @@ impl Part for Notifications {
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
         let msg = match msg.downcast::<serde_json::Value>() {
             Ok(c) => return self.command(st, &c),
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<panel::C>() {
+            Ok(c) => return self.nc_message(st, *c),
             Err(m) => m,
         };
         let Ok(m) = msg.downcast::<M>() else { return };
@@ -969,14 +1026,7 @@ impl Part for Notifications {
                 self.refresh(st);
             }
             M::DismissAfterReply(id) => self.dismiss(st, id, notify::DISMISSED),
-            M::Link(url) => {
-                if markup::link_allowed(&url) {
-                    let url = url.trim().to_string();
-                    std::thread::spawn(move || {
-                        let _ = std::process::Command::new("xdg-open").arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().and_then(|mut c| c.wait());
-                    });
-                }
-            }
+            M::Link(url) => open_link(&url),
             M::Pill(p) => {
                 match p.as_str() {
                     "expand" => self.expanded = self.banners.len() > 1,
@@ -989,14 +1039,9 @@ impl Part for Notifications {
         }
     }
 
-    fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
-        // another window was clicked while writing: the composer stays open
-        // (its draft too), the banner just lets go of the keyboard
-        let _ = (st, s);
-    }
-
     /// Hover (timers hold), Glass's shapes as the cards move, accessibility
     fn after_frame(&mut self, st: &mut State) {
+        self.nc_after_frame(st);
         let Some(w) = self.win.as_mut() else { return };
         let hovered = w.ui.get_hovered();
         let kbd = st.keyboard_surface();
@@ -1032,7 +1077,9 @@ impl Part for Notifications {
     }
 
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {
-        self.win.as_mut().and_then(|w| w.a11y.as_mut()).into_iter().collect()
+        let mut out: Vec<&mut crate::a11y::A11y> = self.win.as_mut().and_then(|w| w.a11y.as_mut()).into_iter().collect();
+        out.extend(self.nc.win_a11y());
+        out
     }
 
     fn stats(&self) {
@@ -1042,6 +1089,7 @@ impl Part for Notifications {
     }
 
     fn quit(&mut self, _: &mut State) {
+        self.nc_quit();
         if let Some(w) = &self.win {
             Glass::clear_now(&w.output, NS);
         }
