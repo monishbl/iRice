@@ -633,7 +633,7 @@ Singleton {
             // the surfaces it draws in place of this shell's, as they move over
             // (services/RustUi.qml). Empty: this shell draws everything
             property JsonObject rust: JsonObject {
-                property list<string> surfaces: [] // previews: menubar (its status items open this shell's menus), dock (no Downloads stack or badges yet), emoji, clipboard, osd (no DDC monitors yet), background (the wallpaper; a live one shows its poster under the QML's video), wallpaper (the picker), today; build it with tools/build-native.sh --ui
+                property list<string> surfaces: [] // previews: menubar (its status items open this shell's menus), dock (no Downloads stack or badges yet), emoji, clipboard, osd (no DDC monitors yet), background (the wallpaper; a live one shows its poster under the QML's video), wallpaper (the picker), today, desktop (the gallery and Widget Options stay QML; no large calendar or LockFx zoom yet); build it with tools/build-native.sh --ui
             }
         }
     }

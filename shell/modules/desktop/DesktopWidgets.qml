@@ -114,8 +114,17 @@ Item {
     Connections {
         target: Panels
         function onAddWidget(kind, size) {
-            if (Panels.screen === root.screen)
+            // (tessera-ui adds it while it draws the desktop: DesktopFeed)
+            if (Panels.screen === root.screen && !RustUi.drawing("desktop"))
                 root.add(kind, size);
+        }
+    }
+
+    // While tessera-ui draws the desktop: what it needs from this shell
+    Loader {
+        active: RustUi.drawing("desktop") && root.screen === Quickshell.screens[0]
+        sourceComponent: DesktopFeed {
+            screen: root.screen
         }
     }
 
