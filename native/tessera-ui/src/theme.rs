@@ -52,7 +52,15 @@ pub fn read_json() -> Value {
 }
 
 pub fn read() -> Look {
-    let v = read_json();
+    let mut v = read_json();
+    // The seed and a wallpaper accent come from the picture showing now (the
+    // bundled default when none is chosen, the dynamic one, a live poster), as
+    // the shell's do, not only from the chosen file
+    let material = crate::env::var("LOOK").as_deref().unwrap_or(v["appearance"]["look"].as_str().unwrap_or("glass")) == "material";
+    let showing = crate::surfaces::background::wallpaper::showing_now(&v, material);
+    if v["wallpaper"].is_object() || v["wallpaper"].is_null() {
+        v["wallpaper"]["path"] = Value::String(showing);
+    }
     // TESSERA_LOOK=glass|material overrides (to measure both looks from one config)
     look_from(&v, crate::env::var("LOOK").as_deref(), wallpaper_seed)
 }
@@ -204,7 +212,9 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_body(14.0);
         t.set_bar_tint(Color::from_argb_u8(0, 0, 0, 0));
         t.set_fg(r("onSurface"));
-        t.set_pill(r("surfaceContainer"));
+        // (MenuBar.qml's pillColor: the island's own surface, surfaceContainerHigh)
+        // (veiled: see-through with Material's transparency, Theme.veil)
+        t.set_pill(if look.transparency > 0.0 { r("surfaceContainerHigh").with_alpha(1.0 - 0.55 * look.transparency) } else { r("surfaceContainerHigh") });
         t.set_dot(r("onSurfaceVariant"));
         t.set_dot_active(r("primary"));
         t.set_menu_bg(r("surfaceContainer"));
@@ -244,9 +254,11 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_on_primary(r("onPrimary"));
         t.set_m3_primary_container(r("primaryContainer"));
         t.set_m3_on_primary_container(r("onPrimaryContainer"));
+        t.set_m3_secondary(r("secondary"));
         t.set_m3_secondary_container(r("secondaryContainer"));
         t.set_m3_on_secondary_container(r("onSecondaryContainer"));
         t.set_m3_tertiary(r("tertiary"));
+        t.set_m3_on_tertiary(r("onTertiary"));
         t.set_m3_surface(r("surface"));
         t.set_m3_surface_container_low(r("surfaceContainerLow"));
         t.set_m3_surface_container(r("surfaceContainer"));
@@ -264,6 +276,10 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_on_tertiary_container(r("onTertiaryContainer"));
         t.set_m3_inverse_surface(r("inverseSurface"));
         t.set_m3_inverse_on_surface(r("inverseOnSurface"));
+        t.set_blue(hex(if look.dark { "#0A84FF" } else { "#007AFF" }));
+        t.set_yellow(hex(if look.dark { "#FFD60A" } else { "#FFCC00" }));
+        t.set_radius_item(8.0);
+        t.set_radius_tile(28.0);
         t.set_m3_primary_fixed(r("primaryFixed"));
         t.set_m3_primary_fixed_dim(r("primaryFixedDim"));
         t.set_m3_shadow(r("shadow"));
@@ -271,6 +287,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(r("surfaceContainer"));
         t.set_blur(look.transparency > 0.0);
         t.set_panel_alpha(1.0 - 0.55 * look.transparency);
+        t.set_control_alpha(1.0 - 0.4 * look.transparency);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);
@@ -327,9 +344,15 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_success(hex(if d { "#30D158" } else { "#34C759" }));
         t.set_warning(hex(if d { "#FF9F0A" } else { "#FF9500" }));
         t.set_panel(if d { rgba(0x1e, 0x1e, 0x22, if plugin { 0.45 } else { 0.85 }) } else { rgba(0xf6, 0xf6, 0xf8, if plugin { 0.5 } else { 0.88 }) });
+        t.set_blue(hex(if d { "#0A84FF" } else { "#007AFF" }));
+        t.set_yellow(hex(if d { "#FFD60A" } else { "#FFCC00" }));
+        t.set_radius_item(6.0);
+        // (iOS tiles: half a Control Center button, Theme.radius.tile)
+        t.set_radius_tile(36.0);
         t.set_glass_solid(hex(if d { "#26262A" } else { "#F2F2F5" }));
         t.set_blur(false);
         t.set_panel_alpha(1.0);
+        t.set_control_alpha(1.0);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(15.0);

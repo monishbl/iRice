@@ -13,7 +13,8 @@
 //! What it shows: the layout from config.json (`controlCenter.layout`, defs.rs);
 //! the sliders, the Microphone module and the Sound and Microphone pages from
 //! the sound server (services::audio) and the backlight (services::brightness);
-//! the battery and Wi-Fi's state from services::status. Everything else is
+//! the battery and Wi-Fi's state from services::status, Bluetooth's from
+//! services::bluez, Now Playing from services::mpris (as the menu bar). Everything else is
 //! still the shell's own state (Focus, Sharing, Night Light, Caffeine,
 //! Bluetooth and the Wi-Fi networks, the player…): its RustBridge.qml sends
 //! it on stdin while this is open and does what a click asks (bridge.rs).
@@ -40,7 +41,9 @@ pub mod defs;
 pub mod icons;
 
 use crate::services::audio::{self, Cmd, Sound};
+use crate::services::bluez::Bluetooth;
 use crate::services::brightness::{self, Backlight};
+use crate::services::mpris::{self, Players};
 use crate::services::hypr::Glass;
 use crate::services::status::{Battery, Wifi};
 use crate::shell::{self, Command, Part};
@@ -94,6 +97,8 @@ enum M {
     Dismissed,
     Key(String, bool),
     Closed,
+    /// the album art for this address, read on a thread
+    Art(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
 }
 
 /// Whose choices the open menu shows
@@ -224,6 +229,9 @@ pub struct ControlCenter {
     kbd: i32,
     /// the page's row the keyboard is on (-1: none)
     pkbd: i32,
+    /// the album art shown, by its address
+    art_url: String,
+    art: Option<slint::Image>,
     hushed: Option<Instant>,
 }
 
@@ -246,6 +254,8 @@ impl Default for ControlCenter {
             menu: None,
             kbd: -1,
             pkbd: -1,
+            art_url: String::new(),
+            art: None,
             hushed: None,
         }
     }
@@ -287,6 +297,10 @@ fn glyphs(material: bool) -> ui::CcGlyphs {
 }
 
 fn picture(path: &str) -> Option<slint::Image> {
+    picture_px(path).map(slint::Image::from_rgba8)
+}
+
+fn picture_px(path: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
     if path.is_empty() || path.contains("://") {
         return None;
     }
@@ -303,13 +317,12 @@ fn picture(path: &str) -> Option<slint::Image> {
             let c = p.demultiply();
             [c.red(), c.green(), c.blue(), c.alpha()]
         }).collect();
-        return Some(slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw, size, size)));
+        return Some(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw, size, size));
     }
     // (~/.face has no extension: the format from its bytes)
     let img = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?.thumbnail(192, 192).to_rgba8();
     let (w, h) = img.dimensions();
-    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), w, h);
-    Some(slint::Image::from_rgba8(buf))
+    Some(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), w, h))
 }
 
 impl ControlCenter {
@@ -416,7 +429,7 @@ impl ControlCenter {
         if !self.window(st, &output) {
             return;
         }
-        for s in ["audio", "brightness", "status"] {
+        for s in ["audio", "brightness", "status", "mpris", "bluez"] {
             st.shell.want(s);
         }
         if reopen {
@@ -429,6 +442,8 @@ impl ControlCenter {
         self.rebuild(st);
         self.push_page(st);
         self.push_avatar();
+        self.want_art(st);
+        self.push_footer(st);
         let w = self.win.as_ref().unwrap();
         w.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         w.surface.show(0, 0);
@@ -547,6 +562,15 @@ impl ControlCenter {
                     status = if !wf.enabled { "Off".into() } else if wf.ssid.is_empty() { "Not connected".into() } else { wf.ssid.clone() };
                 }
             }
+            "bluetooth" => {
+                // (BlueZ, the menu bar's service; the shell's own words when
+                // Bluetooth doesn't work: blocked, stopped)
+                let why = ["Off", "On"].contains(&status.as_str()) || st.shell.get::<Bluetooth>().is_some_and(|b| b.devices.iter().any(|d| d.connected && d.name == status));
+                if let Some(b) = st.shell.get::<Bluetooth>().filter(|b| b.present && (why || status.is_empty())) {
+                    on = b.powered;
+                    status = if !b.powered { "Off".into() } else { b.devices.iter().find(|d| d.connected).map_or_else(|| "On".into(), |d| d.name.clone()) };
+                }
+            }
             "mic" => {
                 if let Some(s) = snd {
                     on = !s.mic_muted();
@@ -638,24 +662,44 @@ impl ControlCenter {
         ui.set_charging(b.charging);
         ui.set_user(self.said.user.as_str().into());
         let m = &self.said.media;
-        let art = picture(&m.art);
+        let p = st.shell.get::<Players>().and_then(|p| p.chosen());
+        let art = self.art.clone();
         ui.set_media(ui::CcMedia {
-            has: m.has,
-            identity: m.identity.as_str().into(),
-            title: m.title.as_str().into(),
-            artist: m.artist.as_str().into(),
-            playing: m.playing,
+            has: p.is_some() || m.has,
+            identity: p.map_or(m.identity.as_str(), |p| p.identity.as_str()).into(),
+            title: p.map_or(m.title.as_str(), |p| p.track.title.as_str()).into(),
+            artist: p.map_or(m.artist.as_str(), |p| p.track.artist.as_str()).into(),
+            playing: p.map_or(m.playing, |p| p.playing),
             has_art: art.is_some(),
             art: art.unwrap_or_default(),
-            prev: m.can_prev,
-            next: m.can_next,
-            toggle: m.can_toggle,
+            prev: p.map_or(m.can_prev, |p| p.can_prev),
+            next: p.map_or(m.can_next, |p| p.can_next),
+            toggle: p.map_or(m.can_toggle, |p| p.can_play),
             seek: m.can_seek,
             progress: if m.length > 0.0 { (m.position / m.length).clamp(0.0, 1.0) as f32 } else { 0.0 },
             timed: m.length > 0.0,
         });
         ui.set_cast(self.said.cast);
         ui.set_casting(self.said.casting);
+    }
+
+    /// The album art for the shown player (fetched once into the cache on a
+    /// thread when it's on the web: mpris::art_file)
+    fn want_art(&mut self, st: &State) {
+        let url = st.shell.get::<Players>().and_then(|p| p.chosen()).map(|p| p.track.art_url.clone()).filter(|u| !u.is_empty()).unwrap_or_else(|| self.said.media.art.clone());
+        if url == self.art_url {
+            return;
+        }
+        self.art_url = url.clone();
+        self.art = None;
+        if url.is_empty() {
+            return;
+        }
+        let to = st.shell.sender(NAME);
+        std::thread::spawn(move || {
+            let px = if url.contains("://") { mpris::art_file(&url) } else { Some(std::path::PathBuf::from(&url)) }.and_then(|p| picture_px(&p.to_string_lossy()));
+            to(Box::new(M::Art(url, px)));
+        });
     }
 
     fn push_avatar(&self) {
@@ -1057,6 +1101,9 @@ impl ControlCenter {
                 self.push_avatar();
             }
             if self.open {
+                self.want_art(st);
+            }
+            if self.open {
                 self.rebuild(st);
                 if self.page == "sound" {
                     self.push_page(st);
@@ -1175,7 +1222,12 @@ impl Part for ControlCenter {
     }
 
     fn data(&mut self, st: &mut State, what: TypeId) {
-        if what == TypeId::of::<Sound>() || what == TypeId::of::<Backlight>() || what == TypeId::of::<Battery>() || what == TypeId::of::<Wifi>() {
+        if what == TypeId::of::<Players>() && self.open {
+            self.want_art(st);
+            self.push_footer(st);
+            return;
+        }
+        if what == TypeId::of::<Sound>() || what == TypeId::of::<Backlight>() || what == TypeId::of::<Battery>() || what == TypeId::of::<Wifi>() || what == TypeId::of::<Bluetooth>() {
             // (a slider or the microphone may have just become usable)
             let before = self.layout.len();
             if self.open {
@@ -1263,10 +1315,26 @@ impl Part for ControlCenter {
                 }
             }
             M::Media(w) => {
+                let bus = st.shell.get::<Players>().and_then(|p| p.chosen()).map(|p| p.bus.clone());
+                let method = match w.as_str() {
+                    "previous" => Some("Previous"),
+                    "next" => Some("Next"),
+                    "toggle" => Some("PlayPause"),
+                    _ => None,
+                };
                 if w == "cast" {
                     self.set_page(st, "cast", "nowPlaying", 0.0, true);
+                } else if let (Some(bus), Some(m)) = (bus, method) {
+                    mpris::control(&bus, m);
                 } else {
+                    // (seeking: the shell's player knows the position)
                     shell::ask("cc.media", json!([w]));
+                }
+            }
+            M::Art(url, px) => {
+                if url == self.art_url {
+                    self.art = px.map(slint::Image::from_rgba8);
+                    self.push_footer(st);
                 }
             }
             M::Add(id) => {

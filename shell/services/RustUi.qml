@@ -28,6 +28,11 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // A line for it (its stdin): what this shell still owns that its surfaces
+    // show (modules/menubar/RustBridge.qml), {"src":"shell","kind":…};
+    // send() is below, with the panels'
+    // It has (re)started: whoever feeds it says everything again
+    signal started
     // Panels whose name isn't the surface's (surface names are lowercase)
     readonly property var panelNames: ({ controlcenter: "controlCenter" })
     function panelOf(surface) {
@@ -89,6 +94,7 @@ Singleton {
             drawn = e.surfaces ?? [];
             forwarded = "";
             Qt.callLater(follow); // (a panel already open moves over)
+            started();
         } else if (e.kind === "unknown") {
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
         } else if (e.kind === "closed") {
@@ -154,6 +160,35 @@ Singleton {
             if (/^https:\/\//.test(a[0] ?? ""))
                 Launch.open(a[0]);
             break;
+        case "wallpaper.set":
+            if (typeof a[0] === "string" && a[0].startsWith("/"))
+                Wallpaper.set(a[0]);
+            break;
+        case "wallpaper.openFolder":
+            Files.openFolder(Wallpaper.directory);
+            break;
+        case "today.close":
+            Today.close();
+            break;
+        case "today.pin":
+            Today.pin();
+            break;
+        case "today.set": // (Today's own options, TodayOptions.qml's)
+            if (a[0] === "mode" && ["ask", "widget", "both", "off"].includes(a[1]))
+                Config.options.today.mode = a[1];
+            else if (a[0] === "entrance" && ["bloom", "shrink", "drop"].includes(a[1]))
+                Config.options.today.entrance = a[1];
+            else if (a[0] === "name" && typeof a[1] === "string")
+                Config.options.today.name = a[1].trim().slice(0, 100);
+            else if (a[0] === "chime" && typeof a[1] === "boolean")
+                Config.options.sounds.today = a[1];
+            break;
+        case "todos.toggle": {
+            const t = Todos.find(String(a[0] ?? ""));
+            if (t)
+                Todos.update(t, { done: !t.done });
+            break;
+        }
         case "panels.show":
             Panels.show(String(a[0] ?? ""), Quickshell.screens.find(s => s.name === a[1]) ?? undefined);
             break;

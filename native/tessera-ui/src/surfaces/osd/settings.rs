@@ -5,11 +5,11 @@
 
 use serde_json::Value;
 
-/// The island shows the HUD instead (Glass only; and only while the QML menu
-/// bar, which has the island, is the one drawn: tessera-ui's has none yet)
-pub fn island_hud(cfg: &Value, material: bool, menubar_in_rust: bool) -> bool {
+/// The island shows the HUD instead (Glass only; either menu bar's island:
+/// Osd.qml's Island.hud reaches the Rust one over the bridge)
+pub fn island_hud(cfg: &Value, material: bool) -> bool {
     let i = &cfg["island"];
-    !material && !menubar_in_rust && i["enabled"].as_bool().unwrap_or(true) && i["hud"].as_bool().unwrap_or(true)
+    !material && i["enabled"].as_bool().unwrap_or(true) && i["hud"].as_bool().unwrap_or(true)
 }
 
 /// appearance.reduceMotion: the fullscreen bar fades without travel
@@ -33,11 +33,10 @@ mod tests {
 
     #[test]
     fn the_island_takes_it_by_default_in_glass() {
-        assert!(island_hud(&json!({}), false, false));
-        assert!(!island_hud(&json!({}), true, false));
-        assert!(!island_hud(&json!({}), false, true));
-        assert!(!island_hud(&json!({"island": {"hud": false}}), false, false));
-        assert!(!island_hud(&json!({"island": {"enabled": false}}), false, false));
+        assert!(island_hud(&json!({}), false));
+        assert!(!island_hud(&json!({}), true));
+        assert!(!island_hud(&json!({"island": {"hud": false}}), false));
+        assert!(!island_hud(&json!({"island": {"enabled": false}}), false));
     }
 
     /// The defaults here are Config.qml's

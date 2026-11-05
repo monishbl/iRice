@@ -5,7 +5,7 @@ hl.layer_rule({ match = { namespace = "tessera:.*" }, no_anim = true }) -- the s
 hl.layer_rule({ match = { namespace = "tessera:.*" }, blur = true })
 hl.layer_rule({ match = { namespace = "tessera:.*" }, ignore_alpha = 0.4 })
 -- (The menu bar takes blur: the island's glass is drawn there.)
-hl.layer_rule({ match = { namespace = "tessera:(wallpaper|corners|lockveil|dim|display-connect|fshud)" }, blur = false }) -- (fading veils would blur, then snap sharp; a full-screen effect would blur the whole screen every frame)
+hl.layer_rule({ match = { namespace = "tessera:(wallpaper|background|corners|lockveil|dim|display-connect|fshud)" }, blur = false }) -- (fading veils would blur, then snap sharp; a full-screen effect would blur the whole screen every frame)
 
 -- Menus and dropdowns of XWayland apps (Electron ones like Webex, Slack…)
 -- are windows of their own with no class or title. With focus following the

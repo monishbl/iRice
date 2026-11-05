@@ -15,10 +15,13 @@ pub mod emoji;
 pub mod menubar;
 pub mod osd;
 pub mod shapes;
+pub mod background;
+pub mod today;
+pub mod wallpaper;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "controlcenter"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "controlcenter"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
@@ -28,6 +31,9 @@ pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
         "emoji" => Some(Box::new(emoji::Emoji::default())),
         "clipboard" => Some(Box::new(clipboard::Clipboard::default())),
         "osd" => Some(Box::new(osd::Osd::default())),
+        "background" => Some(Box::new(background::Background::default())),
+        "wallpaper" => Some(Box::new(wallpaper::WallpaperPicker::default())),
+        "today" => Some(Box::new(today::Today::default())),
         "controlcenter" => Some(Box::new(controlcenter::ControlCenter::default())),
         _ => None,
     }

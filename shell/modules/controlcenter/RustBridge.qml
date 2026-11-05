@@ -476,6 +476,19 @@ Scope {
             Panels.ccEditing = false;
         }
     }
+    // (tessera-ui started again: it hears everything afresh)
+    Connections {
+        target: RustUi
+        function onStarted() {
+            root.sentState = "";
+            root.sentPage = "";
+            if (root.open) {
+                RustUi.tell("controlcenter", { ccPage: Panels.ccPage, editing: Panels.ccEditing });
+                Qt.callLater(root.sendState);
+                Qt.callLater(root.sendPage);
+            }
+        }
+    }
     Connections {
         target: Panels
         function onCcPageChanged() {
