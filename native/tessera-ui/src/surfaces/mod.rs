@@ -12,12 +12,13 @@ pub mod clipboard;
 pub mod dock;
 pub mod emoji;
 pub mod menubar;
+pub mod notifications;
 pub mod osd;
 pub mod shapes;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "notifications"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
@@ -27,6 +28,7 @@ pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
         "emoji" => Some(Box::new(emoji::Emoji::default())),
         "clipboard" => Some(Box::new(clipboard::Clipboard::default())),
         "osd" => Some(Box::new(osd::Osd::default())),
+        "notifications" => Some(Box::new(notifications::Notifications::default())),
         _ => None,
     }
 }
@@ -45,6 +47,8 @@ pub struct Surfaces {
     pub on: Vec<&'static str>,
     /// asked for, but not in Rust yet
     pub unknown: Vec<String>,
+    /// drawn here but not ready to take over yet (left out of "ready")
+    pub held: Vec<&'static str>,
 }
 
 impl Surfaces {
@@ -61,19 +65,32 @@ impl Surfaces {
             }
         }
         let Some(list) = list else {
-            return Self { on: KNOWN.to_vec(), unknown: Vec::new() };
+            return Self { on: KNOWN.to_vec(), unknown: Vec::new(), held: Vec::new() };
         };
         let asked: Vec<&str> = list.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
         Self {
             on: KNOWN.iter().copied().filter(|k| asked.contains(k)).collect(),
             unknown: asked.iter().filter(|a| !KNOWN.contains(a)).map(|s| s.to_string()).collect(),
+            held: Vec::new(),
         }
+    }
+
+    /// Not ready to take over: the shell keeps drawing it
+    pub fn hold(&mut self, name: &'static str) {
+        if !self.held.contains(&name) {
+            self.held.push(name);
+        }
+    }
+
+    pub fn release(&mut self, name: &str) {
+        self.held.retain(|h| *h != name);
     }
 
     /// The lines that say what's drawn (on stdout, for the shell)
     pub fn ready_lines(&self) -> Vec<String> {
         let mut out: Vec<String> = self.unknown.iter().map(|s| serde_json::json!({"src": "ui", "kind": "unknown", "surface": s}).to_string()).collect();
-        out.push(serde_json::json!({"src": "ui", "kind": "ready", "surfaces": self.on}).to_string());
+        let ready: Vec<&str> = self.on.iter().copied().filter(|s| !self.held.contains(s)).collect();
+        out.push(serde_json::json!({"src": "ui", "kind": "ready", "surfaces": ready}).to_string());
         out
     }
 }
@@ -131,6 +148,17 @@ mod tests {
         let lines: Vec<serde_json::Value> = s.ready_lines().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "lock"}));
         assert_eq!(lines[1], json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
+    }
+
+    #[test]
+    fn a_held_surface_isnt_ready_yet() {
+        let mut s = Surfaces::from_args(&args(&["--surfaces", "menubar,notifications"]));
+        s.hold("notifications");
+        let last: serde_json::Value = serde_json::from_str(s.ready_lines().last().unwrap()).unwrap();
+        assert_eq!(last, json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
+        s.release("notifications");
+        let last: serde_json::Value = serde_json::from_str(s.ready_lines().last().unwrap()).unwrap();
+        assert_eq!(last, json!({"src": "ui", "kind": "ready", "surfaces": ["menubar", "notifications"]}));
     }
 
     #[test]

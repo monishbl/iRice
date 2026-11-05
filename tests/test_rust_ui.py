@@ -105,6 +105,33 @@ class Agreement(unittest.TestCase):
         for word in ('v["hush"]', 'v["preview"]'):
             self.assertIn(word, osd_rs)
 
+    def test_the_shell_never_fights_tessera_ui_for_the_notification_server(self):
+        # Quickshell's server holds org.freedesktop.Notifications for good once
+        # made, so it's made only behind the gate (never while tessera-ui is to
+        # serve them), and tessera-ui says it draws them only once the name is ours
+        qml = (ROOT / "shell/services/Notifications.qml").read_text()
+        self.assertEqual(qml.count("NotificationServer {"), 1)
+        self.assertRegex(qml, r"LazyLoader \{\s*id: serverLoader\s*active: root\.ownServer")
+        self.assertIn('RustUi.drawing("notifications")', qml)
+        part = (CRATE / "src/surfaces/notifications/mod.rs").read_text()
+        self.assertIn("st.shell.surfaces.hold(NAME)", part)
+        self.assertIn("st.shell.surfaces.release(NAME)", part)
+        # (queued behind a holder, never taking the name from it)
+        serv = (CRATE / "src/services/notify.rs").read_text()
+        self.assertIn("request_name_with_flags(NAME, Default::default())", serv)
+
+    def test_the_mirror_and_tessera_ui_speak_the_same_lines(self):
+        qml = (ROOT / "shell/services/Notifications.qml").read_text() + (ROOT / "shell/services/RustUi.qml").read_text()
+        part = (CRATE / "src/surfaces/notifications/mod.rs").read_text()
+        self.assertIn('tell("notifications"', part)
+        self.assertIn('e.kind === "notifications"', qml)
+        sent = set(re.findall(r'do: "([a-z]+)"', qml))
+        handled = set(re.findall(r'^\s*"([a-z]+)" =>', part, re.M))
+        self.assertTrue(sent, "the shell sends nothing")
+        self.assertEqual(sorted(sent - handled), [], "lines the part doesn't handle")
+        for route in re.findall(r'n\.route === "([a-z]+)"', qml):
+            self.assertIn(f'Route::{route.capitalize()} => "{route}"', (CRATE / "src/surfaces/notifications/model.rs").read_text())
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

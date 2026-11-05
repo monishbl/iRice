@@ -14,6 +14,8 @@
 //!            where, in front, asking for attention
 //!   apps     the installed apps' desktop entries (apps::Apps), and starting them
 //!   icons    icon names to files in the shell's icon theme (icons::Icons)
+//!   notify   the notification server, org.freedesktop.Notifications on the
+//!            session bus (notify::Event; answers through notify::bus())
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
 pub mod apps;
@@ -24,6 +26,7 @@ pub mod clipboard;
 pub mod hypr;
 pub mod icons;
 pub mod pulse;
+pub mod notify;
 pub mod status;
 
 use crate::Msg;
@@ -39,6 +42,7 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "icons" => icons::spawn(tx),
         "audio" => audio::spawn(tx),
         "brightness" => brightness::spawn(tx),
+        "notify" => notify::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

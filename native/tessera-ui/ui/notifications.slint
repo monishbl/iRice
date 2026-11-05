@@ -1,0 +1,693 @@
+// Notification banners in Rust (rust.surfaces: notifications), compare
+// shell/modules/notifications/NotificationPopups.qml (the stack),
+// NotificationCard.qml (Glass), MaterialNotificationCard.qml and
+// MaterialCardCorner.qml (Material), CloseBadge.qml and NotificationReply.qml.
+// Rust (src/surfaces/notifications) keeps the list, the timers and where
+// each card goes in the stack; this draws and animates them.
+
+import { Theme, Icon } from "theme.slint";
+
+export struct NoteButton {
+    key: string,
+    text: string,
+}
+
+export struct Banner {
+    id: int,
+    app: string, // "Notification" when the app gave no name
+    app-upper: string, // (Glass: small capitals)
+    time: string, // "now", "5m ago"…
+    summary: string,
+    body: styled-text,
+    body-plain: string, // (for screen readers; "" no body)
+    icon: image, // the sender's picture, else the app's icon
+    has-icon: bool,
+    picture: bool, // icon is a picture (Material fills its circle with it)
+    buttons: [NoteButton],
+    can-reply: bool,
+    placeholder: string,
+    replying: bool,
+    sent: bool, // "Sent", for a moment
+    error: string, // why a reply didn't go
+    draft: string,
+    progress: float, // 0..1, -1 none (the "value" hint)
+    // Where it sits (Rust's stack maths, NotificationPopups.qml's)
+    index: int, // 0 the front (newest)
+    ty: length, // its place: the list when expanded, the stack when not
+    tscale: float,
+    tfade: float, // its opacity in the stack (back cards fade)
+    front: bool,
+    entered: bool, // false only while it's being added (the entrance runs from there)
+    leaving: bool, // the exit runs, then Rust removes it
+}
+
+// The close button over a Glass card's top-left corner (CloseBadge.qml)
+component CloseBadge inherits Rectangle {
+    in property <string> label;
+    callback clicked();
+    x: -6px;
+    y: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background: Theme.dark ? #38383f : #ffffff;
+    border-width: 1px;
+    border-color: Theme.separator;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    Icon {
+        text: "\u{e4f6}"; // x
+        bold: true;
+        font-size: 11px;
+        color: Theme.secondary;
+    }
+    TouchArea {
+        // (a little room round it the pointer still hits)
+        x: -4px;
+        y: -4px;
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A Glass action: a filled capsule (NotificationCard.qml's buttons)
+component GlassButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    width: label.preferred-width + 24px;
+    height: 28px;
+    border-radius: 14px;
+    background: touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: Theme.label;
+        font-size: Theme.small;
+        font-weight: 500;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A Material action: a tonal pill whose corners tighten while pressed
+component MaterialPill inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <length> h: 32px;
+    callback clicked();
+    width: row.preferred-width + 32px;
+    height: h;
+    border-radius: touch.pressed ? 8px : self.height / 2;
+    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    background: touch.pressed ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 0.9) : touch.has-hover ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 0.92) : Theme.m3-secondary-container;
+    animate background { duration: 150ms; }
+    transform-scale: touch.pressed ? 0.97 : 1;
+    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 4px;
+        Text {
+            text: root.text;
+            color: Theme.m3-on-secondary-container;
+            font-size: 14px;
+            font-weight: 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        if icon != "": Icon {
+            text: icon;
+            font-size: 18px;
+            color: Theme.m3-on-secondary-container;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ── A card's content, Glass (NotificationCard.qml) ──────────────────────────
+component GlassCard {
+    in property <Banner> b;
+    in property <bool> hovered;
+    callback activated();
+    callback close();
+    callback action(string);
+    callback reply-open();
+    callback reply-cancel();
+    callback reply-send(string);
+    callback draft(string);
+    callback link(string);
+    width: 360px;
+    height: col.preferred-height + 24px;
+
+    // the click: the app's default action (behind everything else)
+    TouchArea {
+        enabled: !b.replying;
+        clicked => { activated(); }
+    }
+    if b.has-icon: Image {
+        x: 12px;
+        y: 12px;
+        width: 36px;
+        height: 36px;
+        source: b.icon;
+        image-fit: contain;
+        accessible-role: none;
+    }
+    col := VerticalLayout {
+        x: 58px;
+        y: 12px;
+        width: parent.width - 58px - 12px;
+        height: self.preferred-height; // (not the card's: the rows would spread)
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: b.app-upper;
+                color: Theme.secondary;
+                font-size: Theme.caption;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                overflow: elide;
+                horizontal-stretch: 1;
+                accessible-role: none;
+            }
+            Text {
+                text: b.time;
+                color: Theme.tertiary;
+                font-size: Theme.caption;
+                accessible-role: none;
+            }
+        }
+        if b.summary != "": Text {
+            text: b.summary;
+            color: Theme.label;
+            font-size: Theme.body;
+            font-weight: 600;
+            overflow: elide;
+            accessible-role: none;
+        }
+        // (its own width, not only the layout's: a wrapping text measures
+        // its height against it, and the layout's comes too late for that)
+        if b.body-plain != "": StyledText {
+            width: 290px;
+            text: b.body;
+            default-color: Theme.label;
+            default-font-size: Theme.body;
+            default-font-family: Theme.font;
+            link-color: Theme.accent;
+            max-lines: 4;
+            opacity: 0.85;
+            link-clicked(url) => { root.link(url); }
+        }
+        // Reply, then the app's own buttons
+        if (b.buttons.length > 0 || b.can-reply) && !b.replying: HorizontalLayout {
+            padding-top: 6px;
+            spacing: 6px;
+            alignment: start;
+            if b.can-reply && !b.sent: GlassButton {
+                text: "Reply";
+                clicked => { reply-open(); }
+            }
+            for a in b.buttons: GlassButton {
+                text: a.text;
+                clicked => { action(a.key); }
+            }
+        }
+        // The composer: Enter or Send reply sends, Esc cancels
+        if b.replying: HorizontalLayout {
+            padding-top: 6px;
+            spacing: 6px;
+            Rectangle {
+                height: 30px;
+                horizontal-stretch: 1;
+                border-radius: 8px;
+                background: Theme.fill;
+                border-width: field.has-focus ? 1.5px : 1px;
+                border-color: field.has-focus ? Theme.accent : Theme.separator;
+                field := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    text: b.draft;
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accessible-label: b.placeholder != "" ? b.placeholder : "Reply";
+                    edited => { root.draft(self.text); }
+                    accepted => { root.reply-send(self.text); }
+                    key-pressed(e) => {
+                        if e.text == Key.Escape { root.reply-cancel(); return accept; }
+                        reject
+                    }
+                    init => { self.focus(); }
+                }
+                Text {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    visible: field.text == "";
+                    text: b.placeholder != "" ? b.placeholder : "Reply";
+                    color: Theme.tertiary;
+                    font-size: Theme.body;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
+            send := Rectangle {
+                property <bool> ready: field.text != "";
+                width: send-label.preferred-width + 24px;
+                height: 30px;
+                border-radius: 15px;
+                background: !ready ? Theme.fill : send-touch.pressed ? Theme.accent.darker(0.15) : Theme.accent;
+                accessible-role: button;
+                accessible-label: "Send reply";
+                accessible-action-default => { root.reply-send(field.text); }
+                send-label := Text {
+                    text: "Send reply";
+                    color: send.ready ? Theme.on-accent : Theme.tertiary;
+                    font-size: Theme.small;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    accessible-role: none;
+                }
+                send-touch := TouchArea {
+                    mouse-cursor: send.ready ? pointer : default;
+                    clicked => { if send.ready { root.reply-send(field.text); } }
+                }
+            }
+        }
+        if b.error != "" || b.sent: Text {
+            text: b.error != "" ? b.error : "Sent";
+            width: 290px;
+            color: b.error != "" ? Theme.danger : Theme.secondary;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+    // Close, top left like macOS (the banner only: it stays in the list)
+    if hovered: CloseBadge {
+        label: "Dismiss " + (b.summary != "" ? b.summary : b.app);
+        clicked => { close(); }
+    }
+}
+
+// ── A card's content, Material (MaterialNotificationCard.qml) ───────────────
+component MaterialCard {
+    in property <Banner> b;
+    in property <bool> hovered;
+    callback activated();
+    callback close();
+    callback action(string);
+    callback reply-open();
+    callback reply-cancel();
+    callback reply-send(string);
+    callback draft(string);
+    callback link(string);
+    width: 360px;
+    height: col.preferred-height + 32px;
+
+    TouchArea {
+        enabled: !b.replying;
+        clicked => { activated(); }
+    }
+    // The app's icon on a tonal circle, or the sender's picture filling it
+    Rectangle {
+        x: 16px;
+        y: 16px;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        background: b.picture ? transparent : Theme.m3-secondary-container; // (a picture fills the circle itself)
+        clip: b.picture;
+        if b.has-icon: Image {
+            x: b.picture ? 0 : 8px;
+            y: b.picture ? 0 : 8px;
+            width: b.picture ? 40px : 24px;
+            height: b.picture ? 40px : 24px;
+            source: b.icon;
+            image-fit: b.picture ? cover : contain;
+            accessible-role: none;
+        }
+    }
+    // Top right: close, while hovered (MaterialCardCorner.qml)
+    if hovered: Rectangle {
+        x: parent.width - 12px - 28px;
+        y: 12px;
+        width: 28px;
+        height: 28px;
+        border-radius: 14px;
+        background: close-touch.pressed ? Theme.m3-on-surface.with-alpha(0.1) : close-touch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent;
+        accessible-role: button;
+        accessible-label: "Dismiss " + (b.summary != "" ? b.summary : "notification");
+        accessible-action-default => { close(); }
+        Icon {
+            text: "\u{e4f6}"; // x
+            font-size: 16px;
+            color: Theme.m3-on-surface-variant;
+        }
+        close-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { close(); }
+        }
+    }
+    col := VerticalLayout {
+        x: 68px;
+        y: 16px;
+        width: parent.width - 68px - 16px;
+        height: self.preferred-height;
+        spacing: 2px;
+        // App · time (beside the corner button)
+        HorizontalLayout {
+            padding-right: hovered ? 32px : 0;
+            Text {
+                height: 20px;
+                text: b.app + (b.time != "" ? " · " + b.time : "");
+                color: Theme.m3-on-surface-variant;
+                font-size: 12px;
+                font-weight: 500;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+        if b.summary != "": Text {
+            text: b.summary;
+            color: Theme.m3-on-surface;
+            font-size: 14px;
+            font-weight: 600;
+            overflow: elide;
+            accessible-role: none;
+        }
+        if b.body-plain != "": StyledText {
+            width: 276px;
+            text: b.body;
+            default-color: Theme.m3-on-surface-variant;
+            default-font-size: 14px;
+            default-font-family: Theme.font;
+            link-color: Theme.m3-primary;
+            max-lines: 4;
+            link-clicked(url) => { root.link(url); }
+        }
+        // Progress the app reports (downloads, copies): Material's track
+        // (the QML card draws it wavy; a straight one here)
+        if b.progress >= 0: Rectangle {
+            height: 18px;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                x: parent.width * b.progress + (b.progress > 0 && b.progress < 1 ? 4px : 0);
+                width: max(0, parent.width - self.x);
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.m3-secondary-container;
+            }
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: parent.width * b.progress;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.m3-primary;
+            }
+        }
+        if (b.buttons.length > 0 || b.can-reply) && !b.replying: HorizontalLayout {
+            padding-top: 10px;
+            spacing: 8px;
+            alignment: start;
+            if b.can-reply && !b.sent: MaterialPill {
+                text: "Reply";
+                clicked => { reply-open(); }
+            }
+            for a in b.buttons: MaterialPill {
+                text: a.text;
+                clicked => { action(a.key); }
+            }
+        }
+        // The composer: a pill field with the send button inside it
+        if b.replying: Rectangle {
+            height: 52px;
+            Rectangle {
+                y: parent.height - self.height;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.m3-surface-container-highest;
+                border-width: field.has-focus ? 2px : 0;
+                border-color: Theme.m3-primary;
+                field := TextInput {
+                    x: 16px;
+                    width: parent.width - 16px - 44px;
+                    text: b.draft;
+                    color: Theme.m3-on-surface;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accessible-label: b.placeholder != "" ? b.placeholder : "Reply";
+                    edited => { root.draft(self.text); }
+                    accepted => { root.reply-send(self.text); }
+                    key-pressed(e) => {
+                        if e.text == Key.Escape { root.reply-cancel(); return accept; }
+                        reject
+                    }
+                    init => { self.focus(); }
+                }
+                Text {
+                    x: 16px;
+                    width: parent.width - 16px - 44px;
+                    visible: field.text == "";
+                    text: b.placeholder != "" ? b.placeholder : "Reply";
+                    color: Theme.m3-on-surface-variant;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                send := Rectangle {
+                    property <bool> ready: field.text != "";
+                    x: parent.width - 4px - 32px;
+                    y: 4px;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: send-touch.pressed && ready ? 8px : 16px;
+                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    background: !ready ? transparent : send-touch.pressed ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.9) : send-touch.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.92) : Theme.m3-primary;
+                    accessible-role: button;
+                    accessible-label: "Send reply";
+                    accessible-action-default => { if self.ready { root.reply-send(field.text); } }
+                    Icon {
+                        text: "\u{e398}"; // paper-plane-tilt
+                        fill: send.ready;
+                        font-size: 18px;
+                        color: send.ready ? Theme.m3-on-primary : Theme.m3-on-surface.with-alpha(0.38);
+                    }
+                    send-touch := TouchArea {
+                        mouse-cursor: send.ready ? pointer : default;
+                        clicked => { if send.ready { root.reply-send(field.text); } }
+                    }
+                }
+            }
+        }
+        if b.error != "" || b.sent: Text {
+            text: b.error != "" ? b.error : "Sent";
+            width: 276px;
+            color: b.error != "" ? Theme.m3-error : Theme.m3-on-surface-variant;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export struct StackPill {
+    text: string,
+    icon: string, // a Phosphor glyph, "" none
+    act: string, // expand | collapse | clear
+}
+
+// ── The banners' window: the stack in the top-right corner ──────────────────
+export component Banners inherits Window {
+    in property <[Banner]> banners; // back to front: the newest (the front) last
+    in property <bool> expanded;
+    in property <length> content-height;
+    in property <[StackPill]> pills;
+    in property <bool> glass-plugin; // Glass: the plugin draws the glass under each card
+    out property <bool> hovered: hover.has-hover;
+    property <length> m: 24px; // room round the cards (Glass's shadow; the window's edge)
+    property <length> card-w: 360px;
+    property <length> pill-h: Theme.material ? 32px : 26px;
+
+    callback measured(int, length); // a card's height (id)
+    callback moved(int, length, length, length, length, float); // a card as drawn: id x y w h opacity (Glass's shapes)
+    callback activated(int);
+    callback dismiss-banner(int);
+    callback action(int, string);
+    callback reply-open(int);
+    callback reply-cancel(int);
+    callback reply-send(int, string);
+    callback draft(int, string);
+    callback link(string);
+    callback pill(string);
+
+    background: transparent;
+    no-frame: true;
+    title: "Notifications";
+    default-font-family: Theme.font;
+    accessible-role: list;
+    accessible-label: "Notifications";
+
+    hover := TouchArea {
+        for b in banners: Rectangle {
+            // Where it is: the list when expanded, the stack when not (springs)
+            property <float> enter: b.entered && !b.leaving ? 1 : 0;
+            animate enter {
+                duration: b.leaving ? (Theme.material ? 160ms : 200ms) : (Theme.material ? 520ms : 420ms);
+                easing: b.leaving ? (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.32, 0, 0.67, 0)) : (Theme.material ? spring(0.5) : cubic-bezier(0.3, 1.35, 0.6, 1));
+            }
+            // Material: a fade of its own, quicker than the slide
+            property <float> fade: b.entered && !b.leaving ? 1 : 0;
+            animate fade {
+                duration: b.leaving ? 160ms : 220ms;
+                easing: b.leaving ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.33, 1, 0.68, 1);
+            }
+            property <float> place-y: b.ty / 1px;
+            animate place-y { duration: 420ms; easing: (Theme.material ? spring(0.5) : spring(0.32)); }
+            property <float> sc: b.tscale;
+            animate sc { duration: 420ms; easing: (Theme.material ? spring(0.5) : spring(0.32)); }
+            property <float> op: b.tfade;
+            animate op { duration: 150ms; }
+            property <float> shown: op * (Theme.material ? fade : enter);
+            property <bool> live: b.front || expanded; // back cards show only their edge
+
+            x: m + (1 - enter) * card-w * (Theme.material ? 0.4 : 0.55);
+            y: m + place-y * 1px + (Theme.material ? (1 - enter) * -16px : 0);
+            width: card-w;
+            height: Theme.material ? mcard.height : gcard.height;
+            transform-origin: { x: self.width / 2, y: self.height };
+            transform-scale: sc;
+            opacity: shown;
+            // Glass: no plugin (Hyprland's blur behind the window): a tint;
+            // Material: its tonal card, elevation 3 when it's in front
+            border-radius: Theme.material ? 24px : 22px;
+            background: Theme.material ? Theme.m3-surface-container-high : glass-plugin ? transparent : Theme.panel;
+            border-width: !Theme.material && !glass-plugin ? 0.5px : 0;
+            border-color: Theme.separator;
+            drop-shadow-blur: Theme.material && live ? 16px : 0;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: Theme.material ? #000000.with-alpha(Theme.dark ? 0.42 : 0.18) : transparent;
+            accessible-role: list-item;
+            accessible-label: b.app + ": " + b.summary + (b.body-plain != "" ? ". " + b.body-plain : "");
+            accessible-action-default => { root.activated(b.id); }
+
+            // Glass: where the plugin draws its glass, as it moves and fades
+            property <string> geometry: self.x / 1px + " " + self.y / 1px + " " + self.width / 1px + " " + self.height / 1px + " " + sc + " " + shown;
+            changed geometry => { root.moved(b.id, self.x, self.y, self.width, self.height, shown); }
+            changed height => { root.measured(b.id, self.height); }
+            init => {
+                root.measured(b.id, self.height);
+                root.moved(b.id, self.x, self.y, self.width, self.height, shown);
+            }
+
+            card-hover := TouchArea {
+                enabled: live;
+                gcard := GlassCard {
+                    visible: !Theme.material;
+                    b: b;
+                    hovered: card-hover.has-hover && live;
+                    activated => { root.activated(b.id); }
+                    close => { root.dismiss-banner(b.id); }
+                    action(k) => { root.action(b.id, k); }
+                    reply-open => { root.reply-open(b.id); }
+                    reply-cancel => { root.reply-cancel(b.id); }
+                    reply-send(t) => { root.reply-send(b.id, t); }
+                    draft(t) => { root.draft(b.id, t); }
+                    link(u) => { root.link(u); }
+                }
+                mcard := MaterialCard {
+                    visible: Theme.material;
+                    b: b;
+                    hovered: card-hover.has-hover && live;
+                    activated => { root.activated(b.id); }
+                    close => { root.dismiss-banner(b.id); }
+                    action(k) => { root.action(b.id, k); }
+                    reply-open => { root.reply-open(b.id); }
+                    reply-cancel => { root.reply-cancel(b.id); }
+                    reply-send(t) => { root.reply-send(b.id, t); }
+                    draft(t) => { root.draft(b.id, t); }
+                    link(u) => { root.link(u); }
+                }
+            }
+            // A back card: clicking the stack fans it out
+            if !live: TouchArea {
+                clicked => { root.pill("expand"); }
+            }
+        }
+
+        // Under a stack: fan it out, or clear it and fold it back
+        if pills.length > 0: HorizontalLayout {
+            x: m + card-w - self.preferred-width;
+            y: m + content-height + 8px;
+            width: self.preferred-width;
+            height: pill-h;
+            spacing: Theme.material ? 8px : 6px;
+            for p in pills: Rectangle {
+                width: Theme.material ? mp.width : gp.width;
+                height: pill-h;
+                mp := MaterialPill {
+                    visible: Theme.material;
+                    text: p.text;
+                    icon: p.icon;
+                    h: pill-h;
+                    drop-shadow-blur: 8px;
+                    drop-shadow-offset-y: 2px;
+                    drop-shadow-color: #000000.with-alpha(Theme.dark ? 0.36 : 0.14);
+                    clicked => { root.pill(p.act); }
+                }
+                gp := Rectangle {
+                    visible: !Theme.material;
+                    width: grow.preferred-width + 20px;
+                    height: pill-h;
+                    border-radius: 13px;
+                    background: gtouch.pressed ? Theme.fill-pressed : gtouch.has-hover ? Theme.fill-hover : (Theme.dark ? #242429e6 : #ffffffe6);
+                    border-width: 1px;
+                    border-color: Theme.separator;
+                    accessible-role: button;
+                    accessible-label: p.text;
+                    accessible-action-default => { root.pill(p.act); }
+                    grow := HorizontalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        Text {
+                            text: p.text;
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                        if p.icon != "": Icon {
+                            text: p.icon;
+                            bold: true;
+                            font-size: 11px;
+                            color: Theme.secondary;
+                        }
+                    }
+                    gtouch := TouchArea {
+                        clicked => { root.pill(p.act); }
+                    }
+                }
+            }
+        }
+    }
+}
