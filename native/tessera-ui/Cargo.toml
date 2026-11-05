@@ -76,6 +76,8 @@ tessera-notifications = { path = "surfaces/notifications" }
 tessera-spotlight = { path = "surfaces/spotlight" }
 tessera-controlcenter = { path = "surfaces/controlcenter" }
 tessera-sidebar = { path = "surfaces/sidebar" }
+# (not a shell surface: main.rs hands --greeter to it; it isn't in KNOWN)
+tessera-greeter = { path = "surfaces/greeter" }
 
 [profile.release]
 opt-level = 3

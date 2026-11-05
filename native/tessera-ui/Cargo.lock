@@ -4758,6 +4758,7 @@ dependencies = [
  "libc",
  "material-colors 0.4.2",
  "material-colors 0.5.0",
+ "memmap2",
  "resvg",
  "serde",
  "serde_json",
@@ -4799,6 +4800,20 @@ name = "tessera-emoji"
 version = "0.1.0"
 dependencies = [
  "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-greeter"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "image",
+ "serde",
  "serde_json",
  "slint",
  "slint-build",
@@ -4895,6 +4910,7 @@ dependencies = [
  "tessera-desktop",
  "tessera-dock",
  "tessera-emoji",
+ "tessera-greeter",
  "tessera-menubar",
  "tessera-notifications",
  "tessera-osd",

@@ -7,7 +7,7 @@ import "../../common/phosphor.js" as Phosphor
 // The Glass login screen, as macOS's: your wallpaper, softly blurred, the
 // date and a large time at the top; at the bottom your picture, your name
 // and a frosted password field (the fingerprint glyph at its end while a
-// reader listens: "Touch ID or Enter Password"), the session under it; Sleep,
+// reader listens: "Use Fingerprint or Enter Password"), the session under it; Sleep,
 // Restart and Shut Down along the foot, each asking to confirm (a second
 // click, or Enter). Up and Down choose the person, Tab the session. Kept
 // light: plain translucent fills, no glass engine (it needs your session).
@@ -159,7 +159,7 @@ GreeterWindow {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === ""
-                    text: win.auth.busy ? "Logging in…" : win.auth.finger !== "" ? "Touch ID or Enter Password" : "Enter Password"
+                    text: win.auth.busy ? "Logging in…" : win.auth.finger !== "" ? "Use Fingerprint or Enter Password" : "Enter Password"
                     color: Qt.rgba(1, 1, 1, 0.6)
                     font { family: win.sans; pixelSize: 13 }
                 }

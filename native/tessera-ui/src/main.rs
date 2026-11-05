@@ -13,61 +13,21 @@
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
+//!   tessera-ui --greeter [--style …] [--demo [STATE]]   the login screen (surfaces/greeter)
 //! SIGUSR1 prints frame statistics.
 
 mod surfaces;
 
 // (the shared crate's modules, by the names they had in one crate)
-use tessera_core::{egl, env, seed, services, shell, theme, wayland, Msg};
+use tessera_core::{egl, seed, services, shell, theme, wayland, Msg};
+// (the loop's messages and the fonts: core's, shared with the greeter's own loop)
+use tessera_core::runloop::{handle, register_fonts};
 
 use calloop::signals::{Signal, Signals};
 use calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use std::time::{Duration, Instant};
 use wayland::State;
-
-fn handle(state: &mut State, msg: Msg) {
-    // (Slint's animation clock moves only when the loop ticks it: on an idle
-    // window it still reads its last frame's time, so an animation a message
-    // starts would begin out of step. Bring it to now first.)
-    slint::platform::update_timers_and_animations();
-    match msg {
-        Msg::Run(f) => f(),
-        Msg::Quit => state.exit = true,
-        Msg::Data(v) => {
-            let what = state.shell.store(v);
-            state.each_part(|p, st| p.data(st, what));
-        }
-        Msg::Part(name, m) => {
-            let mut m = Some(m);
-            state.part(name, |p, st| p.message(st, m.take().unwrap()));
-        }
-        Msg::GlassPlugin(ok) => {
-            eprintln!("tessera-ui: glass plugin {}", if ok { "found" } else { "missing (Hyprland's blur instead)" });
-            state.shell.plugin = ok;
-            state.each_part(|p, st| p.plugin_changed(st));
-        }
-        Msg::ConfigChanged => state.config_changed(),
-        Msg::A11yActivate(id) => {
-            for p in state.parts.iter_mut() {
-                for a in p.a11y() {
-                    if a.id == id {
-                        a.activate();
-                    }
-                }
-            }
-        }
-        Msg::A11yAction(id, r) => {
-            for p in state.parts.iter_mut() {
-                for a in p.a11y() {
-                    if a.id == id {
-                        a.action(r.clone());
-                    }
-                }
-            }
-        }
-    }
-}
 
 /// A line from the shell on stdin (RustUi.tell): `{"to": "<surface>", …}`
 /// reaches that part's `message` as the serde_json::Value
@@ -76,27 +36,6 @@ fn shell_said(state: &mut State, line: &[u8]) {
     let Some(to) = v["to"].as_str().and_then(|t| surfaces::KNOWN.iter().find(|k| **k == t)) else { return };
     let mut v = Some(v);
     state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
-}
-
-/// Fonts that aren't system fonts: Phosphor (icons) and Google Sans Flex
-/// ("Tessera Sans Flex", Material's), mapped from the repo, registered with
-/// Slint's font collection at run time (not compiled in)
-fn register_fonts() {
-    use slint::fontique_011::fontique;
-    let roots = [
-        std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")),
-        std::path::PathBuf::from(crate::env::var("ROOT").unwrap_or_default()),
-    ];
-    let mut collection = slint::fontique_011::shared_collection();
-    for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf", "material/assets/fonts/MaterialSymbolsRounded.ttf"] {
-        let Some(file) = roots.iter().find_map(|r| std::fs::File::open(r.join(f)).ok()) else {
-            eprintln!("tessera-ui: font {f} not found");
-            continue;
-        };
-        if let Ok(map) = unsafe { memmap2::Mmap::map(&file) } {
-            collection.register_fonts(fontique::Blob::new(std::sync::Arc::new(map)), None);
-        }
-    }
 }
 
 /// Watch config.json (the shell writes it whole, then renames or closes it)
@@ -151,6 +90,11 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--version") {
         println!("tessera-ui {}", env!("CARGO_PKG_VERSION"));
         return;
+    }
+    // The login screen (greetd's greeter): a mode of its own, before anything
+    // else reads the arguments (surfaces/greeter)
+    if tessera_greeter::wanted(&args) {
+        return tessera_greeter::run(&args, started);
     }
     // An argument it doesn't know (a test harness's `--list`, a typo) ends
     // it here, before it opens a display: started by mistake, it never draws

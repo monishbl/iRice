@@ -1,0 +1,2160 @@
+// The login screen in Rust (tessera-ui --greeter), compare
+// shell/modules/greeter/: GreeterSurface.qml (Glass, `look`), GreeterPlain.qml
+// (`plain`), GreeterText.qml (`text`), GreeterNameLabel.qml,
+// GreeterNameInput.qml, and material/modules/greeter/GreeterSurface.qml
+// (Material, `look`) with shell/modules/lock/LockClock.qml and
+// MaterialClock.qml (its clock). The numbers are theirs. Every style is
+// built once per window and the one in use shown, so the window's functions
+// can reach its fields; what's shown and what's done comes from Rust
+// (src/surfaces/greeter) through the `Greet` global.
+
+import { Theme } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+
+// Phosphor glyphs (Glass, plain, text)
+export struct GrIcons {
+    user: string,
+    caret-left: string,
+    caret-right: string,
+    user-switch: string,
+    x: string,
+    arrow-right: string,
+    fingerprint: string,
+    moon: string,
+    restart: string,
+    power: string,
+    pencil: string,
+}
+
+// Material's icons: a Material Symbol (sym) or, where there's none, the Phosphor glyph
+export struct GrGlyph {
+    t: string,
+    sym: bool,
+}
+
+export struct GrSyms {
+    user: GrGlyph,
+    caret-left: GrGlyph,
+    caret-right: GrGlyph,
+    user-switch: GrGlyph,
+    x: GrGlyph,
+    arrow-right: GrGlyph,
+    fingerprint: GrGlyph,
+    moon: GrGlyph,
+    restart: GrGlyph,
+    power: GrGlyph,
+}
+
+// The Material roles it uses (theme.rs's roles for the greeter's seed)
+export struct GrColors {
+    bg: color,
+    clock1: color,
+    clock2: color,
+    clock3: color,
+    date: color,
+    on-surface: color,
+    on-surface-variant: color,
+    high: color,
+    high-hover: color,
+    primary: color,
+    on-primary: color,
+    primary-container: color,
+    on-primary-container: color,
+    secondary-container: color,
+    error: color,
+    error-container: color,
+    on-error-container: color,
+}
+
+export global Greet {
+    // the keyboard's screen (the others show the clock alone)
+    in property <bool> primary: true;
+    // the time, as each style writes it
+    in property <string> date;
+    in property <string> time;
+    in property <string> plain-top;
+    in property <string> text-top;
+    in property <string> hours; // Material: the hours (padded where the face pads them)
+    in property <string> hours-short; // unpadded (wide's)
+    in property <string> minutes;
+    in property <string> half; // AM/PM, or the date with 24-hour time (dynamic face)
+    in property <float> hour-angle;
+    in property <float> minute-angle;
+    in property <string> face: "dynamic";
+    in property <int> weight: 640;
+    in property <bool> show-date: true;
+    // the person
+    in property <string> full;
+    in property <string> initial;
+    in property <image> picture;
+    in property <bool> has-picture;
+    in property <bool> several;
+    in property <bool> other;
+    in property <bool> busy;
+    in property <string> error;
+    in property <bool> finger-on;
+    in property <bool> finger-miss;
+    in property <string> finger-say; // what a screen reader says for the fingerprint
+    in property <string> power-choice;
+    // what the line under the field says (the style's words), and whether it's bad news
+    in property <string> say;
+    in property <bool> say-bad;
+    in property <string> placeholder;
+    in property <string> session;
+    in property <string> login;
+    in property <string> host;
+    in property <[length]> shake-frames;
+    in property <GrIcons> ic;
+    in property <GrSyms> sy;
+    in property <GrColors> m;
+    in property <string> cookie9;
+    in property <string> cookie12;
+    // text: 0 session, 1 login, 2 password
+    in-out property <int> row: 2;
+
+    callback submit(string);
+    callback next-user(int);
+    callback next-session(int);
+    callback cancel();
+    callback edit-name();
+    callback to-password();
+    callback cancel-name();
+    callback name-edited(string);
+    callback name-key(string);
+    callback power(string);
+    callback row-changed(int);
+    // (dots for a password: `bullet` as often as `text` has characters)
+    pure callback mask(string, string) -> string;
+    // a key that types a character (not Return, an arrow, F1…)
+    pure callback printable(string) -> bool;
+}
+
+// Phosphor, in its weights
+component PIcon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> size: 16px;
+    in property <string> family: "Phosphor";
+    width: size;
+    height: size;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: root.color;
+        font-size: root.size;
+        font-family: root.family;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// Material's Icon: the symbol a little larger (they sit in a padded square)
+component MIcon {
+    in property <GrGlyph> g;
+    in property <color> color;
+    in property <length> size: 20px;
+    width: size;
+    height: size;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: g.t;
+        color: root.color;
+        font-size: g.sym ? Math.round(root.size * 1.2 / 1px) * 1px : root.size;
+        font-family: g.sym ? "Tessera Symbols" : "Phosphor";
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// A password field drawn its style's way: the input is there (focus,
+// editing, the input method), its text drawn as `bullet`s with a caret
+component Secret inherits Rectangle {
+    in property <string> bullet: "•";
+    in property <color> ink;
+    in property <length> size: 14px;
+    in property <length> spacing: 2px;
+    in property <string> family: "Inter";
+    in property <int> weight: 400;
+    in property <bool> ro;
+    in property <bool> caret: true;
+    in-out property <string> text <=> input.text;
+    out property <bool> focused: input.has-focus;
+    callback key(KeyEvent) -> bool;
+    callback edited(string);
+
+    public function focus-it() {
+        input.focus();
+    }
+    public function clear() {
+        input.text = "";
+    }
+    public function put(t: string) {
+        input.text = t;
+        input.set-selection-offsets(t.character-count, t.character-count);
+    }
+
+    clip: true;
+    property <bool> blink: true;
+    dots := Text {
+        x: Math.min(0px, root.width - self.width - 4px);
+        width: self.preferred-width;
+        height: root.height;
+        vertical-alignment: center;
+        text: Greet.mask(input.text, root.bullet);
+        color: root.ink;
+        font-size: root.size;
+        font-family: root.family;
+        font-weight: root.weight;
+        letter-spacing: root.spacing;
+        accessible-role: none;
+    }
+    Rectangle {
+        visible: input.has-focus && root.caret && root.blink && !root.ro;
+        x: dots.x + dots.width + 1px;
+        y: (root.height - self.height) / 2;
+        width: 1.5px;
+        height: root.size * 1.25;
+        background: root.ink;
+    }
+    Timer {
+        interval: 530ms;
+        running: input.has-focus;
+        triggered => {
+            root.blink = !root.blink;
+        }
+    }
+    input := TextInput {
+        width: 100%;
+        height: 100%;
+        vertical-alignment: center;
+        single-line: true;
+        input-type: password;
+        color: transparent;
+        selection-background-color: transparent;
+        selection-foreground-color: transparent;
+        text-cursor-width: 0px;
+        font-size: root.size;
+        font-family: root.family;
+        letter-spacing: root.spacing;
+        read-only: root.ro;
+        accessible-label: "Password";
+        key-pressed(e) => {
+            if root.key(e) {
+                return accept;
+            }
+            reject
+        }
+        edited => {
+            root.blink = true;
+            root.edited(self.text);
+        }
+    }
+}
+
+// The chosen person's name, as text: hovered, a soft pill and a pencil; a
+// click types another name in its place (GreeterNameLabel.qml)
+component NameLabel inherits Rectangle {
+    in property <string> text;
+    in property <color> ink;
+    in property <length> size: 16px;
+    in property <int> weight: 600;
+    in property <string> family: "Inter";
+    in property <color> hover-fill;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: label.preferred-width + 2 * (12px + 20px);
+    height: label.preferred-height + 12px;
+    border-radius: self.height / 2;
+    background: touch.has-hover ? hover-fill : hover-fill.with-alpha(0);
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: root.text + ", type another username";
+    accessible-action-default => {
+        clicked();
+    }
+    label := Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        text: root.text;
+        color: root.ink;
+        font-size: root.size;
+        font-weight: root.weight;
+        font-family: root.family;
+        accessible-role: none;
+    }
+    PIcon {
+        x: label.x + label.width + 6px;
+        y: (parent.height - self.height) / 2;
+        text: Greet.ic.pencil;
+        color: root.ink;
+        size: 14px;
+        opacity: touch.has-hover ? 0.8 : 0;
+        animate opacity { duration: 150ms; }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The username field's keys (GreeterNameInput.qml), every style the same
+component NameInput inherits TextInput {
+    callback typed();
+    vertical-alignment: center;
+    single-line: true;
+    read-only: Greet.busy;
+    accessible-label: "Username";
+    accessible-placeholder-text: "Username";
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == Key.Tab {
+            Greet.to-password();
+            return accept;
+        }
+        if e.text == Key.UpArrow {
+            Greet.next-user(-1);
+            return accept;
+        }
+        if e.text == Key.DownArrow {
+            Greet.next-user(1);
+            return accept;
+        }
+        if e.text == Key.Escape {
+            Greet.cancel-name();
+            return accept;
+        }
+        reject
+    }
+    edited => {
+        Greet.name-edited(self.text);
+        root.typed();
+    }
+}
+
+// The shake, as a list of offsets one frame (16 ms) apart (Rust works
+// them out per style: Glass's and plain's keyframes, Material's spring)
+component Shaker {
+    out property <length> dx: shaking ? Greet.shake-frames[i] : 0px;
+    property <int> i;
+    property <bool> shaking;
+    public function go() {
+        i = 0;
+        shaking = true;
+    }
+    Timer {
+        interval: 16ms;
+        running: root.shaking;
+        triggered => {
+            root.i += 1;
+            if root.i >= Greet.shake-frames.length {
+                root.shaking = false;
+            }
+        }
+    }
+}
+
+// ── Glass (GreeterSurface.qml) ──────────────────────────────────────────────
+
+component GlassChevron inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: touch.has-hover ? rgba(255, 255, 255, 0.18) : transparent;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => {
+        clicked();
+    }
+    PIcon {
+        text: root.icon;
+        color: rgba(255, 255, 255, 0.8);
+        size: 14px;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component GlassStyle inherits Rectangle {
+    background: #0E0E10;
+    public function clear-field() {
+        pw.clear();
+    }
+    public function focus-password() {
+        pw.focus-it();
+    }
+    public function focus-name(t: string) {
+        nm.text = t;
+        nm.focus();
+        nm.select-all();
+    }
+    public function set-name(t: string) {
+        nm.text = t;
+    }
+    public function shake() {
+        sh.go();
+    }
+    public function put(t: string) {
+        pw.put(t);
+    }
+    pure function r(l: length) -> length {
+        return Math.round(l / 1px) * 1px;
+    }
+    sh := Shaker { }
+
+    // The date and the time
+    VerticalLayout {
+        y: root.r(root.height * 0.16);
+        width: root.width;
+        height: self.preferred-height;
+        alignment: start;
+        Text {
+            text: Greet.date;
+            horizontal-alignment: center;
+            color: rgba(255, 255, 255, 0.75);
+            font-family: "Inter";
+            font-size: 24px;
+            font-weight: 600;
+        }
+        Text {
+            text: Greet.time;
+            horizontal-alignment: center;
+            color: rgba(255, 255, 255, 0.85);
+            font-family: "Inter";
+            font-size: Greet.primary ? 150px : 120px;
+            font-weight: 700;
+            letter-spacing: -5px;
+        }
+    }
+
+    // Sleep, Restart, Shut Down along the foot
+    powers := Rectangle {
+        visible: Greet.primary;
+        width: root.width;
+        height: prow.preferred-height;
+        y: root.height - 32px - self.height;
+        prow := HorizontalLayout {
+            alignment: center;
+            spacing: 36px;
+            for p in [
+                { icon: Greet.ic.moon, action: "suspend", label: "Sleep" },
+                { icon: Greet.ic.restart, action: "reboot", label: "Restart" },
+                { icon: Greet.ic.power, action: "poweroff", label: "Shut Down" },
+            ]: VerticalLayout {
+                spacing: 6px;
+                cross-axis-alignment: center;
+                Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 22px;
+                    accessible-role: button;
+                    accessible-label: p.label;
+                    accessible-action-default => {
+                        Greet.power(p.action);
+                    }
+                    background: Greet.power-choice == p.action ? rgba(255, 102, 102, 0.5) : rgba(255, 255, 255, pt.has-hover ? 0.3 : 0.18);
+                    border-width: 1px;
+                    border-color: rgba(255, 255, 255, 0.22);
+                    PIcon {
+                        text: p.icon;
+                        color: white;
+                        size: 20px;
+                        family: "Phosphor-Bold";
+                    }
+                    pt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            Greet.power(p.action);
+                        }
+                    }
+                }
+                Text {
+                    text: p.label;
+                    color: rgba(255, 255, 255, 0.8);
+                    font-family: "Inter";
+                    font-size: 12px;
+                    font-weight: 500;
+                    accessible-role: none;
+                }
+            }
+        }
+    }
+
+    // You, and the field
+    col := Rectangle {
+        visible: Greet.primary;
+        width: root.width;
+        height: lay.preferred-height;
+        y: powers.y - root.r(root.height * 0.06) - self.height;
+        lay := VerticalLayout {
+            spacing: 10px;
+            cross-axis-alignment: center;
+            Rectangle {
+                width: 72px;
+                height: 72px;
+                border-radius: 36px;
+                clip: true;
+                background: rgba(255, 255, 255, 0.2);
+                if !Greet.has-picture: PIcon {
+                    text: Greet.ic.user;
+                    color: white;
+                    size: 34px;
+                    family: "Phosphor-Fill";
+                }
+                if Greet.has-picture: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: Greet.picture;
+                    image-fit: cover;
+                    accessible-role: none;
+                }
+                Rectangle {
+                    border-radius: 36px;
+                    border-width: 1px;
+                    border-color: rgba(255, 255, 255, 0.25);
+                }
+            }
+            names := HorizontalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                spacing: 4px;
+                // (as wide as Switch user, so the name stays centred)
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                }
+                if Greet.several && !Greet.other: GlassChevron {
+                    icon: Greet.ic.caret-left;
+                    label: "Previous person";
+                    clicked => {
+                        Greet.next-user(-1);
+                    }
+                }
+                if !Greet.other: NameLabel {
+                    text: Greet.full;
+                    ink: white;
+                    size: 16px;
+                    weight: 600;
+                    hover-fill: rgba(255, 255, 255, 0.12);
+                    clicked => {
+                        Greet.edit-name();
+                    }
+                }
+                // (the username field's place: the field floats over it, below)
+                if Greet.other: Rectangle {
+                    width: 240px - 2 * (28px + 4px);
+                    height: 34px;
+                }
+                if Greet.several && !Greet.other: GlassChevron {
+                    icon: Greet.ic.caret-right;
+                    label: "Next person";
+                    clicked => {
+                        Greet.next-user(1);
+                    }
+                }
+                GlassChevron {
+                    icon: Greet.other ? Greet.ic.x : Greet.ic.user-switch;
+                    label: Greet.other ? "Back to the list" : "Switch user";
+                    clicked => {
+                        if Greet.other {
+                            Greet.cancel-name();
+                        } else {
+                            Greet.edit-name();
+                        }
+                    }
+                }
+            }
+            // The frosted field (its place: the field shakes over it, below)
+            Rectangle {
+                width: 240px;
+                height: 34px;
+            }
+            if Greet.say != "": Text {
+                width: 320px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: Greet.say;
+                color: Greet.say-bad ? #FFB4B4 : rgba(255, 255, 255, 0.75);
+                font-family: "Inter";
+                font-size: 12px;
+                font-weight: 500;
+            }
+            Rectangle {
+                width: gst.preferred-width;
+                height: 28px;
+                accessible-role: button;
+                accessible-label: "Session: " + Greet.session;
+                accessible-action-default => {
+                    Greet.next-session(1);
+                }
+                gst := Text {
+                    width: self.preferred-width;
+                    height: 28px;
+                    vertical-alignment: center;
+                    text: Greet.session;
+                    color: rgba(255, 255, 255, st.has-hover ? 0.9 : 0.6);
+                    font-family: "Inter";
+                    font-size: 12px;
+                    accessible-role: none;
+                }
+                st := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        Greet.next-session(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // A typed username, over its place in the row
+    Rectangle {
+        visible: Greet.primary && Greet.other;
+        x: (root.width - self.width) / 2;
+        y: col.y + names.y + (names.height - self.height) / 2;
+        width: 240px - 2 * (28px + 4px);
+        height: 34px;
+        border-radius: 17px;
+        background: rgba(255, 255, 255, 0.18);
+        border-width: nm.has-focus ? 1px : 0px;
+        border-color: rgba(255, 255, 255, 0.25);
+        nm := NameInput {
+            x: 14px;
+            width: parent.width - 2 * 14px;
+            height: parent.height;
+            color: white;
+            font-family: "Inter";
+            font-size: 14px;
+            selection-background-color: rgba(255, 255, 255, 0.3);
+            selection-foreground-color: white;
+        }
+        if nm.text == "": Text {
+            x: 14px;
+            height: parent.height;
+            vertical-alignment: center;
+            text: "Username";
+            color: rgba(255, 255, 255, 0.6);
+            font-family: "Inter";
+            font-size: 13px;
+            accessible-role: none;
+        }
+    }
+
+    // The frosted field
+    field := Rectangle {
+        visible: Greet.primary;
+        x: (root.width - self.width) / 2 + sh.dx;
+        y: col.y + names.y + names.height + 10px;
+        width: 240px;
+        height: 34px;
+        border-radius: 17px;
+        background: rgba(255, 255, 255, 0.18);
+        border-width: 1px;
+        border-color: Greet.error != "" ? rgba(255, 140, 140, 0.8) : rgba(255, 255, 255, 0.25);
+        pw := Secret {
+            x: 14px;
+            width: parent.width - 14px - 36px;
+            height: parent.height;
+            ink: white;
+            size: 14px;
+            spacing: 2px;
+            family: "Inter";
+            ro: Greet.busy || Greet.power-choice != "";
+            key(e) => {
+                if e.text == Key.Return {
+                    Greet.submit(self.text);
+                    return true;
+                }
+                if e.text == Key.UpArrow {
+                    Greet.next-user(-1);
+                    return true;
+                }
+                if e.text == Key.DownArrow {
+                    Greet.next-user(1);
+                    return true;
+                }
+                if e.text == Key.Tab {
+                    Greet.next-session(1);
+                    return true;
+                }
+                if e.text == Key.Backtab {
+                    return true;
+                }
+                if e.text == Key.Escape {
+                    Greet.cancel();
+                    return true;
+                }
+                false
+            }
+        }
+        if pw.text == "": Text {
+            x: 14px;
+            // (inside the input in the QML, which clips: cut at its width)
+            width: pw.width;
+            overflow: clip;
+            height: parent.height;
+            vertical-alignment: center;
+            text: Greet.placeholder;
+            color: rgba(255, 255, 255, 0.6);
+            font-family: "Inter";
+            font-size: 13px;
+            accessible-role: none;
+        }
+        // The fingerprint while the reader listens; else the arrow, once
+        // there's something to send
+        Rectangle {
+            visible: Greet.finger-on || pw.text != "";
+            x: parent.width - 5px - self.width;
+            y: (parent.height - self.height) / 2;
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            background: pw.text != "" ? rgba(255, 255, 255, send.has-hover ? 0.45 : 0.3) : transparent;
+            accessible-role: AccessibleRole.button;
+            accessible-label: pw.text != "" ? "Log in" : Greet.finger-say;
+            accessible-action-default => {
+                Greet.submit(pw.text);
+            }
+            PIcon {
+                text: pw.text != "" ? Greet.ic.arrow-right : Greet.ic.fingerprint;
+                color: pw.text == "" && Greet.finger-miss ? #FF9C9C : white;
+                size: pw.text != "" ? 13px : 18px;
+                family: pw.text != "" ? "Phosphor-Bold" : "Phosphor";
+            }
+            send := TouchArea {
+                enabled: pw.text != "";
+                mouse-cursor: pointer;
+                clicked => {
+                    Greet.submit(pw.text);
+                }
+            }
+        }
+    }
+}
+
+// ── Plain (GreeterPlain.qml) ────────────────────────────────────────────────
+
+component PlainChevron inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    callback clicked();
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: touch.has-hover ? #232327 : transparent;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => {
+        clicked();
+    }
+    PIcon {
+        text: root.icon;
+        color: #9A9AA2;
+        size: 16px;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component PlainStyle inherits Rectangle {
+    background: #000000;
+    property <color> fg: #F2F2F3;
+    property <color> dim: #9A9AA2;
+    property <color> fill: #1C1C1F;
+    property <color> bad: #FF8A8A;
+    property <color> accent: #A5B4FC;
+    public function clear-field() {
+        pw.clear();
+    }
+    public function focus-password() {
+        pw.focus-it();
+    }
+    public function focus-name(t: string) {
+        nm.text = t;
+        nm.focus();
+        nm.select-all();
+    }
+    public function set-name(t: string) {
+        nm.text = t;
+    }
+    public function shake() {
+        sh.go();
+    }
+    public function put(t: string) {
+        pw.put(t);
+    }
+    sh := Shaker { }
+
+    Text {
+        visible: Greet.primary;
+        y: 24px;
+        width: root.width;
+        horizontal-alignment: center;
+        text: Greet.plain-top;
+        color: root.dim;
+        font-family: "Inter";
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    col := Rectangle {
+        visible: Greet.primary;
+        width: root.width;
+        height: lay.preferred-height;
+        y: (root.height - self.height) / 2;
+        lay := VerticalLayout {
+            spacing: 16px;
+            cross-axis-alignment: center;
+            // Your picture (AccountsService's), else your initial
+            Rectangle {
+                width: 96px;
+                height: 96px;
+                border-radius: 48px;
+                clip: true;
+                background: #2A2A2E;
+                if !Greet.has-picture: Text {
+                    text: Greet.initial;
+                    color: root.fg;
+                    font-family: "Inter";
+                    font-size: 40px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                if Greet.has-picture: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: Greet.picture;
+                    image-fit: cover;
+                    accessible-role: none;
+                }
+            }
+            // Your name, with arrows to the others
+            names := HorizontalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                spacing: 4px;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                }
+                if Greet.several && !Greet.other: PlainChevron {
+                    icon: Greet.ic.caret-left;
+                    label: "Previous person";
+                    clicked => {
+                        Greet.next-user(-1);
+                    }
+                }
+                if !Greet.other: NameLabel {
+                    text: Greet.full;
+                    ink: root.fg;
+                    size: 20px;
+                    weight: 600;
+                    hover-fill: root.fill;
+                    clicked => {
+                        Greet.edit-name();
+                    }
+                }
+                if Greet.other: Rectangle {
+                    width: 300px - 2 * (28px + 4px);
+                    height: 44px;
+                }
+                if Greet.several && !Greet.other: PlainChevron {
+                    icon: Greet.ic.caret-right;
+                    label: "Next person";
+                    clicked => {
+                        Greet.next-user(1);
+                    }
+                }
+                PlainChevron {
+                    icon: Greet.other ? Greet.ic.x : Greet.ic.user-switch;
+                    label: Greet.other ? "Back to the list" : "Switch user";
+                    clicked => {
+                        if Greet.other {
+                            Greet.cancel-name();
+                        } else {
+                            Greet.edit-name();
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: 300px;
+                height: 44px;
+            }
+            // Errors, the reader's words, a power choice to confirm
+            Text {
+                width: 320px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: Greet.say;
+                color: Greet.say-bad ? root.bad : root.dim;
+                font-family: "Inter";
+                font-size: 13px;
+            }
+            // The session (Tab, or a click, for the next)
+            Rectangle {
+                width: pst.preferred-width;
+                height: 32px;
+                accessible-role: button;
+                accessible-label: "Session: " + Greet.session;
+                accessible-action-default => {
+                    Greet.next-session(1);
+                }
+                pst := Text {
+                    width: self.preferred-width;
+                    height: 32px;
+                    vertical-alignment: center;
+                    text: Greet.session;
+                    color: st.has-hover ? root.fg : root.dim;
+                    font-family: "Inter";
+                    font-size: 13px;
+                    accessible-role: none;
+                }
+                st := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        Greet.next-session(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // A typed username
+    Rectangle {
+        visible: Greet.primary && Greet.other;
+        x: (root.width - self.width) / 2;
+        y: col.y + names.y + (names.height - self.height) / 2;
+        width: 300px - 2 * (28px + 4px);
+        height: 44px;
+        border-radius: 22px;
+        background: root.fill;
+        border-width: nm.has-focus ? 1px : 0px;
+        border-color: #3A3A40;
+        nm := NameInput {
+            x: 18px;
+            width: parent.width - 2 * 18px;
+            height: parent.height;
+            color: root.fg;
+            font-family: "Inter";
+            font-size: 16px;
+            selection-background-color: root.fg.with-alpha(0.3);
+            selection-foreground-color: root.fg;
+        }
+        if nm.text == "": Text {
+            x: 18px;
+            height: parent.height;
+            vertical-alignment: center;
+            text: "Username";
+            color: #6B6B74;
+            font-family: "Inter";
+            font-size: 15px;
+            accessible-role: none;
+        }
+    }
+
+    // The field, the fingerprint at its end
+    Rectangle {
+        visible: Greet.primary;
+        x: (root.width - self.width) / 2 + sh.dx;
+        y: col.y + names.y + names.height + 16px;
+        width: 300px;
+        height: 44px;
+        border-radius: 22px;
+        background: root.fill;
+        border-width: pw.focused ? 1px : 0px;
+        border-color: Greet.error != "" ? root.bad : #3A3A40;
+        pw := Secret {
+            x: 18px;
+            width: parent.width - 18px - (Greet.finger-on ? 44px : 18px);
+            height: parent.height;
+            ink: root.fg;
+            size: 16px;
+            spacing: 2px;
+            family: "Inter";
+            ro: Greet.busy || Greet.power-choice != "";
+            key(e) => {
+                if e.text == Key.Return {
+                    Greet.submit(self.text);
+                    return true;
+                }
+                if e.text == Key.UpArrow {
+                    Greet.next-user(-1);
+                    return true;
+                }
+                if e.text == Key.DownArrow {
+                    Greet.next-user(1);
+                    return true;
+                }
+                if e.text == Key.Tab {
+                    Greet.next-session(1);
+                    return true;
+                }
+                if e.text == Key.Backtab {
+                    return true;
+                }
+                if e.text == Key.Escape {
+                    Greet.cancel();
+                    return true;
+                }
+                false
+            }
+        }
+        if pw.text == "": Text {
+            x: 18px;
+            // (inside the input in the QML, which clips: cut at its width)
+            width: pw.width;
+            overflow: clip;
+            height: parent.height;
+            vertical-alignment: center;
+            text: Greet.placeholder;
+            color: #6B6B74;
+            font-family: "Inter";
+            font-size: 15px;
+            accessible-role: none;
+        }
+        if Greet.finger-on: Rectangle {
+            x: parent.width - 12px - self.width;
+            y: (parent.height - self.height) / 2;
+            width: 22px;
+            height: 22px;
+            accessible-role: AccessibleRole.text;
+            accessible-label: Greet.finger-say;
+            PIcon {
+                text: Greet.ic.fingerprint;
+                color: Greet.finger-miss ? root.bad : root.accent;
+                size: 22px;
+            }
+        }
+    }
+
+    // Sleep, restart, shut down
+    Rectangle {
+        visible: Greet.primary;
+        x: root.width - 24px - self.width;
+        y: root.height - 24px - 44px;
+        width: prow.preferred-width;
+        height: 44px;
+        prow := HorizontalLayout {
+        spacing: 8px;
+        for p in [
+            { icon: Greet.ic.moon, action: "suspend", label: "Sleep" },
+            { icon: Greet.ic.restart, action: "reboot", label: "Restart" },
+            { icon: Greet.ic.power, action: "poweroff", label: "Shut down" },
+        ]: Rectangle {
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            background: Greet.power-choice == p.action ? #3A1F22 : pt.has-hover ? #232327 : transparent;
+            accessible-role: button;
+            accessible-label: p.label;
+            accessible-action-default => {
+                Greet.power(p.action);
+            }
+            PIcon {
+                text: p.icon;
+                color: Greet.power-choice == p.action ? root.bad : root.dim;
+                size: 20px;
+            }
+            pt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    Greet.power(p.action);
+                }
+            }
+        }
+        }
+    }
+}
+
+// ── Text (GreeterText.qml): ly's box of fields ──────────────────────────────
+
+component TextField inherits Rectangle {
+    in property <int> index;
+    in property <string> label;
+    in property <string> value;
+    in property <bool> typed;
+    callback step(int);
+    callback picked();
+    height: 36px;
+    Text {
+        x: 0px;
+        y: 0px;
+        width: 110px;
+        height: parent.height;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        text: root.label;
+        color: Greet.row == root.index ? #9BBCFF : #8D96A5;
+        font-family: "monospace";
+        font-size: 15px;
+        accessible-role: none;
+    }
+    Text {
+        x: 130px;
+        width: parent.width - 130px;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.value;
+        color: #E6E9EF;
+        font-family: "monospace";
+        font-size: 15px;
+        overflow: elide;
+        accessible-role: none;
+    }
+    TouchArea {
+        mouse-cursor: root.typed ? MouseCursor.text : MouseCursor.pointer;
+        clicked => {
+            root.picked();
+            if !root.typed {
+                root.step(self.mouse-x < 130px + (self.width - 130px) / 2 ? -1 : 1);
+            }
+        }
+    }
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.label;
+    accessible-value: root.value;
+}
+
+component TextStyle inherits Rectangle {
+    background: #0B0C0E;
+    property <color> fg: #E6E9EF;
+    property <color> dim: #8D96A5;
+    property <color> accent: #9BBCFF;
+    property <color> bad: #FF9C9C;
+    public function clear-field() {
+        pw.clear();
+    }
+    public function focus-password() {
+        pw.focus-it();
+    }
+    public function focus-name(t: string) {
+        // (no username field here: the login row is typed into)
+        pw.focus-it();
+    }
+    public function set-name(t: string) {
+    }
+    public function shake() {
+    }
+    public function put(t: string) {
+        pw.put(t);
+    }
+    function set-row(r: int) {
+        Greet.row = r;
+        Greet.row-changed(r);
+    }
+
+    // The power keys, and the time, along the top
+    Rectangle {
+        visible: Greet.primary;
+        x: 16px;
+        y: 0px;
+        width: keys.preferred-width;
+        height: 44px;
+        keys := HorizontalLayout {
+            spacing: 24px;
+            for p in [
+                { key: "F1", word: "shutdown", action: "poweroff" },
+                { key: "F2", word: "reboot", action: "reboot" },
+                { key: "F3", word: "sleep", action: "suspend" },
+            ]: Rectangle {
+                width: kt.preferred-width;
+                accessible-role: button;
+                accessible-label: p.word;
+                accessible-action-default => {
+                    Greet.power(p.action);
+                }
+                kt := Text {
+                    width: self.preferred-width;
+                    height: 44px;
+                    vertical-alignment: center;
+                    text: p.key + " " + p.word;
+                    color: Greet.power-choice == p.action ? root.bad : pt.has-hover ? root.fg : root.dim;
+                    font-family: "monospace";
+                    font-size: 14px;
+                    accessible-role: none;
+                }
+                pt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        Greet.power(p.action);
+                        pw.focus-it();
+                    }
+                }
+            }
+        }
+    }
+    Text {
+        visible: Greet.primary;
+        x: root.width - 16px - self.width;
+        y: 0px;
+        width: self.preferred-width;
+        height: 44px;
+        vertical-alignment: center;
+        text: Greet.text-top;
+        color: root.dim;
+        font-family: "monospace";
+        font-size: 14px;
+    }
+
+    // The box
+    box := Rectangle {
+        visible: Greet.primary;
+        width: Math.min(560px, root.width - 32px);
+        height: column.preferred-height + 48px;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-width: 1px;
+        border-color: root.dim;
+        column := VerticalLayout {
+            x: 32px;
+            y: 24px;
+            width: parent.width - 64px;
+            height: self.preferred-height;
+            spacing: 6px;
+            Text {
+                horizontal-alignment: center;
+                text: Greet.host != "" ? Greet.host : "Tessera";
+                color: root.fg;
+                font-family: "monospace";
+                font-size: 16px;
+            }
+            Rectangle {
+                height: 14px - 6px;
+            }
+            TextField {
+                index: 0;
+                label: "session";
+                value: Greet.session;
+                step(d) => {
+                    Greet.next-session(d);
+                }
+                picked => {
+                    root.set-row(0);
+                    pw.focus-it();
+                }
+            }
+            TextField {
+                index: 1;
+                label: "login";
+                value: Greet.login + (Greet.row == 1 ? "_" : "");
+                typed: true;
+                picked => {
+                    root.set-row(1);
+                    pw.focus-it();
+                }
+            }
+            // The password: the one text input, holding the keyboard throughout
+            Rectangle {
+                height: 36px;
+                Text {
+                    x: 0px;
+                    y: 0px;
+                    width: 110px;
+                    height: parent.height;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    text: "password";
+                    color: Greet.row == 2 ? root.accent : root.dim;
+                    font-family: "monospace";
+                    font-size: 15px;
+                    accessible-role: none;
+                }
+                pw := Secret {
+                    x: 130px;
+                    width: parent.width - 130px;
+                    height: parent.height;
+                    bullet: "*";
+                    ink: root.fg;
+                    size: 15px;
+                    spacing: 0px;
+                    family: "monospace";
+                    caret: Greet.row == 2;
+                    ro: Greet.busy || Greet.power-choice != "";
+                    edited(t) => {
+                        if t != "" {
+                            root.set-row(2);
+                        }
+                    }
+                    key(e) => {
+                        if e.text == Key.Return {
+                            if Greet.row == 1 {
+                                root.set-row(2);
+                            } else {
+                                Greet.submit(self.text);
+                            }
+                            return true;
+                        }
+                        if e.text == Key.UpArrow {
+                            root.set-row(Math.max(0, Greet.row - 1));
+                            return true;
+                        }
+                        if e.text == Key.DownArrow {
+                            root.set-row(Math.min(2, Greet.row + 1));
+                            return true;
+                        }
+                        if e.text == Key.Tab {
+                            root.set-row(Math.mod(Greet.row + 1, 3));
+                            return true;
+                        }
+                        if e.text == Key.Backtab {
+                            root.set-row(Math.mod(Greet.row + 2, 3));
+                            return true;
+                        }
+                        if e.text == Key.LeftArrow || e.text == Key.RightArrow {
+                            if Greet.row == 0 {
+                                Greet.next-session(e.text == Key.LeftArrow ? -1 : 1);
+                                return true;
+                            }
+                            return Greet.row == 1;
+                        }
+                        if e.text == Key.Escape {
+                            Greet.cancel();
+                            return true;
+                        }
+                        // (the login row: the username, typed as in ly)
+                        if Greet.row == 1 && !Greet.busy {
+                            if e.text == Key.Backspace {
+                                Greet.name-key("");
+                                return true;
+                            }
+                            if !e.modifiers.control && !e.modifiers.alt && Greet.printable(e.text) {
+                                Greet.name-key(e.text);
+                                return true;
+                            }
+                        }
+                        if !Greet.busy {
+                            if e.text == Key.F1 {
+                                Greet.power("poweroff");
+                                return true;
+                            }
+                            if e.text == Key.F2 {
+                                Greet.power("reboot");
+                                return true;
+                            }
+                            if e.text == Key.F3 {
+                                Greet.power("suspend");
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                }
+                TouchArea {
+                    x: 130px;
+                    width: parent.width - 130px;
+                    mouse-cursor: MouseCursor.text;
+                    clicked => {
+                        root.set-row(2);
+                        pw.focus-it();
+                    }
+                }
+            }
+            Rectangle {
+                height: 14px - 6px;
+            }
+            // What's happening: a power choice to confirm, an error, the
+            // fingerprint reader, signing in
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                cross-axis-alignment: center;
+                if Greet.finger-on && Greet.power-choice == "": PIcon {
+                    text: Greet.ic.fingerprint;
+                    color: Greet.finger-miss ? root.bad : root.accent;
+                    size: 16px;
+                }
+                Text {
+                    width: column.width - 24px;
+                    wrap: word-wrap;
+                    text: Greet.say;
+                    color: Greet.say-bad ? root.bad : root.dim;
+                    font-family: "monospace";
+                    font-size: 13px;
+                }
+            }
+        }
+    }
+}
+
+// ── Material (material/modules/greeter/GreeterSurface.qml) ──────────────────
+
+// Digits placed by their ink, not their line box: Google Sans Flex's digits
+// are 0.716 em tall, 0.25 em under the line's top (LockClock.qml's Ink)
+component Ink {
+    in property <string> text;
+    in property <length> px: 100px;
+    in property <int> wght: 640;
+    in property <color> tone;
+    width: t.preferred-width;
+    height: Math.round(px * 0.716 / 1px) * 1px;
+    t := Text {
+        x: 0px;
+        y: -root.px * 0.25;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        text: root.text;
+        color: root.tone;
+        font-family: "Tessera Sans Flex";
+        font-size: root.px;
+        font-weight: root.wght;
+        accessible-role: none;
+    }
+}
+
+// The lock screen's clock in the face chosen (LockClock.qml, large form)
+component LockClock {
+    in property <length> size: 200px;
+    property <length> s: size;
+    property <int> w: Greet.weight;
+    property <int> heavy: Math.max(Greet.weight, 760);
+    width: Greet.face == "stacked" ? stacked-w : Greet.face == "wide" ? wide.width : Greet.face == "overlap" ? ov-w : Greet.face == "analog" ? dial-d : dyn-w;
+    height: Greet.face == "stacked" ? stacked-h : Greet.face == "wide" ? wide.height : Greet.face == "overlap" ? ov-h : Greet.face == "analog" ? dial-d : dyn-h;
+    accessible-role: AccessibleRole.text;
+    accessible-label: Greet.hours-short + ":" + Greet.minutes;
+
+    // dynamic: the hours tall, the minutes smaller beside their top, AM or
+    // PM (or the date, with 24-hour time) under the minutes
+    property <length> gap-x: Math.round(s * 0.1 / 1px) * 1px;
+    property <length> dyn-w: dh.width + gap-x + Math.max(dm.width, dhalf.width);
+    property <length> dyn-h: dh.height;
+    dh := Ink {
+        visible: Greet.face == "dynamic";
+        x: 0px;
+        y: 0px;
+        px: Math.round(s * 1.6 / 1px) * 1px;
+        wght: root.w;
+        tone: Greet.m.clock1;
+        text: Greet.hours;
+    }
+    dm := Ink {
+        visible: Greet.face == "dynamic";
+        y: 0px;
+        x: dh.width + root.gap-x;
+        px: Math.round(s * 0.95 / 1px) * 1px;
+        wght: root.w;
+        tone: Greet.m.clock2;
+        text: Greet.minutes;
+    }
+    dhalf := Text {
+        visible: Greet.face == "dynamic";
+        width: self.preferred-width;
+        height: self.preferred-height;
+        x: dm.x + Math.round((dm.width - self.width) / 2 / 1px) * 1px;
+        y: dh.height - Math.round(self.height * 0.8 / 1px) * 1px;
+        text: Greet.half;
+        color: Greet.m.clock2;
+        font-family: "Tessera Sans Flex";
+        font-size: Math.max(14px, Math.round(root.s * 0.3 / 1px) * 1px);
+        font-weight: Math.round(root.w * 0.8 / 40) * 40;
+        accessible-role: none;
+    }
+
+    // stacked: the hours over the minutes (MaterialClock.qml)
+    property <length> digits: s * 0.716;
+    property <length> stacked-w: Math.max(sh.preferred-width, sm.preferred-width);
+    property <length> stacked-h: digits * 2 + s * 0.085;
+    sh := Text {
+        visible: Greet.face == "stacked";
+        x: 0px;
+        width: root.stacked-w;
+        y: -root.s * 0.25;
+        horizontal-alignment: center;
+        text: Greet.hours;
+        color: Greet.m.clock1;
+        font-family: "Tessera Sans Flex";
+        font-size: root.s;
+        font-weight: root.w;
+        accessible-role: none;
+    }
+    sm := Text {
+        visible: Greet.face == "stacked";
+        x: 0px;
+        width: root.stacked-w;
+        y: root.digits + root.s * 0.085 - root.s * 0.25;
+        horizontal-alignment: center;
+        text: Greet.minutes;
+        color: Greet.m.clock2;
+        font-family: "Tessera Sans Flex";
+        font-size: root.s;
+        font-weight: root.w;
+        accessible-role: none;
+    }
+
+    // wide: one line
+    wide := Ink {
+        visible: Greet.face == "wide";
+        x: 0px;
+        y: 0px;
+        px: Math.round(s * 0.8 / 1px) * 1px;
+        wght: root.w;
+        tone: Greet.m.clock1;
+        text: Greet.hours-short + ":" + Greet.minutes;
+    }
+
+    // overlap: heavy two-tone pairs, the minutes over the hours' corner
+    property <length> ov-w: Math.max(oh.width, om.x + om.width);
+    property <length> ov-h: om.y + om.height;
+    oh := Ink {
+        visible: Greet.face == "overlap";
+        x: 0px;
+        y: 0px;
+        px: Math.round(s * 0.95 / 1px) * 1px;
+        wght: root.heavy;
+        tone: Greet.m.clock1;
+        text: Greet.hours;
+    }
+    om := Ink {
+        visible: Greet.face == "overlap";
+        x: Math.round(oh.width * 0.4 / 1px) * 1px;
+        y: Math.round(oh.height * 0.58 / 1px) * 1px;
+        px: oh.px;
+        wght: root.heavy;
+        tone: Greet.m.clock3;
+        text: Greet.minutes;
+    }
+
+    // analog: hands on a 12-scallop dial
+    property <length> dial-d: Math.round(s * 1.5 / 1px) * 1px;
+    property <float> ah: Greet.hour-angle;
+    property <float> am: Greet.minute-angle;
+    animate ah, am { duration: 450ms; easing: ease-out-back; }
+    Rectangle {
+        visible: Greet.face == "analog";
+        x: 0px;
+        y: 0px;
+        width: root.dial-d;
+        height: root.dial-d;
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 100;
+            viewbox-height: 100;
+            commands: Greet.cookie12;
+            fill: Greet.m.clock3.with-alpha(0.2);
+        }
+        Rectangle {
+            transform-rotation: root.ah * 1deg;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            Rectangle {
+                width: root.dial-d * 0.085;
+                height: root.dial-d * 0.27 + self.width / 2;
+                x: (parent.width - self.width) / 2;
+                y: parent.height / 2 - root.dial-d * 0.27;
+                border-radius: self.width / 2;
+                background: Greet.m.clock1;
+            }
+        }
+        Rectangle {
+            transform-rotation: root.am * 1deg;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            Rectangle {
+                width: root.dial-d * 0.05;
+                height: root.dial-d * 0.38 + self.width / 2;
+                x: (parent.width - self.width) / 2;
+                y: parent.height / 2 - root.dial-d * 0.38;
+                border-radius: self.width / 2;
+                background: Greet.m.clock2;
+            }
+        }
+        Rectangle {
+            width: root.dial-d * 0.06;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Greet.m.clock1.darker(0.6);
+        }
+    }
+}
+
+// A round tonal button (squares off a little while pressed)
+component Round {
+    in property <GrGlyph> icon;
+    in property <string> tip;
+    in property <bool> danger;
+    callback clicked();
+    width: 44px;
+    height: 44px;
+    accessible-role: button;
+    accessible-label: tip;
+    accessible-action-default => {
+        clicked();
+    }
+    Rectangle {
+        border-radius: touch.pressed ? 14px : 22px;
+        animate border-radius { duration: 250ms; easing: spring(0.54); }
+        background: root.danger ? Greet.m.error-container : touch.has-hover ? Greet.m.high-hover : Greet.m.high;
+    }
+    MIcon {
+        g: root.icon;
+        size: 20px;
+        color: root.danger ? Greet.m.on-error-container : Greet.m.on-surface-variant;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component MaterialStyle inherits Rectangle {
+    background: Greet.m.bg;
+    public function clear-field() {
+        pw.clear();
+    }
+    public function focus-password() {
+        pw.focus-it();
+    }
+    public function focus-name(t: string) {
+        nm.text = t;
+        nm.focus();
+        nm.select-all();
+    }
+    public function set-name(t: string) {
+        nm.text = t;
+    }
+    public function shake() {
+        sh.go();
+    }
+    public function put(t: string) {
+        pw.put(t);
+    }
+    // The pill opens on a key or a mouse move and closes 10 s after the
+    // last one, unless something's typed (or being checked, or wrong)
+    public function wake() {
+        typing = true;
+        idle.stop();
+        idle.start();
+    }
+    in-out property <bool> typing;
+    property <bool> open: typing || Greet.other || pw.text != "" || Greet.busy || Greet.error != "" || Greet.power-choice != "";
+    out property <float> open-t: open ? 1 : 0;
+    animate open-t { duration: 600ms; easing: spring(0.5); }
+    property <float> ot: Math.max(0, Math.min(1, open-t));
+    pure function r(l: length) -> length {
+        return Math.round(l / 1px) * 1px;
+    }
+    idle := Timer {
+        interval: 10s;
+        running: false;
+        triggered => {
+            root.typing = false;
+            self.stop();
+        }
+    }
+    sh := Shaker { }
+
+    // (a move, not the first position)
+    property <length> last-x: -1px;
+    property <length> last-y: -1px;
+    TouchArea {
+        changed mouse-x => {
+            root.moved(self.mouse-x, self.mouse-y);
+        }
+        changed mouse-y => {
+            root.moved(self.mouse-x, self.mouse-y);
+        }
+    }
+    function moved(x: length, y: length) {
+        if root.last-x >= 0px && (Math.abs(x - root.last-x) > 2px || Math.abs(y - root.last-y) > 2px) {
+            root.wake();
+        }
+        root.last-x = x;
+        root.last-y = y;
+    }
+
+    // The clock and the date
+    clock-col := VerticalLayout {
+        y: root.r(root.height * 0.18);
+        width: root.width;
+        height: self.preferred-height;
+        spacing: 20px;
+        cross-axis-alignment: center;
+        LockClock {
+            size: root.r(Math.min(root.height * 0.15, root.width * 0.2));
+        }
+        if Greet.show-date: Text {
+            text: Greet.date;
+            color: Greet.m.date;
+            font-family: "Tessera Sans Flex";
+            font-size: 18px;
+            font-weight: 500;
+        }
+    }
+
+    // ── The account pill ────────────────────────────────────────────────
+    property <bool> fingered: Greet.finger-on;
+    property <length> name-w: Math.min(name-probe.preferred-width, 240px);
+    property <length> rest-w: 8px + 40px + 12px + name-w + (fingered ? 12px + 40px + 8px : 24px);
+    property <length> pill-w: Math.round((rest-w + (360px - rest-w) * ot) / 1px) * 1px;
+    name-probe := Text {
+        visible: false;
+        text: Greet.full;
+        font-family: "Tessera Sans Flex";
+        font-size: 16px;
+        font-weight: 500;
+    }
+    property <bool> arrows: Greet.several && !Greet.other;
+    property <length> row-w: 44px + 8px + (arrows ? 44px + 8px : 0px) + pill-w + (arrows ? 8px + 44px : 0px) + 8px + 44px;
+    property <length> row-x: (root.width - row-w) / 2;
+    property <length> row-y: root.height - root.r(root.height * 0.06) - 56px;
+    property <length> pill-x: row-x + 44px + 8px + (arrows ? 44px + 8px : 0px);
+
+    // Above the pill: the name (it leaves the pill as it opens), or the
+    // typed username's own pill; above that, what went wrong
+    property <length> name-h: Greet.other ? 56px : nl.height;
+    property <length> name-y: row-y - 12px - name-h;
+    property <bool> saying: Greet.say != "";
+    say-probe := Text {
+        visible: false;
+        text: Greet.say;
+        font-family: "Tessera Sans Flex";
+        font-size: 14px;
+        font-weight: 500;
+    }
+    say-pill := Rectangle {
+        visible: Greet.primary && root.saying;
+        width: Math.min(say-probe.preferred-width, 440px) + 32px;
+        height: say-text.preferred-height + 20px;
+        x: (root.width - self.width) / 2;
+        y: root.name-y - 12px - self.height;
+        border-radius: say-probe.preferred-width > 440px ? 20px : self.height / 2;
+        background: Greet.m.high;
+        say-text := Text {
+            width: Math.min(say-probe.preferred-width, 440px);
+            height: self.preferred-height;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            text: Greet.say;
+            color: Greet.say-bad ? Greet.m.error : Greet.m.on-surface;
+            font-family: "Tessera Sans Flex";
+            font-size: 14px;
+            font-weight: 500;
+        }
+    }
+    nl := NameLabel {
+        visible: Greet.primary && !Greet.other;
+        x: (root.width - self.width) / 2;
+        y: root.name-y;
+        opacity: root.ot;
+        enabled: root.ot > 0.5;
+        text: Greet.full;
+        ink: Greet.m.on-surface;
+        size: 16px;
+        weight: 500;
+        family: "Tessera Sans Flex";
+        hover-fill: Greet.m.high;
+        clicked => {
+            Greet.edit-name();
+        }
+    }
+    // A typed username (Switch user, or a click on the name), in its own pill
+    Rectangle {
+        visible: Greet.primary && Greet.other;
+        x: (root.width - self.width) / 2;
+        y: root.name-y;
+        width: 360px;
+        height: 56px;
+        border-radius: self.height / 2;
+        background: Greet.m.high;
+        border-width: nm.has-focus ? 2px : 0px;
+        border-color: Greet.m.primary;
+        nm := NameInput {
+            x: 24px;
+            width: parent.width - 48px;
+            height: parent.height;
+            color: Greet.m.on-surface;
+            font-family: "Tessera Sans Flex";
+            font-size: 18px;
+            selection-background-color: Greet.m.primary;
+            selection-foreground-color: Greet.m.on-primary;
+            typed => {
+                root.wake();
+            }
+        }
+        if nm.text == "": Text {
+            x: 24px;
+            height: parent.height;
+            vertical-alignment: center;
+            text: "Username";
+            color: Greet.m.on-surface-variant;
+            font-family: "Tessera Sans Flex";
+            font-size: 16px;
+            accessible-role: none;
+        }
+    }
+
+    // The row: Previous, the pill, Next, Switch user
+    if Greet.primary && root.arrows: Round {
+        x: root.row-x + 44px + 8px;
+        y: root.row-y + 6px;
+        icon: Greet.sy.caret-left;
+        tip: "Previous person";
+        clicked => {
+            Greet.next-user(-1);
+        }
+    }
+    if Greet.primary && root.arrows: Round {
+        x: root.pill-x + root.pill-w + 8px;
+        y: root.row-y + 6px;
+        icon: Greet.sy.caret-right;
+        tip: "Next person";
+        clicked => {
+            Greet.next-user(1);
+        }
+    }
+    Round {
+        visible: Greet.primary;
+        x: root.row-x + root.row-w - 44px;
+        y: root.row-y + 6px;
+        icon: Greet.other ? Greet.sy.x : Greet.sy.user-switch;
+        tip: Greet.other ? "Back to the list" : "Switch user";
+        clicked => {
+            if Greet.other {
+                Greet.cancel-name();
+            } else {
+                Greet.edit-name();
+            }
+        }
+    }
+    pill := Rectangle {
+        visible: Greet.primary;
+        x: root.pill-x + sh.dx;
+        y: root.row-y;
+        width: root.pill-w;
+        height: 56px;
+        border-radius: self.height / 2;
+        background: Greet.m.high;
+        border-width: root.open && (pw.focused || Greet.error != "") ? 2px : 0px;
+        border-color: Greet.error != "" ? Greet.m.error : Greet.m.primary;
+
+        // Your picture in a cookie (AccountsService's)
+        Rectangle {
+            x: 8px;
+            y: (parent.height - self.height) / 2;
+            width: 40px;
+            height: 40px;
+            transform-rotation: (Greet.busy ? 40 : 0) * 1deg;
+            animate transform-rotation { duration: 700ms; easing: spring(0.27); }
+            transform-origin: { x: 20px, y: 20px };
+            if !Greet.has-picture: Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 100;
+                viewbox-height: 100;
+                commands: Greet.cookie9;
+                fill: Greet.m.primary-container;
+            }
+            if Greet.has-picture: Image {
+                width: 100%;
+                height: 100%;
+                source: Greet.picture;
+                accessible-role: none;
+            }
+        }
+        if !Greet.has-picture: MIcon {
+            x: 8px + 11px;
+            y: (parent.height - self.height) / 2;
+            g: Greet.sy.user;
+            size: 18px;
+            color: Greet.m.on-primary-container;
+        }
+        name-text := Text {
+            x: 60px;
+            y: (parent.height - self.height) / 2;
+            width: root.name-w;
+            height: self.preferred-height;
+            overflow: elide;
+            text: Greet.full;
+            color: Greet.m.on-surface;
+            opacity: 1 - root.ot;
+            visible: self.opacity > 0.01;
+            font-family: "Tessera Sans Flex";
+            font-size: 16px;
+            font-weight: 500;
+            accessible-role: none;
+        }
+        pw := Secret {
+            x: 60px;
+            width: Math.max(0px, send.x - self.x - 8px);
+            height: parent.height;
+            opacity: root.ot;
+            ink: Greet.m.on-surface;
+            size: 18px;
+            spacing: 2px;
+            family: "Tessera Sans Flex";
+            ro: Greet.busy || Greet.power-choice != "";
+            edited => {
+                root.wake();
+            }
+            key(e) => {
+                root.wake();
+                if e.text == Key.Return {
+                    Greet.submit(self.text);
+                    return true;
+                }
+                if e.text == Key.UpArrow {
+                    Greet.next-user(-1);
+                    return true;
+                }
+                if e.text == Key.DownArrow {
+                    Greet.next-user(1);
+                    return true;
+                }
+                if e.text == Key.Tab {
+                    Greet.next-session(1);
+                    return true;
+                }
+                if e.text == Key.Backtab {
+                    return true;
+                }
+                if e.text == Key.Escape {
+                    Greet.cancel();
+                    return true;
+                }
+                false
+            }
+        }
+        if pw.text == "": Text {
+            x: 60px;
+            // (inside the input in the QML, which clips: cut at its width)
+            width: pw.width;
+            overflow: clip;
+            y: (parent.height - self.height) / 2;
+            height: self.preferred-height;
+            opacity: root.ot;
+            text: Greet.placeholder;
+            color: Greet.m.on-surface-variant;
+            font-family: "Tessera Sans Flex";
+            font-size: 16px;
+            accessible-role: none;
+        }
+        // Send: a circle, filled once there's something to send
+        send := Rectangle {
+            x: finger-slot.x - (root.fingered ? 4px : 0px) - self.width;
+            y: (parent.height - self.height) / 2;
+            width: 40px;
+            height: 40px;
+            visible: root.ot > 0.5 && !Greet.busy;
+            border-radius: 20px;
+            background: pw.text != "" ? Greet.m.primary : Greet.m.on-surface.with-alpha(0.12);
+            accessible-role: button;
+            accessible-label: "Log in";
+            accessible-action-default => {
+                Greet.submit(pw.text);
+            }
+            MIcon {
+                g: Greet.sy.arrow-right;
+                size: 20px;
+                color: pw.text != "" ? Greet.m.on-primary : Greet.m.on-surface.with-alpha(0.38);
+            }
+            TouchArea {
+                mouse-cursor: pw.text != "" ? MouseCursor.pointer : MouseCursor.default;
+                clicked => {
+                    Greet.submit(pw.text);
+                }
+            }
+        }
+        if Greet.busy: Busy {
+            x: send.x;
+            y: (parent.height - self.height) / 2;
+        }
+        // The fingerprint, while a reader listens
+        finger-slot := Rectangle {
+            x: parent.width - 8px - self.width;
+            y: (parent.height - self.height) / 2;
+            width: root.fingered ? 40px : 0px;
+            height: 40px;
+            border-radius: 20px;
+            background: !root.fingered ? transparent : Greet.finger-miss ? Greet.m.error-container : Greet.m.secondary-container;
+            accessible-role: AccessibleRole.text;
+            accessible-label: Greet.finger-say;
+            if root.fingered: MIcon {
+                g: Greet.sy.fingerprint;
+                size: 22px;
+                color: Greet.finger-miss ? Greet.m.on-error-container : Greet.m.primary;
+            }
+        }
+        // A click on the closed pill opens it; on the name, types another
+        if !root.open: TouchArea {
+            mouse-cursor: MouseCursor.text;
+            clicked => {
+                if self.mouse-x >= name-text.x && self.mouse-x <= name-text.x + name-text.width {
+                    Greet.edit-name();
+                    return;
+                }
+                root.wake();
+                pw.focus-it();
+            }
+        }
+    }
+
+    // The session, and the power buttons, in the corner
+    Rectangle {
+        visible: Greet.primary;
+        x: root.width - 24px - self.width;
+        y: root.height - 24px - 44px;
+        width: corner.preferred-width;
+        height: 44px;
+        corner := HorizontalLayout {
+        spacing: 8px;
+        Rectangle {
+            width: session-text.preferred-width + 32px;
+            height: 44px;
+            border-radius: 22px;
+            background: stt.has-hover ? Greet.m.high-hover : Greet.m.high;
+            accessible-role: button;
+            accessible-label: "Session: " + Greet.session;
+            accessible-action-default => {
+                Greet.next-session(1);
+            }
+            session-text := Text {
+                text: Greet.session;
+                color: Greet.m.on-surface;
+                font-family: "Tessera Sans Flex";
+                font-size: 14px;
+                font-weight: 500;
+                accessible-role: none;
+            }
+            stt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    Greet.next-session(1);
+                }
+            }
+        }
+        Round {
+            icon: Greet.sy.moon;
+            tip: "Sleep";
+            danger: Greet.power-choice == "suspend";
+            clicked => {
+                Greet.power("suspend");
+            }
+        }
+        Round {
+            icon: Greet.sy.restart;
+            tip: "Restart";
+            danger: Greet.power-choice == "reboot";
+            clicked => {
+                Greet.power("reboot");
+            }
+        }
+        Round {
+            icon: Greet.sy.power;
+            tip: "Shut down";
+            danger: Greet.power-choice == "poweroff";
+            clicked => {
+                Greet.power("poweroff");
+            }
+        }
+        }
+    }
+}
+
+// ── The window ──────────────────────────────────────────────────────────────
+
+export component Greeter inherits Window {
+    // glass | material | plain | text
+    in property <string> style: "glass";
+    background: style == "text" ? #0B0C0E : style == "plain" ? #000000 : style == "material" ? Greet.m.bg : #0E0E10;
+    g := GlassStyle {
+        width: root.width;
+        height: root.height;
+        visible: root.style == "glass";
+    }
+    m := MaterialStyle {
+        width: root.width;
+        height: root.height;
+        visible: root.style == "material";
+    }
+    p := PlainStyle {
+        width: root.width;
+        height: root.height;
+        visible: root.style == "plain";
+    }
+    t := TextStyle {
+        width: root.width;
+        height: root.height;
+        visible: root.style == "text";
+    }
+    public function clear-field() {
+        g.clear-field();
+        m.clear-field();
+        p.clear-field();
+        t.clear-field();
+    }
+    public function focus-password() {
+        if root.style == "glass" {
+            g.focus-password();
+        } else if root.style == "material" {
+            m.focus-password();
+        } else if root.style == "plain" {
+            p.focus-password();
+        } else {
+            t.focus-password();
+        }
+    }
+    public function focus-name(name: string) {
+        if root.style == "glass" {
+            g.focus-name(name);
+        } else if root.style == "material" {
+            m.focus-name(name);
+        } else if root.style == "plain" {
+            p.focus-name(name);
+        } else {
+            t.focus-name(name);
+        }
+    }
+    public function shake() {
+        if root.style == "glass" {
+            g.shake();
+        } else if root.style == "material" {
+            m.shake();
+        } else if root.style == "plain" {
+            p.shake();
+        }
+    }
+    // The typed username shown in the field (GreeterNameInput's text is
+    // auth.otherName: a name restored from last time, or typed in text's row)
+    public function set-name(name: string) {
+        g.set-name(name);
+        m.set-name(name);
+        p.set-name(name);
+    }
+    // (a demo's typed password)
+    public function put(text: string) {
+        if root.style == "glass" {
+            g.put(text);
+        } else if root.style == "material" {
+            m.put(text);
+        } else if root.style == "plain" {
+            p.put(text);
+        } else {
+            t.put(text);
+        }
+    }
+    // (Material: open the pill, as a key or a move would)
+    public function wake() {
+        m.wake();
+    }
+}

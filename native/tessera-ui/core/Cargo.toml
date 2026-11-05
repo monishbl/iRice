@@ -22,6 +22,7 @@ material-colors.workspace = true
 mc04.workspace = true
 image.workspace = true
 libc.workspace = true
+memmap2.workspace = true # (runloop.rs: the fonts, mapped)
 accesskit.workspace = true
 accesskit_unix.workspace = true
 calloop.workspace = true

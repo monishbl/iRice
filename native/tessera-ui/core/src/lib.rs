@@ -17,6 +17,7 @@ pub mod env;
 pub mod icon_theme;
 pub mod icons;
 pub mod picture;
+pub mod runloop;
 pub mod seed;
 pub mod services;
 pub mod settings;
