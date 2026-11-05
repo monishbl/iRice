@@ -20,9 +20,11 @@ import qs.services
 Scope {
     id: root
 
-    // The window exists only while banners are showing (plus a moment)
+    // The window exists only while banners are showing (plus a moment), and
+    // not while tessera-ui draws them (rust.surfaces: notifications; it then
+    // serves them too, so none come here: services/Notifications.qml)
     property bool windowAlive: false
-    readonly property bool windowWanted: Notifications.popupModel.count > 0
+    readonly property bool windowWanted: Notifications.popupModel.count > 0 && !RustUi.drawing("notifications")
     onWindowWantedChanged: windowWanted ? (windowAlive = true, windowUnload.stop()) : windowUnload.restart()
     Timer { id: windowUnload; interval: 800; onTriggered: root.windowAlive = false }
 

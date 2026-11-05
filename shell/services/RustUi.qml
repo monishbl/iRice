@@ -46,6 +46,13 @@ Singleton {
     // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
     // capsule shows (the banners move down under it)
     property bool osdShown: false
+    // What the desktop drawn in Rust asks of this shell (its "desktop"
+    // call): done by modules/desktop/DesktopFeed.qml
+    signal desktopCall(string what, var args)
+    // Its surfaces' other lines ({"src":"ui","kind":"notifications",…}: the
+    // notification list, services/Notifications.qml) and whether it runs
+    signal message(var e)
+    readonly property bool running: proc.running
     // Tells a surface it draws something only this shell knows (a line on
     // its stdin, {"to":"osd",…}): e.g. Audio.hush, the OSD's preview
     function tell(surface, what) {
@@ -107,6 +114,8 @@ Singleton {
             call(e.call, e.args ?? []);
         } else if (e.kind === "osd") {
             osdShown = e.shown === true;
+        } else {
+            message(e);
         }
     }
 
@@ -206,6 +215,9 @@ Singleton {
         case "cc.block":
         case "cc.pick":
             ccCall(name, a);
+            break;
+        case "desktop":
+            root.desktopCall(String(a[0] ?? ""), a.slice(1));
             break;
         default:
             console.warn("tessera-ui: no call " + name);

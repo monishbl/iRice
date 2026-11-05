@@ -37,7 +37,12 @@ Variants {
 
         // On the bottom layer this window sits over Stage Manager's strip
         // (made before it moved there): the strip's column stays the strip's
-        mask: rust && StageManager.enabled && Config.options.stageManager.strip ? stripHole : null
+        mask: RustUi.drawing("desktop") ? noInput : rust && StageManager.enabled && Config.options.stageManager.strip ? stripHole : null
+        // (the desktop drawn in Rust takes the clicks: none here, whichever
+        // layer this window is on)
+        Region {
+            id: noInput
+        }
         Region {
             id: stripHole
             width: win.width
@@ -323,7 +328,7 @@ Variants {
         // Widgets live on the first screen (one layout; macOS shows them on one display)
         DesktopWidgets {
             id: desktopWidgets
-            visible: win.screen === Quickshell.screens[0] && Wallpaper.started
+            visible: win.screen === Quickshell.screens[0] && Wallpaper.started && !RustUi.drawing("desktop")
             enabled: visible
             screen: win.screen
         }
