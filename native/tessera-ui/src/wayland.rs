@@ -70,6 +70,9 @@ pub struct Surface {
     needs_redraw: Cell<bool>,
     frame_pending: Cell<bool>,
     pub mapped: Cell<bool>,
+    /// hidden by `hide` until `show`: a configure meanwhile (Hyprland answers
+    /// the null buffer with one) must not draw and map it again
+    hidden: Cell<bool>,
     ime: RefCell<Option<slint_ime::Props>>, // what the focused text field wants from the input method
     pub stats: RefCell<crate::stats::Frames>,
 }
@@ -133,8 +136,10 @@ impl Surface {
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
+        self.hidden.set(true);
     }
     pub fn show(&self, w: u32, h: u32) {
+        self.hidden.set(false);
         self.layer.set_size(w, h);
         self.layer.commit();
     }
@@ -349,6 +354,7 @@ impl State {
             needs_redraw: Cell::new(true),
             frame_pending: Cell::new(false),
             mapped: Cell::new(false),
+            hidden: Cell::new(false),
             ime: RefCell::new(None),
             stats: RefCell::new(Default::default()),
         });
@@ -518,6 +524,9 @@ impl LayerShellHandler for State {
         let (w, h) = s.logical.get();
         let size = (if c.new_size.0 > 0 { c.new_size.0 } else { w }, if c.new_size.1 > 0 { c.new_size.1 } else { h });
         s.logical.set(size);
+        if s.hidden.get() {
+            return; // (unmapped on purpose: the size waits for `show`)
+        }
         s.configured.set(true);
         s.frame_pending.set(false);
         s.apply_geometry();

@@ -54,6 +54,10 @@ pub enum Msg {
 }
 
 fn handle(state: &mut State, msg: Msg) {
+    // (Slint's animation clock moves only when the loop ticks it: on an idle
+    // window it still reads its last frame's time, so an animation a message
+    // starts would begin out of step. Bring it to now first.)
+    slint::platform::update_timers_and_animations();
     match msg {
         Msg::Run(f) => f(),
         Msg::Quit => state.exit = true,
@@ -226,6 +230,7 @@ fn main() {
                     state.exit = true;
                     return Ok(PostAction::Remove);
                 }
+                slint::platform::update_timers_and_animations();
                 for l in lines.feed(&buf[..n as usize]) {
                     match shell::Command::parse(&l) {
                         Some(c) => state.command(c),
