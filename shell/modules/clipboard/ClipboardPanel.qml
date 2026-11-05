@@ -19,6 +19,8 @@ Variants {
         required property var modelData
         panel: "clipboard"
         screen: modelData
+        // (tessera-ui draws it: rust.surfaces lists "clipboard")
+        elsewhere: RustUi.drawing("clipboard")
 
         Dialog {
             id: dialog

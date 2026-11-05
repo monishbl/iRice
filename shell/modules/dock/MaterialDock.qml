@@ -12,8 +12,9 @@ import qs.services
 // for the app in front), plain tooltips. Menus, the Downloads stack and
 // auto-hide work as in Glass. The window has a fixed height; input is masked
 // to the pill (and the edge strip while auto-hiding).
+// (None while tessera-ui draws the dock in Rust: Settings' rust.surfaces)
 Variants {
-    model: Config.options.dock.enabled && Theme.material ? Quickshell.screens : []
+    model: Config.options.dock.enabled && Theme.material && !RustUi.drawing("dock") ? Quickshell.screens : []
 
     PanelWindow {
         id: win

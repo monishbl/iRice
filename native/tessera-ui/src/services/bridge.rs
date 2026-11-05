@@ -73,28 +73,6 @@ pub fn parse_line(line: &str) -> Option<Box<dyn Any + Send>> {
     }
 }
 
-/// Splits what came in on stdin into whole lines (keeps a partial one)
-#[derive(Default)]
-pub struct Lines {
-    buf: Vec<u8>,
-}
-
-impl Lines {
-    pub fn feed(&mut self, bytes: &[u8]) -> Vec<String> {
-        self.buf.extend_from_slice(bytes);
-        let mut out = Vec::new();
-        while let Some(i) = self.buf.iter().position(|&b| b == b'\n') {
-            let line: Vec<u8> = self.buf.drain(..=i).collect();
-            out.push(String::from_utf8_lossy(&line[..line.len() - 1]).into_owned());
-        }
-        // (a runaway line without an end is dropped, not kept forever)
-        if self.buf.len() > 1 << 20 {
-            self.buf.clear();
-        }
-        out
-    }
-}
-
 /// shell-ipc.sh, from the repo the shell runs from (TESSERA_ROOT), else this build's
 pub fn ipc_script() -> std::path::PathBuf {
     let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")));
@@ -123,14 +101,6 @@ pub fn run(cmd: &[&str]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lines_come_whole() {
-        let mut l = Lines::default();
-        assert!(l.feed(b"{\"a\":").is_empty());
-        assert_eq!(l.feed(b"1}\n{\"b\":2}\n{\"c\""), vec!["{\"a\":1}", "{\"b\":2}"]);
-        assert_eq!(l.feed(b":3}\n"), vec!["{\"c\":3}"]);
-    }
 
     #[test]
     fn the_shell_says_its_state_and_island_calls() {

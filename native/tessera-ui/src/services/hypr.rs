@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
-fn dir() -> Option<PathBuf> {
+/// Hyprland's socket folder (this instance's)
+pub fn dir() -> Option<PathBuf> {
     let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
     let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     Some(PathBuf::from(rt).join("hypr").join(sig))
@@ -42,6 +43,9 @@ pub struct Workspace {
     pub monitor: String,
     #[serde(default)]
     pub windows: u32,
+    /// a window is fullscreen on it
+    #[serde(default, rename = "hasfullscreen")]
+    pub fullscreen: bool,
 }
 
 #[derive(Deserialize, Default, Clone, Debug, PartialEq)]
@@ -98,9 +102,14 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// The focused monitor's current workspace has a fullscreen window
+    pub fn fullscreen(&self) -> bool {
+        let Some(id) = self.active.get(&self.focused) else { return false };
+        self.workspaces.iter().any(|w| w.id == *id && w.fullscreen)
+    }
     /// A window fills the monitor's current space (Desktop.fullscreen: any
     /// fullscreen state, maximized included, not hidden in a group)
-    pub fn fullscreen(&self, monitor: &str) -> bool {
+    pub fn fullscreen_on(&self, monitor: &str) -> bool {
         let Some(&ws) = self.active.get(monitor) else { return false };
         self.clients.iter().any(|c| c.workspace.id == ws && c.fullscreen > 0 && !c.hidden)
     }
@@ -260,5 +269,20 @@ mod tests {
         // Hyprland without the plugin answers an unknown command with an error
         assert_eq!(find_plugin(|_| Some("unknown request".into())), None);
         assert_eq!(find_plugin(|_| None), None);
+    }
+
+    #[test]
+    fn fullscreen_on_the_focused_monitor() {
+        use super::{Snapshot, Workspace};
+        let ws = |id, monitor: &str, fullscreen| Workspace { id, monitor: monitor.into(), fullscreen, ..Default::default() };
+        let mut h = Snapshot { focused: "DP-1".into(), workspaces: vec![ws(1, "DP-1", false), ws(2, "HDMI-A-1", true)], ..Default::default() };
+        h.active.insert("DP-1".into(), 1);
+        h.active.insert("HDMI-A-1".into(), 2);
+        assert!(!h.fullscreen());
+        h.focused = "HDMI-A-1".into();
+        assert!(h.fullscreen());
+        // (as Hyprland's JSON says it)
+        let w: Workspace = serde_json::from_str(r#"{"id":3,"monitor":"DP-1","windows":1,"hasfullscreen":true}"#).unwrap();
+        assert!(w.fullscreen);
     }
 }

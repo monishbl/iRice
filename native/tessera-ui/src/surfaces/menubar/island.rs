@@ -150,9 +150,6 @@ impl Island {
     pub fn ringing(&self) -> bool {
         self.alerts.iter().any(|a| a.kind() == "ringing")
     }
-    pub fn held(&self) -> bool {
-        self.held
-    }
 
     fn replace(&mut self, i: usize, e: Value, ms: f64, now: f64, extend: bool, qml_uid: i64) -> u64 {
         let a = &mut self.alerts[i];

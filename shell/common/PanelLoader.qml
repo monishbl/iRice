@@ -16,7 +16,11 @@ LazyLoader {
     readonly property bool keep: keepLoaded || (Config.ready && Config.options.performance.keepPanelsLoaded && everyday.includes(panel))
 
     property bool everyScreen: false // open on every screen at once (Overview: each screen shows its own)
-    readonly property bool wanted: Panels.isOpen(panel, screen) || (everyScreen && Panels.open === panel)
+    // Drawn elsewhere (tessera-ui, the interface in Rust: `elsewhere:
+    // RustUi.drawing("<panel>")`): this one never loads, Panels' opening
+    // goes there instead (services/RustUi.qml)
+    property bool elsewhere: false
+    readonly property bool wanted: !elsewhere && (Panels.isOpen(panel, screen) || (everyScreen && Panels.open === panel))
     property bool alive: false
     active: alive
 

@@ -48,12 +48,6 @@ pub fn clock_formats(cfg: &Value) -> (String, String) {
     (short, format!("%A %-d %B %Y, {time}"))
 }
 
-/// Glass: a strip behind the bar (menubar.background; off by default: the bar
-/// is clear over the wallpaper)
-pub fn bar_background(cfg: &Value) -> bool {
-    cfg["menubar"]["background"].as_bool().unwrap_or(false)
-}
-
 /// Every menubar.* setting (and the island's the bar needs)
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bar {
@@ -212,8 +206,8 @@ mod tests {
 
     #[test]
     fn the_bar_is_clear_unless_asked() {
-        assert!(!bar_background(&json!({})));
-        assert!(bar_background(&json!({"menubar": {"background": true}})));
+        assert!(!bar(&json!({})).background);
+        assert!(bar(&json!({"menubar": {"background": true}})).background);
     }
 
     #[test]

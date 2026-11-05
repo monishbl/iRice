@@ -8,6 +8,12 @@
 //!            active window, every window, per monitor; from its event socket
 //!   status   battery (status::Battery, UPower) and Wi-Fi (status::Wifi,
 //!            NetworkManager), over the system bus
+//!   clipboard  the clipboard history (clipboard::History: cliphist, the
+//!            shell's pins and times) and its pictures (clipboard::Previews)
+//!   clients  Hyprland's windows and monitors (clients::Windows): what's open,
+//!            where, in front, asking for attention
+//!   apps     the installed apps' desktop entries (apps::Apps), and starting them
+//!   icons    icon names to files in the shell's icon theme (icons::Icons)
 //!   mpris    media players (mpris::Players), session bus
 //!   tray     the apps' tray items (tray::Tray, StatusNotifierItem), session bus
 //!   bluez    Bluetooth (bluez::Bluetooth), system bus
@@ -17,10 +23,17 @@
 //!            and calls back into it (shell-ipc.sh)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod apps;
+pub mod audio;
 pub mod bluez;
 pub mod bridge;
+pub mod brightness;
+pub mod clients;
+pub mod clipboard;
 pub mod hypr;
+pub mod icons;
 pub mod mpris;
+pub mod pulse;
 pub mod status;
 pub mod tray;
 pub mod wallpaper;
@@ -35,6 +48,12 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "mpris" => mpris::spawn(tx),
         "tray" => tray::spawn(tx),
         "bluez" => bluez::spawn(tx),
+        "clipboard" => clipboard::spawn(tx),
+        "clients" => clients::spawn(tx),
+        "apps" => apps::spawn(tx),
+        "icons" => icons::spawn(tx),
+        "audio" => audio::spawn(tx),
+        "brightness" => brightness::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

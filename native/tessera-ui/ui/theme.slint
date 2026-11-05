@@ -73,11 +73,12 @@ export global Theme {
     in property <color> m3-error: #ff453a;
     in property <color> m3-on-error: #ffffff;
     in property <color> m3-secondary: #ffffffa0;
+    in property <color> m3-error-container: #ff453a40;
+    in property <color> m3-on-error-container: #ffffff;
     in property <color> m3-tertiary-container: #0a84ff;
     in property <color> m3-on-tertiary-container: #ffffff;
     in property <color> m3-inverse-surface: #e6e1e5;
     in property <color> m3-inverse-on-surface: #313033;
-    in property <color> m3-shadow: #000000;
     // Status colours that aren't the accent (Theme.accents: unread is always
     // the system blue; Low Power's battery is yellow)
     in property <color> blue: #0a84ff;
@@ -88,6 +89,16 @@ export global Theme {
     // Motion: Theme.motion's durations
     in property <duration> hover: 150ms;
     in property <duration> popover: 220ms;
+    in property <color> m3-primary-fixed: #eaddff;
+    in property <color> m3-primary-fixed-dim: #d0bcff;
+    in property <color> m3-shadow: #000000;
+    in property <color> m3-scrim: #000000;
+    // Glass's opaque surface (Theme.glass.solid: small popups over a panel)
+    in property <color> glass-solid: #26262a;
+    // Material's see-through panels (Theme.qml's blur / panelAlpha: Settings'
+    // materialTransparency; Theme.veil(c) is c.with-alpha(panel-alpha))
+    in property <bool> blur: false;
+    in property <float> panel-alpha: 1;
     // Type: sizes (Theme.font)
     in property <length> caption: 11px;
     in property <length> small: 12px;

@@ -78,7 +78,7 @@ enum M {
     IslandDismiss(i32),
     IslandLevel(f32),
     IslandPin,
-    IslandHold(String, bool),
+    IslandHold(bool),
     Art(String, Option<std::path::PathBuf>),
 }
 
@@ -493,7 +493,7 @@ impl Menubar {
             ui.set_corners(cfg.screen_corners);
             ui.set_corner_r(cfg.corner_radius as f32);
             // fullscreen and auto-hide
-            let over_fs = snapshot.fullscreen(&b.output);
+            let over_fs = snapshot.fullscreen_on(&b.output);
             let panel_here = !shell.str("open").is_empty() && (shell.str("screen") == b.output || shell.str("screen").is_empty());
             let menu_here = open_menu.as_ref().is_some_and(|(o, _)| *o == b.output);
             let view = island::view(&self.island, b.hover_open, pinned, over_fs, &fs_mode, b.fs_open);
@@ -1143,7 +1143,7 @@ impl Menubar {
                 }
             }
             M::IslandPin => bridge::call(&["rustui", "act", "islandPin", ""]),
-            M::IslandHold(_, on) => {
+            M::IslandHold(on) => {
                 self.island.hold(on, ms_now());
                 bridge::call(&["rustui", "act", "islandHold", if on { "1" } else { "0" }]);
                 self.arm_sweep(st);
@@ -1317,8 +1317,8 @@ impl Part for Menubar {
             ui.on_island_pin(move || to(Box::new(M::IslandPin)));
         }
         {
-            let (to, o) = (to.clone(), out.clone());
-            ui.on_island_hold(move |on| to(Box::new(M::IslandHold(o.clone(), on))));
+            let to = to.clone();
+            ui.on_island_hold(move |on| to(Box::new(M::IslandHold(on))));
         }
         ui.show().expect("show bar");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());

@@ -216,7 +216,7 @@ mod tests {
     use crate::services::hypr::{Client, Workspace, WsRef};
 
     fn ws(id: i32, monitor: &str, windows: u32) -> Workspace {
-        Workspace { id, monitor: monitor.into(), windows }
+        Workspace { id, monitor: monitor.into(), windows, ..Default::default() }
     }
     fn snap(w: Vec<Workspace>, active: &[(&str, i32)]) -> Snapshot {
         Snapshot { workspaces: w, active: active.iter().map(|(n, i)| (n.to_string(), *i)).collect(), ..Default::default() }

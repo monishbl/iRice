@@ -4564,6 +4564,7 @@ dependencies = [
  "material-colors 0.4.2",
  "material-colors 0.5.0",
  "memmap2",
+ "resvg",
  "serde",
  "serde_json",
  "slint",

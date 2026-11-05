@@ -15,6 +15,9 @@ import qs.services
 // bar along the top edge instead. Also owns the media-key shortcuts.
 // The Material look draws Android's volume panel instead of the capsule
 // (MaterialVolumePanel: the same state and actions, at the right edge).
+// While tessera-ui draws it (Settings' rust.surfaces lists "osd"), the
+// capsule, the volume panel and the fullscreen bar are Rust's; the island's
+// HUD and the media keys stay here.
 Scope {
     id: root
 
@@ -31,7 +34,9 @@ Scope {
     Binding {
         target: Panels
         property: "osdVisible"
-        value: root.shown && !Theme.material // (Material's panel is at the right edge, clear of the banners)
+        // (Material's panel is at the right edge, clear of the banners;
+        // tessera-ui says when its capsule shows)
+        value: RustUi.drawing("osd") ? RustUi.osdShown : root.shown && !Theme.material
     }
 
     function show(k, dev) {
@@ -41,8 +46,12 @@ Scope {
         if (!dev && Date.now() < (k === "brightness" ? Brightness.quietUntil : Audio.quietUntil))
             return;
         device = dev ?? "";
+        // (tessera-ui learns of the change itself and draws the rest)
+        const rust = RustUi.drawing("osd");
         // A fullscreen window on the focused display: the thin top bar
         if (Hyprland.focusedMonitor?.activeWorkspace?.hasFullscreen ?? false) {
+            if (rust)
+                return;
             barKind = k;
             barShown = true;
             barHide.restart();
@@ -53,6 +62,8 @@ Scope {
             Island.hud(k, dev);
             return;
         }
+        if (rust)
+            return;
         kind = k;
         shown = true;
         hideTimer.interval = device ? 2500 : 1600;
@@ -363,6 +374,7 @@ Scope {
         target: "osd"
         function preview(kind: string): void {
             root.armed = true;
+            RustUi.tell("osd", { preview: kind });
             root.show(kind);
         }
     }
