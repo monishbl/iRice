@@ -232,6 +232,7 @@ impl Grid {
     }
 
     /// The widget under a point, or None for the bare desktop
+    #[allow(dead_code)] // (Slint's own hit testing does it on screen)
     pub fn widget_at(placed: &[W], x: f32, y: f32) -> Option<usize> {
         placed.iter().position(|w| {
             let (wx, wy) = Self::home(w.col, w.row);

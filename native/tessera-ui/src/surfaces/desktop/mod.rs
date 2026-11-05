@@ -27,6 +27,8 @@
 //!   new cell. Without the plugin they're a tint.
 //! - Slint can't clip a picture to a Material shape: Now Playing's cover is
 //!   round while playing (the QML's cookie), a small photo round (clover).
+//! - Material draws Phosphor icons, not Material Symbols (as the OSD: Slint
+//!   can't set the symbols font's FILL axis the QML fills them with).
 //! - No lock/unlock zoom (LockFx), no GPU graph in System, no drag of files
 //!   into or out of the desktop (no drag and drop between apps here).
 
@@ -192,6 +194,7 @@ pub struct Desktop {
     ghost: Option<(i32, i32, String)>,
     live: Option<(usize, f32, f32)>,
     menu_for: Option<usize>,
+    menu_timer: slint::Timer,
     roles: HashMap<String, Color>,
     started_rotation: String,
 }
@@ -624,7 +627,9 @@ impl Desktop {
         let bleed = grid::kind(&kind).is_some_and(|k| k.bleed);
         if material {
             row.has_card = !card.bg.is_empty();
-            row.card = self.role(card.bg);
+            // (Settings' transparency: containers let the desktop through,
+            // Theme.controlAlpha)
+            row.card = self.role(card.bg).with_alpha(1.0 - 0.4 * st.shell.look.transparency);
             row.pill = card.pill;
             row.pad = if bleed { 0.0 } else { card.pad };
             row.pad_x = if bleed { 0.0 } else { card.pad_x };
@@ -873,7 +878,7 @@ impl Desktop {
                         label: feed::short_name(&a.title).into(),
                         glyph: glyphs::glyph(&a.glyph).into(),
                         tint: self.accent(st, tints[i % 8]),
-                        bg: self.role(roles[i % 3].0),
+                        bg: self.role(roles[i % 3].0).with_alpha(1.0 - 0.4 * st.shell.look.transparency),
                         ink: self.role(roles[i % 3].1),
                     })
                     .collect();
@@ -1379,24 +1384,31 @@ impl Desktop {
         mw.ui.set_point_y(y);
         mw.ui.set_glass_plugin(st.shell.plugin && !st.shell.look.material);
         mw.rows = rows;
+        // (takes the whole screen's clicks and the keyboard while open)
+        st.set_input_region(&mw.surface, None);
+        mw.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         mw.surface.show(0, 0);
         mw.open = true;
         mw.ui.set_shown(true);
         mw.ui.invoke_open();
     }
 
-    fn close_menu(&mut self) {
+    /// Close the menu: its exit animation (120 ms), then unmapped (a timer
+    /// here: the overlay must never stay up over the desktop, taking clicks)
+    fn close_menu(&mut self, st: &State) {
         if let Some(mw) = &mut self.menu {
             if mw.open {
                 mw.open = false;
                 mw.ui.set_shown(false);
+                let to = st.shell.sender(NAME);
+                self.menu_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(180), move || to(Box::new(M::MenuClosed)));
             }
         }
     }
 
     fn menu_chosen(&mut self, st: &mut State, i: i32) {
         let Some(act) = self.menu.as_ref().and_then(|m| m.rows.get(i as usize)).and_then(|r| r.act.clone()) else { return };
-        self.close_menu();
+        self.close_menu(st);
         let c = Self::cfg(st);
         match act {
             Act::Resize(i, s) => {
@@ -1746,18 +1758,23 @@ impl Part for Desktop {
             }
             M::MenuChosen(i) => self.menu_chosen(st, i),
             M::MenuDismissed => {
-                self.close_menu();
+                self.close_menu(st);
                 self.update(st);
             }
             M::MenuClosed => {
-                if let Some(mw) = &mut self.menu {
-                    if !mw.open {
-                        mw.surface.hide();
-                        if let Some(w) = &self.win {
-                            st.shell.glass.set(&w.output, MENU_NS, &[]);
-                        }
-                        mw.glass_sent.clear();
+                // Click-through, not hidden: Hyprland answers a null buffer
+                // with a configure, and the surface drawn again after that
+                // would sit over the whole screen taking every click. So it
+                // stays (clear, nothing drawn) with no input region and no
+                // keyboard until the next right-click.
+                if let Some(mw) = self.menu.as_mut().filter(|m| !m.open) {
+                    st.set_input_region(&mw.surface, Some(&[]));
+                    mw.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+                    mw.surface.layer.commit();
+                    if let Some(w) = &self.win {
+                        st.shell.glass.set(&w.output, MENU_NS, &[]);
                     }
+                    mw.glass_sent.clear();
                 }
             }
         }
@@ -1765,7 +1782,7 @@ impl Part for Desktop {
 
     fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
         if self.menu.as_ref().is_some_and(|m| m.open && Rc::ptr_eq(&m.surface, s)) {
-            self.close_menu();
+            self.close_menu(st);
             self.update(st);
         }
     }

@@ -840,6 +840,7 @@ component NotesW inherits Rectangle {
     }
     T {
         x: 34px;
+        y: 0;
         height: 26px;
         vertical-alignment: center;
         text: "Note";
@@ -869,6 +870,7 @@ component NotesW inherits Rectangle {
             }
         }
         if edit.text == "" && !edit.has-focus: T {
+            x: 0;
             y: 0;
             text: "Click to write a note";
             color: Theme.material ? Theme.m3-on-tertiary-container.with-alpha(0.6) : Theme.tertiary;
@@ -1134,7 +1136,11 @@ component Frame inherits Rectangle {
     animate transform-scale { duration: 150ms; }
     transform-origin: { x: self.width / 2, y: self.height / 2 };
     border-radius: w.pill ? self.height / 2 : Desk.tile;
-    background: Theme.material ? (w.has-card ? w.card : transparent) : glass-plugin ? transparent : Theme.panel;
+    // (Glass without the plugin: a see-through tint with a rim; Hyprland
+    // blurs it, being over 40% alpha)
+    background: Theme.material ? (w.has-card ? w.card : transparent) : glass-plugin ? transparent : Theme.dark ? #1c1c216b : #f7f7fa80;
+    border-width: Theme.material || glass-plugin ? 0 : 1px;
+    border-color: Theme.dark ? #ffffff24 : #ffffff80;
     accessible-role: groupbox;
     accessible-label: w.t6 != "" && w.kind == "" ? w.t6 : w.kind;
 
@@ -1261,12 +1267,12 @@ component IconCell inherits Rectangle {
         width: 48px;
         height: 48px;
         for f[i] in ic.fan: Image {
-            y: 1px - (ic.fan.length - 1 - i) * 3px;
+            y: 1px - i * 3px;
             width: 46px;
             height: 46px;
             source: f;
             image-fit: contain;
-            transform-rotation: ((ic.fan.length - 1 - i) - 1) * 6deg;
+            transform-rotation: (i - 1) * 6deg;
         }
         if !ic.stack: Image {
             width: 48px;
