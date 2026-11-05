@@ -1,0 +1,1605 @@
+// The desktop in Rust (rust.surfaces: desktop): the widgets on their grid,
+// the files on the desktop, and the right-click menus. Compare
+// shell/modules/desktop/: DesktopWidgets.qml (grid, snap preview, menus),
+// WidgetFrame.qml (glass or a Material card, drag, remove badge),
+// WidgetHeader.qml, each *Widget.qml, AnalogClock.qml, GaugeRing.qml,
+// DesktopIcons.qml, and glass/ContextMenu.qml.
+//
+// Rust (src/surfaces/desktop/) builds every widget's words, lists and paths
+// (one DeskWidget per widget, its fields named per kind below) and decides
+// where things snap; this draws them and animates them.
+
+import { Theme, Icon } from "theme.slint";
+
+// Colours Theme doesn't carry: Glass's accents (Theme.accents) and two more
+// Material roles
+export global Desk {
+    in property <color> green: #30D158;
+    in property <color> red: #FF453A;
+    in property <color> yellow: #FFD60A;
+    in property <color> accent-ink: #0A84FF; // Theme.accentInk
+    in property <color> m3-on-tertiary: #ffffff;
+    in property <color> m3-secondary: #ffffff;
+    in property <length> tile: 36px; // Theme.radius.tile
+}
+
+export struct DLine { text: string, sub: string, tint: color, flag: bool, key: string }
+export struct DGauge { value: float, glyph: string, picture: image, has-picture: bool, tint: color, text: string, name: string }
+export struct DDay { label: string, col: int, row: int, today: bool, selected: bool, busy: bool }
+export struct DHour { time: string, glyph: string, temp: string }
+export struct DClock { angle-h: float, angle-m: float, night: bool, name: string, sub: string }
+export struct DStat { label: string, text: string, tint: color, area: string, line: string, gw: float, gh: float }
+export struct DStock { sym: string, name: string, price: string, change: string, has: bool, tone: color, tone-text: color, chip: color, spark: string }
+export struct DButton { title: string, label: string, glyph: string, tint: color, bg: color, ink: color }
+export struct DBar { label: string, frac: float, today: bool }
+export struct DApp { name: string, time: string, frac: float, icon: image, has-icon: bool }
+export struct DRun { area: string, line: string, tint: color }
+
+// One widget. Common fields first; the rest are each kind's (see the
+// components below for what t1… mean to each)
+export struct DeskWidget {
+    index: int,
+    key: string,
+    kind: string, // what's drawn (a stack: the widget on top)
+    size: string,
+    x: length, y: length, w: length, h: length, // the card at its cell
+    has-card: bool, card: color, pill: bool, // Material's tonal card
+    pad: length, pad-x: length,
+    stack: bool, stack-n: int, stack-i: int, stack-dir: int, stack-turn: int,
+    t1: string, t2: string, t3: string, t4: string, t5: string, t6: string,
+    g1: string, g2: string,
+    on: bool, flag: bool, alert: bool,
+    tint: color,
+    n1: float, n2: float,
+    shape: string, // a Material shape's outline (0..100 box)
+    img: image, img2: image, has-img: bool, front: bool,
+    note: string,
+    lines: [DLine], lines2: [DLine],
+    gauges: [DGauge], days: [DDay], hours: [DHour], clocks: [DClock],
+    stats: [DStat], stocks: [DStock], buttons: [DButton], bars: [DBar],
+    apps: [DApp], runs: [DRun],
+}
+
+export struct DeskIcon {
+    index: int,
+    name: string,
+    x: length, y: length,
+    selected: bool,
+    stack: bool,
+    pic: image, has-pic: bool, // an image file's thumbnail, else its icon
+    fan: [image], // a stack's three newest
+}
+
+export struct DeskFile { name: string, icon: image }
+
+// ── Small pieces ────────────────────────────────────────────────────────────
+
+component T inherits Text {
+    color: Theme.label;
+    font-size: Theme.small;
+    vertical-alignment: top;
+    accessible-role: none;
+}
+
+// A widget's title row: a coloured disc with an icon, and the name
+component Header inherits Rectangle {
+    in property <string> glyph;
+    in property <string> title;
+    in property <color> tint: Theme.accent;
+    in property <bool> alert;
+    in property <color> title-color: Theme.label;
+    height: 26px;
+    Rectangle {
+        x: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 13px;
+        background: Theme.material ? (alert ? Theme.m3-error : Theme.m3-primary) : tint;
+        Icon {
+            text: glyph;
+            fill: true;
+            font-size: 15px;
+            color: Theme.material ? (alert ? Theme.m3-on-error : Theme.m3-on-primary) : tint == Theme.accent ? Theme.on-accent : tint == Desk.yellow ? #1C1C1E : white;
+        }
+    }
+    T {
+        x: 34px;
+        height: 26px;
+        vertical-alignment: center;
+        text: title;
+        color: title-color;
+        font-size: Theme.body;
+        font-weight: 600;
+    }
+}
+
+// An analog face: hour ticks, hour and minute hands (AnalogClock.qml).
+// Material: a scalloped cookie, primary container by day, tertiary at night
+component Analog inherits Rectangle {
+    in property <DClock> c;
+    in property <string> cookie; // Material's outline
+    property <color> face: Theme.material ? (c.night ? Theme.m3-tertiary-container : Theme.m3-primary-container) : c.night ? #1C1C1E : #F5F5F7;
+    property <color> ink: Theme.material ? (c.night ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container) : c.night ? #F5F5F7 : #1C1C1E;
+    property <color> hour-ink: Theme.material ? (c.night ? Theme.m3-tertiary : Theme.m3-primary) : ink;
+    property <float> ah: c.angle-h;
+    property <float> am: c.angle-m;
+    animate ah, am { duration: 400ms; easing: ease-out-back; }
+    width: 120px;
+    height: self.width;
+    if !Theme.material: Rectangle {
+        border-radius: self.width / 2;
+        background: face;
+    }
+    if Theme.material: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: cookie;
+        fill: face;
+    }
+    for i in 12: Rectangle {
+        visible: !Theme.material || Math.mod(i, 3) == 0;
+        width: root.width;
+        height: root.height;
+        transform-rotation: i * 30deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            property <bool> quarter: Math.mod(i, 3) == 0;
+            width: Theme.material ? max(3px, root.width * 0.04) : quarter ? 2.5px : 1.5px;
+            height: Theme.material ? self.width : root.width * (quarter ? 0.09 : 0.06);
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.width * 0.13 : root.width * 0.06;
+            border-radius: Theme.material ? self.width / 2 : 1px;
+            background: ink.with-alpha(Theme.material ? 0.6 : quarter ? 0.85 : 0.45);
+        }
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        transform-rotation: ah * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            width: Theme.material ? max(5px, root.width * 0.085) : max(3px, root.width * 0.045);
+            height: Theme.material ? root.height * 0.23 + self.width : root.height * 0.27;
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.height * 0.27 - self.width / 2 : root.height * 0.25;
+            border-radius: self.width / 2;
+            background: hour-ink;
+        }
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        transform-rotation: am * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            width: Theme.material ? max(3px, root.width * 0.05) : max(2px, root.width * 0.03);
+            height: Theme.material ? root.height * 0.34 + self.width / 2 : root.height * 0.42;
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.height * 0.16 : root.height * 0.1;
+            border-radius: self.width / 2;
+            background: ink;
+        }
+    }
+    Rectangle {
+        width: Theme.material ? max(6px, root.width * 0.06) : max(6px, root.width * 0.07);
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.material ? (c.night ? Theme.m3-primary : Theme.m3-tertiary) : Theme.accent;
+        border-width: Theme.material ? 0 : 1.5px;
+        border-color: face;
+    }
+}
+
+// A ring for a level (GaugeRing.qml): a faint track and an arc
+component Ring inherits Rectangle {
+    in property <DGauge> g;
+    property <length> thick: max(4px, self.width * 0.09);
+    property <float> r: (self.width / 1px - thick / 1px) / 2;
+    property <float> v: max(0.0001, min(0.9999, g.value));
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        stroke: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+        stroke-width: thick;
+        MoveTo { x: root.width / 2px; y: root.height / 2px - r; }
+        ArcTo { x: root.width / 2px; y: root.height / 2px + r; radius-x: r; radius-y: r; sweep: true; }
+        ArcTo { x: root.width / 2px; y: root.height / 2px - r; radius-x: r; radius-y: r; sweep: true; }
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        stroke: g.tint;
+        stroke-width: thick;
+        stroke-line-cap: round;
+        MoveTo { x: root.width / 2px; y: root.height / 2px - r; }
+        ArcTo {
+            x: root.width / 2px + r * sin(v * 360deg);
+            y: root.height / 2px - r * cos(v * 360deg);
+            radius-x: r;
+            radius-y: r;
+            large-arc: v > 0.5;
+            sweep: true;
+        }
+    }
+    if g.has-picture: Image {
+        width: round((root.width - 2 * thick) * 0.78 / 1px) * 1px;
+        height: self.width;
+        source: g.picture;
+        image-fit: contain;
+    }
+    if !g.has-picture && g.glyph != "": Icon {
+        text: g.glyph;
+        fill: true;
+        font-size: round(root.width * 0.36 / 1px) * 1px;
+        color: Theme.label;
+    }
+}
+
+// A Material checkbox (square, small corners, a round state layer) or
+// Glass's ring, ticking a to-do off
+component Tick inherits Rectangle {
+    in property <length> size: 16px;
+    callback ticked();
+    width: size;
+    height: size;
+    border-radius: Theme.material ? 2px : size / 2;
+    border-width: Theme.material ? 2px : 1.5px;
+    border-color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+    if Theme.material && ta.has-hover: Rectangle {
+        width: size * 2;
+        height: size * 2;
+        border-radius: size;
+        background: Theme.m3-on-surface.with-alpha(ta.pressed ? 0.1 : 0.08);
+    }
+    ta := TouchArea {
+        x: -6px;
+        y: -6px;
+        width: parent.width + 12px;
+        height: parent.height + 12px;
+        mouse-cursor: pointer;
+        clicked => { root.ticked(); }
+    }
+    accessible-role: checkbox;
+    accessible-checked: false;
+    accessible-action-default => { ticked(); }
+}
+
+// ── The widgets ─────────────────────────────────────────────────────────────
+// Each fills its content box (the card less its padding); `w` is its data
+
+// Clock: small an analog face (clocks[0]); medium t1 the day, t2 the time, t3 the date
+component ClockW inherits Rectangle {
+    in property <DeskWidget> w;
+    if w.size == "s" && w.clocks.length > 0: Analog {
+        width: min(root.width, root.height);
+        c: w.clocks[0];
+        cookie: w.shape;
+    }
+    if w.size != "s": VerticalLayout {
+        alignment: center;
+        T { text: w.t1; color: Desk.accent-ink; font-weight: 700; letter-spacing: 1px; }
+        T {
+            text: w.t2;
+            color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+            font-size: 64px;
+            font-weight: 600;
+            letter-spacing: -2px;
+        }
+        T { text: w.t3; color: Theme.material ? Theme.m3-on-primary-container.with-alpha(0.8) : Theme.secondary; font-size: Theme.body; font-weight: 500; }
+    }
+}
+
+// World clock: clocks (name, "Tomorrow, +9h")
+component WorldW inherits Rectangle {
+    in property <DeskWidget> w;
+    in property <string> cookie;
+    if w.size == "s" && w.clocks.length > 0: VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+        HorizontalLayout {
+            alignment: center;
+            Analog { width: 92px; c: w.clocks[0]; cookie: root.cookie; }
+        }
+        T { text: w.clocks[0].name; horizontal-alignment: center; font-weight: 600; }
+    }
+    if w.size != "s": HorizontalLayout {
+        alignment: center;
+        for c in w.clocks: VerticalLayout {
+            width: root.width / 4;
+            alignment: center;
+            spacing: 4px;
+            HorizontalLayout {
+                alignment: center;
+                Analog { width: min(64px, root.width / 4 - 8px); c: c; cookie: root.cookie; }
+            }
+            T { text: c.name; horizontal-alignment: center; overflow: elide; font-weight: 600; }
+            T { text: c.sub; horizontal-alignment: center; overflow: elide; color: Theme.secondary; font-size: Theme.caption; }
+        }
+    }
+}
+
+// Weather: on ready; t1 place, t2 temperature, t3 condition, t4 "H:… L:…",
+// t5 the error or "Loading weather…", t6 Material small's "24°"; g1 the icon;
+// hours. Material small: a circle in the tertiary container (shape)
+component WeatherW inherits Rectangle {
+    in property <DeskWidget> w;
+    property <bool> m-small: Theme.material && w.size == "s";
+    if m-small: Path {
+        width: min(root.width, root.height);
+        height: self.width;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: w.shape;
+        fill: Theme.m3-tertiary-container;
+    }
+    if m-small && w.on: VerticalLayout {
+        width: min(root.width, root.height) * 0.72;
+        alignment: center;
+        Icon { text: w.g1; fill: true; font-size: 22px; color: Theme.m3-tertiary; }
+        T { text: w.t6; horizontal-alignment: center; color: Theme.m3-on-tertiary-container; font-size: 46px; font-weight: 500; }
+        T { text: w.t1; horizontal-alignment: center; overflow: elide; color: Theme.m3-on-tertiary-container; font-weight: 500; }
+        T { text: w.t4; horizontal-alignment: center; color: Theme.m3-on-tertiary-container.with-alpha(0.75); font-size: Theme.caption; }
+    }
+    if !w.on: T {
+        width: m-small ? min(root.width, root.height) * 0.7 : root.width;
+        height: root.height;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        text: w.t5;
+        color: m-small ? Theme.m3-on-tertiary-container : Theme.secondary;
+    }
+    if w.on && !m-small: Rectangle {
+        VerticalLayout {
+            x: 0;
+            y: 0;
+            width: w.size == "s" ? root.width : root.width / 2;
+            height: self.preferred-height;
+            T { text: w.t1; overflow: elide; font-size: Theme.body; font-weight: 600; }
+            T {
+                text: w.t2;
+                color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+                font-size: Theme.material ? 44px : 42px;
+                font-weight: Theme.material ? 500 : 400;
+            }
+        }
+        if w.size == "s": VerticalLayout {
+            x: 0;
+            y: root.height - self.preferred-height;
+            height: self.preferred-height;
+            spacing: 2px;
+            Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; horizontal-alignment: left; }
+            T { text: w.t3; font-weight: 500; }
+            T { text: w.t4; color: Theme.secondary; }
+        }
+        if w.size != "s": VerticalLayout {
+            x: root.width - self.width;
+            y: 0;
+            width: root.width / 2;
+            height: self.preferred-height;
+            spacing: 2px;
+            HorizontalLayout {
+                alignment: end;
+                Icon { text: w.g1; fill: true; font-size: 26px; color: Theme.label; }
+            }
+            T { text: w.t3; horizontal-alignment: right; font-weight: 500; }
+            T { text: w.t4; horizontal-alignment: right; color: Theme.secondary; }
+        }
+        if w.size != "s": HorizontalLayout {
+            y: root.height - self.preferred-height;
+            height: self.preferred-height;
+            for h in w.hours: VerticalLayout {
+                spacing: 2px;
+                T { text: h.time; horizontal-alignment: center; color: Theme.secondary; font-size: Theme.caption; font-weight: 500; }
+                Icon { text: h.glyph; fill: true; font-size: 14px; color: Theme.label; }
+                T { text: h.temp; horizontal-alignment: center; font-weight: 500; }
+            }
+        }
+    }
+}
+
+// Calendar: t1 the day's heading, t2 today's date, on the date shows,
+// lines its events (text, sub = when, tint), t3 the empty line; medium:
+// days, t4 the month, n1 its weeks
+component CalendarW inherits Rectangle {
+    in property <DeskWidget> w;
+    in property <string> cookie9;
+    callback act(string, string);
+    property <bool> wide: w.size != "s";
+    if !wide: TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.act("calendar", ""); }
+    }
+    VerticalLayout {
+        x: 0;
+        y: 0;
+        width: wide ? root.width * 0.42 : root.width;
+        height: self.preferred-height;
+        T { text: w.t1; color: Desk.accent-ink; font-weight: 700; letter-spacing: 0.5px; }
+        if w.on && !Theme.material: T { text: w.t2; font-size: 40px; }
+        if w.on && Theme.material: Rectangle {
+            width: 64px;
+            height: 68px;
+            Path {
+                x: 0;
+                y: 4px;
+                width: 64px;
+                height: 64px;
+                viewbox-width: 100;
+                viewbox-height: 100;
+                commands: cookie9;
+                fill: Theme.m3-primary;
+            }
+            T {
+                y: 4px;
+                height: 64px;
+                width: 64px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                text: w.t2;
+                color: Theme.m3-on-primary;
+                font-size: 30px;
+                font-weight: 500;
+            }
+        }
+    }
+    VerticalLayout {
+        x: 0;
+        y: root.height - self.preferred-height;
+        width: wide ? root.width * 0.42 : root.width;
+        height: self.preferred-height;
+        spacing: 6px;
+        if w.lines.length == 0: T { text: w.t3; wrap: word-wrap; color: Theme.secondary; }
+        for e in w.lines: HorizontalLayout {
+            spacing: 6px;
+            height: 30px;
+            Rectangle { width: 3px; height: 30px; border-radius: 1.5px; background: e.tint; }
+            VerticalLayout {
+                T { text: e.text; overflow: elide; font-weight: 600; }
+                T { text: e.sub; overflow: elide; color: Theme.secondary; font-size: Theme.caption; }
+            }
+        }
+    }
+    if wide: Rectangle {
+        x: root.width - self.width;
+        width: root.width * 0.54;
+        height: root.height;
+        property <length> cw: self.width / 7;
+        property <length> ch: self.height / (2 + w.n1);
+        T { x: 0; y: 0; text: w.t4; color: Desk.accent-ink; font-size: Theme.caption; font-weight: 700; }
+        for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: T {
+            x: i * cw;
+            y: ch;
+            width: cw;
+            horizontal-alignment: center;
+            text: l;
+            color: Theme.tertiary;
+            font-size: Theme.caption;
+            font-weight: 600;
+        }
+        for d in w.days: Rectangle {
+            x: d.col * cw;
+            y: (d.row + 2) * ch;
+            width: cw;
+            height: ch;
+            if d.today || d.selected || dt.has-hover: Rectangle {
+                width: min(parent.width, parent.height) + 2px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: d.today ? Theme.accent : Theme.material ? (d.selected ? Theme.m3-secondary-container : Theme.m3-on-surface.with-alpha(0.08)) : d.selected ? Theme.fill-pressed : Theme.fill;
+            }
+            T {
+                width: parent.width;
+                height: parent.height;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                text: d.label;
+                color: d.today ? Theme.on-accent : Theme.material && d.selected ? Theme.m3-on-secondary-container : Theme.label;
+                font-size: Theme.caption;
+                font-weight: d.today ? 700 : 500;
+            }
+            if d.busy && !d.today: Rectangle {
+                y: parent.height - 2px;
+                width: 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: Theme.accent;
+            }
+            dt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.act("day", d.label); }
+            }
+        }
+    }
+}
+
+// Reminders: t1 the count, lines the open ones (text, sub = due, flag =
+// overdue, key), t3 the empty line, t4 "N more"; large: a field to add one
+component RemindersW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    Header { x: 0; y: 0; width: root.width; glyph: "\u{eadc}"; title: "Reminders"; }
+    T { x: root.width - self.width; y: 0; text: w.t1; font-size: 24px; font-weight: 600; }
+    VerticalLayout {
+        x: 0;
+        y: 38px;
+        width: root.width;
+        height: self.preferred-height;
+        spacing: 8px;
+        if w.lines.length == 0: T { text: w.t3; color: Theme.secondary; }
+        for t in w.lines: HorizontalLayout {
+            spacing: 8px;
+            Tick { size: 16px; y: 0; ticked => { root.act("tick", t.key); } }
+            T { text: t.text; overflow: elide; horizontal-stretch: 1; }
+            if t.sub != "" && w.size != "s": T { text: t.sub; color: t.flag ? Theme.danger : Theme.tertiary; font-size: Theme.caption; horizontal-stretch: 0; }
+        }
+        if w.t4 != "": T { text: w.t4; color: Theme.secondary; font-size: Theme.caption; }
+    }
+    if w.size == "l": Rectangle {
+        y: root.height - 32px;
+        height: 32px;
+        border-radius: Theme.material ? 16px : 10px;
+        background: Theme.fill;
+        Icon { x: 10px; width: 12px; text: "\u{e3d4}"; bold: true; font-size: 12px; color: Theme.secondary; }
+        field := TextInput {
+            x: 30px;
+            width: parent.width - 40px;
+            height: 100%;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            font-size: Theme.small;
+            accessible-label: "New reminder";
+            accepted => {
+                if self.text != "" {
+                    root.act("add", self.text);
+                    self.text = "";
+                }
+            }
+        }
+        if field.text == "" && !field.has-focus: T {
+            x: 30px;
+            height: 100%;
+            vertical-alignment: center;
+            text: "New reminder";
+            color: Theme.tertiary;
+        }
+    }
+}
+
+// Today: t1 the greeting, t2 the date, on the weather's ready (g1, t3), t4
+// high/low/rain (large), lines events (text, sub = time, tint), t5 "Nothing
+// else today", lines2 to-dos (large), t6 "No to-dos"
+component TodayW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    property <bool> large: w.size == "l";
+    VerticalLayout {
+        x: 0;
+        y: 0;
+        width: root.width - (w.on ? wx.preferred-width + 8px : 0);
+        height: self.preferred-height;
+        spacing: 2px;
+        T {
+            text: w.t1;
+            overflow: elide;
+            color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+            font-size: large ? 18px : 16px;
+            font-weight: 600;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.act("today", ""); }
+            }
+        }
+        T { text: w.t2; color: Theme.secondary; }
+    }
+    wx := HorizontalLayout {
+        x: root.width - self.preferred-width;
+        y: 0;
+        visible: w.on;
+        spacing: 6px;
+        height: 24px;
+        Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; }
+        T { text: w.t3; vertical-alignment: center; font-size: 18px; font-weight: 600; }
+    }
+    VerticalLayout {
+        x: 0;
+        y: large ? 60px : 56px;
+        width: root.width;
+        height: self.preferred-height;
+        spacing: 6px;
+        if large && w.on: T { text: w.t4; color: Theme.secondary; }
+        if w.lines.length == 0: T { text: w.t5; color: Theme.tertiary; }
+        for e in w.lines: HorizontalLayout {
+            height: 18px;
+            spacing: 8px;
+            Rectangle { width: 3px; height: 14px; y: 2px; border-radius: 1.5px; background: e.tint; }
+            T { text: e.text; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+            T { text: e.sub; color: Theme.secondary; vertical-alignment: center; horizontal-stretch: 0; }
+        }
+        if large: Rectangle { height: 4px; }
+        if large && w.lines2.length == 0: T { text: w.t6; color: Theme.tertiary; }
+        if large: VerticalLayout {
+            spacing: 6px;
+            for t in w.lines2: HorizontalLayout {
+                height: 18px;
+                spacing: 8px;
+                Tick { size: Theme.material ? 16px : 14px; ticked => { root.act("tick", t.key); } }
+                T { text: t.text; overflow: elide; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
+// Batteries: gauges (up to four); t1 "No batteries"
+component BatteriesW inherits Rectangle {
+    in property <DeskWidget> w;
+    if w.gauges.length == 0: T { width: root.width; height: root.height; vertical-alignment: center; horizontal-alignment: center; text: w.t1; color: Theme.secondary; }
+    if w.size == "s" && w.gauges.length == 1: VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        HorizontalLayout {
+            alignment: center;
+            Ring { width: 76px; height: 76px; g: w.gauges[0]; }
+        }
+        T { text: w.gauges[0].text; horizontal-alignment: center; font-size: Theme.body; font-weight: 600; }
+    }
+    if w.size == "s" && w.gauges.length > 1: Rectangle {
+        width: 116px;
+        height: w.gauges.length > 2 ? 116px : 52px;
+        for g[i] in w.gauges: Ring {
+            x: Math.mod(i, 2) * 64px;
+            y: floor(i / 2) * 64px;
+            width: 52px;
+            height: 52px;
+            g: g;
+        }
+    }
+    if w.size != "s": HorizontalLayout {
+        y: (root.height - self.preferred-height) / 2;
+        height: self.preferred-height;
+        for g in w.gauges: VerticalLayout {
+            width: root.width / max(2, w.gauges.length);
+            spacing: 6px;
+            HorizontalLayout {
+                alignment: center;
+                Ring { width: 56px; height: 56px; g: g; }
+            }
+            T { text: g.text; horizontal-alignment: center; font-weight: 600; }
+            T { text: g.name; horizontal-alignment: center; overflow: elide; color: Theme.secondary; font-size: Theme.caption; }
+        }
+    }
+}
+
+// Now Playing: t1 the title, t2 the artist, img the cover (has-img), on
+// playing, flag a player is there
+component NowPlayingW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    property <length> art: w.size == "s" ? 64px : root.height;
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: art;
+        height: art;
+        clip: true;
+        // (Material: the cover cut round while it plays, square while
+        // paused; Slint can't clip to the cookie shape)
+        border-radius: Theme.material ? (w.on ? art / 2 : 12px) : 12px;
+        animate border-radius { duration: 300ms; easing: ease-out; }
+        background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+        if w.has-img: Image { width: 100%; height: 100%; source: w.img; image-fit: cover; }
+        if !w.has-img: Icon { text: "\u{e340}"; font-size: 26px; color: Theme.tertiary; }
+    }
+    VerticalLayout {
+        x: w.size == "s" ? 0 : art + 14px;
+        y: w.size == "s" ? root.height - self.preferred-height : 4px;
+        width: root.width - self.x;
+        height: self.preferred-height;
+        spacing: 2px;
+        T { text: w.t1; overflow: elide; color: Theme.material ? Theme.m3-on-secondary-container : Theme.label; font-size: Theme.body; font-weight: 600; }
+        T { text: w.t2; overflow: elide; color: Theme.secondary; }
+    }
+    if w.size != "s": Rectangle {
+        x: art + 6px;
+        y: root.height - 40px;
+        width: 120px;
+        height: 40px;
+        if Theme.material: Rectangle {
+            x: 40px;
+            width: 40px;
+            height: 40px;
+            border-radius: w.on ? 12px : 20px;
+            animate border-radius { duration: 250ms; easing: ease-out-back; }
+            background: w.flag ? Theme.m3-primary : Theme.m3-on-surface.with-alpha(0.12);
+        }
+        for b[i] in [{ g: "\u{e5a4}", a: "previous" }, { g: w.on ? "\u{e39e}" : "\u{e3d0}", a: "toggle" }, { g: "\u{e5a6}", a: "next" }]: Rectangle {
+            x: i * 40px;
+            width: 40px;
+            height: 40px;
+            border-radius: Theme.material ? 20px : 10px;
+            background: !w.flag ? transparent : Theme.material ? (i == 1 ? transparent : bt.pressed ? Theme.m3-on-surface.with-alpha(0.1) : bt.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent) : bt.pressed ? Theme.fill-pressed : bt.has-hover ? Theme.fill : transparent;
+            accessible-role: button;
+            accessible-label: b.a == "toggle" ? (w.on ? "Pause" : "Play") : b.a == "next" ? "Next track" : "Previous track";
+            accessible-action-default => { root.act("media", b.a); }
+            Icon {
+                text: b.g;
+                fill: true;
+                font-size: 20px;
+                color: !Theme.material ? Theme.label : !w.flag ? Theme.m3-on-surface.with-alpha(0.38) : i == 1 ? Theme.m3-on-primary : Theme.m3-on-secondary-container;
+            }
+            bt := TouchArea {
+                enabled: w.flag;
+                mouse-cursor: pointer;
+                clicked => { root.act("media", b.a); }
+            }
+        }
+    }
+}
+
+// System: stats (each with its graph's path in a gw × gh box); n1 columns
+component SystemW inherits Rectangle {
+    in property <DeskWidget> w;
+    property <int> cols: w.n1;
+    property <int> rows: ceil(w.stats.length / max(1, cols));
+    property <length> sw: (root.width - (cols - 1) * 20px) / max(1, cols);
+    property <length> sh: (root.height - (rows - 1) * 14px) / max(1, rows);
+    for s[i] in w.stats: Rectangle {
+        x: Math.mod(i, cols) * (sw + 20px);
+        y: floor(i / cols) * (sh + 14px);
+        width: sw;
+        height: sh;
+        T { x: 0; y: 0; height: 16px; vertical-alignment: center; text: s.label; font-weight: 600; }
+        T { x: parent.width - self.width; y: 0; height: 16px; vertical-alignment: center; text: s.text; color: Theme.secondary; }
+        if s.area != "": Path {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            height: parent.height - 22px;
+            viewbox-width: s.gw;
+            viewbox-height: s.gh;
+            commands: s.area;
+            fill: s.tint.with-alpha(0.18);
+        }
+        if s.line != "": Path {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            height: parent.height - 22px;
+            viewbox-width: s.gw;
+            viewbox-height: s.gh;
+            commands: s.line;
+            stroke: s.tint;
+            stroke-width: 1.5px;
+            stroke-line-cap: round;
+        }
+        // bars: their outline is filled (area holds them, no line)
+    }
+}
+
+// Photos: img / img2 crossfading (front: img on top), t1 the empty state;
+// Material small: cut round (Slint can't clip to the clover)
+component PhotosW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    property <bool> shaped: Theme.material && w.size == "s";
+    Rectangle {
+        width: shaped ? min(root.width, root.height) : root.width;
+        height: shaped ? self.width : root.height;
+        clip: true;
+        border-radius: shaped ? self.width / 2 : Desk.tile;
+        background: shaped ? Theme.m3-surface-container : transparent;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: w.img;
+            image-fit: cover;
+            opacity: w.front ? 1 : 0;
+            animate opacity { duration: 800ms; }
+        }
+        Image {
+            width: 100%;
+            height: 100%;
+            source: w.img2;
+            image-fit: cover;
+            opacity: w.front ? 0 : 1;
+            animate opacity { duration: 800ms; }
+        }
+    }
+    if !w.has-img: VerticalLayout {
+        width: root.width - (shaped ? 56px : 32px);
+        alignment: center;
+        spacing: 6px;
+        Icon { text: "\u{e2ca}"; font-size: 28px; color: Theme.tertiary; }
+        T { text: w.t1; horizontal-alignment: center; wrap: word-wrap; color: Theme.secondary; }
+    }
+    if w.on: TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.act("photo", ""); }
+    }
+}
+
+// A note: its text (note), saved as you write
+component NotesW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: Theme.material ? 13px : 7px;
+        background: Theme.material ? Theme.m3-tertiary : Desk.yellow;
+        Icon { text: "\u{e34c}"; fill: true; font-size: 15px; color: Theme.material ? Desk.m3-on-tertiary : #3A2E00; }
+    }
+    T {
+        x: 34px;
+        height: 26px;
+        vertical-alignment: center;
+        text: "Note";
+        color: Theme.material ? Theme.m3-on-tertiary-container : Theme.label;
+        font-size: Theme.body;
+        font-weight: 600;
+    }
+    Rectangle {
+        y: 36px;
+        height: root.height - 36px;
+        clip: true;
+        edit := TextInput {
+            y: 0;
+            width: parent.width;
+            height: max(parent.height, self.preferred-height);
+            single-line: false;
+            wrap: word-wrap;
+            text: w.note;
+            color: Theme.material ? Theme.m3-on-tertiary-container : Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-tertiary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            accessible-label: "Note";
+            edited => { root.act("note", self.text); }
+            key-pressed(e) => {
+                if e.text == Key.Escape { self.clear-focus(); return accept; }
+                reject
+            }
+        }
+        if edit.text == "" && !edit.has-focus: T {
+            y: 0;
+            text: "Click to write a note";
+            color: Theme.material ? Theme.m3-on-tertiary-container.with-alpha(0.6) : Theme.tertiary;
+            font-size: Theme.body;
+        }
+    }
+}
+
+// Shortcuts: buttons (label, glyph; Glass tint, Material bg and ink); t1 the empty line
+component ShortcutsW inherits Rectangle {
+    in property <DeskWidget> w;
+    callback act(string, string);
+    property <int> cols: w.size == "s" ? 2 : 4;
+    property <length> bw: (root.width - 20px - (cols - 1) * 10px) / cols;
+    property <length> bh: (root.height - 20px - 10px) / 2;
+    for b[i] in w.buttons: Rectangle {
+        x: 10px + Math.mod(i, cols) * (bw + 10px);
+        y: 10px + floor(i / cols) * (bh + 10px);
+        width: bw;
+        height: bh;
+        border-radius: Theme.material ? (ta.pressed ? 12px : 20px) : 12px;
+        animate border-radius { duration: 200ms; easing: ease-out-back; }
+        background: Theme.material ? b.bg.mix(b.ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1) : b.tint.with-alpha(ta.pressed ? 0.32 : ta.has-hover ? 0.26 : 0.18);
+        animate background { duration: 150ms; }
+        transform-scale: ta.pressed ? (Theme.material ? 1.04 : 0.95) : 1;
+        animate transform-scale { duration: 100ms; }
+        accessible-role: button;
+        accessible-label: b.title;
+        accessible-action-default => { root.act("shortcut", b.title); }
+        VerticalLayout {
+            x: 8px;
+            width: parent.width - 14px;
+            alignment: center;
+            spacing: 4px;
+            Icon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; horizontal-alignment: left; }
+            T { text: b.label; wrap: word-wrap; overflow: elide; color: Theme.material ? b.ink : Theme.label; font-size: Theme.caption; font-weight: 500; }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.act("shortcut", b.title); }
+        }
+    }
+    if w.buttons.length == 0: T { width: root.width; height: root.height; vertical-alignment: center; horizontal-alignment: center; wrap: word-wrap; text: w.t1; color: Theme.secondary; }
+}
+
+// Screen Time: t1 the total, bars the week (medium), apps, t3 the empty line
+component ScreenTimeW inherits Rectangle {
+    in property <DeskWidget> w;
+    Header { x: 0; y: 0; width: root.width; glyph: "\u{e2b8}"; title: "Screen Time"; }
+    VerticalLayout {
+        x: 0;
+        y: 36px;
+        width: w.size == "s" ? root.width : root.width * 0.48;
+        height: self.preferred-height;
+        spacing: 8px;
+        T { text: w.t1; font-size: 24px; font-weight: 600; }
+        if w.size != "s": HorizontalLayout {
+            alignment: start;
+            spacing: 6px;
+            for b[i] in w.bars: VerticalLayout {
+                spacing: 3px;
+                Rectangle {
+                    width: 12px;
+                    height: 44px;
+                    Rectangle {
+                        y: parent.height - self.height;
+                        height: max(2px, parent.height * b.frac);
+                        border-radius: Theme.material ? 6px : 3px;
+                        background: b.today ? Theme.accent : Theme.material ? Theme.m3-secondary-container : Theme.fill;
+                    }
+                }
+                T { text: b.label; horizontal-alignment: center; color: Theme.tertiary; font-size: Theme.caption; }
+            }
+        }
+    }
+    VerticalLayout {
+        x: w.size == "s" ? 0 : root.width * 0.48 + 12px;
+        y: root.height - self.preferred-height;
+        width: root.width - self.x;
+        height: self.preferred-height;
+        spacing: 6px;
+        if w.apps.length == 0: T { text: w.t3; color: Theme.secondary; }
+        for a in w.apps: HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                width: 18px;
+                if a.has-icon: Image { width: 18px; height: 18px; source: a.icon; }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                HorizontalLayout {
+                    T { text: a.name; overflow: elide; font-size: Theme.caption; font-weight: 500; horizontal-stretch: 1; }
+                    T { text: a.time; color: Theme.secondary; font-size: Theme.caption; horizontal-stretch: 0; }
+                }
+                Rectangle {
+                    height: 3px;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * a.frac;
+                        border-radius: 1.5px;
+                        background: Theme.accent.with-alpha(Theme.material ? 1 : 0.8);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Battery History: t1 the level, g1 its icon, alert low, runs (each a path
+// in an n1 × n2 box), t2 the left label, on there's history
+component BatteryHistoryW inherits Rectangle {
+    in property <DeskWidget> w;
+    Header { x: 0; y: 0; width: root.width; glyph: w.g1; title: "Battery"; tint: w.alert ? Desk.red : Desk.green; alert: w.alert; }
+    T { x: root.width - self.width; y: 0; text: w.t1; font-size: 24px; font-weight: 600; }
+    Rectangle {
+        y: 38px;
+        height: root.height - 38px - 18px;
+        for p in [0, 0.5, 1]: Rectangle {
+            y: round((1 - p) * parent.height / 1px) * 1px;
+            height: 1px;
+            background: Theme.separator;
+        }
+        for r in w.runs: Rectangle {
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: w.n1;
+                viewbox-height: w.n2;
+                commands: r.area;
+                fill: r.tint.with-alpha(0.28);
+            }
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: w.n1;
+                viewbox-height: w.n2;
+                commands: r.line;
+                stroke: r.tint;
+                stroke-width: 1.5px;
+            }
+        }
+    }
+    T { x: 0; y: root.height - 14px; text: w.t2; color: Theme.tertiary; font-size: Theme.caption; }
+    T { x: root.width - self.width; y: root.height - 14px; text: "Now"; color: Theme.tertiary; font-size: Theme.caption; }
+    if !w.on: T { y: root.height - 14px; horizontal-alignment: center; width: root.width; text: "No history yet"; color: Theme.secondary; font-size: Theme.caption; }
+}
+
+// Stocks: stocks; flag couldn't load (t1 says so)
+component StocksW inherits Rectangle {
+    in property <DeskWidget> w;
+    Header { x: 0; y: 0; width: root.width; glyph: "\u{e156}"; title: "Stocks"; }
+    VerticalLayout {
+        x: 0;
+        y: 36px;
+        width: root.width;
+        height: self.preferred-height;
+        spacing: w.size == "s" ? 8px : 6px;
+        if w.flag: T { text: w.t1; wrap: word-wrap; color: Theme.secondary; }
+        for s in w.stocks: Rectangle {
+            height: w.size == "s" ? 30px : 32px;
+            VerticalLayout {
+                x: 0;
+                width: parent.width * (w.size == "s" ? 0.55 : 0.36);
+                alignment: center;
+                T { text: s.sym; overflow: elide; font-weight: 600; }
+                if w.size != "s": T { text: s.name; overflow: elide; color: Theme.tertiary; font-size: Theme.caption; }
+            }
+            if w.size != "s" && s.spark != "": Path {
+                x: parent.width * 0.38;
+                y: 4px;
+                width: parent.width * 0.3;
+                height: parent.height - 8px;
+                viewbox-width: 100;
+                viewbox-height: 24;
+                commands: s.spark;
+                stroke: s.tone;
+                stroke-width: 1.5px;
+            }
+            VerticalLayout {
+                x: parent.width - self.width;
+                width: self.preferred-width;
+                alignment: center;
+                T { text: s.price; horizontal-alignment: right; font-weight: 500; }
+                HorizontalLayout {
+                    alignment: end;
+                    Rectangle {
+                        width: chg.preferred-width + 10px;
+                        height: 16px;
+                        border-radius: Theme.material ? 8px : 5px;
+                        background: s.has ? s.chip : Theme.fill;
+                        chg := T {
+                            vertical-alignment: center;
+                            text: s.change;
+                            color: s.has ? s.tone-text : Theme.secondary;
+                            font-size: Theme.caption;
+                            font-weight: 600;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The widget a kind draws
+component Content inherits Rectangle {
+    in property <DeskWidget> w;
+    in property <string> cookie12;
+    in property <string> cookie9;
+    callback act(string, string);
+    if w.kind == "clock": ClockW { w: w; }
+    if w.kind == "worldClock": WorldW { w: w; cookie: cookie12; }
+    if w.kind == "weather": WeatherW { w: w; }
+    if w.kind == "today": TodayW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "calendar": CalendarW { w: w; cookie9: cookie9; act(a, b) => { root.act(a, b); } }
+    if w.kind == "reminders": RemindersW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "batteries": BatteriesW { w: w; }
+    if w.kind == "nowPlaying": NowPlayingW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "system": SystemW { w: w; }
+    if w.kind == "photos": PhotosW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "notes": NotesW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "shortcuts": ShortcutsW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "screenTime": ScreenTimeW { w: w; }
+    if w.kind == "batteryHistory": BatteryHistoryW { w: w; }
+    if w.kind == "stocks": StocksW { w: w; }
+    if w.kind == "": T { width: root.width; height: root.height; vertical-alignment: center; horizontal-alignment: center; text: w.t1; color: Theme.secondary; }
+}
+
+// One widget on the desktop (WidgetFrame.qml): its card (Glass: the
+// plugin's glass under it, a tint without the plugin; Material: a flat
+// tonal card), the widget, the remove badge while editing. Drag it
+// anywhere; on release it snaps to the grid.
+component Frame inherits Rectangle {
+    in property <DeskWidget> w;
+    in property <bool> editing;
+    in property <bool> glass-plugin;
+    in property <string> cookie12;
+    in property <string> cookie9;
+    callback act(int, string, string);
+    callback drag(int, length, length, bool);
+    callback menu(int, length, length);
+    property <length> dx;
+    property <length> dy;
+    property <bool> dragging;
+    property <float> shown: 0;
+    property <float> grow: 0.9;
+    init => {
+        shown = 1;
+        grow = 1;
+    }
+    animate shown { duration: 260ms; easing: ease-out-cubic; }
+    animate grow { duration: 420ms; easing: ease-out-back; }
+    x: w.x + dx;
+    y: w.y + dy;
+    animate x, y {
+        duration: dragging ? 0ms : 450ms;
+        easing: Theme.material ? spring(0.5) : spring(0.38);
+    }
+    width: w.w;
+    height: w.h;
+    opacity: shown;
+    transform-scale: dragging ? 1.04 : grow;
+    animate transform-scale { duration: 150ms; }
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    border-radius: w.pill ? self.height / 2 : Desk.tile;
+    background: Theme.material ? (w.has-card ? w.card : transparent) : glass-plugin ? transparent : Theme.panel;
+    accessible-role: groupbox;
+    accessible-label: w.t6 != "" && w.kind == "" ? w.t6 : w.kind;
+
+    // Under the widget: drag, and right-click for the menu
+    TouchArea {
+        property <bool> moved-far;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.menu(w.index, root.x + self.mouse-x, root.y + self.mouse-y);
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && root.dragging {
+                root.dragging = false;
+                root.drag(w.index, root.x, root.y, false);
+                root.dx = 0;
+                root.dy = 0;
+            }
+        }
+        moved => {
+            if self.pressed && self.pressed-x >= 0 {
+                if !root.dragging && (abs(self.mouse-x - self.pressed-x) > 6px || abs(self.mouse-y - self.pressed-y) > 6px) {
+                    root.dragging = true;
+                }
+                if root.dragging {
+                    root.dx += self.mouse-x - self.pressed-x;
+                    root.dy += self.mouse-y - self.pressed-y;
+                    root.drag(w.index, root.x, root.y, true);
+                }
+            }
+        }
+        scroll-event(e) => {
+            if w.stack && w.stack-n > 1 {
+                root.act(w.index, "scroll", e.delta-y / 1px > 0 ? "-1" : "1");
+                return accept;
+            }
+            reject
+        }
+    }
+    Content {
+        x: w.pad-x;
+        y: w.pad;
+        width: w.w - 2 * w.pad-x - (w.stack && w.stack-n > 1 ? 10px : 0);
+        height: w.h - 2 * w.pad;
+        clip: w.stack;
+        w: w;
+        cookie12: cookie12;
+        cookie9: cookie9;
+        act(a, b) => { root.act(w.index, a, b); }
+    }
+    // A stack's page dots: click one to jump to it
+    if w.stack && w.stack-n > 1: VerticalLayout {
+        x: w.w - w.pad-x - 6px;
+        y: (w.h - self.preferred-height) / 2;
+        width: 16px;
+        height: self.preferred-height;
+        for i in w.stack-n: Rectangle {
+            width: 16px;
+            height: (i == w.stack-i ? 12px : 5px) + 4px;
+            Rectangle {
+                width: 5px;
+                height: i == w.stack-i ? 12px : 5px;
+                animate height { duration: 200ms; easing: ease-out-cubic; }
+                border-radius: 2.5px;
+                background: Theme.material ? (i == w.stack-i ? Theme.m3-primary : dt.has-hover ? Theme.m3-on-surface-variant : Theme.m3-outline-variant) : i == w.stack-i || dt.has-hover ? Theme.label : Theme.tertiary;
+            }
+            dt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.act(w.index, "stack", i); }
+            }
+        }
+    }
+    // Remove badge
+    if editing: Rectangle {
+        x: -8px;
+        y: -8px;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: Theme.material ? Theme.m3-surface-container-highest : Theme.dark ? #3A3A40 : #E4E4E7;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: Theme.separator;
+        accessible-role: button;
+        accessible-label: "Remove widget";
+        accessible-action-default => { root.act(w.index, "remove", ""); }
+        Rectangle { width: 10px; height: 2px; border-radius: 1px; background: Theme.label; }
+        TouchArea {
+            x: -6px;
+            y: -6px;
+            width: 36px;
+            height: 36px;
+            mouse-cursor: pointer;
+            clicked => { root.act(w.index, "remove", ""); }
+        }
+    }
+}
+
+// A file or stack on the desktop
+component IconCell inherits Rectangle {
+    in property <DeskIcon> ic;
+    in property <length> spot;
+    callback icon(int, string, length, length);
+    property <length> dx;
+    property <length> dy;
+    property <bool> dragging;
+    x: ic.x + dx;
+    y: ic.y + dy;
+    animate x, y {
+        duration: dragging ? 0ms : 450ms;
+        easing: Theme.material ? spring(0.5) : spring(0.4);
+    }
+    width: spot - 6px;
+    height: spot - 2px;
+    accessible-role: list-item;
+    accessible-label: ic.name;
+    accessible-action-default => { root.icon(ic.index, "open", 0, 0); }
+    if ic.selected: Rectangle {
+        y: 0;
+        width: 54px;
+        height: 54px;
+        border-radius: Theme.material ? 16px : 10px;
+        background: Theme.material ? Theme.m3-secondary-container : #00000038;
+    }
+    Rectangle {
+        y: 3px;
+        width: 48px;
+        height: 48px;
+        for f[i] in ic.fan: Image {
+            y: 1px - (ic.fan.length - 1 - i) * 3px;
+            width: 46px;
+            height: 46px;
+            source: f;
+            image-fit: contain;
+            transform-rotation: ((ic.fan.length - 1 - i) - 1) * 6deg;
+        }
+        if !ic.stack: Image {
+            width: 48px;
+            height: 48px;
+            source: ic.pic;
+            image-fit: contain;
+        }
+    }
+    Rectangle {
+        y: 54px;
+        width: min(parent.width, label.preferred-width + 8px);
+        height: label.preferred-height + (Theme.material ? 4px : 2px);
+        border-radius: Theme.material ? min(self.height / 2, 10px) : 4px;
+        background: ic.selected ? (Theme.material ? Theme.m3-secondary-container : Theme.accent) : transparent;
+        // (Glass: a raised shadow under the name on the wallpaper)
+        if !ic.selected: T {
+            x: (parent.width - self.width) / 2 + 1px;
+            y: (parent.height - self.height) / 2 + 1px;
+            width: min(self.preferred-width, root.width - 8px);
+            text: ic.name;
+            horizontal-alignment: center;
+            overflow: elide;
+            wrap: word-wrap;
+            color: #0000008c;
+            font-weight: 500;
+        }
+        label := T {
+            width: min(self.preferred-width, root.width - 8px);
+            text: ic.name;
+            horizontal-alignment: center;
+            overflow: elide;
+            wrap: word-wrap;
+            color: Theme.material && ic.selected ? Theme.m3-on-secondary-container : ic.selected ? Theme.on-accent : white;
+            font-weight: 500;
+        }
+    }
+    TouchArea {
+        double-clicked => { root.icon(ic.index, "open", 0, 0); }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.icon(ic.index, "menu", root.x + self.mouse-x, root.y + self.mouse-y);
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if root.dragging {
+                    root.dragging = false;
+                    root.icon(ic.index, "drop", root.x, root.y);
+                    root.dx = 0;
+                    root.dy = 0;
+                } else {
+                    root.icon(ic.index, "click", 0, 0);
+                }
+            }
+        }
+        moved => {
+            if self.pressed {
+                if !root.dragging && (abs(self.mouse-x - self.pressed-x) > 6px || abs(self.mouse-y - self.pressed-y) > 6px) {
+                    root.dragging = true;
+                    root.icon(ic.index, "grab", 0, 0);
+                }
+                if root.dragging {
+                    root.dx += self.mouse-x - self.pressed-x;
+                    root.dy += self.mouse-y - self.pressed-y;
+                }
+            }
+        }
+    }
+}
+
+// ── The desktop (the first screen's) ────────────────────────────────────────
+export component Desktop inherits Window {
+    in property <[DeskWidget]> widgets;
+    in property <[DeskIcon]> icons;
+    in property <bool> editing;
+    in property <bool> glass-plugin;
+    in property <int> cols: 1;
+    in property <int> rows: 1;
+    in property <length> cell: 164px;
+    in property <length> gap: 16px;
+    in property <length> ox: 32px;
+    in property <length> oy: 54px;
+    in property <length> spot: 90px;
+    in property <bool> ghost-on;
+    in property <length> ghost-x;
+    in property <length> ghost-y;
+    in property <length> ghost-w;
+    in property <length> ghost-h;
+    in property <string> cookie12;
+    in property <string> cookie9;
+    // An open stack: its files beside it
+    in property <bool> stack-open;
+    in property <string> stack-name;
+    in property <[DeskFile]> stack-files;
+    in property <length> stack-x;
+    in property <length> stack-y;
+    callback act(int, string, string); // a widget's control
+    callback drag(int, length, length, bool); // a widget dragged (its top left), released
+    callback menu(int, length, length); // right-click: a widget's index, or -1 the desktop
+    callback bare(); // a click on the bare desktop
+    callback icon(int, string, length, length); // click | open | menu | grab | drop
+    callback stack-file(int, bool); // an open stack's file: open, or (true) its menu
+    callback stack-file-menu(int, length, length);
+    background: transparent;
+    no-frame: true;
+    title: "Desktop";
+    default-font-family: Theme.font;
+
+    // The bare desktop: a click ends editing and clears the selection;
+    // right-click opens the desktop's menu
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                root.menu(-1, self.mouse-x, self.mouse-y);
+            }
+        }
+        clicked => { root.bare(); }
+    }
+
+    // While editing or dragging: faint cells, and where the widget will land
+    property <float> grid-shown: editing || ghost-on ? 1 : 0;
+    animate grid-shown { duration: 220ms; }
+    if grid-shown > 0.01: Rectangle {
+        opacity: grid-shown;
+        for i in cols * rows: Rectangle {
+            x: ox + Math.mod(i, cols) * (cell + gap);
+            y: oy + floor(i / cols) * (cell + gap);
+            width: cell;
+            height: cell;
+            border-radius: Desk.tile;
+            background: Theme.material ? Theme.m3-primary-container.with-alpha(0.16) : #ffffff08;
+            border-width: 1px;
+            border-color: Theme.material ? Theme.m3-primary-container.with-alpha(0.6) : #ffffff1f;
+        }
+        if ghost-on: Rectangle {
+            x: ghost-x;
+            y: ghost-y;
+            animate x, y { duration: 400ms; easing: Theme.material ? spring(0.5) : spring(0.4); }
+            width: ghost-w;
+            height: ghost-h;
+            border-radius: Desk.tile;
+            background: Theme.material ? Theme.m3-primary-container.with-alpha(0.45) : #ffffff1a;
+            border-width: Theme.material ? 3px : 2px;
+            border-color: Theme.material ? Theme.m3-primary : #ffffff8c;
+        }
+    }
+
+    // Files on the desktop (under the widgets)
+    for ic in icons: IconCell {
+        ic: ic;
+        spot: root.spot;
+        icon(i, what, x, y) => { root.icon(i, what, x, y); }
+    }
+
+    for w in widgets: Frame {
+        w: w;
+        editing: root.editing;
+        glass-plugin: root.glass-plugin;
+        cookie12: root.cookie12;
+        cookie9: root.cookie9;
+        act(i, a, b) => { root.act(i, a, b); }
+        drag(i, x, y, on) => { root.drag(i, x, y, on); }
+        menu(i, x, y) => { root.menu(i, x, y); }
+    }
+
+    // Empty desktop while editing: a hint where widgets go
+    if editing && widgets.length == 0: Rectangle {
+        x: ox;
+        y: oy;
+        width: hint.preferred-width;
+        height: hint.preferred-height;
+        T { x: 1px; y: 1px; text: hint.text; color: #00000066; font-size: Theme.title; font-weight: 600; }
+        hint := T { text: "Pick widgets from the gallery below"; color: #ffffffd9; font-size: Theme.title; font-weight: 600; }
+    }
+
+    // An open stack: its files in a panel beside it
+    if stack-open: Rectangle {
+        x: stack-x;
+        y: stack-y;
+        width: 4 * 96px + 24px;
+        height: min(4, ceil(stack-files.length / 4)) * 96px + 48px;
+        border-radius: Theme.material ? Theme.radius-popover : 18px;
+        background: Theme.material ? Theme.m3-surface-container : glass-plugin ? transparent : Theme.panel;
+        accessible-role: list;
+        accessible-label: stack-name;
+        TouchArea {} // (clicks stay inside)
+        T { x: 14px; y: 10px; text: stack-name; font-size: Theme.body; font-weight: 600; }
+        for f[i] in stack-files: Rectangle {
+            x: 12px + Math.mod(i, 4) * 96px;
+            y: 36px + floor(i / 4) * 96px;
+            width: 96px;
+            height: 96px;
+            accessible-role: list-item;
+            accessible-label: f.name;
+            accessible-action-default => { root.stack-file(i, false); }
+            Rectangle {
+                x: 2px;
+                y: 2px;
+                width: 92px;
+                height: 92px;
+                border-radius: Theme.material ? 16px : 10px;
+                background: fa.has-hover ? (Theme.material ? Theme.m3-on-surface.with-alpha(fa.pressed ? 0.1 : 0.08) : Theme.fill) : transparent;
+            }
+            Image { x: 24px; y: 10px; width: 48px; height: 48px; source: f.icon; image-fit: contain; }
+            T { x: 4px; y: parent.height - 8px - self.height; width: parent.width - 8px; horizontal-alignment: center; overflow: elide; text: f.name; }
+            fa := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                        root.stack-file-menu(i, root.stack-x + parent.x + self.mouse-x, root.stack-y + parent.y + self.mouse-y);
+                    }
+                }
+                clicked => { root.stack-file(i, false); }
+            }
+        }
+    }
+}
+
+// ── The right-click menu (glass/ContextMenu.qml): a full-screen overlay, a
+// click anywhere else closes it; it opens at the pointer, downward ──────────
+export struct DeskMenuRow {
+    text: string,
+    enabled: bool,
+    danger: bool,
+    separator: bool,
+}
+
+export component DeskMenu inherits Window {
+    in property <[DeskMenuRow]> rows;
+    in property <length> point-x;
+    in property <length> point-y;
+    in property <length> menu-width: 200px;
+    in property <bool> shown;
+    in property <bool> glass-plugin;
+    in-out property <int> current: -1;
+    out property <float> progress: shown ? 1 : 0;
+    animate progress {
+        duration: shown ? 350ms : 120ms;
+        easing: shown ? spring(0.36) : ease-in;
+    }
+    out property <length> panel-x: panel.x;
+    out property <length> panel-y: panel.y;
+    out property <length> panel-width: panel.width;
+    out property <length> panel-height: panel.height;
+    out property <float> panel-scale: panel.transform-scale;
+    out property <length> radius: Theme.material ? 18px : 14px;
+    callback chosen(int);
+    callback dismissed();
+    callback closed();
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+    background: transparent;
+    no-frame: true;
+    title: "Desktop menu";
+    default-font-family: Theme.font;
+
+    public function open() {
+        current = -1;
+        keys.focus();
+    }
+    function ok(i: int) -> bool {
+        return i >= 0 && i < rows.length && !rows[i].separator && rows[i].enabled;
+    }
+    function step(d: int) {
+        if ok(current + d) { current = current + d; return; }
+        if ok(current + 2 * d) { current = current + 2 * d; return; }
+        if ok(current + 3 * d) { current = current + 3 * d; }
+    }
+
+    TouchArea {
+        clicked => { root.dismissed(); }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button != PointerEventButton.left { root.dismissed(); }
+        }
+    }
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismissed(); return accept; }
+            if e.text == Key.DownArrow { step(1); return accept; }
+            if e.text == Key.UpArrow { step(-1); return accept; }
+            if (e.text == Key.Return || e.text == " ") && ok(current) { root.chosen(current); return accept; }
+            reject
+        }
+        panel := Rectangle {
+            width: root.menu-width;
+            height: rows-layout.preferred-height;
+            x: max(8px, min(root.width - self.width - 8px, root.point-x));
+            y: root.point-y + self.height + 8px > root.height ? max(8px, root.point-y - self.height) : root.point-y;
+            opacity: min(1, root.progress);
+            transform-origin: { x: 0, y: 0 };
+            transform-scale: 0.94 + 0.06 * root.progress;
+            border-radius: root.radius;
+            background: Theme.material ? Theme.menu-bg : (root.glass-plugin ? transparent : Theme.panel);
+            border-width: Theme.material ? 0 : 0.5px;
+            border-color: Theme.separator;
+            drop-shadow-blur: Theme.material ? 12px : 0;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: Theme.dark ? #00000066 : #00000029;
+            accessible-role: list;
+            accessible-label: "Desktop menu";
+            TouchArea {}
+            rows-layout := VerticalLayout {
+                padding: 5px;
+                for r[i] in rows: Rectangle {
+                    height: r.separator ? 11px : 28px;
+                    if r.separator: Rectangle {
+                        x: 9px;
+                        width: parent.width - 18px;
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+                    if !r.separator: Rectangle {
+                        property <bool> hot: root.current == i && r.enabled;
+                        accessible-role: list-item;
+                        accessible-label: r.text;
+                        accessible-action-default => { if r.enabled { root.chosen(i); } }
+                        border-radius: Theme.material ? 10px : 8px;
+                        background: hot ? (r.danger && !Theme.material ? Theme.danger : Theme.highlight) : transparent;
+                        Text {
+                            x: 12px;
+                            text: r.text;
+                            vertical-alignment: center;
+                            height: parent.height;
+                            font-size: Theme.body;
+                            color: hot && !(Theme.material && r.danger) ? (Theme.material ? Theme.on-highlight : #ffffff) : !r.enabled ? Theme.tertiary : r.danger ? Theme.danger : Theme.label;
+                            accessible-role: none;
+                        }
+                        TouchArea {
+                            enabled: r.enabled;
+                            changed has-hover => { if self.has-hover { root.current = i; } }
+                            clicked => { root.chosen(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

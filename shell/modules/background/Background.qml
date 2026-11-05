@@ -253,7 +253,7 @@ Variants {
         // Widgets live on the first screen (one layout; macOS shows them on one display)
         DesktopWidgets {
             id: desktopWidgets
-            visible: win.screen === Quickshell.screens[0] && Wallpaper.started
+            visible: win.screen === Quickshell.screens[0] && Wallpaper.started && !RustUi.drawing("desktop")
             enabled: visible
             screen: win.screen
         }
