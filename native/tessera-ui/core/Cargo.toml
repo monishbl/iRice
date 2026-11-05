@@ -1,0 +1,30 @@
+[package]
+name = "tessera-core"
+description = "What every surface of tessera-ui shares: the platform, the shell's state, the theme, the services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false # (comments' code blocks are prose, not examples)
+
+[dependencies]
+slint.workspace = true
+i-slint-core.workspace = true
+smithay-client-toolkit.workspace = true
+wayland-egl.workspace = true
+khronos-egl.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zbus.workspace = true
+material-colors.workspace = true
+mc04.workspace = true
+image.workspace = true
+libc.workspace = true
+accesskit.workspace = true
+accesskit_unix.workspace = true
+calloop.workspace = true
+wayland-client.workspace = true
+resvg.workspace = true
+ureq.workspace = true

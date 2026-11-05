@@ -1,0 +1,22 @@
+[package]
+name = "tessera-desktop"
+description = "tessera-ui: the desktop: its icons, widgets and menu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false # (comments' code blocks are prose, not examples)
+
+[dependencies]
+tessera-core.workspace = true
+slint.workspace = true
+smithay-client-toolkit.workspace = true
+image.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

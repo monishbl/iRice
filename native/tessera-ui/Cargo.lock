@@ -4722,7 +4722,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "tessera-ui"
+name = "tessera-clipboard"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-controlcenter"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "resvg",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-core"
 version = "0.1.0"
 dependencies = [
  "accesskit",
@@ -4734,18 +4758,162 @@ dependencies = [
  "libc",
  "material-colors 0.4.2",
  "material-colors 0.5.0",
- "memmap2",
  "resvg",
+ "serde",
+ "serde_json",
+ "slint",
+ "smithay-client-toolkit",
+ "ureq",
+ "wayland-client",
+ "wayland-egl",
+ "zbus",
+]
+
+[[package]]
+name = "tessera-desktop"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "libc",
  "serde",
  "serde_json",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-dock"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-emoji"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-menubar"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-notifications"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-osd"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-sidebar"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
  "ureq",
- "wayland-client",
- "wayland-egl",
+]
+
+[[package]]
+name = "tessera-spotlight"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-today"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "libc",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-ui"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "libc",
+ "memmap2",
+ "serde_json",
+ "slint",
+ "smithay-client-toolkit",
+ "tessera-clipboard",
+ "tessera-controlcenter",
+ "tessera-core",
+ "tessera-desktop",
+ "tessera-dock",
+ "tessera-emoji",
+ "tessera-menubar",
+ "tessera-notifications",
+ "tessera-osd",
+ "tessera-sidebar",
+ "tessera-spotlight",
+ "tessera-today",
+ "tessera-wallpaper",
  "wayland-protocols-misc",
- "zbus",
+]
+
+[[package]]
+name = "tessera-wallpaper"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
 ]
 
 [[package]]

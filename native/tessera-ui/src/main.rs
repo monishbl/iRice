@@ -1,8 +1,9 @@
 //! tessera-ui: Tessera's interface in Rust (docs/rust-ui-plan.md), Slint on
 //! wlr-layer-shell, drawing the shell's surfaces one by one in place of the
-//! QML shell's (src/surfaces.rs). One process, one thread for the UI (a
-//! calloop event loop: Wayland, Slint's timers and animations, signals,
-//! stdin, and messages from the data threads).
+//! QML shell's (src/surfaces.rs: one crate each, native/tessera-ui/surfaces/;
+//! what they share is tessera-core, native/tessera-ui/core/). One process,
+//! one thread for the UI (a calloop event loop: Wayland, Slint's timers and
+//! animations, signals, stdin, and messages from the data threads).
 //!
 //!   tessera-ui [--surfaces a,b]  draw these (default: all it has); ends on SIGTERM/SIGINT,
 //!                                or when stdin, a pipe, closes (the shell that started it quit);
@@ -14,44 +15,16 @@
 //!   tessera-ui --version
 //! SIGUSR1 prints frame statistics.
 
-mod a11y;
-mod appicon;
-mod egl;
-mod env;
-mod icon_theme;
-mod icons;
-mod seed;
-mod services;
-mod shell;
-mod stats;
 mod surfaces;
-mod theme;
-mod util;
-mod wayland;
 
-pub mod ui {
-    slint::include_modules!();
-}
+// (the shared crate's modules, by the names they had in one crate)
+use tessera_core::{egl, env, seed, services, shell, theme, wayland, Msg};
 
 use calloop::signals::{Signal, Signals};
 use calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
-use std::any::Any;
 use std::time::{Duration, Instant};
 use wayland::State;
-
-pub enum Msg {
-    Run(Box<dyn FnOnce() + Send>),
-    Quit,
-    /// A service's new reading (any type; the shell keeps the newest of each)
-    Data(Box<dyn Any + Send>),
-    /// A message for one surface's part, by name
-    Part(&'static str, Box<dyn Any + Send>),
-    GlassPlugin(bool),
-    ConfigChanged,
-    A11yActivate(u64),
-    A11yAction(u64, accesskit::ActionRequest),
-}
 
 fn handle(state: &mut State, msg: Msg) {
     // (Slint's animation clock moves only when the loop ticks it: on an idle
@@ -179,7 +152,14 @@ fn main() {
         println!("tessera-ui {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let surfaces = surfaces::Surfaces::from_args(&args);
+    // An argument it doesn't know (a test harness's `--list`, a typo) ends
+    // it here, before it opens a display: started by mistake, it never draws
+    // on whatever session it was started from
+    if let Some(bad) = surfaces::unknown_arg(&args) {
+        eprintln!("tessera-ui: unknown argument {bad} (tessera-ui [--surfaces a,b] | --material-roles SEED dark|light [style] | --seed PICTURE | --version)");
+        std::process::exit(2);
+    }
+    let surfaces = surfaces::from_args(&args);
     if surfaces.on.is_empty() {
         // (nothing it can draw: say so, and leave the shell drawing them)
         surfaces::announce(&surfaces);

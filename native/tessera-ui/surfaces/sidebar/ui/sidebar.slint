@@ -1,0 +1,2540 @@
+// The sidebar in Rust (rust.surfaces: sidebar), compare
+// shell/modules/sidebar/: Sidebar.qml (the panel, its tabs), AiChat.qml (the
+// chat: header, messages, composer, model and screenshot menus),
+// ChatMessage.qml + CodeBlock.qml (a message, Markdown blocks from
+// src/surfaces/sidebar/markdown.rs), ChatHistory.qml (past chats),
+// Translator.qml + LanguageButton.qml, UndoBar.qml, ChatButton.qml and
+// LensButton.qml. The numbers are theirs, per look (Theme.material).
+
+import { Theme } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+
+// ── Icons: Phosphor in Glass, Material Symbols Rounded in Material, as
+// shell/common/Icon.qml (phosphor.js / material-symbols.js codes; "" where
+// Material has none, as the lasso)
+export struct Glyph {
+    p: string,
+    m: string,
+}
+
+export global G {
+    out property <Glyph> sparkle: { p: "\u{e6a2}", m: "\u{e65f}" };
+    out property <Glyph> caret-down: { p: "\u{e136}", m: "\u{e313}" };
+    out property <Glyph> caret-up: { p: "\u{e13c}", m: "\u{e316}" };
+    out property <Glyph> arrow-left: { p: "\u{e058}", m: "\u{e5c4}" };
+    out property <Glyph> history: { p: "\u{e1a0}", m: "\u{e8b3}" };
+    out property <Glyph> note-pencil: { p: "\u{e34c}", m: "\u{e745}" };
+    out property <Glyph> plus: { p: "\u{e3d4}", m: "\u{e145}" };
+    out property <Glyph> camera: { p: "\u{e10e}", m: "\u{e3af}" };
+    out property <Glyph> lasso: { p: "\u{edc6}", m: "" };
+    out property <Glyph> arrow-up: { p: "\u{e08e}", m: "\u{e5d8}" };
+    out property <Glyph> stop: { p: "\u{e46c}", m: "\u{e047}" };
+    out property <Glyph> x: { p: "\u{e4f6}", m: "\u{e5cd}" };
+    out property <Glyph> copy: { p: "\u{e1ca}", m: "\u{e14d}" };
+    out property <Glyph> check: { p: "\u{e182}", m: "\u{e668}" };
+    out property <Glyph> brain: { p: "\u{e74e}", m: "\u{ea4a}" };
+    out property <Glyph> warning: { p: "\u{e4e2}", m: "\u{f8b6}" };
+    out property <Glyph> search: { p: "\u{e30c}", m: "\u{ef7a}" };
+    out property <Glyph> dots: { p: "\u{e1fe}", m: "\u{e5d3}" };
+    out property <Glyph> arrows-lr: { p: "\u{e0a0}", m: "\u{e8d4}" };
+    out property <Glyph> swap: { p: "\u{e83c}", m: "\u{e8d4}" };
+    out property <Glyph> monitor: { p: "\u{e32e}", m: "\u{ef5b}" };
+    out property <Glyph> selection: { p: "\u{e69a}", m: "\u{f74d}" };
+    out property <Glyph> spinner: { p: "\u{e1ac}", m: "" };
+}
+
+// Motion (Theme.motion): durations, and the panel's curves per look
+global M {
+    out property <duration> press: 100ms;
+    out property <duration> hover: 150ms;
+    out property <duration> popover: 220ms;
+    out property <duration> panel: 320ms;
+    // (the product UI's body size: Theme.font.body, 13 in both looks)
+    out property <length> body: 13px;
+}
+
+component SIcon {
+    in property <Glyph> g;
+    in property <color> color: Theme.label;
+    in property <length> size: 16px;
+    in property <bool> fill;
+    in property <bool> bold;
+    property <bool> sym: Theme.material && g.m != "";
+    preferred-width: size;
+    preferred-height: size;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: sym ? g.m : g.p;
+        color: root.color;
+        // (Material Symbols draw a little larger: their glyphs sit in a padded square)
+        font-size: sym ? Math.round(size * 1.2 / 1px) * 1px : size;
+        font-family: sym ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+component Spinner {
+    in property <color> color: Theme.secondary;
+    in property <length> size: 14px;
+    preferred-width: size;
+    preferred-height: size;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: G.spinner.p;
+        font-family: "Phosphor-Bold";
+        font-size: size;
+        color: root.color;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        transform-rotation: Math.mod(animation-tick() / 1ms * 0.4, 360) * 1deg;
+        accessible-role: none;
+    }
+}
+
+// A round header button (AiChat.qml's HeaderButton): tonal in Material
+// (squaring while pressed), the fill in Glass
+component HeaderButton inherits Rectangle {
+    in property <Glyph> icon;
+    in property <string> label;
+    callback clicked();
+    width: self.height;
+    border-radius: Theme.material && t.pressed ? 8px : self.height / 2;
+    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: M.hover; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SIcon {
+        g: icon;
+        size: 15px;
+        color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+    }
+    t := TouchArea {
+        x: -6px;
+        y: -6px;
+        width: parent.width + 12px; // (44 px to hit)
+        height: parent.height + 12px;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Ghost icon button (shell/common/IconButton.qml)
+component GhostButton inherits Rectangle {
+    in property <Glyph> icon;
+    in property <length> icon-size: 16px;
+    in property <color> icon-color: Theme.secondary;
+    in property <bool> fill;
+    in property <bool> bold;
+    in property <string> label;
+    in property <bool> enabled: true;
+    out property <bool> hovered: t.has-hover;
+    callback clicked();
+    callback right-clicked();
+    width: 28px;
+    height: 28px;
+    opacity: enabled ? 1 : 0.4;
+    border-radius: Theme.material ? (t.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+    animate border-radius { duration: 150ms; easing: ease-out; }
+    background: !enabled ? transparent : Theme.material ? Theme.m3-on-surface-variant.with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill : transparent;
+    animate background { duration: M.hover; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { clicked(); } }
+    SIcon {
+        g: icon;
+        size: icon-size;
+        color: icon-color;
+        fill: root.fill;
+        bold: root.bold;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.right-clicked(); }
+        }
+    }
+}
+
+// A labelled button in the chat (ChatButton.qml): tonal, or filled in the
+// accent (`primary`); busy: a spinner in place of its icon
+export component ChatButton inherits Rectangle {
+    in property <Glyph> icon;
+    in property <string> label;
+    in property <bool> primary;
+    in property <bool> busy;
+    callback clicked();
+    property <color> ink: primary ? Theme.on-accent : Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+    width: row.preferred-width + (Theme.material ? 32px : 24px);
+    height: Theme.material ? 40px : 32px;
+    border-radius: Theme.material ? (t.pressed ? 12px : self.height / 2) : Theme.radius-control;
+    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    background: primary ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.accent.darker(0.15) : t.has-hover ? Theme.accent.darker(0.07) : Theme.accent)
+        : Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1)
+        : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: M.hover; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { if !busy { clicked(); } }
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: Theme.material ? 8px : 6px;
+        Rectangle {
+            width: Theme.material ? 18px : 14px;
+            if !busy: SIcon { g: icon; size: parent.width; color: ink; }
+            if busy: Spinner { size: parent.width; color: ink; }
+        }
+        Text {
+            text: label;
+            color: ink;
+            font-size: Theme.material ? M.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    t := TouchArea {
+        y: -6px;
+        height: parent.height + 12px; // (44 px to hit)
+        enabled: !busy;
+        mouse-cursor: busy ? default : pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The tabs (shell/common/Segmented.qml): Glass, a track with a sliding
+// pill; Material, a connected button group, the chosen one primary
+component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback selected(int);
+    property <length> gap: Theme.material ? 2px : 0px;
+    property <length> seg: (self.width - 4px - gap * (options.length - 1)) / max(1, options.length);
+    height: Theme.material ? 36px : 30px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    accessible-label: "Sidebar";
+    if !Theme.material: Rectangle {
+        x: 2px + current * (seg + gap);
+        y: 2px;
+        width: seg;
+        height: parent.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff33 : #ffffff;
+        animate x { duration: M.popover; easing: cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+    }
+    for o[i] in options: Rectangle {
+        x: 2px + i * (seg + gap);
+        width: seg;
+        height: parent.height;
+        property <bool> chosen: i == current;
+        property <length> full: self.height / 2;
+        property <length> inner: chosen ? full : st.pressed ? 4px : 8px;
+        accessible-role: tab;
+        accessible-label: o;
+        accessible-item-selectable: true;
+        accessible-item-selected: chosen;
+        accessible-action-default => { selected(i); }
+        if Theme.material: Rectangle {
+            border-top-left-radius: i == 0 ? full : inner;
+            border-bottom-left-radius: i == 0 ? full : inner;
+            border-top-right-radius: i == options.length - 1 ? full : inner;
+            border-bottom-right-radius: i == options.length - 1 ? full : inner;
+            background: chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1) : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1);
+            animate background { duration: 150ms; }
+        }
+        Text {
+            text: o;
+            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+            font-size: Theme.material ? M.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        st := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { selected(i); }
+        }
+    }
+}
+
+// ── Markdown, as blocks (markdown.rs) ───────────────────────────────────────
+export struct MdItem {
+    depth: int,
+    marker: string,
+    text: styled-text,
+}
+
+export struct MdRow {
+    head: bool,
+    cells: [styled-text],
+}
+
+export struct MdBlock {
+    // 0 paragraph, 1 heading, 2 list, 3 quote, 4 code, 5 table, 6 rule
+    kind: int,
+    level: int,
+    size: length,
+    text: styled-text,
+    code: string,
+    lang: string,
+    open: bool,
+    items: [MdItem],
+    rows: [MdRow],
+    // a table's column widths (markdown::column_widths: its content's)
+    widths: [length],
+    // room above it (markdown::gaps: Markdown.js's margins, the larger of
+    // two that meet)
+    above: length,
+}
+
+// A fenced code block (CodeBlock.qml): its language and Copy above the code
+component CodeBlock inherits Rectangle {
+    in property <string> lang;
+    in property <string> code;
+    in property <bool> open;
+    callback copy(string);
+    property <bool> copied;
+    height: lay.preferred-height;
+    border-radius: Theme.material ? 16px : 10px;
+    background: Theme.code-fill;
+    Timer {
+        interval: 1.5s;
+        running: copied;
+        triggered => { copied = false; }
+    }
+    lay := VerticalLayout {
+        padding-bottom: 10px;
+        Rectangle {
+            height: 30px;
+            Text {
+                x: 12px;
+                text: lang != "" ? lang : "code";
+                color: Theme.secondary;
+                font-family: Theme.mono;
+                font-size: Theme.caption;
+                vertical-alignment: center;
+                height: 100%;
+            }
+            if !open: Rectangle {
+                x: parent.width - self.width - 6px;
+                y: (parent.height - self.height) / 2;
+                width: cr.preferred-width + 16px;
+                height: 24px;
+                border-radius: 12px;
+                background: ct.has-hover ? (Theme.material ? Theme.m3-on-surface-variant.with-alpha(0.08) : Theme.fill) : transparent;
+                accessible-role: button;
+                accessible-label: "Copy code";
+                accessible-action-default => { copy(code); copied = true; }
+                cr := HorizontalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    SIcon { g: copied ? G.check : G.copy; size: 12px; color: Theme.secondary; }
+                    Text {
+                        text: copied ? "Copied" : "Copy";
+                        color: Theme.secondary;
+                        font-size: Theme.caption;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+                ct := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        copy(code);
+                        copied = true;
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            TextInput {
+                text: code;
+                read-only: true;
+                wrap: word-wrap;
+                single-line: false;
+                color: Theme.label;
+                selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+                font-family: Theme.mono;
+                font-size: Theme.small;
+                accessible-label: "Code";
+            }
+        }
+    }
+}
+
+// One reply's prose and code (ChatMessage.qml's parts, Markdown.js's look)
+component Markdown inherits VerticalLayout {
+    in property <[MdBlock]> blocks;
+    in property <color> ink: Theme.label;
+    callback copy(string);
+    callback link(string);
+    for b in blocks: VerticalLayout {
+        padding-top: b.above;
+        if b.kind == 0 || b.kind == 1: StyledText {
+            text: b.text;
+            default-color: ink;
+            default-font-size: b.kind == 1 ? b.size : M.body;
+            link-color: Theme.accent-ink;
+            link-clicked(u) => { link(u); }
+        }
+        if b.kind == 2: VerticalLayout {
+            spacing: 2px;
+            for it in b.items: HorizontalLayout {
+                padding-left: 8px + it.depth * 22px;
+                spacing: 6px;
+                Text {
+                    width: 28px;
+                    text: it.marker;
+                    color: ink;
+                    font-size: M.body;
+                    horizontal-alignment: right;
+                    accessible-role: none;
+                }
+                StyledText {
+                    text: it.text;
+                    default-color: ink;
+                    default-font-size: M.body;
+                    link-color: Theme.accent-ink;
+                    link-clicked(u) => { link(u); }
+                }
+            }
+        }
+        // (a quote: muted and indented 12, as Markdown.js's blockquote)
+        if b.kind == 3: HorizontalLayout {
+            padding-left: 12px;
+            StyledText {
+                text: b.text;
+                default-color: Theme.secondary;
+                default-font-size: M.body;
+                link-color: Theme.accent-ink;
+                link-clicked(u) => { link(u); }
+            }
+        }
+        if b.kind == 4: CodeBlock {
+            lang: b.lang;
+            code: b.code;
+            open: b.open;
+            copy(t) => { root.copy(t); }
+        }
+        // (a table as wide as its content, Qt's rich text's: 1 px rules,
+        // 6 px padding, its header bold)
+        if b.kind == 5: HorizontalLayout {
+            alignment: start;
+            Rectangle {
+                border-width: 1px;
+                border-color: Theme.separator;
+                VerticalLayout {
+                    for r in b.rows: HorizontalLayout {
+                        for c[i] in r.cells: Rectangle {
+                            width: b.widths[i];
+                            border-width: 0.5px;
+                            border-color: Theme.separator;
+                            HorizontalLayout {
+                                padding: 6px;
+                                StyledText {
+                                    text: c;
+                                    default-color: ink;
+                                    default-font-size: M.body;
+                                    link-color: Theme.accent-ink;
+                                    link-clicked(u) => { link(u); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if b.kind == 6: Rectangle {
+            height: 9px;
+            Rectangle {
+                height: 1px;
+                background: Theme.separator;
+            }
+        }
+    }
+}
+
+// ── A chat row (ChatMessage.qml) ────────────────────────────────────────────
+export struct ChatRow {
+    role: string,
+    text: string,
+    status: string,
+    model: string,
+    thinking: styled-text,
+    has-thinking: bool,
+    pictures: [image],
+    blocks: [MdBlock],
+    // circle to search: its picture's path, and how "Search the web" went
+    search: string,
+    lens-busy: bool,
+    lens-note: string,
+    lens-ok: bool,
+}
+
+component Message inherits VerticalLayout {
+    in property <ChatRow> msg;
+    in property <length> list-width;
+    callback copy(string);
+    callback link(string);
+    callback search-web(string);
+    property <bool> show-thinking;
+    property <bool> copied;
+    property <bool> user: msg.role == "user";
+    Timer {
+        interval: 1.5s;
+        running: copied;
+        triggered => { copied = false; }
+    }
+
+    // User: pictures above an accent bubble on the right (Material: primary
+    // container, its corner nearest the speaker small)
+    if user && msg.pictures.length > 0: HorizontalLayout {
+        alignment: end;
+        spacing: 4px;
+        padding-bottom: Theme.material ? 2px : 6px;
+        for p in msg.pictures: Rectangle {
+            width: msg.pictures.length == 1 ? 200px : 76px;
+            height: msg.pictures.length == 1 ? 120px : 76px;
+            border-radius: Theme.material ? (msg.pictures.length == 1 ? 20px : 14px) : (msg.pictures.length == 1 ? 14px : 10px);
+            background: Theme.fill;
+            clip: true;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: p;
+                image-fit: cover;
+                accessible-role: image;
+                accessible-label: "Attached picture";
+            }
+        }
+    }
+    if user: HorizontalLayout {
+        alignment: end;
+        Rectangle {
+            property <length> pad-x: Theme.material ? 16px : 14px;
+            property <length> pad-y: Theme.material ? 10px : 9px;
+            width: min(probe.preferred-width + 2 * pad-x, list-width * 0.82);
+            height: ut.preferred-height + 2 * pad-y;
+            border-top-left-radius: Theme.material ? 20px : 18px;
+            border-bottom-left-radius: Theme.material ? 20px : 18px;
+            border-top-right-radius: Theme.material ? (msg.pictures.length > 0 ? 4px : 20px) : 18px;
+            border-bottom-right-radius: Theme.material ? 4px : 18px;
+            background: Theme.material ? Theme.m3-primary-container : Theme.accent;
+            probe := Text {
+                visible: false;
+                text: msg.text;
+                font-size: M.body;
+            }
+            ut := TextInput {
+                x: pad-x;
+                y: pad-y;
+                width: parent.width - 2 * pad-x;
+                text: msg.text;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: Theme.material ? Theme.m3-on-primary-container : Theme.on-accent;
+                selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : #ffffff59;
+                font-size: M.body;
+                accessible-label: "You said";
+            }
+        }
+    }
+
+    // A note
+    if msg.role == "note": Text {
+        text: msg.text;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        color: Theme.secondary;
+        font-size: Theme.small;
+    }
+
+    // The assistant
+    if msg.role == "assistant": VerticalLayout {
+        spacing: 6px;
+        // Reasoning summary (collapsible)
+        if msg.has-thinking || (msg.status == "streaming" && msg.text == ""): HorizontalLayout {
+            alignment: start;
+            spacing: 6px;
+            property <bool> thinking-now: msg.status == "streaming" && msg.text == "";
+            accessible-role: button;
+            accessible-label: thinking-now ? "Thinking" : "Thought process";
+            accessible-expandable: msg.has-thinking;
+            accessible-expanded: show-thinking;
+            accessible-action-default => { if msg.has-thinking { show-thinking = !show-thinking; } }
+            SIcon {
+                g: G.brain;
+                size: 13px;
+                color: Theme.secondary;
+                // (breathes while it thinks: 1.2 s a cycle)
+                opacity: thinking-now ? 0.675 + 0.325 * Math.cos(Math.mod(animation-tick() / 1ms, 1200) / 1200 * 360deg) : 1;
+            }
+            Text {
+                text: thinking-now ? "Thinking…" : "Thought process";
+                color: Theme.secondary;
+                font-size: Theme.small;
+                font-weight: 500;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            if msg.has-thinking: SIcon {
+                g: show-thinking ? G.caret-up : G.caret-down;
+                bold: true;
+                size: 10px;
+                color: Theme.secondary;
+            }
+            TouchArea {
+                enabled: msg.has-thinking;
+                clicked => { show-thinking = !show-thinking; }
+            }
+        }
+        if show-thinking && msg.has-thinking: HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 2px;
+                border-radius: 1px;
+                background: Theme.separator;
+            }
+            StyledText {
+                text: msg.thinking;
+                default-color: Theme.secondary;
+                default-font-size: Theme.small;
+                link-color: Theme.accent-ink;
+                link-clicked(u) => { link(u); }
+            }
+        }
+        // The reply (Material: in a surface-container-high bubble, its
+        // corner nearest the speaker small)
+        // (a grid cell holding both the bubble and the reply: a layout inside
+        // a Rectangle would lose the wrapped lines' heights)
+        if msg.blocks.length > 0 && msg.status != "error": GridLayout {
+            Rectangle {
+                row: 0;
+                col: 0;
+                border-radius: Theme.material ? 20px : 0px;
+                border-top-left-radius: Theme.material ? 4px : 0px;
+                background: Theme.material ? Theme.m3-surface-container-high : transparent;
+            }
+            Markdown {
+                row: 0;
+                col: 0;
+                padding-left: Theme.material ? 16px : 0px;
+                padding-right: self.padding-left;
+                padding-top: Theme.material ? 12px : 0px;
+                padding-bottom: self.padding-top;
+                blocks: msg.blocks;
+                copy(t) => { root.copy(t); }
+                link(u) => { root.link(u); }
+            }
+        }
+        // Error or refusal
+        if msg.status == "error" || msg.status == "refused": GridLayout {
+            Rectangle {
+                row: 0;
+                col: 0;
+                border-radius: Theme.material ? 16px : 12px;
+                background: Theme.material ? Theme.m3-error-container : Theme.danger.with-alpha(0.14);
+            }
+            HorizontalLayout {
+                row: 0;
+                col: 0;
+                accessible-role: text;
+                accessible-label: et.text;
+                padding-left: Theme.material ? 16px : 10px;
+                padding-right: self.padding-left;
+                padding-top: Theme.material ? 12px : 8px;
+                padding-bottom: self.padding-top;
+                spacing: 8px;
+                alignment: start;
+                SIcon {
+                    g: G.warning;
+                    fill: true;
+                    size: 15px;
+                    color: Theme.material ? Theme.m3-on-error-container : Theme.danger;
+                    vertical-stretch: 0;
+                    height: 15px;
+                }
+                et := Text {
+                    text: msg.status == "refused" ? "The model declined to answer this. Try rephrasing your question." : msg.text;
+                    wrap: word-wrap;
+                    color: Theme.material ? Theme.m3-on-error-container : Theme.label;
+                    font-size: Theme.small;
+                    accessible-role: none;
+                }
+            }
+        }
+        // Its model, and Copy
+        if msg.status == "done" || msg.status == "stopped": HorizontalLayout {
+            alignment: start;
+            spacing: 8px;
+            Text {
+                text: msg.model + (msg.status == "stopped" ? " · stopped" : "");
+                color: Theme.tertiary;
+                font-size: Theme.caption;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: Theme.material ? 28px : 22px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(cp.pressed ? 0.1 : cp.has-hover ? 0.08 : 0) : cp.has-hover ? Theme.fill : transparent;
+                accessible-role: button;
+                accessible-label: "Copy reply";
+                accessible-action-default => { copy(msg.text); copied = true; }
+                SIcon { g: copied ? G.check : G.copy; size: Theme.material ? 14px : 12px; color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary; }
+                cp := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        copy(msg.text);
+                        copied = true;
+                    }
+                }
+            }
+        }
+        // Circle to search: the picture on the web too, when asked (LensButton.qml)
+        if msg.search != "" && msg.status != "streaming": VerticalLayout {
+            spacing: 6px;
+            alignment: start;
+            HorizontalLayout {
+                alignment: start;
+                ChatButton {
+                    icon: msg.lens-ok ? G.check : G.search;
+                    label: msg.lens-busy ? "Searching the web…" : "Search the web";
+                    busy: msg.lens-busy;
+                    clicked => { search-web(msg.search); }
+                }
+            }
+            if msg.lens-note != "": Text {
+                text: msg.lens-note;
+                wrap: word-wrap;
+                color: msg.lens-ok ? Theme.secondary : Theme.danger;
+                font-size: Theme.small;
+            }
+        }
+    }
+}
+
+// ── Past chats (ChatHistory.qml) ────────────────────────────────────────────
+export struct ChatEntry {
+    header: string, // a group's name ("" for a chat)
+    id: string,
+    title: string,
+    meta: string, // "3 h ago · Atlas 8B"
+    open: bool,
+    pinned: bool,
+    first: bool,
+}
+
+// The shell's bar for a chat just deleted, or a note (UndoBar.qml): inverse;
+// Material, a snackbar
+component UndoBar inherits Rectangle {
+    in property <string> message;
+    in property <bool> can-undo;
+    callback undo();
+    property <bool> shown: message != "";
+    property <color> ink: Theme.material ? Theme.m3-inverse-on-surface : Theme.dark ? #EDEDEF : #FAFAFA;
+    height: max(Theme.material ? 48px : 44px, lt.preferred-height + 24px);
+    border-radius: Theme.material ? 4px : 14px;
+    background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3A3A40 : #18181B;
+    border-width: Theme.dark && !Theme.material ? 1px : 0px;
+    border-color: #ffffff29;
+    opacity: shown ? 1 : 0;
+    animate opacity { duration: shown ? 200ms : 140ms; easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
+    accessible-role: text;
+    accessible-label: message;
+    lt := Text {
+        x: 16px;
+        width: parent.width - 32px - (can-undo ? ub.width + 8px - 16px : 0px);
+        height: parent.height;
+        text: message;
+        wrap: can-undo ? no-wrap : word-wrap;
+        overflow: elide;
+        vertical-alignment: center;
+        color: ink;
+        font-size: Theme.material ? 14px : M.body;
+        letter-spacing: Theme.material ? 0.25px : 0px;
+    }
+    ub := Rectangle {
+        visible: can-undo;
+        x: parent.width - self.width - 8px;
+        y: (parent.height - self.height) / 2;
+        width: ul.preferred-width + (Theme.material ? 24px : 20px);
+        height: Theme.material ? 40px : 28px;
+        border-radius: Theme.material ? 20px : Theme.radius-control;
+        background: Theme.material ? Theme.m3-inverse-primary.with-alpha(ut.pressed ? 0.1 : ut.has-hover ? 0.08 : 0) : ut.pressed ? #ffffff33 : ut.has-hover ? #ffffff1f : transparent;
+        accessible-role: button;
+        accessible-label: "Undo delete";
+        accessible-action-default => { undo(); }
+        ul := Text {
+            text: "Undo";
+            color: Theme.material ? Theme.m3-inverse-primary : ink;
+            font-size: Theme.material ? 14px : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        ut := TouchArea {
+            y: -8px;
+            height: parent.height + 16px;
+            mouse-cursor: pointer;
+            clicked => { undo(); }
+        }
+    }
+}
+
+// A menu's look (the model menu, the screenshot menu, a chat's menu)
+component MenuBox inherits Rectangle {
+    border-radius: Theme.material ? 16px : 14px;
+    background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #242429f7 : #fafafcfa;
+    border-width: Theme.material ? 0px : 1px;
+    border-color: Theme.separator;
+    drop-shadow-blur: Theme.material ? 12px : 16px;
+    drop-shadow-offset-y: Theme.material ? 2px : 4px;
+    drop-shadow-color: Theme.material ? (Theme.dark ? #00000066 : #00000029) : #00000030;
+}
+
+component MenuItem inherits Rectangle {
+    in property <string> text;
+    in property <Glyph> icon;
+    in property <bool> has-icon;
+    in property <bool> checked; // (a check before it)
+    in property <bool> chosen; // Material: the chosen one in tertiary container
+    in property <bool> danger;
+    in property <length> text-x: Theme.material ? 40px : 26px;
+    callback clicked();
+    property <bool> hot: t.has-hover;
+    property <color> ink: Theme.material && chosen ? Theme.m3-on-tertiary-container : hot ? (Theme.material ? Theme.on-highlight : Theme.on-accent) : danger ? Theme.danger : Theme.label;
+    height: Theme.material ? 44px : 30px;
+    border-radius: Theme.material ? 12px : 8px;
+    background: Theme.material && chosen ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, hot ? 0.92 : 1) : hot ? (Theme.material ? Theme.highlight : danger ? Theme.danger : Theme.accent) : transparent;
+    accessible-role: list-item;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    if checked: SIcon {
+        x: Theme.material ? 12px : 8px;
+        g: G.check;
+        bold: true;
+        size: Theme.material ? 16px : 12px;
+        color: ink;
+    }
+    if has-icon: SIcon {
+        x: Theme.material ? 12px : 8px;
+        g: icon;
+        size: Theme.material ? 18px : 14px;
+        color: hot && !chosen ? ink : Theme.secondary;
+    }
+    Text {
+        x: text-x;
+        width: parent.width - self.x - 6px;
+        text: root.text;
+        overflow: elide;
+        color: ink;
+        font-size: M.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component History inherits Rectangle {
+    in property <[ChatEntry]> chats;
+    in property <bool> no-chats; // no past chats at all
+    in property <string> cookie; // Material's empty-state shape (shapes.rs)
+    in property <bool> searching;
+    in property <string> undo-message;
+    in property <bool> can-undo;
+    in-out property <string> query;
+    in-out property <string> selected;
+    in-out property <string> renaming;
+    in-out property <string> menu-for; // the chat whose menu is open
+    in-out property <bool> menu-pinned;
+    in-out property <length> menu-y;
+    callback back();
+    callback open(string);
+    callback delete(string);
+    callback rename(string, string);
+    callback pin(string, bool);
+    callback undo();
+    callback query-edited(string);
+    property <bool> by-keys;
+
+    public function enter() {
+        field.text = "";
+        query = "";
+        renaming = "";
+        menu-for = "";
+        field.focus();
+    }
+    // The keyboard's selection in view (its row's top and bottom in the list)
+    public function reveal(top: length, bottom: length) {
+        if top < -list.content-y {
+            list.content-y = -top;
+        } else if bottom > -list.content-y + list.height {
+            list.content-y = -(bottom - list.height);
+        }
+    }
+
+    // ── Search
+    sb := Rectangle {
+        height: Theme.material ? 44px : 30px;
+        border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+        background: Theme.material ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, sh.has-hover && !field.has-focus ? 0.92 : 1) : Theme.fill;
+        border-width: Theme.material ? (field.has-focus ? 2px : 0px) : 1px;
+        border-color: field.has-focus ? Theme.accent : Theme.separator;
+        y: 0;
+        sh := TouchArea {
+            mouse-cursor: text;
+            clicked => { field.focus(); }
+        }
+        SIcon {
+            x: Theme.material ? 16px : 9px;
+            g: G.search;
+            size: Theme.material ? 18px : 14px;
+            color: Theme.secondary;
+        }
+        field := TextInput {
+            x: Theme.material ? 46px : 29px;
+            width: parent.width - self.x - (Theme.material ? 46px : 30px);
+            height: parent.height;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.material ? M.body + 1px : M.body;
+            accessible-label: "Search chats";
+            edited => {
+                query = self.text;
+                query-edited(self.text);
+            }
+            key-pressed(e) => {
+                if e.text == Key.Escape {
+                    if self.text != "" { self.text = ""; query = ""; query-edited(""); } else { back(); }
+                    return accept;
+                }
+                // (Down lands on the selected chat first, as ChatHistory.qml's move)
+                // (the list takes the keys at once: a second Down moves on)
+                if e.text == Key.DownArrow { by-keys = true; keys.focus(); move(0); return accept; }
+                if e.text == Key.Return {
+                    if selected != "" { open(selected); } else if chats.length > 0 { open-first(); }
+                    return accept;
+                }
+                reject
+            }
+            Text {
+                visible: field.text == "";
+                width: 100%;
+                height: 100%;
+                text: "Search chats";
+                color: Theme.tertiary;
+                font-size: field.font-size;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        Rectangle {
+            x: parent.width - self.width - (Theme.material ? 6px : 2px);
+            y: (parent.height - self.height) / 2;
+            width: Theme.material ? 36px : 26px;
+            height: self.width;
+            if searching && field.text != "": Spinner { size: 14px; }
+            if field.text != "" && !searching: GhostButton {
+                width: parent.width;
+                height: parent.height;
+                icon: G.x;
+                icon-size: Theme.material ? 18px : 12px;
+                label: "Clear search";
+                clicked => {
+                    field.text = "";
+                    query = "";
+                    query-edited("");
+                    field.focus();
+                }
+            }
+        }
+    }
+    callback move(int);
+    callback open-first();
+
+    // ── The list
+    list := Flickable {
+        y: sb.height + (Theme.material ? 12px : 8px);
+        height: parent.height - self.y - (can-undo || undo-message != "" ? ubar.height + 8px : 0px);
+        content-height: col.preferred-height;
+        interactive: true;
+        keys := FocusScope {
+            key-pressed(e) => {
+                by-keys = true;
+                if e.text == Key.DownArrow { move(1); return accept; }
+                if e.text == Key.UpArrow { move(-1); return accept; }
+                if e.text == Key.Return && selected != "" { open(selected); return accept; }
+                if e.text == Key.Delete && selected != "" { delete(selected); return accept; }
+                if e.text == Key.F2 && selected != "" { renaming = selected; return accept; }
+                if e.text == Key.Escape { back(); return accept; }
+                reject
+            }
+        }
+        col := VerticalLayout {
+            width: list.width;
+            for c[i] in chats: Rectangle {
+                height: c.header != "" ? (c.first ? 0px : 8px) + (Theme.material ? 36px : 26px) : (Theme.material ? 60px : 46px);
+                property <bool> sel: c.id != "" && c.id == selected;
+                if c.header != "": Text {
+                    x: Theme.material ? 16px : 10px;
+                    y: parent.height - self.height - (Theme.material ? 8px : 6px);
+                    text: c.header;
+                    color: Theme.material ? Theme.m3-primary : Theme.secondary;
+                    font-size: Theme.small;
+                    font-weight: Theme.material ? 500 : 600;
+                    accessible-role: text;
+                }
+                if c.header == "": Rectangle {
+                    y: 1px;
+                    height: parent.height - 2px;
+                    border-radius: Theme.material ? 16px : 8px;
+                    property <bool> hot: rt.has-hover || mb.hovered || menu-for == c.id;
+                    property <float> layer: rt.pressed ? 0.1 : hot ? 0.08 : 0;
+                    background: Theme.material ? (c.open ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 1 - layer) : Theme.m3-on-surface.with-alpha(layer))
+                        : c.open ? Theme.accent-tint : rt.pressed ? Theme.fill-pressed : hot ? Theme.fill : transparent;
+                    animate background { duration: M.hover; }
+                    accessible-role: list-item;
+                    accessible-label: c.title + ", " + c.meta + (c.open ? ", open" : "") + (c.pinned ? ", pinned" : "");
+                    accessible-item-selectable: true;
+                    accessible-item-selected: sel;
+                    accessible-action-default => { open(c.id); }
+                    // The keyboard's place in the list
+                    if sel && keys.has-focus && by-keys && renaming != c.id: Rectangle {
+                        x: Theme.material ? -3px : -2px;
+                        y: self.x;
+                        width: parent.width - 2 * self.x;
+                        height: parent.height - 2 * self.y;
+                        border-radius: parent.border-radius - self.x;
+                        border-width: Theme.material ? 3px : 2px;
+                        border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+                    }
+                    rt := TouchArea {
+                        mouse-cursor: pointer;
+                        enabled: renaming != c.id;
+                        clicked => { by-keys = false; open(c.id); }
+                        pointer-event(e) => {
+                            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                                selected = c.id;
+                                menu-pinned = c.pinned;
+                                menu-y = parent.y + list.content-y + list.y + parent.height;
+                                menu-for = c.id;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        x: Theme.material ? 16px : 10px;
+                        width: parent.width - self.x - mb.width - 12px;
+                        alignment: center;
+                        spacing: Theme.material ? 2px : 1px;
+                        Rectangle {
+                            height: Theme.material ? 22px : 18px;
+                            if renaming != c.id: Text {
+                                width: 100%;
+                                height: 100%;
+                                text: c.title;
+                                overflow: elide;
+                                vertical-alignment: center;
+                                color: Theme.material && c.open ? Theme.m3-on-secondary-container : Theme.label;
+                                font-size: Theme.material ? M.body + 1px : M.body;
+                                font-weight: 500;
+                                accessible-role: none;
+                            }
+                            // Rename in place: Enter saves, Escape cancels
+                            if renaming == c.id: Rectangle {
+                                x: -4px;
+                                width: parent.width + 4px;
+                                height: Theme.material ? 30px : 24px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: Theme.material ? 8px : 6px;
+                                background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+                                border-width: Theme.material ? 2px : 1px;
+                                border-color: Theme.accent;
+                                rn := TextInput {
+                                    x: 4px;
+                                    width: parent.width - 8px;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    single-line: true;
+                                    text: c.title;
+                                    color: Theme.label;
+                                    font-size: Theme.material ? M.body + 1px : M.body;
+                                    font-weight: 500;
+                                    accessible-label: "Chat name";
+                                    init => {
+                                        self.select-all();
+                                        self.focus();
+                                    }
+                                    accepted => {
+                                        rename(c.id, self.text);
+                                        renaming = "";
+                                        keys.focus();
+                                    }
+                                    key-pressed(e) => {
+                                        if e.text == Key.Escape {
+                                            renaming = "";
+                                            keys.focus();
+                                            return accept;
+                                        }
+                                        reject
+                                    }
+                                    // (clicking away keeps what was typed, as in Files)
+                                    changed has-focus => {
+                                        if !self.has-focus && renaming == c.id {
+                                            rename(c.id, self.text);
+                                            renaming = "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            text: c.meta;
+                            overflow: elide;
+                            color: Theme.material && c.open ? Theme.m3-on-secondary-container : Theme.secondary;
+                            font-size: Theme.small;
+                            accessible-role: none;
+                        }
+                    }
+                    // (Glass: shown on hover, as in Finder's sidebar; Material: always)
+                    mb := GhostButton {
+                        x: parent.width - self.width - 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: Theme.material ? 40px : 28px;
+                        height: self.width;
+                        opacity: Theme.material || hot || c.open || sel ? 1 : 0;
+                        icon: G.dots;
+                        icon-size: Theme.material ? 20px : 16px;
+                        icon-color: Theme.material && c.open ? Theme.m3-on-secondary-container : Theme.secondary;
+                        label: "Options for “" + c.title + "”";
+                        clicked => {
+                            by-keys = false;
+                            selected = c.id;
+                            menu-pinned = c.pinned;
+                            menu-y = parent.y + list.content-y + list.y + self.y + self.height + 4px;
+                            menu-for = menu-for == c.id ? "" : c.id;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Nothing to show
+    if chats.length == 0: VerticalLayout {
+        x: 20px;
+        width: parent.width - 40px;
+        y: list.y + (list.height - self.preferred-height) / 2;
+        height: self.preferred-height;
+        spacing: 8px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: Theme.material ? 72px : 34px;
+                height: Theme.material ? 80px : 34px;
+                if Theme.material: Path {
+                    y: 0;
+                    width: 72px;
+                    height: 72px;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: cookie;
+                    fill: Theme.m3-secondary-container;
+                }
+                SIcon {
+                    y: 0;
+                    height: Theme.material ? 72px : 34px;
+                    g: no-chats ? G.history : G.search;
+                    size: Theme.material ? 30px : 34px;
+                    color: Theme.material ? Theme.m3-on-secondary-container : Theme.tertiary;
+                }
+            }
+        }
+        Text {
+            text: no-chats ? "No past chats yet" : "No chats match “" + query + "”";
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            color: Theme.label;
+            font-size: Theme.material ? Theme.large : Theme.title;
+            font-weight: Theme.material ? 400 : 600;
+        }
+        Text {
+            text: no-chats ? "Chats are kept here once you've sent a message, so you can come back to them." : "Try other words, or fewer of them.";
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            color: Theme.secondary;
+            font-size: Theme.small;
+        }
+        if !no-chats: HorizontalLayout {
+            alignment: center;
+            padding-top: 8px;
+            ChatButton {
+                icon: G.x;
+                label: "Clear search";
+                clicked => {
+                    field.text = "";
+                    query = "";
+                    query-edited("");
+                    field.focus();
+                }
+            }
+        }
+    }
+
+    ubar := UndoBar {
+        y: parent.height - self.height;
+        message: undo-message;
+        can-undo: root.can-undo;
+        undo => { undo(); }
+    }
+
+    // A chat's menu: Rename, Pin, Delete (at once, with Undo)
+    if menu-for != "": TouchArea {
+        // (a click anywhere else closes it)
+        clicked => { menu-for = ""; }
+    }
+    if menu-for != "": MenuBox {
+        x: parent.width - self.width - 6px;
+        y: min(menu-y, parent.height - self.height);
+        width: 200px;
+        height: mc.preferred-height + 10px;
+        mc := VerticalLayout {
+            x: 5px;
+            y: 5px;
+            width: parent.width - 10px;
+            height: self.preferred-height;
+            MenuItem {
+                text: "Rename";
+                text-x: Theme.material ? 12px : 10px;
+                clicked => {
+                    renaming = menu-for;
+                    menu-for = "";
+                }
+            }
+            MenuItem {
+                text: menu-pinned ? "Unpin" : "Pin";
+                text-x: Theme.material ? 12px : 10px;
+                clicked => {
+                    pin(menu-for, !menu-pinned);
+                    menu-for = "";
+                }
+            }
+            Rectangle {
+                height: 9px;
+                Rectangle {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+            }
+            MenuItem {
+                text: "Delete";
+                danger: true;
+                text-x: Theme.material ? 12px : 10px;
+                clicked => {
+                    delete(menu-for);
+                    menu-for = "";
+                }
+            }
+        }
+    }
+
+    public function focus-list() {
+        keys.focus();
+    }
+    public function focus-field() {
+        field.focus();
+    }
+}
+
+// ── Translate (Translator.qml, LanguageButton.qml) ──────────────────────────
+export struct Lang {
+    code: string,
+    name: string,
+}
+
+component LangButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> open;
+    callback clicked();
+    border-radius: Theme.material ? (open ? self.height / 2 : 12px) : 15px;
+    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    background: Theme.material ? (open ? Theme.m3-secondary-container : Theme.m3-surface-container-high.mix(Theme.m3-on-surface, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1)) : t.has-hover || open ? Theme.fill-hover : Theme.fill;
+    accessible-role: combobox;
+    accessible-label: label;
+    accessible-expandable: true;
+    accessible-expanded: open;
+    accessible-action-default => { clicked(); }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        Text {
+            text: label;
+            color: Theme.material && open ? Theme.m3-on-secondary-container : Theme.label;
+            font-size: Theme.material ? M.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        SIcon {
+            g: Theme.material && open ? G.caret-up : G.caret-down;
+            bold: true;
+            size: Theme.material ? 12px : 10px;
+            color: Theme.material && open ? Theme.m3-on-secondary-container : Theme.secondary;
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Translate inherits Rectangle {
+    in property <string> source-name;
+    in property <string> target-name;
+    in property <bool> source-auto;
+    in property <[Lang]> langs; // (the first: Detect)
+    in property <string> result;
+    in property <string> error;
+    callback edited(string);
+    callback source(string);
+    callback target(string);
+    callback swap();
+    callback copy-result();
+    property <int> list-open: 0; // 1 from, 2 to
+    property <bool> copied;
+    property <length> bar-h: Theme.material ? 40px : 30px;
+    property <length> half: (self.height - bar-h - 20px) / 2;
+    public function focus-input() {
+        input.focus();
+    }
+    public function set-input(t: string) {
+        input.text = t;
+    }
+    Timer {
+        interval: 1.5s;
+        running: copied;
+        triggered => { copied = false; }
+    }
+
+    fb := LangButton {
+        x: 0;
+        y: 0;
+        height: bar-h;
+        width: (parent.width - (Theme.material ? 56px : 44px)) / 2;
+        label: source-name;
+        open: list-open == 1;
+        clicked => { list-open = list-open == 1 ? 0 : 1; }
+    }
+    // (Material: a tonal icon button, squaring while pressed)
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 0;
+        width: bar-h;
+        height: bar-h;
+        border-radius: Theme.material && sw.pressed ? 12px : self.height / 2;
+        animate border-radius { duration: 250ms; easing: spring(0.6); }
+        opacity: source-auto ? (Theme.material ? 0.38 : 0.4) : 1;
+        background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, sw.pressed ? 0.9 : sw.has-hover ? 0.92 : 1) : sw.has-hover ? Theme.fill-hover : Theme.fill;
+        accessible-role: button;
+        accessible-label: "Swap languages";
+        accessible-enabled: !source-auto;
+        accessible-action-default => { if !source-auto { swap(); } }
+        SIcon { g: G.arrows-lr; size: Theme.material ? 18px : 14px; color: Theme.material ? Theme.m3-on-secondary-container : Theme.label; }
+        sw := TouchArea {
+            enabled: !source-auto;
+            mouse-cursor: pointer;
+            clicked => { swap(); }
+        }
+    }
+    tb := LangButton {
+        x: parent.width - self.width;
+        y: 0;
+        height: bar-h;
+        width: fb.width;
+        label: target-name;
+        open: list-open == 2;
+        clicked => { list-open = list-open == 2 ? 0 : 2; }
+    }
+
+    // The text to translate
+    Rectangle {
+        y: bar-h + 10px;
+        height: half;
+        border-radius: Theme.material ? 24px : 18px;
+        background: Theme.platter;
+        clip: true;
+        Flickable {
+            x: Theme.material ? 16px : 12px;
+            y: self.x;
+            width: parent.width - 2 * self.x;
+            height: parent.height - 2 * self.y;
+            content-height: max(self.height, input.preferred-height);
+            input := TextInput {
+                width: parent.width;
+                height: max(self.preferred-height, parent.height);
+                single-line: false;
+                wrap: word-wrap;
+                color: Theme.label;
+                font-size: Theme.title;
+                accessible-label: "Text to translate";
+                edited => { edited(self.text); }
+            }
+            Text {
+                x: 0;
+                y: 0;
+                visible: input.text == "";
+                text: "Type or paste text";
+                color: Theme.tertiary;
+                font-size: Theme.title;
+                accessible-role: none;
+            }
+        }
+    }
+    // The translation (Material: in a secondary container, Copy a filled button)
+    Rectangle {
+        y: bar-h + 20px + half;
+        height: half;
+        border-radius: Theme.material ? 24px : 18px;
+        background: Theme.material ? Theme.m3-secondary-container : Theme.platter;
+        clip: true;
+        Flickable {
+            x: Theme.material ? 16px : 12px;
+            y: self.x;
+            width: parent.width - 2 * self.x;
+            height: parent.height - self.y - (Theme.material ? 56px : 40px);
+            content-height: max(self.height, out.preferred-height);
+            out := TextInput {
+                width: parent.width;
+                height: max(self.preferred-height, parent.height);
+                text: error != "" ? error : result;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: error != "" ? Theme.danger : Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+                font-size: Theme.title;
+                accessible-label: "Translation";
+            }
+        }
+        if result != "" && error == "": Rectangle {
+            x: parent.width - self.width - (Theme.material ? 12px : 10px);
+            y: parent.height - self.height - (Theme.material ? 12px : 10px);
+            width: cl.preferred-width + (Theme.material ? 32px : 24px);
+            height: Theme.material ? 36px : 28px;
+            border-radius: Theme.material && ct.pressed ? 8px : self.height / 2;
+            animate border-radius { duration: 250ms; easing: spring(0.6); }
+            background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ct.pressed ? 0.9 : ct.has-hover ? 0.92 : 1) : ct.has-hover ? Theme.fill-hover : Theme.fill;
+            accessible-role: button;
+            accessible-label: "Copy translation";
+            accessible-action-default => { copy-result(); copied = true; }
+            cl := Text {
+                width: 100%;
+                height: 100%;
+                text: copied ? "Copied" : "Copy";
+                color: Theme.material ? Theme.m3-on-primary : Theme.label;
+                font-size: Theme.small;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            ct := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    copy-result();
+                    copied = true;
+                }
+            }
+        }
+    }
+
+    // A language list, under its button
+    if list-open != 0: TouchArea {
+        clicked => { list-open = 0; }
+    }
+    if list-open != 0: MenuBox {
+        x: list-open == 1 ? fb.x : tb.x;
+        y: bar-h + 4px;
+        width: fb.width;
+        height: min(260px, ll.preferred-height + 10px);
+        Flickable {
+            x: 5px;
+            y: 5px;
+            width: parent.width - 10px;
+            height: parent.height - 10px;
+            content-height: ll.preferred-height;
+            ll := VerticalLayout {
+                for l[i] in langs: Rectangle {
+                    // (the target can't be "Detect")
+                    visible: list-open == 1 || i > 0;
+                    height: self.visible ? (Theme.material ? 40px : 28px) : 0px;
+                    border-radius: Theme.material ? 12px : 7px;
+                    background: lt.has-hover ? (Theme.material ? Theme.highlight : Theme.accent) : transparent;
+                    accessible-role: list-item;
+                    accessible-label: l.name;
+                    accessible-action-default => { if list-open == 1 { source(l.code); } else { target(l.code); } list-open = 0; }
+                    Text {
+                        x: Theme.material ? 12px : 10px;
+                        height: 100%;
+                        text: l.name;
+                        vertical-alignment: center;
+                        color: lt.has-hover ? (Theme.material ? Theme.on-highlight : Theme.on-accent) : Theme.label;
+                        font-size: M.body;
+                        accessible-role: none;
+                    }
+                    lt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            if list-open == 1 { source(l.code); } else { target(l.code); }
+                            list-open = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── The sidebar ─────────────────────────────────────────────────────────────
+// ── The Anime tab (Booru.qml) ──────────────────────────────────────────────
+
+// A switch (shell/common/Switch.qml): Glass, macOS's; Material, the 52×32
+// outlined track whose handle grows 16 → 24 when on (28 while pressed)
+component Toggle inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled();
+    width: Theme.material ? 52px : 38px;
+    height: Theme.material ? 32px : 22px;
+    border-radius: self.height / 2;
+    background: Theme.material ? (checked ? Theme.m3-primary : Theme.m3-surface-container-highest) : checked ? Theme.accent : Theme.toggle-off;
+    border-width: Theme.material && !checked ? 2px : 0px;
+    border-color: Theme.m3-outline;
+    animate background { duration: 150ms; }
+    accessible-role: switch;
+    accessible-label: label;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-action-default => { toggled(); }
+    forward-focus: fs;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == Key.Return { toggled(); return accept; }
+            reject
+        }
+    }
+    property <length> knob: Theme.material ? (ta.pressed ? 28px : checked ? 24px : 16px) : self.height - 4px;
+    if Theme.material: Rectangle {
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        x: hd.x + hd.width / 2 - 20px;
+        y: (parent.height - 40px) / 2;
+        background: checked ? Theme.m3-primary : Theme.m3-on-surface;
+        opacity: ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0;
+    }
+    hd := Rectangle {
+        width: knob;
+        height: knob;
+        border-radius: knob / 2;
+        y: (parent.height - self.height) / 2;
+        x: Theme.material ? (checked ? parent.width - 16px - knob / 2 : 16px - knob / 2) : checked ? parent.width - self.width - 2px : 2px;
+        background: Theme.material ? (checked ? Theme.m3-on-primary : ta.has-hover || ta.pressed ? Theme.m3-on-surface-variant : Theme.m3-outline) : #ffffff;
+        animate x, width, height { duration: Theme.material ? 300ms : M.popover; easing: Theme.material ? spring(0.6) : cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+        animate background { duration: 150ms; }
+        if Theme.material && checked: SIcon { g: G.check; size: 13px; bold: true; color: Theme.m3-on-primary-container; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { toggled(); }
+    }
+}
+
+export struct BooruCell {
+    picture: image,
+    ready: bool,
+    page: string,
+}
+
+component Booru inherits Rectangle {
+    in property <[string]> providers;
+    in property <int> provider;
+    in property <bool> nsfw;
+    in property <[BooruCell]> cells;
+    in property <bool> loading;
+    in property <string> error;
+    in property <bool> no-results; // searched, and nothing came
+    callback pick(int);
+    callback search(string);
+    callback explicit();
+    callback more();
+    callback open(string);
+    public function focus-tags() {
+        tags.focus();
+    }
+    public function clear() {
+        tags.text = "";
+        grid.content-y = 0;
+    }
+
+    seg := Segmented {
+        y: 0;
+        width: parent.width;
+        options: providers;
+        current: provider;
+        accessible-label: "Site";
+        selected(i) => { pick(i); }
+    }
+    property <length> bar-h: Theme.material ? 40px : 32px;
+    // Tags (Material: a search bar, a pill in surface container high)
+    Rectangle {
+        x: 0;
+        y: seg.height + 8px;
+        width: parent.width - nsfw-row.width - 8px;
+        height: bar-h;
+        border-radius: self.height / 2;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+        TouchArea {
+            mouse-cursor: text;
+            clicked => { tags.focus(); }
+        }
+        SIcon {
+            x: Theme.material ? 14px : 10px;
+            g: G.search;
+            size: Theme.material ? 18px : 14px;
+            color: Theme.secondary;
+        }
+        tags := TextInput {
+            x: Theme.material ? 44px : 32px;
+            width: parent.width - self.x - (Theme.material ? 16px : 12px);
+            height: parent.height;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: M.body;
+            accessible-label: "Tags";
+            accessible-placeholder-text: "Tags, e.g. scenery sky";
+            accepted => { search(self.text); }
+            Text {
+                visible: tags.text == "";
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text: "Tags, e.g. scenery sky";
+                color: Theme.tertiary;
+                font-size: M.body;
+                accessible-role: none;
+            }
+        }
+    }
+    nsfw-row := HorizontalLayout {
+        width: self.preferred-width;
+        height: self.preferred-height;
+        x: parent.width - self.preferred-width;
+        y: seg.height + 8px + (bar-h - self.preferred-height) / 2;
+        spacing: 6px;
+        Text {
+            text: "Explicit";
+            vertical-alignment: center;
+            color: Theme.secondary;
+            font-size: Theme.small;
+            accessible-role: none;
+        }
+        Toggle {
+            checked: nsfw;
+            label: "Explicit";
+            toggled => { explicit(); }
+        }
+    }
+
+    property <length> cell: grid.width / 2;
+    property <bool> grow-footer: Theme.material && loading;
+    grid := Flickable {
+        y: seg.height + 8px + bar-h + 10px;
+        height: parent.height - self.y;
+        content-height: ceil(cells.length / 2) * cell + (grow-footer ? 64px : 40px);
+        // (the end in sight: the next page)
+        changed content-y => {
+            if cells.length > 0 && -self.content-y + self.height >= self.content-height - 8px { more(); }
+        }
+        for c[i] in cells: Rectangle {
+            x: mod(i, 2) * cell;
+            y: floor(i / 2) * cell;
+            width: cell;
+            height: cell;
+            // (Material: tiles 2 px apart with 16 px corners that tighten
+            // while pressed, and a state layer over the picture)
+            tile := Rectangle {
+                property <length> m: Theme.material ? 2px : 4px;
+                x: m;
+                y: m;
+                width: parent.width - 2 * m;
+                height: parent.height - 2 * m;
+                border-radius: Theme.material ? (it.pressed ? 8px : 16px) : 12px;
+                animate border-radius { duration: 250ms; easing: spring(0.6); }
+                transform-scale: Theme.material && it.pressed ? 0.96 : 1;
+                animate transform-scale { duration: 250ms; easing: spring(0.6); }
+                background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+                clip: true;
+                accessible-role: button;
+                accessible-label: "Open post";
+                accessible-action-default => { open(c.page); }
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: c.picture;
+                    image-fit: cover;
+                    opacity: c.ready ? 1 : 0;
+                    animate opacity { duration: M.popover; }
+                    transform-scale: it.has-hover && !Theme.material ? 1.04 : 1;
+                    animate transform-scale { duration: M.hover; }
+                    accessible-role: none;
+                }
+                if Theme.material && it.has-hover: Rectangle {
+                    background: Theme.m3-on-surface.with-alpha(it.pressed ? 0.1 : 0.08);
+                }
+                it := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { open(c.page); }
+                }
+            }
+        }
+        // The footer: how the search is going (Material: its loading
+        // indicator in place of the words)
+        Rectangle {
+            y: ceil(cells.length / 2) * cell;
+            height: grow-footer ? 64px : 40px;
+            if grow-footer: Busy { }
+            if !grow-footer: Text {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                text: loading ? "Loading…" : error != "" ? error : no-results ? "No results. Try different tags." : "";
+                color: error != "" ? Theme.danger : Theme.secondary;
+                font-size: Theme.small;
+            }
+        }
+    }
+}
+
+export struct ModelItem {
+    key: string,
+    label: string,
+    chosen: bool,
+}
+
+export component Sidebar inherits Window {
+    // The panel, in the surface's coordinates (Rust follows the screen and
+    // the dock), and whether it's open (the slide drives `progress`)
+    in property <bool> shown;
+    in property <length> panel-x: 8px;
+    in property <length> panel-y: 6px;
+    in property <length> panel-h: 600px;
+    out property <float> progress: shown ? 1 : 0;
+    out property <length> slide-x: panel-x + (1 - progress) * -40px;
+    animate progress {
+        duration: M.panel;
+        easing: shown ? (Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0)) : (Theme.material ? cubic-bezier(0.3, 0.0, 0.8, 0.15) : cubic-bezier(0.4, 0.0, 1.0, 1.0));
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+    in-out property <int> tab;
+    in property <[string]> tabs: ["AI", "Translate"];
+    // Material's empty-state shape, the cookie (src/surfaces/shapes.rs)
+    in property <string> cookie;
+
+    // The chat
+    in property <string> model-name: "Add a model";
+    in property <bool> configured;
+    in property <bool> needs-key;
+    in property <string> provider-name;
+    in property <string> credential-label: "api key"; // (lower case, in a sentence)
+    in property <string> credential-name: "API key"; // (the key field's)
+    in property <[ChatRow]> rows;
+    in property <bool> busy;
+    in property <[image]> pictures;
+    in property <bool> can-attach: true;
+    in property <bool> blind; // pictures waiting, but the model can't read them
+    in property <string> blind-text;
+    in property <string> switch-label;
+    in property <bool> switch-add;
+    in property <string> blind-lens; // a circled picture among them
+    in property <bool> blind-lens-busy;
+    in property <string> blind-lens-note;
+    in property <bool> blind-lens-ok;
+    in property <bool> can-history;
+    in-out property <bool> history-open;
+    in property <[ModelItem]> models;
+    in property <string> undo-message;
+    in property <bool> can-undo;
+    in property <string> placeholder: "Message";
+    // Past chats
+    in property <[ChatEntry]> chats;
+    in property <bool> chats-none;
+    in property <bool> searching;
+    in-out property <string> query;
+    in-out property <string> selected;
+    in-out property <string> renaming;
+    // Translate
+    in property <string> source-name: "Detect";
+    in property <string> target-name: "English";
+    in property <bool> source-auto: true;
+    in property <[Lang]> langs;
+    in property <string> tr-result;
+    in property <string> tr-error;
+    // Anime (Booru.qml; the tab only with sidebar.booru)
+    in property <[string]> booru-providers;
+    in property <int> booru-provider;
+    in property <bool> booru-nsfw;
+    in property <[BooruCell]> booru-cells;
+    in property <bool> booru-loading;
+    in property <string> booru-error;
+    in property <bool> booru-none;
+
+    callback dismiss();
+    callback closed(); // the slide out ended
+    callback tab-chosen(int);
+    callback send(string);
+    callback stop();
+    callback new-chat();
+    callback show-history(bool);
+    callback pick-model(string);
+    callback manage-models();
+    callback picker-clicked();
+    callback save-key(string);
+    callback add-pictures();
+    callback shot-screen();
+    callback shot-area();
+    callback circle();
+    callback remove-picture(int);
+    callback copy(string);
+    callback open-link(string);
+    callback search-web(string);
+    callback switch-vision();
+    callback paste-requested();
+    callback open-chat(string);
+    callback query-edited(string);
+    callback delete-chat(string);
+    callback rename-chat(string, string);
+    callback pin-chat(string, bool);
+    callback move-selection(int);
+    callback open-first();
+    callback undo();
+    callback tr-edited(string);
+    callback tr-source(string);
+    callback tr-target(string);
+    callback tr-swap();
+    callback tr-copy();
+    callback booru-pick(int);
+    callback booru-search(string);
+    callback booru-explicit();
+    callback booru-more();
+    callback booru-open(string);
+
+    property <bool> model-menu;
+    property <bool> shot-menu;
+    property <bool> stick: true; // follow the end of the chat
+    property <bool> can-send: composer.text != "" || pictures.length > 0;
+
+    public function opened() {
+        model-menu = false;
+        shot-menu = false;
+        if tab == 0 && !history-open { composer.focus(); } else if tab == 1 { tr.focus-input(); } else if tab == 2 { anime.focus-tags(); } else { keys.focus(); }
+    }
+    public function focus-composer() {
+        composer.focus();
+    }
+    public function paste-text() {
+        composer.paste();
+    }
+    public function scroll-end() {
+        stick = true;
+        chat.content-y = min(0px, chat.height - chat.content-height);
+    }
+    public function enter-history() {
+        model-menu = false;
+        shot-menu = false;
+        hist.enter();
+    }
+    public function focus-history-list() {
+        hist.focus-list();
+    }
+    public function focus-history-search() {
+        hist.focus-field();
+    }
+    public function reveal-chat(top: length, bottom: length) {
+        hist.reveal(top, bottom);
+    }
+    public function booru-clear() {
+        anime.clear();
+    }
+    public function set-translate-input(t: string) {
+        tr.set-input(t);
+    }
+    function submit() {
+        if busy { stop(); return; }
+        if !can-send { return; }
+        send(composer.text);
+        composer.text = "";
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Sidebar";
+    default-font-family: Theme.font;
+
+    // Outside the panel: a click closes it (Sidebar.qml's catcher)
+    TouchArea {
+        clicked => { dismiss(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                if model-menu || shot-menu { model-menu = false; shot-menu = false; return accept; }
+                if history-open { show-history(false); return accept; }
+                dismiss();
+                return accept;
+            }
+            reject
+        }
+
+        panel := Rectangle {
+            x: slide-x;
+            y: panel-y;
+            width: 420px;
+            height: panel-h;
+            opacity: progress;
+            border-radius: Theme.radius-panel;
+            // (Glass: the plugin draws the glass and its rim; Material: a
+            // tonal panel with the shell's shadow, see-through as Settings'
+            // Material transparency says, Theme.veil, the shadow then gone)
+            background: Theme.material ? Theme.panel.with-alpha(Theme.panel-alpha) : Theme.panel;
+            drop-shadow-blur: Theme.material ? 24px : 0px;
+            drop-shadow-offset-y: Theme.material ? 6px : 0px;
+            drop-shadow-color: Theme.material && !Theme.blur ? #00000040 : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Sidebar";
+            // (clicks on the panel stay on it)
+            TouchArea { }
+
+            content := Rectangle {
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                height: parent.height - 24px;
+
+                tabbar := Segmented {
+                    y: 0;
+                    width: parent.width;
+                    options: tabs;
+                    current: tab;
+                    selected(i) => {
+                        tab = i;
+                        tab-chosen(i);
+                    }
+                }
+
+                // ── The AI chat (AiChat.qml)
+                ai := Rectangle {
+                    visible: tab == 0;
+                    y: tabbar.height + 12px;
+                    height: parent.height - self.y;
+
+                    // Header: the model picker, past chats and a new chat (in past chats: back)
+                    header := Rectangle {
+                        height: Theme.material ? 32px : 30px;
+                        y: 0;
+                        if !history-open: Rectangle {
+                            x: 0;
+                            width: pr.preferred-width + 24px;
+                            border-radius: Theme.material ? (model-menu ? self.height / 2 : 12px) : 15px;
+                            animate border-radius { duration: 250ms; easing: spring(0.6); }
+                            background: Theme.material ? (model-menu ? Theme.m3-secondary-container : Theme.m3-surface-container-high.mix(Theme.m3-on-surface, pt.pressed ? 0.9 : pt.has-hover ? 0.92 : 1)) : pt.has-hover || model-menu ? Theme.fill-hover : Theme.fill;
+                            accessible-role: combobox;
+                            accessible-label: "Model: " + model-name;
+                            accessible-expandable: true;
+                            accessible-expanded: model-menu;
+                            accessible-action-default => { if configured { model-menu = !model-menu; } else { picker-clicked(); } }
+                            pr := HorizontalLayout {
+                                alignment: center;
+                                spacing: 6px;
+                                SIcon { g: G.sparkle; fill: true; size: 14px; color: Theme.accent; }
+                                Text {
+                                    text: model-name;
+                                    color: Theme.material && model-menu ? Theme.m3-on-secondary-container : Theme.label;
+                                    font-size: Theme.small;
+                                    font-weight: Theme.material ? 500 : 600;
+                                    vertical-alignment: center;
+                                    accessible-role: none;
+                                }
+                                SIcon {
+                                    g: Theme.material && model-menu ? G.caret-up : G.caret-down;
+                                    bold: true;
+                                    size: 11px;
+                                    color: Theme.material && model-menu ? Theme.m3-on-secondary-container : Theme.secondary;
+                                }
+                            }
+                            pt := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    shot-menu = false;
+                                    if configured { model-menu = !model-menu; } else { picker-clicked(); }
+                                }
+                            }
+                        }
+                        if history-open: GhostButton {
+                            x: -4px;
+                            y: (parent.height - self.height) / 2;
+                            width: Theme.material ? 40px : 30px;
+                            height: self.width;
+                            icon: G.arrow-left;
+                            icon-size: Theme.material ? 20px : 16px;
+                            icon-color: Theme.label;
+                            label: "Back to chat";
+                            clicked => { show-history(false); }
+                        }
+                        if history-open: Text {
+                            x: (Theme.material ? 40px : 30px) - 4px + (Theme.material ? 8px : 4px);
+                            height: parent.height;
+                            vertical-alignment: center;
+                            text: "Chats";
+                            color: Theme.label;
+                            font-size: Theme.title;
+                            font-weight: Theme.material ? 400 : 600;
+                            accessible-role: text;
+                            accessible-label: "Past chats";
+                        }
+                        HorizontalLayout {
+                            x: parent.width - self.width;
+                            width: self.preferred-width;
+                            spacing: 8px;
+                            if can-history && !history-open: HeaderButton {
+                                height: header.height;
+                                icon: G.history;
+                                label: "Show past chats";
+                                clicked => { model-menu = false; show-history(true); }
+                            }
+                            if rows.length > 0: HeaderButton {
+                                height: header.height;
+                                icon: G.note-pencil;
+                                label: "Start a new chat";
+                                clicked => { model-menu = false; new-chat(); }
+                            }
+                        }
+                    }
+
+                    // The conversation
+                    chat := Flickable {
+                        visible: !history-open;
+                        y: header.height + 12px;
+                        height: (blind ? blindbox.y : pics.visible ? pics.y : composer-box.y) - 10px - self.y;
+                        content-height: msgs.preferred-height;
+                        changed content-height => {
+                            if stick || busy { self.content-y = min(0px, self.height - self.content-height); }
+                        }
+                        changed height => {
+                            if stick { self.content-y = min(0px, self.height - self.content-height); }
+                        }
+                        flicked => {
+                            stick = self.content-y <= self.height - self.content-height + 2px;
+                        }
+                        msgs := VerticalLayout {
+                            width: chat.width;
+                            spacing: 14px;
+                            for r in rows: Message {
+                                msg: r;
+                                list-width: chat.width;
+                                copy(t) => { root.copy(t); }
+                                link(u) => { root.open-link(u); }
+                                search-web(p) => { root.search-web(p); }
+                            }
+                        }
+                    }
+
+                    // Empty state
+                    if rows.length == 0 && !history-open: VerticalLayout {
+                        x: 20px;
+                        width: parent.width - 40px;
+                        y: chat.y + (chat.height - self.preferred-height) / 2;
+                        height: self.preferred-height;
+                        spacing: 8px;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: Theme.material ? 72px : 34px;
+                                height: Theme.material ? 80px : 34px;
+                                // (Material: the sparkle on a soft shape, the cookie)
+                                if Theme.material: Path {
+                                    y: 0;
+                                    width: 72px;
+                                    height: 72px;
+                                    viewbox-width: 100;
+                                    viewbox-height: 100;
+                                    commands: cookie;
+                                    fill: Theme.m3-primary-container;
+                                }
+                                SIcon {
+                                    y: 0;
+                                    height: Theme.material ? 72px : 34px;
+                                    g: G.sparkle;
+                                    fill: true;
+                                    size: Theme.material ? 30px : 34px;
+                                    color: Theme.material ? Theme.m3-on-primary-container : Theme.tertiary;
+                                }
+                            }
+                        }
+                        Text {
+                            text: !configured ? "Add your AI model" : needs-key ? "Connect " + provider-name : "Ask " + model-name;
+                            horizontal-alignment: center;
+                            // (AiChat.qml's runs a long name past the margins on one
+                            // line; here it wraps rather than be cut)
+                            wrap: word-wrap;
+                            color: Theme.label;
+                            font-size: Theme.material ? Theme.large : Theme.title;
+                            font-weight: Theme.material ? 400 : 600;
+                        }
+                        Text {
+                            text: !configured ? "Choose your provider and model in Settings → AI. Click Add a model above to get started." : needs-key ? "Add your " + provider-name + " " + credential-label + " in Settings → AI, or paste it here." : "Questions, commands, writing help. Type /model to switch models.";
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        // Key entry
+                        if needs-key: HorizontalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            padding-top: 8px;
+                            Rectangle {
+                                width: 220px;
+                                height: Theme.material ? 40px : 32px;
+                                border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+                                background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+                                border-width: Theme.material ? (kf.has-focus ? 2px : 0px) : 1px;
+                                border-color: kf.has-focus ? Theme.accent : Theme.separator;
+                                kf := TextInput {
+                                    x: Theme.material ? 16px : 10px;
+                                    width: parent.width - 2 * self.x;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    single-line: true;
+                                    input-type: password;
+                                    color: Theme.label;
+                                    font-size: M.body;
+                                    accessible-label: credential-name;
+                                    accepted => {
+                                        if self.text != "" { save-key(self.text); self.text = ""; composer.focus(); }
+                                    }
+                                }
+                                Text {
+                                    x: kf.x;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    visible: kf.text == "";
+                                    text: credential-name;
+                                    color: Theme.tertiary;
+                                    font-size: M.body;
+                                    accessible-role: none;
+                                }
+                            }
+                            Rectangle {
+                                property <bool> on: kf.text != "";
+                                width: Theme.material ? sl.preferred-width + 32px : 64px;
+                                height: Theme.material ? 40px : 32px;
+                                border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+                                background: on ? Theme.accent : Theme.material ? Theme.m3-on-surface.with-alpha(0.12) : Theme.toggle-off;
+                                accessible-role: button;
+                                accessible-label: "Save key";
+                                accessible-enabled: on;
+                                accessible-action-default => { if on { save-key(kf.text); kf.text = ""; composer.focus(); } }
+                                sl := Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "Save key";
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    color: parent.on ? Theme.on-accent : Theme.material ? Theme.m3-on-surface.with-alpha(0.38) : Theme.tertiary;
+                                    font-size: Theme.material ? M.body : Theme.small;
+                                    font-weight: Theme.material ? 500 : 600;
+                                    accessible-role: none;
+                                }
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { if parent.on { save-key(kf.text); kf.text = ""; composer.focus(); } }
+                                }
+                            }
+                        }
+                    }
+
+                    // Pictures waiting, but the model can't read them: which can, a tap away
+                    blindbox := VerticalLayout {
+                        visible: blind && !history-open;
+                        y: pics.y - 10px - self.preferred-height;
+                        spacing: 8px;
+                        height: self.preferred-height;
+                        Text {
+                            text: blind-text;
+                            wrap: word-wrap;
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            ChatButton {
+                                primary: true;
+                                icon: switch-add ? G.plus : G.swap;
+                                label: switch-label;
+                                clicked => { switch-vision(); }
+                            }
+                            if blind-lens != "": ChatButton {
+                                icon: blind-lens-ok ? G.check : G.search;
+                                label: blind-lens-busy ? "Searching the web…" : "Search the web";
+                                busy: blind-lens-busy;
+                                clicked => { search-web(blind-lens); }
+                            }
+                        }
+                        if blind-lens-note != "": Text {
+                            text: blind-lens-note;
+                            wrap: word-wrap;
+                            color: blind-lens-ok ? Theme.secondary : Theme.danger;
+                            font-size: Theme.small;
+                        }
+                    }
+
+                    // Pictures going with the next message, each with its remove button
+                    pics := HorizontalLayout {
+                        visible: pictures.length > 0 && !history-open;
+                        x: 0;
+                        y: composer-box.y - 8px - 64px;
+                        height: 64px;
+                        width: self.preferred-width;
+                        spacing: 8px;
+                        for p[i] in pictures: Rectangle {
+                            width: 64px;
+                            height: 64px;
+                            Rectangle {
+                                border-radius: Theme.material ? 16px : 12px;
+                                background: Theme.fill;
+                                clip: true;
+                                Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: p;
+                                    image-fit: cover;
+                                    accessible-role: image;
+                                    accessible-label: "Picture " + (i + 1);
+                                }
+                            }
+                            Rectangle {
+                                x: parent.width - self.width + 6px;
+                                y: -6px;
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: Theme.material ? Theme.m3-inverse-surface : #1a1a1fd9;
+                                accessible-role: button;
+                                accessible-label: "Remove picture " + (i + 1);
+                                accessible-action-default => { remove-picture(i); }
+                                SIcon { g: G.x; bold: true; size: 11px; color: Theme.material ? Theme.m3-inverse-on-surface : white; }
+                                TouchArea {
+                                    x: -11px;
+                                    y: -11px;
+                                    width: parent.width + 22px; // (44 px to hit)
+                                    height: parent.height + 22px;
+                                    mouse-cursor: pointer;
+                                    clicked => { remove-picture(i); }
+                                }
+                            }
+                        }
+                    }
+
+                    // The composer
+                    composer-box := Rectangle {
+                        visible: !history-open;
+                        y: parent.height - self.height;
+                        height: min(150px, composer.preferred-height + (Theme.material ? 32px : 22px));
+                        border-radius: Theme.material ? min(self.height / 2, 28px) : 18px;
+                        background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+                        border-width: Theme.material ? 0px : 1px;
+                        border-color: composer.has-focus ? Theme.accent.with-alpha(0.6) : Theme.separator;
+                        tools := HorizontalLayout {
+                            x: 6px;
+                            y: parent.height - self.height - (Theme.material ? 6px : 3px);
+                            height: Theme.material ? 36px : 28px;
+                            width: self.preferred-width;
+                            spacing: 0px;
+                            GhostButton {
+                                width: Theme.material ? 36px : 28px;
+                                height: self.width;
+                                icon: G.plus;
+                                label: "Add pictures";
+                                enabled: can-attach;
+                                clicked => { add-pictures(); }
+                            }
+                            GhostButton {
+                                width: Theme.material ? 36px : 28px;
+                                height: self.width;
+                                icon: G.camera;
+                                label: "Take a screenshot";
+                                enabled: can-attach;
+                                clicked => { shot-screen(); }
+                                right-clicked => { model-menu = false; shot-menu = !shot-menu; }
+                            }
+                            GhostButton {
+                                width: 18px;
+                                height: Theme.material ? 36px : 28px;
+                                icon: G.caret-up;
+                                icon-size: 10px;
+                                label: "More screenshot options";
+                                enabled: can-attach;
+                                clicked => { model-menu = false; shot-menu = !shot-menu; }
+                            }
+                            // Circle to search: circle anything on the screen, and it's asked about
+                            GhostButton {
+                                width: Theme.material ? 36px : 28px;
+                                height: self.width;
+                                icon: G.lasso;
+                                label: "Circle to search";
+                                enabled: can-attach;
+                                clicked => { circle(); }
+                            }
+                        }
+                        Flickable {
+                            x: tools.x + tools.width + 6px;
+                            y: Theme.material ? 16px : 11px;
+                            width: send-button.x - 6px - self.x;
+                            height: parent.height - 2 * self.y;
+                            content-height: max(self.height, composer.preferred-height);
+                            composer := TextInput {
+                                width: parent.width;
+                                height: max(self.preferred-height, parent.height);
+                                single-line: false;
+                                wrap: word-wrap;
+                                color: Theme.label;
+                                selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+                                font-size: M.body;
+                                accessible-label: "Message";
+                                accessible-placeholder-text: placeholder;
+                                key-pressed(e) => {
+                                    // (Return sends; while an answer streams it waits, the
+                                    // text kept: only the button stops)
+                                    if e.text == Key.Return && !e.modifiers.shift {
+                                        if !busy { submit(); }
+                                        return accept;
+                                    }
+                                    // Ctrl+V: a picture on the clipboard is added; otherwise text pastes
+                                    if e.modifiers.control && (e.text == "v" || e.text == "V") {
+                                        paste-requested();
+                                        return accept;
+                                    }
+                                    reject
+                                }
+                            }
+                            Text {
+                                x: 0;
+                                y: 0;
+                                visible: composer.text == "";
+                                text: placeholder;
+                                color: Theme.tertiary;
+                                font-size: M.body;
+                                accessible-role: none;
+                            }
+                        }
+                        send-button := Rectangle {
+                            x: parent.width - self.width - 6px;
+                            y: parent.height - self.height - 6px;
+                            width: Theme.material ? 36px : 28px;
+                            height: self.width;
+                            border-radius: Theme.material && st.pressed ? 10px : self.width / 2;
+                            animate border-radius { duration: 250ms; easing: spring(0.6); }
+                            background: busy || can-send ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1) : Theme.accent) : Theme.material ? Theme.m3-on-surface.with-alpha(0.12) : Theme.toggle-off;
+                            accessible-role: button;
+                            accessible-label: busy ? "Stop" : "Send";
+                            accessible-enabled: busy || can-send;
+                            accessible-action-default => { submit(); }
+                            SIcon {
+                                g: busy ? G.stop : G.arrow-up;
+                                bold: !busy;
+                                fill: busy;
+                                size: Theme.material ? 18px : 14px;
+                                color: busy || can-send ? Theme.on-accent : Theme.material ? Theme.m3-on-surface.with-alpha(0.38) : Theme.tertiary;
+                            }
+                            st := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { submit(); }
+                            }
+                        }
+                    }
+
+                    // A chat deleted in past chats, still offered back
+                    if !history-open: UndoBar {
+                        y: composer-box.y - 10px - self.height;
+                        message: undo-message;
+                        can-undo: root.can-undo;
+                        undo => { undo(); }
+                    }
+
+                    // Past chats
+                    hist := History {
+                        visible: history-open;
+                        y: header.height + 12px;
+                        height: parent.height - self.y;
+                        chats: root.chats;
+                        no-chats: chats-none;
+                        cookie: root.cookie;
+                        searching: root.searching;
+                        undo-message: root.undo-message;
+                        can-undo: root.can-undo;
+                        query <=> root.query;
+                        selected <=> root.selected;
+                        renaming <=> root.renaming;
+                        back => { show-history(false); }
+                        open(id) => { open-chat(id); }
+                        delete(id) => { delete-chat(id); }
+                        rename(id, t) => { rename-chat(id, t); }
+                        pin(id, p) => { pin-chat(id, p); }
+                        undo => { undo(); }
+                        query-edited(q) => { query-edited(q); }
+                        move(d) => { move-selection(d); }
+                        open-first => { open-first(); }
+                    }
+
+                    // The screenshot menu: above the composer's camera
+                    if shot-menu: TouchArea {
+                        clicked => { shot-menu = false; }
+                    }
+                    if shot-menu: MenuBox {
+                        x: 0;
+                        y: composer-box.y - 6px - self.height;
+                        width: 220px;
+                        height: sm.preferred-height + 10px;
+                        sm := VerticalLayout {
+                            x: 5px;
+                            y: 5px;
+                            width: parent.width - 10px;
+                            height: self.preferred-height;
+                            MenuItem {
+                                text: "Whole screen";
+                                has-icon: true;
+                                icon: G.monitor;
+                                text-x: Theme.material ? 42px : 30px;
+                                clicked => { shot-menu = false; shot-screen(); }
+                            }
+                            MenuItem {
+                                text: "Area or window…";
+                                has-icon: true;
+                                icon: G.selection;
+                                text-x: Theme.material ? 42px : 30px;
+                                clicked => { shot-menu = false; shot-area(); }
+                            }
+                        }
+                    }
+
+                    // The model menu
+                    if model-menu: TouchArea {
+                        clicked => { model-menu = false; }
+                    }
+                    if model-menu: MenuBox {
+                        x: 0;
+                        y: header.height + 6px;
+                        width: 280px;
+                        height: min(340px, mm.preferred-height + 10px);
+                        accessible-role: list;
+                        accessible-label: "Models";
+                        Flickable {
+                            x: 5px;
+                            y: 5px;
+                            width: parent.width - 10px;
+                            height: parent.height - 10px;
+                            content-height: mm.preferred-height;
+                            mm := VerticalLayout {
+                                for m in models: MenuItem {
+                                    text: m.label;
+                                    checked: m.chosen;
+                                    chosen: m.chosen && Theme.material;
+                                    clicked => {
+                                        model-menu = false;
+                                        pick-model(m.key);
+                                    }
+                                }
+                                MenuItem {
+                                    text: "Manage models…";
+                                    text-x: Theme.material ? 40px : 12px;
+                                    clicked => {
+                                        model-menu = false;
+                                        manage-models();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Translate
+                tr := Translate {
+                    visible: tab == 1;
+                    y: tabbar.height + 12px;
+                    height: parent.height - self.y;
+                    source-name: root.source-name;
+                    target-name: root.target-name;
+                    source-auto: root.source-auto;
+                    langs: root.langs;
+                    result: tr-result;
+                    error: tr-error;
+                    edited(t) => { tr-edited(t); }
+                    source(c) => { tr-source(c); }
+                    target(c) => { tr-target(c); }
+                    swap => { tr-swap(); }
+                    copy-result => { tr-copy(); }
+                }
+
+                // ── Anime
+                anime := Booru {
+                    visible: tab == 2;
+                    y: tabbar.height + 12px;
+                    height: parent.height - self.y;
+                    providers: booru-providers;
+                    provider: booru-provider;
+                    nsfw: booru-nsfw;
+                    cells: booru-cells;
+                    loading: booru-loading;
+                    error: booru-error;
+                    no-results: booru-none;
+                    pick(i) => { booru-pick(i); }
+                    search(t) => { booru-search(t); }
+                    explicit => { booru-explicit(); }
+                    more => { booru-more(); }
+                    open(p) => { booru-open(p); }
+                }
+            }
+        }
+    }
+}

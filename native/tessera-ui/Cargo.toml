@@ -1,13 +1,23 @@
-[package]
-name = "tessera-ui"
+# The workspace: tessera-ui, the binary (src/main.rs, src/surfaces.rs: which
+# surfaces there are), tessera-core (core/: the platform, the shell's shared
+# state, the theme, the services) and one crate per surface (surfaces/<name>/).
+# A change to one surface recompiles that crate and the binary, nothing else
+# (docs/rust-ui-surfaces.md, "The workspace").
+[workspace]
+members = ["core", "surfaces/*"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Tessera's interface in Rust (Slint on wlr-layer-shell), surface by surface beside the QML shell"
 publish = false
 
-[dependencies]
+# Every crate's versions, in one place (a crate names what it uses: `slint.workspace = true`)
+[workspace.dependencies]
+tessera-core = { path = "core" }
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "unstable-fontique-011"] }
+slint-build = "=1.18.1"
 i-slint-core = "=1.18.1"
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-egl = "0.32"
@@ -16,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] } # (settings written back keep their order)
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 material-colors = "0.5"
-# (the wallpaper's seed: matugen's steps on the release matugen uses, src/seed.rs)
+# (the wallpaper's seed: matugen's steps on the release matugen uses, core/src/seed.rs)
 mc04 = { package = "material-colors", version = "0.4", features = ["image"] }
 # (the one material-colors 0.4 already builds: clipboard pictures, GIF previews,
 # app icons, the wallpaper's top for the menu bar's text colour)
@@ -27,16 +37,45 @@ accesskit = "0.25"
 accesskit_unix = "0.24"
 calloop = { version = "0.14", features = ["signals"] }
 wayland-client = "0.31"
-# App icons as the shell draws them (src/appicon.rs): SVG decoding (resvg,
+# App icons as the shell draws them (core/src/appicon.rs): SVG decoding (resvg,
 # already built for Slint; PNG through `image` above): no new crates
 resvg = { version = "0.48", default-features = false }
 # HTTP for the AI chat: blocking, small, no async runtime; rustls, certificates
-# checked against the system's trust store (src/services/ai/mod.rs)
+# checked against the system's trust store (core/src/services/ai/mod.rs)
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 wayland-protocols-misc = { version = "0.3", features = ["client"] } # (src/bin/fake-ime.rs only)
 
-[build-dependencies]
-slint-build = "=1.18.1"
+[package]
+name = "tessera-ui"
+description = "Tessera's interface in Rust (Slint on wlr-layer-shell), surface by surface beside the QML shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tessera-core.workspace = true
+slint.workspace = true
+smithay-client-toolkit.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+memmap2.workspace = true
+calloop.workspace = true
+wayland-protocols-misc.workspace = true
+# The surfaces, one crate each (a new one: its line here, its name in
+# src/surfaces.rs's KNOWN and make(); `members` takes surfaces/* already)
+tessera-menubar = { path = "surfaces/menubar" }
+tessera-dock = { path = "surfaces/dock" }
+tessera-emoji = { path = "surfaces/emoji" }
+tessera-clipboard = { path = "surfaces/clipboard" }
+tessera-osd = { path = "surfaces/osd" }
+tessera-wallpaper = { path = "surfaces/wallpaper" }
+tessera-today = { path = "surfaces/today" }
+tessera-desktop = { path = "surfaces/desktop" }
+tessera-notifications = { path = "surfaces/notifications" }
+tessera-spotlight = { path = "surfaces/spotlight" }
+tessera-controlcenter = { path = "surfaces/controlcenter" }
+tessera-sidebar = { path = "surfaces/sidebar" }
 
 [profile.release]
 opt-level = 3

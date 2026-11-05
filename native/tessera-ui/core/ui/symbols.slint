@@ -1,0 +1,35 @@
+// Icons in either look (shared: the menu bar's island, the desktop): a
+// Phosphor glyph, or in Material the Material Symbol the shell draws for it.
+
+import { Theme } from "theme.slint";
+
+// The Material look's icons: a Material Symbol where the shell has one for
+// the Phosphor glyph (common/Icon.qml, material-symbols.js; Rust answers
+// with icons::symbol), 1.2x the size. (Slint sets no font axes: symbols draw
+// with the font's default fill, outlined where Icon.qml fills them.)
+export global Symbols {
+    pure callback of(string) -> string;
+}
+
+export component SymIcon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size: 15px;
+    in property <bool> fill: false;
+    in property <bool> bold: false;
+    property <string> sym: Theme.material && root.text != "" ? Symbols.of(root.text) : "";
+    preferred-width: t.preferred-width;
+    preferred-height: t.preferred-height;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: sym != "" ? sym : root.text;
+        color: root.color;
+        font-size: sym != "" ? round(root.font-size * 1.2 / 1px) * 1px : root.font-size;
+        font-family: sym != "" ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        font-weight: sym != "" && bold ? 600 : 400;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}

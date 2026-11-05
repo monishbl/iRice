@@ -45,6 +45,13 @@ impl Dispatch<ZwpInputMethodManagerV2, ()> for Ime {
 }
 
 fn main() {
+    // Only inside a sandbox arena (dev.sh sets TESSERA_ARENA there), and only
+    // as `fake-ime` with nothing after it: never the input method of a real
+    // session it was started in by mistake (a harness's `fake-ime --list`)
+    if std::env::var_os("TESSERA_ARENA").or_else(|| std::env::var_os("IRICE_ARENA")).is_none() || std::env::args().len() > 1 {
+        eprintln!("fake-ime: only inside a sandbox arena (IRICE_ARENA=N ./dev.sh run fake-ime), without arguments");
+        std::process::exit(2);
+    }
     let conn = Connection::connect_to_env().expect("display");
     let (globals, mut queue) = registry_queue_init::<Ime>(&conn).expect("registry");
     let qh = queue.handle();

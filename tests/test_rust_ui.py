@@ -20,11 +20,24 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# (a Cargo workspace: the binary in src/, what's shared in core/, a crate per
+# surface in surfaces/<name>/ — docs/rust-ui-surfaces.md, "The workspace")
 CRATE = ROOT / "native/tessera-ui"
+CORE = CRATE / "core"
+
+
+def surface(name):
+    """A surface's crate"""
+    return CRATE / "surfaces" / name
+
+
+def rust_sources():
+    """Every .rs file of the workspace"""
+    return [p for d in [CRATE / "src", CORE / "src", *sorted((CRATE / "surfaces").glob("*/src"))] for p in d.rglob("*.rs")]
 
 
 def known_surfaces():
-    src = (CRATE / "src/surfaces/mod.rs").read_text()
+    src = (CRATE / "src/surfaces.rs").read_text()
     m = re.search(r"pub const KNOWN: &\[&str\] = &\[([^\]]*)\]", src)
     return re.findall(r'"([a-z]+)"', m.group(1))
 
@@ -51,7 +64,7 @@ class Agreement(unittest.TestCase):
 
     def test_the_shell_reads_what_the_binary_writes(self):
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
-        rs = (CRATE / "src/surfaces/mod.rs").read_text()
+        rs = (CORE / "src/surfaces/mod.rs").read_text()
         for word in ('"ready"', '"unknown"', '"ui"'):
             self.assertIn(word, qml)
             self.assertIn(word, rs)
@@ -60,9 +73,9 @@ class Agreement(unittest.TestCase):
     def test_panels_drawn_in_rust_open_and_close_through_the_shell(self):
         # RustUi forwards Panels' open and close as commands on tessera-ui's
         # stdin; tessera-ui says when a panel closed itself and asks for
-        # what only the shell does (src/shell.rs)
+        # what only the shell does (core/src/shell.rs)
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
-        shell_rs = (CRATE / "src/shell.rs").read_text()
+        shell_rs = (CORE / "src/shell.rs").read_text()
         for word in ('cmd: "open"', 'cmd: "close"', "proc.write(", 'e.kind === "closed"', 'e.kind === "call"', "Panels.close()"):
             self.assertIn(word, qml)
         for word in ('"cmd"', '"surface"', '"screen"', '"closed"', '"call"'):
@@ -71,7 +84,7 @@ class Agreement(unittest.TestCase):
         self.assertIn("Command::parse", main_rs)
         # every call a part asks for is one RustUi.qml answers
         asked = set()
-        for p in (CRATE / "src").rglob("*.rs"):
+        for p in rust_sources():
             asked |= set(re.findall(r'shell::ask\("([a-zA-Z.]+)"', p.read_text()))
         answered = set(re.findall(r'case "([a-zA-Z.]+)":', qml))
         self.assertTrue(asked, "no calls found")
@@ -92,7 +105,7 @@ class Agreement(unittest.TestCase):
         # the shell tells it what its own sliders set (no OSD for those) and
         # passes `qs ipc call osd preview` on, as stdin lines {"to": "osd", …}
         rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
-        osd_rs = (CRATE / "src/surfaces/osd/mod.rs").read_text()
+        osd_rs = (surface("osd") / "src/lib.rs").read_text()
         main_rs = (CRATE / "src/main.rs").read_text()
         self.assertIn('e.kind === "osd"', rust_ui)
         self.assertIn('"kind": "osd", "shown"', osd_rs)
@@ -114,16 +127,16 @@ class Agreement(unittest.TestCase):
         self.assertEqual(qml.count("NotificationServer {"), 1)
         self.assertRegex(qml, r"LazyLoader \{\s*id: serverLoader\s*active: root\.ownServer")
         self.assertIn('RustUi.drawing("notifications")', qml)
-        part = (CRATE / "src/surfaces/notifications/mod.rs").read_text()
+        part = (surface("notifications") / "src/lib.rs").read_text()
         self.assertIn("st.shell.surfaces.hold(NAME)", part)
         self.assertIn("st.shell.surfaces.release(NAME)", part)
         # (queued behind a holder, never taking the name from it)
-        serv = (CRATE / "src/services/notify.rs").read_text()
+        serv = (CORE / "src/services/notify/mod.rs").read_text()
         self.assertIn("request_name_with_flags(NAME, Default::default())", serv)
 
     def test_the_mirror_and_tessera_ui_speak_the_same_lines(self):
         qml = (ROOT / "shell/services/Notifications.qml").read_text() + (ROOT / "shell/services/RustUi.qml").read_text()
-        part = (CRATE / "src/surfaces/notifications/mod.rs").read_text()
+        part = (surface("notifications") / "src/lib.rs").read_text()
         self.assertIn('tell("notifications"', part)
         self.assertIn('e.kind === "notifications"', qml)
         sent = set(re.findall(r'do: "([a-z]+)"', qml))
@@ -131,7 +144,7 @@ class Agreement(unittest.TestCase):
         self.assertTrue(sent, "the shell sends nothing")
         self.assertEqual(sorted(sent - handled), [], "lines the part doesn't handle")
         for route in re.findall(r'n\.route === "([a-z]+)"', qml):
-            self.assertIn(f'Route::{route.capitalize()} => "{route}"', (CRATE / "src/surfaces/notifications/model.rs").read_text())
+            self.assertIn(f'Route::{route.capitalize()} => "{route}"', (CORE / "src/services/notify/model.rs").read_text())
 
     def test_notification_center_moves_with_the_notifications(self):
         # Panels opens it as before; the QML one steps aside while tessera-ui
@@ -141,21 +154,21 @@ class Agreement(unittest.TestCase):
         qml = (ROOT / "shell/services/Notifications.qml").read_text()
         self.assertIn('cmd: "open", surface: "notifications"', qml)
         self.assertIn('e.kind === "nc"', qml)
-        panel = (CRATE / "src/surfaces/notifications/panel.rs").read_text()
+        panel = (surface("notifications") / "src/panel.rs").read_text()
         acts = set(re.findall(r'\bnc\("([a-z.]+)"', panel))
         answered = set(re.findall(r'case "([a-z.]+)":', qml))
         self.assertTrue(acts, "the panel asks nothing")
         self.assertEqual(sorted(acts - answered), [], "acts the shell doesn't answer")
         # (the timer's buttons, whose acts come from the markup)
-        slint = (CRATE / "ui/notification-center.slint").read_text()
+        slint = (surface("notifications") / "ui/notification-center.slint").read_text()
         for act in re.findall(r'act\("([a-z.]+)"\)', slint):
             self.assertIn(f'case "{act}":', qml)
 
     def test_search_ranks_the_same_actions_in_rust(self):
         # Search's actions (title, glyph, keywords) are ranked in Rust too
-        # (src/surfaces/spotlight/rank.rs): the same list, in the same order
+        # (surfaces/spotlight/src/rank.rs): the same list, in the same order
         qml = (ROOT / "shell/services/Search.qml").read_text()
-        rs = (CRATE / "src/surfaces/spotlight/rank.rs").read_text()
+        rs = (surface("spotlight") / "src/rank.rs").read_text()
         block = qml[qml.index("readonly property var actions: ["):qml.index("// \"Cast to <TV>\"")]
         q = re.findall(r'\{ title: "([^"]+)", glyph: "([^"]+)", keywords: "([^"]+)"', block)
         r = re.findall(r'\("([^"]+)", "([^"]+)", "([^"]+)"\),', rs[rs.index("pub const ACTIONS"):])
@@ -173,7 +186,7 @@ class Agreement(unittest.TestCase):
         # rank.rs's tests compare the Rust ranking with golden.json, which
         # golden.js makes by running Search.qml's own functions under node:
         # a change to Search.qml's ranking must reach both
-        d = CRATE / "src/surfaces/spotlight"
+        d = surface("spotlight") / "src"
         r = subprocess.run(["node", str(d / "golden.js")], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout), json.loads((d / "golden.json").read_text()),
@@ -182,13 +195,13 @@ class Agreement(unittest.TestCase):
     def test_the_sidebar_hand_off_agrees(self):
         # The sidebar's twin steps aside through its PanelLoader; the shell
         # sends it its own commands (the tab, pictures and Spotlight's
-        # exchange for its chat) and every one is handled (src/surfaces/sidebar)
+        # exchange for its chat) and every one is handled (surfaces/sidebar)
         sidebar_qml = (ROOT / "shell/modules/sidebar/Sidebar.qml").read_text()
         self.assertIn('elsewhere: RustUi.drawing("sidebar")', sidebar_qml)
         qml = "".join((ROOT / f"shell/services/{n}.qml").read_text() for n in ("RustUi", "Ai", "ScreenTools"))
         sent = set(re.findall(r'cmd: "([a-z]+)", surface: "sidebar"', qml))
         self.assertEqual(sent, {"tab", "attach", "continue"})
-        rs = (CRATE / "src/surfaces/sidebar/mod.rs").read_text()
+        rs = (surface("sidebar") / "src/lib.rs").read_text()
         handled = set(re.findall(r'^\s*"([a-z]+)" =>', rs.split("fn command(")[1].split("fn output_removed")[0], re.M))
         self.assertEqual((sent | {"open", "close"}) - handled, set(), "sent but not handled")
         self.assertIn("shell::closed(NAME)", rs)
@@ -207,10 +220,10 @@ class Agreement(unittest.TestCase):
         lockfx = (ROOT / "shell/common/LockFx.qml").read_text()
         for step in ("prepare", "reveal", "rest"):
             self.assertIn(f'stepped("{step}"', lockfx)
-        rs = (CRATE / "src/surfaces/background/mod.rs").read_text()
+        rs = (surface("wallpaper") / "src/background/mod.rs").read_text()
         for word in ('"prepare"', '"reveal"', '"rest"', 'v["settle"]', 'v["zoom"]', 'v["ms"]'):
             self.assertIn(word, rs)
-        self.assertIn('v["sunrise"]', (CRATE / "src/surfaces/background/wallpaper.rs").read_text())
+        self.assertIn('v["sunrise"]', (CORE / "src/wallpaper.rs").read_text())
         # (the namespaces the Hyprland rules keep unblurred)
         rules = (ROOT / "hypr/tessera/rules.lua").read_text()
         self.assertRegex(rules, r"namespace = \"tessera:\([^)]*\bbackground\b")
@@ -220,7 +233,7 @@ class Agreement(unittest.TestCase):
         # and tells tessera-ui (open, close, options, the accounts' items),
         # which asks back for closing, pinning, its options and to-do ticks
         screen = (ROOT / "shell/modules/today/TodayScreen.qml").read_text()
-        today_rs = (CRATE / "src/surfaces/today/mod.rs").read_text()
+        today_rs = (surface("today") / "src/lib.rs").read_text()
         self.assertIn('active: root.alive && !RustUi.drawing("today")', screen)
         for word in ('RustUi.tell("today", { open: false })', "open: true", "accounts:", 'RustUi.tell("today", { options: true })'):
             self.assertIn(word, screen)
@@ -241,9 +254,9 @@ class Agreement(unittest.TestCase):
         bridge = (ROOT / "shell/modules/controlcenter/RustBridge.qml").read_text()
         for word in ('RustUi.tell("controlcenter", { state:', 'RustUi.tell("controlcenter", { page:', "function onCcCall(", 'case "cc.block":'):
             self.assertIn(word, bridge)
-        part = (CRATE / "src/surfaces/controlcenter/mod.rs").read_text()
+        part = (surface("controlcenter") / "src/lib.rs").read_text()
         for word in ('v.get("state")', 'v.get("page")', 'v["ccPage"]', 'v["editing"]'):
-            self.assertTrue(word in part or word in (CRATE / "src/surfaces/controlcenter/bridge.rs").read_text(), word)
+            self.assertTrue(word in part or word in (surface("controlcenter") / "src/bridge.rs").read_text(), word)
 
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
@@ -256,17 +269,17 @@ class Agreement(unittest.TestCase):
 
 
 class Bridge(unittest.TestCase):
-    """The Rust menu bar and the QML shell talk both ways (src/services/bridge.rs):
+    """The Rust menu bar and the QML shell talk both ways (core/src/services/bridge.rs):
     what the bar asks the shell to do must exist there, and what the shell
     sends must be read."""
 
     def rust(self):
-        return "\n".join(p.read_text() for p in (CRATE / "src").rglob("*.rs"))
+        return "\n".join(p.read_text() for p in rust_sources())
 
     def test_every_act_the_bar_asks_for_is_answered(self):
         rs = self.rust()
         asked = set(re.findall(r'"rustui", "act", "([A-Za-z]+)"', rs)) | set(re.findall(r'Action::Act\("([A-Za-z]+)"', rs))
-        asked |= set(re.findall(r'\bact\("([A-Za-z]+)", ', (CRATE / "src/surfaces/menubar/mod.rs").read_text()))
+        asked |= set(re.findall(r'\bact\("([A-Za-z]+)", ', (surface("menubar") / "src/lib.rs").read_text()))
         self.assertGreater(len(asked), 15, asked)
         qml = (ROOT / "shell/modules/menubar/RustBridge.qml").read_text()
         answered = set(re.findall(r'case "([A-Za-z]+)":', qml))
@@ -280,9 +293,9 @@ class Bridge(unittest.TestCase):
         island = (ROOT / "shell/services/Island.qml").read_text()
         for op in ("post", "update", "remove", "dismiss"):
             self.assertIn(f'forward("{op}"', island)
-            self.assertIn(f'"{op}"', (CRATE / "src/surfaces/menubar/mod.rs").read_text())
+            self.assertIn(f'"{op}"', (surface("menubar") / "src/lib.rs").read_text())
         # every line kind the shell writes is parsed
-        bridge = (CRATE / "src/services/bridge.rs").read_text()
+        bridge = (CORE / "src/services/bridge.rs").read_text()
         sent = set(re.findall(r'kind: "([a-z]+)"', (ROOT / "shell/modules/menubar/RustBridge.qml").read_text())) | {"island"}
         for kind in sent:
             self.assertIn(f'"{kind}" =>', bridge)
@@ -290,7 +303,7 @@ class Bridge(unittest.TestCase):
 
     def test_toggled_panels_exist_in_the_shell(self):
         # the status items open the QML popovers by name (Panels)
-        rs = "\n".join(p.read_text() for p in (CRATE / "src/surfaces/menubar").glob("*.rs"))
+        rs = "\n".join(p.read_text() for p in (surface("menubar") / "src").glob("*.rs"))
         panels = set(re.findall(r'toggle_at\(&output, "([A-Za-z]+)"', rs))
         self.assertGreater(len(panels), 10)
         qml = "\n".join(p.read_text(errors="replace") for p in qml_files())
@@ -354,7 +367,8 @@ class Binary(unittest.TestCase):
 @unittest.skipUnless(shutil.which("cargo"), "needs cargo")
 class CrateTests(unittest.TestCase):
     def test_cargo_test(self):
-        r = subprocess.run(["cargo", "test", "--locked", "--quiet", "--manifest-path", str(CRATE / "Cargo.toml"), "--bin", "tessera-ui"], capture_output=True, text=True, timeout=3600)
+        # (the whole workspace: the binary, tessera-core and every surface's crate)
+        r = subprocess.run(["cargo", "test", "--locked", "--quiet", "--manifest-path", str(CRATE / "Cargo.toml"), "--workspace"], capture_output=True, text=True, timeout=3600)
         self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-3000:])
 
 
