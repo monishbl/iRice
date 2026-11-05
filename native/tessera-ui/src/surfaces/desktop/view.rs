@@ -63,9 +63,11 @@ pub fn hm(ms: i64, h24: bool) -> String {
     fmt(if h24 { "%H:%M" } else { "%-I:%M %p" }, ms)
 }
 
-/// TimeFormat.hmShort (big clocks): "9:41" or "09:41"
+/// TimeFormat.hmShort (big clocks): "09:41", or "16:05" in 12-hour time
+/// too: Qt reads "h:mm" without AP as the 24-hour hour, so the QML clock
+/// shows that, and so does this
 pub fn hm_short(ms: i64, h24: bool) -> String {
-    fmt(if h24 { "%H:%M" } else { "%-I:%M" }, ms)
+    fmt(if h24 { "%H:%M" } else { "%-H:%M" }, ms)
 }
 
 /// Calendar.when: an event's time on the small and medium calendar
@@ -306,6 +308,7 @@ mod tests {
         assert_eq!(hm(ms, true), "09:41");
         assert_eq!(hm(ms, false), "9:41 AM");
         assert_eq!(hm_short(ms, false), "9:41");
+        assert_eq!(hm_short(ms + 7 * 3_600_000, false), "16:41");
         assert_eq!(local(ms), ((2026, 11, 5), 9, 41));
         let today = (2026, 11, 5);
         assert_eq!(when(ms, false, today, true, true), "09:41");

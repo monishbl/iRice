@@ -193,10 +193,8 @@ pub struct Desktop {
     minute: i64,
     ghost: Option<(i32, i32, String)>,
     live: Option<(usize, f32, f32)>,
-    menu_for: Option<usize>,
     menu_timer: slint::Timer,
     roles: HashMap<String, Color>,
-    started_rotation: String,
 }
 
 fn hexc(s: &str) -> Option<Color> {
@@ -1103,20 +1101,17 @@ impl Desktop {
             return;
         }
         let keys = self.keys();
-        let mut said = String::new();
         for (i, w) in self.list.clone().iter().enumerate() {
             if w.kind != "stack" {
                 continue;
             }
             let kinds = self.stack_kinds(w);
             if let Some(r) = self.relevant(&kinds) {
-                said += &r;
                 if let Some(n) = kinds.iter().position(|k| *k == r) {
                     self.go(&keys[i], n, kinds.len());
                 }
             }
         }
-        self.started_rotation = said;
     }
 
     fn go(&mut self, key: &str, n: usize, len: usize) {
@@ -1671,7 +1666,6 @@ impl Part for Desktop {
             M::Drag(i, x, y, on) => self.drag(st, i.max(0) as usize, x, y, on),
             M::Menu(i, x, y) => {
                 let rows = if i >= 0 { self.widget_menu(st, i as usize) } else { Self::desktop_menu(st) };
-                self.menu_for = (i >= 0).then_some(i as usize);
                 self.open_menu(st, rows, x, y);
             }
             M::Bare => {

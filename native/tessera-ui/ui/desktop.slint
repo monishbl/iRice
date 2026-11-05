@@ -602,6 +602,7 @@ component TodayW inherits Rectangle {
     wx := HorizontalLayout {
         x: root.width - self.preferred-width;
         y: 0;
+        width: self.preferred-width;
         visible: w.on;
         spacing: 6px;
         height: 24px;
@@ -1131,6 +1132,7 @@ component Frame inherits Rectangle {
     }
     width: w.w;
     height: w.h;
+    z: dragging ? 10 : 0; // (above the others while dragged)
     opacity: shown;
     transform-scale: dragging ? 1.04 : grow;
     animate transform-scale { duration: 150ms; }
@@ -1178,16 +1180,39 @@ component Frame inherits Rectangle {
             reject
         }
     }
-    Content {
+    // A stack's next widget slides in from below (or above) and fades in:
+    // set at once, then animated back (StackWidget.qml's 300 ms / 200 ms)
+    property <int> page: w.stack-i;
+    property <bool> snap;
+    property <length> page-y;
+    property <float> page-o: 1;
+    animate page-y { duration: snap ? 0ms : 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate page-o { duration: snap ? 0ms : 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    changed page => {
+        snap = true;
+        page-y = 24px * w.stack-dir;
+        page-o = 0;
+        snap = false;
+        page-y = 0;
+        page-o = 1;
+    }
+    Rectangle {
         x: w.pad-x;
         y: w.pad;
         width: w.w - 2 * w.pad-x - (w.stack && w.stack-n > 1 ? 10px : 0);
         height: w.h - 2 * w.pad;
         clip: w.stack;
-        w: w;
-        cookie12: cookie12;
-        cookie9: cookie9;
-        act(a, b) => { root.act(w.index, a, b); }
+        Content {
+            x: 0;
+            y: root.page-y;
+            width: parent.width;
+            height: parent.height;
+            opacity: root.page-o;
+            w: w;
+            cookie12: cookie12;
+            cookie9: cookie9;
+            act(a, b) => { root.act(w.index, a, b); }
+        }
     }
     // A stack's page dots: click one to jump to it
     if w.stack && w.stack-n > 1: VerticalLayout {
@@ -1252,6 +1277,7 @@ component IconCell inherits Rectangle {
     }
     width: spot - 6px;
     height: spot - 2px;
+    z: dragging ? 5 : 0;
     accessible-role: list-item;
     accessible-label: ic.name;
     accessible-action-default => { root.icon(ic.index, "open", 0, 0); }
@@ -1453,7 +1479,8 @@ export component Desktop inherits Window {
         width: 4 * 96px + 24px;
         height: min(4, ceil(stack-files.length / 4)) * 96px + 48px;
         border-radius: Theme.material ? Theme.radius-popover : 18px;
-        background: Theme.material ? Theme.m3-surface-container : glass-plugin ? transparent : Theme.panel;
+        // (Material: its glass is a see-through surface container)
+        background: Theme.material ? Theme.m3-surface-container.with-alpha(0.72) : glass-plugin ? transparent : Theme.panel;
         accessible-role: list;
         accessible-label: stack-name;
         TouchArea {} // (clicks stay inside)
