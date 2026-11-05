@@ -326,6 +326,16 @@ class InstallPlan(unittest.TestCase):
         p = self.plan("--replace-pulseaudio", installed="pulseaudio")
         self.assertIn("removes pulseaudio", p.stdout)
 
+    def test_rust_programs_ready_made_unless_asked(self):
+        # (no question about it: ready-made, with the advanced flags named)
+        p = self.plan("--yes")
+        self.assertIn("tessera-ui and tessera-events, ready-made and signed", p.stdout)
+        self.assertIn("--ui-source=build or buildTuned", p.stdout)
+        p = self.plan("--yes", "--ui-source=buildTuned")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("built here, tuned for this processor", p.stdout)
+        self.assertIn("Rust programs buildTuned", p.stdout)  # (kept in Settings)
+
     def test_unknown_icon_theme(self):
         p = self.plan("--icons=macos")
         self.assertNotEqual(p.returncode, 0)

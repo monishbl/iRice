@@ -97,6 +97,18 @@ class Scripted(unittest.TestCase):
         self.assertNotIn("--bogus", cmd)
         self.assertFalse(any(a.startswith(("--icons", "--extras")) for a in cmd))
 
+    def test_advanced_is_collapsed_and_greys_what_cannot_work(self):
+        # Review, then a: Advanced; the tuned build can't work here, the generic one can
+        frames, cmd = self.run_tui("enter " * 7 + "a down enter",
+                                   {"can_build": {"buildTuned": {"ok": False, "why": "needs about 4 GB of free memory"},
+                                                  "build": {"ok": True, "why": ""}}})
+        page = next(f for f in frames if "Advanced: Tessera's Rust programs" in f)
+        self.assertIn("Can't here: needs about 4 GB of free memory", page)
+        self.assertIn("a advanced", frames[7])
+        self.assertIn("--ui-source=build", cmd)
+        _, cmd = self.run_tui("enter " * 7)
+        self.assertFalse(any(a.startswith("--ui-source") for a in cmd))
+
     def test_quit_changes_nothing(self):
         p = self.run_tui("enter q")
         self.assertIn("ACTION: quit", "\f\n".join(p[0]))

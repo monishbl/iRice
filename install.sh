@@ -22,6 +22,10 @@
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
 #   --extras=apps,pointer,emoji|none  --hardware=ID,…|none (see --plan)
 #   --replace-pulseaudio  --network=networkmanager|keep
+#   --ui-source=auto|build|buildTuned  (advanced) tessera-ui and tessera-events:
+#                          auto (the default) ready-made and signed, built here when
+#                          there's none; build / buildTuned: built here (tuned: for
+#                          this processor only). Kept in Settings (rust.uiSource)
 #
 # Your Hyprland config is backed up once (~/.config/hypr.pre-tessera) and
 # `tessera uninstall` puts it back. Other Quickshell configs are left alone.
@@ -41,6 +45,7 @@ LOG="$CACHE/tessera/install.log"
 YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
 UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask
+UI_SOURCE="" # (--ui-source; empty: as Settings has it, ready-made by default)
 list() { [[ $1 == none ]] && return 0; printf '%s' "${1//,/ }"; }
 for a in "$@"; do
     case "$a" in
@@ -67,7 +72,8 @@ for a in "$@"; do
         --replace-pulseaudio) PULSE=yes ;;
         --network=networkmanager) NETWORK=yes ;;
         --network=keep) NETWORK=no ;;
-        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --ui-source=auto|--ui-source=build|--ui-source=buildTuned) UI_SOURCE=${a#*=} ;;
+        -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -434,6 +440,29 @@ decide() {
         fi
     fi
     decide_hardware
+    decide_ui_source
+}
+
+# tessera-ui and tessera-events (tools/native-install.py): ready-made and
+# signed unless --ui-source asks to build them here (the interactive
+# installer's Advanced choice). Building needs cargo (Rust comes with the
+# packages), about 4 GB of free memory and 4 GB of disk: when it can't work,
+# the plan says why and the install stops before changing anything.
+UI_BLOCKED=""
+ui_source_now() {
+    [[ -n "$UI_SOURCE" ]] && { echo "$UI_SOURCE"; return 0; }
+    python3 -I -c 'import json,sys
+try: s = json.load(open(sys.argv[1])).get("rust", {}).get("uiSource")
+except Exception: s = None
+print(s if s in ("auto", "build", "buildTuned") else "auto")' "$CONFIG/tessera/config.json" 2>/dev/null || echo auto
+}
+decide_ui_source() {
+    UI_BLOCKED=""
+    [[ "$(ui_source_now)" == auto ]] && return 0
+    command -v python3 >/dev/null || return 0 # (it comes with the packages; the build says if it can't)
+    local can
+    can=$(python3 -I "$ROOT/tools/native-install.py" can-build $([[ $DEPS == 1 ]] && echo --packages) 2>/dev/null || true)
+    [[ "$can" == yes || -z "$can" ]] || UI_BLOCKED=${can#no: }
 }
 
 # Where a snapshot can be taken before anything changes (set up already)
@@ -512,10 +541,17 @@ show_plan() {
     else
         plan_row Hardware "nothing chosen"
     fi
-    plan_row Builds "shaders, the glass plugin, native helpers and tessera-events, for this machine ($DATA/tessera)"
+    plan_row Builds "shaders, the glass plugin and native helpers, for this machine ($DATA/tessera)"
+    case "$(ui_source_now)" in
+        build) t="built here, for any x86-64 (several minutes)" ;;
+        buildTuned) t="built here, tuned for this processor (several minutes; they run only on it)" ;;
+        *) t="ready-made and signed, for this processor ($(python3 -I "$ROOT/tools/native-install.py" cpu 2>/dev/null || true)); built here when there's none. Advanced: --ui-source=build or buildTuned" ;;
+    esac
+    plan_row Rust "tessera-ui and tessera-events, $t"
+    [[ -n "$UI_BLOCKED" ]] && plan_row "" "${YEL}can't be built here: $UI_BLOCKED${R} (the install stops there; --ui-source=auto downloads them)"
     plan_row Files "$CONFIG/quickshell/tessera and $CONFIG/hypr (the current ones copied to $DATA/tessera/backups first;"
     plan_row "" "  your own Hyprland config also kept once in $CONFIG/hypr.pre-tessera), $BIN/tessera"
-    [[ -n "$LOOK$MODE$LOGIN_STYLE" ]] && plan_row "" "$CONFIG/tessera/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE} (backed up first)"
+    [[ -n "$LOOK$MODE$LOGIN_STYLE$UI_SOURCE" ]] && plan_row "" "$CONFIG/tessera/config.json:${LOOK:+ look $LOOK}${MODE:+, ${MODE} appearance}${LOGIN_STYLE:+, login style $LOGIN_STYLE}${UI_SOURCE:+, Rust programs $UI_SOURCE} (backed up first)"
     if [[ $GREETER == yes ]]; then
         plan_row Login "the Tessera login screen (greetd): /etc/greetd/config.toml (kept as .pre-tessera), /usr/share/tessera$([[ -n "$OTHER_DM" ]] && echo "; $OTHER_DM turned off (tessera uninstall turns it back on)")"
         plan_row "" "a quiet start: the splash held until the login screen, quiet on GRUB's kernel line (/etc/default/grub kept as .pre-tessera)"
@@ -794,17 +830,17 @@ snapshot() {
 # settings (only those; the file is backed up first, and left alone if it
 # isn't valid JSON)
 settings() {
-    [[ -z "$LOOK$MODE$LOGIN_STYLE" ]] && { note "Kept as they are."; return 0; }
+    [[ -z "$LOOK$MODE$LOGIN_STYLE$UI_SOURCE" ]] && { note "Kept as they are."; return 0; }
     local cfg="$CONFIG/tessera/config.json"
-    if [[ $DRY == 1 ]]; then note "would set${LOOK:+ look=$LOOK}${MODE:+ mode=$MODE}${LOGIN_STYLE:+ loginStyle=$LOGIN_STYLE} in $cfg"; return 0; fi
+    if [[ $DRY == 1 ]]; then note "would set${LOOK:+ look=$LOOK}${MODE:+ mode=$MODE}${LOGIN_STYLE:+ loginStyle=$LOGIN_STYLE}${UI_SOURCE:+ rust.uiSource=$UI_SOURCE} in $cfg"; return 0; fi
     mkdir -p "$CONFIG/tessera"
     if [[ -f "$cfg" ]]; then
         mkdir -p "$DATA/tessera/backups"
         cp -a "$cfg" "$DATA/tessera/backups/config-$(date +%Y%m%d-%H%M%S).json" || return 1
     fi
-    python3 -I - "$cfg" "$LOOK" "$MODE" "$LOGIN_STYLE" <<'PY'
+    python3 -I - "$cfg" "$LOOK" "$MODE" "$LOGIN_STYLE" "$UI_SOURCE" <<'PY'
 import json, os, sys
-path, look, mode, style = sys.argv[1:5]
+path, look, mode, style, ui_source = sys.argv[1:6]
 try:
     with open(path) as f:
         c = json.load(f)
@@ -824,6 +860,8 @@ if mode:
     part("appearance")["mode"] = mode
 if style:
     part("lock")["loginStyle"] = style
+if ui_source:
+    part("rust")["uiSource"] = ui_source
 with open(path + ".tmp", "w") as f:
     json.dump(c, f, indent=4)
 os.replace(path + ".tmp", path)
@@ -849,10 +887,12 @@ build() {
     # them the shell uses its QML and Python fall-backs.
     say "  Building the native helpers…"
     run "$ROOT/shell/native/build.sh" || note "Native helpers skipped: the shell uses its slower fall-backs (rebuild later with: tessera rebuild)"
-    # tessera-events, the one process that follows the system for the shell.
-    # Optional too: without it the shell runs a watcher per thing it follows.
-    say "  Building tessera-events…"
-    run "$ROOT/tools/build-native.sh" || note "tessera-events skipped: the shell uses its separate watchers (rebuild later with: tessera rebuild)"
+    # tessera-events, the one process that follows the system for the shell,
+    # and tessera-ui, the interface in Rust: ready-made and signed, or built
+    # here (--ui-source). Optional too: without them the shell runs a watcher
+    # per thing it follows and draws everything in QML.
+    say "  Installing tessera-ui and tessera-events ($(ui_source_now | sed 's/^auto$/ready-made/; s/^buildTuned$/built here, tuned/; s/^build$/built here/'))…"
+    run "$ROOT/tools/build-native.sh" ${UI_SOURCE:+--source=$UI_SOURCE} || note "tessera-events skipped: the shell uses its separate watchers (try again later with: tessera rebuild)"
 }
 
 # ~/.local/bin on your PATH (for the tessera command), in bash, zsh and fish
@@ -1416,6 +1456,7 @@ say ""
 decide
 show_plan
 [[ $PLAN_ONLY == 1 ]] && exit 0
+[[ -n "$UI_BLOCKED" ]] && die "tessera-ui can't be built here: $UI_BLOCKED. Nothing changed (--ui-source=auto downloads it ready-made)."
 say ""
 ask "Start?" y || { say "Nothing changed."; exit 0; }
 

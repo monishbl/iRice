@@ -634,6 +634,11 @@ Singleton {
             // (services/RustUi.qml). Empty: this shell draws everything
             property JsonObject rust: JsonObject {
                 property list<string> surfaces: [] // previews: menubar (its status items open this shell's menus), dock (no Downloads stack or badges yet), emoji, clipboard, osd (no DDC monitors yet), background (the wallpaper; a live one shows its poster under the QML's video), wallpaper (the picker), today, desktop (the gallery and Widget Options stay QML; no large calendar or LockFx zoom yet), notifications (the server, banners and Notification Center; no calendar editor yet), spotlight (search; Material icons in the font's default fill), controlcenter (its state still from this shell: RustBridge.qml), sidebar; build it with tools/build-native.sh --ui
+                // How tessera-ui and tessera-events are installed (tools/native-install.py,
+                // docs/releases.md): "auto" the signed ready-made build for this version
+                // (built here when there's none), "build" built here, "buildTuned" built
+                // here for this processor only
+                property string uiSource: "auto"
             }
         }
     }

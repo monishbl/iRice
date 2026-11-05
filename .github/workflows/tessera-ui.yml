@@ -1,0 +1,217 @@
+# Builds Tessera's Rust programs, tessera-ui and tessera-events, so nobody has
+# to compile them: tools/native-install.py downloads the build for the exact
+# version being installed or updated to, checks it and swaps it in
+# (docs/releases.md).
+#
+# When:  a push to main that touches native/ ("latest": the rolling
+#        prerelease tessera-ui-latest), and every tag v* ("stable": the tag's
+#        own release). (Path filters don't apply to tags: every tag builds.)
+# Where: an Arch Linux container, so the libraries match Arch users'.
+# What:  two variants with the full release profile (LTO, one codegen unit):
+#        x86-64-v3 (AVX2 processors, about 2015 on) and generic (any x86-64).
+# Out:   per variant tessera-ui-<tree>-<variant>.tar.zst (both programs); one
+#        tessera-ui-<tree>.manifest.json (commit, tree, version, and each
+#        variant's file, size and sha256, and each program's); a minisign
+#        signature (.minisig) of each. <tree> is the git tree of native/
+#        (git rev-parse HEAD:native): a commit that changes only QML needs no
+#        new build, and the installer finds this one by that name.
+# Kept:  the rolling release keeps the three newest builds of main and
+#        deletes older ones, so an older commit's build is soon gone: installs
+#        of it build locally instead (the fallback). A tag keeps its builds as
+#        long as its release exists.
+# Signs: with the secrets TESSERA_UI_MINISIGN_KEY (the secret key file's
+#        contents) and TESSERA_UI_MINISIGN_PASSWORD; installs check against
+#        tools/tessera-ui.pub. Without the key or the .pub it still builds,
+#        then says in the log that it skipped signing and publishing.
+#        One-time setup: docs/releases.md.
+name: tessera-ui
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["native/**", ".github/workflows/tessera-ui.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tessera-ui-${{ github.ref }}
+  # (a newer push to main makes an older run's build pointless; tags finish)
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - variant: x86-64-v3
+            rustflags: "-C target-cpu=x86-64-v3"
+          - variant: generic
+            rustflags: ""
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Tools and libraries
+        run: pacman -Syu --noconfirm --needed git rust zstd jq pkgconf libxkbcommon wayland fontconfig
+      - uses: actions/checkout@v4
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Name the sources
+        id: src
+        run: |
+          echo "tree=$(git rev-parse HEAD:native)" >> "$GITHUB_OUTPUT"
+          echo "rustc=$(rustc --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            native/tessera-ui/target
+            native/tessera-events/target
+          key: cargo-arch-${{ matrix.variant }}-rust${{ steps.src.outputs.rustc }}-${{ hashFiles('native/**/Cargo.lock') }}
+          restore-keys: |
+            cargo-arch-${{ matrix.variant }}-rust${{ steps.src.outputs.rustc }}-
+      # TODO(PGO): stable tags could add a profile-guided build: build with
+      # RUSTFLAGS="-Cprofile-generate=/tmp/pgo", run a scripted workload
+      # headless (needs a Wayland compositor in CI, e.g. a nested headless
+      # one, never a real display), merge with llvm-profdata, then rebuild
+      # with -Cprofile-use. Not built yet: measure the gain first
+      # (docs/benchmarks-baseline.md).
+      - name: Build
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: |
+          cargo build --release --locked --manifest-path native/tessera-ui/Cargo.toml --bin tessera-ui
+          cargo build --release --locked --manifest-path native/tessera-events/Cargo.toml
+      - name: Pack
+        env:
+          TREE: ${{ steps.src.outputs.tree }}
+          VARIANT: ${{ matrix.variant }}
+          EPOCH: ${{ steps.src.outputs.epoch }}
+        run: |
+          set -euo pipefail
+          mkdir -p stage out
+          cp native/tessera-ui/target/release/tessera-ui native/tessera-events/target/release/tessera-events stage/
+          # (--version only, and never with a display)
+          ui_version=$(env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u DISPLAY stage/tessera-ui --version)
+          ev_version=$(env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u DISPLAY stage/tessera-events --version)
+          file="tessera-ui-$TREE-$VARIANT.tar.zst"
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$EPOCH" -C stage -cf - tessera-ui tessera-events \
+            | zstd -q -19 -T0 -o "out/$file"
+          jq -n --arg file "$file" --arg sha "$(sha256sum "out/$file" | cut -d' ' -f1)" --argjson size "$(stat -c %s "out/$file")" \
+            --arg ui_sha "$(sha256sum stage/tessera-ui | cut -d' ' -f1)" --arg ui_version "$ui_version" \
+            --arg ev_sha "$(sha256sum stage/tessera-events | cut -d' ' -f1)" --arg ev_version "$ev_version" \
+            '{file: $file, sha256: $sha, size: $size,
+              programs: {"tessera-ui": {sha256: $ui_sha, version: $ui_version},
+                         "tessera-events": {sha256: $ev_sha, version: $ev_version}}}' > "out/variant-$VARIANT.json"
+          cat "out/variant-$VARIANT.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.variant }}
+          path: out/
+          retention-days: 7
+
+  publish:
+    name: Sign and publish
+    needs: build
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git jq minisign github-cli
+      - uses: actions/checkout@v4
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: build-*
+          path: out
+          merge-multiple: true
+      - name: Manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          tree=$(git rev-parse HEAD:native)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then channel=stable tag="$GITHUB_REF_NAME"; else channel=latest tag=tessera-ui-latest; fi
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' native/tessera-ui/Cargo.toml | head -1)
+          jq -n --arg commit "$GITHUB_SHA" --arg tree "$tree" --arg version "$version" --arg channel "$channel" --arg tag "$tag" \
+            --arg built "$(date -u +%FT%TZ)" --slurpfile v3 out/variant-x86-64-v3.json --slurpfile generic out/variant-generic.json \
+            '{format: 1, name: "tessera-ui", commit: $commit, tree: $tree, version: $version, channel: $channel, tag: $tag,
+              built: $built, variants: {"x86-64-v3": $v3[0], "generic": $generic[0]}}' > "out/tessera-ui-$tree.manifest.json"
+          rm out/variant-*.json
+          cat "out/tessera-ui-$tree.manifest.json"
+          { echo "tree=$tree"; echo "channel=$channel"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+      - name: Is there a signing key?
+        id: key
+        env:
+          KEY: ${{ secrets.TESSERA_UI_MINISIGN_KEY }}
+        run: |
+          if [[ -z "$KEY" ]]; then
+            echo "::warning title=Built, not signed or published::There's no TESSERA_UI_MINISIGN_KEY secret yet, so these builds are neither signed nor published (installs build tessera-ui locally meanwhile). One-time setup: docs/releases.md"
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+          elif [[ ! -s tools/tessera-ui.pub ]]; then
+            echo "::warning title=Built, not signed or published::tools/tessera-ui.pub isn't committed yet, so nobody could check a signature: not signed or published. One-time setup: docs/releases.md"
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Sign
+        if: steps.key.outputs.ready == 'yes'
+        env:
+          KEY: ${{ secrets.TESSERA_UI_MINISIGN_KEY }}
+          PASSWORD: ${{ secrets.TESSERA_UI_MINISIGN_PASSWORD }}
+          TREE: ${{ steps.manifest.outputs.tree }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/tessera-ui.key"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$KEY" > "$key"
+          for f in out/*.tar.zst out/*.manifest.json; do
+            # (the trusted comment is signed too: installs check tree= in it)
+            printf '%s\n' "$PASSWORD" | minisign -S -s "$key" -m "$f" -t "$(basename "$f") tree=$TREE commit=$GITHUB_SHA"
+            # Checked against the committed public key: a key and .pub that
+            # don't belong together never get published
+            minisign -V -q -p tools/tessera-ui.pub -m "$f"
+          done
+          ls -l out
+      - name: Publish
+        if: steps.key.outputs.ready == 'yes'
+        env:
+          TREE: ${{ steps.manifest.outputs.tree }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+          CHANNEL: ${{ steps.manifest.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANNEL" == stable ]]; then
+            gh release view "$TAG" >/dev/null 2>&1 ||
+              gh release create "$TAG" --verify-tag --title "Tessera $TAG" --notes "Tessera $TAG. Its ready-made tessera-ui is below (docs/releases.md)."
+            gh release upload "$TAG" out/* --clobber
+            exit 0
+          fi
+          notes="Rolling builds of tessera-ui from main, for tools/native-install.py (docs/releases.md). Newest: $GITHUB_SHA (native/ tree $TREE). The three newest builds are kept; older ones are deleted."
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "tessera-ui (main, rolling)" --notes "$notes"
+          gh release upload "$TAG" out/* --clobber
+          gh release edit "$TAG" --notes "$notes"
+          # Only the three newest builds stay (by their manifests' upload time)
+          old=$(gh release view "$TAG" --json assets --jq '[.assets[] | select(.name | test("^tessera-ui-[0-9a-f]{40}\\.manifest\\.json$"))]
+                | sort_by(.createdAt) | reverse | .[3:] | .[].name | capture("^tessera-ui-(?<t>[0-9a-f]{40})").t')
+          for t in $old; do
+            [[ "$t" == "$TREE" ]] && continue
+            for name in $(gh release view "$TAG" --json assets --jq ".assets[].name | select(startswith(\"tessera-ui-$t\"))"); do
+              gh release delete-asset "$TAG" "$name" --yes
+            done
+          done

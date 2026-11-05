@@ -297,6 +297,10 @@ def check(config_dir, fetch=True):
     ahead = int(git("rev-list", "--count", f"{new}..{base}").strip() or 0)
     report = {"current": base_id[:8], "latest": new_id[:8], "upstream": new, "available": behind > 0,
               "ahead": ahead, "notes": [], "conflicts": [], "keeps": []}
+    # How tessera-ui comes with it ("tessera-ui: ready-made (v3)"; the line
+    # Software Update shows): tools/native-install.py plan
+    if fetch:
+        report["ui"] = native_plan(new_id)
     if behind == 0:
         return report
     if ahead > 0:
@@ -464,6 +468,39 @@ def load_json_text(text, fallback):
 
 # ── Apply ──────────────────────────────────────────────────────────────────
 
+NATIVE = os.path.join(REPO, "tools", "native-install.py")
+
+
+def native_plan(ref):
+    """{"label", "changes", …} for the version REF, or None."""
+    try:
+        r = subprocess.run([sys.executable, "-I", NATIVE, "plan", "--ref", ref, "--online", "--json"],
+                           capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def native_install(percent=40, *extra):
+    """tessera-ui and tessera-events for the checkout as it is now: the
+    ready-made build, the previous one when the code went back to it, or
+    built here (rust.uiSource). Never fatal: on failure the installed ones
+    stay, and the result says why."""
+    try:
+        p = subprocess.Popen([sys.executable, "-I", NATIVE, "install", "--json", "--progress", *extra],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p.stderr:
+            if line.startswith("STEP "):
+                progress(percent, line[5:].strip())
+            else:
+                print(line.rstrip(), file=sys.stderr)
+        out = p.stdout.read()
+        p.wait()
+        return json.loads(out)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "why": "tools/native-install.py didn't answer (" + str(e) + ")"}
+
+
 def rebuild(todo, base=45, span=40):
     """Rebuilds parts (plugin, native, shaders). Failures are reported, not
     fatal: the shell falls back (frosted glass without the plugin)."""
@@ -557,6 +594,7 @@ def apply(config_dir, choices, extra=()):
                 raise SystemExit(f + " no longer merges cleanly: choose mine or new for it")
             merged[f] = text
     stash = None
+    ui = None
     try:
         for f in untracked:
             dest = os.path.join(aside, f)
@@ -579,6 +617,9 @@ def apply(config_dir, choices, extra=()):
         for f in untracked:
             if choices.get("code:" + f) == "mine":
                 shutil.copy2(os.path.join(aside, f), os.path.join(REPO, f))
+        # tessera-ui for the new version, with it: the one it replaces is
+        # kept as tessera-ui.prev (going back below swaps it back)
+        ui = native_install(40)
     except BaseException as e:
         # Back to exactly how it was: the old version, then your edits, then
         # your settings (from the backup made above)
@@ -586,6 +627,10 @@ def apply(config_dir, choices, extra=()):
         restored = ""
         try:
             git("reset", "--hard", "--quiet", old_head)
+            # (the build for the old version back too, when it was replaced:
+            # install --offline finds it as .prev, no download or build)
+            if ui is not None and ui.get("changed"):
+                native_install(85, "--offline", "--only-prev")
             if stash:
                 git("stash", "pop")
             put_back_untracked()
@@ -603,7 +648,7 @@ def apply(config_dir, choices, extra=()):
     built, failed = rebuild(todo)
     progress(85, "Finishing up")
     # (the notes, for the new shell's "What's new")
-    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed,
+    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed, "ui": ui,
             "now": git("rev-parse", "--short", "HEAD").strip(),
             "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
 

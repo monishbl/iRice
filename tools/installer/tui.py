@@ -3,7 +3,8 @@
 offers it, or ./install.sh --tui).
 
 It asks everything first (look, light or dark, login screen, icon themes,
-extras, what this computer's hardware is missing), shows the whole plan
+extras, what this computer's hardware is missing; on the review, "a" opens
+Advanced: how Tessera's Rust programs are installed), shows the whole plan
 (install.sh --plan with those choices), and only then runs install.sh with
 them as flags (--cli --yes …), showing its steps live and a summary at the
 end. install.sh does all the installing: nothing here changes the system.
@@ -13,7 +14,7 @@ end. install.sh does all the installing: nothing here changes the system.
 
 For tests, without a terminal and changing nothing:
   tui.py --script "down space enter …" --no-run [--facts FILE] [--width N]
-    keys from the list (up down left right space enter esc q pgup pgdn),
+    keys from the list (up down left right space enter esc q a pgup pgdn),
     each screen printed as text, then the install.sh command it would run.
 
 Needs python-rich; without it, install.sh's own prompts take over.
@@ -53,6 +54,16 @@ def load_hardware():
 
 hardware = load_hardware()
 
+
+def load_native():
+    spec = importlib.util.spec_from_file_location("tessera_native", os.path.join(ROOT, "tools", "native-install.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+native = load_native()
+
 # The Quiet Interface in a terminal: neutral, one accent for selection and
 # focus, red only for what failed
 ACCENT = "#6366F1"
@@ -69,15 +80,19 @@ PASS = ("--dev", "--link", "--no-deps", "--no-snapshot", "--no-extras", "--no-gr
 
 # ── Choices ─────────────────────────────────────────────────────────────
 class Radio:
-    def __init__(self, options, value):
+    def __init__(self, options, value, disabled=None):
         self.options = options  # [(value, label, detail)]
-        self.cursor = next((i for i, o in enumerate(options) if o[0] == value), 0)
+        self.disabled = disabled or {}  # value -> why it can't be chosen (greyed, skipped)
+        self.cursor = next((i for i, o in enumerate(options) if o[0] == value and o[0] not in self.disabled), 0)
         self.value = options[self.cursor][0]
 
     def key(self, k):
         if k in ("up", "down"):
-            self.cursor = (self.cursor + (1 if k == "down" else -1)) % len(self.options)
-        if k in ("up", "down", "space", "enter"):
+            for _ in range(len(self.options)):
+                self.cursor = (self.cursor + (1 if k == "down" else -1)) % len(self.options)
+                if self.options[self.cursor][0] not in self.disabled:
+                    break
+        if k in ("up", "down", "space", "enter") and self.options[self.cursor][0] not in self.disabled:
             self.value = self.options[self.cursor][0]
 
 
@@ -150,6 +165,14 @@ class Installer:
             system_items.append({"id": "network", "label": "Switch the network from {} to NetworkManager".format(facts["network"]),
                                  "ticked": True, "detail": "Tessera's Wi-Fi menus use it; takes effect after a reboot. Unticked, " + facts["network"] + " stays"})
         self.system = Checks(system_items)
+        # Advanced (only when opened from the review): Tessera's Rust programs,
+        # ready-made unless you build them here; what can't work here is greyed
+        can = sysinfo.get("can_build") or native.can_build(packages_coming="--no-deps" not in passthrough)
+        asked = next((a.split("=", 1)[1] for a in passthrough if a.startswith("--ui-source=")), "auto")
+        self.uisource = Radio([("auto", "Ready-made (recommended)", "Signed, for this exact version and this processor. Built here only when there isn't one."),
+                               ("buildTuned", "Build here, tuned", "For this processor only (-C target-cpu=native). Several minutes, and again with each update."),
+                               ("build", "Build here, generic", "Runs on any x86-64. Several minutes, and again with each update.")],
+                              asked, {m: c["why"] for m, c in can.items() if not c.get("ok")})
         items = hardware.plan(facts)
         self.hw_groups = hardware.GROUPS
         self.hardware = Checks([{"id": i["id"], "label": i["title"], "detail": i["why"], "ticked": i["ticked"] or i["locked"],
@@ -184,6 +207,8 @@ class Installer:
             a.append("--replace-pulseaudio")
         if "network" in sysc:
             a.append("--network=" + ("networkmanager" if sysc["network"] else "keep"))
+        if self.uisource.value != "auto":
+            a.append("--ui-source=" + self.uisource.value)
         return a + [p for p in self.passthrough if p != "--dry-run"]
 
     def command(self):
@@ -205,6 +230,12 @@ class Installer:
                 self.scroll = 0
             return None
         if name == "review":
+            if k == "a":
+                if not any(p[0] == "advanced" for p in self.pages):
+                    self.pages.insert(self.page, ("advanced", "Advanced"))
+                else:
+                    self.page -= 1
+                return None
             if k in ("up", "down", "pgup", "pgdn"):
                 d = {"up": -1, "down": 1, "pgup": -10, "pgdn": 10}[k]
                 self.scroll = max(0, min(self.scroll + d, max(0, len(self.plan_text.splitlines()) - 5)))
@@ -223,7 +254,7 @@ class Installer:
 
     def widget(self):
         return {"look": self.look, "mode": self.mode, "login": self.login, "icons": self.icons,
-                "extras": self.extras, "system": self.system, "hardware": self.hardware}.get(self.name)
+                "extras": self.extras, "system": self.system, "hardware": self.hardware, "advanced": self.uisource}.get(self.name)
 
     # ── Installing: install.sh's output, line by line ──
     STEP = re.compile(r"^\[(\d+)/(\d+)\] (.+)$")
@@ -281,7 +312,7 @@ class Installer:
         if n == "install":
             return "Installing… Ctrl+C stops it (finished steps are quick the next time)" if self.code is None else "enter finish"
         if n == "review":
-            return "↑↓ scroll   enter " + ("finish (dry run: nothing changes)" if self.dry else "install") + "   ← back   q quit"
+            return "↑↓ scroll   enter " + ("finish (dry run: nothing changes)" if self.dry else "install") + "   a advanced   ← back   q quit"
         if isinstance(self.widget(), Checks):
             return "↑↓ move   space tick   enter continue   ← back   q quit"
         if isinstance(self.widget(), Radio):
@@ -302,7 +333,8 @@ class Installer:
                   "icons": ("Icon themes (optional)", "Without one, Tessera styles the apps' own icons. Tick any you'd like as well."),
                   "extras": ("Extras (optional)", ""),
                   "system": ("Your system", "These replace or turn off something of yours, so they're up to you."),
-                  "hardware": ("This computer", "Only what's missing for the hardware found here. Asked ones start unticked.")}
+                  "hardware": ("This computer", "Only what's missing for the hardware found here. Asked ones start unticked."),
+                  "advanced": ("Advanced: Tessera's Rust programs", "tessera-ui and tessera-events. Most people keep the first.")}
         title, sub = titles[n]
         out = [Text(title, style="bold")]
         if sub:
@@ -312,10 +344,13 @@ class Installer:
         if isinstance(w, Radio):
             for i, (value, label, detail) in enumerate(w.options):
                 on = i == w.cursor
+                off = w.disabled.get(value)
                 out.append(Text.assemble(("› " if on else "  ", ACCENT + " bold"), ("● " if value == w.value else "○ ", ACCENT if value == w.value else "dim"),
-                                         (label, "bold" if on else "")))
+                                         (label, "dim" if off else "bold" if on else "")))
                 if detail:
                     out.append(Padding(Text(detail, style="dim"), (0, 0, 0, 6)))
+                if off:
+                    out.append(Padding(Text("Can't here: " + off, style="dim"), (0, 0, 0, 6)))
         else:
             group = None
             if not w.items:
@@ -413,7 +448,7 @@ class Installer:
 KEYS = {b"\x1b[A": "up", b"\x1b[B": "down", b"\x1b[C": "right", b"\x1b[D": "left", b"\x1bOA": "up", b"\x1bOB": "down",
         b"\x1bOC": "right", b"\x1bOD": "left", b"\x1b[5~": "pgup", b"\x1b[6~": "pgdn", b"\x1b": "esc", b"\n": "enter",
         b"\r": "enter", b" ": "space", b"\x7f": "backspace", b"\x08": "backspace", b"k": "up", b"j": "down",
-        b"h": "left", b"l": "right", b"q": "q", b"Q": "q", b"\t": "down"}
+        b"h": "left", b"l": "right", b"q": "q", b"Q": "q", b"\t": "down", b"a": "a", b"A": "a"}
 
 
 class Terminal:
@@ -586,7 +621,8 @@ def main(argv):
         import json
         with open(facts_file) as f:
             facts = json.load(f)
-        system = {"apps_missing": facts.get("apps_missing", False), "walls_ready": facts.get("walls_ready", True)}
+        system = {"apps_missing": facts.get("apps_missing", False), "walls_ready": facts.get("walls_ready", True),
+                  "can_build": facts.get("can_build", {m: {"ok": True, "why": ""} for m in ("build", "buildTuned")})}
     else:
         facts, system = hardware.collect(), None
     ins = Installer(facts, rest, system)

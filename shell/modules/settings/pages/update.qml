@@ -43,7 +43,7 @@ Column {
         footer: !TesseraUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of Tessera); the system part is simulated." : TesseraUpdate.result ? "Tessera was updated. Your settings and shortcuts were backed up" + (TesseraUpdate.result.backup ? " to " + TesseraUpdate.result.backup.replace(Quickshell.env("HOME"), "~") : "") + "." : "Nothing is checked on its own. Checking downloads nothing but the package lists."
         Row {
             label: SoftwareUpdate.running ? "Updating…" : SoftwareUpdate.checking ? "Checking for updates…" : !SoftwareUpdate.checked ? "Software Update" : SoftwareUpdate.anything ? "Updates are ready" : "Everything is up to date"
-            detail: !SoftwareUpdate.checked ? "Tessera and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "Tessera " + page.report.current + (TesseraUpdate.available ? " → " + page.report.latest : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
+            detail: !SoftwareUpdate.checked ? "Tessera and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "Tessera " + page.report.current + (TesseraUpdate.available ? " → " + page.report.latest : "") + (page.report.ui?.label ? " · " + page.report.ui.label : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
             SettingsButton {
                 visible: !SoftwareUpdate.running
                 text: SoftwareUpdate.checked ? "Check again" : "Check for updates"
