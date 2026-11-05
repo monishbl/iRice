@@ -18,11 +18,17 @@ export component Background inherits Window {
     // the first picture of a screen plugged in later: 120 ms, ease-out cubic
     // (Background.qml's firstFade once the desktop has started)
     in property <bool> quick;
-    // The lock's settle (LockFx.wallpaperScale): a touch larger at once, then
-    // back to 1 over `zoom-ms`, ease-out cubic
-    in property <float> zoom: 1;
-    in property <int> zoom-ms: 0;
-    property <float> scale: zoom;
+    // The lock's settle, LockFx's own curve (src/surfaces/background:
+    // Settle): `desktop` runs linearly from desk-from to 1 over desk-ms from
+    // settle-start(), and the scale is 1 + 0.05 (1 - ease-out-cubic(desktop))
+    in property <bool> zoom-on: true;
+    in property <float> desk-from: 1;
+    in property <int> desk-ms: 0;
+    in property <bool> settling; // (while true it redraws every frame)
+    property <duration> desk-start;
+    public function settle-start() { desk-start = animation-tick(); }
+    property <float> desk: settling ? clamp(desk-from + (1 - desk-from) * ((animation-tick() - desk-start) / 1ms) / max(1, desk-ms), 0, 1) : desk-from;
+    property <float> scale: zoom-on ? 1 + 0.05 * pow(1 - desk, 3) : 1;
     property <float> fade: target;
     // the newest is fully in (Rust lets the one below go)
     callback faded();
@@ -35,10 +41,6 @@ export component Background inherits Window {
     animate fade {
         duration: quick ? 120ms : 700ms;
         easing: quick ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
-    }
-    animate scale {
-        duration: zoom-ms * 1ms;
-        easing: cubic-bezier(0.33, 1, 0.68, 1); // (out-cubic)
     }
     changed fade => {
         if fade >= max(a-from, b-from) + 0.999 { faded(); }

@@ -81,7 +81,7 @@ Variants {
             target: LockFx
             enabled: win.rust && win.screen === Quickshell.screens[0]
             function onStepped(step, ms) {
-                RustUi.tell("background", { settle: step, zoom: LockFx.zoom, ms: ms });
+                RustUi.tell("background", { settle: step, zoom: LockFx.zoom, ms: ms, at: Date.now() }); // (when: its line takes a moment to get there)
             }
         }
 

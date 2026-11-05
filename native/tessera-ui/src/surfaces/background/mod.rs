@@ -11,9 +11,13 @@
 //! and icons, the blurred copy of the wallpaper that glass refracts, the
 //! menu bar's light-or-dark sampling, and a live wallpaper's video (Slint has
 //! no video element: this draws the video's poster frame, the same one the
-//! QML makes with ffmpeg, and the QML plays the video over it). Not here
-//! yet: the lock screen's settle (LockFx: the wallpaper eases in from a touch
-//! larger on lock and unlock).
+//! QML makes with ffmpeg, and the QML plays the video over it).
+//!
+//! What the shell tells it (RustUi.tell, `{"to": "background", …}` lines):
+//! the day's sunrise and sunset (`sunrise`, `sunset`: minutes; the weather
+//! knows them) and the lock's settle (`settle`: LockFx's steps, "prepare",
+//! "reveal" over `ms`, "rest"; `zoom` false: fade only), followed with
+//! LockFx's own curve (`Settle`) so the lock's veil lines up with it.
 
 pub mod picture;
 pub mod wallpaper;
@@ -40,6 +44,7 @@ enum M {
     Poster(String, bool),
     Faded(String),
     Tick,
+    SettleEnd,
 }
 
 struct Win {
@@ -53,17 +58,82 @@ struct Win {
     settled: bool,
 }
 
-/// LockFx's wallpaper settle, from the shell's steps: (scale, ms to get there)
-pub fn settle(step: &str, zoom: bool, ms: i64) -> Option<(f32, i64)> {
-    match step {
-        "prepare" => Some((if zoom { SETTLE_SCALE } else { 1.0 }, 0)),
-        "reveal" => Some((1.0, ms.clamp(0, 10_000))),
-        "rest" => Some((1.0, 0)),
-        _ => None,
+/// LockFx's settle, step by step as the shell tells them: `desktop` runs 0
+/// (set back) .. 1 (at rest), linearly over a reveal's ms; the wallpaper's
+/// scale eases its share (LockFx.wallpaperScale). The same numbers as the
+/// QML, so the lock's veil (its own copy of the wallpaper, fading out over
+/// this one at LockFx's scale) lines up with it on every frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Settle {
+    pub zoom: bool,
+    /// where `desktop` was when the reveal started (1 when at rest)
+    pub from: f64,
+    /// the reveal: when it started and how long it takes
+    pub reveal: Option<(std::time::Instant, i64)>,
+}
+
+impl Default for Settle {
+    fn default() -> Self {
+        Self { zoom: true, from: 1.0, reveal: None }
     }
 }
-/// (LockFx.wallpaperScale at its start: 1 + 0.05)
-const SETTLE_SCALE: f32 = 1.05;
+
+impl Settle {
+    /// LockFx.desktop at `now`
+    pub fn desktop(&self, now: std::time::Instant) -> f64 {
+        match self.reveal {
+            Some((start, ms)) => desktop_at(self.from, now.saturating_duration_since(start).as_secs_f64() * 1000.0, ms),
+            None => self.from,
+        }
+    }
+
+    /// One of LockFx's steps (prepare / reveal / rest); false for anything else
+    pub fn step(&mut self, step: &str, zoom: bool, ms: i64, now: std::time::Instant) -> bool {
+        match step {
+            // set back at once
+            "prepare" => *self = Self { zoom, from: 0.0, reveal: None },
+            // from wherever it is, to rest over `ms`
+            "reveal" => {
+                let d = self.desktop(now);
+                *self = Self { zoom: self.zoom, from: d, reveal: Some((now, ms.clamp(0, 10_000))) };
+            }
+            "rest" => *self = Self { zoom: self.zoom, from: 1.0, reveal: None },
+            _ => return false,
+        }
+        true
+    }
+}
+
+/// How long ago the shell took a step it stamped `at` (its Date.now(), ms):
+/// 0 without a stamp, and never more than half a second (a clock that moved)
+pub fn lag_ms(now_ms: i64, at: Option<f64>) -> f64 {
+    at.map_or(0.0, |at| (now_ms as f64 - at).clamp(0.0, 500.0))
+}
+
+/// LockFx's NumberAnimation on `desktop` (linear): from `from` to 1 over `ms`
+pub fn desktop_at(from: f64, elapsed_ms: f64, ms: i64) -> f64 {
+    if ms <= 0 {
+        return 1.0;
+    }
+    (from + (1.0 - from) * (elapsed_ms / ms as f64)).clamp(0.0, 1.0)
+}
+
+/// LockFx.ease: ease-out cubic (background.slint draws the scale with it;
+/// here for the tests that hold it to LockFx's)
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn ease(t: f64) -> f64 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
+/// LockFx.wallpaperScale (as background.slint's `scale`)
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn wallpaper_scale(zoom: bool, desktop: f64) -> f64 {
+    if zoom {
+        1.0 + 0.05 * (1.0 - ease(desktop))
+    } else {
+        1.0
+    }
+}
 
 struct Screen {
     output: String,
@@ -88,9 +158,10 @@ pub struct Background {
     /// the first picture is up (a screen that comes later fades in quickly
     /// from black, as the QML's: its connect effect already covers it)
     started: bool,
-    /// the lock's settle: the scale now, when not 1 (a window made meanwhile
-    /// starts there)
-    zoom: Option<f32>,
+    /// the lock's settle (a window made meanwhile joins in)
+    settle: Settle,
+    /// ends a reveal: the windows stop redrawing every frame for it
+    settle_end: slint::Timer,
 }
 
 /// An output's pixels: its current mode, turned as the output is
@@ -225,7 +296,7 @@ impl Background {
             ui.set_a_from(if later { 0.0 } else { -1.0 });
             ui.set_b_from(-2.0);
             ui.set_quick(later);
-            ui.set_zoom(self.zoom.unwrap_or(1.0));
+            apply_settle(&ui, &self.settle);
             ui.set_target(if later { 1.0 } else { 0.0 });
             let (to, out) = (st.shell.sender(NAME), sc.output.clone());
             ui.on_faded(move || to(Box::new(M::Faded(out.clone()))));
@@ -247,6 +318,8 @@ impl Background {
             w.ui.set_b_from(w.b_from);
         }
         w.top += 1.0;
+        // (from now: an idle window's animation clock is from its last frame)
+        slint::platform::update_timers_and_animations();
         w.ui.set_target(w.top);
     }
 
@@ -260,6 +333,28 @@ impl Background {
         }
     }
 
+    /// A settle step: every window follows from now, and a reveal's end is
+    /// timed (its last frame is exactly at rest)
+    fn settled(&mut self, st: &State) {
+        // (Slint's animation clock moves only when it's asked to: an idle
+        // window's is from its last frame, and a reveal timed from that
+        // would be over before it began. This is what put the wallpaper
+        // and the lock's veil at different scales mid-settle)
+        slint::platform::update_timers_and_animations();
+        for w in self.screens.iter().filter_map(|s| s.win.as_ref()) {
+            apply_settle(&w.ui, &self.settle);
+        }
+        match self.settle.reveal {
+            Some((_, ms)) => {
+                let tx = st.tx.clone();
+                self.settle_end.start(slint::TimerMode::SingleShot, std::time::Duration::from_millis(ms as u64 + 20), move || {
+                    let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::SettleEnd)));
+                });
+            }
+            None => self.settle_end.stop(),
+        }
+    }
+
     /// Again on the next minute (the time of day's picture, Auto's light and dark)
     fn tick(&mut self, st: &mut State) {
         self.refresh(st);
@@ -268,6 +363,26 @@ impl Background {
         self.clock.start(slint::TimerMode::SingleShot, std::time::Duration::from_millis((60 - secs.min(59)) * 1000 + 50), move || {
             let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Tick)));
         });
+    }
+}
+
+/// A window's share of the settle: where `desktop` is, and a reveal running
+/// from now for what's left of it (Slint draws its frames: background.slint)
+fn apply_settle(ui: &ui::Background, s: &Settle) {
+    let now = std::time::Instant::now();
+    ui.set_zoom_on(s.zoom);
+    match s.reveal {
+        Some((start, ms)) => {
+            let left = (ms as f64 - now.saturating_duration_since(start).as_secs_f64() * 1000.0).max(0.0);
+            ui.set_desk_from(s.desktop(now) as f32);
+            ui.set_desk_ms(left.round() as i32);
+            ui.invoke_settle_start();
+            ui.set_settling(left > 0.0);
+        }
+        None => {
+            ui.set_settling(false);
+            ui.set_desk_from(s.from as f32);
+        }
     }
 }
 
@@ -321,11 +436,15 @@ impl Part for Background {
                 if wallpaper::told_sun(&v) {
                     self.refresh(st);
                 }
-                if let Some((scale, ms)) = v["settle"].as_str().and_then(|s| settle(s, v["zoom"].as_bool().unwrap_or(true), v["ms"].as_i64().unwrap_or(0))) {
-                    self.zoom = (scale != 1.0).then_some(scale);
-                    for w in self.screens.iter().filter_map(|s| s.win.as_ref()) {
-                        w.ui.set_zoom_ms(ms as i32);
-                        w.ui.set_zoom(scale);
+                // (the step's own moment: the shell says when it took it, so
+                // the time its line took to get here isn't lost to the curve)
+                let now = std::time::Instant::now() - std::time::Duration::from_secs_f64(lag_ms(crate::util::now_ms(), v["at"].as_f64()) / 1000.0);
+                if let Some(step) = v["settle"].as_str() {
+                    if crate::env::is_set("DEBUG") {
+                        eprintln!("debug: settle {step} {:?}, {:.0} ms after the shell", v["ms"].as_i64(), lag_ms(crate::util::now_ms(), v["at"].as_f64()));
+                    }
+                    if self.settle.step(step, v["zoom"].as_bool().unwrap_or(true), v["ms"].as_i64().unwrap_or(0), now) {
+                        self.settled(st);
                     }
                 }
                 return;
@@ -343,6 +462,15 @@ impl Part for Background {
             }
             M::Faded(output) => self.faded(&output),
             M::Tick => self.tick(st),
+            M::SettleEnd => {
+                if self.settle.reveal.is_some_and(|(start, ms)| start.elapsed().as_millis() as i64 >= ms) {
+                    self.settle.reveal = None;
+                    self.settle.from = 1.0;
+                    for w in self.screens.iter().filter_map(|s| s.win.as_ref()) {
+                        apply_settle(&w.ui, &self.settle);
+                    }
+                }
+            }
         }
     }
 
@@ -375,5 +503,61 @@ impl Part for Background {
                 eprintln!("tessera-ui: stats {}", w.surface.stats.borrow_mut().report(&format!("background:{}", sc.output)));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn the_settle_is_lockfx_frame_for_frame() {
+        // LockFx: wallpaperScale = 1 + 0.05 (1 - ease(desktop)), ease-out cubic
+        assert_eq!(wallpaper_scale(true, 0.0), 1.05);
+        assert_eq!(wallpaper_scale(true, 1.0), 1.0);
+        assert!((wallpaper_scale(true, 0.5) - (1.0 + 0.05 * 0.125)).abs() < 1e-12);
+        assert_eq!(wallpaper_scale(false, 0.0), 1.0);
+        // desktop runs linearly over the reveal
+        assert_eq!(desktop_at(0.0, 0.0, 560), 0.0);
+        assert!((desktop_at(0.0, 140.0, 560) - 0.25).abs() < 1e-12);
+        assert!((desktop_at(0.5, 280.0, 560) - 0.75).abs() < 1e-12);
+        assert_eq!(desktop_at(0.0, 600.0, 560), 1.0);
+        assert_eq!(desktop_at(0.0, 0.0, 0), 1.0);
+    }
+
+    #[test]
+    fn settle_steps_as_lockfx() {
+        let t0 = Instant::now();
+        let mut s = Settle::default();
+        assert_eq!(s.desktop(t0), 1.0);
+        // unlock: set back, then revealed over 560 ms
+        assert!(s.step("prepare", true, 0, t0));
+        assert_eq!((s.desktop(t0), wallpaper_scale(s.zoom, s.desktop(t0))), (0.0, 1.05));
+        let t1 = t0 + Duration::from_millis(100);
+        assert!(s.step("reveal", true, 560, t1));
+        let at = |ms: u64| wallpaper_scale(s.zoom, s.desktop(t1 + Duration::from_millis(ms)));
+        assert_eq!(at(0), 1.05);
+        assert!((at(280) - (1.0 + 0.05 * 0.125)).abs() < 1e-9);
+        assert_eq!(at(560), 1.0);
+        // a reveal mid-reveal goes on from where it is
+        let mid = s.desktop(t1 + Duration::from_millis(280));
+        assert!(s.step("reveal", true, 300, t1 + Duration::from_millis(280)));
+        assert!((s.from - mid).abs() < 1e-9);
+        // rest: at once; fade only: never zoomed
+        assert!(s.step("rest", true, 0, t1));
+        assert_eq!(s.desktop(t1), 1.0);
+        assert!(s.step("prepare", false, 0, t1));
+        assert_eq!(wallpaper_scale(s.zoom, s.desktop(t1)), 1.0);
+        assert!(!s.step("wobble", true, 0, t1));
+    }
+
+    #[test]
+    fn a_step_counts_from_when_the_shell_took_it() {
+        assert_eq!(lag_ms(10_000, Some(9_960.0)), 40.0);
+        assert_eq!(lag_ms(10_000, None), 0.0);
+        // (clocks: never ahead, never more than half a second)
+        assert_eq!(lag_ms(10_000, Some(10_050.0)), 0.0);
+        assert_eq!(lag_ms(10_000, Some(1_000.0)), 500.0);
     }
 }
