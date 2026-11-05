@@ -25,8 +25,12 @@
 //! (Slint has no blur), the drop's ring has no blur either; Glass's corners
 //! are round, not continuous (squircles); Material's icons are Material
 //! Symbols without their FILL axis (outlined); Material's segmented buttons
-//! don't widen while pressed; the stagger keeps the QML's numbers, so rows
-//! ordered past 7 rest below full opacity there too (Glass's buttons at 73%).
+//! don't widen while pressed; numbers aren't tabular (Slint can't ask for
+//! the font's tnum); with Material's transparency the panel is its surface
+//! container at the panel alpha, not the plugin's neutral "veil" glass (a
+//! little warmer than the QML's); the stagger keeps the QML's numbers, so
+//! rows ordered past 7 rest below full opacity there too (Glass's buttons
+//! at 73%: a QML quirk worth fixing in both).
 
 pub mod model;
 pub mod motion;

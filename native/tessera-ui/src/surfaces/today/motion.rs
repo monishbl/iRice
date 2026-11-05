@@ -221,8 +221,10 @@ pub fn exit(from: Frame, ms: f32, t: &Target) -> Timeline {
     tl
 }
 
-/// Row n of the stagger (TodayContent's appear): 40 ms apart over the
+/// Row n of the stagger (TodayContent's appear; ui/today.slint's
+/// Day.appear draws it, this is its tested twin): 40 ms apart over the
 /// 620 ms of `rows`, each fading in over 300 ms
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn appear(rows: f32, order: i32) -> f32 {
     ((rows * 620.0 - order as f32 * 40.0) / 300.0).clamp(0.0, 1.0)
 }

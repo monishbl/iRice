@@ -273,6 +273,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(r("surfaceContainer"));
         t.set_blur(look.transparency > 0.0);
         t.set_panel_alpha(1.0 - 0.55 * look.transparency);
+        t.set_control_alpha(1.0 - 0.4 * look.transparency);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);
@@ -332,6 +333,7 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(hex(if d { "#26262A" } else { "#F2F2F5" }));
         t.set_blur(false);
         t.set_panel_alpha(1.0);
+        t.set_control_alpha(1.0);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(15.0);

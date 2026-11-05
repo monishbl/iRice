@@ -133,7 +133,7 @@ component DayButton inherits FocusScope {
     in property <bool> primary;
     callback activated();
     property <color> ink: Theme.material ? (primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : primary ? Theme.on-accent : Theme.label;
-    property <color> base: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container) : primary ? Theme.accent : Theme.fill;
+    property <color> base: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container.with-alpha(Theme.control-alpha)) : primary ? Theme.accent : Theme.fill;
     focus-on-click: false;
     width: row.preferred-width + (Theme.material ? 48px : 32px);
     height: Theme.material ? 40px : 36px;
@@ -497,7 +497,7 @@ component Heading inherits Text {
     height: 24px;
     color: Theme.m3-on-surface;
     font-size: Theme.title;
-    font-weight: 600;
+    font-weight: 500; // (Font.DemiBold: Qt draws Google Sans Flex's at about 500)
     vertical-alignment: center;
 }
 
@@ -579,7 +579,7 @@ component MaterialDay inherits Rectangle {
         height: hero-h;
         Rectangle {
             border-radius: 28px;
-            background: Theme.m3-primary-container;
+            background: Theme.m3-primary-container.with-alpha(Theme.control-alpha);
         }
         cookie := Rectangle {
             x: 20px;
@@ -599,7 +599,7 @@ component MaterialDay inherits Rectangle {
                     horizontal-alignment: center;
                     color: Theme.m3-on-primary;
                     font-size: Theme.small;
-                    font-weight: 600;
+                    font-weight: 500;
                     letter-spacing: 1px;
                 }
                 Text {
@@ -650,7 +650,7 @@ component MaterialDay inherits Rectangle {
         height: hero-h;
         Rectangle {
             border-radius: 28px;
-            background: Theme.m3-tertiary-container;
+            background: Theme.m3-tertiary-container.with-alpha(Theme.control-alpha);
         }
         sun := Rectangle {
             x: 20px;
@@ -714,7 +714,7 @@ component MaterialDay inherits Rectangle {
         height: lower-h;
         Rectangle {
             border-radius: 24px;
-            background: Theme.m3-surface-container-high;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
         }
         Heading { text: "Today"; }
         if Day.events.length == 0: Text {
@@ -733,7 +733,7 @@ component MaterialDay inherits Rectangle {
             width: parent.width - 24px;
             height: 48px;
             border-radius: 12px;
-            background: Theme.m3-surface-container-highest;
+            background: Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha);
             opacity: e.past ? 0.5 : 1;
             accessible-role: AccessibleRole.text;
             accessible-label: e.title + ", " + e.time;
@@ -785,7 +785,7 @@ component MaterialDay inherits Rectangle {
         height: lower-h;
         Rectangle {
             border-radius: 24px;
-            background: Theme.m3-surface-container-high;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
         }
         Heading { text: "To-dos"; }
         if Day.todos.length == 0: Text {
@@ -839,7 +839,7 @@ component MaterialDay inherits Rectangle {
         height: lower-h;
         Rectangle {
             border-radius: 24px;
-            background: Theme.m3-surface-container-high;
+            background: Theme.m3-surface-container-high.with-alpha(Theme.control-alpha);
         }
         Heading { text: "Later today"; }
         if !Day.weather-ready: Text {
@@ -991,7 +991,7 @@ component Segmented inherits FocusScope {
                 border-top-right-radius: i == root.options.length - 1 ? parent.full : parent.inner;
                 border-bottom-right-radius: self.border-top-right-radius;
                 animate border-top-left-radius, border-top-right-radius, border-bottom-left-radius, border-bottom-right-radius { duration: 250ms; easing: spring(0.54); }
-                background: (parent.chosen ? Theme.m3-primary : Theme.m3-surface-container-highest).mix(parent.chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant, seg-touch.pressed ? 0.9 : seg-touch.has-hover ? 0.92 : 1);
+                background: (parent.chosen ? Theme.m3-primary : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha)).mix(parent.chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant, seg-touch.pressed ? 0.9 : seg-touch.has-hover ? 0.92 : 1);
                 animate background { duration: 150ms; }
             }
             label-text := Text {
@@ -1050,7 +1050,7 @@ component Toggle inherits FocusScope {
     }
     if Theme.material: Rectangle {
         border-radius: self.height / 2;
-        background: root.checked ? Theme.m3-primary : Theme.m3-surface-container-highest;
+        background: root.checked ? Theme.m3-primary : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha);
         border-width: root.checked ? 0 : 2px;
         border-color: Theme.m3-outline;
         animate background { duration: 150ms; }
@@ -1098,7 +1098,7 @@ component NameField inherits Rectangle {
     public function set-text(t: string) { input.text = t; }
     height: Theme.material ? 40px : 28px;
     border-radius: Theme.material ? min(self.height / 2, 28px) : Theme.radius-control - 2px;
-    background: Theme.material ? (hover.has-hover && !input.has-focus ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-highest) : Theme.fill;
+    background: Theme.material ? (hover.has-hover && !input.has-focus ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-highest.with-alpha(Theme.control-alpha)) : Theme.fill;
     border-width: Theme.material ? (input.has-focus ? 2px : 0) : 1px;
     border-color: Theme.material ? Theme.m3-primary : input.has-focus ? Theme.accent : Theme.separator;
     hover := TouchArea {

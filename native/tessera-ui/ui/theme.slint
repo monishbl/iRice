@@ -90,6 +90,8 @@ export global Theme {
     // materialTransparency; Theme.veil(c) is c.with-alpha(panel-alpha))
     in property <bool> blur: false;
     in property <float> panel-alpha: 1;
+    // (Theme.qml's controlAlpha: Material's container roles, see-through as far as Transparency says)
+    in property <float> control-alpha: 1;
     // Type: sizes (Theme.font)
     in property <length> caption: 11px;
     in property <length> small: 12px;
