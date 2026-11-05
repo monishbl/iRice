@@ -1,0 +1,1105 @@
+// The menu bar's Wi-Fi menu in Rust (rust.surfaces: network), compare
+// shell/modules/menubar/StatusMenus.qml ("wifiMenu"), shell/glass/Popover.qml,
+// shell/modules/controlcenter/{DetailPage,WifiPage,WifiList,ListRow}.qml and
+// shell/modules/network/SpeedTestCard.qml: a popover under the bar with the
+// Wi-Fi switch, the networks, and the speed test. src/surfaces/network owns
+// the state; this draws it. SpeedTestCard is exported for other surfaces.
+// (Slint draws no underline, sets no font features (tabular figures) and has
+// no shaders: the wavy bar is a path slid sideways, as WavyProgress.qml.)
+//
+// For ui/main.slint:
+// export { WifiMenu, SpeedTestCard, SpeedCard, SpeedStat, NetRow, NetMenuItem, NetGlyphs } from "network.slint";
+
+import { Theme } from "@tessera/theme.slint";
+import { SymIcon } from "@tessera/symbols.slint";
+
+// Phosphor glyphs (SymIcon draws Material Symbols for them in Material)
+export struct NetGlyphs {
+    gauge: string,
+    refresh: string,
+    spinner: string, // circle-notch
+    lock: string,
+    qr: string,
+    plus: string,
+    check: string,
+    wifi-slash: string,
+}
+
+export struct SpeedStat {
+    label: string,
+    icon: string, // glyph
+    value: string,
+    active: bool, // its phase runs now: the icon in the accent
+    none: bool, // "—": not measured
+}
+
+export struct SpeedCard {
+    running: bool,
+    stage: string,
+    sub: string, // the line under the title
+    live: string,
+    progress: float,
+    show-stats: bool,
+    stats: [SpeedStat],
+    resp: string,
+    resp-h: length,
+    verdict: string,
+    verdict-h: length,
+    server: string,
+    error: string,
+    error-h: length,
+    action: string, // Test speed | Cancel | Test again
+    wave: string, // Material's wave (path commands, card width + 40 by 10)
+    flat: bool,
+}
+
+export struct NetRow {
+    name: string,
+    status: string,
+    icon: string, // glyph
+    hl: bool, // connected
+    lock: bool,
+    busy: bool,
+    share: bool, // the QR action (connected, not enterprise)
+    asking: bool, // the password prompt under it
+    hint: string,
+    failed: string,
+    failed-h: length,
+    first: bool, // Material's segmented list
+    last: bool,
+    focused: bool, // the keyboard is on it
+}
+
+export struct NetMenuItem {
+    text: string,
+    sep: bool,
+    danger: bool,
+}
+
+// Busy: Glass's turning circle-notch, Material's loading arc
+component Spinner inherits Rectangle {
+    in property <string> glyph;
+    in property <length> size: 14px;
+    in property <color> ink: Theme.secondary;
+    width: size;
+    height: size;
+    accessible-role: progress-indicator;
+    accessible-label: "Busy";
+    property <duration> t: animation-tick();
+    if !Theme.material: Text {
+        text: glyph;
+        font-family: "Phosphor";
+        font-size: root.size;
+        color: root.ink;
+        transform-rotation: mod(root.t / 800ms, 1) * 360deg;
+        accessible-role: none;
+    }
+    if Theme.material: Path {
+        width: root.size;
+        height: root.size;
+        viewbox-width: 40;
+        viewbox-height: 40;
+        stroke: root.ink;
+        stroke-width: max(2px, root.size / 9);
+        property <float> a: mod(root.t / 1333ms, 1) * 360;
+        property <float> sweep: 40 + 220 * abs(sin(mod(root.t / 2666ms, 1) * 180deg));
+        transform-rotation: a * 1deg;
+        MoveTo { x: 20 + 16 * cos(0deg); y: 20 + 16 * sin(0deg); }
+        ArcTo { x: 20 + 16 * cos(sweep * 1deg); y: 20 + 16 * sin(sweep * 1deg); radius-x: 16; radius-y: 16; large-arc: sweep > 180; sweep: true; }
+    }
+}
+
+// The progress bar (WavyProgress.qml): Glass's thin bar; Material's wave,
+// a gap, the track and its stop dot
+component WaveBar inherits Rectangle {
+    in property <float> value; // 0..1
+    in property <string> wave;
+    in property <bool> flat;
+    height: Theme.material ? 10px : 4px;
+    if !Theme.material: Rectangle {
+        width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.fill;
+        Rectangle {
+            x: 0;
+            width: parent.width * root.value;
+            animate width { duration: 250ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            height: parent.height;
+            border-radius: 2px;
+            background: Theme.accent;
+        }
+    }
+    if Theme.material: wb := Rectangle {
+        width: 100%;
+        height: 100%;
+        property <length> end: self.width * root.value;
+        animate end { duration: 250ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        property <float> phase: mod(animation-tick() / 1000ms, 1);
+        // the track after a gap, with its stop dot
+        Rectangle {
+            x: min(parent.width, parent.end + 4px + (parent.end > 0 ? 2px : 0));
+            y: (parent.height - 4px) / 2;
+            width: max(0, parent.width - self.x);
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.m3-secondary-container;
+            Rectangle {
+                x: parent.width - 4px;
+                width: 4px;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.m3-primary;
+            }
+        }
+        // the done part, the wave slid inside it
+        Rectangle {
+            x: 0;
+            width: parent.end;
+            height: parent.height;
+            clip: true;
+            if root.flat: Rectangle {
+                y: 3px;
+                width: parent.width;
+                height: 4px;
+                background: Theme.m3-primary;
+            }
+            if !root.flat: Path {
+                x: (wb.phase - 1) * 40px;
+                y: 0;
+                width: root.width + 40px;
+                height: 10px;
+                viewbox-width: root.width / 1px + 40;
+                viewbox-height: 10;
+                commands: root.wave;
+                stroke: Theme.m3-primary;
+                stroke-width: 4px;
+            }
+        }
+        // (round ends: the clip cuts the stroke's own)
+        for k in 2: Rectangle {
+            visible: wb.end > 1px;
+            property <length> cx: k == 0 ? 2px : wb.end - 2px;
+            x: self.cx - 2px;
+            y: wb.height / 2 + (root.flat ? 0px : 3px * sin((self.cx / 40px - wb.phase) * 360deg)) - 2px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.m3-primary;
+        }
+    }
+}
+
+// The speed test (SpeedTestCard.qml): the title and the one action; while it
+// runs the live speed and how far through the phase; the three numbers;
+// (full: responsiveness, the verdict, the server); what went wrong; the link
+// to Settings → Network
+export component SpeedTestCard inherits Rectangle {
+    in property <SpeedCard> s;
+    in property <NetGlyphs> g;
+    in property <bool> compact;
+    in property <bool> settings-link: true;
+    in property <bool> action-focused; // the keyboard's ring
+    in property <bool> link-focused;
+    callback act(); // start, or cancel a run
+    callback details();
+    property <bool> m3: Theme.material;
+    preferred-height: col.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: "Speed test";
+
+    col := VerticalLayout {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        spacing: 10px;
+        alignment: start;
+
+        // Title, and the one action
+        Rectangle {
+            height: 28px;
+            SymIcon {
+                x: 0;
+                width: 16px;
+                text: g.gauge;
+                font-size: 16px;
+                color: Theme.secondary;
+            }
+            VerticalLayout {
+                x: 24px;
+                width: action.x - 8px - self.x;
+                y: (parent.height - self.preferred-height) / 2;
+                height: self.preferred-height;
+                Text {
+                    text: "Speed test";
+                    overflow: elide;
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                }
+                if s.sub != "": Text {
+                    text: s.sub;
+                    overflow: elide;
+                    color: Theme.secondary;
+                    font-size: Theme.caption;
+                }
+            }
+            action := Rectangle {
+                property <color> base: s.running ? Theme.m3-secondary-container : Theme.m3-primary;
+                property <color> ink: s.running ? Theme.m3-on-secondary-container : Theme.m3-on-primary;
+                width: al.preferred-width + (m3 ? 32px : 24px);
+                height: m3 ? 32px : 28px;
+                x: parent.width - self.width;
+                y: (parent.height - self.height) / 2;
+                // Material: an extra-small button, filled to start, tonal to
+                // cancel, its corners tightening while pressed (Glass: a pill)
+                border-radius: m3 ? (at.pressed ? 8px : self.height / 2) : 14px;
+                animate border-radius { duration: 200ms; easing: spring(0.3); }
+                background: m3 ? base.mix(ink, at.pressed ? 0.9 : at.has-hover ? 0.92 : 1)
+                    : s.running ? (at.pressed ? Theme.fill-pressed : at.has-hover ? Theme.fill-hover : Theme.fill)
+                    : (at.pressed ? Theme.accent.darker(0.2) : at.has-hover ? Theme.accent.darker(0.1) : Theme.accent);
+                animate background { duration: 150ms; }
+                // (Glass shrinks while pressed; Material swells)
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                transform-scale: at.pressed ? (m3 ? 1.06 : 0.97) : 1;
+                animate transform-scale { duration: 100ms; }
+                accessible-role: button;
+                accessible-label: s.action;
+                accessible-action-default => { root.act(); }
+                if action-focused: Rectangle {
+                    x: m3 ? -5px : -3px;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: parent.height - 2 * self.y;
+                    border-radius: self.height / 2;
+                    border-width: m3 ? 3px : 2px;
+                    border-color: m3 ? Theme.m3-secondary : Theme.accent;
+                }
+                al := Text {
+                    text: s.action;
+                    color: m3 ? parent.ink : s.running ? Theme.label : Theme.on-accent;
+                    font-size: Theme.small;
+                    font-weight: m3 ? 500 : 600;
+                    accessible-role: none;
+                }
+                at := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.act(); }
+                }
+            }
+        }
+
+        // Live: the speed right now, and how far through the phase
+        if s.running: VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: s.live;
+                color: Theme.label;
+                font-size: Theme.display;
+                font-weight: 600;
+            }
+            WaveBar {
+                value: max(0.02, min(1, s.progress));
+                wave: s.wave;
+                flat: s.flat;
+            }
+        }
+
+        // The numbers
+        if s.show-stats: HorizontalLayout {
+            spacing: 0;
+            for st in s.stats: VerticalLayout {
+                width: root.width / 3;
+                spacing: 2px;
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 4px;
+                    SymIcon {
+                        text: st.icon;
+                        bold: true;
+                        font-size: 11px;
+                        color: st.active ? Theme.accent : Theme.tertiary;
+                    }
+                    Text {
+                        text: st.label;
+                        color: Theme.secondary;
+                        font-size: Theme.caption;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    padding-right: 4px;
+                    Text {
+                        text: st.value;
+                        overflow: elide;
+                        color: st.none ? Theme.tertiary : Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+
+        // Responsiveness, the verdict and the server (not when compact)
+        if !compact && s.show-stats && s.resp != "": Text {
+            text: s.resp;
+            wrap: word-wrap;
+            min-height: s.resp-h;
+            color: Theme.secondary;
+            font-size: Theme.small;
+        }
+        if !compact && !s.running && s.stage != "error" && s.verdict != "": Text {
+            text: s.verdict;
+            wrap: word-wrap;
+            min-height: s.verdict-h;
+            color: Theme.label;
+            font-size: Theme.small;
+        }
+        if !compact && s.stage != "error" && s.server != "": Text {
+            text: s.server;
+            overflow: elide;
+            color: Theme.tertiary;
+            font-size: Theme.caption;
+        }
+
+        // Something went wrong: what, and how to fix it
+        if s.error != "": Text {
+            text: s.error;
+            wrap: word-wrap;
+            min-height: s.error-h;
+            color: Theme.danger;
+            font-size: Theme.small;
+        }
+
+        if settings-link: HorizontalLayout {
+            alignment: start;
+            Rectangle {
+                width: lk.preferred-width;
+                height: lk.preferred-height;
+                accessible-role: button;
+                accessible-label: "Speed test details";
+                accessible-action-default => { root.details(); }
+                if link-focused: Rectangle {
+                    x: -4px;
+                    y: -2px;
+                    width: parent.width + 8px;
+                    height: parent.height + 4px;
+                    border-radius: 6px;
+                    border-width: 2px;
+                    border-color: m3 ? Theme.m3-secondary : Theme.accent;
+                }
+                lk := Text {
+                    text: "Speed test details…";
+                    color: lt.has-hover ? Theme.accent : Theme.secondary;
+                    font-size: Theme.small;
+                    accessible-role: none;
+                }
+                lt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.details(); }
+                }
+            }
+        }
+    }
+}
+
+// A network (ListRow.qml): the signal on a badge, name and status, the lock,
+// busy, the QR action. Material: a segment of Material 3 Expressive's list
+component NetRowView inherits Rectangle {
+    in property <NetRow> r;
+    in property <NetGlyphs> g;
+    callback clicked();
+    callback menu-at(length, length);
+    callback action();
+    property <bool> m3: Theme.material;
+    height: m3 ? (r.status != "" ? 56px : 48px) : 40px;
+    accessible-role: list-item;
+    accessible-label: r.name;
+    accessible-description: r.status;
+    accessible-item-selectable: true;
+    accessible-item-selected: r.hl;
+    accessible-action-default => { root.clicked(); }
+
+    property <length> inner: r.hl || rt.pressed ? 16px : rt.has-hover ? 12px : 4px;
+    animate inner { duration: 222ms; easing: spring(0.4); }
+    Rectangle {
+        border-top-left-radius: m3 ? (r.first ? 20px : inner) : Theme.radius-control;
+        border-top-right-radius: self.border-top-left-radius;
+        border-bottom-left-radius: m3 ? (r.last ? 20px : inner) : Theme.radius-control;
+        border-bottom-right-radius: self.border-bottom-left-radius;
+        background: m3 ? (r.hl ? Theme.m3-primary-container : Theme.m3-surface-container-high).mix(r.hl ? Theme.m3-on-primary-container : Theme.m3-on-surface, rt.pressed ? 0.9 : rt.has-hover ? 0.92 : 1)
+            : rt.pressed ? Theme.fill-pressed : rt.has-hover ? Theme.fill : transparent;
+        animate background { duration: 150ms; }
+    }
+    if r.focused: Rectangle {
+        x: m3 ? -5px : -4px;
+        y: self.x;
+        width: parent.width - 2 * self.x;
+        height: parent.height - 2 * self.y;
+        border-radius: (m3 ? 20px : Theme.radius-control) + 4px;
+        border-width: m3 ? 3px : 2px;
+        border-color: m3 ? Theme.m3-secondary : Theme.accent;
+    }
+    rt := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                root.menu-at(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+        clicked => { root.clicked(); }
+    }
+    badge := Rectangle {
+        x: m3 ? 10px : 6px;
+        width: m3 ? 36px : 28px;
+        height: self.width;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: r.hl ? Theme.accent : Theme.toggle-off;
+        SymIcon {
+            text: r.icon;
+            fill: r.hl;
+            font-size: m3 ? 18px : 15px;
+            color: r.hl ? Theme.on-accent : Theme.label;
+        }
+    }
+    property <length> right-edge: root.width - (m3 ? 16px : 10px) - (r.lock || r.busy ? (m3 ? 22px : 14px) : 0) - (r.share ? 32px : 0) - 8px;
+    VerticalLayout {
+        x: badge.x + badge.width + (m3 ? 14px : 10px);
+        width: right-edge - self.x;
+        y: (parent.height - self.preferred-height) / 2;
+        height: self.preferred-height;
+        Text {
+            text: r.name;
+            overflow: elide;
+            color: m3 && r.hl ? Theme.m3-on-primary-container : Theme.label;
+            font-size: m3 ? 14px : Theme.body;
+            font-weight: r.hl ? (m3 ? 500 : 600) : 400;
+            accessible-role: none;
+        }
+        if r.status != "": Text {
+            text: r.status;
+            overflow: elide;
+            color: m3 && r.hl ? Theme.m3-on-primary-container.with-alpha(0.8) : Theme.secondary;
+            font-size: m3 ? 12px : Theme.caption;
+            accessible-role: none;
+        }
+    }
+    if r.busy: Spinner {
+        x: parent.width - (m3 ? 14px : 10px) - self.width;
+        y: (parent.height - self.height) / 2;
+        glyph: g.spinner;
+        size: m3 ? 22px : 14px;
+        ink: m3 && r.hl ? Theme.m3-on-primary-container : Theme.secondary;
+    }
+    if !r.busy && r.lock: SymIcon {
+        x: parent.width - (m3 ? 16px : 10px) - self.width;
+        width: m3 ? 18px : 14px;
+        y: (parent.height - self.height) / 2;
+        text: g.lock;
+        font-size: m3 ? 18px : 14px;
+        color: m3 && r.hl ? Theme.m3-on-primary-container : Theme.secondary;
+    }
+    if r.share: Rectangle {
+        // (4 px before the trailing icon, as ListRow's action button)
+        x: parent.width - (m3 ? 16px : 10px) - (r.busy ? (m3 ? 22px : 14px) : r.lock ? (m3 ? 18px : 14px) : 0) - 4px - self.width;
+        y: (parent.height - self.height) / 2;
+        width: 28px;
+        height: 28px;
+        border-radius: m3 ? (st.pressed ? 8px : 14px) : Theme.radius-control - 2px;
+        background: m3 ? (st.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : st.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
+            : st.pressed ? Theme.fill-pressed : st.has-hover ? Theme.fill : transparent;
+        animate background { duration: 150ms; }
+        accessible-role: button;
+        accessible-label: "Share this network";
+        accessible-action-default => { root.action(); }
+        SymIcon {
+            text: g.qr;
+            font-size: 15px;
+            color: Theme.secondary;
+        }
+        st := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.action(); }
+        }
+    }
+}
+
+// The popover: a full-screen transparent layer (a click outside closes it),
+// the panel under the item that opened it
+export component WifiMenu inherits Window {
+    in property <bool> shown;
+    in property <length> anchor-x; // Panels.anchorX: the item's left edge
+    // Wi-Fi
+    in property <bool> wifi-on;
+    in property <bool> unmanaged;
+    in property <string> notice-title;
+    in property <string> notice-text;
+    in property <length> notice-h;
+    in property <string> notice-action;
+    in property <bool> notice-busy;
+    in property <[NetRow]> rows;
+    in property <string> empty-text;
+    in property <NetRow> join-row;
+    in property <bool> show-join;
+    // The speed test
+    in property <SpeedCard> speed;
+    in property <NetGlyphs> g;
+    in property <int> kbd: -1; // what the keyboard is on (Rust: rows, Join other…, the card's button and link)
+    in property <bool> card-focused;
+    in property <bool> link-focused;
+    // A row's menu
+    in property <bool> menu-open;
+    in property <[NetMenuItem]> menu-items;
+    in property <length> menu-x;
+    in property <length> menu-y;
+
+    out property <float> openness: shown ? 1 : 0;
+    out property <length> panel-x: panel.x;
+    out property <length> panel-y: panel.y;
+    out property <length> panel-w: panel.width;
+    out property <length> panel-h: panel.height;
+    out property <float> panel-opacity: panel.opacity;
+    out property <length> panel-radius: panel.border-radius;
+    out property <length> menu-w: 200px;
+    out property <length> menu-h: mlist.preferred-height + 2 * mpad;
+
+    callback key(string, bool) -> bool;
+    callback switch-toggled();
+    callback refresh();
+    callback row-click(int);
+    callback row-menu(int, length, length);
+    callback row-action(int);
+    callback commit(int, string);
+    callback cancel-ask(int);
+    callback other-options(int);
+    callback join-other();
+    callback notice-act();
+    callback speed-act();
+    callback details();
+    callback menu-pick(int);
+    callback menu-close();
+    callback hovered(bool);
+    callback dismissed();
+    callback closed(); // the close animation ended
+
+    background: transparent;
+    no-frame: true;
+    title: "Wi-Fi";
+    default-font-family: Theme.font;
+
+    property <bool> m3: Theme.material;
+    property <length> pad: 16px;
+    property <length> mpad: m3 ? 4px : 5px;
+    property <angle> spin;
+    animate spin { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+
+    animate openness {
+        duration: shown ? 420ms : 154ms;
+        easing: shown ? spring(0.3) : cubic-bezier(0.4, 0, 1, 1);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    public function focus-keys() {
+        keys.focus();
+    }
+    public function spin-refresh() {
+        spin += 360deg;
+    }
+
+    // A click outside closes it
+    TouchArea {
+        enabled: shown;
+        clicked => { dismissed(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text, e.modifiers.shift) { return accept; }
+            reject
+        }
+
+        panel := Rectangle {
+            // (Popover.qml: under its item, kept on screen, room for the shadow)
+            x: max(24px, min(anchor-x - 20px, root.width - 356px));
+            y: 34px + (1 - openness) * -8px;
+            width: 300px + 2 * pad;
+            height: content.preferred-height + 2 * pad;
+            opacity: min(1, openness);
+            border-radius: Theme.radius-control + pad;
+            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
+            border-width: m3 ? 0 : 0.5px;
+            border-color: Theme.separator;
+            drop-shadow-blur: m3 ? 16px : 0;
+            drop-shadow-offset-y: m3 ? 4px : 0;
+            drop-shadow-color: m3 ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12) : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Wi-Fi";
+
+            hover := TouchArea {
+                changed has-hover => { root.hovered(self.has-hover); }
+
+                content := VerticalLayout {
+                    x: pad;
+                    y: pad;
+                    width: 300px;
+                    spacing: 12px;
+
+                    // ── Wi-Fi (WifiPage: DetailPage and WifiList) ──
+                    VerticalLayout {
+                        spacing: 10px;
+
+                        // Glass: the title, refresh and the switch in one row
+                        if !m3: Rectangle {
+                            height: 30px;
+                            Text {
+                                x: 2px;
+                                height: parent.height;
+                                text: "Wi-Fi";
+                                color: Theme.label;
+                                font-size: Theme.title;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                            if !unmanaged: Rectangle {
+                                x: parent.width - 38px - 10px - 28px;
+                                y: 1px;
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 14px;
+                                background: rf.pressed ? Theme.fill-pressed : rf.has-hover ? Theme.fill-hover : transparent;
+                                accessible-role: button;
+                                accessible-label: "Refresh";
+                                accessible-action-default => { spin += 360deg; refresh(); }
+                                SymIcon {
+                                    text: g.refresh;
+                                    font-size: 14px;
+                                    color: Theme.secondary;
+                                    transform-rotation: spin;
+                                }
+                                rf := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { spin += 360deg; refresh(); }
+                                }
+                            }
+                            if !unmanaged: Rectangle {
+                                x: parent.width - 38px;
+                                y: 4px;
+                                width: 38px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: wifi-on ? Theme.accent : Theme.toggle-off;
+                                animate background { duration: 150ms; }
+                                accessible-role: switch;
+                                accessible-label: "Wi-Fi";
+                                accessible-checkable: true;
+                                accessible-checked: wifi-on;
+                                accessible-action-default => { switch-toggled(); }
+                                Rectangle {
+                                    x: wifi-on ? parent.width - self.width - 2px : 2px;
+                                    animate x { duration: 220ms; easing: cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+                                    width: parent.height - 4px;
+                                    height: self.width;
+                                    border-radius: self.width / 2;
+                                    background: #ffffff;
+                                }
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { switch-toggled(); }
+                                }
+                            }
+                        }
+                        // Material: the title and refresh, then Android's main switch bar
+                        if m3: Rectangle {
+                            height: 48px;
+                            Text {
+                                x: 4px;
+                                width: parent.width - self.x - (unmanaged ? 8px : 48px);
+                                height: parent.height;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                text: "Wi-Fi";
+                                color: Theme.m3-on-surface;
+                                font-size: 22px;
+                            }
+                            if !unmanaged: Rectangle {
+                                x: parent.width - 40px;
+                                y: 4px;
+                                width: 40px;
+                                height: 40px;
+                                border-radius: mr.pressed ? 8px : 20px;
+                                background: mr.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : mr.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                                animate background { duration: 150ms; }
+                                accessible-role: button;
+                                accessible-label: "Refresh";
+                                accessible-action-default => { spin += 360deg; refresh(); }
+                                SymIcon {
+                                    text: g.refresh;
+                                    font-size: 20px;
+                                    color: Theme.m3-on-surface-variant;
+                                    transform-rotation: spin;
+                                }
+                                mr := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { spin += 360deg; refresh(); }
+                                }
+                            }
+                        }
+                        if m3 && !unmanaged: Rectangle {
+                            height: 56px;
+                            border-radius: 28px;
+                            property <color> ink: wifi-on ? Theme.m3-on-primary-container : Theme.m3-on-surface;
+                            background: (wifi-on ? Theme.m3-primary-container : Theme.m3-surface-container-highest).mix(ink, bar.pressed ? 0.9 : bar.has-hover ? 0.92 : 1);
+                            animate background { duration: 150ms; }
+                            accessible-role: switch;
+                            accessible-label: "Use Wi-Fi";
+                            accessible-checkable: true;
+                            accessible-checked: wifi-on;
+                            accessible-action-default => { switch-toggled(); }
+                            Text {
+                                x: 24px;
+                                width: parent.width - 24px - 52px - 28px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                text: "Use Wi-Fi";
+                                color: parent.ink;
+                                font-size: 16px;
+                                font-weight: 500;
+                            }
+                            bar := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { switch-toggled(); }
+                            }
+                            // Material 3 Expressive's switch: an outlined track, the handle grows when on
+                            Rectangle {
+                                x: parent.width - 16px - 52px;
+                                y: (parent.height - 32px) / 2;
+                                width: 52px;
+                                height: 32px;
+                                border-radius: 16px;
+                                background: wifi-on ? Theme.m3-primary : Theme.m3-surface-container-highest;
+                                border-width: wifi-on ? 0 : 2px;
+                                border-color: Theme.m3-outline;
+                                animate background { duration: 150ms; }
+                                Rectangle {
+                                    property <length> size: bar.pressed ? 28px : wifi-on ? 24px : 16px;
+                                    animate size { duration: 222ms; easing: spring(0.4); }
+                                    width: size;
+                                    height: size;
+                                    border-radius: size / 2;
+                                    x: wifi-on ? parent.width - 16px - size / 2 : 16px - size / 2;
+                                    animate x { duration: 222ms; easing: spring(0.4); }
+                                    y: (parent.height - size) / 2;
+                                    background: wifi-on ? Theme.m3-on-primary : Theme.m3-outline;
+                                    if wifi-on: SymIcon {
+                                        text: g.check;
+                                        font-size: 16px;
+                                        bold: true;
+                                        color: Theme.m3-on-primary-container;
+                                    }
+                                }
+                            }
+                        }
+
+                        // WifiList: its rows 2 px apart (DetailPage's body)
+                        VerticalLayout {
+                        spacing: 2px;
+                        // Without NetworkManager: who manages Wi-Fi, and the fix (ServiceNotice)
+                        if unmanaged: VerticalLayout {
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 8px;
+                            SymIcon {
+                                height: 24px;
+                                text: g.wifi-slash;
+                                font-size: 24px;
+                                color: Theme.tertiary;
+                            }
+                            Text {
+                                horizontal-alignment: center;
+                                wrap: word-wrap;
+                                text: notice-title;
+                                color: Theme.label;
+                                font-size: Theme.body;
+                                font-weight: 600;
+                            }
+                            if notice-text != "": Text {
+                                min-height: notice-h;
+                                horizontal-alignment: center;
+                                wrap: word-wrap;
+                                text: notice-text;
+                                color: Theme.secondary;
+                                font-size: Theme.small;
+                            }
+                            if notice-action != "": HorizontalLayout {
+                                alignment: center;
+                                padding-top: 4px;
+                                Rectangle {
+                                    width: nl.preferred-width + (m3 ? 48px : 28px);
+                                    height: m3 ? 40px : 30px;
+                                    border-radius: m3 ? self.height / 2 : Theme.radius-control;
+                                    opacity: notice-busy ? 0.6 : 1;
+                                    background: m3 ? Theme.m3-primary.mix(Theme.m3-on-primary, nt.pressed ? 0.9 : nt.has-hover ? 0.92 : 1) : nt.pressed ? Theme.accent.darker(0.15) : nt.has-hover ? Theme.accent.darker(0.07) : Theme.accent;
+                                    accessible-role: button;
+                                    accessible-label: notice-action;
+                                    accessible-action-default => { notice-act(); }
+                                    nl := Text {
+                                        text: notice-busy ? "Working…" : notice-action;
+                                        color: m3 ? Theme.m3-on-primary : Theme.on-accent;
+                                        font-size: Theme.small;
+                                        font-weight: 600;
+                                        accessible-role: none;
+                                    }
+                                    nt := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { notice-act(); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // The networks, scrolling once there are more than fit
+                        if !unmanaged: Rectangle {
+                            height: min(list.preferred-height, 360px);
+                            fl := Flickable {
+                                width: parent.width;
+                                height: parent.height;
+                                content-width: self.width;
+                                content-height: list.preferred-height;
+                                interactive: list.preferred-height > parent.height + 1px;
+                                list := VerticalLayout {
+                                    width: fl.width;
+                                    spacing: 2px;
+                                    if empty-text != "": VerticalLayout {
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        Text {
+                                            horizontal-alignment: center;
+                                            text: empty-text;
+                                            color: Theme.secondary;
+                                            font-size: Theme.small;
+                                        }
+                                    }
+                                    for r[i] in rows: VerticalLayout {
+                                        NetRowView {
+                                            r: r;
+                                            g: g;
+                                            clicked => { row-click(i); }
+                                            menu-at(x, y) => { row-menu(i, x, y); }
+                                            action => { row-action(i); }
+                                        }
+                                        // The inline password prompt
+                                        if r.asking: HorizontalLayout {
+                                            padding-left: 44px;
+                                            spacing: 8px;
+                                            height: m3 ? 48px : 40px;
+                                            alignment: start;
+                                            Rectangle {
+                                                width: 180px;
+                                                height: m3 ? 40px : 30px;
+                                                y: (parent.height - self.height) / 2;
+                                                border-radius: m3 ? 20px : Theme.radius-control - 2px;
+                                                background: Theme.field-bg;
+                                                border-width: pw.has-focus ? (m3 ? 2px : 1px) : 0;
+                                                border-color: Theme.field-focus;
+                                                if pw.text == "": Text {
+                                                    x: 12px;
+                                                    text: "Password";
+                                                    color: Theme.tertiary;
+                                                    font-size: Theme.body;
+                                                    vertical-alignment: center;
+                                                    height: parent.height;
+                                                    accessible-role: none;
+                                                }
+                                                pw := TextInput {
+                                                    x: 12px;
+                                                    width: parent.width - 24px;
+                                                    height: parent.height;
+                                                    vertical-alignment: center;
+                                                    input-type: password;
+                                                    color: Theme.label;
+                                                    font-size: Theme.body;
+                                                    single-line: true;
+                                                    accessible-label: "Password";
+                                                    init => { self.focus(); }
+                                                    accepted => { commit(i, self.text); }
+                                                    key-pressed(e) => {
+                                                        if e.text == Key.Escape {
+                                                            cancel-ask(i);
+                                                            return accept;
+                                                        }
+                                                        return reject;
+                                                    }
+                                                }
+                                            }
+                                            Rectangle {
+                                                // (not disabled while not ready: a click says what's missing)
+                                                property <bool> ready: (pw.text.character-count >= 8 && pw.text.character-count <= 63) || pw.text.character-count == 5 || pw.text.character-count == 13 || pw.text.character-count == 10 || pw.text.character-count == 26;
+                                                width: jl.preferred-width + (m3 ? 32px : 24px);
+                                                height: m3 ? 40px : 30px;
+                                                y: (parent.height - self.height) / 2;
+                                                border-radius: m3 ? self.height / 2 : Theme.radius-control - 2px;
+                                                background: ready ? (m3 ? Theme.m3-primary : Theme.accent) : (m3 ? Theme.m3-secondary-container : Theme.fill);
+                                                accessible-role: button;
+                                                accessible-label: "Join";
+                                                accessible-action-default => { commit(i, pw.text); }
+                                                jl := Text {
+                                                    text: "Join";
+                                                    color: parent.ready ? (m3 ? Theme.m3-on-primary : Theme.on-accent) : Theme.label;
+                                                    font-size: Theme.body;
+                                                    font-weight: 500;
+                                                    accessible-role: none;
+                                                }
+                                                TouchArea {
+                                                    mouse-cursor: pointer;
+                                                    clicked => { commit(i, pw.text); }
+                                                }
+                                            }
+                                        }
+                                        if r.asking && r.hint != "": HorizontalLayout {
+                                            padding-left: 44px;
+                                            padding-bottom: 6px;
+                                            Text {
+                                                text: r.hint;
+                                                color: Theme.danger;
+                                                font-size: Theme.small;
+                                            }
+                                        }
+                                        // A network that needs more than a password: the full form
+                                        if r.asking: HorizontalLayout {
+                                            padding-left: 44px;
+                                            padding-bottom: 8px;
+                                            alignment: start;
+                                            Text {
+                                                text: "Other options…";
+                                                color: ot.has-hover ? Theme.accent-ink : Theme.secondary;
+                                                font-size: Theme.small;
+                                                accessible-role: button;
+                                                accessible-label: "Other options";
+                                                accessible-action-default => { other-options(i); }
+                                                ot := TouchArea {
+                                                    mouse-cursor: pointer;
+                                                    clicked => { other-options(i); }
+                                                }
+                                            }
+                                        }
+                                        // Joining went wrong: why, under the row
+                                        if !r.asking && r.failed != "": HorizontalLayout {
+                                            padding-left: 44px;
+                                            padding-right: 8px;
+                                            padding-bottom: 6px;
+                                            Text {
+                                                text: r.failed;
+                                                wrap: word-wrap;
+                                                min-height: r.failed-h;
+                                                color: Theme.danger;
+                                                font-size: Theme.caption;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // (ScrollIndicator: a thin bar while it scrolls)
+                            if fl.interactive: Rectangle {
+                                x: parent.width - 4px;
+                                width: 3px;
+                                border-radius: 1.5px;
+                                property <float> frac: fl.height / max(1px, fl.content-height);
+                                height: max(24px, fl.height * frac);
+                                y: (fl.height - self.height) * (-fl.content-y / max(1px, fl.content-height - fl.height));
+                                background: Theme.tertiary;
+                                opacity: 0.6;
+                            }
+                        }
+
+                        // A network that hides its name
+                        if show-join: NetRowView {
+                            r: join-row;
+                            g: g;
+                            clicked => { join-other(); }
+                        }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+
+                    SpeedTestCard {
+                        s: speed;
+                        g: g;
+                        compact: true;
+                        action-focused: card-focused;
+                        link-focused: root.link-focused;
+                        act => { speed-act(); }
+                        details => { details(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // A row's menu (PointerMenu): a click elsewhere puts it away
+    TouchArea {
+        visible: menu-open;
+        clicked => { menu-close(); }
+    }
+    Rectangle {
+        visible: menu-open;
+        x: menu-x;
+        y: menu-y;
+        width: menu-w;
+        height: menu-h;
+        border-radius: m3 ? 16px : Theme.menu-radius + 2px;
+        background: Theme.menu-bg;
+        border-width: m3 ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000040;
+        accessible-role: AccessibleRole.list;
+        accessible-label: "Network menu";
+        TouchArea { }
+        mlist := VerticalLayout {
+            x: mpad;
+            y: mpad;
+            width: menu-w - 2 * mpad;
+            for it[j] in menu-items: Rectangle {
+                height: it.sep ? (m3 ? 9px : 11px) : (m3 ? 40px : 26px);
+                if it.sep: Rectangle {
+                    width: parent.width - 18px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+                if !it.sep: Rectangle {
+                    accessible-role: list-item;
+                    accessible-label: it.text;
+                    accessible-action-default => { menu-pick(j); }
+                    border-radius: m3 ? 8px : Theme.radius-item + 2px;
+                    background: mt.has-hover ? (m3 ? Theme.m3-on-surface.with-alpha(0.08) : it.danger ? Theme.danger : Theme.highlight) : transparent;
+                    animate background { duration: 100ms; }
+                    Text {
+                        x: m3 ? 12px : 10px;
+                        width: parent.width - 2 * self.x;
+                        height: parent.height;
+                        text: it.text;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        color: m3 ? (it.danger ? Theme.m3-error : Theme.m3-on-surface) : mt.has-hover ? Theme.on-highlight : it.danger ? Theme.danger : Theme.menu-fg;
+                        font-size: m3 ? 14px : Theme.body;
+                        font-weight: m3 ? 500 : 400;
+                        accessible-role: none;
+                    }
+                    mt := TouchArea {
+                        clicked => { menu-pick(j); }
+                    }
+                }
+            }
+        }
+    }
+}

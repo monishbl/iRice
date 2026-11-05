@@ -37,7 +37,9 @@ Singleton {
     // Panels whose name isn't the surface's (surface names are lowercase)
     readonly property var panelNames: ({
             controlcenter: "controlCenter",
-            osk: "keyboard"
+            osk: "keyboard",
+            notes: "quickNote", // (the quick note)
+            network: "wifiMenu" // (the menu bar's Wi-Fi menu, with the speed test)
         })
     function panelOf(surface) {
         return panelNames[surface] ?? surface;
@@ -57,6 +59,11 @@ Singleton {
     // overlay's widgets, the welcome screen's choices, a hot corner's
     // action): answered by Overlay.qml, Welcome.qml and HotCorners.qml
     signal surfaceCall(string name, var args)
+    // What the share sheet and cards, the App Store, the shelf, the Wi-Fi
+    // menu, live captions and the quick note drawn there ask of this shell
+    // (their "share", "appstore", "shelf", "network", "captions" and "notes"
+    // calls): done by each one's feed (modules/<name>/*Feed.qml)
+    signal feedCall(string surface, string what, var args)
     // Its surfaces' other lines ({"src":"ui","kind":"notifications",…}: the
     // notification list, services/Notifications.qml) and whether it runs
     signal message(var e)
@@ -308,6 +315,14 @@ Singleton {
                 Tiling.snap(String(a[0]), t);
             break;
         }
+        case "share":
+        case "appstore":
+        case "shelf":
+        case "network":
+        case "captions":
+        case "notes":
+            root.feedCall(name, String(a[0] ?? ""), a.slice(1));
+            break;
         default:
             console.warn("tessera-ui: no call " + name);
         }

@@ -4722,6 +4722,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-appstore"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-captions"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-cheatsheet"
 version = "0.1.0"
 dependencies = [
@@ -4881,6 +4903,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-network"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-notes"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-notifications"
 version = "0.1.0"
 dependencies = [
@@ -4965,6 +5010,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-share"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-shelf"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-sidebar"
 version = "0.1.0"
 dependencies = [
@@ -5025,6 +5095,8 @@ dependencies = [
  "serde_json",
  "slint",
  "smithay-client-toolkit",
+ "tessera-appstore",
+ "tessera-captions",
  "tessera-cheatsheet",
  "tessera-clipboard",
  "tessera-controlcenter",
@@ -5037,6 +5109,8 @@ dependencies = [
  "tessera-hotcorners",
  "tessera-lock",
  "tessera-menubar",
+ "tessera-network",
+ "tessera-notes",
  "tessera-notifications",
  "tessera-osd",
  "tessera-osk",
@@ -5044,6 +5118,8 @@ dependencies = [
  "tessera-polkit",
  "tessera-resources",
  "tessera-session",
+ "tessera-share",
+ "tessera-shelf",
  "tessera-sidebar",
  "tessera-spotlight",
  "tessera-tiling",

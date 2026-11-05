@@ -25,6 +25,8 @@ Variants {
         required property var modelData
         panel: "share"
         screen: modelData
+        // (drawn in Rust: tessera-ui, src/surfaces/share; ShareFeed.qml feeds it)
+        elsewhere: RustUi.drawing("share")
 
         GlassWindow {
             id: win

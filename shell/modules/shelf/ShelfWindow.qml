@@ -12,7 +12,8 @@ import qs.services
 LazyLoader {
     id: loader
     property bool leaving: false
-    active: Shelf.opened || leaving
+    // (tessera-ui draws it: rust.surfaces "shelf", src/surfaces/shelf)
+    active: (Shelf.opened || leaving) && !RustUi.drawing("shelf")
     Connections {
         target: Shelf
         function onOpenedChanged() {

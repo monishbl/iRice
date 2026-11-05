@@ -41,8 +41,11 @@ Scope {
         onTriggered: if (root.req) Sharing.dropRequest(root.req.id)
     }
 
+    // (drawn in Rust: what it shows, and what it asks back)
+    ShareFeed {}
+
     LazyLoader {
-        active: root.req !== null
+        active: root.req !== null && !RustUi.drawing("share")
 
         GlassWindow {
             id: win

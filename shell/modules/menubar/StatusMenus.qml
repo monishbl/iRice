@@ -15,6 +15,7 @@ Scope {
         id: menu
         required property string panel
         property int width_: 300
+        property bool elsewhere: false // (drawn by tessera-ui instead)
         property Component body
         model: Quickshell.screens
 
@@ -23,6 +24,7 @@ Scope {
             required property var modelData
             panel: menu.panel
             screen: modelData
+            elsewhere: menu.elsewhere
 
             Popover {
                 id: pop
@@ -40,9 +42,12 @@ Scope {
         }
     }
 
+    // (rust.surfaces: network: tessera-ui draws this one, its state from NetworkFeed)
+    NetworkFeed {}
     StatusMenu {
         panel: "wifiMenu"
         width_: 300
+        elsewhere: RustUi.drawing("network")
         body: Component {
             Column {
                 spacing: 12

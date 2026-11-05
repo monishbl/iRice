@@ -1,0 +1,1066 @@
+// Sharing in Rust (rust.surfaces: share), compare shell/modules/share/:
+//   ShareSheet  the share sheet (ShareSheet.qml): what's shared, nearby
+//               devices as round avatars in a row (AirDrop's), the other
+//               ways as a grouped list; a centred card over a light scrim
+//   ShareCard   someone nearby wants to share something (IncomingCard.qml):
+//               who, what, the PIN, Decline / Accept, then a ring while it
+//               arrives, then Open / Show in Files
+//   LinkCard    sharing with a phone's browser through a QR code
+//               (LinkShareCard.qml)
+// Rust (src/surfaces/share) owns the state, the texts and the keys; this
+// draws them. Glass: the cards sit on the plugin's glass (Rust sends the
+// shapes); Material: a dialog's surfaceContainerHigh, corner 28.
+// (Slint draws no shaders: Material's shapes switch outline without the
+// QML's morph, and the wavy bar is a row of dots on a moving wave.)
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+import { SymIcon } from "@tessera/symbols.slint";
+
+// A nearby device in the sheet's row
+export struct ShareDev {
+    key: string,
+    name: string,
+    label: string, // what a screen reader says: "Send to …"
+    status: string, // Quick Share, Sending… 40%, Sent…
+    glyph: string, // its kind (a Phosphor glyph)
+    cast: bool,
+    sending: bool,
+    frac: float, // how far the send is (< 0: not started yet)
+    ended: string, // "" | sent | declined | failed
+    shape: string, // Material: its kind's shape (an outline in a 0..100 box)
+}
+
+// One of the other ways (Copy, Show in Files, Share with a QR code)
+export struct ShareWay {
+    label: string,
+    glyph: string,
+}
+
+// A button of the incoming card
+export struct ShareBtn {
+    label: string,
+    primary: bool,
+}
+
+// How far a transfer has got, as a ring around who it's with (ProgressRing.qml):
+// the track in the fill colour, the done part in the accent, clockwise from the top
+component Ring {
+    in property <float> value;
+    in property <length> thickness: 3px;
+    in property <length> inset: 2px; // from the edge to the middle of the stroke
+    property <float> c: root.width / 2px;
+    property <float> r: (root.width / 2 - inset) / 1px;
+    property <float> v: max(0.0001, min(0.9999, value));
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        stroke: Theme.fill;
+        stroke-width: thickness;
+        MoveTo { x: c; y: c - r; }
+        ArcTo { x: c; y: c + r; radius-x: r; radius-y: r; sweep: true; }
+        ArcTo { x: c; y: c - r; radius-x: r; radius-y: r; sweep: true; }
+    }
+    if value > 0: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        stroke: Theme.accent;
+        stroke-width: thickness;
+        stroke-line-cap: round;
+        MoveTo { x: c; y: c - r; }
+        ArcTo {
+            x: c + r * sin(v * 360deg);
+            y: c - r * cos(v * 360deg);
+            radius-x: r;
+            radius-y: r;
+            large-arc: v > 0.5;
+            sweep: true;
+        }
+    }
+}
+
+// Material 3 Expressive's wavy bar (WavyProgress.qml): the done part a moving
+// wave (amplitude 3, wavelength 40, a wavelength a second), flat near the
+// ends, a gap, then the track and its stop dot. `value` < 0: not known yet
+// (a short stretch slides back and forth). The wave is a row of 4 px dots.
+component WavyBar inherits Rectangle {
+    in property <float> value;
+    property <bool> ind: value < 0;
+    property <float> shown: ind ? 0.3 : max(0, min(1, value));
+    property <duration> t: animation-tick();
+    property <float> phase: mod(t / 1000ms, 1);
+    // (InOutCubic, there and back in 1.8 s)
+    property <float> u: mod(t / 1800ms, 1);
+    property <float> half: u < 0.5 ? u * 2 : 2 - u * 2;
+    property <float> eased: half < 0.5 ? 4 * half * half * half : 1 - (2 - 2 * half) * (2 - 2 * half) * (2 - 2 * half) / 2;
+    property <length> start: ind ? eased * (root.width - root.width * 0.3) : 0;
+    property <length> end: start + root.width * shown;
+    property <float> amplitude: !ind && (shown <= 0.1 || shown >= 0.95) ? 0 : 3;
+    animate amplitude { duration: 300ms; }
+    height: 10px;
+    accessible-role: progress-indicator;
+    accessible-value: ind ? "" : round(shown * 100) + "%";
+    // the track, after a gap, with its stop dot
+    Rectangle {
+        x: min(root.width, end + 4px + (end > 0 ? 2px : 0));
+        y: (root.height - self.height) / 2;
+        width: max(0, root.width - self.x);
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-secondary-container;
+        if !ind: Rectangle {
+            x: parent.width - 4px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.m3-primary;
+        }
+    }
+    for i in 100: Rectangle {
+        property <length> at: start + i * 2px;
+        visible: at <= end - 2px || (i == 0 && end > start + 1px);
+        x: at - 0px;
+        y: root.height / 2 - 2px + amplitude * sin((at / 40px - phase) * 360deg) * 1px;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-primary;
+    }
+}
+
+// The keyboard focus ring (FocusRing.qml): 2 px accent (Material: 3 px secondary), outside its control
+component Ring2 inherits Rectangle {
+    in property <length> radius;
+    in property <length> pw;
+    in property <length> ph;
+    x: Theme.material ? -5px : -4px;
+    y: self.x;
+    width: pw - 2 * self.x;
+    height: ph - 2 * self.y;
+    border-radius: radius;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    background: transparent;
+}
+
+// A device in the sheet's row: round avatar (Glass) or its shape (Material),
+// the ring or wavy bar while sending, how it ended, its name and status
+component DeviceItem inherits Rectangle {
+    in property <ShareDev> d;
+    in property <bool> focused;
+    in property <string> hover-shape;
+    in property <string> circle-shape;
+    callback clicked();
+    width: 92px;
+    accessible-role: button;
+    accessible-label: d.label;
+    accessible-description: d.status;
+    accessible-action-default => {
+        if !d.sending { clicked(); }
+    }
+    property <bool> hov: touch.has-hover;
+    property <bool> down: touch.pressed;
+
+    avatar := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 4px;
+        width: 68px;
+        height: 68px;
+        // (Glass shrinks on press; Material swells: ElasticControl)
+        transform-scale: Theme.material ? (down ? 1.06 : 1) : (down ? 0.94 : 1);
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        animate transform-scale { duration: Theme.material ? 350ms : 100ms; easing: Theme.material ? spring(0.3) : cubic-bezier(0.33, 1, 0.68, 1); }
+        if focused: Ring2 { pw: parent.width; ph: parent.height; radius: 38px; }
+        // Material: the device on a shape, its kind telling which; a hover morphs it
+        if Theme.material: Path {
+            x: 2px;
+            y: 2px;
+            width: 64px;
+            height: 64px;
+            viewbox-width: 100;
+            viewbox-height: 100;
+            commands: hov && !d.sending ? hover-shape : d.sending ? circle-shape : d.shape;
+            fill: d.cast ? Theme.m3-tertiary-container : Theme.m3-primary-container;
+        }
+        // Glass: a round avatar
+        if !Theme.material: Rectangle {
+            x: 4px;
+            y: 4px;
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            background: @linear-gradient(180deg, Theme.accent.brighter(0.25) 0%, Theme.accent 100%);
+            opacity: hov && !d.sending ? 0.88 : 1;
+        }
+        SymIcon {
+            text: d.glyph;
+            fill: true;
+            font-size: 28px;
+            color: Theme.material ? (d.cast ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container) : Theme.on-accent;
+        }
+        if !Theme.material && d.sending: Ring {
+            width: 100%;
+            height: 100%;
+            value: max(0, d.frac);
+            thickness: 3px;
+            inset: 2px;
+        }
+        // Sent: a check; declined or stopped: a mark
+        if d.ended != "": Rectangle {
+            x: parent.width - 24px;
+            y: parent.height - 24px;
+            width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            background: Theme.material ? (d.ended == "sent" ? Theme.m3-primary : Theme.m3-surface-container-highest) : d.ended == "sent" ? Theme.success : Theme.secondary;
+            border-width: 2px;
+            border-color: Theme.material ? Theme.m3-surface-container-high : Theme.glass-solid;
+            SymIcon {
+                text: d.ended == "sent" ? "\u{e182}" : "\u{e4f6}";
+                font-size: 12px;
+                color: Theme.material ? (d.ended == "sent" ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : #ffffff;
+            }
+        }
+    }
+    // Material: how far the send has got, a wavy bar
+    if Theme.material && d.sending: WavyBar {
+        x: (parent.width - 64px) / 2;
+        y: avatar.y + avatar.height;
+        width: 64px;
+        value: d.frac;
+    }
+    name := Text {
+        x: (parent.width - self.width) / 2;
+        y: avatar.y + avatar.height + (Theme.material && d.sending ? 10px : 0) + 4px;
+        width: 88px;
+        height: min(self.preferred-height, 2 * Theme.small * 1.25);
+        text: d.name;
+        wrap: word-wrap;
+        overflow: elide;
+        horizontal-alignment: center;
+        color: Theme.label;
+        font-size: Theme.small;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: name.y + name.height + 1px;
+        text: d.status;
+        color: d.ended == "sent" ? (Theme.material ? Theme.m3-primary : Theme.success) : Theme.secondary;
+        font-size: Theme.caption;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if !d.sending { root.clicked(); }
+        }
+    }
+}
+
+// A row of the other ways (iOS: a grouped list, the icon on the right;
+// Material: a segmented list, rows 2 apart, outer corners 16, inner 4)
+component WayRow inherits Rectangle {
+    in property <ShareWay> w;
+    in property <bool> first;
+    in property <bool> last;
+    in property <bool> separator;
+    in property <bool> focused;
+    callback clicked();
+    accessible-role: button;
+    accessible-label: w.label;
+    accessible-action-default => { clicked(); }
+    if Theme.material: Rectangle {
+        border-top-left-radius: first ? 16px : 4px;
+        border-top-right-radius: first ? 16px : 4px;
+        border-bottom-left-radius: last ? 16px : 4px;
+        border-bottom-right-radius: last ? 16px : 4px;
+        background: Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1);
+    }
+    if !Theme.material: Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: 12px;
+        background: ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : transparent;
+    }
+    if focused: Ring2 { pw: parent.width; ph: parent.height; radius: 14px; }
+    Text {
+        x: 14px;
+        text: w.label;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    SymIcon {
+        x: parent.width - 14px - self.width;
+        text: w.glyph;
+        font-size: 18px;
+        color: Theme.label;
+    }
+    // (Glass: a hairline between rows, inset like iOS's)
+    if !Theme.material && separator: Rectangle {
+        x: 14px;
+        y: 0;
+        width: parent.width - 14px;
+        height: 1px;
+        background: Theme.separator;
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ShareSheet inherits Window {
+    in property <bool> shown;
+    in property <string> title-text;
+    in property <string> kind-text;
+    in property <bool> thumb-is-image;
+    in property <image> thumb;
+    in property <bool> has-icon;
+    in property <image> file-icon;
+    in property <string> fallback-glyph;
+    in property <[ShareDev]> devices;
+    in property <bool> available: true;
+    in property <string> help;
+    in property <string> errors;
+    in property <[ShareWay]> ways;
+    in property <int> focus-at: -1; // 0 the ×, 1.. the devices, then the ways
+    in-out property <length> people-x;
+    in property <string> hover-shape;
+    in property <string> circle-shape;
+    in property <string> quiet-shape;
+
+    out property <float> progress: shown ? 1 : 0;
+    out property <length> card-x: card.x;
+    out property <length> card-y: card.y;
+    out property <length> card-width: card.width;
+    out property <length> card-height: card.height;
+    out property <float> card-scale: card.transform-scale;
+    out property <float> card-opacity: card.opacity;
+    out property <length> people-width: card.width - 2 * pad;
+    property <length> pad: Theme.material ? 24px : 16px;
+    // (the looking circles' clock: 15 frames a second, as the QML's Ticker)
+    property <float> look-time: floor(animation-tick() / 66ms) * 0.066;
+
+    callback key(string, bool) -> bool; // text, shift: handled?
+    callback send(int);
+    callback way(int);
+    callback dismissed();
+    callback closed();
+
+    background: transparent;
+    no-frame: true;
+    title: "Share";
+    default-font-family: Theme.font;
+
+    animate progress {
+        duration: shown ? 220ms : 150ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    public function open() {
+        keys.focus();
+    }
+
+    // The scrim: a click on it closes
+    Rectangle {
+        background: #000000.with-alpha(0.25 * max(0, min(1, progress)));
+        TouchArea {
+            enabled: shown;
+            clicked => { dismissed(); }
+        }
+    }
+
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            if root.key(e.text, e.modifiers.shift) { return accept; }
+            reject
+        }
+    }
+
+    card := Rectangle {
+        width: Theme.material ? 432px : 420px;
+        height: col.preferred-height + 2 * pad;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        opacity: max(0, min(1, progress));
+        transform-scale: 0.94 + 0.06 * max(0, min(1, progress));
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: Theme.material ? 28px : Theme.radius-panel;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        drop-shadow-blur: Theme.material ? 32px : 0;
+        drop-shadow-offset-y: Theme.material ? 8px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.32 : 0.14) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Share";
+
+        // clicks on the card don't reach the scrim
+        TouchArea { }
+
+        col := VerticalLayout {
+            x: pad;
+            y: pad;
+            width: parent.width - 2 * pad;
+            spacing: Theme.material ? 16px : 14px;
+            alignment: start;
+
+            // ── What's being shared (iOS: a preview, its name, ×) ──
+            Rectangle {
+                height: 52px;
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 52px;
+                    height: 52px;
+                    border-radius: Theme.material ? 16px : 12px;
+                    background: Theme.fill;
+                    clip: true;
+                    if thumb-is-image: Image {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: parent.height - 2px;
+                        source: thumb;
+                        image-fit: cover;
+                        accessible-role: none;
+                    }
+                    if !thumb-is-image && has-icon: Image {
+                        width: 36px;
+                        height: 36px;
+                        source: file-icon;
+                        image-fit: contain;
+                        accessible-role: none;
+                    }
+                    if !thumb-is-image && !has-icon: SymIcon {
+                        text: fallback-glyph;
+                        font-size: 28px;
+                        color: Theme.secondary;
+                    }
+                }
+                VerticalLayout {
+                    x: 64px;
+                    y: 0;
+                    height: parent.height;
+                    width: parent.width - 64px - close.width - 8px;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: title-text;
+                        overflow: elide;
+                        color: Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: kind-text;
+                        overflow: elide;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                    }
+                }
+                // ×, round like iOS's
+                close := Rectangle {
+                    width: Theme.material ? 40px : 30px;
+                    height: self.width;
+                    x: parent.width - self.width;
+                    y: 0;
+                    border-radius: Theme.material && close-ta.pressed ? 12px : self.width / 2;
+                    animate border-radius { duration: 250ms; easing: spring(0.3); }
+                    background: close-ta.pressed ? Theme.fill-pressed : close-ta.has-hover ? Theme.fill-hover : Theme.fill;
+                    transform-scale: Theme.material && close-ta.pressed ? 1.06 : 1;
+                    transform-origin: { x: self.width / 2, y: self.height / 2 };
+                    animate transform-scale { duration: 350ms; easing: spring(0.3); }
+                    accessible-role: button;
+                    accessible-label: "Close";
+                    accessible-action-default => { dismissed(); }
+                    if focus-at == 0: Ring2 { pw: parent.width; ph: parent.height; radius: close.border-radius + 4px; }
+                    SymIcon {
+                        text: "\u{e4f6}";
+                        font-size: Theme.material ? 18px : 14px;
+                        color: Theme.secondary;
+                    }
+                    close-ta := TouchArea {
+                        clicked => { dismissed(); }
+                    }
+                }
+            }
+
+            if !Theme.material: Rectangle {
+                height: 1px;
+                background: Theme.separator;
+            }
+
+            // ── Nearby (iOS's AirDrop row: round avatars, names under) ──
+            if devices.length > 0: Flickable {
+                height: Theme.material ? 128px : 118px;
+                content-width: max(self.width, devices.length * 96px - 4px);
+                content-height: self.height;
+                content-x <=> root.people-x;
+                interactive: devices.length * 96px - 4px > self.width;
+                for dev[i] in root.devices: DeviceItem {
+                    x: i * 96px;
+                    y: 0;
+                    height: parent.height;
+                    d: dev;
+                    focused: root.focus-at == i + 1;
+                    hover-shape: root.hover-shape;
+                    circle-shape: root.circle-shape;
+                    clicked => { root.send(i); }
+                }
+            }
+
+            // Looking, or nobody there (iOS: faint circles while it looks)
+            if devices.length == 0: VerticalLayout {
+                spacing: 8px;
+                if !Theme.material: HorizontalLayout {
+                    alignment: center;
+                    spacing: 24px;
+                    for i in 3: Rectangle {
+                        width: 52px;
+                        height: 52px;
+                        border-radius: 26px;
+                        background: Theme.fill;
+                        opacity: available ? 0.45 + 0.55 * (0.5 + 0.5 * cos(look-time * 180deg - i * 0.9rad)) : 0.45;
+                    }
+                }
+                // Material: the loading indicator while it looks, or a quiet shape when it can't
+                if Theme.material && available: Rectangle {
+                    height: 48px;
+                    Busy {
+                        transform-scale: 1.2;
+                    }
+                }
+                if Theme.material && !available: Rectangle {
+                    height: 56px;
+                    Rectangle {
+                        width: 56px;
+                        height: 56px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: quiet-shape;
+                            fill: Theme.m3-secondary-container;
+                        }
+                        SymIcon {
+                            text: "\u{e408}";
+                            font-size: 24px;
+                            color: Theme.m3-on-secondary-container;
+                        }
+                    }
+                }
+                Text {
+                    horizontal-alignment: center;
+                    text: available ? "Looking for nearby devices…" : "Sharing needs Python 3";
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    font-weight: 500;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    text: help;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+
+            if errors != "": Text {
+                wrap: word-wrap;
+                text: errors;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+
+            // ── Other ways ──
+            Rectangle {
+                property <length> row-h: Theme.material ? 52px : 44px;
+                property <length> gap: Theme.material ? 2px : 0;
+                height: ways.length * row-h + max(0, ways.length - 1) * gap;
+                border-radius: 14px;
+                background: Theme.material ? transparent : Theme.platter;
+                for way-item[i] in root.ways: WayRow {
+                    x: 0;
+                    y: i * (parent.row-h + parent.gap);
+                    width: parent.width;
+                    height: parent.row-h;
+                    w: way-item;
+                    first: i == 0;
+                    last: i == root.ways.length - 1;
+                    separator: i > 0;
+                    focused: root.focus-at == root.devices.length + 1 + i;
+                    clicked => { root.way(i); }
+                }
+            }
+        }
+    }
+}
+
+// A button of the incoming card (iOS alert buttons; Material: filled primary
+// for the one to do, tonal for the rest, squaring off while pressed)
+component CardButton inherits Rectangle {
+    in property <ShareBtn> b;
+    in property <bool> focused;
+    callback clicked();
+    height: 40px;
+    property <color> ink: Theme.material ? (b.primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : b.primary ? Theme.on-accent : Theme.label;
+    border-radius: Theme.material && ta.pressed ? 12px : 20px;
+    animate border-radius { duration: 250ms; easing: spring(0.3); }
+    background: Theme.material ? (b.primary ? Theme.m3-primary : Theme.m3-secondary-container).mix(ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1)
+        : b.primary ? (ta.pressed ? Theme.accent.darker(0.13) : Theme.accent) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill;
+    transform-scale: ta.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    animate transform-scale { duration: Theme.material ? 350ms : 100ms; easing: Theme.material ? spring(0.3) : cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: b.label;
+    accessible-action-default => { clicked(); }
+    if focused: Ring2 { pw: parent.width; ph: parent.height; radius: 24px; }
+    Text {
+        text: b.label;
+        color: ink;
+        font-size: Theme.body;
+        font-weight: 600;
+        accessible-role: none;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Someone nearby wants to share something (IncomingCard.qml): a card in the
+// middle of the screen; the window is the card plus 24 px for the glass's shadow
+export component ShareCard inherits Window {
+    in property <string> stage; // asking | receiving | done | failed
+    in property <string> sender-name;
+    in property <string> message;
+    in property <string> bytes; // "1.2 MB of 6.2 MB" while it arrives
+    in property <string> pin;
+    in property <float> frac; // < 0: waiting to start
+    in property <bool> handheld;
+    in property <bool> tablet;
+    in property <string> kind-glyph;
+    in property <string> link-glyph;
+    in property <[ShareBtn]> buttons;
+    in property <string> shape; // Material: the shape for the state
+    in property <float> motion: 1;
+    in property <int> focus-at: -1;
+    property <bool> up;
+    out property <float> shown: up ? 1 : 0;
+    property <length> pad-x: Theme.material ? 24px : 20px;
+    property <length> pad-y: Theme.material ? 24px : 22px;
+    out property <length> card-width: card.width;
+    out property <length> want-height: card.height + 48px;
+
+    callback key(string) -> bool;
+    callback pressed-button(int);
+
+    background: transparent;
+    no-frame: true;
+    title: "Share";
+    default-font-family: Theme.font;
+
+    animate shown {
+        duration: up ? 320ms * motion : 0ms;
+        easing: cubic-bezier(0.34, 1.45, 0.64, 1);
+    }
+
+    public function enter() {
+        up = true;
+        keys.focus();
+    }
+    public function leave() {
+        up = false;
+    }
+
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+
+    card := Rectangle {
+        x: 24px;
+        y: 24px;
+        width: Theme.material ? 312px : 300px;
+        height: body.preferred-height + 2 * pad-x;
+        opacity: max(0, min(1, shown));
+        transform-scale: 0.9 + 0.1 * shown;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: Theme.material ? 28px : Theme.radius-panel;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        accessible-role: groupbox;
+        accessible-label: sender-name;
+        TouchArea { }
+
+        body := VerticalLayout {
+            x: pad-x;
+            y: pad-y;
+            width: parent.width - 2 * pad-x;
+            spacing: 6px;
+            alignment: start;
+
+            // Who: a round avatar, and the ring that fills as it arrives
+            Rectangle {
+                height: 84px;
+                Rectangle {
+                    width: 84px;
+                    height: 84px;
+                    // Material: a cookie while it asks, round while it arrives,
+                    // sunny when it's there, a square in errorContainer if it went wrong
+                    if Theme.material: Path {
+                        x: 4px;
+                        y: 4px;
+                        width: 76px;
+                        height: 76px;
+                        viewbox-width: 100;
+                        viewbox-height: 100;
+                        commands: shape;
+                        fill: stage == "failed" ? Theme.m3-error-container : Theme.m3-primary-container;
+                    }
+                    Rectangle {
+                        width: 68px;
+                        height: 68px;
+                        border-radius: 34px;
+                        property <color> ink: Theme.material ? (stage == "failed" ? Theme.m3-on-error-container : Theme.m3-on-primary-container) : Theme.on-accent;
+                        background: Theme.material ? transparent : @linear-gradient(180deg, Theme.accent.brighter(0.25) 0%, Theme.accent 100%);
+                        if !handheld: SymIcon {
+                            text: kind-glyph;
+                            fill: true;
+                            font-size: 32px;
+                            color: parent.ink;
+                        }
+                        // A phone (or tablet), its screen showing the link
+                        if handheld: Rectangle {
+                            width: tablet ? 34px : 26px;
+                            height: 42px;
+                            border-radius: 7px;
+                            border-width: 2.5px;
+                            border-color: parent.ink;
+                            background: transparent;
+                            Rectangle {
+                                x: (parent.width - self.width) / 2;
+                                y: 4px;
+                                width: 8px;
+                                height: 2.5px;
+                                border-radius: 1.25px;
+                                background: parent.border-color;
+                            }
+                            if link-glyph != "": SymIcon {
+                                y: (parent.height - self.height) / 2 + 2px;
+                                text: link-glyph;
+                                fill: true;
+                                font-size: 14px;
+                                color: parent.border-color;
+                            }
+                        }
+                    }
+                    // Glass: the ring that fills as it arrives
+                    if !Theme.material && stage == "receiving": Ring {
+                        width: 100%;
+                        height: 100%;
+                        value: max(0, frac);
+                        thickness: 4px;
+                        inset: 3px;
+                    }
+                    // Arrived: a check; went wrong: a mark
+                    if stage == "done" || stage == "failed": Rectangle {
+                        x: parent.width - 6px - 26px;
+                        y: parent.height - 6px - 26px;
+                        width: 26px;
+                        height: 26px;
+                        border-radius: 13px;
+                        background: Theme.material ? (stage == "done" ? Theme.m3-primary : Theme.m3-error) : stage == "done" ? Theme.success : Theme.danger;
+                        border-width: 2px;
+                        border-color: Theme.material ? Theme.m3-surface-container-high : Theme.glass-solid;
+                        SymIcon {
+                            text: stage == "done" ? "\u{e182}" : "\u{e4f6}";
+                            font-size: 14px;
+                            color: Theme.material ? (stage == "done" ? Theme.m3-on-primary : Theme.m3-on-error) : #ffffff;
+                        }
+                    }
+                }
+            }
+            // Material: how far it's got, a wavy bar
+            if Theme.material && stage == "receiving": Rectangle {
+                height: 10px;
+                WavyBar {
+                    x: (parent.width - 160px) / 2;
+                    y: 0;
+                    width: 160px;
+                    value: frac;
+                }
+            }
+            Text {
+                horizontal-alignment: center;
+                text: sender-name;
+                overflow: elide;
+                color: Theme.label;
+                font-size: Theme.title;
+                font-weight: 600;
+            }
+            Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 3 * Theme.body * 1.3;
+                text: message;
+                color: Theme.secondary;
+                font-size: Theme.body;
+            }
+            // How far, in bytes
+            if bytes != "": Text {
+                horizontal-alignment: center;
+                text: bytes;
+                color: Theme.tertiary;
+                font-size: Theme.small;
+            }
+            // The PIN their phone shows (Quick Share), to know it's them
+            if stage == "asking" && pin != "": HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: pin-text.preferred-width + (Theme.material ? 24px : 20px);
+                    // (Material: an outlined chip, 32 high, corner 8)
+                    height: Theme.material ? 32px : 24px;
+                    border-radius: Theme.material ? 8px : 12px;
+                    background: Theme.material ? transparent : Theme.fill;
+                    border-width: Theme.material ? 1px : 0;
+                    border-color: Theme.separator;
+                    pin-text := Text {
+                        text: "PIN " + pin;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        font-weight: 500;
+                    }
+                }
+            }
+            Rectangle { height: 8px; }
+            // iOS alert buttons: side by side, the one to do on the right
+            Rectangle {
+                height: 40px;
+                property <length> bw: (self.width - 10px * max(0, buttons.length - 1)) / max(1, buttons.length);
+                for btn[i] in root.buttons: CardButton {
+                    x: i * (parent.bw + 10px);
+                    y: 0;
+                    width: parent.bw;
+                    b: btn;
+                    focused: root.focus-at == i;
+                    clicked => { root.pressed-button(i); }
+                }
+            }
+        }
+    }
+}
+
+// Sharing with a phone through a QR code (LinkShareCard.qml): one card for
+// both looks (a dialog's surface in Material)
+export component LinkCard inherits Window {
+    in property <string> heading;
+    in property <string> help;
+    in property <string> stage; // loading | ready | error
+    in property <image> qr;
+    in property <string> error;
+    in property <bool> can-install; // the error is a missing qrencode
+    in property <bool> installing;
+    in property <bool> install-enabled: true;
+    in property <string> status;
+    in property <bool> status-strong;
+    in property <bool> busy;
+    in property <float> motion: 1;
+    in property <bool> button-focused;
+    property <bool> up;
+    out property <float> shown: up ? 1 : 0;
+    out property <length> card-width: card.width;
+    out property <length> want-height: card.height + 48px;
+
+    callback key(string) -> bool;
+    callback done();
+    callback install();
+
+    background: transparent;
+    no-frame: true;
+    title: "Share";
+    default-font-family: Theme.font;
+
+    animate shown {
+        duration: up ? 300ms * motion : 0ms;
+        easing: cubic-bezier(0.33, 1, 0.68, 1);
+    }
+
+    public function enter() {
+        up = true;
+        keys.focus();
+    }
+    public function leave() {
+        up = false;
+    }
+
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+
+    card := Rectangle {
+        x: 24px;
+        y: 24px;
+        width: 320px;
+        height: body.preferred-height + 48px;
+        opacity: max(0, min(1, shown));
+        transform-scale: 0.96 + 0.04 * shown;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: Theme.material ? 28px : Theme.radius-panel;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        accessible-role: groupbox;
+        accessible-label: heading;
+        TouchArea { }
+
+        body := VerticalLayout {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                horizontal-alignment: center;
+                text: heading;
+                overflow: elide;
+                color: Theme.label;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            if stage != "error": Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: help;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+            Rectangle { height: 8px; }
+
+            // The code, on white (cameras read dark on light), or what's happening
+            if stage != "error": Rectangle {
+                height: 208px;
+                if stage == "ready": Rectangle {
+                    width: 200px;
+                    height: 200px;
+                    border-radius: 14px;
+                    background: #ffffff;
+                    Image {
+                        x: 10px;
+                        y: 10px;
+                        width: parent.width - 20px;
+                        height: parent.height - 20px;
+                        source: qr;
+                        image-fit: contain;
+                        image-rendering: pixelated;
+                        accessible-role: image;
+                        accessible-label: "QR code with the link";
+                    }
+                }
+                if stage == "loading": Icon {
+                    text: "\u{eb44}";
+                    font-size: 24px;
+                    color: Theme.secondary;
+                    transform-rotation: mod(animation-tick() / 800ms, 1) * 360deg;
+                }
+            }
+            if stage == "error": VerticalLayout {
+                spacing: 12px;
+                Text {
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    text: error;
+                    color: Theme.danger;
+                    font-size: Theme.small;
+                }
+                if can-install: HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: install-label.preferred-width + 28px;
+                        height: 32px;
+                        border-radius: Theme.material ? 16px : 8px;
+                        opacity: install-enabled ? 1 : 0.5;
+                        background: install-ta.pressed ? Theme.fill-pressed : install-ta.has-hover ? Theme.fill-hover : Theme.fill;
+                        accessible-role: button;
+                        accessible-label: install-label.text;
+                        accessible-action-default => { if install-enabled && !installing { install(); } }
+                        install-label := Text {
+                            text: installing ? "Installing…" : "Install qrencode";
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            font-weight: 500;
+                        }
+                        install-ta := TouchArea {
+                            enabled: install-enabled && !installing;
+                            mouse-cursor: pointer;
+                            clicked => { install(); }
+                        }
+                    }
+                }
+            }
+
+            if stage == "ready": Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: status;
+                color: status-strong ? Theme.label : Theme.secondary;
+                font-size: Theme.small;
+            }
+            // (plain HTTP on the local network: said plainly)
+            if stage == "ready": Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: "Works for 10 minutes, on this network only. Others on it could see what's shared, so use it on networks you trust.";
+                color: Theme.tertiary;
+                font-size: 12px;
+            }
+            Rectangle { height: 8px; }
+
+            Rectangle {
+                height: 40px;
+                border-radius: 20px;
+                background: done-ta.pressed ? Theme.accent.darker(0.13) : Theme.accent;
+                transform-scale: done-ta.pressed ? 0.97 : 1;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                animate transform-scale { duration: 100ms; }
+                accessible-role: button;
+                accessible-label: busy ? "Stop sharing" : "Done";
+                accessible-action-default => { done(); }
+                if button-focused: Ring2 { pw: parent.width; ph: parent.height; radius: 24px; }
+                Text {
+                    text: busy ? "Stop Sharing" : "Done";
+                    color: Theme.on-accent;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                    accessible-role: none;
+                }
+                done-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { done(); }
+                }
+            }
+        }
+    }
+}

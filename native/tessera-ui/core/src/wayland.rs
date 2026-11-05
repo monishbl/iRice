@@ -49,6 +49,11 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
 };
+use smithay_client_toolkit::shell::xdg::{
+    window::{Window as XdgWindow, WindowConfigure, WindowDecorations, WindowHandler},
+    XdgShell,
+};
+use smithay_client_toolkit::{delegate_xdg_shell, delegate_xdg_window};
 // (the lock's: ext-session-lock-v1, and an idle inhibitor while Bedside Mode shows)
 use smithay_client_toolkit::delegate_session_lock;
 use smithay_client_toolkit::reexports::protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1};
@@ -63,6 +68,8 @@ pub struct Surface {
     window: slint::Window,
     renderer: FemtoVGRenderer,
     pub wl: WlSurface,
+    /// what it is to the compositor (`Role`): `layer` derefs to the layer
+    /// surface, as it always did, for every part's layer surfaces
     pub layer: Role,
     viewport: Option<WpViewport>,
     _fractional: Option<WpFractionalScaleV1>,
@@ -81,13 +88,16 @@ pub struct Surface {
     pub stats: RefCell<crate::stats::Frames>,
 }
 
-/// What a surface is to the compositor: a layer surface (every part's) or a
-/// session-lock surface (the lock's, ext-session-lock-v1). `layer` derefs to
-/// the layer surface as it always did; only the lock part makes lock
-/// surfaces, and it never calls layer-surface methods on them.
+/// What a surface is to the compositor: a layer surface (every part's), a
+/// session-lock surface (the lock's, ext-session-lock-v1: `prepare_lock_surface`)
+/// or a regular window (an xdg toplevel: the App Store's, `prepare_window`).
+/// `layer` derefs to the layer surface as it always did; only the lock part
+/// makes lock surfaces and only `prepare_window` windows, and neither calls
+/// layer-surface methods on them (that panics).
 pub enum Role {
     Layer(LayerSurface),
     Lock(SessionLockSurface),
+    Window(XdgWindow),
 }
 
 impl std::ops::Deref for Role {
@@ -96,6 +106,7 @@ impl std::ops::Deref for Role {
         match self {
             Role::Layer(l) => l,
             Role::Lock(_) => panic!("tessera-ui: a session-lock surface has no layer surface"),
+            Role::Window(_) => panic!("tessera-ui: a window has no layer surface"),
         }
     }
 }
@@ -103,6 +114,16 @@ impl std::ops::Deref for Role {
 impl PartialEq<LayerSurface> for Role {
     fn eq(&self, other: &LayerSurface) -> bool {
         matches!(self, Role::Layer(l) if l == other)
+    }
+}
+
+impl Role {
+    /// The regular window, for a surface `prepare_window` made
+    pub fn window(&self) -> Option<&XdgWindow> {
+        match self {
+            Role::Window(w) => Some(w),
+            _ => None,
+        }
     }
 }
 
@@ -178,8 +199,15 @@ impl Surface {
     }
     pub fn show(&self, w: u32, h: u32) {
         self.hidden.set(false);
-        self.layer.set_size(w, h);
-        self.layer.commit();
+        match &self.layer {
+            Role::Layer(l) => {
+                l.set_size(w, h);
+                l.commit();
+            }
+            Role::Window(win) => win.commit(),
+            // (a lock surface is sized by the compositor: only shown again)
+            Role::Lock(_) => self.wl.commit(),
+        }
     }
 }
 
@@ -294,11 +322,21 @@ pub struct Spec<'a> {
     pub margin_left: i32,
 }
 
+/// A regular window (an xdg toplevel): the App Store's
+pub struct WindowSpec<'a> {
+    pub title: &'a str,
+    pub app_id: &'a str,
+    pub namespace: &'a str,
+    pub size: (u32, u32),
+    pub min_size: (u32, u32),
+}
+
 pub struct State {
     registry: RegistryState,
     pub outputs: OutputState,
     compositor: CompositorState,
     layer_shell: LayerShell,
+    xdg_shell: Option<XdgShell>,
     seat: SeatState,
     cursor_shapes: Option<CursorShapeManager>,
     viewporter: Option<WpViewporter>,
@@ -328,6 +366,8 @@ pub struct State {
     pub started: Instant,
     pub first_frame_logged: bool,
     pub exit: bool,
+    /// drag and drop (src/dnd.rs)
+    pub dnd: crate::dnd::Dnd,
     /// ext-session-lock-v1 (the lock part's; unbound when the compositor has none)
     pub session_lock: SessionLockState,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
@@ -352,6 +392,8 @@ impl State {
             outputs: OutputState::new(globals, &qh),
             compositor: CompositorState::bind(globals, &qh).expect("wl_compositor"),
             layer_shell: LayerShell::bind(globals, &qh).expect("this compositor has no wlr-layer-shell"),
+            xdg_shell: XdgShell::bind(globals, &qh).ok(),
+            dnd: crate::dnd::Dnd::new(globals, &qh),
             seat: SeatState::new(globals, &qh),
             cursor_shapes: CursorShapeManager::bind(globals, &qh).ok(),
             viewporter: globals.bind(&qh, 1..=1, ()).ok(),
@@ -400,6 +442,30 @@ impl State {
         let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&wl, &self.qh, ()));
         let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
         layer.commit();
+        self.adopt(wl, Role::Layer(layer), viewport, fractional, spec.namespace, spec.output.map(|o| o.1.to_string()).unwrap_or_default(), spec.size)
+    }
+
+    /// A regular window (an xdg toplevel) ready to become the window of the
+    /// next Slint component made; it maps on its first frame. The compositor
+    /// asking it to close reaches `Part::surface_closed`; it's destroyed with
+    /// its last reference (drop_surface, then the component)
+    pub fn prepare_window(&mut self, spec: WindowSpec) -> Rc<Surface> {
+        let wl = self.compositor.create_surface(&self.qh);
+        let xdg = self.xdg_shell.as_ref().expect("this compositor has no xdg-shell");
+        let win = xdg.create_window(wl.clone(), WindowDecorations::ServerDefault, &self.qh);
+        win.set_title(spec.title);
+        win.set_app_id(spec.app_id);
+        if spec.min_size.0 > 0 && spec.min_size.1 > 0 {
+            win.set_min_size(Some(spec.min_size));
+        }
+        let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&wl, &self.qh, ()));
+        let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
+        win.commit();
+        self.adopt(wl, Role::Window(win), viewport, fractional, spec.namespace, String::new(), spec.size)
+    }
+
+    /// A surface with its role: its EGL window and renderer, made the next component's window
+    fn adopt(&mut self, wl: WlSurface, layer: Role, viewport: Option<WpViewport>, fractional: Option<WpFractionalScaleV1>, namespace: &str, output: String, size: (u32, u32)) -> Rc<Surface> {
         let gl = GlSurface::new(self.egl.clone(), WlProxy::id(&wl)).expect("EGL window surface");
         // (FemtoVG loads GL as it's made: the context must be current)
         slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
@@ -407,12 +473,12 @@ impl State {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
             renderer: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"),
             wl,
-            layer: Role::Layer(layer),
+            layer,
             viewport,
             _fractional: fractional,
-            namespace: spec.namespace.to_string(),
-            output: spec.output.map(|o| o.1.to_string()).unwrap_or_default(),
-            logical: Cell::new(spec.size),
+            namespace: namespace.to_string(),
+            output,
+            logical: Cell::new(size),
             scale: Cell::new(1.0),
             configured: Cell::new(false),
             needs_redraw: Cell::new(true),
@@ -576,12 +642,12 @@ impl OutputHandler for State {
 
 impl LayerShellHandler for State {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
-        if let Some(s) = self.surfaces.iter().find(|s| &s.layer == layer).cloned() {
+        if let Some(s) = self.surfaces.iter().find(|s| s.layer == *layer).cloned() {
             self.each_part(|p, st| p.surface_closed(st, &s));
         }
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
-        let Some(s) = self.surfaces.iter().find(|s| &s.layer == layer).cloned() else { return };
+        let Some(s) = self.surfaces.iter().find(|s| s.layer == *layer).cloned() else { return };
         if crate::env::is_set("DEBUG") {
             eprintln!("debug: configure {} {:?} scale {}", s.namespace, c.new_size, s.scale.get());
         }
@@ -590,6 +656,28 @@ impl LayerShellHandler for State {
         s.logical.set(size);
         if s.hidden.get() {
             return; // (unmapped on purpose: the size waits for `show`)
+        }
+        s.configured.set(true);
+        s.frame_pending.set(false);
+        s.apply_geometry();
+    }
+}
+
+// A regular window (the App Store's): the compositor's size, or the one it
+// asked for; a close request goes to its part (Part::surface_closed)
+impl WindowHandler for State {
+    fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, window: &XdgWindow) {
+        if let Some(s) = self.surfaces.iter().find(|s| s.layer.window() == Some(window)).cloned() {
+            self.each_part(|p, st| p.surface_closed(st, &s));
+        }
+    }
+    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, window: &XdgWindow, c: WindowConfigure, _: u32) {
+        let Some(s) = self.surfaces.iter().find(|s| s.layer.window() == Some(window)).cloned() else { return };
+        let (w, h) = s.logical.get();
+        let size = (c.new_size.0.map_or(w, |v| v.get()), c.new_size.1.map_or(h, |v| v.get()));
+        s.logical.set(size);
+        if s.hidden.get() {
+            return;
         }
         s.configured.set(true);
         s.frame_pending.set(false);
@@ -612,6 +700,7 @@ impl SeatHandler for State {
             self.keyboard = self.seat.get_keyboard_with_repeat(qh, &seat, None, self.loop_handle.clone(), cb).ok();
         }
         if cap == Capability::Pointer && self.pointer.is_none() {
+            self.dnd.seat(&seat, qh);
             if let Ok(p) = self.seat.get_pointer(qh, &seat) {
                 self.cursor = self.cursor_shapes.as_ref().map(|m| m.get_shape_device(&p, qh));
                 self.pointer = Some(p);
@@ -767,6 +856,9 @@ impl PointerHandler for State {
                     if crate::env::is_set("DEBUG") {
                         eprintln!("debug: button {:?} on {} at {:?}", e.kind, s.namespace, e.position);
                     }
+                    if let PointerEventKind::Press { serial, .. } = e.kind {
+                        self.dnd.pressed(serial, &s);
+                    }
                     if matches!(e.kind, PointerEventKind::Press { .. }) {
                         s.window.dispatch_event(WindowEvent::PointerPressed { position, button });
                     } else {
@@ -856,6 +948,8 @@ no_events!(ZwpIdleInhibitManagerV1, ZwpIdleInhibitorV1);
 delegate_compositor!(State);
 delegate_output!(State);
 delegate_layer!(State);
+delegate_xdg_shell!(State);
+delegate_xdg_window!(State);
 delegate_seat!(State);
 delegate_keyboard!(State);
 delegate_pointer!(State);

@@ -15,6 +15,9 @@ import qs.services
 Scope {
     id: root
 
+    // (the shelf drawn in Rust: what it shows, and what it asks)
+    ShelfFeed {}
+
     component Probe: PanelWindow {
         id: probe
         property string where: "" // left | right | top | shake

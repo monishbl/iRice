@@ -31,13 +31,16 @@ Singleton {
     readonly property string levelText: level === "off" ? "Off" : mixed ? "Custom" : level === "10min" ? "Everyone for 10 min" : "Everyone"
 
     // ── Nearby devices ──────────────────────────────────────────────────
-    readonly property var devices: Devices.merge(LocalSend.peers, QuickShare.devices)
+    readonly property var devices: demo ? Devices.merge(demo.localsend, demo.quickshare) : Devices.merge(LocalSend.peers, QuickShare.devices)
     property int lookers: 0
     readonly property bool looking: lookers > 0
-    onLookingChanged: {
-        LocalSend.sharing = looking;
-        QuickShare.looking = looking;
-        if (looking)
+    // (the dev sandbox's made-up devices, below: nothing real is looked for meanwhile)
+    property var demo: null
+    readonly property bool lookingForReal: looking && demo === null
+    onLookingForRealChanged: {
+        LocalSend.sharing = lookingForReal;
+        QuickShare.looking = lookingForReal;
+        if (lookingForReal)
             LocalSend.scan();
     }
     function look(on) {
@@ -56,7 +59,7 @@ Singleton {
     }
     // The send to this device in flight, for its progress ring
     function progressFor(device) {
-        return Devices.progressFor(LocalSend.items.concat(QuickShare.items), device);
+        return Devices.progressFor(demo ? demo.items : LocalSend.items.concat(QuickShare.items), device);
     }
     // Pick files, then send them to this device
     function pickFor(device) {
@@ -195,6 +198,7 @@ Singleton {
 
     // The dev sandbox only: the incoming card without a phone
     //   qs ipc call sharingdemo ask | progress <0-100> | done | fail
+    //   qs ipc call sharingdemo peers | none | sending <0-100> | sent | real
     IpcHandler {
         target: "sharingdemo"
         enabled: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
@@ -207,6 +211,29 @@ Singleton {
         }
         function done(): void {
             root.updateRequest("demo:1", { state: "done", paths: ["/tmp/IMG_2041.jpg", "/tmp/IMG_2042.jpg"] });
+        }
+        // (the share sheet with made-up devices, never the real network's)
+        function peers(): void {
+            root.demo = {
+                localsend: [{ alias: "Ada's laptop", type: "laptop", id: "demo-1" }, { alias: "Studio desktop", type: "desktop", id: "demo-2" }],
+                quickshare: [{ name: "Kai's Pixel", type: "phone", id: "demo-3" }, { name: "Ines's tablet", type: "tablet", id: "demo-4" }],
+                items: []
+            };
+        }
+        function none(): void {
+            root.demo = { localsend: [], quickshare: [], items: [] };
+        }
+        function sending(pct: int): void {
+            if (root.demo)
+                root.demo = Object.assign({}, root.demo, { items: [{ kind: "send", peer: "Ada's laptop", done: pct, total: 100, waiting: false }] });
+        }
+        function sent(): void {
+            if (root.demo)
+                root.demo = Object.assign({}, root.demo, { items: [] });
+            root.outcome("Ada's laptop", "sent");
+        }
+        function real(): void {
+            root.demo = null;
         }
         function fail(): void {
             root.updateRequest("demo:1", { state: "failed", message: "Maya's phone stopped sending." });

@@ -17,8 +17,10 @@ import qs.modules.settings
 // cards on surfaceContainer, and an app's page with a big logo, a filled
 // Install pill and its details as an Expressive segmented list.
 Scope {
+    // (drawn by tessera-ui when it says so: rust.surfaces: appstore)
+    AppStoreFeed {}
     LazyLoader {
-        active: Panels.appStoreOpen
+        active: Panels.appStoreOpen && !RustUi.drawing("appstore")
         FloatingWindow {
             id: win
             title: "Software"

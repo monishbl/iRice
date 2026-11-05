@@ -148,5 +148,19 @@ Singleton {
         function close(): void {
             root.close();
         }
+        // The dev sandbox only: the card in a state, nothing served
+        // (qs ipc call linkshare demo ready|loading|error|busy <qr png>)
+        function demo(stage: string, qr: string): void {
+            if ((Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1")
+                return;
+            root.mode = "send";
+            root.names = ["Holiday.jpg"];
+            root.qr = qr;
+            root.error = stage === "error" ? "Making the code needs qrencode." : "";
+            root.count = stage === "busy" ? 1 : 0;
+            root.total = stage === "busy" ? 100 : 0;
+            root.done = stage === "busy" ? 40 : 0;
+            root.stage = stage === "busy" ? "ready" : stage;
+        }
     }
 }

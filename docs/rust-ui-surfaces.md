@@ -123,7 +123,9 @@ impl Part for Dock {
 }
 ```
 
-- **Layer surfaces:** `st.prepare_surface(Spec)` then create the Slint component at once (it becomes that surface's window). One per output for per-screen surfaces (follow the QML model's `screens` setting with `surfaces::on_screen`). `surface.show(w, h)` / `surface.hide()` map and unmap; `st.drop_surface` when it goes.
+- **Layer surfaces:** `st.prepare_surface(Spec)` then create the Slint component at once (it becomes that surface's window). One per output for per-screen surfaces (follow the QML model's `screens` setting with `surfaces::on_screen`). `surface.show(w, h)` / `surface.hide()` map and unmap; `st.drop_surface` when it goes, after `ui.hide()` and `surface.hide()` (Slint keeps a shown component, and with it the surface, alive: a dropped strip's exclusive zone stayed).
+- **Regular windows** (the App Store; later Settings): `st.prepare_window(WindowSpec { title, app_id, namespace, size, min_size })`, then the component, as for a layer. It maps on its first frame and resizes as the compositor says; a close request (Super+Q) reaches `Part::surface_closed`. Never touch `surface.layer` on one (it has no layer).
+- **Drag and drop** (core/src/dnd.rs): `st.accept_drops(&surface, true)` and the part's `drag` hears Enter, Motion, Leave and Drop (file URIs and text, read for it); `st.refuse_drop()` during the call says "not here". `st.start_drag(&surface, offers)` drags data out from the latest press (the shelf's rows).
 - **Glass:** in Glass, panels sit on the plugin's glass: `theme::glass_shape(...)` then `st.shell.glass.set(output, namespace, &shapes)`, only when the shapes change; `Theme.panel` is the tint over it. Material draws its own solid tonal surfaces (no glass).
 - **Keyboard:** `KeyboardInteractivity::OnDemand` for things you type into; `keyboard_left` is the moment to close (another window was clicked).
 - **Accessibility:** `crate::a11y::A11y::new(&surface, st.tx.clone())`, `a.update(false, focused)` in `after_frame`, and return them from `a11y()`. Give every control an `accessible-role` and `accessible-label` (see menubar.slint); icon glyphs `accessible-role: none` (wrap them: `Icon`).

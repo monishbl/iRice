@@ -1,0 +1,237 @@
+// Live captions in Rust (rust.surfaces: captions), compare
+// shell/modules/captions/CaptionsWindow.qml and CaptionLines.qml: the words
+// in white on dark, whatever the theme (they have to read over any
+// picture), in one of three places:
+//   CaptionsBar    a floating bar (drag it anywhere: the place is kept)
+//   CaptionsStrip  a strip across the bottom that windows make room for
+//   CaptionsVideo  over the bottom of the playing window, up to three lines
+// Rust (src/surfaces/captions) places the windows and trims the words.
+
+import { Theme } from "@tessera/theme.slint";
+import { IconButton } from "@tessera/widgets.slint";
+
+// The sentence before (dimmer, one line) and what's being said (two lines)
+component Words inherits Rectangle {
+    in property <string> previous;
+    in property <string> latest;
+    in property <bool> hint;
+    in property <length> size: 20px;
+    preferred-height: (previous != "" ? prev.preferred-height + 2px : 0) + now.height;
+    prev := Text {
+        y: 0;
+        width: parent.width;
+        visible: previous != "";
+        text: previous;
+        horizontal-alignment: center;
+        overflow: elide;
+        wrap: no-wrap;
+        color: #ffffff99;
+        font-size: size;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    now := Text {
+        y: previous != "" ? prev.preferred-height + 2px : 0;
+        width: parent.width;
+        // (two lines at most)
+        height: min(self.preferred-height, 2.6 * size);
+        text: latest;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        overflow: elide;
+        color: hint ? #ffffff99 : #ffffff;
+        font-size: size;
+        font-weight: 500;
+        accessible-role: text;
+        accessible-label: "Live captions: " + latest;
+    }
+}
+
+export component CaptionsBar inherits Window {
+    in property <string> previous;
+    in property <string> latest;
+    in property <bool> hint;
+    in property <bool> dim;
+    in property <length> bar-w: 760px;
+    // its place on screen while it isn't moving (left, and top), and the screen
+    in property <length> cx;
+    in property <length> cy-top;
+    in property <length> sw: 1280px;
+    in property <length> sh: 800px;
+    out property <length> bar-h: words.preferred-height + 28px;
+    out property <bool> pressed: drag.pressed;
+    // (the window covers the screen while the bar is dragged: then the bar
+    // is drawn where the pointer takes it)
+    property <bool> full: root.width > bar-w + 1px;
+    property <length> rx;
+    property <length> ry;
+    property <length> gx;
+    property <length> gy;
+    property <length> bx: max(0, min(rx, sw - bar-w));
+    property <length> by: max(0, min(ry, sh - bar-h));
+    callback dragging(bool);
+    callback released(length, length); // where it was let go (its top-left on screen)
+    in property <string> x-glyph;
+    callback turn-off();
+
+    background: transparent;
+    no-frame: true;
+    title: "Live captions";
+    default-font-family: Theme.font;
+
+    box := Rectangle {
+        x: full ? bx : 0;
+        y: full ? by : 0;
+        width: bar-w;
+        height: bar-h;
+        border-radius: Theme.material ? 24px : 14px;
+        background: rgba(18, 18, 20, 0.82);
+        border-width: Theme.material ? 0 : 1px;
+        border-color: #ffffff14;
+        opacity: dim ? 0.35 : 1;
+        animate opacity { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        accessible-role: groupbox;
+        accessible-label: "Live captions";
+
+        words := Words {
+            x: 20px;
+            width: parent.width - 40px;
+            height: self.preferred-height;
+            y: (parent.height - self.height) / 2;
+            previous: previous;
+            latest: latest;
+            hint: hint;
+        }
+        // Drag to move; the place is kept when let go
+        drag := TouchArea {
+            mouse-cursor: self.pressed ? grabbing : grab;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                    rx = cx;
+                    ry = cy-top;
+                    gx = self.mouse-x;
+                    gy = self.mouse-y;
+                }
+            }
+            moved => {
+                if self.pressed {
+                    // (the area moves with the bar: the pointer's place on
+                    // screen is the bar's plus its own)
+                    rx = (full ? box.x : cx) + self.mouse-x - gx;
+                    ry = (full ? box.y : cy-top) + self.mouse-y - gy;
+                }
+            }
+            changed pressed => {
+                if self.pressed {
+                    dragging(true);
+                } else {
+                    released(bx, by);
+                    dragging(false);
+                }
+            }
+        }
+        // Off, from the bar itself (while the pointer is over it)
+        IconButton {
+            x: parent.width - self.width - 6px;
+            y: 6px;
+            visible: drag.has-hover || self.hovered;
+            icon: x-glyph;
+            icon-color: #ffffffb3;
+            label: "Turn off live captions";
+            clicked => { turn-off(); }
+        }
+    }
+}
+
+export component CaptionsStrip inherits Window {
+    in property <string> previous;
+    in property <string> latest;
+    in property <bool> hint;
+    in property <bool> dim;
+    in property <string> x-glyph;
+    callback turn-off();
+
+    background: rgba(18, 18, 20, 0.92);
+    no-frame: true;
+    title: "Live captions";
+    default-font-family: Theme.font;
+
+    Words {
+        x: 64px;
+        width: parent.width - 128px;
+        height: self.preferred-height;
+        y: (parent.height - self.height) / 2;
+        previous: previous;
+        latest: latest;
+        hint: hint;
+        size: 20px;
+        opacity: dim ? 0.5 : 1;
+    }
+    IconButton {
+        x: parent.width - self.width - 16px;
+        y: (parent.height - self.height) / 2;
+        icon: x-glyph;
+        icon-color: #ffffffb3;
+        label: "Turn off live captions";
+        clicked => { turn-off(); }
+    }
+}
+
+// Over the video: the newest three lines on a dark box just their size
+export component CaptionsVideo inherits Window {
+    in property <styled-text> words; // the sentence before (dimmer), then what's being said
+    in property <string> plain; // the same words, plain (for their width and a screen reader)
+    in property <bool> dim;
+    in property <length> size: 20px;
+    out property <length> box-h: lines.height + 16px;
+
+    background: transparent;
+    no-frame: true;
+    title: "Live captions";
+    default-font-family: Theme.font;
+
+    measure := Text {
+        visible: false;
+        text: plain;
+        font-size: size;
+        font-weight: 500;
+        wrap: no-wrap;
+    }
+    box := Rectangle {
+        property <length> content-w: min(root.width - 32px, measure.preferred-width);
+        width: min(root.width, content-w + 32px);
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height;
+        height: box-h;
+        border-radius: Theme.material ? 12px : 10px;
+        background: rgba(0, 0, 0, 0.62);
+        opacity: dim ? 0 : 1;
+        animate opacity { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        // (whole lines only: the newest three; the oldest go off the top)
+        lines := Rectangle {
+            x: 16px;
+            width: parent.width - 32px;
+            y: 8px;
+            height: min(text.preferred-height, 3 * line.preferred-height);
+            clip: true;
+            text := StyledText {
+                x: 0;
+                width: parent.width;
+                y: parent.height - self.preferred-height;
+                height: self.preferred-height;
+                text: words;
+                default-color: #ffffff;
+                default-font-size: size;
+                default-font-family: Theme.font;
+                horizontal-alignment: center;
+            }
+            line := Text {
+                visible: false;
+                text: "Ag";
+                font-size: size;
+            }
+        }
+        accessible-role: AccessibleRole.text;
+        accessible-label: "Live captions: " + plain;
+    }
+}

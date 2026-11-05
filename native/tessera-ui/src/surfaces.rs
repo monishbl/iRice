@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "captions", "notes"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -37,6 +37,12 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "hotcorners" => Some(Box::new(tessera_hotcorners::HotCorners::default())),
         "tiling" => Some(Box::new(tessera_tiling::Tiling::default())),
         "decorations" => Some(Box::new(tessera_decorations::Decorations::default())),
+        "share" => Some(Box::new(tessera_share::Share::default())),
+        "appstore" => Some(Box::new(tessera_appstore::AppStore::default())),
+        "shelf" => Some(Box::new(tessera_shelf::Shelf::default())),
+        "network" => Some(Box::new(tessera_network::Network::default())),
+        "captions" => Some(Box::new(tessera_captions::Captions::default())),
+        "notes" => Some(Box::new(tessera_notes::Notes::default())),
         _ => None,
     }
 }

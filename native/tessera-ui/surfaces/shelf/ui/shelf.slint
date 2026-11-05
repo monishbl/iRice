@@ -1,0 +1,571 @@
+// The drop shelf in Rust (rust.surfaces: shelf), compare
+// shell/modules/shelf/ShelfWindow.qml, ShelfRow.qml and ShelfDropZone.qml:
+// the shelf's card at the edge of a screen (drop files or text on it, drag a
+// row out, or "All"), and the island's drop zone under the menu bar (keep on
+// the shelf, or send to a phone). Rust (src/surfaces/shelf) owns the state,
+// the drag and drop and the layout's numbers; this draws them.
+// Exports for ui/main.slint: ShelfCard, ShelfZone, ShelfItem
+
+import { Theme } from "@tessera/theme.slint";
+import { SymIcon } from "@tessera/symbols.slint";
+
+// One row: a picture or a glyph, a name and where it is
+export struct ShelfItem {
+    label: string,
+    detail: string,
+    glyph: string, // a Phosphor glyph (Material: its symbol)
+    picture: bool, // a picture on the shelf (Material: square corners 8)
+    image: image,
+    has-image: bool, // its thumbnail is decoded
+    first: bool, // (Material's segmented list: outer corners 16, inner 4)
+    last: bool,
+    index: int, // on the shelf; -1: everything ("All N items")
+}
+
+// A ghost icon button (IconButton.qml): Glass a fill on hover; Material
+// round, a state layer, squaring off while pressed
+component ShelfButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> bold;
+    in property <length> icon-size: 16px;
+    in property <color> icon-color: Theme.secondary;
+    in property <string> label;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+    background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
+    animate background { duration: 150ms; }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SymIcon {
+        text: icon;
+        bold: root.bold;
+        font-size: icon-size;
+        color: icon-color;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A row of the shelf (ShelfRow.qml); dragged out, it carries its item (or all)
+component ShelfRow inherits Rectangle {
+    in property <ShelfItem> entry;
+    in property <bool> removable;
+    in property <bool> elide-right; // (text: the end goes; file names: the middle, done in Rust)
+    in property <string> x-glyph;
+    callback remove(int);
+    callback drag-out(int);
+    property <bool> started;
+    accessible-role: list-item;
+    accessible-label: entry.label + (entry.detail != "" ? ", " + entry.detail : "");
+
+    // (Material: rows 2 apart, the group's outer corners 16, inner 4)
+    Rectangle {
+        y: Theme.material && !entry.first ? 1px : 0;
+        height: parent.height - (Theme.material && !entry.first ? 1px : 0) - (Theme.material && !entry.last ? 1px : 0);
+        border-top-left-radius: !Theme.material ? 10px : entry.first ? 16px : 4px;
+        border-top-right-radius: !Theme.material ? 10px : entry.first ? 16px : 4px;
+        border-bottom-left-radius: !Theme.material ? 10px : entry.last ? 16px : 4px;
+        border-bottom-right-radius: !Theme.material ? 10px : entry.last ? 16px : 4px;
+        background: Theme.material ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, grab.pressed ? 0.9 : grab.has-hover ? 0.92 : 1)
+            : grab.pressed ? Theme.fill-pressed : grab.has-hover ? Theme.fill : transparent;
+    }
+
+    // The drag itself: pressed and moved past Qt's start distance (10 px)
+    grab := TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.started = false;
+            }
+        }
+        moved => {
+            if self.pressed && !root.started && (abs(self.mouse-x - self.pressed-x) > 10px || abs(self.mouse-y - self.pressed-y) > 10px) {
+                root.started = true;
+                root.drag-out(entry.index);
+            }
+        }
+    }
+
+    thumb := Rectangle {
+        x: Theme.material ? 8px : 6px;
+        width: Theme.material ? 36px : 32px;
+        height: self.width;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.material ? (entry.picture ? 8px : self.width / 2) : 6px;
+        background: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+        clip: true;
+        if entry.has-image: Image {
+            width: 100%;
+            height: 100%;
+            source: entry.image;
+            image-fit: cover;
+            accessible-role: none;
+        }
+        if !entry.has-image: SymIcon {
+            text: entry.glyph;
+            font-size: 18px;
+            color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+        }
+    }
+
+    property <length> text-x: thumb.x + thumb.width + (Theme.material ? 12px : 10px);
+    property <length> text-w: root.width - root.text-x - (close.visible ? root.width - close.x : 6px);
+    property <length> line: Theme.material ? 20px : 17px;
+    property <length> sub: entry.detail != "" ? 15px : 0;
+    Text {
+        x: text-x;
+        y: (parent.height - line - sub) / 2;
+        width: text-w;
+        height: line;
+        text: entry.label;
+        overflow: elide;
+        color: Theme.label;
+        font-size: Theme.material ? 14px : Theme.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    if entry.detail != "": Text {
+        x: text-x;
+        y: (parent.height - line - sub) / 2 + line;
+        width: text-w;
+        height: sub;
+        text: entry.detail;
+        overflow: elide;
+        color: Theme.secondary;
+        font-size: Theme.caption;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+
+    close := ShelfButton {
+        // (the row's hover: over the row, or over this button on it)
+        visible: removable && (grab.has-hover || self.hovered);
+        x: parent.width - self.width - 4px;
+        y: (parent.height - self.height) / 2;
+        icon: x-glyph;
+        icon-size: 13px;
+        label: "Remove from the shelf";
+        clicked => { root.remove(entry.index); }
+    }
+}
+
+// ── The card ────────────────────────────────────────────────────────────────
+// A window 288 wide down one edge of the screen; the card (240 wide) sits in
+// it at card-y, the rest takes no input (Rust's input region)
+export component ShelfCard inherits Window {
+    in property <bool> shown;
+    in property <bool> instant; // (opened from nothing: there at once, as the QML's Behavior)
+    in property <bool> left; // at the left edge (it slides out that way)
+    in property <length> card-y;
+    in property <length> card-h;
+    in property <int> count;
+    in property <bool> has-paths;
+    in property <[ShelfItem]> rows;
+    in property <ShelfItem> all-row;
+    in property <bool> drag-over; // something's being dragged over it (from Rust: Slint sees no pointer then)
+    in property <string> outline-rest; // Material's empty-state shape: cookie9
+    in property <string> outline-drop; // …and clover8 under a drag
+    in property <string> dashes-rest; // Material's dashed outline (Slint has no dashes: segments, from Rust)
+    in property <string> dashes-drop;
+    // Glyphs (Phosphor; SymIcon draws Material's symbol)
+    in property <string> g-share;
+    in property <string> g-trash;
+    in property <string> g-x;
+    in property <string> g-tray;
+
+    out property <float> fade: shown ? 1 : 0;
+    out property <length> slide: shown ? 0 : (left ? -6px : 6px);
+    property <length> row-h: Theme.material ? 52px : 44px;
+    property <length> empty-h: Theme.material ? 160px : 132px;
+    property <length> top: 12px + 28px + 8px;
+    property <length> list-y: top + (count > 1 ? row-h + 8px : 0);
+    property <length> list-h: min(count, 6) * row-h;
+
+    callback share();
+    callback clear();
+    callback close();
+    callback remove(int);
+    callback drag-out(int);
+    callback hover-changed(bool);
+
+    background: transparent;
+    no-frame: true;
+    title: "Shelf";
+    default-font-family: Theme.font;
+
+    animate fade {
+        duration: instant ? 0ms : shown ? 200ms : 130ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    animate slide { duration: instant ? 0ms : 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+
+    card := Rectangle {
+        x: 24px + slide;
+        y: card-y;
+        width: 240px;
+        height: card-h;
+        opacity: fade;
+        border-radius: Theme.material ? 24px : 20px;
+        // (Glass: the panel's tint over the plugin's glass; Material: its own surface)
+        background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
+        border-width: Theme.material ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: Theme.material ? 24px : 0;
+        drop-shadow-offset-y: Theme.material ? 6px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Shelf";
+
+        // The pointer over it (the QML's HoverHandler: Shelf.hovered); the
+        // card's content is inside it, so it stays hovered over a row
+        hover := TouchArea {
+            changed has-hover => { root.hover-changed(self.has-hover); }
+
+        // Title, and what can be done with everything
+        heading := Text {
+            x: 12px + 2px;
+            y: 12px;
+            width: self.preferred-width;
+            height: 28px;
+            text: "Shelf";
+            color: Theme.label;
+            font-size: Theme.material ? Theme.title : Theme.body;
+            font-weight: Theme.material ? 500 : 600;
+            vertical-alignment: center;
+            accessible-role: AccessibleRole.text;
+        }
+        if count > 0: Text {
+            x: heading.x + heading.width + 6px;
+            y: 12px;
+            width: self.preferred-width;
+            height: 28px;
+            text: count;
+            color: Theme.secondary;
+            font-size: Theme.small;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        HorizontalLayout {
+            y: 12px;
+            height: 28px;
+            x: parent.width - 12px - self.preferred-width;
+            spacing: 2px;
+            if has-paths: ShelfButton {
+                icon: g-share;
+                label: "Share to a nearby device";
+                clicked => { root.share(); }
+            }
+            if count > 0: ShelfButton {
+                icon: g-trash;
+                label: "Clear the shelf";
+                clicked => { root.clear(); }
+            }
+            ShelfButton {
+                icon: g-x;
+                label: "Close";
+                clicked => { root.close(); }
+            }
+        }
+
+        // Empty: where to drop
+        if count == 0: Rectangle {
+            x: 12px;
+            y: top;
+            width: parent.width - 24px;
+            height: empty-h;
+            border-radius: Theme.material ? 16px : 14px;
+            background: drag-over ? Theme.accent.with-alpha(0.12) : transparent;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: drag-over ? Theme.accent : Theme.separator;
+            // (Material: a dashed outline, primary under a drag)
+            if Theme.material: Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: self.width / 1px;
+                viewbox-height: self.height / 1px;
+                commands: drag-over ? dashes-drop : dashes-rest;
+                stroke: drag-over ? Theme.m3-primary : Theme.m3-outline;
+                stroke-width: drag-over ? 2px : 1.5px;
+            }
+            VerticalLayout {
+                x: 12px;
+                y: 0;
+                width: parent.width - 24px;
+                height: parent.height;
+                alignment: center;
+                spacing: Theme.material ? 8px : 6px;
+                HorizontalLayout {
+                    alignment: center;
+                    if !Theme.material: SymIcon {
+                        text: g-tray;
+                        font-size: 24px;
+                        color: drag-over ? Theme.accent : Theme.tertiary;
+                    }
+                    // (Material: the icon on a shape that blooms when something's over it)
+                    if Theme.material: Rectangle {
+                        width: 56px;
+                        height: 56px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: drag-over ? outline-drop : outline-rest;
+                            fill: drag-over ? Theme.m3-primary-container : Theme.m3-secondary-container;
+                        }
+                        SymIcon {
+                            text: g-tray;
+                            fill: drag-over;
+                            font-size: 24px;
+                            color: drag-over ? Theme.m3-on-primary-container : Theme.m3-on-secondary-container;
+                        }
+                    }
+                }
+                Text {
+                    text: "Drop files here";
+                    horizontal-alignment: center;
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    font-weight: 500;
+                }
+                Text {
+                    text: "Then drag them out wherever they're going.";
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+        }
+
+        // Everything at once
+        if count > 1: ShelfRow {
+            x: 12px;
+            y: top;
+            width: parent.width - 24px;
+            height: row-h;
+            entry: all-row;
+            removable: false;
+            x-glyph: g-x;
+            drag-out(i) => { root.drag-out(i); }
+        }
+
+        // Each item; more than six scroll (the wheel: a press and move takes it out)
+        if count > 0: Flickable {
+            x: 12px;
+            y: list-y;
+            width: parent.width - 24px;
+            height: list-h;
+            content-height: count * row-h;
+            interactive: false;
+            for r in rows: ShelfRow {
+                y: r.index * row-h;
+                width: parent.width;
+                height: row-h;
+                entry: r;
+                removable: true;
+                elide-right: false;
+                x-glyph: g-x;
+                remove(i) => { root.remove(i); }
+                drag-out(i) => { root.drag-out(i); }
+            }
+        }
+
+        }
+
+        // Its outline while something's over it with items already there
+        if drag-over && count > 0: Rectangle {
+            border-radius: Theme.material ? 24px : 20px;
+            background: Theme.accent.with-alpha(0.08);
+            border-width: 2px;
+            border-color: Theme.accent;
+        }
+    }
+}
+
+// ── The drop zone ───────────────────────────────────────────────────────────
+// One of its two targets (236 × 116), lit while the drag is over it
+component Target inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> detail;
+    in property <bool> over;
+    width: 236px;
+    height: 116px;
+    // (Material: tonal, the one under the drag in primaryContainer with a primary outline, rounder)
+    border-radius: Theme.material ? (over ? 28px : 20px) : 20px;
+    animate border-radius { duration: 200ms; easing: spring(0.3); }
+    background: Theme.material ? (over ? Theme.m3-primary-container : Theme.m3-surface-container-highest) : over ? Theme.accent.with-alpha(0.38) : #ffffff14;
+    animate background { duration: 150ms; }
+    border-width: Theme.material ? (over ? 2px : 0) : 1px;
+    border-color: Theme.material ? Theme.m3-primary : over ? Theme.accent : #ffffff1f;
+    transform-scale: over ? 1.03 : 1;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    animate transform-scale { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: groupbox;
+    accessible-label: title + ": " + detail;
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        alignment: center;
+        spacing: 6px;
+        HorizontalLayout {
+            alignment: center;
+            SymIcon {
+                text: icon;
+                fill: true;
+                font-size: 28px;
+                color: Theme.material ? (over ? Theme.m3-on-primary-container : Theme.m3-primary) : #f5f5f7;
+            }
+        }
+        Text {
+            text: title;
+            horizontal-alignment: center;
+            color: Theme.material ? (over ? Theme.m3-on-primary-container : Theme.m3-on-surface) : #f5f5f7;
+            font-size: 14px;
+            font-weight: 600;
+            accessible-role: none;
+        }
+        Text {
+            text: detail;
+            horizontal-alignment: center;
+            color: Theme.material ? (over ? Theme.m3-on-primary-container : Theme.m3-on-surface-variant) : #ffffff99;
+            font-size: Theme.small;
+            accessible-role: none;
+        }
+    }
+}
+
+// The island's drop zone: a window 560 × 208 under the menu bar, the zone
+// (520 wide) at its top centre
+export component ShelfZone inherits Window {
+    in property <bool> open;
+    in property <int> count;
+    in property <bool> over-keep;
+    in property <bool> over-send;
+    in property <string> g-head;
+    in property <string> g-x;
+    in property <string> g-tray;
+    in property <string> g-send;
+    out property <float> shown: open ? 1 : 0;
+    callback cancel();
+
+    background: transparent;
+    no-frame: true;
+    title: "Shelf drop zone";
+    default-font-family: Theme.font;
+
+    // In with a spring from the island's size, out a little faster
+    animate shown {
+        duration: open ? 320ms : 180ms;
+        easing: open ? cubic-bezier(0.34, 1.45, 0.64, 1) : cubic-bezier(0.33, 1, 0.68, 1);
+    }
+
+    zone := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 0;
+        width: 520px;
+        height: 16px + 22px + 14px + 116px + 16px;
+        border-radius: Theme.material ? 28px : 32px;
+        background: Theme.material ? Theme.m3-surface-container : #000000;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: #ffffff1f;
+        opacity: max(0, min(1, shown));
+        transform-scale: 0.72 + 0.28 * shown;
+        transform-origin: { x: self.width / 2, y: 0 };
+        accessible-role: groupbox;
+        accessible-label: "Drop to keep or send";
+
+        // a click on it (once the drag is over) puts it away
+        TouchArea {
+            clicked => { root.cancel(); }
+        }
+
+        SymIcon {
+            x: 16px + 4px;
+            y: 16px;
+            width: 18px;
+            height: 22px;
+            text: g-head;
+            fill: true;
+            font-size: 18px;
+            color: Theme.material ? Theme.m3-primary : #f5f5f7;
+        }
+        Text {
+            x: 16px + 4px + 18px + 10px;
+            y: 16px;
+            height: 22px;
+            text: "Drop to keep or send";
+            color: Theme.material ? Theme.m3-on-surface : #f5f5f7;
+            font-size: 15px;
+            font-weight: 600;
+            vertical-alignment: center;
+            accessible-role: AccessibleRole.text;
+        }
+        if count > 0: Text {
+            x: close.x - 10px - self.width;
+            y: 16px;
+            width: self.preferred-width;
+            height: 22px;
+            text: count + " on the shelf";
+            color: Theme.material ? Theme.m3-on-surface-variant : #ffffff99;
+            font-size: Theme.small;
+            vertical-alignment: center;
+            accessible-role: AccessibleRole.text;
+        }
+        close := Rectangle {
+            x: parent.width - 16px - self.width;
+            y: 16px + (22px - self.height) / 2;
+            width: 28px;
+            height: 28px;
+            border-radius: 14px;
+            // (Material: a standard icon button, its state layer)
+            background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(closeTa.has-hover ? 0.08 : 0)
+                : closeTa.has-hover ? #ffffff33 : #ffffff1a;
+            animate background { duration: 150ms; }
+            accessible-role: button;
+            accessible-label: "Close";
+            accessible-action-default => { root.cancel(); }
+            SymIcon {
+                text: g-x;
+                bold: true;
+                font-size: 14px;
+                color: Theme.material ? Theme.m3-on-surface-variant : #f5f5f7;
+            }
+            // (a bigger target than it looks)
+            closeTa := TouchArea {
+                x: -8px;
+                y: -8px;
+                width: parent.width + 16px;
+                height: parent.height + 16px;
+                mouse-cursor: pointer;
+                clicked => { root.cancel(); }
+            }
+        }
+
+        Target {
+            x: 16px;
+            y: 16px + 22px + 14px;
+            icon: g-tray;
+            title: "Keep on the shelf";
+            detail: "Park them, take them out later";
+            over: over-keep;
+        }
+        Target {
+            x: 16px + 236px + 12px;
+            y: 16px + 22px + 14px;
+            icon: g-send;
+            title: "Send to a phone";
+            detail: "Quick Share or LocalSend";
+            over: over-send;
+        }
+    }
+}

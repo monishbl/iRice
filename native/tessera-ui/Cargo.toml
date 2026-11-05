@@ -84,6 +84,12 @@ tessera-osk = { path = "surfaces/osk" }
 tessera-hotcorners = { path = "surfaces/hotcorners" }
 tessera-tiling = { path = "surfaces/tiling" }
 tessera-decorations = { path = "surfaces/decorations" }
+tessera-share = { path = "surfaces/share" }
+tessera-appstore = { path = "surfaces/appstore" }
+tessera-shelf = { path = "surfaces/shelf" }
+tessera-network = { path = "surfaces/network" }
+tessera-captions = { path = "surfaces/captions" }
+tessera-notes = { path = "surfaces/notes" }
 # (not a shell surface: main.rs hands --greeter to it; it isn't in KNOWN)
 tessera-greeter = { path = "surfaces/greeter" }
 tessera-lock = { path = "surfaces/lock" }

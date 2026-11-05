@@ -12,6 +12,7 @@
 
 pub mod a11y;
 pub mod appicon;
+pub mod dnd;
 pub mod egl;
 pub mod env;
 pub mod icon_theme;

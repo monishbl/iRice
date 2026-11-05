@@ -1,0 +1,1406 @@
+// The App Store in Rust (rust.surfaces: appstore), compare
+// shell/modules/appstore/AppStoreWindow.qml: a regular window, search and
+// the store's places on the left (Discover, the categories, Installed), apps
+// as cards on the right, and an app's page over them (its logo, where it
+// comes from, Get / Open / Remove). Material: like the Play Store (a pill
+// search bar over a navigation drawer, filter chips, cards on
+// surfaceContainer, a big logo, the split Install button and an Expressive
+// segmented list). Rust (src/surfaces/appstore) keeps the window's state
+// (the place, the search, the filter, the page) and the texts; this draws.
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { SymIcon, Symbols } from "@tessera/symbols.slint";
+
+// The glyphs drawn here (Phosphor; Material draws their symbols), from Rust
+export struct AsGlyphs {
+    search: string,
+    x: string,
+    back: string,
+    check: string,
+    info: string,
+    warning: string,
+    package: string,
+    version: string,
+    store: string,
+    globe: string,
+    get: string,
+    open: string,
+    trash: string,
+    copy: string,
+    caret-down: string,
+    notch: string,
+}
+
+// A place in the sidebar
+export struct AsPlace {
+    name: string,
+    icon: string,
+    selected: bool,
+}
+
+// An app in a list (or on its page)
+export struct AsApp {
+    name: string,
+    summary: string,
+    source: string, // where it comes from ("Arch repos", "Flathub", "AUR · community")
+    installed: bool,
+    busy: bool, // installing or removing
+    has-icon: bool,
+    icon: image,
+    initial: string, // (no logo: a tile with this)
+}
+
+// Discover: a section of cards
+export struct AsSection {
+    title: string,
+    apps: [AsApp],
+}
+
+// The split button's menu (Material); id: 0 remove, 1 the website, 2 copy the name
+export struct AsMenuItem {
+    text: string,
+    icon: string,
+    danger: bool,
+    enabled: bool,
+    id: int,
+}
+
+// The keyboard focus ring (FocusRing.qml): 2 px in the accent, 2 px out
+// (Material: 3 px in secondary)
+component AsRing inherits Rectangle {
+    in property <length> r;
+    in property <length> pw;
+    in property <length> ph;
+    x: Theme.material ? -5px : -4px;
+    y: self.x;
+    width: pw - 2 * self.x;
+    height: ph - 2 * self.y;
+    border-radius: r;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    background: transparent;
+}
+
+// Material's loading indicator, small (Spinner.qml): an arc that grows and
+// shrinks as it turns
+component AsSpinner inherits Rectangle {
+    in property <length> size: 32px;
+    in property <color> ink: Theme.m3-primary;
+    width: size;
+    height: size;
+    accessible-role: progress-indicator;
+    accessible-label: "Loading";
+    property <duration> t: animation-tick();
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 40;
+        viewbox-height: 40;
+        stroke: ink;
+        stroke-width: 4px * root.size / 40px;
+        property <float> a: mod(root.t / 1333ms, 1) * 360;
+        property <float> sweep: 40 + 220 * abs(sin(mod(root.t / 2666ms, 1) * 180deg));
+        transform-rotation: a * 1deg;
+        MoveTo { x: 20 + 16 * cos(0deg); y: 20 + 16 * sin(0deg); }
+        ArcTo { x: 20 + 16 * cos(sweep * 1deg); y: 20 + 16 * sin(sweep * 1deg); radius-x: 16; radius-y: 16; large-arc: sweep > 180; sweep: true; }
+    }
+}
+
+// SettingsButton.qml: Glass a neutral fill (`primary` the accent, `danger`
+// red text), 28 high; Material a 40 px pill that squares off while pressed,
+// filled primary, tonal, a text button (`minor`) or in the error container
+component AsButton inherits FocusScope {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> primary;
+    in property <bool> danger;
+    in property <bool> minor;
+    in property <bool> busy;
+    in property <AsGlyphs> g;
+    callback clicked();
+    property <float> layer: touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0;
+    property <color> m3c: primary ? Theme.m3-primary : danger ? Theme.m3-error-container : Theme.m3-secondary-container;
+    property <color> m3i: primary ? Theme.m3-on-primary : danger ? Theme.m3-on-error-container : minor ? Theme.m3-primary : Theme.m3-on-secondary-container;
+    property <color> ink: Theme.material ? m3i : primary ? Theme.on-accent : danger ? Theme.danger : Theme.label;
+    property <bool> glyph: icon != "" || busy;
+    focus-on-click: false;
+    width: inner.preferred-width + (Theme.material ? (minor ? 24px : 32px) : 24px);
+    height: Theme.material ? 40px : 28px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { if !busy { clicked(); } }
+    key-pressed(e) => {
+        if !busy && (e.text == Key.Return || e.text == " ") {
+            clicked();
+            return accept;
+        }
+        reject
+    }
+    body := Rectangle {
+        width: 100%;
+        height: 100%;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: touch.pressed ? (Theme.material ? 1 + min(0.06, 10px / self.width) : 0.97) : 1;
+        animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.3) : ease-out; }
+        border-radius: Theme.material ? (touch.pressed ? 8px : self.height / 2) : Theme.radius-control;
+        animate border-radius { duration: 200ms; easing: spring(0.3); }
+        background: Theme.material ? (minor ? m3i.with-alpha(layer) : m3c.mix(m3i, 1 - layer))
+            : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+            : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+        animate background { duration: 150ms; }
+        inner := HorizontalLayout {
+            alignment: center;
+            spacing: glyph ? (Theme.material ? 8px : 6px) : 0px;
+            if glyph && !(Theme.material && busy): SymIcon {
+                text: busy ? g.notch : icon;
+                bold: !Theme.material;
+                font-size: Theme.material ? 18px : 12px;
+                color: ink;
+                transform-rotation: busy ? mod(animation-tick() / 900ms, 1) * 360deg : 0deg;
+            }
+            if Theme.material && busy: VerticalLayout {
+                alignment: center;
+                AsSpinner { size: 18px; ink: m3i; }
+            }
+            Text {
+                text: root.text;
+                color: ink;
+                font-size: Theme.material ? 14px : Theme.small;
+                font-weight: Theme.material ? 500 : primary ? 600 : 500;
+                letter-spacing: Theme.material ? 0.1px : 0px;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        if root.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
+        touch := TouchArea {
+            enabled: !busy;
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+// A ghost icon button (IconButton.qml); Material round, its state layer in
+// the icon's colour
+component AsIconButton inherits FocusScope {
+    in property <string> icon;
+    in property <length> icon-size: 16px;
+    in property <color> icon-color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+    in property <string> label;
+    callback clicked();
+    focus-on-click: false;
+    width: 28px;
+    height: 28px;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            clicked();
+            return accept;
+        }
+        reject
+    }
+    bg := Rectangle {
+        border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
+            : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
+        animate background { duration: 150ms; }
+        SymIcon {
+            text: icon;
+            font-size: icon-size;
+            color: icon-color;
+        }
+        if root.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+// Glass's search field (TextField.qml, 28 high, outlined in the accent while typing)
+component GlassSearch inherits Rectangle {
+    in-out property <string> text;
+    in property <bool> active: true; // (the other look's field: never focused)
+    callback edited(string);
+    callback entered();
+    public function focus-input() {
+        input.focus();
+    }
+    height: 28px;
+    border-radius: Theme.radius-control - 2px;
+    background: Theme.fill;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.separator;
+    clip: true;
+    input := TextInput {
+        x: 10px;
+        width: parent.width - 20px;
+        height: 100%;
+        text <=> root.text;
+        enabled: root.active;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        single-line: true;
+        selection-background-color: Theme.accent.with-alpha(0.4);
+        accessible-label: "Search apps";
+        accessible-placeholder-text: "Search apps";
+        edited => { root.edited(self.text); }
+        accepted => { root.entered(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                self.text = "";
+                root.edited("");
+                return accept;
+            }
+            reject
+        }
+    }
+    if input.text == "" && !input.has-focus: Text {
+        x: 10px;
+        width: parent.width - 20px;
+        height: 100%;
+        text: "Search apps";
+        color: Theme.tertiary;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+// Material: the Play Store's pill search bar (56 high)
+component PillSearch inherits Rectangle {
+    in-out property <string> text;
+    in property <bool> active: true; // (the other look's field: never focused)
+    in property <AsGlyphs> g;
+    callback edited(string);
+    callback entered();
+    public function focus-input() {
+        input.focus();
+    }
+    height: 56px;
+    border-radius: self.height / 2;
+    background: input.has-focus ? Theme.m3-surface-container-highest : hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
+    animate background { duration: 150ms; }
+    hover := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    SymIcon {
+        x: 16px;
+        width: 22px;
+        text: g.search;
+        font-size: 22px;
+        color: Theme.m3-on-surface-variant;
+    }
+    Rectangle {
+        x: 16px + 22px + 12px;
+        width: parent.width - self.x - (clear.visible ? 52px : 20px);
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            text <=> root.text;
+            enabled: root.active;
+            color: Theme.m3-on-surface;
+            font-size: 16px;
+            vertical-alignment: center;
+            single-line: true;
+            selection-background-color: Theme.m3-primary.with-alpha(0.3);
+            accessible-label: "Search apps";
+            accessible-placeholder-text: "Search apps";
+            edited => { root.edited(self.text); }
+            accepted => { root.entered(); }
+            key-pressed(e) => {
+                if e.text == Key.Escape {
+                    self.text = "";
+                    root.edited("");
+                    return accept;
+                }
+                reject
+            }
+        }
+        if input.text == "": Text {
+            width: 100%;
+            height: 100%;
+            text: "Search apps";
+            color: Theme.m3-on-surface-variant;
+            font-size: 16px;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+    clear := AsIconButton {
+        visible: input.text != "";
+        x: parent.width - self.width - 8px;
+        y: (parent.height - self.height) / 2;
+        width: 40px;
+        height: 40px;
+        icon: g.x;
+        icon-size: 20px;
+        label: "Clear search";
+        clicked => {
+            input.text = "";
+            root.edited("");
+            input.focus();
+        }
+    }
+}
+
+// A place in the sidebar (Material: a navigation drawer item, the open one
+// on a secondaryContainer pill)
+component PlaceRow inherits FocusScope {
+    in property <AsPlace> place;
+    callback activated();
+    property <float> layer: touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0;
+    focus-on-click: false;
+    height: Theme.material ? 44px : 32px;
+    accessible-role: list-item;
+    accessible-label: place.name;
+    accessible-item-selectable: true;
+    accessible-item-selected: place.selected;
+    accessible-action-default => { activated(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            activated();
+            return accept;
+        }
+        reject
+    }
+    bg := Rectangle {
+        border-radius: Theme.material ? self.height / 2 : 8px;
+        background: Theme.material ? (place.selected ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 1 - layer) : Theme.m3-on-surface.with-alpha(layer))
+            : place.selected ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : transparent;
+        animate background { duration: Theme.material ? 150ms : 0ms; }
+        SymIcon {
+            x: Theme.material ? 16px : 10px;
+            width: Theme.material ? 22px : 16px;
+            text: place.icon;
+            fill: Theme.material && place.selected;
+            font-size: Theme.material ? 22px : 16px;
+            color: Theme.material ? (place.selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : place.selected ? Theme.label : Theme.secondary;
+        }
+        Text {
+            x: Theme.material ? 52px : 36px;
+            width: parent.width - self.x - 8px;
+            text: place.name;
+            color: Theme.material ? (place.selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : Theme.label;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: Theme.material ? (place.selected ? 600 : 500) : place.selected ? 500 : 400;
+            letter-spacing: Theme.material ? 0.1px : 0px;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        if root.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.border-radius + 2px; }
+        touch := TouchArea {
+            clicked => { root.activated(); }
+        }
+    }
+}
+
+// Where search results come from (Material: a filter chip, ticked when chosen)
+component FilterChip inherits FocusScope {
+    in property <string> text;
+    in property <bool> on;
+    in property <AsGlyphs> g;
+    callback chosen();
+    focus-on-click: false;
+    width: label.preferred-width + (Theme.material ? (on ? 16px + 18px + 8px : 32px) : 24px);
+    height: Theme.material ? 32px : 28px;
+    horizontal-stretch: 0;
+    animate width { duration: Theme.material ? 150ms : 0ms; easing: ease-out; }
+    accessible-role: radio-button;
+    accessible-label: text;
+    accessible-checkable: true;
+    accessible-checked: on;
+    accessible-action-default => { chosen(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            chosen();
+            return accept;
+        }
+        reject
+    }
+    bg := Rectangle {
+        border-radius: Theme.material ? 8px : 14px;
+        background: Theme.material ? (on ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, touch.has-hover ? 0.92 : 1) : Theme.m3-on-surface-variant.with-alpha(touch.has-hover ? 0.08 : 0))
+            : on ? Theme.accent-tint : touch.has-hover ? Theme.fill-hover : Theme.fill;
+        border-width: Theme.material ? (on ? 0px : 1px) : on ? 1px : 0px;
+        border-color: Theme.material ? Theme.m3-outline-variant : Theme.accent;
+        if Theme.material && on: SymIcon {
+            x: 8px;
+            width: 18px;
+            text: g.check;
+            font-size: 18px;
+            color: Theme.m3-on-secondary-container;
+        }
+        label := Text {
+            x: Theme.material ? parent.width - self.width - 16px : (parent.width - self.width) / 2;
+            text: root.text;
+            color: Theme.material ? (on ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : on ? Theme.accent-ink : Theme.label;
+            font-size: Theme.material ? 14px : Theme.small;
+            font-weight: 500;
+            letter-spacing: Theme.material ? 0.1px : 0px;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        if root.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.border-radius + 2px; }
+        touch := TouchArea {
+            clicked => { root.chosen(); }
+        }
+    }
+}
+
+// An app's logo, or a quiet tile with its initial
+component AppTile inherits Rectangle {
+    in property <AsApp> app;
+    in property <length> size: 48px;
+    width: size;
+    height: size;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    if app.has-icon: Image {
+        width: 100%;
+        height: 100%;
+        source: app.icon;
+        image-fit: contain;
+        accessible-role: none;
+    }
+    if !app.has-icon: Rectangle {
+        border-radius: root.size * 0.24;
+        background: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+        Text {
+            text: app.initial;
+            color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+            font-size: root.size * 0.42;
+            font-weight: 600;
+            accessible-role: none;
+        }
+    }
+}
+
+// An app in a list: logo, name, summary, where from; Get or Open
+component AppCard inherits FocusScope {
+    in property <AsApp> app;
+    in property <AsGlyphs> g;
+    callback opened();
+    callback act();
+    focus-on-click: false;
+    height: Theme.material ? 88px : 76px;
+    accessible-role: button;
+    accessible-label: app.name;
+    accessible-description: app.summary;
+    accessible-action-default => { opened(); }
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            opened();
+            return accept;
+        }
+        reject
+    }
+    bg := Rectangle {
+        border-radius: Theme.material ? 20px : Theme.radius-module - 6px;
+        background: Theme.material ? Theme.m3-surface-container.mix(Theme.m3-on-surface, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+            : touch.has-hover ? Theme.fill-hover : Theme.fill;
+        animate background { duration: 150ms; }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.opened(); }
+        }
+        AppTile {
+            x: Theme.material ? 16px : 14px;
+            y: (parent.height - self.height) / 2;
+            app: app;
+            size: Theme.material ? 56px : 44px;
+        }
+        VerticalLayout {
+            x: Theme.material ? 88px : 70px;
+            width: get.x - self.x - (Theme.material ? 12px : 10px);
+            height: parent.height;
+            alignment: center;
+            spacing: Theme.material ? 0px : 2px;
+            Text {
+                text: app.name;
+                overflow: elide;
+                color: Theme.label;
+                font-size: Theme.material ? 16px : Theme.body;
+                font-weight: Theme.material ? 500 : 600;
+                accessible-role: none;
+            }
+            Text {
+                text: app.summary == "" ? " " : app.summary;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.small;
+                accessible-role: none;
+            }
+            Text {
+                text: app.source;
+                overflow: elide;
+                color: Theme.tertiary;
+                font-size: Theme.material ? 12px : Theme.caption;
+                accessible-role: none;
+            }
+        }
+        get := AsButton {
+            x: parent.width - self.width - (Theme.material ? 16px : 14px);
+            y: (parent.height - self.height) / 2;
+            text: app.busy ? "…" : app.installed ? "Open" : Theme.material ? "Install" : "Get";
+            busy: app.busy;
+            g: g;
+            clicked => { root.act(); }
+        }
+        if root.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.border-radius + 2px; }
+    }
+}
+
+// Cards, `cols` a row
+component CardGrid inherits Rectangle {
+    in property <[AsApp]> apps;
+    in property <int> cols: 1;
+    in property <length> card-w;
+    in property <length> gap;
+    in property <AsGlyphs> g;
+    callback opened(int);
+    callback act(int);
+    property <length> card-h: Theme.material ? 88px : 76px;
+    height: apps.length == 0 ? 0px : ceil(apps.length / cols) * (card-h + gap) - gap;
+    for a[i] in apps: AppCard {
+        x: mod(i, cols) * (card-w + gap);
+        y: floor(i / cols) * (card-h + gap);
+        width: card-w;
+        app: a;
+        g: g;
+        opened => { root.opened(i); }
+        act => { root.act(i); }
+    }
+}
+
+// Material 3 Expressive's split button (SplitButton.qml): the main action
+// and, 2 px apart, a narrow button that opens the rest
+component SplitButton inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> busy;
+    in property <bool> open;
+    in property <AsGlyphs> g;
+    callback clicked();
+    callback toggle(length, length); // where the menu goes (the window's coordinates: the button's bottom right)
+    callback close-menu(); // (Escape)
+    height: 48px;
+    width: lead.width + 2px + 40px;
+    horizontal-stretch: 0;
+    lead := FocusScope {
+        width: row.preferred-width + 32px;
+        height: parent.height;
+        focus-on-click: false;
+        accessible-role: button;
+        accessible-label: root.text;
+        accessible-action-default => { if !busy { root.clicked(); } }
+        key-pressed(e) => {
+            if e.text == Key.Return || e.text == " " {
+                if !busy { root.clicked(); }
+                return accept;
+            }
+            if e.text == Key.DownArrow {
+                root.toggle(root.absolute-position.x + root.width, root.absolute-position.y + root.height);
+                return accept;
+            }
+            if e.text == Key.Escape && open {
+                root.close-menu();
+                return accept;
+            }
+            reject
+        }
+        Rectangle {
+            property <length> inner: lt.pressed ? 8px : 4px;
+            border-top-left-radius: self.height / 2;
+            border-bottom-left-radius: self.height / 2;
+            border-top-right-radius: inner;
+            border-bottom-right-radius: inner;
+            background: Theme.m3-primary.mix(Theme.m3-on-primary, lt.pressed ? 0.9 : lt.has-hover ? 0.92 : 1);
+            animate background { duration: 150ms; }
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            transform-scale: lt.pressed ? 1 + min(0.06, 10px / self.width) : 1;
+            animate transform-scale { duration: 290ms; easing: spring(0.3); }
+            row := HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                if icon != "" && !busy: SymIcon {
+                    text: icon;
+                    font-size: 18px;
+                    color: Theme.m3-on-primary;
+                }
+                if busy: VerticalLayout {
+                    alignment: center;
+                    AsSpinner { size: 20px; ink: Theme.m3-on-primary; }
+                }
+                Text {
+                    text: root.text;
+                    color: Theme.m3-on-primary;
+                    font-size: 14px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+            }
+            if lead.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.height / 2 + 4px; }
+            lt := TouchArea {
+                enabled: !busy;
+                mouse-cursor: pointer;
+                clicked => { root.clicked(); }
+            }
+        }
+    }
+    trail := FocusScope {
+        x: lead.width + 2px;
+        width: 40px;
+        height: parent.height;
+        focus-on-click: false;
+        accessible-role: button;
+        accessible-label: "More " + root.text.to-lowercase() + " options";
+        accessible-action-default => { root.toggle(root.absolute-position.x + root.width, root.absolute-position.y + root.height); }
+        key-pressed(e) => {
+            if e.text == Key.Return || e.text == " " || e.text == Key.DownArrow {
+                root.toggle(root.absolute-position.x + root.width, root.absolute-position.y + root.height);
+                return accept;
+            }
+            if e.text == Key.Escape && open {
+                root.close-menu();
+                return accept;
+            }
+            reject
+        }
+        Rectangle {
+            property <length> inner: open ? self.height / 2 : tt.pressed ? 8px : 4px;
+            border-top-left-radius: inner;
+            border-bottom-left-radius: inner;
+            border-top-right-radius: self.height / 2;
+            border-bottom-right-radius: self.height / 2;
+            animate border-top-left-radius, border-bottom-left-radius { duration: 250ms; easing: spring(0.3); }
+            background: Theme.m3-primary.mix(Theme.m3-on-primary, tt.pressed ? 0.9 : tt.has-hover ? 0.92 : 1);
+            animate background { duration: 150ms; }
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            transform-scale: tt.pressed ? 1.06 : 1;
+            animate transform-scale { duration: 290ms; easing: spring(0.3); }
+            SymIcon {
+                text: g.caret-down;
+                font-size: 18px;
+                color: Theme.m3-on-primary;
+                transform-rotation: open ? 180deg : 0deg;
+                animate transform-rotation { duration: 220ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            }
+            if trail.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.height / 2 + 4px; }
+            tt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.toggle(root.absolute-position.x + root.width, root.absolute-position.y + root.height); }
+            }
+        }
+    }
+}
+
+// Material's "About this app": one row of the segmented list (settings'
+// Group and Row)
+component AboutRow inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> first;
+    in property <bool> last;
+    in property <string> button; // "" none
+    callback pressed();
+    min-height: 56px;
+    border-top-left-radius: first ? 24px : 4px;
+    border-top-right-radius: first ? 24px : 4px;
+    border-bottom-left-radius: last ? 24px : 4px;
+    border-bottom-right-radius: last ? 24px : 4px;
+    background: hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
+    animate background { duration: 150ms; }
+    accessible-role: groupbox;
+    accessible-label: label;
+    hover := TouchArea { }
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            SymIcon {
+                width: 24px;
+                height: 24px;
+                text: icon;
+                font-size: 24px;
+                color: Theme.m3-on-surface-variant;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: label;
+                color: Theme.label;
+                font-size: 16px;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+            if detail != "": Text {
+                text: detail;
+                color: Theme.secondary;
+                font-size: 14px;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+        if button != "": VerticalLayout {
+            alignment: center;
+            AsButton {
+                text: button;
+                minor: true;
+                clicked => { root.pressed(); }
+            }
+        }
+    }
+}
+
+export component AppStoreWindow inherits Window {
+    in property <AsGlyphs> g;
+    in property <[AsPlace]> places; // Discover, the nine categories, Installed
+    in property <[AsPlace]> categories; // (the nine, again: the middle of `places`)
+    in-out property <string> search-text;
+    // The list
+    in property <string> heading;
+    in property <string> subtitle;
+    in property <bool> searching;
+    in property <int> filter; // 0 all, 1 repo, 2 flathub, 3 aur
+    in property <bool> catalogue-missing;
+    in property <bool> updates-running;
+    in property <bool> loading;
+    in property <string> loading-text;
+    in property <bool> has-failed;
+    in property <styled-text> failed-text;
+    in property <bool> empty;
+    in property <string> empty-title;
+    in property <styled-text> empty-help;
+    in property <bool> discover;
+    in property <[AsSection]> sections;
+    in property <[AsApp]> apps;
+    // An app's page
+    in property <bool> detail;
+    in property <AsApp> d-app;
+    in property <bool> d-summary-two; // (two lines' worth)
+    in property <string> d-chip;
+    in property <string> d-developer;
+    in property <bool> d-busy;
+    in property <string> d-main-label; // Get / Open / Installing… (Glass); Install / Open / Installing… / Removing… (Material)
+    in property <string> d-main-icon;
+    in property <string> d-remove-label;
+    in property <string> d-error;
+    in property <bool> d-note;
+    in property <bool> d-aur;
+    in property <styled-text> d-aur-text;
+    in property <bool> d-has-description;
+    in property <styled-text> d-description;
+    in property <string> d-package-line;
+    in property <bool> d-has-homepage;
+    in property <string> d-pkg;
+    in property <string> d-version;
+    in property <string> d-from;
+    in property <string> d-homepage;
+    in property <[AsMenuItem]> menu-items;
+    in-out property <bool> menu-open;
+    in-out property <length> list-y;
+    in-out property <length> page-y;
+
+    callback typed(string);
+    callback entered();
+    callback pick(int); // a place, by index in `places`
+    callback choose-filter(int);
+    callback open-app(int, int); // section (-1: the list), app
+    callback act(int, int); // its button
+    callback back();
+    callback main(); // the page's Get / Open / Install
+    callback remove();
+    callback website();
+    callback menu-pick(int);
+    callback install-catalogue();
+
+    public function focus-search() {
+        if Theme.material { pill.focus-input(); } else { glass-field.focus-input(); }
+    }
+
+    title: "Software";
+    background: transparent;
+    default-font-family: Theme.font;
+    preferred-width: Theme.material ? 1040px : 980px;
+    preferred-height: Theme.material ? 720px : 660px;
+
+    property <length> menu-x;
+    property <length> menu-y;
+
+    // ── Sidebar ──────────────────────────────────────────────────────────
+    sidebar := Rectangle {
+        x: 0;
+        y: 0;
+        width: Theme.material ? 272px : 230px;
+        height: parent.height;
+        background: Theme.material ? Theme.m3-surface-container : Theme.dark ? rgba(31, 31, 36, 0.78) : rgba(240, 240, 245, 0.8);
+        accessible-role: AccessibleRole.list;
+        accessible-label: "Places";
+
+        glass-field := GlassSearch {
+            visible: !Theme.material;
+            active: !Theme.material;
+            x: 10px;
+            y: 14px;
+            width: parent.width - 20px;
+            text <=> root.search-text;
+            edited(t) => { root.typed(t); }
+            entered => { root.entered(); }
+        }
+        pill := PillSearch {
+            visible: Theme.material;
+            active: Theme.material;
+            x: 12px;
+            y: 16px;
+            width: parent.width - 24px;
+            g: g;
+            text <=> root.search-text;
+            edited(t) => { root.typed(t); }
+            entered => { root.entered(); }
+        }
+
+        VerticalLayout {
+            x: Theme.material ? 12px : 10px;
+            y: Theme.material ? 16px + 56px + 12px : 14px + 28px + 14px;
+            width: parent.width - 2 * self.x;
+            height: self.preferred-height;
+            spacing: Theme.material ? 0px : 2px;
+            if places.length > 0: PlaceRow {
+                place: places[0];
+                activated => { root.pick(0); }
+            }
+            HorizontalLayout {
+                padding-left: Theme.material ? 16px : 8px;
+                padding-top: Theme.material ? 12px : 14px;
+                padding-bottom: Theme.material ? 8px : 4px;
+                Text {
+                    text: "Categories";
+                    color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                    font-size: Theme.material ? 12px : Theme.caption;
+                    font-weight: Theme.material ? 500 : 600;
+                    letter-spacing: Theme.material ? 0.5px : 0px;
+                    accessible-role: none;
+                }
+            }
+            for p[i] in categories: PlaceRow {
+                place: p;
+                activated => { root.pick(i + 1); }
+            }
+            Rectangle { height: Theme.material ? 8px : 12px; }
+            if places.length > 10: PlaceRow {
+                place: places[10];
+                activated => { root.pick(10); }
+            }
+        }
+    }
+
+    // ── Content ──────────────────────────────────────────────────────────
+    content := Rectangle {
+        x: sidebar.width;
+        y: 0;
+        width: parent.width - sidebar.width;
+        height: parent.height;
+        background: Theme.material ? Theme.m3-surface : Theme.dark ? #1E1E21 : #F5F5F7;
+        property <length> gap: Theme.material ? 12px : 16px;
+        property <int> cols: max(1, floor((self.width - 48px + gap) / (300px + gap)));
+        property <length> card-w: (self.width - 48px - (cols - 1) * gap) / cols;
+
+        list := Flickable {
+            visible: !detail;
+            width: parent.width;
+            height: parent.height;
+            content-height: col.preferred-height + 48px;
+            content-y <=> root.list-y;
+            col := VerticalLayout {
+                x: 24px;
+                y: 24px;
+                width: content.width - 48px;
+                // (its own height: else it fills the view and its spare room goes between the rows)
+                height: self.preferred-height;
+                spacing: 24px;
+                VerticalLayout {
+                    spacing: Theme.material ? 8px : 4px;
+                    Text {
+                        text: heading;
+                        color: Theme.label;
+                        font-size: Theme.material ? 32px : Theme.large;
+                        font-weight: Theme.material ? 500 : 600;
+                        overflow: elide;
+                        accessible-role: AccessibleRole.text;
+                    }
+                    Text {
+                        text: subtitle;
+                        color: Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.body;
+                        overflow: elide;
+                        accessible-role: AccessibleRole.text;
+                    }
+                }
+
+                // Where search results come from (the AUR only when chosen)
+                if searching: HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    for c[i] in ["All", "Arch repos", "Flathub", "AUR"]: FilterChip {
+                        text: c;
+                        on: filter == i;
+                        g: g;
+                        chosen => { root.choose-filter(i); }
+                    }
+                }
+
+                // No catalogue yet: the repos' apps have no logos or categories
+                if catalogue-missing: Rectangle {
+                    height: Theme.material ? 80px : 64px;
+                    border-radius: Theme.material ? 24px : Theme.radius-module - 6px;
+                    background: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+                    SymIcon {
+                        x: 16px;
+                        width: Theme.material ? 24px : 20px;
+                        text: g.info;
+                        font-size: Theme.material ? 24px : 20px;
+                        color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+                    }
+                    VerticalLayout {
+                        x: Theme.material ? 56px : 48px;
+                        width: cat-button.x - self.x - 16px;
+                        height: parent.height;
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: "Get the app catalogue";
+                            color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+                            font-size: Theme.material ? 16px : Theme.body;
+                            font-weight: 500;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        Text {
+                            text: "Logos, descriptions and categories for the Arch repos' apps (about 20 MB)";
+                            overflow: elide;
+                            color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+                            font-size: Theme.material ? 14px : Theme.small;
+                            accessible-role: AccessibleRole.text;
+                        }
+                    }
+                    cat-button := AsButton {
+                        x: parent.width - self.width - 16px;
+                        y: (parent.height - self.height) / 2;
+                        primary: Theme.material;
+                        text: updates-running ? "Installing…" : "Install Catalogue";
+                        busy: updates-running;
+                        g: g;
+                        clicked => { root.install-catalogue(); }
+                    }
+                }
+
+                // Loading (Material: the loading indicator beside the words)
+                if loading: HorizontalLayout {
+                    alignment: start;
+                    spacing: 12px;
+                    if Theme.material: VerticalLayout {
+                        alignment: center;
+                        AsSpinner { size: 32px; }
+                    }
+                    Text {
+                        text: loading-text;
+                        color: Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.body;
+                        vertical-alignment: center;
+                        accessible-role: AccessibleRole.text;
+                    }
+                }
+                if !loading && has-failed: StyledText {
+                    text: failed-text;
+                    default-color: Theme.danger;
+                    default-font-size: Theme.body;
+                }
+                if !loading && !has-failed && empty: VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: empty-title;
+                        color: Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 500;
+                        overflow: elide;
+                        accessible-role: AccessibleRole.text;
+                    }
+                    StyledText {
+                        text: empty-help;
+                        default-color: Theme.secondary;
+                        default-font-size: Theme.body;
+                    }
+                }
+
+                // Discover: sections of cards; elsewhere one grid
+                if discover: VerticalLayout {
+                    spacing: 24px;
+                    for s[si] in sections: VerticalLayout {
+                        spacing: 12px;
+                        Text {
+                            text: s.title;
+                            color: Theme.label;
+                            font-size: Theme.material ? 22px : Theme.title;
+                            font-weight: Theme.material ? 500 : 600;
+                            overflow: elide;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        CardGrid {
+                            apps: s.apps;
+                            cols: content.cols;
+                            card-w: content.card-w;
+                            gap: content.gap;
+                            g: g;
+                            opened(i) => { root.open-app(si, i); }
+                            act(i) => { root.act(si, i); }
+                        }
+                    }
+                }
+                if !discover && apps.length > 0: CardGrid {
+                    apps: apps;
+                    cols: content.cols;
+                    card-w: content.card-w;
+                    gap: content.gap;
+                    g: g;
+                    opened(i) => { root.open-app(-1, i); }
+                    act(i) => { root.act(-1, i); }
+                }
+            }
+        }
+
+        // ── An app's page ────────────────────────────────────────────────
+        page := Flickable {
+            visible: detail;
+            width: parent.width;
+            height: parent.height;
+            content-height: pcol.preferred-height + 48px;
+            content-y <=> root.page-y;
+            property <length> pw: min(content.width - 64px, 720px);
+            pcol := VerticalLayout {
+                x: 32px;
+                y: 16px;
+                width: page.pw;
+                height: self.preferred-height;
+                spacing: 24px;
+                HorizontalLayout {
+                    alignment: start;
+                    AsIconButton {
+                        width: Theme.material ? 40px : 28px;
+                        height: Theme.material ? 40px : 28px;
+                        icon: g.back;
+                        icon-size: Theme.material ? 24px : 16px;
+                        label: "Back";
+                        clicked => { root.back(); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Theme.material ? 24px : 20px;
+                    AppTile {
+                        app: d-app;
+                        size: Theme.material ? 112px : 96px;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Theme.material ? 8px : 6px;
+                        Text {
+                            text: d-app.name;
+                            overflow: elide;
+                            color: Theme.label;
+                            font-size: Theme.material ? 32px : Theme.display;
+                            font-weight: Theme.material ? 500 : 600;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        if d-app.summary != "": Text {
+                            text: d-app.summary;
+                            wrap: word-wrap;
+                            overflow: elide;
+                            property <length> line: (Theme.material ? 16px : Theme.title) * 1.3;
+                            min-height: d-summary-two ? 2 * line : line;
+                            max-height: 2 * line;
+                            color: Theme.secondary;
+                            font-size: Theme.material ? 16px : Theme.title;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            Rectangle {
+                                width: chip-text.preferred-width + (Theme.material ? 24px : 16px);
+                                height: Theme.material ? 32px : 22px;
+                                border-radius: Theme.material ? 8px : 11px;
+                                background: Theme.material ? transparent : Theme.fill;
+                                border-width: Theme.material ? 1px : 0px;
+                                border-color: Theme.separator;
+                                chip-text := Text {
+                                    text: d-chip;
+                                    color: Theme.secondary;
+                                    font-size: Theme.material ? 14px : Theme.caption;
+                                    font-weight: 500;
+                                    accessible-role: AccessibleRole.text;
+                                }
+                            }
+                            if d-developer != "": Text {
+                                text: d-developer;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: Theme.material ? Theme.m3-primary : Theme.tertiary;
+                                font-size: Theme.material ? 14px : Theme.small;
+                                font-weight: Theme.material ? 500 : 400;
+                                accessible-role: AccessibleRole.text;
+                            }
+                        }
+                    }
+                }
+
+                // Get / Open / Remove (Material: the split button, the rest in its menu)
+                VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        if Theme.material: SplitButton {
+                            text: d-main-label;
+                            icon: d-main-icon;
+                            busy: d-busy;
+                            open: root.menu-open;
+                            g: g;
+                            clicked => { root.main(); }
+                            toggle(x, y) => {
+                                root.menu-x = x;
+                                root.menu-y = y;
+                                root.menu-open = !root.menu-open;
+                            }
+                            close-menu => { root.menu-open = false; }
+                        }
+                        if !Theme.material: AsButton {
+                            primary: true;
+                            text: d-main-label;
+                            busy: d-busy;
+                            g: g;
+                            clicked => { root.main(); }
+                        }
+                        if !Theme.material && d-app.installed: AsButton {
+                            danger: true;
+                            text: d-remove-label;
+                            busy: d-busy;
+                            g: g;
+                            clicked => { root.remove(); }
+                        }
+                    }
+                    if d-error != "": Text {
+                        text: d-error;
+                        wrap: word-wrap;
+                        color: Theme.danger;
+                        font-size: Theme.small;
+                        accessible-role: AccessibleRole.text;
+                    }
+                    if d-note: Text {
+                        text: "Software Update asks for your password, then shows its progress in the island.";
+                        overflow: elide;
+                        color: Theme.tertiary;
+                        font-size: Theme.small;
+                        accessible-role: AccessibleRole.text;
+                    }
+                }
+
+                // A community package: what that means, and how used it is
+                if d-aur: Rectangle {
+                    border-radius: Theme.material ? 24px : Theme.radius-module - 6px;
+                    background: Theme.material ? Theme.m3-tertiary-container : Theme.warning.with-alpha(Theme.dark ? 0.16 : 0.12);
+                    border-width: Theme.material ? 0px : 1px;
+                    border-color: Theme.warning.with-alpha(0.4);
+                    HorizontalLayout {
+                        padding: Theme.material ? 20px : 14px;
+                        spacing: Theme.material ? 12px : 12px;
+                        VerticalLayout {
+                            alignment: start;
+                            SymIcon {
+                                width: Theme.material ? 24px : 18px;
+                                height: Theme.material ? 24px : 18px;
+                                text: g.warning;
+                                font-size: Theme.material ? 24px : 18px;
+                                color: Theme.material ? Theme.m3-on-tertiary-container : Theme.warning;
+                            }
+                        }
+                        StyledText {
+                            text: d-aur-text;
+                            default-color: Theme.material ? Theme.m3-on-tertiary-container : Theme.label;
+                            default-font-size: Theme.material ? 14px : Theme.body;
+                        }
+                    }
+                }
+
+                if d-has-description: StyledText {
+                    text: d-description;
+                    default-color: Theme.label;
+                    default-font-size: Theme.material ? 15px : Theme.body;
+                }
+
+                // Details (Glass)
+                if !Theme.material: VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: d-package-line;
+                        overflow: elide;
+                        color: Theme.tertiary;
+                        font-size: Theme.small;
+                        accessible-role: AccessibleRole.text;
+                    }
+                    if d-has-homepage: HorizontalLayout {
+                        alignment: start;
+                        Rectangle {
+                            width: site.preferred-width;
+                            height: site.preferred-height;
+                            accessible-role: AccessibleRole.button;
+                            accessible-label: "Website";
+                            accessible-action-default => { root.website(); }
+                            site := Text {
+                                text: "Website";
+                                color: site-touch.has-hover ? Theme.accent-ink : Theme.secondary;
+                                font-size: Theme.small;
+                                accessible-role: none;
+                            }
+                            site-touch := TouchArea {
+                                x: -4px;
+                                y: -4px;
+                                width: parent.width + 8px;
+                                height: parent.height + 8px;
+                                mouse-cursor: pointer;
+                                clicked => { root.website(); }
+                            }
+                        }
+                    }
+                }
+                // (Material: an Expressive segmented list)
+                if Theme.material: VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        Text {
+                            text: "About this app";
+                            color: Theme.m3-primary;
+                            font-size: 14px;
+                            font-weight: 500;
+                            letter-spacing: 0.1px;
+                            accessible-role: AccessibleRole.text;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 2px;
+                        AboutRow {
+                            icon: g.package;
+                            label: "Package";
+                            detail: d-pkg;
+                            first: true;
+                            last: false;
+                        }
+                        if d-version != "": AboutRow {
+                            icon: g.version;
+                            label: "Version";
+                            detail: d-version;
+                            first: false;
+                            last: false;
+                        }
+                        AboutRow {
+                            icon: g.store;
+                            label: "From";
+                            detail: d-from;
+                            first: false;
+                            last: !d-has-homepage;
+                        }
+                        if d-has-homepage: AboutRow {
+                            icon: g.globe;
+                            label: "Website";
+                            detail: d-homepage;
+                            first: false;
+                            last: true;
+                            button: "Open";
+                            pressed => { root.website(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The split button's menu (a click outside it closes it)
+    if menu-open: TouchArea {
+        clicked => { root.menu-open = false; }
+    }
+    menu := Rectangle {
+        visible: self.opacity > 0.01;
+        opacity: menu-open ? 1 : 0;
+        animate opacity { duration: menu-open ? 220ms : 150ms; }
+        width: max(200px, mcol.preferred-width);
+        height: mcol.preferred-height + 16px;
+        x: max(8px, min(root.width - self.width - 8px, root.menu-x - self.width));
+        y: root.menu-y + 8px + (menu-open ? 0px : -6px);
+        animate y { duration: 220ms; easing: ease-out; }
+        border-radius: 16px;
+        background: Theme.m3-surface-container;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+        accessible-role: AccessibleRole.list;
+        accessible-label: "More options";
+        TouchArea { }
+        mcol := VerticalLayout {
+            y: 8px;
+            height: self.preferred-height;
+            for it in menu-items: Rectangle {
+                height: 44px;
+                opacity: it.enabled ? 1 : 0.38;
+                background: mt.has-hover && it.enabled ? Theme.m3-on-surface.with-alpha(mt.pressed ? 0.1 : 0.08) : transparent;
+                accessible-role: list-item;
+                accessible-label: it.text;
+                accessible-action-default => { if it.enabled { root.menu-open = false; root.menu-pick(it.id); } }
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    if it.icon != "": SymIcon {
+                        width: 20px;
+                        text: it.icon;
+                        font-size: 20px;
+                        color: it.danger ? Theme.m3-error : Theme.m3-on-surface-variant;
+                    }
+                    Text {
+                        text: it.text;
+                        color: it.danger ? Theme.m3-error : Theme.m3-on-surface;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+                mt := TouchArea {
+                    enabled: it.enabled && root.menu-open;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.menu-open = false;
+                        root.menu-pick(it.id);
+                    }
+                }
+            }
+        }
+    }
+}

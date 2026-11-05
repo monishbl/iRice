@@ -37,7 +37,7 @@ Scope {
     }
 
     LazyLoader {
-        active: LinkShare.mode !== ""
+        active: LinkShare.mode !== "" && !RustUi.drawing("share")
 
         GlassWindow {
             id: win

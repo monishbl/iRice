@@ -1,0 +1,339 @@
+// The quick note in Rust (rust.surfaces: notes), compare
+// shell/modules/notes/QuickNote.qml and shell/glass/Dialog.qml: a centred
+// dialog over a light scrim (a click outside or Esc closes it and keeps the
+// draft): the icon and "Quick note", the text to write (Ctrl+Enter saves it
+// in the Notes folder), where it's saved and the Save button; Material adds
+// Material 3 Expressive's FAB menu in the text's corner. Rust
+// (src/surfaces/notes) saves through the shell and owns the rest.
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { SymIcon } from "@tessera/symbols.slint";
+
+export struct NoteMenuItem {
+    text: string,
+    icon: string, // a Phosphor glyph
+}
+
+export component QuickNote inherits Window {
+    in property <bool> shown;
+    in property <bool> saving; // a save is on its way (the text is read-only)
+    in property <string> folder: "~/Documents/Notes";
+    in property <string> cookie; // Material: the icon's shape (shapes.rs)
+    in property <[NoteMenuItem]> menu;
+    in property <string> note-glyph;
+    in property <string> plus-glyph;
+    in property <string> x-glyph;
+    in-out property <string> text <=> editor.text;
+
+    out property <float> openness: shown ? 1 : 0;
+    property <length> pad: Theme.material ? 24px : 16px;
+    property <length> header-h: Theme.material ? 40px : 20px;
+    property <length> footer-h: Theme.material ? 40px : 32px;
+    out property <length> body-width: 440px + 2 * pad;
+    out property <length> body-height: header-h + 12px + 196px + 12px + footer-h + 2 * pad;
+    out property <length> body-x: body.x;
+    out property <length> body-y: body.y;
+    out property <float> body-scale: body.transform-scale;
+    out property <float> body-opacity: body.opacity;
+    property <bool> can-save: !saving && text-trimmed-empty == false;
+    in property <bool> text-trimmed-empty: true; // (Rust: is the text only blanks)
+    property <bool> fab-open;
+
+    callback edited(string);
+    callback save();
+    callback dismissed();
+    callback closed();
+    callback pick(int); // a FAB menu item
+
+    background: transparent;
+    no-frame: true;
+    title: "Quick note";
+    default-font-family: Theme.font;
+
+    animate openness {
+        duration: shown ? 420ms : 192ms;
+        easing: shown ? spring(0.15) : cubic-bezier(0.4, 0, 1, 1);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+    changed shown => {
+        if !shown { fab-open = false; }
+    }
+
+    // Opened: the cursor at the end of the draft, ready to type
+    public function open() {
+        editor.set-selection-offsets(editor.text.character-count, editor.text.character-count);
+        editor.focus();
+    }
+    public function focus-editor() {
+        editor.focus();
+    }
+
+    // The scrim: a click on it closes
+    Rectangle {
+        background: #000000.with-alpha(0.25 * max(0, min(1, openness)));
+        TouchArea {
+            enabled: shown;
+            clicked => { dismissed(); }
+        }
+    }
+
+    body := Rectangle {
+        width: body-width;
+        height: body-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 40px;
+        opacity: min(1, openness);
+        transform-scale: 0.96 + 0.04 * min(1, openness);
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: 28px;
+        background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
+        border-width: Theme.material ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: Theme.material ? 32px : 0;
+        drop-shadow-offset-y: Theme.material ? 8px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.32 : 0.14) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Quick note";
+
+        // clicks on the dialog don't reach the scrim
+        TouchArea { }
+
+        // ── The icon and the title ──
+        Rectangle {
+            x: pad;
+            y: pad;
+            width: 440px;
+            height: header-h;
+            // (Material: the icon on a tertiary cookie)
+            icon-box := Rectangle {
+                x: 0;
+                width: Theme.material ? 40px : 18px;
+                height: Theme.material ? 40px : 18px;
+                y: (parent.height - self.height) / 2;
+                if Theme.material: Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: cookie;
+                    fill: Theme.m3-tertiary-container;
+                }
+                SymIcon {
+                    text: note-glyph;
+                    fill: Theme.material;
+                    font-size: Theme.material ? 20px : 18px;
+                    color: Theme.material ? Theme.m3-on-tertiary-container : Theme.yellow;
+                }
+            }
+            Text {
+                x: icon-box.width + (Theme.material ? 12px : 8px);
+                height: parent.height;
+                vertical-alignment: center;
+                text: "Quick note";
+                color: Theme.label;
+                font-size: Theme.material ? Theme.large : Theme.body;
+                font-weight: Theme.material ? 400 : 600;
+            }
+        }
+
+        // ── The note ──
+        box := Rectangle {
+            x: pad;
+            y: pad + header-h + 12px;
+            width: 440px;
+            height: 196px;
+            border-radius: Theme.material ? 16px : Theme.radius-control;
+            background: Theme.fill;
+            border-width: editor.has-focus ? 2px : 0;
+            border-color: Theme.accent;
+            property <length> m: Theme.material ? 16px : 10px;
+            flick := Flickable {
+                x: box.m;
+                y: box.m;
+                width: parent.width - 2 * box.m;
+                height: parent.height - 2 * box.m;
+                content-height: max(self.height, editor.preferred-height);
+                editor := TextInput {
+                    width: flick.width;
+                    height: max(flick.height, self.preferred-height);
+                    single-line: false;
+                    wrap: word-wrap;
+                    read-only: saving;
+                    color: Theme.label;
+                    selection-background-color: Theme.accent.with-alpha(0.35);
+                    font-size: Theme.body;
+                    accessible-label: "Note";
+                    accessible-placeholder-text: "Write anything. The first line becomes the title.";
+                    edited => { root.edited(self.text); }
+                    // keep the cursor in view
+                    cursor-position-changed(p) => {
+                        if p.y < -flick.content-y {
+                            flick.content-y = -p.y;
+                        } else if p.y + 20px > -flick.content-y + flick.height {
+                            flick.content-y = -(p.y + 20px - flick.height);
+                        }
+                    }
+                    key-pressed(e) => {
+                        if e.text == Key.Return && e.modifiers.control {
+                            if can-save { save(); }
+                            return accept;
+                        }
+                        if e.text == Key.Escape {
+                            // (as the QML: the note closes, its draft kept; the menu with it)
+                            fab-open = false;
+                            dismissed();
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+                if editor.text == "": Text {
+                    width: flick.width;
+                    text: "Write anything. The first line becomes the title.";
+                    color: Theme.tertiary;
+                    font-size: Theme.body;
+                    wrap: word-wrap;
+                    accessible-role: none;
+                }
+            }
+
+            // ── Material: more to put in (the FAB menu) ──
+            if Theme.material: fab := Rectangle {
+                x: parent.width - self.width - 12px;
+                y: parent.height - self.height - 12px;
+                width: 56px;
+                height: 56px;
+                property <length> corner: fab-open ? self.width / 2 : fab-ta.pressed ? 20px : 16px;
+                border-radius: corner;
+                animate border-radius { duration: 300ms; easing: spring(0.3); }
+                background: fab-open ? Theme.m3-primary : Theme.m3-primary-container.mix(Theme.m3-on-primary-container, fab-ta.pressed ? 0.9 : fab-ta.has-hover ? 0.92 : 1);
+                animate background { duration: 150ms; }
+                drop-shadow-blur: 10px;
+                drop-shadow-offset-y: 3px;
+                drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.18);
+                transform-scale: fab-ta.pressed ? 1.06 : 1;
+                animate transform-scale { duration: 250ms; easing: spring(0.3); }
+                accessible-role: button;
+                accessible-label: "Add to the note";
+                accessible-action-default => { fab-open = !fab-open; }
+                SymIcon {
+                    text: fab-open ? x-glyph : plus-glyph;
+                    font-size: 24px;
+                    color: fab-open ? Theme.m3-on-primary : Theme.m3-on-primary-container;
+                    transform-rotation: fab-open ? 90deg : 0deg;
+                    animate transform-rotation { duration: 300ms; easing: spring(0.3); }
+                }
+                fab-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { fab-open = !fab-open; }
+                }
+            }
+        }
+
+        // ── Where it goes, and Save ──
+        Rectangle {
+            x: pad;
+            y: pad + header-h + 12px + 196px + 12px;
+            width: 440px;
+            height: footer-h;
+            Text {
+                x: 0;
+                width: parent.width - save-btn.width - 12px;
+                height: parent.height;
+                vertical-alignment: center;
+                text: "Saved to " + folder;
+                color: Theme.tertiary;
+                font-size: Theme.caption;
+                overflow: elide;
+            }
+            save-btn := Rectangle {
+                width: save-label.preferred-width + (Theme.material ? 48px : 28px);
+                height: footer-h;
+                x: parent.width - self.width;
+                border-radius: Theme.material ? (save-ta.pressed ? 8px : self.height / 2) : Theme.radius-control;
+                animate border-radius { duration: 200ms; easing: spring(0.3); }
+                background: Theme.material
+                    ? (!can-save ? Theme.m3-on-surface.with-alpha(0.12) : Theme.m3-primary.mix(Theme.m3-on-primary, save-ta.pressed ? 0.9 : save-ta.has-hover ? 0.92 : 1))
+                    : (!can-save ? Theme.fill : save-ta.pressed ? Theme.accent.darker(0.15) : save-ta.has-hover ? Theme.accent.brighter(0.08) : Theme.accent);
+                transform-scale: Theme.material ? (save-ta.pressed ? 1.04 : 1) : (save-ta.pressed ? 0.97 : 1);
+                animate transform-scale { duration: 100ms; }
+                accessible-role: button;
+                accessible-label: saving ? "Saving" : "Save note";
+                accessible-enabled: can-save;
+                accessible-action-default => { if can-save { save(); } }
+                save-label := Text {
+                    text: saving ? "Saving…" : "Save note  ⌃↵";
+                    color: Theme.material ? (can-save ? Theme.m3-on-primary : Theme.m3-on-surface.with-alpha(0.38)) : can-save ? #ffffff : Theme.tertiary;
+                    font-size: Theme.material ? 14px : Theme.small;
+                    font-weight: Theme.material ? 500 : 600;
+                    accessible-role: none;
+                }
+                save-ta := TouchArea {
+                    enabled: can-save;
+                    mouse-cursor: pointer;
+                    clicked => { save(); }
+                }
+            }
+        }
+    }
+
+    // ── The FAB menu's pills, over everything (a click outside closes it) ──
+    if Theme.material && fab-open: TouchArea {
+        clicked => { fab-open = false; }
+    }
+    if Theme.material: Rectangle {
+        // (right-aligned with the button, opening upward)
+        property <length> fab-x: body.x + pad + 440px - 12px;
+        property <length> fab-top: body.y + pad + header-h + 12px + 196px - 12px - 56px;
+        for item[i] in menu: pill := Rectangle {
+            property <float> t: fab-open ? 1 : 0;
+            // (the nearest the button first, 30 ms apart)
+            animate t {
+                duration: 250ms;
+                delay: (menu.length - 1 - i) * 30ms;
+                easing: cubic-bezier(0.05, 0.7, 0.1, 1);
+            }
+            visible: t > 0.01;
+            opacity: t;
+            height: 56px;
+            width: row.preferred-width + 40px;
+            x: parent.fab-x - self.width;
+            y: parent.fab-top - 8px - (menu.length - i) * 60px + 4px;
+            transform-scale: 0.6 + 0.4 * t;
+            transform-origin: { x: self.width, y: self.height / 2 };
+            border-radius: self.height / 2;
+            background: Theme.m3-primary.mix(Theme.m3-on-primary, pill-ta.pressed ? 0.9 : pill-ta.has-hover ? 0.92 : 1);
+            accessible-role: button;
+            accessible-label: item.text;
+            accessible-action-default => { fab-open = false; pick(i); }
+            row := HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 12px;
+                alignment: center;
+                SymIcon {
+                    text: item.icon;
+                    font-size: 22px;
+                    color: Theme.m3-on-primary;
+                }
+                Text {
+                    text: item.text;
+                    color: Theme.m3-on-primary;
+                    font-size: 16px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+            }
+            pill-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    fab-open = false;
+                    pick(i);
+                }
+            }
+        }
+    }
+}

@@ -28,6 +28,17 @@ Scope {
     // (quiet for a while: faded, until someone speaks)
     readonly property bool dim: Captions.ready && Captions.error === "" && Captions.quiet && Captions.partial === ""
 
+    // (drawn in Rust when rust.surfaces lists "captions": what it shows goes there)
+    CaptionsFeed {
+        shown: root.shown
+        screen: root.screen?.name ?? ""
+        latest: root.latest
+        previous: root.previous
+        hint: root.hint
+        dim: root.dim
+        videoRect: root.videoRect
+    }
+
     component Words: Column {
         id: words
         property int size: 20
@@ -58,7 +69,7 @@ Scope {
 
     // ── The floating bar ────────────────────────────────────────────────
     LazyLoader {
-        active: root.shown && Captions.placement === "bar"
+        active: root.shown && Captions.placement === "bar" && !RustUi.drawing("captions")
         PanelWindow {
             id: bar
             screen: root.screen
@@ -157,7 +168,7 @@ Scope {
 
     // ── The strip across the bottom ─────────────────────────────────────
     LazyLoader {
-        active: root.shown && Captions.placement === "strip"
+        active: root.shown && Captions.placement === "strip" && !RustUi.drawing("captions")
         PanelWindow {
             screen: root.screen
             implicitHeight: 76
@@ -204,7 +215,7 @@ Scope {
         return { x: x - mon.x, y: y - mon.y, w: w, h: h };
     }
     LazyLoader {
-        active: root.shown && Captions.placement === "video"
+        active: root.shown && Captions.placement === "video" && !RustUi.drawing("captions")
         PanelWindow {
             id: over
             screen: root.screen

@@ -258,6 +258,46 @@ class Agreement(unittest.TestCase):
         for word in ('v.get("state")', 'v.get("page")', 'v["ccPage"]', 'v["editing"]'):
             self.assertTrue(word in part or word in (surface("controlcenter") / "src/bridge.rs").read_text(), word)
 
+    def test_sharing_surfaces_feed_their_part_and_step_aside(self):
+        # share, appstore, shelf, network (the Wi-Fi menu), captions, notes:
+        # each QML twin steps aside, its feed tells the part the shell's state
+        # and answers what it asks (RustUi's feedCall), and RustUi routes
+        # the call; the quick note and the Wi-Fi menu are panels by other names
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn('notes: "quickNote"', rust_ui)
+        self.assertIn('network: "wifiMenu"', rust_ui)
+        self.assertIn("signal feedCall(", rust_ui)
+        twins = {
+            "share": ["share/ShareSheet.qml", "share/IncomingCard.qml", "share/LinkShareCard.qml"],
+            "appstore": ["appstore/AppStoreWindow.qml"],
+            "shelf": ["shelf/ShelfWindow.qml", "shelf/ShelfDropZone.qml"],
+            "network": ["menubar/StatusMenus.qml"],
+            "captions": ["captions/CaptionsWindow.qml"],
+            "notes": ["notes/QuickNote.qml"],
+        }
+        feeds = {"share": "share/ShareFeed.qml", "appstore": "appstore/AppStoreFeed.qml", "shelf": "shelf/ShelfFeed.qml",
+                 "network": "network/NetworkFeed.qml", "captions": "captions/CaptionsFeed.qml", "notes": "notes/NotesFeed.qml"}
+        for name, files in twins.items():
+            self.assertIn(f'case "{name}":', rust_ui)
+            for f in files:
+                self.assertIn(f'RustUi.drawing("{name}")', (ROOT / "shell/modules" / f).read_text(), f)
+            feed = (ROOT / "shell/modules" / feeds[name]).read_text()
+            self.assertIn(f'RustUi.tell("{name}"', feed)
+            self.assertIn("function onFeedCall(", feed)
+            self.assertIn(f'surface !== "{name}"', feed)
+            # every feed is made somewhere in its module (or the menu bar's, for the Wi-Fi menu)
+            stem = Path(feeds[name]).stem
+            users = [p for p in (ROOT / "shell/modules").rglob("*.qml") if re.search(rf"\b{stem}\s*\{{", p.read_text(errors="replace"))]
+            self.assertTrue(users, f"{stem} is never instantiated")
+        # the App Store is a regular window, the shelf takes drops: the platform has both
+        wl = (CORE / "src/wayland.rs").read_text()
+        self.assertIn("pub fn prepare_window(", wl)
+        self.assertIn("pub dnd: crate::dnd::Dnd", wl)
+        dnd = (CORE / "src/dnd.rs").read_text()
+        for word in ("pub fn accept_drops(", "pub fn start_drag(", "pub fn refuse_drop("):
+            self.assertIn(word, dnd)
+        self.assertIn("fn drag(&mut self, st: &mut State", (CORE / "src/shell.rs").read_text())
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

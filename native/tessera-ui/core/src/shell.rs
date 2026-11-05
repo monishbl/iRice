@@ -198,6 +198,11 @@ pub trait Part {
     fn keyboard_left(&mut self, st: &mut State, surface: &Rc<Surface>) {}
     /// The compositor closed one of its surfaces
     fn surface_closed(&mut self, st: &mut State, surface: &Rc<Surface>) {}
+    /// A drag and drop over one of its surfaces that takes drops
+    /// (`State::accept_drops`, src/dnd.rs): it came, moved, left, or was let
+    /// go. During the call `st.refuse_drop()` says "not here" (the drag shows
+    /// it can't drop)
+    fn drag(&mut self, st: &mut State, surface: &Rc<Surface>, ev: &crate::dnd::Drag) {}
     /// After each turn of the loop, once drawn: glass shapes, accessibility
     fn after_frame(&mut self, st: &mut State) {}
     /// Its accessibility trees (for AT-SPI's actions)
