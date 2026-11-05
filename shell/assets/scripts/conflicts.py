@@ -95,6 +95,9 @@ def notifications(found):
     pid = int(out[1])
     if pid == SHELL_PID or cmdline(pid) == cmdline(SHELL_PID):
         return
+    # (Tessera's interface in Rust serves them while it draws notifications)
+    if comm(pid) == "tessera-ui":
+        return
     name = comm(pid) or "another app"
     if name in ("tessera-shell", "irice-shell", "qs", "quickshell"):
         name = "quickshell"  # (another Quickshell config)

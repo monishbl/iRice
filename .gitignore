@@ -22,3 +22,5 @@ site/tools/wallpapers/
 # links agents make in their worktrees (a folder pattern misses a symlink)
 /.sandbox
 /shell/native/build
+# agents' sandbox comparison shots (kept in their worktrees)
+native/tessera-ui/review/

@@ -14,6 +14,8 @@
 //!            where, in front, asking for attention
 //!   apps     the installed apps' desktop entries (apps::Apps), and starting them
 //!   icons    icon names to files in the shell's icon theme (icons::Icons)
+//!   notify   the notification server, org.freedesktop.Notifications on the
+//!            session bus (notify::Event; answers through notify::bus())
 //!   mpris    media players (mpris::Players), session bus
 //!   tray     the apps' tray items (tray::Tray, StatusNotifierItem), session bus
 //!   bluez    Bluetooth (bluez::Bluetooth), system bus
@@ -37,6 +39,7 @@ pub mod hypr;
 pub mod icons;
 pub mod mpris;
 pub mod pulse;
+pub mod notify;
 pub mod status;
 pub mod tray;
 pub mod wallpaper;
@@ -60,6 +63,7 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "icons" => icons::spawn(tx),
         "audio" => audio::spawn(tx),
         "brightness" => brightness::spawn(tx),
+        "notify" => notify::spawn(tx),
         "calendar" => calendar::spawn(tx),
         "todos" => todos::spawn(tx),
         "weather" => weather::spawn(tx),

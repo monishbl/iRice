@@ -332,8 +332,9 @@ def check_notifications(opts):
         owner = open(f"/proc/{pid}/comm").read().strip()
     except OSError:
         pass
-    # (the shell itself, or, asked from somewhere else, a Quickshell)
-    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("tessera-shell", "irice-shell", "qs", "quickshell"):
+    # (the shell itself, or, asked from somewhere else, a Quickshell; or
+    # tessera-ui, Tessera's interface in Rust, while it draws notifications)
+    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("tessera-shell", "irice-shell", "qs", "quickshell", "tessera-ui"):
         return result("notifications", "Notifications", "Desktop", "ok", "Tessera shows them")
     return result("notifications", "Notifications", "Desktop", "warn",
                   f"Another program ({owner or 'unknown'}) is showing notifications instead of Tessera",
