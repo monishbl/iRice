@@ -36,7 +36,7 @@ pub fn request(cmd: &str) -> std::io::Result<String> {
     Ok(out)
 }
 
-#[derive(Deserialize, Default, Clone, Debug)]
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct Workspace {
     pub id: i32,
     #[serde(default)]
@@ -48,9 +48,10 @@ pub struct Workspace {
     pub fullscreen: bool,
 }
 
-#[derive(Deserialize)]
-struct WsRef {
-    id: i32,
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct WsRef {
+    #[serde(default)]
+    pub id: i32,
 }
 
 #[derive(Deserialize)]
@@ -62,10 +63,29 @@ struct Monitor {
     focused: bool,
 }
 
-#[derive(Deserialize, Default)]
-struct Client {
+/// A window (j/clients, j/activewindow)
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct Client {
     #[serde(default)]
-    class: String,
+    pub address: String,
+    #[serde(default)]
+    pub class: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub workspace: WsRef,
+    #[serde(default)]
+    pub floating: bool,
+    #[serde(default)]
+    pub pinned: bool,
+    /// 0 none, 1 maximized, 2 fullscreen, 3 both
+    #[serde(default)]
+    pub fullscreen: u8,
+    #[serde(default)]
+    pub hidden: bool,
+    /// its tab group's windows (more than one: it's in tabs)
+    #[serde(default)]
+    pub grouped: Vec<String>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -73,7 +93,11 @@ pub struct Snapshot {
     pub workspaces: Vec<Workspace>,
     pub active: BTreeMap<String, i32>, // monitor -> its current workspace
     pub class: String,
-    /// the monitor with focus
+    /// the focused window (class "" none)
+    pub window: Client,
+    /// every window
+    pub clients: Vec<Client>,
+    /// the focused monitor's name
     pub focused: String,
 }
 
@@ -83,24 +107,37 @@ impl Snapshot {
         let Some(id) = self.active.get(&self.focused) else { return false };
         self.workspaces.iter().any(|w| w.id == *id && w.fullscreen)
     }
+    /// A window fills the monitor's current space (Desktop.fullscreen: any
+    /// fullscreen state, maximized included, not hidden in a group)
+    pub fn fullscreen_on(&self, monitor: &str) -> bool {
+        let Some(&ws) = self.active.get(monitor) else { return false };
+        self.clients.iter().any(|c| c.workspace.id == ws && c.fullscreen > 0 && !c.hidden)
+    }
+    /// The classes of a space's windows, in Hyprland's order
+    pub fn classes_on(&self, ws: i32) -> Vec<String> {
+        self.clients.iter().filter(|c| c.workspace.id == ws && !c.class.is_empty()).map(|c| c.class.clone()).collect()
+    }
 }
 
 fn snapshot() -> Option<Snapshot> {
     let workspaces: Vec<Workspace> = serde_json::from_str(&request("j/workspaces").ok()?).ok()?;
     let monitors: Vec<Monitor> = serde_json::from_str(&request("j/monitors").ok()?).ok()?;
     let client: Client = serde_json::from_str(&request("j/activewindow").ok()?).unwrap_or_default();
+    let clients: Vec<Client> = request("j/clients").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     Some(Snapshot {
         workspaces,
         focused: monitors.iter().find(|m| m.focused).map(|m| m.name.clone()).unwrap_or_default(),
         active: monitors.into_iter().map(|m| (m.name, m.active.id)).collect(),
-        class: client.class,
+        class: client.class.clone(),
+        window: client,
+        clients,
     })
 }
 
 const RELEVANT: &[&str] = &[
     "workspacev2>>", "focusedmonv2>>", "activewindow>>", "createworkspacev2>>", "destroyworkspacev2>>",
     "moveworkspacev2>>", "openwindow>>", "closewindow>>", "movewindowv2>>", "monitoraddedv2>>", "monitorremovedv2>>",
-    "fullscreen>>",
+    "fullscreen>>", "changefloatingmode>>", "pin>>", "windowtitlev2>>", "togglegroup>>", "moveintogroup>>", "moveoutofgroup>>",
 ];
 
 /// Watches socket2; sends a fresh snapshot after each burst of relevant events
@@ -137,6 +174,14 @@ pub fn spawn_events(tx: Sender<Msg>) {
             }
         }
         std::thread::sleep(Duration::from_millis(500));
+    });
+}
+
+/// A dispatch (Hyprland's Lua: `hl.dsp.window.float({ … })`), on a thread
+pub fn dispatch(cmd: impl Into<String>) {
+    let cmd = cmd.into();
+    std::thread::spawn(move || {
+        let _ = request(&format!("dispatch {cmd}"));
     });
 }
 

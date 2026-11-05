@@ -28,6 +28,11 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // A line for it (its stdin): what this shell still owns that its surfaces
+    // show (modules/menubar/RustBridge.qml), {"src":"shell","kind":…};
+    // send() is below, with the panels'
+    // It has (re)started: whoever feeds it says everything again
+    signal started
     // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
     // capsule shows (the banners move down under it)
     property bool osdShown: false
@@ -79,6 +84,7 @@ Singleton {
             drawn = e.surfaces ?? [];
             forwarded = "";
             Qt.callLater(follow); // (a panel already open moves over)
+            started();
         } else if (e.kind === "unknown") {
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
         } else if (e.kind === "closed") {
