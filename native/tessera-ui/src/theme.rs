@@ -247,6 +247,8 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_secondary_container(r("secondaryContainer"));
         t.set_m3_on_secondary_container(r("onSecondaryContainer"));
         t.set_m3_tertiary(r("tertiary"));
+        t.set_m3_on_tertiary(r("onTertiary"));
+        t.set_m3_secondary(r("secondary"));
         t.set_m3_surface(r("surface"));
         t.set_m3_surface_container_low(r("surfaceContainerLow"));
         t.set_m3_surface_container(r("surfaceContainer"));

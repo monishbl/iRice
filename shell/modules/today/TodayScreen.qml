@@ -17,6 +17,9 @@ import qs.services
 //   drop    a drop falls from the top, lands with a soft ripple and spreads
 //           into the panel
 // Esc or Close puts it away for the day; Pin for today keeps it as a widget.
+// While tessera-ui draws it (rust.surfaces: today) this one steps aside and
+// tells it when Today opens and closes, and the accounts' events and tasks
+// (only this shell holds their sign-in); it asks back through RustUi's calls.
 Scope {
     id: root
 
@@ -28,13 +31,52 @@ Scope {
         function onOpenChanged() {
             if (Today.open && !root.alive) {
                 root.where = Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
+                if (RustUi.drawing("today"))
+                    root.tellOpen();
+                else
+                    root.alive = true;
+            } else if (!Today.open) {
+                RustUi.tell("today", { open: false });
+            }
+        }
+        function onOptionsOpenChanged() {
+            if (Today.open && Today.optionsOpen)
+                RustUi.tell("today", { options: true });
+        }
+    }
+
+    // ── Drawn in Rust ───────────────────────────────────────────────────
+    function tellOpen() {
+        RustUi.tell("today", { open: true, effect: Today.effect, screen: root.where?.name ?? "", options: Today.optionsOpen, motion: CoolDown.motionScale, accounts: root.accountItems() });
+    }
+    // Today's events and the tasks tessera-ui can't read itself: the
+    // accounts' (Google, iCloud, Microsoft 365) and calendar links on the
+    // network (it reads your own events and calendar files)
+    function accountItems() {
+        const events = Calendar.eventsOn(new Date()).filter(e => !e.local && (e.google || e.cloud || !/^(\/|file:\/\/)/.test(e.key ?? "")));
+        return {
+            events: events.map(e => ({ key: e.key, title: e.title, start: e.start.getTime(), end: e.end.getTime(), allDay: !!e.allDay, color: e.color ?? "" })),
+            todos: Todos.list.filter(t => t.google || t.cloud).map(t => ({ key: t.key, text: t.text, done: !!t.done, due: t.due ?? 0, allDay: !!t.allDay }))
+        };
+    }
+    readonly property string accounts: RustUi.drawing("today") && Today.open ? JSON.stringify(accountItems()) : ""
+    onAccountsChanged: if (accounts !== "") RustUi.tell("today", { accounts: JSON.parse(accounts) })
+    Connections {
+        target: RustUi
+        // (tessera-ui started or ended while Today is up: the other one takes it)
+        function onDrawnChanged() {
+            if (RustUi.drawing("today")) {
+                root.alive = false;
+                if (Today.open)
+                    root.tellOpen();
+            } else if (Today.open) {
                 root.alive = true;
             }
         }
     }
 
     LazyLoader {
-        active: root.alive
+        active: root.alive && !RustUi.drawing("today")
 
         GlassWindow {
             id: win

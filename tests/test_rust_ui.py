@@ -105,6 +105,18 @@ class Agreement(unittest.TestCase):
         for word in ('v["hush"]', 'v["preview"]'):
             self.assertIn(word, osd_rs)
 
+    def test_today_opens_through_the_shell_and_asks_back(self):
+        # Today.qml keeps deciding when it opens; TodayScreen.qml steps aside
+        # and tells tessera-ui (open, close, options, the accounts' items),
+        # which asks back for closing, pinning, its options and to-do ticks
+        screen = (ROOT / "shell/modules/today/TodayScreen.qml").read_text()
+        today_rs = (CRATE / "src/surfaces/today/mod.rs").read_text()
+        self.assertIn('active: root.alive && !RustUi.drawing("today")', screen)
+        for word in ('RustUi.tell("today", { open: false })', "open: true", "accounts:", 'RustUi.tell("today", { options: true })'):
+            self.assertIn(word, screen)
+        for word in ('v["open"]', 'v["options"]', '"accounts"', 'v["screen"]', 'v["effect"]', 'v["motion"]'):
+            self.assertIn(word, today_rs)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

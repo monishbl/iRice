@@ -14,6 +14,9 @@
 //!            where, in front, asking for attention
 //!   apps     the installed apps' desktop entries (apps::Apps), and starting them
 //!   icons    icon names to files in the shell's icon theme (icons::Icons)
+//!   calendar your events and file subscriptions (calendar::Calendar)
+//!   todos    your to-dos on this computer (todos::Todos)
+//!   weather  wttr.in's weather (weather::Weather)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
 pub mod apps;
@@ -25,6 +28,9 @@ pub mod hypr;
 pub mod icons;
 pub mod pulse;
 pub mod status;
+pub mod calendar;
+pub mod todos;
+pub mod weather;
 
 use crate::Msg;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
@@ -39,6 +45,9 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "icons" => icons::spawn(tx),
         "audio" => audio::spawn(tx),
         "brightness" => brightness::spawn(tx),
+        "calendar" => calendar::spawn(tx),
+        "todos" => todos::spawn(tx),
+        "weather" => weather::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }
