@@ -10,14 +10,19 @@ use zbus::proxy::CacheProperties;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::MatchRule;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Battery {
     pub present: bool,
     pub percent: f64,
     pub charging: bool,
+    /// UPower's state: 1 charging, 2 discharging, 4 fully charged, 5 pending charge
+    pub state: u32,
+    /// seconds, 0 unknown
+    pub time_to_empty: i64,
+    pub time_to_full: i64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Wifi {
     pub present: bool, // a Wi-Fi device exists
     pub enabled: bool,
@@ -25,7 +30,7 @@ pub struct Wifi {
     pub strength: u8,  // 0..100
 }
 
-fn watch<T: Send + 'static>(
+fn watch<T: Send + Clone + PartialEq + 'static>(
     tx: Sender<Msg>,
     sender: &'static str,
     read: fn(&Connection) -> zbus::Result<T>,
@@ -41,9 +46,16 @@ fn watch<T: Send + 'static>(
                 .member("PropertiesChanged")?
                 .build();
             let mut signals = MessageIterator::for_match_rule(rule, &conn, Some(16))?;
-            tx.send(wrap(read(&conn)?)).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+            // (only what changed: NetworkManager and UPower signal often,
+            // for properties these readings don't hold)
+            let mut last = read(&conn)?;
+            tx.send(wrap(last.clone())).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
             while signals.next().is_some() {
-                tx.send(wrap(read(&conn)?)).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+                let now = read(&conn)?;
+                if now != last {
+                    tx.send(wrap(now.clone())).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
+                    last = now;
+                }
             }
             Ok(())
         };
@@ -68,6 +80,9 @@ fn battery(conn: &Connection) -> zbus::Result<Battery> {
         present: kind == 2 && p.get_property::<bool>("IsPresent")?,
         percent: p.get_property("Percentage")?,
         charging: state == 1 || state == 4, // charging, fully charged
+        state,
+        time_to_empty: p.get_property("TimeToEmpty").unwrap_or(0),
+        time_to_full: p.get_property("TimeToFull").unwrap_or(0),
     })
 }
 

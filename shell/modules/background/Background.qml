@@ -13,6 +13,10 @@ import qs.modules.desktop
 // Also renders the blurred backdrop that liquid glass refracts, once per
 // wallpaper change, into a small cached image every glass window shares
 // (see Backdrop.qml). This window is itself a glass host for the widgets.
+// While tessera-ui draws the picture (rust.surfaces: background; its own
+// window on the background layer), this one moves up to the bottom layer,
+// clear, and keeps the rest: widgets, icons, the glass backdrop, the menu
+// bar's sampling, and a live wallpaper's video (tessera-ui shows its poster).
 Variants {
     model: Quickshell.screens
 
@@ -21,13 +25,70 @@ Variants {
         required property var modelData
         screen: modelData
 
+        // tessera-ui draws the picture, under this window
+        readonly property bool rust: RustUi.drawing("background")
         WlrLayershell.namespace: "tessera:wallpaper"
-        WlrLayershell.layer: WlrLayer.Background
+        WlrLayershell.layer: rust ? WlrLayer.Bottom : WlrLayer.Background
         // A note on the desktop takes typing (focus only when clicked)
         WlrLayershell.keyboardFocus: desktopWidgets.visible && desktopWidgets.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         anchors { top: true; bottom: true; left: true; right: true }
-        color: "black"
+        color: rust ? "transparent" : "black"
+
+        // On the bottom layer this window sits over Stage Manager's strip
+        // (made before it moved there): the strip's column stays the strip's
+        mask: RustUi.drawing("desktop") ? noInput : rust && StageManager.enabled && Config.options.stageManager.strip ? stripHole : null
+        // (the desktop drawn in Rust takes the clicks: none here, whichever
+        // layer this window is on)
+        Region {
+            id: noInput
+        }
+        Region {
+            id: stripHole
+            width: win.width
+            height: win.height
+            Region {
+                intersection: Intersection.Subtract
+                width: 176 // (StageStrip.qml's width)
+                height: win.height
+            }
+        }
+
+        // tessera-ui hears the day's sunrise and sunset from here (the
+        // weather service knows them): the time of day's picture, and the
+        // picker's ring round it
+        function tellSun() {
+            if (win.screen !== Quickshell.screens[0])
+                return;
+            RustUi.tell("background", { sunrise: Daylight.sunrise, sunset: Daylight.sunset });
+            RustUi.tell("wallpaper", { sunrise: Daylight.sunrise, sunset: Daylight.sunset });
+        }
+        onRustChanged: if (rust)
+            Wallpaper.started = true
+        Connections {
+            target: RustUi
+            function onDrawnChanged() {
+                win.tellSun();
+            }
+        }
+        Connections {
+            target: Daylight
+            function onSunriseChanged() {
+                win.tellSun();
+            }
+            function onSunsetChanged() {
+                win.tellSun();
+            }
+        }
+        // ...and the lock's settle (LockFx: the wallpaper a touch larger,
+        // easing back as the desktop is revealed)
+        Connections {
+            target: LockFx
+            enabled: win.rust && win.screen === Quickshell.screens[0]
+            function onStepped(step, ms) {
+                RustUi.tell("background", { settle: step, zoom: LockFx.zoom, ms: ms, at: Date.now() }); // (when: its line takes a moment to get there)
+            }
+        }
 
         // Glass host contract (see Glass.qml)
         readonly property real screenX: 0
@@ -48,6 +109,7 @@ Variants {
             id: wallpaper
             anchors.fill: parent
             scale: LockFx.wallpaperScale
+            visible: !win.rust
             // Opaque behind the pictures, so the first fade-in comes from
             // black and never shows the blur bake underneath
             Rectangle {
@@ -56,9 +118,18 @@ Variants {
             }
             property int front: 0
             readonly property var buffers: [bufA, bufB]
-            readonly property url want: Wallpaper.source
+            // (nothing while tessera-ui draws it: both pictures let go)
+            readonly property url want: win.rust ? "" : Wallpaper.source
             readonly property bool ready: buffers[front].status === Image.Ready
-            onWantChanged: load()
+            onWantChanged: win.rust ? release() : load()
+            function release() {
+                firstFade.stop();
+                fadeIn.stop();
+                bufA.source = "";
+                bufB.source = "";
+                bufA.opacity = 0;
+                bufB.opacity = 0;
+            }
             Component.onCompleted: bufA.source = want
             function load() {
                 const cur = buffers[front];
@@ -142,7 +213,8 @@ Variants {
         // Live wallpaper: muted, looping; paused while windows cover the
         // desktop, the screen is locked, nobody has touched anything for two
         // minutes (the display dims or turns off), and on battery if set, so
-        // it costs nothing when unseen
+        // it costs nothing when unseen. (Also while tessera-ui draws the
+        // wallpaper: it has no video of its own, only the poster under this)
         Loader {
             anchors.fill: parent
             scale: wallpaper.scale
@@ -172,10 +244,12 @@ Variants {
         }
 
         // Quarter-resolution blur, hidden behind the opaque wallpaper and
-        // saved once (grabbing needs a rendered item)
+        // saved once (grabbing needs a rendered item; beside the screen
+        // while this window is clear)
         Item {
             id: blurred
             z: -1
+            x: win.rust ? -width - 64 : 0
             width: Math.max(1, Math.round(win.width / 4))
             height: Math.max(1, Math.round(win.height / 4))
 
@@ -204,6 +278,7 @@ Variants {
         Canvas {
             id: strip
             z: -2
+            x: win.rust ? -width - 64 : 0
             width: 64
             height: 64
             property string src: ""
@@ -261,6 +336,7 @@ Variants {
         // Measures app icons for squircle tiles (hidden behind the wallpaper)
         Loader {
             z: -3
+            x: win.rust ? -96 : 0
             active: win.screen === Quickshell.screens[0]
             sourceComponent: IconAnalyzer {}
         }

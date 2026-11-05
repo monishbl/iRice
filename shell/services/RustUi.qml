@@ -28,6 +28,11 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // A line for it (its stdin): what this shell still owns that its surfaces
+    // show (modules/menubar/RustBridge.qml), {"src":"shell","kind":…};
+    // send() is below, with the panels'
+    // It has (re)started: whoever feeds it says everything again
+    signal started
     // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
     // capsule shows (the banners move down under it)
     property bool osdShown: false
@@ -82,6 +87,7 @@ Singleton {
             drawn = e.surfaces ?? [];
             forwarded = "";
             Qt.callLater(follow); // (a panel already open moves over)
+            started();
         } else if (e.kind === "unknown") {
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
         } else if (e.kind === "closed") {
@@ -146,6 +152,13 @@ Singleton {
         case "launch.open":
             if (/^https:\/\//.test(a[0] ?? ""))
                 Launch.open(a[0]);
+            break;
+        case "wallpaper.set":
+            if (typeof a[0] === "string" && a[0].startsWith("/"))
+                Wallpaper.set(a[0]);
+            break;
+        case "wallpaper.openFolder":
+            Files.openFolder(Wallpaper.directory);
             break;
         case "desktop":
             root.desktopCall(String(a[0] ?? ""), a.slice(1));
