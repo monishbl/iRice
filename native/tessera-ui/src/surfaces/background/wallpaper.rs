@@ -124,6 +124,20 @@ pub fn picture(cfg: &Value, c: &Context) -> String {
     }
 }
 
+/// The picture showing now, from config.json alone (for the theme's seed, as
+/// Wallpaper.qml's matugen reads its `path`): the bundled default when none is
+/// chosen, the time-of-day or light/dark one, a live wallpaper's poster
+pub fn showing_now(cfg: &Value, material: bool) -> String {
+    let tf = time_folder(cfg);
+    let folder = if tf.is_empty() { Vec::new() } else { folder_pictures(tf) };
+    let lv = live(cfg);
+    let poster = (!lv.is_empty()).then(|| poster_path(&cache_dir(), lv)).filter(|p| p.exists()).map(|p| p.to_string_lossy().into_owned());
+    let (sunrise, sunset) = sun();
+    let bundled = Bundled::find();
+    let file = |n: &str| bundled.file(material, n);
+    picture(cfg, &Context { material, day: Day::now(sunrise, sunset), bundled: &file, folder: &folder, poster: poster.as_deref() })
+}
+
 fn non_empty(p: &str) -> Option<String> {
     (!p.is_empty()).then(|| p.to_string())
 }
@@ -485,5 +499,18 @@ mod tests {
         assert!(Path::new(&real.file(false, "tahoe-dusk.jpg")).exists());
         assert!(Path::new(&real.file(true, "material-dark.jpg")).exists());
         assert!(Path::new(&real.file(true, "tahoe-night.jpg")).exists());
+    }
+
+    #[test]
+    fn the_theme_seeds_from_the_picture_showing_with_none_chosen() {
+        // (no path chosen: the bundled default the look shows, as the QML
+        // seeds from it; the teal-for-red mismatch came from seeding nothing)
+        let cfg = json!({"appearance": {"mode": "dark"}, "wallpaper": {}});
+        let m = showing_now(&cfg, true);
+        assert!(m.ends_with("material-dark.jpg") && std::path::Path::new(&m).exists(), "{m}");
+        let g = showing_now(&cfg, false);
+        assert!(g.ends_with("tahoe-dusk.jpg") && std::path::Path::new(&g).exists(), "{g}");
+        let chosen = json!({"wallpaper": {"path": "/pictures/sea.jpg"}});
+        assert_eq!(showing_now(&chosen, true), "/pictures/sea.jpg");
     }
 }
