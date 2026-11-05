@@ -92,6 +92,7 @@ enum M {
     Idle,
     Icons(Vec<(IconKey, Option<Px>)>),
     Picture(String, Option<Px>),
+    Fetched(String, Option<PathBuf>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -282,6 +283,8 @@ pub struct Spotlight {
     row_keys: Vec<Option<IconKey>>,
     pending: HashSet<IconKey>,
     pictures: HashMap<String, Option<slint::Image>>,
+    /// App Store logos on the web (AppStore.iconFor's URL), fetched once into the cache
+    remote: HashMap<String, Option<PathBuf>>,
 }
 
 impl Default for Spotlight {
@@ -325,6 +328,7 @@ impl Default for Spotlight {
             row_keys: Vec::new(),
             pending: HashSet::new(),
             pictures: HashMap::new(),
+            remote: HashMap::new(),
         }
     }
 }
@@ -634,6 +638,7 @@ impl Spotlight {
         let accent = t.get_accent();
         let dark = st.shell.look.dark;
         let mut want_icons = Vec::new();
+        let mut want_remote: Vec<String> = Vec::new();
         let mut row_keys = Vec::new();
         let mut want_pics = Vec::new();
         let icons = st.shell.get::<Icons>().cloned();
@@ -655,8 +660,17 @@ impl Spotlight {
                 let mut icon = None;
                 let mut has_icon = false;
                 let mut row_key = None;
-                if !r.icon.is_empty() && !r.loading {
-                    if let Some(p) = icons.as_ref().and_then(|ic| ic.path(&[r.icon.as_str()], &[r.icon_fallback])) {
+                let web = r.icon.starts_with("https://") || r.icon.starts_with("http://");
+                if web && !r.loading && !self.remote.contains_key(&r.icon) {
+                    want_remote.push(r.icon.clone());
+                }
+                let local = if web { self.remote.get(&r.icon).cloned().flatten() } else { None };
+                if !r.icon.is_empty() && !r.loading && (!web || local.is_some()) {
+                    let found = match local {
+                        Some(p) => Some(p),
+                        None => icons.as_ref().and_then(|ic| ic.path(&[r.icon.as_str()], &[r.icon_fallback])),
+                    };
+                    if let Some(p) = found {
                         let key = IconKey { path: p, px: (size * scale).ceil() as u32, style: if styled { style_app.clone() } else { style_plain.clone() } };
                         has_icon = true;
                         match self.icons.get(&key) {
@@ -717,6 +731,14 @@ impl Spotlight {
         w.ui.set_content_h(h);
         self.request_icons(st, want_icons);
         self.request_pictures(st, want_pics);
+        for u in want_remote {
+            self.remote.insert(u.clone(), None);
+            let to = Self::send(st);
+            std::thread::spawn(move || {
+                let p = providers::fetch_icon(&u);
+                to(Box::new(M::Fetched(u, p)));
+            });
+        }
         self.push(st);
     }
 
@@ -1149,6 +1171,13 @@ impl Part for Spotlight {
                 }
                 self.update_images();
             }
+            M::Fetched(u, p) => {
+                let got = p.is_some();
+                self.remote.insert(u, p);
+                if got && self.open {
+                    self.rebuild(st);
+                }
+            }
             M::Picture(p, px) => {
                 self.pictures.insert(p, px.map(slint::Image::from_rgba8));
                 if self.pictures.len() > 200 {
@@ -1333,6 +1362,5 @@ mod tests {
         assert_eq!(glass_fill(true, true).alpha(), 0);
         assert_eq!(glass_fill(false, true).alpha(), (0.62f32 * 255.0).round() as u8);
         assert!(glass_fill(false, false).red() > 240);
-    }
     }
 }

@@ -140,6 +140,29 @@ pub fn run_lines(argv: &[String]) -> String {
     Command::new(&argv[0]).args(&argv[1..]).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
 }
 
+/// A logo on the web (an App Store row's), kept in the cache: its file
+pub fn fetch_icon(url: &str) -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var("XDG_CACHE_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()))).join("tessera/search-icons");
+    let path = dir.join(icon_file_name(url));
+    if path.is_file() {
+        return Some(path);
+    }
+    std::fs::create_dir_all(&dir).ok()?;
+    let part = path.with_extension("part");
+    let ok = Command::new("curl").args(["-sfL", "--max-time", "8", "--max-filesize", "2000000", "-o"]).arg(&part).arg(url).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+    (ok && std::fs::rename(&part, &path).is_ok()).then_some(path)
+}
+
+/// Its cached file's name: a hash of the address, its picture's extension
+pub fn icon_file_name(url: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut h);
+    let path = url.split(['?', '#']).next().unwrap_or("");
+    let ext = path.rsplit_once('.').map(|(_, e)| e.to_lowercase()).filter(|e| ["png", "svg", "jpg", "jpeg", "webp"].contains(&e.as_str())).unwrap_or_else(|| "png".into());
+    format!("{:016x}.{ext}", h.finish())
+}
+
 // ── Lists read once ─────────────────────────────────────────────────────
 
 /// `"key": "value"` and `["a", "b"]` lines of a generated .js list
@@ -219,6 +242,14 @@ mod tests {
         assert!(!c[2].contains("rm -rf"));
         assert!(names_command("a", false)[2].starts_with("find "));
         assert!(contents_command("a")[2].contains("rg -l -i -F"));
+    }
+
+    #[test]
+    fn web_logos_keep_their_kind() {
+        assert!(icon_file_name("https://dl.flathub.org/media/a/b/icons/128x128/org.x.Y.png").ends_with(".png"));
+        assert!(icon_file_name("https://example.org/logo.svg?v=2").ends_with(".svg"));
+        assert!(icon_file_name("https://example.org/logo").ends_with(".png"));
+        assert_ne!(icon_file_name("https://a/x.png"), icon_file_name("https://b/x.png"));
     }
 
     #[test]
