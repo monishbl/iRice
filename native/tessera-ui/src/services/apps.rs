@@ -27,6 +27,10 @@ pub struct Entry {
     /// Path=: the folder it runs in
     pub dir: String,
     pub no_display: bool,
+    /// GenericName=, Comment= and Keywords= (Search ranks by them)
+    pub generic_name: String,
+    pub comment: String,
+    pub keywords: Vec<String>,
 }
 
 /// One desktop file's [Desktop Entry] group (None: not an application, or
@@ -57,6 +61,9 @@ pub fn parse(id: &str, text: &str) -> Option<Entry> {
             "Path" => e.dir = v,
             "NoDisplay" => e.no_display = v == "true",
             "Hidden" => hidden = v == "true",
+            "GenericName" => e.generic_name = v,
+            "Comment" => e.comment = v,
+            "Keywords" => e.keywords = v.split(';').map(str::trim).filter(|k| !k.is_empty()).map(String::from).collect(),
             _ => {}
         }
     }

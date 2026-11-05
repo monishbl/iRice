@@ -1,0 +1,1125 @@
+// Search in Rust (rust.surfaces: spotlight), both looks, compare
+// shell/modules/spotlight: Glass's floating field with the results in a
+// second glass panel below (SpotlightGlass.qml, ResultRow.qml,
+// AnswerCard.qml), Material's docked search view with segmented lists and a
+// hero card (SearchView.qml, SearchRow.qml, SearchHero.qml,
+// SearchButton.qml). A transparent full-screen layer: a click outside
+// closes it. Rust (src/surfaces/spotlight) owns the state (the results, the
+// selection, the keys, the inline AI answer); this draws it.
+
+import { Theme } from "theme.slint";
+import { Busy } from "widgets.slint";
+
+// A glyph as Icon.qml picks it (Material: a Material Symbol, 1.2× the size)
+export struct SGlyph {
+    text: string,
+    family: string,
+    scale: float,
+}
+
+export struct SRow {
+    // where it sits (src/surfaces/spotlight/layout.rs)
+    y: length,
+    h: length,
+    head: string,
+    head-y: length,
+    row-y: length,
+    row-h: length,
+    card: bool,
+    first: bool,
+    last: bool,
+    index: int,
+    // what it shows
+    section: string,
+    title: string,
+    sub: string, // the line under (or beside) the title, as the look writes it
+    glyph: SGlyph,
+    glyph-fill: SGlyph,
+    icon: image,
+    has-icon: bool,
+    emoji: string,
+    picture: image,
+    has-picture: bool,
+    has-path: bool,
+    loading: bool,
+    store: bool, // "Get" (an app from the App Store)
+    // Glass's answer card: the tile's colour
+    tone: color,
+    // Material's hero: 0 the top hit, 1 a thing to do, 2 an answer
+    hero-kind: int,
+    key: SGlyph,
+    key-label: string,
+}
+
+component SIcon inherits Rectangle {
+    in property <SGlyph> glyph;
+    in property <length> size: 16px;
+    in property <color> tint;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: glyph.text;
+        font-family: glyph.family;
+        font-size: round(size * glyph.scale / 1px) * 1px;
+        color: root.tint;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// The field's trailing buttons (IconButton.qml): Glass small and grey until
+// pointed at or focused; Material round, a state layer, squaring off pressed
+component SButton inherits Rectangle {
+    in property <SGlyph> glyph;
+    in property <length> icon-size;
+    in property <color> ink;
+    in property <color> ink-hot;
+    in property <bool> focused;
+    in property <string> label;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+    background: Theme.material ? (touch.pressed ? ink.with-alpha(0.1) : touch.has-hover ? ink.with-alpha(0.08) : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover || focused ? Theme.fill : transparent;
+    border-width: focused && !Theme.material ? 2px : 0;
+    border-color: Theme.accent;
+    animate background { duration: 150ms; }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SIcon {
+        glyph: root.glyph;
+        size: icon-size;
+        tint: touch.has-hover || focused ? ink-hot : ink;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Material's search button (SearchButton.qml): a pill, filled (primary) or
+// tonal, squaring off a little while pressed
+component MButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> filled;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    property <color> ink: filled ? Theme.m3-on-primary : Theme.m3-on-secondary-container;
+    height: 40px;
+    width: label.preferred-width + 2 * round(self.height * 0.6 / 1px) * 1px;
+    border-radius: touch.pressed ? min(12px, self.height / 2) : self.height / 2;
+    animate border-radius { duration: 250ms; easing: spring(0.4); }
+    background: filled ? Theme.m3-primary : Theme.m3-secondary-container;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: ink.with-alpha(touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0);
+        animate background { duration: 150ms; }
+    }
+    label := Text {
+        text: root.text;
+        color: ink;
+        font-size: root.height >= 40px ? 14px : 13px;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Glass's answer buttons (SpotlightGlass.qml's squircles)
+component GButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    callback clicked();
+    height: 28px;
+    width: label.preferred-width + 24px;
+    border-radius: Theme.radius-control - 2px;
+    background: primary ? (touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: primary ? Theme.on-accent : Theme.label;
+        font-size: Theme.small;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A Material shape (MaterialShape.qml): an outline from Rust, or a circle
+component MShape inherits Rectangle {
+    in property <string> outline; // "" a circle
+    in property <color> tint;
+    Rectangle {
+        visible: outline == "";
+        border-radius: self.width / 2;
+        background: root.tint;
+    }
+    if outline != "": Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: outline;
+        fill: root.tint;
+    }
+}
+
+// ── Glass ─────────────────────────────────────────────────────────────────
+
+// One result (ResultRow.qml)
+component GRow inherits Rectangle {
+    in property <SRow> r;
+    in property <bool> selected;
+    in property <string> emoji-font;
+    in property <SGlyph> eye;
+    callback activate();
+    callback look();
+    border-radius: Theme.radius-control;
+    background: selected ? Theme.accent : touch.has-hover ? Theme.fill : transparent;
+    accessible-role: list-item;
+    accessible-label: r.title + (r.sub != "" ? ", " + r.sub : "");
+    accessible-item-selectable: true;
+    accessible-item-selected: selected;
+    accessible-item-index: r.index;
+    accessible-action-default => { activate(); }
+    touch := TouchArea {
+        clicked => { activate(); }
+    }
+    if r.has-icon: Image {
+        x: 10px;
+        y: (parent.height - 26px) / 2;
+        width: 26px;
+        height: 26px;
+        source: r.icon;
+        accessible-role: none;
+    }
+    if r.emoji != "": Text {
+        x: 10px;
+        width: 26px;
+        height: 100%;
+        text: r.emoji;
+        font-family: emoji-font;
+        font-size: 20px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    if r.has-picture: Rectangle {
+        x: 10px;
+        y: (parent.height - 26px) / 2;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: Theme.fill;
+        clip: true;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: r.picture;
+            image-fit: cover;
+            accessible-role: none;
+        }
+    }
+    if !r.has-icon && r.emoji == "" && !r.has-picture: SIcon {
+        x: 10px;
+        width: 26px;
+        glyph: r.glyph;
+        size: 18px;
+        tint: selected ? Theme.on-accent : Theme.secondary;
+        // (a row still loading: its glyph turns, steadily)
+        property <duration> t: r.loading ? animation-tick() : 0ms;
+        transform-rotation: r.loading ? mod(t / 900ms, 1) * 360deg : 0deg;
+    }
+    HorizontalLayout {
+        x: 46px;
+        width: parent.width - 46px - 12px;
+        spacing: 8px;
+        title := Text {
+            horizontal-stretch: 0;
+            text: r.title;
+            color: selected ? Theme.on-accent : Theme.label;
+            font-size: Theme.title;
+            font-weight: 500;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        Text {
+            horizontal-stretch: 1;
+            y: 1px;
+            text: r.sub;
+            color: selected ? Theme.on-accent.with-alpha(0.75) : Theme.tertiary;
+            font-size: Theme.body;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    // Files: Quick Look (also Shift+Space)
+    eye-btn := SButton {
+        visible: r.has-path && (touch.has-hover || self.hovered || selected);
+        x: parent.width - self.width - 6px;
+        y: (parent.height - self.height) / 2;
+        width: 28px;
+        height: 28px;
+        glyph: eye;
+        icon-size: 16px;
+        ink: selected ? Theme.on-accent : Theme.secondary;
+        ink-hot: self.ink;
+        label: "Quick Preview";
+        clicked => { look(); }
+    }
+}
+
+// The first result when it answers or does something (AnswerCard.qml)
+component GCard inherits Rectangle {
+    in property <SRow> r;
+    in property <bool> selected;
+    in property <color> tint; // Theme.accentTint
+    callback activate();
+    border-radius: 14px;
+    background: selected ? tint : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: 150ms; }
+    border-width: selected ? 1px : 0;
+    border-color: Theme.accent.with-alpha(0.5);
+    accessible-role: list-item;
+    accessible-label: r.title + (r.sub != "" ? ", " + r.sub : "");
+    accessible-item-selectable: true;
+    accessible-item-selected: selected;
+    accessible-action-default => { activate(); }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { activate(); }
+    }
+    tile := Rectangle {
+        x: 16px;
+        y: (parent.height - 52px) / 2;
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: r.tone;
+        SIcon {
+            glyph: r.glyph-fill;
+            size: 26px;
+            tint: white;
+        }
+    }
+    VerticalLayout {
+        x: tile.x + tile.width + 16px;
+        width: parent.width - self.x - 16px;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: r.title;
+            color: Theme.label;
+            font-size: r.section == "Do" ? 18px : 24px;
+            font-weight: 600;
+            overflow: elide;
+            accessible-role: none;
+        }
+        Text {
+            text: r.sub;
+            color: Theme.secondary;
+            font-size: 13px;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+}
+
+// ── Material ──────────────────────────────────────────────────────────────
+
+// One result: an Expressive segmented list item (SearchRow.qml)
+component MRow inherits Rectangle {
+    in property <SRow> r;
+    in property <bool> selected;
+    in property <string> emoji-font;
+    in property <string> cookie9;
+    in property <SGlyph> eye;
+    callback activate();
+    callback look();
+    property <float> round: selected ? 1 : 0;
+    animate round { duration: 300ms; easing: spring(0.45); }
+    property <color> ink: selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface;
+    property <length> full: self.height / 2;
+    property <length> top-r: max(0, min(full, (r.first ? 20px : 4px) + (full - (r.first ? 20px : 4px)) * round));
+    property <length> bottom-r: max(0, min(full, (r.last ? 20px : 4px) + (full - (r.last ? 20px : 4px)) * round));
+    property <bool> hot: touch.has-hover || (r.has-path && m-eye.hovered) || (r.store && get.hovered);
+    border-top-left-radius: top-r;
+    border-top-right-radius: top-r;
+    border-bottom-left-radius: bottom-r;
+    border-bottom-right-radius: bottom-r;
+    background: selected ? Theme.m3-secondary-container : root.surface-bright;
+    in property <color> surface-bright;
+    animate background { duration: 150ms; }
+    accessible-role: list-item;
+    accessible-label: r.title + (r.sub != "" ? ", " + r.sub : "");
+    accessible-item-selectable: true;
+    accessible-item-selected: selected;
+    accessible-item-index: r.index;
+    accessible-action-default => { activate(); }
+    // state layer
+    Rectangle {
+        border-top-left-radius: top-r;
+        border-top-right-radius: top-r;
+        border-bottom-left-radius: bottom-r;
+        border-bottom-right-radius: bottom-r;
+        background: ink.with-alpha(touch.pressed ? 0.1 : hot ? 0.08 : 0);
+        animate background { duration: 150ms; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { activate(); }
+    }
+    // Leading: the icon in a circle (a cookie when selected)
+    lead := MShape {
+        visible: !r.loading;
+        x: 8px;
+        y: (parent.height - 40px) / 2;
+        width: 40px;
+        height: 40px;
+        outline: selected ? cookie9 : "";
+        tint: selected ? (r.has-icon ? Theme.m3-primary-container : Theme.m3-primary) : Theme.m3-surface-container-highest;
+    }
+    if r.has-icon && !r.loading: Image {
+        x: lead.x + 7px;
+        y: lead.y + 7px;
+        width: 26px;
+        height: 26px;
+        source: r.icon;
+        accessible-role: none;
+    }
+    if r.has-picture: Rectangle {
+        x: lead.x;
+        y: lead.y;
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        clip: true;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: r.picture;
+            image-fit: cover;
+            accessible-role: none;
+        }
+    }
+    if r.emoji != "": Text {
+        x: lead.x;
+        y: lead.y;
+        width: 40px;
+        height: 40px;
+        text: r.emoji;
+        font-family: emoji-font;
+        font-size: 22px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    if !r.has-icon && r.emoji == "" && !r.has-picture && !r.loading: SIcon {
+        x: lead.x;
+        y: lead.y;
+        width: 40px;
+        height: 40px;
+        glyph: selected ? r.glyph-fill : r.glyph;
+        size: 20px;
+        tint: selected ? Theme.m3-on-primary : Theme.m3-on-surface-variant;
+    }
+    // (still looking: Material's loading indicator in the icon's place)
+    if r.loading: Busy {
+        x: lead.x;
+        y: lead.y;
+        transform-scale: 0.8;
+    }
+    VerticalLayout {
+        x: 60px;
+        width: parent.width - 60px - 12px - trail-w;
+        alignment: center;
+        Text {
+            text: r.title;
+            color: ink;
+            font-size: 16px;
+            font-weight: selected ? 500 : 400;
+            overflow: elide;
+            accessible-role: none;
+        }
+        if r.sub != "": Text {
+            text: r.sub;
+            color: Theme.m3-on-surface-variant;
+            font-size: 14px;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+    // Trailing: "Get" for an app from the App Store, Quick Look for a file
+    // (a file keeps the button's room, so its title doesn't jump)
+    property <length> trail-w: r.store ? get.width : r.has-path ? 40px : 0;
+    get := MButton {
+        visible: r.store;
+        x: parent.width - 12px - self.width;
+        y: (parent.height - self.height) / 2;
+        height: 32px;
+        text: "Get";
+        filled: selected;
+        clicked => { activate(); }
+    }
+    m-eye := SButton {
+        visible: r.has-path && (touch.has-hover || self.hovered || selected);
+        x: parent.width - 12px - 40px;
+        y: (parent.height - 40px) / 2;
+        width: 40px;
+        height: 40px;
+        glyph: eye;
+        icon-size: 20px;
+        ink: selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant;
+        ink-hot: self.ink;
+        label: "Quick Preview";
+
+        clicked => { look(); }
+    }
+}
+
+// The first result when it's the top hit, an answer or a thing to do: a
+// hero card, the key action a big round button (SearchHero.qml)
+component MHero inherits Rectangle {
+    in property <SRow> r;
+    in property <bool> selected;
+    in property <string> outline-selected; // sunny
+    in property <string> outline-picture; // cookie12
+    in property <string> outline-glyph; // cookie9
+    in property <color> surface-bright;
+    in property <color> on-tertiary;
+    callback activate();
+    property <bool> answer: r.hero-kind == 2;
+    property <color> container: answer ? Theme.m3-tertiary-container : Theme.m3-primary-container;
+    property <color> content: answer ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container;
+    property <color> strong: answer ? Theme.m3-tertiary : Theme.m3-primary;
+    property <color> on-strong: answer ? on-tertiary : Theme.m3-on-primary;
+    property <float> round: selected ? 1 : 0;
+    animate round { duration: 300ms; easing: spring(0.45); }
+    border-radius: max(0, min(self.height / 2, 28px + (self.height / 2 - 28px) * round));
+    background: container;
+    accessible-role: list-item;
+    accessible-label: r.title + (r.sub != "" ? ", " + r.sub : "");
+    accessible-item-selectable: true;
+    accessible-item-selected: selected;
+    accessible-action-default => { activate(); }
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: content.with-alpha(touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0);
+        animate background { duration: 150ms; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { activate(); }
+    }
+    lead := MShape {
+        x: 16px;
+        y: (parent.height - 64px) / 2;
+        width: 64px;
+        height: 64px;
+        outline: selected ? outline-selected : r.has-icon ? outline-picture : outline-glyph;
+        tint: r.has-icon ? surface-bright : strong;
+    }
+    if r.has-icon: Image {
+        x: lead.x + 12px;
+        y: lead.y + 12px;
+        width: 40px;
+        height: 40px;
+        source: r.icon;
+        accessible-role: none;
+    }
+    if !r.has-icon: SIcon {
+        x: lead.x;
+        y: lead.y;
+        width: 64px;
+        height: 64px;
+        glyph: r.glyph-fill;
+        size: 28px;
+        tint: on-strong;
+    }
+    VerticalLayout {
+        x: lead.x + lead.width + 16px;
+        width: key.x - 16px - self.x;
+        alignment: center;
+        spacing: 2px;
+        if r.hero-kind != 1: Text {
+            text: r.hero-kind == 0 ? "Top hit" : r.section;
+            color: content.with-alpha(0.8);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            overflow: elide;
+            accessible-role: none;
+        }
+        Text {
+            text: r.title;
+            color: content;
+            font-size: answer ? 24px : r.hero-kind == 1 ? 18px : 22px;
+            font-weight: answer ? 600 : 500;
+            overflow: elide;
+            accessible-role: none;
+        }
+        if r.sub != "": Text {
+            text: r.sub;
+            color: content.with-alpha(0.8);
+            font-size: 14px;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+    // The key action: open, do, copy, or get
+    key := Rectangle {
+        x: parent.width - 20px - self.width;
+        y: (parent.height - 56px) / 2;
+        width: r.store ? get.width : 56px;
+        height: 56px;
+        get := MButton {
+            visible: r.store;
+            y: (parent.height - self.height) / 2;
+            height: 40px;
+            text: "Get";
+            filled: true;
+            clicked => { activate(); }
+        }
+        if !r.store: go := Rectangle {
+            border-radius: go-touch.pressed ? 16px : self.height / 2;
+            animate border-radius { duration: 250ms; easing: spring(0.4); }
+            background: strong;
+            transform-scale: go-touch.pressed ? 1.06 : 1;
+            animate transform-scale { duration: 300ms; easing: spring(0.35); }
+            accessible-role: button;
+            accessible-label: r.key-label;
+            accessible-action-default => { activate(); }
+            Rectangle {
+                border-radius: parent.border-radius;
+                background: on-strong.with-alpha(go-touch.pressed ? 0.1 : go-touch.has-hover ? 0.08 : 0);
+            }
+            SIcon {
+                glyph: r.key;
+                size: 24px;
+                tint: on-strong;
+            }
+            go-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { activate(); }
+            }
+        }
+    }
+}
+
+// ── The window ────────────────────────────────────────────────────────────
+
+export component SpotlightPanel inherits Window {
+    in property <bool> shown;
+    in property <[SRow]> rows;
+    in property <length> content-h;
+    in-out property <length> list-y;
+    in property <int> sel;
+    in property <string> placeholder: Theme.material ? "Search apps, files and the web" : "Search";
+    in property <string> emoji-font: "Noto Color Emoji";
+    in property <string> ask-label: "Set up AI";
+    // Glass: Tab's focus on the field's buttons (0 the field, 1 Clear, 2 Ask)
+    in property <int> button-focus;
+    // The inline AI answer
+    in property <bool> answering;
+    in property <bool> quick-busy;
+    in property <bool> quick-shown; // an answer or an error to show
+    in property <styled-text> quick-answer;
+    in property <string> quick-error;
+    in property <bool> quick-done; // answered, without error: its buttons
+    in property <string> model-name;
+    // Glyphs, as each look draws them
+    in property <SGlyph> g-search;
+    in property <SGlyph> g-clear;
+    in property <SGlyph> g-ask;
+    in property <SGlyph> g-ask-on;
+    in property <SGlyph> g-back;
+    in property <SGlyph> g-eye;
+    in property <SGlyph> g-spark;
+    // Material shapes (outlines from Rust) and roles the shared Theme lacks
+    in property <string> cookie9;
+    in property <string> cookie12;
+    in property <string> sunny;
+    in property <color> surface-bright: Theme.m3-surface-container-high;
+    in property <color> on-tertiary: white;
+    in property <color> scrim: black;
+    in property <color> accent-tint: Theme.accent.with-alpha(0.26);
+    in property <color> accent-ink: Theme.accent;
+    // Material's rows come in one after another as the list appears
+    in property <bool> introducing;
+
+    out property <float> openness: shown ? 1 : 0;
+    // Glass: where the glass shapes are (for the plugin)
+    out property <length> g-x: round((root.width - 680px) / 2 / 1px) * 1px;
+    out property <length> g-top: round(root.height * 0.2 / 1px) * 1px + (1 - openness) * -10px;
+    out property <length> g-body-h: !Theme.material && answering ? g-answer.height : !Theme.material && rows.length > 0 ? g-results.height : 0;
+    out property <length> text-w: field.width;
+
+    property <length> m-w: min(720px, root.width - 64px);
+    property <length> m-x: round((root.width - m-w) / 2 / 1px) * 1px;
+    property <length> m-top: round(root.height * 0.2 / 1px) * 1px;
+    property <bool> m-open: answering || rows.length > 0;
+    property <length> m-body: answering ? m-answer-h + 28px : min(content-h, 480px) + 20px;
+    property <length> m-answer-h;
+    property <length> m-view-h: 56px + (m-open ? m-body : 0);
+    animate m-view-h { duration: 450ms; easing: spring(0.5); }
+    property <duration> intro-t0;
+    property <bool> has-text: field.text != "";
+
+    callback key(string, bool, bool) -> bool; // text, shift, control: handled?
+    callback edited(string);
+    callback activate(int);
+    callback quick-look(int);
+    callback cleared();
+    callback ask();
+    callback back();
+    callback continue-chat();
+    callback copy-answer();
+    callback link(string);
+    callback dismissed(); // a click outside
+    callback closed(); // the close animation ended
+
+    background: transparent;
+    no-frame: true;
+    title: "Search";
+    default-font-family: Theme.font;
+
+    animate openness {
+        duration: Theme.material ? (shown ? 450ms : 154ms) : 220ms;
+        easing: Theme.material ? (shown ? spring(0.5) : cubic-bezier(0.3, 0, 0.8, 0.15)) : shown ? cubic-bezier(0.2, 0.9, 0.1, 1.0) : cubic-bezier(0.4, 0, 1, 1);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    public function open() {
+        field.text = "";
+        field.focus();
+    }
+    public function set-text(t: string) {
+        field.text = t;
+    }
+    public function focus-field() {
+        field.focus();
+    }
+    public function start-intro() {
+        intro-t0 = animation-tick();
+    }
+
+    // Material's scrim
+    Rectangle {
+        visible: Theme.material;
+        background: scrim.with-alpha(0.32 * max(0, min(1, openness)));
+    }
+    // A click outside closes it
+    TouchArea {
+        enabled: shown;
+        clicked => { dismissed(); }
+    }
+
+    col := Rectangle {
+        x: Theme.material ? m-x : g-x;
+        y: Theme.material ? m-top + (1 - openness) * -32px : g-top;
+        width: Theme.material ? m-w : 680px;
+        height: Theme.material ? m-view-h : 56px;
+        opacity: Theme.material ? max(0, min(1, openness * 1.6)) : max(0, min(1, openness));
+        transform-scale: Theme.material ? 0.92 + 0.08 * openness : 1;
+        transform-origin: { x: self.width / 2, y: 0 };
+
+        // ── Glass: the results, and the inline answer, in a panel below ──
+        g-results := Rectangle {
+            visible: !Theme.material && rows.length > 0 && !answering;
+            y: 64px;
+            height: min(content-h, 440px) + 16px;
+            border-radius: 24px;
+            background: Theme.panel;
+            border-width: 0.5px;
+            border-color: Theme.separator;
+            TouchArea { }
+            if !Theme.material: Flickable {
+                x: 8px;
+                y: 8px;
+                width: parent.width - 16px;
+                height: parent.height - 16px;
+                content-height: max(content-h, self.height);
+                content-y <=> root.list-y;
+                accessible-role: list;
+                accessible-label: "Results";
+                for r in rows: Rectangle {
+                    y: r.y;
+                    height: r.h;
+                    if r.head != "": Text {
+                        x: 10px;
+                        y: r.head-y;
+                        text: r.head;
+                        color: Theme.tertiary;
+                        font-size: Theme.caption;
+                        font-weight: 600;
+                        accessible-role: none;
+                    }
+                    if !r.card: GRow {
+                        y: r.row-y;
+                        height: r.row-h;
+                        r: r;
+                        selected: r.index == sel;
+                        emoji-font: emoji-font;
+                        eye: g-eye;
+                        activate => { root.activate(r.index); }
+                        look => { root.quick-look(r.index); }
+                    }
+                    if r.card: GCard {
+                        y: r.row-y;
+                        height: r.row-h;
+                        r: r;
+                        selected: r.index == sel;
+                        tint: accent-tint;
+                        activate => { root.activate(r.index); }
+                    }
+                }
+            }
+        }
+        g-answer := Rectangle {
+            visible: !Theme.material && answering;
+            y: 64px;
+            height: g-body.preferred-height + 32px;
+            border-radius: 24px;
+            background: Theme.panel;
+            border-width: 0.5px;
+            border-color: Theme.separator;
+            TouchArea { }
+            g-body := VerticalLayout {
+                x: 20px;
+                y: 16px;
+                width: parent.width - 40px;
+                height: self.preferred-height;
+                spacing: 12px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    property <bool> thinking: quick-busy && !quick-shown;
+                    SIcon {
+                        width: 14px;
+                        glyph: g-spark;
+                        size: 14px;
+                        tint: accent-ink;
+                        property <duration> t: parent.thinking ? animation-tick() : 0ms;
+                        opacity: parent.thinking ? 0.675 + 0.325 * cos(mod(t / 1200ms, 1) * 360deg) : 1;
+                    }
+                    Text {
+                        text: parent.thinking ? "Thinking…" : model-name;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                if quick-shown: Flickable {
+                    height: min(g-text.preferred-height, 360px);
+                    content-height: g-text.preferred-height;
+                    g-text := VerticalLayout {
+                        if quick-error == "": StyledText {
+                            text: quick-answer;
+                            default-color: Theme.label;
+                            default-font-size: Theme.title;
+                            link-color: accent-ink;
+                            link-clicked(l) => { link(l); }
+                        }
+                        if quick-error != "": Text {
+                            text: quick-error;
+                            color: Theme.danger;
+                            font-size: Theme.title;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                if quick-done: HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    GButton {
+                        text: "Continue in chat";
+                        primary: true;
+                        clicked => { continue-chat(); }
+                    }
+                    GButton {
+                        text: "Copy answer";
+                        clicked => { copy-answer(); }
+                    }
+                    Text {
+                        text: "  ↵ to continue in chat";
+                        color: Theme.tertiary;
+                        font-size: Theme.small;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // ── Material: the search view, the bar on top, the results below ──
+        if Theme.material: Rectangle {
+            border-radius: 28px;
+            background: m-open ? Theme.m3-surface-container : Theme.m3-surface-container-high;
+            animate background { duration: 150ms; }
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12);
+            TouchArea { }
+            Rectangle {
+                y: 56px;
+                height: max(0, parent.height - 56px);
+                clip: true;
+                visible: self.height > 1px;
+                if !answering: Flickable {
+                    x: 12px;
+                    y: 8px;
+                    width: parent.width - 24px;
+                    height: min(content-h, 480px);
+                    content-height: max(content-h, self.height);
+                    content-y <=> root.list-y;
+                    accessible-role: list;
+                    accessible-label: "Results";
+                    for r in rows: Rectangle {
+                        y: r.y;
+                        height: r.h;
+                        // (comes in on a small spring, a little after the one above)
+                        property <float> k: introducing && r.index <= 10 ? max(0, min(1, (animation-tick() - intro-t0 - 16ms - r.index * 28ms) / 380ms)) : 1;
+                        property <float> e: 1 - (1 - k) * (1 - k) * (1 - k);
+                        opacity: e;
+                        Rectangle {
+                            y: (1 - e) * 14px;
+                            if r.head != "": Text {
+                                x: 16px;
+                                y: r.head-y;
+                                width: parent.width - 16px;
+                                text: r.head;
+                                color: Theme.m3-primary;
+                                font-size: 14px;
+                                font-weight: 500;
+                                letter-spacing: 0.1px;
+                                overflow: elide;
+                                accessible-role: none;
+                            }
+                            if !r.card: MRow {
+                                y: r.row-y;
+                                height: r.row-h;
+                                r: r;
+                                selected: r.index == sel;
+                                emoji-font: emoji-font;
+                                cookie9: cookie9;
+                                eye: g-eye;
+                                surface-bright: surface-bright;
+                                activate => { root.activate(r.index); }
+                                look => { root.quick-look(r.index); }
+                            }
+                            if r.card: MHero {
+                                y: r.row-y;
+                                height: r.row-h;
+                                r: r;
+                                selected: r.index == sel;
+                                outline-selected: sunny;
+                                outline-picture: cookie12;
+                                outline-glyph: cookie9;
+                                surface-bright: surface-bright;
+                                on-tertiary: on-tertiary;
+                                activate => { root.activate(r.index); }
+                            }
+                        }
+                    }
+                }
+                // Inline AI answer
+                if answering: m-body := VerticalLayout {
+                    x: 20px;
+                    y: 12px;
+                    width: parent.width - 40px;
+                    height: self.preferred-height;
+                    spacing: 16px;
+                    init => { root.m-answer-h = self.preferred-height; }
+                    changed preferred-height => { root.m-answer-h = self.preferred-height; }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        property <bool> thinking: quick-busy && !quick-shown;
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            if parent.thinking: Busy {
+                                transform-scale: 0.9;
+                                x: -2px;
+                                y: -2px;
+                            }
+                            if !parent.thinking: MShape {
+                                outline: sunny;
+                                tint: Theme.m3-primary-container;
+                            }
+                            if !parent.thinking: SIcon {
+                                glyph: g-ask-on;
+                                size: 18px;
+                                tint: Theme.m3-on-primary-container;
+                            }
+                        }
+                        Text {
+                            text: parent.thinking ? "Thinking…" : model-name;
+                            color: Theme.m3-on-surface-variant;
+                            font-size: 14px;
+                            font-weight: 500;
+                            letter-spacing: 0.1px;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if quick-shown: Flickable {
+                        height: min(m-text.preferred-height, 360px);
+                        content-height: m-text.preferred-height;
+                        m-text := VerticalLayout {
+                            if quick-error == "": StyledText {
+                                text: quick-answer;
+                                default-color: Theme.m3-on-surface;
+                                default-font-size: 16px;
+                                link-color: Theme.m3-primary;
+                                link-clicked(l) => { link(l); }
+                            }
+                            if quick-error != "": Text {
+                                text: quick-error;
+                                color: Theme.m3-error;
+                                font-size: 16px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    if quick-done: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        MButton {
+                            text: "Continue in chat";
+                            filled: true;
+                            clicked => { continue-chat(); }
+                        }
+                        MButton {
+                            text: "Copy answer";
+                            clicked => { copy-answer(); }
+                        }
+                        Text {
+                            text: "  Enter continues in chat";
+                            color: Theme.m3-on-surface-variant;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── The field (Glass's glass pill; Material's search bar) ──
+        bar := Rectangle {
+            height: 56px;
+            border-radius: 28px;
+            background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+            border-width: Theme.material ? 0 : 0.5px;
+            border-color: Theme.separator;
+            TouchArea { }
+            if !(Theme.material && answering): SIcon {
+                x: Theme.material ? 18px : 20px;
+                width: 22px;
+                glyph: g-search;
+                size: 22px;
+                tint: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+            }
+            // (on an AI answer: back to the results)
+            if Theme.material && answering: SButton {
+                x: 8px;
+                y: 8px;
+                width: 40px;
+                height: 40px;
+                glyph: g-back;
+                icon-size: 22px;
+                ink: Theme.m3-on-surface;
+                ink-hot: Theme.m3-on-surface;
+                label: "Back to results";
+                clicked => { back(); }
+            }
+            Rectangle {
+                x: 56px;
+                width: trailing.x - self.x - 8px;
+                clip: true;
+                field := TextInput {
+                    width: 100%;
+                    height: 100%;
+                    color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                    selection-background-color: Theme.material ? Theme.m3-primary-container : Theme.accent.with-alpha(0.5);
+                    selection-foreground-color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                    font-size: Theme.material ? 18px : 22px;
+                    font-weight: 400;
+                    vertical-alignment: center;
+                    single-line: true;
+                    input-type: search;
+                    accessible-label: "Search";
+                    accessible-placeholder-text: placeholder;
+                    edited => { root.edited(self.text); }
+                    key-pressed(e) => {
+                        if root.key(e.text, e.modifiers.shift, e.modifiers.control) { return accept; }
+                        reject
+                    }
+                }
+                if field.text == "": Text {
+                    width: 100%;
+                    height: 100%;
+                    text: placeholder;
+                    color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                    font-size: field.font-size;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
+            // Trailing: Clear (while there's text) and Ask AI
+            trailing := HorizontalLayout {
+                property <length> b: Theme.material ? 40px : 36px;
+                x: parent.width - self.width - (Theme.material ? 8px : 10px);
+                y: (parent.height - b) / 2;
+                width: (has-text ? b + self.spacing : 0) + b;
+                height: b;
+                spacing: Theme.material ? 4px : 2px;
+                if has-text: SButton {
+                    width: parent.b;
+                    height: parent.b;
+                    glyph: g-clear;
+                    icon-size: Theme.material ? 22px : 18px;
+                    ink: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                    ink-hot: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    focused: button-focus == 1;
+                    label: "Clear search";
+                    clicked => {
+                        field.text = "";
+                        root.cleared();
+                        field.focus();
+                    }
+                }
+                SButton {
+                    width: parent.b;
+                    height: parent.b;
+                    glyph: answering ? g-ask-on : g-ask;
+                    icon-size: Theme.material ? 22px : 18px;
+                    ink: answering ? (Theme.material ? Theme.m3-primary : accent-ink) : Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                    ink-hot: answering ? self.ink : Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    focused: button-focus == 2;
+                    label: ask-label;
+                    clicked => { root.ask(); }
+                }
+            }
+        }
+    }
+}

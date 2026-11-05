@@ -144,6 +144,39 @@ Singleton {
             if (/^https:\/\//.test(a[0] ?? ""))
                 Launch.open(a[0]);
             break;
+        case "search.query": // (search: spotlight)
+            Search.rustQuery(a[0], a[1]);
+            break;
+        case "search.run":
+            Search.rustRun(String(a[0] ?? ""));
+            break;
+        case "search.action":
+            Search.rustAction(String(a[0] ?? ""));
+            break;
+        case "ai.quickAsk":
+            Ai.quickAsk(String(a[0] ?? ""));
+            break;
+        case "ai.stopQuick":
+            Ai.stopQuick();
+            break;
+        case "ai.continueQuick":
+            Ai.continueQuick();
+            break;
+        case "panels.show":
+            if (["sidebar"].includes(a[0]))
+                Panels.show(a[0]);
+            break;
+        case "panels.quickLook":
+            Panels.quickLook(String(a[0] ?? ""));
+            break;
+        case "files.open":
+            if (String(a[0] ?? "").startsWith("/"))
+                Files.open(String(a[0]));
+            break;
+        case "launch.terminal":
+            if (String(a[0] ?? "") !== "")
+                Launch.terminal(["sh", "-c", String(a[0])], true);
+            break;
         default:
             console.warn("tessera-ui: no call " + name);
         }

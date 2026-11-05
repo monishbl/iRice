@@ -82,7 +82,8 @@ class Agreement(unittest.TestCase):
         # Panels' opening goes to tessera-ui and the QML window never loads
         loader = (ROOT / "shell/common/PanelLoader.qml").read_text()
         self.assertRegex(loader, r"wanted: !elsewhere &&")
-        for name, path in (("emoji", "shell/modules/emoji/EmojiPicker.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml")):
+        for name, path in (("emoji", "shell/modules/emoji/EmojiPicker.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml"),
+                           ("spotlight", "shell/modules/spotlight/SpotlightGlass.qml"), ("spotlight", "shell/modules/spotlight/SearchView.qml")):
             src = (ROOT / path).read_text()
             self.assertIn(f'RustUi.drawing("{name}")', src)
             self.assertIn("elsewhere:", src)
@@ -104,6 +105,34 @@ class Agreement(unittest.TestCase):
         self.assertIn("RustUi.osdShown", osd_qml)
         for word in ('v["hush"]', 'v["preview"]'):
             self.assertIn(word, osd_rs)
+
+    def test_search_ranks_the_same_actions_in_rust(self):
+        # Search's actions (title, glyph, keywords) are ranked in Rust too
+        # (src/surfaces/spotlight/rank.rs): the same list, in the same order
+        qml = (ROOT / "shell/services/Search.qml").read_text()
+        rs = (CRATE / "src/surfaces/spotlight/rank.rs").read_text()
+        block = qml[qml.index("readonly property var actions: ["):qml.index("// \"Cast to <TV>\"")]
+        q = re.findall(r'\{ title: "([^"]+)", glyph: "([^"]+)", keywords: "([^"]+)"', block)
+        r = re.findall(r'\("([^"]+)", "([^"]+)", "([^"]+)"\),', rs[rs.index("pub const ACTIONS"):])
+        self.assertGreater(len(q), 20)
+        self.assertEqual(q, r[:len(q)])
+        self.assertEqual(len(q), len(r))
+        # the shell answers what the Rust search asks of it
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        for call in ("search.query", "search.run", "search.action", "ai.quickAsk"):
+            self.assertIn(f'case "{call}":', rust_ui)
+        self.assertIn('RustUi.tell("spotlight", { extras: out })', qml)
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_search_golden_is_what_search_qml_gives(self):
+        # rank.rs's tests compare the Rust ranking with golden.json, which
+        # golden.js makes by running Search.qml's own functions under node:
+        # a change to Search.qml's ranking must reach both
+        d = CRATE / "src/surfaces/spotlight"
+        r = subprocess.run(["node", str(d / "golden.js")], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout), json.loads((d / "golden.json").read_text()),
+                         "Search.qml ranks differently now: run node golden.js > golden.json and match rank.rs")
 
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
