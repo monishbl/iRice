@@ -27,8 +27,10 @@
 //!   new cell. Without the plugin they're a tint.
 //! - Slint can't clip a picture to a Material shape: Now Playing's cover is
 //!   round while playing (the QML's cookie), a small photo round (clover).
-//! - Material draws Phosphor icons, not Material Symbols (as the OSD: Slint
-//!   can't set the symbols font's FILL axis the QML fills them with).
+//! - Material's icons are Material Symbols (SymIcon, as the bar) but
+//!   outlined: Slint can't set the font's FILL axis the QML fills them with.
+//! - An open stack's panel is a see-through tint, not glass refracting the
+//!   wallpaper: over a widget, that widget shows through (QML's doesn't).
 //! - No lock/unlock zoom (LockFx), no GPU graph in System, no drag of files
 //!   into or out of the desktop (no drag and drop between apps here).
 
@@ -349,6 +351,8 @@ impl Desktop {
         });
         let ui = ui::Desktop::new().expect("Desktop");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
+        // (Material: the Material Symbols glyph for a Phosphor one, as the bar)
+        ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
         let widgets = Rc::new(VecModel::<ui::DeskWidget>::default());
         let icons = Rc::new(VecModel::<ui::DeskIcon>::default());
         ui.set_widgets(ModelRc::from(widgets.clone()));
@@ -1360,6 +1364,7 @@ impl Desktop {
             });
             let ui = ui::DeskMenu::new().expect("DeskMenu");
             st.shell.apply_theme(&ui.global::<ui::Theme>());
+            ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
             let to = st.shell.sender(NAME);
             let (t2, t3) = (to.clone(), to.clone());
             ui.on_chosen(move |i| to(Box::new(M::MenuChosen(i))));

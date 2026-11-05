@@ -261,7 +261,6 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_outline_variant(r("outlineVariant"));
         t.set_m3_error(r("error"));
         t.set_m3_on_error(r("onError"));
-        t.set_m3_secondary(r("secondary"));
         t.set_m3_error_container(r("errorContainer"));
         t.set_m3_on_error_container(r("onErrorContainer"));
         t.set_m3_tertiary_container(r("tertiaryContainer"));

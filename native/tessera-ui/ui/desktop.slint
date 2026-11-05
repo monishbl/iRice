@@ -9,7 +9,8 @@
 // (one DeskWidget per widget, its fields named per kind below) and decides
 // where things snap; this draws them and animates them.
 
-import { Theme, Icon } from "theme.slint";
+import { Theme } from "theme.slint";
+import { SymIcon, Symbols } from "island.slint";
 
 // Colours Theme doesn't carry: Glass's accents (Theme.accents) and two more
 // Material roles
@@ -95,7 +96,7 @@ component Header inherits Rectangle {
         height: 26px;
         border-radius: 13px;
         background: Theme.material ? (alert ? Theme.m3-error : Theme.m3-primary) : tint;
-        Icon {
+        SymIcon {
             text: glyph;
             fill: true;
             font-size: 15px;
@@ -233,7 +234,7 @@ component Ring inherits Rectangle {
         source: g.picture;
         image-fit: contain;
     }
-    if !g.has-picture && g.glyph != "": Icon {
+    if !g.has-picture && g.glyph != "": SymIcon {
         text: g.glyph;
         fill: true;
         font-size: round(root.width * 0.36 / 1px) * 1px;
@@ -341,7 +342,7 @@ component WeatherW inherits Rectangle {
     if m-small && w.on: VerticalLayout {
         width: min(root.width, root.height) * 0.72;
         alignment: center;
-        Icon { text: w.g1; fill: true; font-size: 22px; color: Theme.m3-tertiary; }
+        SymIcon { text: w.g1; fill: true; font-size: 22px; color: Theme.m3-tertiary; }
         T { text: w.t6; horizontal-alignment: center; color: Theme.m3-on-tertiary-container; font-size: 46px; font-weight: 500; }
         T { text: w.t1; horizontal-alignment: center; overflow: elide; color: Theme.m3-on-tertiary-container; font-weight: 500; }
         T { text: w.t4; horizontal-alignment: center; color: Theme.m3-on-tertiary-container.with-alpha(0.75); font-size: Theme.caption; }
@@ -374,7 +375,7 @@ component WeatherW inherits Rectangle {
             y: root.height - self.preferred-height;
             height: self.preferred-height;
             spacing: 2px;
-            HorizontalLayout { alignment: start; Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; } }
+            HorizontalLayout { alignment: start; SymIcon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; } }
             T { text: w.t3; font-weight: 500; }
             T { text: w.t4; color: Theme.secondary; }
         }
@@ -386,7 +387,7 @@ component WeatherW inherits Rectangle {
             spacing: 2px;
             HorizontalLayout {
                 alignment: end;
-                Icon { text: w.g1; fill: true; font-size: 26px; color: Theme.label; }
+                SymIcon { text: w.g1; fill: true; font-size: 26px; color: Theme.label; }
             }
             T { text: w.t3; horizontal-alignment: right; font-weight: 500; }
             T { text: w.t4; horizontal-alignment: right; color: Theme.secondary; }
@@ -397,7 +398,7 @@ component WeatherW inherits Rectangle {
             for h in w.hours: VerticalLayout {
                 spacing: 2px;
                 T { text: h.time; horizontal-alignment: center; color: Theme.secondary; font-size: Theme.caption; font-weight: 500; }
-                Icon { text: h.glyph; fill: true; font-size: 14px; color: Theme.label; }
+                SymIcon { text: h.glyph; fill: true; font-size: 14px; color: Theme.label; }
                 T { text: h.temp; horizontal-alignment: center; font-weight: 500; }
             }
         }
@@ -546,7 +547,7 @@ component RemindersW inherits Rectangle {
         height: 32px;
         border-radius: Theme.material ? 16px : 10px;
         background: Theme.fill;
-        Icon { x: 10px; width: 12px; text: "\u{e3d4}"; bold: true; font-size: 12px; color: Theme.secondary; }
+        SymIcon { x: 10px; width: 12px; text: "\u{e3d4}"; bold: true; font-size: 12px; color: Theme.secondary; }
         field := TextInput {
             x: 30px;
             width: parent.width - 40px;
@@ -606,7 +607,7 @@ component TodayW inherits Rectangle {
         visible: w.on;
         spacing: 6px;
         height: 24px;
-        Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; }
+        SymIcon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; }
         T { text: w.t3; vertical-alignment: center; font-size: 18px; font-weight: 600; }
     }
     VerticalLayout {
@@ -696,7 +697,7 @@ component NowPlayingW inherits Rectangle {
         animate border-radius { duration: 300ms; easing: ease-out; }
         background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
         if w.has-img: Image { width: 100%; height: 100%; source: w.img; image-fit: cover; }
-        if !w.has-img: Icon { text: "\u{e340}"; font-size: 26px; color: Theme.tertiary; }
+        if !w.has-img: SymIcon { text: "\u{e340}"; font-size: 26px; color: Theme.tertiary; }
     }
     VerticalLayout {
         x: w.size == "s" ? 0 : art + 14px;
@@ -729,7 +730,7 @@ component NowPlayingW inherits Rectangle {
             accessible-role: button;
             accessible-label: b.a == "toggle" ? (w.on ? "Pause" : "Play") : b.a == "next" ? "Next track" : "Previous track";
             accessible-action-default => { root.act("media", b.a); }
-            Icon {
+            SymIcon {
                 text: b.g;
                 fill: true;
                 font-size: 20px;
@@ -817,7 +818,7 @@ component PhotosW inherits Rectangle {
         width: root.width - (shaped ? 56px : 32px);
         alignment: center;
         spacing: 6px;
-        Icon { text: "\u{e2ca}"; font-size: 28px; color: Theme.tertiary; }
+        SymIcon { text: "\u{e2ca}"; font-size: 28px; color: Theme.tertiary; }
         T { text: w.t1; horizontal-alignment: center; wrap: word-wrap; color: Theme.secondary; }
     }
     if w.on: TouchArea {
@@ -837,7 +838,7 @@ component NotesW inherits Rectangle {
         height: 26px;
         border-radius: Theme.material ? 13px : 7px;
         background: Theme.material ? Theme.m3-tertiary : Desk.yellow;
-        Icon { text: "\u{e34c}"; fill: true; font-size: 15px; color: Theme.material ? Desk.m3-on-tertiary : #3A2E00; }
+        SymIcon { text: "\u{e34c}"; fill: true; font-size: 15px; color: Theme.material ? Desk.m3-on-tertiary : #3A2E00; }
     }
     T {
         x: 34px;
@@ -906,7 +907,7 @@ component ShortcutsW inherits Rectangle {
             width: parent.width - 14px;
             alignment: center;
             spacing: 4px;
-            HorizontalLayout { alignment: start; Icon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; } }
+            HorizontalLayout { alignment: start; SymIcon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; } }
             T { text: b.label; wrap: word-wrap; overflow: elide; color: Theme.material ? b.ink : Theme.label; font-size: Theme.caption; font-weight: 500; }
         }
         ta := TouchArea {
