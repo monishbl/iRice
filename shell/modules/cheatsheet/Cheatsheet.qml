@@ -13,6 +13,7 @@ Variants {
         id: slot
         required property var modelData
         panel: "cheatsheet"
+        elsewhere: RustUi.drawing("cheatsheet")
         screen: modelData
 
         Dialog {

@@ -4,6 +4,7 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.common
 import qs.glass
+import qs.services
 
 // On-screen keyboard. Never takes focus; keys go to the focused app via
 // wtype. Modifiers are sticky (tap Shift, then a key). Windows make room.
@@ -55,7 +56,7 @@ Scope {
     }
 
     LazyLoader {
-        active: root.open
+        active: root.open && !RustUi.drawing("osk") // (drawn in Rust: tessera-ui types through the virtual keyboard)
 
         GlassWindow {
             id: win

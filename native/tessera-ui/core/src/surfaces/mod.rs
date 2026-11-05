@@ -12,6 +12,9 @@
 pub mod shapes;
 // (polar outlines that morph, and pictures cut to a shape: the lock, the session menu, polkit)
 pub mod polar;
+pub mod events; // (Hyprland's socket2 lines a part follows itself: tiling, decorations)
+pub mod kit; // (small helpers: overlay, welcome, resources, cheatsheet, osk, hotcorners, tiling, decorations)
+pub mod zones; // (Tiling.qml's layouts: tiling's preview, decorations' tile grid)
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Surfaces {

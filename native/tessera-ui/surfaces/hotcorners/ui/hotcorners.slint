@@ -1,0 +1,19 @@
+// A hot corner (surfaces/hotcorners; compare
+// shell/modules/hotcorners/HotCorners.qml): a 3 px transparent square at a
+// screen's corner that only says when the pointer comes and goes (Rust reads
+// `hovered` after each turn of the loop: a window that never redraws runs no
+// change handlers) and when a button goes down inside it (which cancels the
+// pending action).
+
+export component HotCorner inherits Window {
+    out property <bool> hovered: touch.has-hover;
+    callback press();
+    background: transparent;
+    no-frame: true;
+    title: "Hot corner";
+    touch := TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down { root.press(); }
+        }
+    }
+}

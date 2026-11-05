@@ -23,6 +23,7 @@ pub mod services;
 pub mod settings;
 pub mod shell;
 pub mod stats;
+pub mod sysstat; // (the last minute of CPU, memory, network: desktop, resources, overlay)
 pub mod surfaces;
 pub mod theme;
 pub mod util;

@@ -1,0 +1,32 @@
+// An icon in both looks, for the smaller surfaces (overlay, welcome,
+// resources, cheatsheet, decorations): Phosphor, or in the Material look the
+// matching Material Symbol where the shell has one (Icon.qml). Rust fills
+// a Gl with src/surfaces/kit.rs's gl().
+
+import { Theme } from "theme.slint";
+
+export struct Gl {
+    p: string, // Phosphor's glyph
+    m: string, // the Material Symbol ("" none: Phosphor's stays)
+}
+
+export component GIcon {
+    in property <Gl> g;
+    in property <color> color: Theme.label;
+    in property <length> size: 16px;
+    in property <bool> fill;
+    in property <bool> bold;
+    property <bool> sym: Theme.material && g.m != "";
+    Text {
+        width: 100%;
+        height: 100%;
+        text: sym ? g.m : g.p;
+        color: root.color;
+        // (Material Symbols draw a little larger: their glyphs sit in a padded square)
+        font-size: sym ? Math.round(size * 1.2 / 1px) * 1px : size;
+        font-family: sym ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}

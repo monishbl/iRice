@@ -1,0 +1,98 @@
+// The on-screen keyboard (src/surfaces/osk; compare
+// shell/modules/osk/Keyboard.qml): five rows of keys on a panel at the
+// bottom of the screen. It never takes the keyboard; a click types into the
+// focused window (Rust sends the key). Glass: keys on the plugin's glass,
+// shrinking a little while pressed. Material, as Gboard: letters on the
+// highest container, the other keys tonal, Return in primary container, a
+// latched modifier filled primary; a pressed key rounds into a pill.
+
+import { Theme } from "@tessera/theme.slint";
+
+export struct OskKey {
+    text: string,
+    name: string, // what a screen reader says
+    units: float, // its width in key units
+    modifier: bool, // Shift, Ctrl, Alt, Super, Caps
+    wide: bool, // a modifier or wider than one unit (the tonal keys)
+    action: bool, // Return
+    latched: bool,
+    long: bool, // a word on it ("Tab"): the smaller size
+}
+
+export struct OskRow {
+    keys: [OskKey],
+}
+
+component Cap inherits Rectangle {
+    in property <OskKey> key;
+    in property <length> unit;
+    callback pressed();
+    property <color> m-base: key.latched ? Theme.m3-primary : key.action ? Theme.m3-primary-container : key.wide ? Theme.m3-secondary-container : Theme.m3-surface-container-highest;
+    property <color> m-ink: key.latched ? Theme.m3-on-primary : key.action ? Theme.m3-on-primary-container : key.wide ? Theme.m3-on-secondary-container : Theme.m3-on-surface;
+    width: unit * key.units - 6px;
+    height: unit - 6px;
+    border-radius: Theme.material ? (touch.pressed || key.latched ? self.height / 2 : 12px) : 10px;
+    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    background: Theme.material ? m-base.mix(m-ink, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+        : key.latched ? Theme.accent : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : key.wide ? Theme.toggle-off : Theme.fill;
+    // (Glass shrinks while pressed; Material swells a little, on its spring)
+    transform-scale: touch.pressed ? (Theme.material ? 1.04 : 0.95) : 1;
+    animate transform-scale { duration: Theme.material ? 250ms : 100ms; easing: Theme.material ? spring(0.35) : ease-out; }
+    accessible-role: button;
+    accessible-label: key.name;
+    accessible-checkable: key.modifier;
+    accessible-checked: key.latched;
+    accessible-action-default => { pressed(); }
+    Text {
+        text: key.text;
+        color: Theme.material ? m-ink : key.latched ? Theme.on-accent : Theme.label;
+        font-size: key.long ? (Theme.material ? 14px : Theme.small) : (Theme.material ? 20px : Theme.title);
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        clicked => { root.pressed(); }
+    }
+}
+
+export component Keyboard inherits Window {
+    in property <[OskRow]> rows;
+    in property <length> unit: 58px;
+    in property <bool> on-glass;
+    callback pressed(int, int);
+    property <length> m: 20px;
+
+    background: transparent;
+    no-frame: true;
+    title: "On-screen keyboard";
+    default-font-family: Theme.font;
+
+    Rectangle {
+        x: m;
+        y: m;
+        width: root.width - 2 * m;
+        height: root.height - 2 * m;
+        border-radius: Theme.material ? 28px : 26px;
+        background: on-glass ? transparent : Theme.material ? Theme.panel.with-alpha(Theme.panel-alpha) : Theme.panel;
+        border-width: Theme.material || on-glass ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 20px;
+        drop-shadow-offset-y: 6px;
+        drop-shadow-color: Theme.material ? (Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
+    }
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+        for orow[r] in rows: HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+            for k[c] in orow.keys: Cap {
+                key: k;
+                unit: root.unit;
+                pressed => { root.pressed(r, c); }
+            }
+        }
+    }
+}

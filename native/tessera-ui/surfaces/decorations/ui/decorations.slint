@@ -1,0 +1,273 @@
+// Window controls (src/surfaces/decorations; compare
+// shell/modules/decorations/WindowControls.qml): a pill at the top centre
+// of the focused window. Collapsed it's a grab-handle hint; hovered it opens
+// to close, minimize and zoom (Glass: traffic lights; Material: round icon
+// buttons, minimize, maximize, close); resting on zoom (maximize) for half a
+// second opens the tile grid. Plugin mode: only the grid. The pill grows
+// inside a surface the size of the grid (Rust follows it with the input
+// region and the glass).
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { Gl, GIcon } from "@tessera/small-icons.slint";
+
+export struct TileZone {
+    name: string,
+    fx: float, // [x, y, w, h] as fractions of the screen (Tiling.layouts)
+    fy: float,
+    fw: float,
+    fh: float,
+}
+
+export struct TileRow {
+    zones: [TileZone],
+}
+
+// A tiny screen outline with one region filled (TileGlyph.qml)
+component TileGlyph inherits Rectangle {
+    in property <TileZone> zone;
+    in property <bool> hot;
+    width: 36px;
+    height: 24px;
+    border-radius: 5px;
+    border-width: 1.5px;
+    border-color: hot ? Theme.on-highlight : Theme.secondary;
+    background: transparent;
+    Rectangle {
+        x: 3px + (parent.width - 6px) * zone.fx;
+        y: 3px + (parent.height - 6px) * zone.fy;
+        width: max(2px, (parent.width - 6px) * zone.fw - 1px);
+        height: max(2px, (parent.height - 6px) * zone.fh - 1px);
+        border-radius: 2px;
+        background: hot ? Theme.on-highlight : Theme.label;
+    }
+}
+
+// A traffic light (Glass)
+component Light inherits Rectangle {
+    in property <color> tint;
+    in property <Gl> icon;
+    in property <string> label;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background: tint;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    GIcon {
+        g: icon;
+        bold: true;
+        size: 9px;
+        color: #0000008c;
+    }
+    touch := TouchArea {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Material's icon button (IconButton.qml, 24 px, a state layer)
+component MButton inherits Rectangle {
+    in property <Gl> icon;
+    in property <string> label;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+    width: 24px;
+    height: 24px;
+    border-radius: touch.pressed ? 8px : self.height / 2;
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    background: touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    GIcon {
+        g: icon;
+        size: 16px;
+        color: Theme.m3-on-surface-variant;
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component WindowControls inherits Window {
+    in property <bool> plugin-mode;
+    in property <bool> on-glass; // Glass on the plugin's glass: no colour of its own
+    in-out property <bool> tiling;
+    in property <[TileRow]> tile-rows;
+    in property <string> address;
+    in property <Gl> close-icon;
+    in property <Gl> min-icon;
+    in property <Gl> zoom-icon;
+    in property <Gl> max-icon;
+    // the window's rect inside the surface (the pill and its shadow's room)
+    out property <float> win-x: (root.width - qw) / 1px / 2;
+    out property <float> win-w: qw / 1px;
+    out property <float> win-h: qh / 1px;
+    callback act(string);
+    callback snap(string);
+    callback tiling-off();
+    public function linger() {
+        linger-timer.running = true;
+    }
+
+    property <length> m: 12px;
+    property <bool> hovered: hover.has-hover;
+    property <bool> expanded: hovered || tiling;
+    property <length> head: plugin-mode ? 8px : (Theme.material ? 28px : 24px) + 8px;
+    property <length> qw: (tiling ? 196px : expanded ? (Theme.material ? 84px : 76px) : 44px) + 2 * m;
+    property <length> qh: (tiling ? head + 3 * 32px + 2 * 4px + 8px : expanded ? (Theme.material ? 28px : 24px) : 10px) + 2 * m;
+    animate qw { duration: Theme.hover; }
+    animate qh { duration: Theme.hover; }
+    changed hovered => {
+        if !hovered && tiling {
+            tiling = false;
+            tiling-off();
+        }
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Window controls";
+    default-font-family: Theme.font;
+
+    // Rest on zoom for the grid
+    tile-delay := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            tiling = true;
+        }
+    }
+    // Plugin mode: the grid goes if the pointer never comes over
+    linger-timer := Timer {
+        interval: 1500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if !hovered && tiling {
+                tiling = false;
+                tiling-off();
+            }
+        }
+    }
+
+    hover := TouchArea {
+        x: (root.width - qw) / 2;
+        y: 0;
+        width: qw;
+        height: qh;
+
+        // The pill: the plugin's glass under it (Rust), or the panel colour;
+        // Material: its solid surface
+        Rectangle {
+            x: m;
+            y: m;
+            width: parent.width - 2 * m;
+            height: parent.height - 2 * m;
+            border-radius: tiling ? 18px : self.height / 2;
+            background: Theme.material ? Theme.glass-solid : on-glass ? transparent : Theme.panel;
+            drop-shadow-blur: 10px;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: Theme.dark ? #00000040 : #0000001a;
+        }
+
+        // Collapsed: a grab-handle hint
+        if !expanded && !plugin-mode: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 24px;
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.secondary;
+        }
+
+        // Expanded (Glass): traffic lights
+        if expanded && !plugin-mode && !Theme.material: HorizontalLayout {
+            x: (parent.width - self.preferred-width) / 2;
+            y: m + (24px - 14px) / 2;
+            height: 14px;
+            spacing: 8px;
+            Light {
+                tint: #FF5F57;
+                icon: close-icon;
+                label: "Close";
+                clicked => { act("close"); }
+            }
+            Light {
+                tint: #FEBC2E;
+                icon: min-icon;
+                label: "Minimize";
+                clicked => { act("minimize"); }
+            }
+            zoom := Light {
+                tint: #28C840;
+                icon: zoom-icon;
+                label: "Zoom";
+                clicked => { act("maximize"); }
+                changed hovered => { tile-delay.running = self.hovered; }
+            }
+        }
+
+        // Expanded (Material): minimize, maximize, close
+        if expanded && !plugin-mode && Theme.material: HorizontalLayout {
+            x: (parent.width - self.preferred-width) / 2;
+            y: m + 2px;
+            height: 24px;
+            spacing: 2px;
+            MButton {
+                icon: min-icon;
+                label: "Minimize";
+                clicked => { act("minimize"); }
+            }
+            MButton {
+                icon: max-icon;
+                label: "Maximize";
+                clicked => { act("maximize"); }
+                changed hovered => { tile-delay.running = self.hovered; }
+            }
+            MButton {
+                icon: close-icon;
+                label: "Close";
+                clicked => { act("close"); }
+            }
+        }
+
+        // The tile grid
+        if tiling: VerticalLayout {
+            x: (parent.width - self.preferred-width) / 2;
+            y: m + head;
+            spacing: 4px;
+            for tr in tile-rows: HorizontalLayout {
+                spacing: 4px;
+                for tz in tr.zones: Rectangle {
+                    width: 44px;
+                    height: 32px;
+                    border-radius: Theme.radius-item + 2px;
+                    background: tt.has-hover ? (Theme.material ? Theme.highlight : Theme.accent) : transparent;
+                    accessible-role: button;
+                    accessible-label: tz.name;
+                    accessible-action-default => { tiling = false; snap(tz.name); tiling-off(); }
+                    TileGlyph {
+                        zone: tz;
+                        hot: tt.has-hover;
+                    }
+                    tt := TouchArea {
+                        clicked => {
+                            tiling = false;
+                            snap(tz.name);
+                            tiling-off();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

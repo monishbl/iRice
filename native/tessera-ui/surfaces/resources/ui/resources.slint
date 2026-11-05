@@ -1,0 +1,177 @@
+// The resources popover (src/surfaces/resources; compare
+// shell/modules/resources/ResourcePopover.qml and ResourceRow.qml): rows
+// of stats under a hovered figure, each with an icon badge, its figures and
+// a graph of the last minute; the one pointed at is highlighted. Fades in
+// and drops 6 px. Glass: on the plugin's glass (Rust sends the shape);
+// Material: its solid surface, the graphs and badges in the scheme's roles.
+
+import { Theme } from "@tessera/theme.slint";
+import { Gl, GIcon } from "@tessera/small-icons.slint";
+
+export struct ResRow {
+    title: string,
+    icon: Gl,
+    value: string,
+    value2: string, // the network's upload
+    detail: string,
+    highlighted: bool,
+    network: bool,
+    tone: color, // Glass: the stat's accent
+    tone2: color,
+    role: int, // Material: 0 primary, 1 secondary, 2 tertiary
+    role2: int,
+    area: string, // the graph, SVG commands in a 76 × 26 box
+    line: string,
+    line2: string, // the network's upload line
+}
+
+component Row inherits Rectangle {
+    in property <ResRow> rr;
+    function m-role(r: int) -> color {
+        r == 1 ? Theme.m3-secondary : r == 2 ? Theme.m3-tertiary : Theme.m3-primary
+    }
+    property <color> tone: Theme.material ? m-role(rr.role) : rr.tone;
+    property <color> tone2: Theme.material ? m-role(rr.role2) : rr.tone2;
+    property <color> badge-bg: Theme.material ? (rr.role == 1 ? Theme.m3-secondary-container : rr.role == 2 ? Theme.m3-tertiary-container : Theme.m3-primary-container) : tone.with-alpha(0.18);
+    property <color> badge-fg: Theme.material ? (rr.role == 1 ? Theme.m3-on-secondary-container : rr.role == 2 ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container) : tone;
+    height: 48px;
+    border-radius: Theme.material ? 16px : 10px;
+    background: !rr.highlighted ? transparent : Theme.material ? Theme.m3-surface-container-highest : (Theme.dark ? #ffffff14 : #ffffff59);
+    accessible-role: text;
+    accessible-label: rr.title + " " + rr.value + (rr.value2 != "" ? " " + rr.value2 : "") + (rr.detail != "" ? ", " + rr.detail : "");
+
+    badge := Rectangle {
+        x: 8px;
+        y: (parent.height - self.height) / 2;
+        width: Theme.material ? 32px : 28px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: badge-bg;
+        GIcon {
+            g: rr.icon;
+            fill: true;
+            size: Theme.material ? 16px : 15px;
+            color: badge-fg;
+        }
+    }
+    // The figures on the right, then the graph
+    graph := Rectangle {
+        x: parent.width - 8px - self.width;
+        y: (parent.height - self.height) / 2;
+        width: 76px;
+        height: 26px;
+        if rr.area != "": Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 76;
+            viewbox-height: 26;
+            commands: rr.area;
+            fill: tone.with-alpha(0.18);
+        }
+        if rr.line != "": Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 76;
+            viewbox-height: 26;
+            commands: rr.line;
+            stroke: tone;
+            stroke-width: 1.25px;
+            stroke-line-cap: round;
+        }
+        if rr.line2 != "": Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 76;
+            viewbox-height: 26;
+            commands: rr.line2;
+            stroke: tone2;
+            stroke-width: 1.25px;
+            stroke-line-cap: round;
+        }
+    }
+    figures := VerticalLayout {
+        x: graph.x - 10px - self.width;
+        width: self.preferred-width;
+        y: (parent.height - self.preferred-height) / 2;
+        height: self.preferred-height;
+        spacing: 1px;
+        Text {
+            text: rr.value;
+            horizontal-alignment: right;
+            color: Theme.label;
+            font-size: rr.network ? Theme.caption : Theme.body;
+            font-weight: 500;
+            accessible-role: none;
+        }
+        if rr.value2 != "": Text {
+            text: rr.value2;
+            horizontal-alignment: right;
+            color: Theme.label;
+            font-size: Theme.caption;
+            font-weight: 500;
+            accessible-role: none;
+        }
+    }
+    VerticalLayout {
+        x: badge.x + badge.width + 10px;
+        y: (parent.height - self.preferred-height) / 2;
+        width: figures.x - 8px - self.x;
+        height: self.preferred-height;
+        spacing: 1px;
+        Text {
+            text: rr.title;
+            overflow: elide;
+            color: Theme.label;
+            font-size: Theme.material ? 14px : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            accessible-role: none;
+        }
+        if rr.detail != "": Text {
+            text: rr.detail;
+            overflow: elide;
+            color: Theme.secondary;
+            font-size: Theme.caption;
+            accessible-role: none;
+        }
+    }
+}
+
+export component ResourcePopover inherits Window {
+    in property <[ResRow]> rows;
+    in property <bool> shown;
+    in property <bool> on-glass;
+    out property <float> progress: shown ? 1 : 0;
+    animate progress { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    property <length> m: 24px;
+    property <length> pad: 14px;
+
+    background: transparent;
+    no-frame: true;
+    title: "Resources";
+    default-font-family: Theme.font;
+
+    Rectangle {
+        x: m;
+        y: m + (progress - 1) * 6px;
+        width: root.width - 2 * m;
+        height: root.height - 2 * m;
+        opacity: progress;
+        border-radius: Theme.radius-popover;
+        background: on-glass ? transparent : Theme.material ? Theme.glass-solid : Theme.panel;
+        border-width: Theme.material || on-glass ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 20px;
+        drop-shadow-offset-y: 6px;
+        drop-shadow-color: Theme.dark ? #00000040 : #0000001a;
+        VerticalLayout {
+            x: pad;
+            y: pad;
+            width: parent.width - 2 * pad;
+            height: self.preferred-height;
+            spacing: 2px;
+            for r in rows: Row {
+                rr: r;
+            }
+        }
+    }
+}

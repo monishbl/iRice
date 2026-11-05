@@ -1,0 +1,57 @@
+// The snap preview (src/surfaces/tiling; compare
+// shell/modules/tiling/SnapPreview.qml): where a dragged window will land,
+// gliding between zones (200 ms ease-out), fading and growing in (150 ms)
+// and out (100 ms). Glass: an accent tint and a light rim on the plugin's
+// glass (Rust sends its shape); Material: primary container at half alpha,
+// a 2 px primary outline. Full screen, takes no input.
+
+import { Theme } from "@tessera/theme.slint";
+
+export component SnapPreview inherits Window {
+    in property <bool> active;
+    in property <float> tx;
+    in property <float> ty;
+    in property <float> tw;
+    in property <float> th;
+    in property <float> radius: 20;
+    in property <bool> on-glass;
+    // where it is now (animated), for the glass shape
+    out property <float> ax: px;
+    out property <float> ay: py;
+    out property <float> aw: pw;
+    out property <float> ah: ph;
+    out property <float> shown-opacity: o;
+    out property <float> shown-scale: s;
+    callback faded();
+
+    property <float> px: tx;
+    property <float> py: ty;
+    property <float> pw: tw;
+    property <float> ph: th;
+    property <float> o: active ? 1 : 0;
+    property <float> s: active ? 1 : 0.96;
+    animate px, py, pw, ph { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate o { duration: active ? 150ms : 100ms; }
+    animate s { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    changed o => {
+        if !active && o <= 0.01 { faded(); }
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Snap preview";
+
+    Rectangle {
+        x: px * 1px;
+        y: py * 1px;
+        width: pw * 1px;
+        height: ph * 1px;
+        opacity: o;
+        transform-scale: s;
+        border-radius: radius * 1px;
+        // (without the plugin: the panel colour under the tint)
+        background: Theme.material ? Theme.m3-primary-container.with-alpha(0.5) : on-glass ? Theme.accent.with-alpha(0.12) : Theme.panel.mix(Theme.accent, 0.88);
+        border-width: Theme.material ? 2px : 1px;
+        border-color: Theme.material ? Theme.m3-primary : #ffffff59;
+    }
+}

@@ -4722,6 +4722,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-cheatsheet"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-clipboard"
 version = "0.1.0"
 dependencies = [
@@ -4771,6 +4783,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-decorations"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-desktop"
 version = "0.1.0"
 dependencies = [
@@ -4814,6 +4837,17 @@ dependencies = [
  "calloop 0.14.5",
  "image",
  "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-hotcorners"
+version = "0.1.0"
+dependencies = [
  "serde_json",
  "slint",
  "slint-build",
@@ -4871,6 +4905,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-osk"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+ "wayland-client",
+ "wayland-protocols-misc",
+]
+
+[[package]]
+name = "tessera-overlay"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-polkit"
 version = "0.1.0"
 dependencies = [
@@ -4881,6 +4940,17 @@ dependencies = [
  "smithay-client-toolkit",
  "tessera-core",
  "zbus",
+]
+
+[[package]]
+name = "tessera-resources"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
 ]
 
 [[package]]
@@ -4920,6 +4990,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-tiling"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-today"
 version = "0.1.0"
 dependencies = [
@@ -4942,23 +5025,31 @@ dependencies = [
  "serde_json",
  "slint",
  "smithay-client-toolkit",
+ "tessera-cheatsheet",
  "tessera-clipboard",
  "tessera-controlcenter",
  "tessera-core",
+ "tessera-decorations",
  "tessera-desktop",
  "tessera-dock",
  "tessera-emoji",
  "tessera-greeter",
+ "tessera-hotcorners",
  "tessera-lock",
  "tessera-menubar",
  "tessera-notifications",
  "tessera-osd",
+ "tessera-osk",
+ "tessera-overlay",
  "tessera-polkit",
+ "tessera-resources",
  "tessera-session",
  "tessera-sidebar",
  "tessera-spotlight",
+ "tessera-tiling",
  "tessera-today",
  "tessera-wallpaper",
+ "tessera-welcome",
  "wayland-protocols-misc",
 ]
 
@@ -4966,6 +5057,18 @@ dependencies = [
 name = "tessera-wallpaper"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-welcome"
+version = "0.1.0"
+dependencies = [
+ "image",
  "serde_json",
  "slint",
  "slint-build",

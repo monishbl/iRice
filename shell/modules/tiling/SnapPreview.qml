@@ -10,7 +10,7 @@ import qs.services
 // where it will land (like macOS Sequoia). Takes no input; the drag goes on
 // underneath.
 Variants {
-    model: Quickshell.screens
+    model: RustUi.drawing("tiling") ? [] : Quickshell.screens // (drawn in Rust: tessera-ui follows the plugin's drag lines itself)
 
     GlassWindow {
         id: win

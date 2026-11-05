@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -29,6 +29,14 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "lock" => Some(Box::new(tessera_lock::Lock::default())),
         "session" => Some(Box::new(tessera_session::Session::default())),
         "polkit" => Some(Box::new(tessera_polkit::Polkit::default())),
+        "overlay" => Some(Box::new(tessera_overlay::Overlay::default())),
+        "welcome" => Some(Box::new(tessera_welcome::Welcome::default())),
+        "resources" => Some(Box::new(tessera_resources::Resources::default())),
+        "cheatsheet" => Some(Box::new(tessera_cheatsheet::Cheatsheet::default())),
+        "osk" => Some(Box::new(tessera_osk::Osk::default())),
+        "hotcorners" => Some(Box::new(tessera_hotcorners::HotCorners::default())),
+        "tiling" => Some(Box::new(tessera_tiling::Tiling::default())),
+        "decorations" => Some(Box::new(tessera_decorations::Decorations::default())),
         _ => None,
     }
 }

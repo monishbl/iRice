@@ -38,8 +38,86 @@ Scope {
         value: UiState.widget("resources").open && (root.open || UiState.widget("resources").pinned)
     }
 
+    // ── Drawn in Rust (tessera-ui's overlay) ────────────────────────────
+    // It's told the widgets' state (UiState) and the recorder's; it asks
+    // back for every change (overlay.*), done here as the widgets below do
+    readonly property bool rust: RustUi.drawing("overlay")
+    property int rustStamp: 0 // (a picture pasted again: same file, new pixels)
+    readonly property string rustState: rust ? JSON.stringify({ widgets: UiState.data.overlay, crosshair: UiState.data.crosshair, floatingImage: UiState.data.floatingImage, imageStamp: root.rustStamp, recording: ScreenTools.recording, notes: UiState.dir + "/notes.md" }) : ""
+    onRustStateChanged: if (rustState !== "") RustUi.tell("overlay", { state: JSON.parse(rustState) })
+    Connections {
+        target: RustUi
+        function onSurfaceCall(name, a) {
+            switch (name) {
+            case "overlay.widget": {
+                const id = String(a[0] ?? ""), p = a[1] ?? {};
+                if (!root.meta[id] || typeof p !== "object")
+                    return;
+                const patch = {};
+                for (const k of ["open", "pinned", "clickthrough"])
+                    if (typeof p[k] === "boolean")
+                        patch[k] = p[k];
+                for (const k of ["x", "y", "w", "h"])
+                    if (typeof p[k] === "number" && isFinite(p[k]))
+                        patch[k] = Math.round(p[k]);
+                UiState.setWidget(id, patch);
+                break;
+            }
+            case "overlay.crosshair": {
+                const p = a[0] ?? {}, patch = {};
+                for (const k of ["enabled", "dot"])
+                    if (typeof p[k] === "boolean")
+                        patch[k] = p[k];
+                for (const k of ["size", "thickness", "gap"])
+                    if (typeof p[k] === "number" && isFinite(p[k]))
+                        patch[k] = Math.round(p[k]);
+                if (typeof p.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(p.color))
+                    patch.color = p.color;
+                UiState.data.crosshair = Object.assign({}, UiState.data.crosshair, patch);
+                break;
+            }
+            case "overlay.record":
+                if (a[0] === "stop")
+                    ScreenTools.stopRecording();
+                else if (a[0] === "screen")
+                    ScreenTools.recordScreen();
+                else if (a[0] === "area")
+                    ScreenTools.select("record");
+                break;
+            case "overlay.pasteImage":
+                rustPaste.running = true;
+                break;
+            case "overlay.fps": {
+                const n = Number(a[0]);
+                if ([0, 30, 60, 90, 120].includes(n)) {
+                    rustFps.command = root.fpsCommand(n);
+                    rustFps.running = true;
+                }
+                break;
+            }
+            }
+        }
+    }
+    // MangoHud's fps_limit (the FPS widget's)
+    function fpsCommand(n) {
+        return ["sh", "-c", "for f in \"$HOME/.config/MangoHud/MangoHud.conf\"; do mkdir -p \"$(dirname \"$f\")\"; touch \"$f\"; if grep -q '^fps_limit=' \"$f\"; then sed -i \"s/^fps_limit=.*/fps_limit=$1/\" \"$f\"; else echo \"fps_limit=$1\" >> \"$f\"; fi; done; pkill -SIGUSR2 -x mangohud 2>/dev/null; true", "sh", String(n)];
+    }
+    Process { id: rustFps }
+    Process {
+        id: rustPaste
+        command: ["sh", "-c", "wl-paste --type image/png > \"$1\" && echo ok", "sh", UiState.dir + "/floating.png"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text.trim() === "ok") {
+                    UiState.data.floatingImage = UiState.dir + "/floating.png";
+                    root.rustStamp++;
+                }
+            }
+        }
+    }
+
     LazyLoader {
-        active: root.open || root.anyPinned || root.crosshairOn
+        active: (root.open || root.anyPinned || root.crosshairOn) && !root.rust
 
         GlassWindow {
             id: win

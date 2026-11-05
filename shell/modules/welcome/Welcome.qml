@@ -142,8 +142,58 @@ Scope {
         return !walls.some(w => isWall(w)) && (c.dynamic !== "off" || c.path !== "" || c.live !== "");
     }
 
+    // ── Drawn in Rust (tessera-ui's welcome) ────────────────────────────
+    // It's told when to show and what's offered; it asks back for every
+    // change (welcome.*: these functions, as the card here does them)
+    readonly property bool rust: RustUi.drawing("welcome")
+    function tellRust() {
+        if (shown)
+            RustUi.tell("welcome", { open: true, screen: root.where?.name ?? "", look: root.look, materialAvailable: root.materialAvailable, tahoeDir: root.tahoeDir, materialDir: root.materialDir });
+        else
+            RustUi.tell("welcome", { open: false });
+    }
+    onShownChanged: {
+        if (!rust)
+            return;
+        tellRust();
+        if (!shown)
+            alive = false; // (its window's fade is tessera-ui's)
+    }
+    onRustChanged: if (shown) tellRust()
+    Connections {
+        target: RustUi
+        function onSurfaceCall(name, a) {
+            switch (name) {
+            case "welcome.mode":
+                if (["light", "dark", "auto"].includes(a[0]))
+                    Config.options.appearance.mode = a[0];
+                break;
+            case "welcome.wall": {
+                const w = root.walls.find(x => x.id === a[0]);
+                if (w)
+                    root.useWall(w);
+                break;
+            }
+            case "welcome.pick":
+                FilePicker.pick({ title: "Choose a wallpaper", start: "~/Pictures", filter: "Images|*.jpg *.jpeg *.png *.webp" }, p => Wallpaper.set(p));
+                break;
+            case "welcome.later":
+                if (root.shown)
+                    root.later();
+                break;
+            case "welcome.finish":
+                if (root.shown) {
+                    if (a[0] === "glass" || (a[0] === "material" && root.materialAvailable))
+                        root.look = a[0];
+                    root.finish();
+                }
+                break;
+            }
+        }
+    }
+
     LazyLoader {
-        active: root.alive
+        active: root.alive && !root.rust
 
         PanelWindow {
             id: win

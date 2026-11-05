@@ -364,6 +364,50 @@ class Binary(unittest.TestCase):
         self.assertEqual(r.stdout.strip(), want)
 
 
+class SmallerSurfaces(unittest.TestCase):
+    """overlay, welcome, resources, cheatsheet, osk, hotcorners, tiling,
+    decorations: their twins step aside and every call is answered by the
+    QML that owned the behaviour"""
+
+    def test_twins_and_their_answers(self):
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn('osk: "keyboard"', rust_ui)
+        self.assertIn("signal surfaceCall(string name, var args)", rust_ui)
+        mods = ROOT / "shell/modules"
+        self.assertIn('elsewhere: RustUi.drawing("cheatsheet")', (mods / "cheatsheet/Cheatsheet.qml").read_text())
+        self.assertIn('!RustUi.drawing("osk")', (mods / "osk/Keyboard.qml").read_text())
+        self.assertIn('RustUi.tell("resources"', (mods / "resources/ResourceHover.qml").read_text())
+        # each surface's own calls are handled by its own QML twin
+        for name, qml in (("overlay", "overlay/Overlay.qml"), ("welcome", "welcome/Welcome.qml"), ("hotcorners", "hotcorners/HotCorners.qml")):
+            asked = set()
+            for p in (CRATE / "surfaces" / name / "src").rglob("*.rs"):
+                asked |= set(re.findall(r'shell::ask\("(%s\.[a-zA-Z]+)"' % name, p.read_text()))
+            self.assertTrue(asked, name)
+            twin = (mods / qml).read_text()
+            self.assertIn("function onSurfaceCall(name, a)", twin)
+            for call in asked:
+                self.assertIn(f'case "{call}":', rust_ui)
+                self.assertTrue(f'"{call}"' in twin, f"{qml} doesn't answer {call}")
+        self.assertIn('case "tiling.snap":', rust_ui)
+        self.assertIn('RustUi.tell("overlay", { state:', (mods / "overlay/Overlay.qml").read_text())
+        self.assertIn('RustUi.tell("welcome", { open: true', (mods / "welcome/Welcome.qml").read_text())
+
+    def test_welcome_and_the_keyboard_stay_in_their_lane(self):
+        # the welcome screen changes nothing itself: no processes, no files,
+        # every change a call to the shell (flow.rs's tests use a recorder)
+        for p in (CRATE / "surfaces/welcome/src").rglob("*.rs"):
+            src = p.read_text()
+            for word in ("std::process", "Command::new", "write_atomic", "fs::write"):
+                self.assertNotIn(word, src, p.name)
+        self.assertIn("trait Ask", (CRATE / "surfaces/welcome/src/flow.rs").read_text())
+        # the on-screen keyboard types through the virtual-keyboard protocol
+        # on its own display (the arena's in the sandbox), never wtype
+        osk = "".join(p.read_text() for p in (CRATE / "surfaces/osk/src").rglob("*.rs"))
+        self.assertIn("ZwpVirtualKeyboardManagerV1", osk)
+        self.assertIn("Connection::connect_to_env", osk)
+        self.assertNotIn('"wtype"', osk)
+
+
 @unittest.skipUnless(shutil.which("cargo"), "needs cargo")
 class CrateTests(unittest.TestCase):
     def test_cargo_test(self):

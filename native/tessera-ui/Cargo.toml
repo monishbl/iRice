@@ -76,6 +76,14 @@ tessera-notifications = { path = "surfaces/notifications" }
 tessera-spotlight = { path = "surfaces/spotlight" }
 tessera-controlcenter = { path = "surfaces/controlcenter" }
 tessera-sidebar = { path = "surfaces/sidebar" }
+tessera-overlay = { path = "surfaces/overlay" }
+tessera-welcome = { path = "surfaces/welcome" }
+tessera-resources = { path = "surfaces/resources" }
+tessera-cheatsheet = { path = "surfaces/cheatsheet" }
+tessera-osk = { path = "surfaces/osk" }
+tessera-hotcorners = { path = "surfaces/hotcorners" }
+tessera-tiling = { path = "surfaces/tiling" }
+tessera-decorations = { path = "surfaces/decorations" }
 # (not a shell surface: main.rs hands --greeter to it; it isn't in KNOWN)
 tessera-greeter = { path = "surfaces/greeter" }
 tessera-lock = { path = "surfaces/lock" }

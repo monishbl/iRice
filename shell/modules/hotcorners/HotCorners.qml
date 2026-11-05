@@ -58,8 +58,21 @@ Scope {
         }
     }
 
+    // Drawn in Rust (tessera-ui's hot corners): it says when a corner's
+    // dwell ran out; the action and the lock check stay here
+    Connections {
+        target: RustUi
+        function onSurfaceCall(name, a) {
+            if (name !== "hotcorners.run" || System.locked)
+                return;
+            const action = String(a[0] ?? "");
+            if (["overview", "missionControl", "desktop", "notificationCenter", "launchpad", "lock", "standby", "quickNote"].includes(action))
+                root.run(action, Quickshell.screens.find(s => s.name === a[1]) ?? undefined);
+        }
+    }
+
     Variants {
-        model: Quickshell.screens
+        model: RustUi.drawing("hotcorners") ? [] : Quickshell.screens
 
         Scope {
             id: perScreen

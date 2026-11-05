@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.common
 
 // tessera-ui (native/tessera-ui, built by tools/build-native.sh --ui): Tessera's
@@ -34,7 +35,10 @@ Singleton {
     // It has (re)started: whoever feeds it says everything again
     signal started
     // Panels whose name isn't the surface's (surface names are lowercase)
-    readonly property var panelNames: ({ controlcenter: "controlCenter" })
+    readonly property var panelNames: ({
+            controlcenter: "controlCenter",
+            osk: "keyboard"
+        })
     function panelOf(surface) {
         return panelNames[surface] ?? surface;
     }
@@ -49,6 +53,10 @@ Singleton {
     // What the desktop drawn in Rust asks of this shell (its "desktop"
     // call): done by modules/desktop/DesktopFeed.qml
     signal desktopCall(string what, var args)
+    // What the smaller surfaces drawn in Rust ask of their QML twins (the
+    // overlay's widgets, the welcome screen's choices, a hot corner's
+    // action): answered by Overlay.qml, Welcome.qml and HotCorners.qml
+    signal surfaceCall(string name, var args)
     // Its surfaces' other lines ({"src":"ui","kind":"notifications",…}: the
     // notification list, services/Notifications.qml) and whether it runs
     signal message(var e)
@@ -281,6 +289,25 @@ Singleton {
         case "search.command":
             Search.rustCommand(String(a[0] ?? ""));
             break;
+        case "overlay.widget": // (overlay: Overlay.qml)
+        case "overlay.crosshair":
+        case "overlay.record":
+        case "overlay.pasteImage":
+        case "overlay.fps":
+        case "welcome.mode": // (welcome: Welcome.qml)
+        case "welcome.wall":
+        case "welcome.pick":
+        case "welcome.later":
+        case "welcome.finish":
+        case "hotcorners.run": // (hotcorners: HotCorners.qml)
+            root.surfaceCall(name, a);
+            break;
+        case "tiling.snap": { // (decorations' tile grid: Tiling keeps the size for Restore)
+            const t = Hyprland.toplevels.values.find(w => "0x" + String(w.address).replace(/^0x/, "") === String(a[1] ?? ""));
+            if (t && Tiling.layouts[a[0]])
+                Tiling.snap(String(a[0]), t);
+            break;
+        }
         default:
             console.warn("tessera-ui: no call " + name);
         }

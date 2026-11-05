@@ -1,0 +1,887 @@
+// The welcome screen (src/surfaces/welcome; compare
+// shell/modules/welcome/Welcome.qml and common/LookPreview.qml): over the
+// wallpaper, blurred and dimmed, a card with four steps (the look, light or
+// dark, a wallpaper, done), sliding in from the side they come from. Enter
+// continues, Esc goes back, Tab moves between the choices (Space or Enter
+// picks one). The card fades and rises in (300 ms, ease-out) and leaves a
+// third faster; Reduce motion: no travel or fades.
+
+import { Theme } from "@tessera/theme.slint";
+import { Gl, GIcon } from "@tessera/small-icons.slint";
+
+export struct WWall {
+    name: string,
+    image: image,
+    selected: bool,
+}
+
+// The Material preview's colours (the look's own, else from your seed)
+export struct MiniColors {
+    primary: color,
+    primary-container: color,
+    on-primary-container: color,
+    secondary-container: color,
+    tertiary: color,
+    tertiary-container: color,
+    surface-container: color,
+    surface-container-high: color,
+    surface-container-highest: color,
+    on-surface: color,
+    on-surface-variant: color,
+}
+
+global WTone {
+    out property <color> accent: Theme.material ? Theme.m3-primary : Theme.accent;
+    out property <color> on-accent: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+}
+
+// The keyboard focus ring (FocusRing.qml): Glass 2 px in the accent, 2 px
+// out; Material 3 px in the secondary colour
+component Ring inherits Rectangle {
+    in property <length> r;
+    out property <length> o: Theme.material ? 5px : 4px;
+    border-radius: r;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    background: transparent;
+}
+
+// 44 px buttons: primary (the accent), secondary (a fill), text
+component WButton inherits Rectangle {
+    in property <string> text;
+    in property <int> kind; // 0 primary, 1 secondary, 2 text
+    callback clicked();
+    width: max(88px, label.preferred-width + (kind == 2 ? 24px : 40px));
+    height: 44px;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control + 2px;
+    background: kind == 0 ? (t.pressed ? WTone.accent.darker(0.15) : t.has-hover ? WTone.accent.darker(0.07) : WTone.accent)
+        : kind == 1 ? (t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill)
+        : (t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill : transparent);
+    animate background { duration: Theme.hover; }
+    transform-scale: t.pressed ? 0.97 : 1;
+    animate transform-scale { duration: 100ms; }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) && !e.repeat { root.clicked(); return accept; }
+            reject
+        }
+    }
+    label := Text {
+        text: root.text;
+        color: kind == 0 ? WTone.on-accent : kind == 2 ? (Theme.material ? Theme.m3-primary : Theme.accent-ink) : Theme.label;
+        font-size: 14px;
+        font-weight: 600;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if fs.has-focus: Ring { x: -self.o; y: -self.o; width: parent.width + 2 * self.o; height: parent.height + 2 * self.o; r: root.border-radius + 4px; }
+}
+
+// A picture to choose (a mode, a wallpaper): its frame, the ring when it's
+// chosen, its name under it
+component Choice inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <length> frame-h: 112px;
+    callback chosen();
+    height: frame-h + 8px + 24px;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-checkable: true;
+    accessible-checked: selected;
+    accessible-action-default => { chosen(); }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) && !e.repeat { root.chosen(); return accept; }
+            reject
+        }
+    }
+    frame := Rectangle {
+        y: 0;
+        height: frame-h;
+        border-radius: Theme.material ? 16px : 12px;
+        background: Theme.fill;
+        clip: true;
+        @children
+        Rectangle {
+            border-radius: parent.border-radius;
+            border-width: 1px;
+            border-color: Theme.separator;
+            background: transparent;
+        }
+    }
+    Rectangle {
+        x: -5px;
+        y: -5px;
+        width: frame.width + 10px;
+        height: frame.height + 10px;
+        border-radius: frame.border-radius + 5px;
+        border-width: 3px;
+        border-color: WTone.accent;
+        background: transparent;
+        opacity: selected ? 1 : t.has-hover ? 0.35 : 0;
+        animate opacity { duration: Theme.hover; }
+    }
+    Text {
+        y: frame-h + 8px;
+        x: (parent.width - self.width) / 2;
+        width: min(self.preferred-width, parent.width);
+        overflow: elide;
+        text: label;
+        color: Theme.label;
+        font-size: 14px;
+        font-weight: selected ? 600 : 400;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.chosen(); }
+    }
+    if fs.has-focus: Rectangle {
+        y: 0;
+        height: frame-h;
+        Ring { x: -self.o; y: -self.o; width: parent.width + 2 * self.o; height: parent.height + 2 * self.o; r: frame.border-radius + 4px; }
+    }
+}
+
+// A miniature desktop in one of the looks on your wallpaper (LookPreview.qml):
+// Glass the menu bar, a widget, Control Center and the dock; Material the
+// top bar, a cookie clock, Quick Settings and the taskbar pill
+component LookMini inherits Rectangle {
+    in property <string> look;
+    in property <bool> selected;
+    in property <bool> focusable: true;
+    in property <image> wallpaper;
+    in property <MiniColors> m;
+    in property <string> clock;
+    in property <string> cookie;
+    in property <string> sunny;
+    callback chosen();
+    property <bool> mat: look == "material";
+    property <length> u: self.width / 100;
+    property <color> glass-fill: Theme.dark ? #1f1f2499 : #ffffff6b;
+    property <color> rim: Theme.dark ? #ffffff47 : #ffffff99;
+    property <color> ink: Theme.dark ? #ffffff : #1C1C1E;
+    property <color> soft: Theme.dark ? #ffffff1f : #ffffff80;
+    property <color> softer: Theme.dark ? #ffffff24 : #ffffff73;
+    accessible-role: button;
+    accessible-label: mat ? "Material" : "Glass";
+    accessible-checkable: true;
+    accessible-checked: selected;
+    accessible-action-default => { chosen(); }
+    fs := FocusScope {
+        enabled: focusable;
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) && !e.repeat { root.chosen(); return accept; }
+            reject
+        }
+    }
+    // The chosen one: a ring in the accent, outside the picture
+    Rectangle {
+        x: -5px;
+        y: -5px;
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        border-radius: (mat ? 16px : 12px) + 5px;
+        border-width: 3px;
+        border-color: WTone.accent;
+        background: transparent;
+        opacity: selected ? 1 : t.has-hover && focusable ? 0.35 : 0;
+        animate opacity { duration: Theme.hover; }
+    }
+    Rectangle {
+        border-radius: mat ? 16px : 12px;
+        background: #000000;
+        clip: true;
+        transform-scale: t.pressed && focusable ? 0.98 : 1;
+        animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        Image {
+            width: 100%;
+            height: 100%;
+            source: wallpaper;
+            image-fit: cover;
+            accessible-role: none;
+        }
+
+        // ── Glass ──
+        if !mat: Rectangle {
+            // the menu bar: the logo, the app's name and menus, the status icons and clock
+            Rectangle {
+                y: 0;
+                height: 4.4 * u;
+                background: Theme.dark ? #0000002e : #0000000d;
+                HorizontalLayout {
+                    x: 2 * u;
+                    y: (parent.height - self.preferred-height) / 2;
+                    height: self.preferred-height;
+                    spacing: 1.6 * u;
+                    alignment: start;
+                    for w[i] in [1.6, 5, 3.4, 3.4, 3]: Rectangle {
+                        width: w * u;
+                        height: i == 0 ? 1.6 * u : 1.1 * u;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: self.height / 2;
+                        background: ink;
+                        opacity: i == 1 ? 0.9 : 0.7;
+                    }
+                }
+                HorizontalLayout {
+                    x: parent.width - 2 * u - self.preferred-width;
+                    y: (parent.height - self.preferred-height) / 2;
+                    height: self.preferred-height;
+                    spacing: 1.4 * u;
+                    for w in [1.4, 1.4, 1.4, 7]: Rectangle {
+                        width: w * u;
+                        height: 1.2 * u;
+                        border-radius: self.height / 2;
+                        background: ink;
+                        opacity: 0.8;
+                    }
+                }
+            }
+            // a desktop widget with the time
+            Rectangle {
+                x: 4 * u;
+                y: 9 * u;
+                width: 22 * u;
+                height: 22 * u;
+                border-radius: 5 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                Text {
+                    text: clock;
+                    color: ink;
+                    font-family: "Inter";
+                    font-size: max(8px, 6.4 * u);
+                    font-weight: 600;
+                }
+            }
+            // Control Center, top right
+            Rectangle {
+                x: 63 * u;
+                y: 6.5 * u;
+                width: 33 * u;
+                height: 31 * u;
+                border-radius: 4.5 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                VerticalLayout {
+                    x: 2 * u;
+                    y: 2 * u;
+                    width: self.preferred-width;
+                    height: self.preferred-height;
+                    spacing: 1.6 * u;
+                    alignment: start;
+                    for i in 2: Rectangle {
+                        width: 14 * u;
+                        height: 6.4 * u;
+                        border-radius: 3.2 * u;
+                        background: soft;
+                        Rectangle {
+                            x: 1.2 * u;
+                            width: 4.2 * u;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: #ffffff;
+                            Rectangle {
+                                width: parent.width * 0.42;
+                                height: self.width;
+                                border-radius: self.width / 2;
+                                background: Theme.accent;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 1.6 * u;
+                        alignment: start;
+                        for i in 4: Rectangle {
+                            width: 6.2 * u;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: i == 1 ? #ffffff : softer;
+                        }
+                    }
+                    Rectangle {
+                        width: 29 * u;
+                        height: 5 * u;
+                        border-radius: self.height / 2;
+                        background: softer;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * 0.6;
+                            border-radius: self.height / 2;
+                            background: #ffffff;
+                        }
+                    }
+                }
+                // the media tile, right
+                Rectangle {
+                    x: 17.4 * u;
+                    y: 2 * u;
+                    width: 13.6 * u;
+                    height: 14.4 * u;
+                    border-radius: 3.2 * u;
+                    background: soft;
+                }
+            }
+            // the dock
+            Rectangle {
+                width: 6 * 7 * u + 5 * 1.2 * u + 3 * u;
+                height: 9.6 * u;
+                x: (parent.width - self.width) / 2;
+                y: parent.height - 2.4 * u - self.height;
+                border-radius: 3.2 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                HorizontalLayout {
+                    x: 1.5 * u;
+                    y: (parent.height - 7 * u) / 2;
+                    height: 7 * u;
+                    spacing: 1.2 * u;
+                    for c in [#0A84FF, #30D158, #FF9F0A, #FF375F, #BF5AF2, #8E8E93]: Rectangle {
+                        width: 7 * u;
+                        height: 7 * u;
+                        border-radius: self.width * 0.23;
+                        background: c;
+                    }
+                }
+            }
+        }
+
+        // ── Material ──
+        if mat: Rectangle {
+            property <color> top-ink: Theme.dark ? #ffffff : m.on-surface;
+            // top bar: the clock left, status icons right
+            Rectangle {
+                y: 0;
+                height: 4.4 * u;
+                Text {
+                    x: 2.4 * u;
+                    text: clock;
+                    color: top-ink;
+                    font-family: "Tessera Sans Flex";
+                    font-size: max(6px, 2.6 * u);
+                    font-weight: 500;
+                }
+                HorizontalLayout {
+                    x: parent.width - 2.4 * u - self.preferred-width;
+                    y: (parent.height - 1.6 * u) / 2;
+                    height: 1.6 * u;
+                    spacing: 1.2 * u;
+                    for w in [1.6, 1.6, 2.8]: Rectangle {
+                        width: w * u;
+                        border-radius: 0.5 * u;
+                        background: top-ink;
+                        opacity: 0.85;
+                    }
+                }
+            }
+            // a clock widget in a cookie
+            Rectangle {
+                x: 4 * u;
+                y: 8 * u;
+                width: 24 * u;
+                height: self.width;
+                Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: cookie;
+                    fill: m.primary-container;
+                }
+                Text {
+                    text: clock;
+                    color: m.on-primary-container;
+                    font-family: "Tessera Sans Flex";
+                    font-size: max(8px, 6 * u);
+                    font-weight: 600;
+                }
+            }
+            // Quick Settings, top right
+            Rectangle {
+                x: 63 * u;
+                y: 6.5 * u;
+                width: 33 * u;
+                height: 33 * u;
+                border-radius: 4.8 * u;
+                background: m.surface-container;
+                VerticalLayout {
+                    x: 2 * u;
+                    y: 2 * u;
+                    width: 29 * u;
+                    height: self.preferred-height;
+                    spacing: 1.4 * u;
+                    alignment: start;
+                    // the tall brightness slider: icon in the track, a thin handle
+                    Rectangle {
+                        height: 5.6 * u;
+                        Rectangle {
+                            x: 0;
+                            width: 17 * u;
+                            border-top-left-radius: 2.8 * u;
+                            border-bottom-left-radius: 2.8 * u;
+                            border-top-right-radius: 0.6 * u;
+                            border-bottom-right-radius: 0.6 * u;
+                            background: m.primary;
+                        }
+                        Rectangle {
+                            x: 17.9 * u;
+                            width: 0.8 * u;
+                            border-radius: self.width / 2;
+                            background: m.primary;
+                        }
+                        Rectangle {
+                            x: 19.6 * u;
+                            width: parent.width - self.x;
+                            border-top-right-radius: 2.8 * u;
+                            border-bottom-right-radius: 2.8 * u;
+                            border-top-left-radius: 0.6 * u;
+                            border-bottom-left-radius: 0.6 * u;
+                            background: m.secondary-container;
+                        }
+                    }
+                    // big tiles: one on, one off
+                    HorizontalLayout {
+                        spacing: 1.2 * u;
+                        alignment: start;
+                        for i in 2: Rectangle {
+                            width: 13.9 * u;
+                            height: 6.6 * u;
+                            border-radius: self.height / 2;
+                            background: i == 0 ? m.primary-container : m.surface-container-highest;
+                            Rectangle {
+                                x: 1.2 * u;
+                                width: 4.2 * u;
+                                height: self.width;
+                                border-radius: self.width / 2;
+                                background: i == 0 ? m.primary : m.surface-container-high;
+                            }
+                        }
+                    }
+                    // small tiles: rounded squares, one on
+                    HorizontalLayout {
+                        spacing: 1.2 * u;
+                        alignment: start;
+                        for i in 4: Rectangle {
+                            width: 6.35 * u;
+                            height: self.width;
+                            border-radius: i == 2 ? self.width / 2 : 1.8 * u;
+                            background: i == 2 ? m.tertiary-container : m.surface-container-highest;
+                        }
+                    }
+                    // media: art in a shape, a line
+                    Rectangle {
+                        height: 7.4 * u;
+                        border-radius: 2.4 * u;
+                        background: m.surface-container-high;
+                        Path {
+                            x: 1.2 * u;
+                            width: 5.4 * u;
+                            height: 5.4 * u;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: sunny;
+                            fill: m.tertiary;
+                        }
+                        Rectangle {
+                            x: 8 * u;
+                            width: 18 * u;
+                            height: 0.8 * u;
+                            border-radius: self.height / 2;
+                            background: m.primary;
+                        }
+                    }
+                }
+            }
+            // the taskbar pill
+            Rectangle {
+                width: 5 * 6 * u + 4 * 1.4 * u + 4 * u;
+                height: 9 * u;
+                x: (parent.width - self.width) / 2;
+                y: parent.height - 2.4 * u - self.height;
+                border-radius: self.height / 2;
+                background: m.surface-container;
+                HorizontalLayout {
+                    x: 2 * u;
+                    height: 9 * u;
+                    spacing: 1.4 * u;
+                    for c[i] in [m.primary-container, m.tertiary-container, m.secondary-container, m.primary, m.tertiary]: Rectangle {
+                        width: 6 * u;
+                        Rectangle {
+                            width: parent.width;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: c;
+                        }
+                        if i < 2: Rectangle {
+                            x: (parent.width - self.width) / 2;
+                            y: parent.height - 0.4 * u - self.height;
+                            width: 2 * u;
+                            height: 0.5 * u;
+                            border-radius: self.height / 2;
+                            background: i == 0 ? m.primary : m.on-surface-variant;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    t := TouchArea {
+        enabled: focusable;
+        mouse-cursor: pointer;
+        clicked => { root.chosen(); }
+    }
+    if fs.has-focus: Ring { x: -self.o; y: -self.o; width: parent.width + 2 * self.o; height: parent.height + 2 * self.o; r: (mat ? 16px : 12px) + 4px; }
+}
+
+export component Welcome inherits Window {
+    in property <bool> shown;
+    in property <bool> still;
+    in property <int> step;
+    in property <string> title-text;
+    in property <string> help;
+    in property <string> look;
+    in property <bool> material-available;
+    in property <string> mode;
+    in property <[WWall]> walls;
+    in property <bool> own-selected;
+    in property <image> own-image;
+    in property <image> backdrop;
+    in property <image> wallpaper;
+    in property <MiniColors> mini;
+    in property <string> clock;
+    in property <string> cookie;
+    in property <string> sunny;
+    in property <Gl> image-icon;
+    out property <float> screen-w: root.width / 1px;
+    out property <float> screen-h: root.height / 1px;
+    callback next();
+    callback back();
+    callback later();
+    callback pick-look(string);
+    callback pick-mode(string);
+    callback pick-wall(int);
+    callback pick-own();
+    callback closed();
+    public function focus-card() {
+        keys.focus();
+    }
+
+    property <float> t: shown ? 1 : 0;
+    animate t {
+        duration: still ? 0ms : shown ? 300ms : 200ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed t => {
+        if !shown && t <= 0.001 { closed(); }
+    }
+    // The step's choices slide in from the side they come from
+    property <int> shown-step: 0;
+    property <length> slide: 0;
+    property <float> fade: 1;
+    property <duration> slide-d: 250ms;
+    property <duration> fade-d: 200ms;
+    animate slide { duration: slide-d; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate fade { duration: fade-d; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    changed step => {
+        let dir = step > shown-step ? 1 : -1;
+        shown-step = step;
+        if still { return; }
+        slide-d = 0ms;
+        fade-d = 0ms;
+        slide = 24px * dir;
+        fade = 0;
+        slide-d = 250ms;
+        fade-d = 200ms;
+        slide = 0;
+        fade = 1;
+    }
+
+
+    background: transparent;
+    no-frame: true;
+    title: "Welcome";
+    default-font-family: Theme.font;
+
+    // ── The wallpaper, blurred and dimmed ──
+    Rectangle {
+        opacity: t;
+        background: #000000;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: backdrop;
+            image-fit: cover;
+            image-rendering: smooth;
+            accessible-role: none;
+        }
+        Rectangle {
+            background: Theme.dark ? #00000073 : #ffffff4d;
+        }
+        // Clicks and scrolls around the card do nothing
+        TouchArea {
+            scroll-event(e) => { accept }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Return { root.next(); return accept; }
+            if e.text == Key.Escape { root.back(); return accept; }
+            reject
+        }
+
+        card := Rectangle {
+            width: min(760px, root.width - 64px);
+            height: cardcol.preferred-height + 64px;
+            x: round((root.width - self.width) / 2 / 1px) * 1px;
+            y: round((root.height - self.height) / 2 / 1px) * 1px + (1 - t) * 12px;
+            opacity: t;
+            border-radius: Theme.material ? 28px : Theme.radius-panel;
+            background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1E1E21 : #F5F5F7;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 32px;
+            drop-shadow-offset-y: 8px;
+            drop-shadow-color: Theme.dark ? #00000066 : #00000026;
+            TouchArea { }
+
+            cardcol := VerticalLayout {
+                x: 32px;
+                y: 32px;
+                width: parent.width - 64px;
+                height: self.preferred-height;
+                spacing: 32px;
+
+                // Where you are, the title and one line of help
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: "Step " + (step + 1) + " of 4";
+                        color: Theme.secondary;
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+                    Text {
+                        text: title-text;
+                        wrap: word-wrap;
+                        color: Theme.label;
+                        font-size: 24px;
+                        font-weight: 600;
+                        letter-spacing: -0.2px;
+                        accessible-role: text;
+                    }
+                    Text {
+                        text: help;
+                        wrap: word-wrap;
+                        color: Theme.secondary;
+                        font-size: 14px;
+                    }
+                }
+
+                // The step's choices
+                stage := Rectangle {
+                    property <length> pw: self.width;
+                    height: max(1px, pages.preferred-height);
+                    Rectangle {
+                        x: slide;
+                        width: parent.width;
+                        height: parent.height;
+                        opacity: fade;
+                        pages := VerticalLayout {
+                            alignment: start;
+                            // 1 · the look
+                            if step == 0: HorizontalLayout {
+                                alignment: center;
+                                spacing: 24px;
+                                for l in (material-available ? ["glass", "material"] : ["glass"]): VerticalLayout {
+                                    property <length> mw: min(320px, (stage.pw - 24px) / 2);
+                                    spacing: 8px;
+                                    padding-top: 8px;
+                                    LookMini {
+                                        width: mw;
+                                        height: round(mw * 0.625 / 1px) * 1px;
+                                        look: l;
+                                        selected: root.look == l;
+                                        wallpaper: root.wallpaper;
+                                        m: root.mini;
+                                        clock: root.clock;
+                                        cookie: root.cookie;
+                                        sunny: root.sunny;
+                                        chosen => { root.pick-look(l); }
+                                    }
+                                    Text {
+                                        horizontal-alignment: center;
+                                        text: l == "material" ? "Material" : "Glass";
+                                        color: Theme.label;
+                                        font-size: 16px;
+                                        font-weight: root.look == l ? 600 : 500;
+                                        accessible-role: none;
+                                    }
+                                    Text {
+                                        horizontal-alignment: center;
+                                        text: l == "material" ? "Material · experimental" : "Translucent glass";
+                                        color: Theme.secondary;
+                                        font-size: 13px;
+                                    }
+                                }
+                            }
+
+                            // 2 · light, dark or auto
+                            if step == 1: HorizontalLayout {
+                                alignment: center;
+                                spacing: 16px;
+                                for md in [{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }, { id: "auto", name: "Auto" }]: Choice {
+                                    property <length> tw: min(200px, (stage.pw - 32px) / 3);
+                                    property <bool> is-dark: md.id == "dark";
+                                    width: tw;
+                                    frame-h: round(tw * 0.6 / 1px) * 1px;
+                                    label: md.name;
+                                    selected: root.mode == md.id;
+                                    chosen => { root.pick-mode(md.id); }
+                                    // A window in that mode: light, dark, or one of each
+                                    Rectangle {
+                                        x: 0;
+                                        width: parent.width * (md.id == "auto" ? 0.5 : 1);
+                                        background: is-dark ? #1C1C1E : #F2F2F5;
+                                    }
+                                    if md.id == "auto": Rectangle {
+                                        x: parent.width * 0.5;
+                                        width: parent.width * 0.5;
+                                        background: #1C1C1E;
+                                    }
+                                    Rectangle {
+                                        width: parent.width * 0.56;
+                                        height: parent.height * 0.5;
+                                        border-radius: 8px;
+                                        background: is-dark ? #2C2C30 : #ffffff;
+                                        border-width: 1px;
+                                        border-color: #0000001f;
+                                        Rectangle {
+                                            x: 8px;
+                                            y: 8px;
+                                            width: parent.width * 0.5;
+                                            height: 6px;
+                                            border-radius: 3px;
+                                            background: WTone.accent;
+                                        }
+                                        Rectangle {
+                                            x: 8px;
+                                            y: 20px;
+                                            width: parent.width * 0.7;
+                                            height: 4px;
+                                            border-radius: 2px;
+                                            background: is-dark ? #ffffff4d : #00000033;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3 · a wallpaper
+                            if step == 2: Rectangle {
+                                property <length> tw: floor((stage.pw - 32px) / 3 / 1px) * 1px;
+                                property <length> th: round(tw * 0.56 / 1px) * 1px + 8px + 24px;
+                                property <int> count: walls.length + 1;
+                                height: ceil(count / 3) * th + (ceil(count / 3) - 1) * 16px;
+                                for w[i] in walls: Choice {
+                                    x: (parent.width - 3 * tw - 32px) / 2 + mod(i, 3) * (tw + 16px);
+                                    y: floor(i / 3) * (th + 16px);
+                                    width: tw;
+                                    frame-h: round(tw * 0.56 / 1px) * 1px;
+                                    label: w.name;
+                                    selected: w.selected;
+                                    chosen => { root.pick-wall(i); }
+                                    Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: w.image;
+                                        image-fit: cover;
+                                        accessible-role: none;
+                                    }
+                                }
+                                // A picture of your own
+                                Choice {
+                                    x: (parent.width - 3 * tw - 32px) / 2 + mod(walls.length, 3) * (tw + 16px);
+                                    y: floor(walls.length / 3) * (th + 16px);
+                                    width: tw;
+                                    frame-h: round(tw * 0.56 / 1px) * 1px;
+                                    label: own-selected ? "Your picture" : "Choose a picture…";
+                                    selected: own-selected;
+                                    chosen => { root.pick-own(); }
+                                    if own-selected: Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: own-image;
+                                        image-fit: cover;
+                                        accessible-role: none;
+                                    }
+                                    if !own-selected: GIcon {
+                                        g: image-icon;
+                                        size: 24px;
+                                        color: Theme.secondary;
+                                    }
+                                }
+                            }
+
+                            // 4 · done: the look you picked, on your wallpaper
+                            if step == 3: Rectangle {
+                                property <length> mw: min(360px, stage.pw);
+                                height: round(mw * 0.625 / 1px) * 1px + 8px;
+                                LookMini {
+                                    x: (parent.width - self.width) / 2;
+                                    y: 4px;
+                                    width: mw;
+                                    height: round(mw * 0.625 / 1px) * 1px;
+                                    look: root.look;
+                                    selected: false;
+                                    focusable: false;
+                                    wallpaper: root.wallpaper;
+                                    m: root.mini;
+                                    clock: root.clock;
+                                    cookie: root.cookie;
+                                    sunny: root.sunny;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Set up later · Back · Continue
+                Rectangle {
+                    height: 44px;
+                    if step < 3: WButton {
+                        x: 0;
+                        kind: 2;
+                        text: "Set up later";
+                        clicked => { root.later(); }
+                    }
+                    HorizontalLayout {
+                        x: parent.width - self.preferred-width;
+                        height: 44px;
+                        spacing: 12px;
+                        if step > 0: WButton {
+                            kind: 1;
+                            text: "Back";
+                            clicked => { root.back(); }
+                        }
+                        WButton {
+                            kind: 0;
+                            text: step == 3 ? "Start using Tessera" : "Continue";
+                            clicked => { root.next(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

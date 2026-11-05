@@ -1,0 +1,335 @@
+// The cheatsheet (src/surfaces/cheatsheet; compare
+// shell/modules/cheatsheet/Cheatsheet.qml in shell/glass/Dialog.qml): a
+// centred dialog over a light scrim with two tabs: the shortcuts read from
+// Hyprland, flowed into three columns, and a periodic table whose hovered
+// element shows its details. Tab switches tabs, Esc or a click outside
+// closes. Glass: on the plugin's glass (Rust sends the shape, scaled and
+// faded with the dialog); Material: its solid surface, the tabs a connected
+// button group.
+
+import { Theme } from "@tessera/theme.slint";
+import { Keycap } from "@tessera/widgets.slint";
+
+export struct CsBind {
+    description: string,
+    keys: [string],
+}
+
+export struct CsGroup {
+    name: string,
+    binds: [CsBind],
+}
+
+export struct CsRow {
+    groups: [CsGroup],
+}
+
+export struct CsElement {
+    number: int,
+    symbol: string,
+    name: string,
+    detail: string, // "Atomic number 1 · 1.008 u · Nonmetal"
+    cx: float, // its cell, in cells
+    cy: float,
+    tint: color,
+}
+
+// Two tabs (Segmented.qml): Glass a track with a sliding pill; Material a
+// connected button group, the chosen one filled and fully round
+component Tabs inherits Rectangle {
+    in-out property <int> current;
+    in property <string> a;
+    in property <string> b;
+    property <length> fs: Theme.material ? Theme.body : Theme.small;
+    property <int> fw: Theme.material ? 500 : 600;
+    property <length> gap: Theme.material ? 2px : 0;
+    property <length> avail: self.width - 4px - gap;
+    property <length> na: ta.preferred-width + 24px;
+    property <length> nb: tb.preferred-width + 24px;
+    property <length> extra: (avail - na - nb) / 2;
+    property <length> wa: extra >= 0 ? na + extra : na * avail / (na + nb);
+    property <length> wb: extra >= 0 ? nb + extra : nb * avail / (na + nb);
+    height: Theme.material ? 36px : 30px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    ta := Text { visible: false; text: a; font-size: fs; font-weight: fw; }
+    tb := Text { visible: false; text: b; font-size: fs; font-weight: fw; }
+    if !Theme.material: Rectangle {
+        x: 2px + (current == 0 ? 0 : wa);
+        y: 2px;
+        width: current == 0 ? wa : wb;
+        height: parent.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff33 : #ffffff;
+        animate x, width { duration: Theme.popover; easing: cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+    }
+    for i in 2: Rectangle {
+        property <bool> chosen: i == current;
+        property <length> full: self.height / 2;
+        property <length> inner: chosen ? full : t.pressed ? 4px : 8px;
+        x: 2px + (i == 0 ? 0 : wa + gap);
+        y: 0;
+        width: i == 0 ? wa : wb;
+        height: parent.height;
+        border-top-left-radius: !Theme.material ? 0 : i == 0 ? full : inner;
+        border-bottom-left-radius: self.border-top-left-radius;
+        border-top-right-radius: !Theme.material ? 0 : i == 1 ? full : inner;
+        border-bottom-right-radius: self.border-top-right-radius;
+        background: !Theme.material ? transparent : chosen ? Theme.m3-primary : Theme.m3-surface-container-highest;
+        animate background { duration: 150ms; }
+        accessible-role: tab;
+        accessible-label: i == 0 ? a : b;
+        accessible-item-selectable: true;
+        accessible-item-selected: chosen;
+        accessible-action-default => { current = i; }
+        if Theme.material: Rectangle {
+            border-top-left-radius: parent.border-top-left-radius;
+            border-bottom-left-radius: parent.border-bottom-left-radius;
+            border-top-right-radius: parent.border-top-right-radius;
+            border-bottom-right-radius: parent.border-bottom-right-radius;
+            background: (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant).with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0);
+        }
+        Text {
+            width: min(self.preferred-width, parent.width - 12px);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            text: i == 0 ? a : b;
+            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+            font-size: fs;
+            font-weight: fw;
+            accessible-role: none;
+        }
+        t := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { current = i; }
+        }
+    }
+}
+
+// A group of shortcuts: its name, then a row per shortcut
+component Group inherits VerticalLayout {
+    in property <CsGroup> g;
+    spacing: 6px;
+    alignment: start;
+    Text {
+        text: g.name;
+        color: Theme.material ? Theme.m3-primary : Theme.secondary;
+        font-size: Theme.material ? 14px : Theme.small;
+        font-weight: Theme.material ? 500 : 600;
+        accessible-role: text;
+    }
+    for b in g.binds: Rectangle {
+        height: 26px;
+        accessible-role: text;
+        accessible-label: b.description;
+        combo := HorizontalLayout {
+            x: parent.width - self.preferred-width;
+            y: (parent.height - 22px) / 2;
+            height: 22px;
+            spacing: 4px;
+            for k in b.keys: Keycap { text: k; }
+        }
+        Text {
+            x: 0;
+            width: max(0px, combo.x - 8px);
+            height: parent.height;
+            vertical-alignment: center;
+            overflow: elide;
+            text: b.description;
+            color: Theme.label;
+            font-size: Theme.small;
+            accessible-role: none;
+        }
+    }
+}
+
+export component Cheatsheet inherits Window {
+    in property <[CsRow]> rows;
+    in property <[CsElement]> elements;
+    in property <bool> shown;
+    in property <bool> on-glass;
+    in-out property <int> tab: 0;
+    // the dialog, for the glass (window px)
+    out property <float> fade: min(1, progress);
+    out property <float> scale: 0.96 + 0.04 * progress;
+    out property <float> body-x: body.x / 1px + m / 1px;
+    out property <float> body-y: body.y / 1px + m / 1px;
+    out property <float> body-w: body.width / 1px - 2 * m / 1px;
+    out property <float> body-h: body.height / 1px - 2 * m / 1px;
+    callback dismissed();
+    callback closed();
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    property <length> m: 24px;
+    property <length> pad: 20px;
+    property <length> cw: min(1100px, root.width - 160px);
+    property <length> ch: min(660px, root.height - 200px);
+    property <float> progress: shown ? 1 : 0;
+    property <int> hovered: -1;
+    animate progress {
+        duration: shown ? 520ms : 192ms;
+        easing: shown ? spring(0.4) : cubic-bezier(0.4, 0.0, 1.0, 1.0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Cheatsheet";
+    default-font-family: Theme.font;
+
+    // The scrim: a click outside closes
+    Rectangle {
+        background: #000000.with-alpha(0.25 * clamp(progress, 0, 1));
+        TouchArea {
+            clicked => { root.dismissed(); }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismissed(); return accept; }
+            if e.text == Key.Tab || e.text == Key.Backtab { tab = 1 - tab; return accept; }
+            reject
+        }
+
+        body := Rectangle {
+            width: cw + 2 * pad + 2 * m;
+            height: ch + 2 * pad + 2 * m;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2 - 40px;
+            opacity: fade;
+            transform-scale: scale;
+
+            Rectangle {
+                x: m;
+                y: m;
+                width: parent.width - 2 * m;
+                height: parent.height - 2 * m;
+                border-radius: 28px;
+                background: on-glass ? transparent : Theme.material ? Theme.glass-solid : Theme.panel;
+                border-width: Theme.material || on-glass ? 0 : 0.5px;
+                border-color: Theme.separator;
+                drop-shadow-blur: 24px;
+                drop-shadow-offset-y: 6px;
+                drop-shadow-color: Theme.dark ? #0000003d : #0000001a;
+                // (clicks on the dialog stay here)
+                TouchArea { }
+            }
+
+            content := Rectangle {
+                x: m + pad;
+                y: m + pad;
+                width: cw;
+                height: ch;
+
+                tabs := Tabs {
+                    x: (parent.width - self.width) / 2;
+                    y: 0;
+                    width: 300px;
+                    a: "Shortcuts";
+                    b: "Periodic Table";
+                    current <=> root.tab;
+                }
+
+                // Shortcuts, flowed into three columns
+                if tab == 0: Flickable {
+                    y: tabs.height + 18px;
+                    width: parent.width;
+                    height: parent.height - self.y;
+                    content-height: flow.preferred-height;
+                    flow := VerticalLayout {
+                        width: parent.width;
+                        spacing: 24px;
+                        alignment: start;
+                        for r in rows: HorizontalLayout {
+                            spacing: 24px;
+                            alignment: start;
+                            for grp in r.groups: Group {
+                                g: grp;
+                                width: (content.width - 2 * 24px) / 3;
+                            }
+                        }
+                    }
+                }
+
+                // The periodic table
+                if tab == 1: Rectangle {
+                    y: tabs.height + 18px;
+                    width: parent.width;
+                    height: parent.height - self.y;
+                    property <length> cell: min(self.width / 18, self.height / 9.4);
+                    table := Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        width: cell * 18;
+                        height: cell * 9.4;
+                        for e[i] in elements: Rectangle {
+                            property <bool> hot: hovered == i;
+                            x: e.cx * cell + 1px;
+                            y: e.cy * cell + 1px;
+                            width: cell - 2px;
+                            height: cell - 2px;
+                            border-radius: Theme.material ? (hot ? self.width / 2 : 8px) : 6px;
+                            animate border-radius { duration: 250ms; easing: spring(0.6); }
+                            background: e.tint.with-alpha(hot ? 0.45 : 0.18);
+                            border-width: hot ? (Theme.material ? 2px : 1px) : 0;
+                            border-color: e.tint;
+                            accessible-role: text;
+                            accessible-label: e.name;
+                            accessible-description: e.detail;
+                            Text {
+                                x: 4px;
+                                y: 2px;
+                                text: e.number;
+                                color: Theme.secondary;
+                                font-size: max(8px, cell * 0.17);
+                                accessible-role: none;
+                            }
+                            Text {
+                                y: 2px;
+                                width: parent.width;
+                                height: parent.height;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                text: e.symbol;
+                                color: Theme.label;
+                                font-size: cell * 0.36;
+                                font-weight: 600;
+                                accessible-role: none;
+                            }
+                            TouchArea {
+                                changed has-hover => {
+                                    if self.has-hover { hovered = i; } else if hovered == i { hovered = -1; }
+                                }
+                            }
+                        }
+                        // The hovered one's detail, in the room over groups 3–12
+                        if hovered >= 0: VerticalLayout {
+                            x: 2.3 * cell;
+                            y: 0.1 * cell;
+                            width: self.preferred-width;
+                            height: self.preferred-height;
+                            spacing: 2px;
+                            Text {
+                                text: elements[hovered].name;
+                                color: Theme.label;
+                                font-size: Theme.material ? 28px : Theme.large;
+                                font-weight: Theme.material ? 500 : 700;
+                            }
+                            Text {
+                                text: elements[hovered].detail;
+                                color: Theme.secondary;
+                                font-size: Theme.body;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

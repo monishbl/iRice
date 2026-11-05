@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.services
 
 // Hovering a figure for a moment shows its ResourcePopover underneath:
 //   ResourceHover { key: "cpu"; target: item; hovered: hover.hovered; screen: bar.screen }
@@ -34,8 +35,19 @@ Item {
         onTriggered: root.open = false
     }
 
+    // Drawn in Rust (tessera-ui's resources popover): told where and when
+    readonly property bool rust: RustUi.drawing("resources")
+    onOpenChanged: {
+        if (!rust)
+            return;
+        if (open && screen)
+            RustUi.tell("resources", { open: true, key: root.key, x: root.at.x, y: root.at.y, screen: screen.name ?? "" });
+        else
+            RustUi.tell("resources", { open: false, key: root.key, screen: screen?.name ?? "" });
+    }
+
     LazyLoader {
-        active: root.open && root.screen !== null && root.screen !== undefined
+        active: root.open && root.screen !== null && root.screen !== undefined && !root.rust
         ResourcePopover {
             screen: root.screen
             key: root.key

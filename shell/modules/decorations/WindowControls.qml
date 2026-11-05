@@ -16,7 +16,7 @@ import qs.services
 // behind a moving window); this then only shows the tile grid, when the
 // plugin reports a rest on the green button.
 Variants {
-    model: Config.options.appearance.decorations === "controls" ? Quickshell.screens : []
+    model: Config.options.appearance.decorations === "controls" && !RustUi.drawing("decorations") ? Quickshell.screens : []
 
     GlassWindow {
         id: win
