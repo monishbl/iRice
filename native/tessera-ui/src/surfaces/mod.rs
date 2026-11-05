@@ -9,6 +9,7 @@
 //! If this process ends, the shell draws them again itself.
 
 pub mod clipboard;
+pub mod controlcenter;
 pub mod dock;
 pub mod emoji;
 pub mod menubar;
@@ -17,7 +18,7 @@ pub mod shapes;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "controlcenter"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
@@ -27,6 +28,7 @@ pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
         "emoji" => Some(Box::new(emoji::Emoji::default())),
         "clipboard" => Some(Box::new(clipboard::Clipboard::default())),
         "osd" => Some(Box::new(osd::Osd::default())),
+        "controlcenter" => Some(Box::new(controlcenter::ControlCenter::default())),
         _ => None,
     }
 }

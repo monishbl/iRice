@@ -105,6 +105,24 @@ class Agreement(unittest.TestCase):
         for word in ('v["hush"]', 'v["preview"]'):
             self.assertIn(word, osd_rs)
 
+    def test_control_center_steps_aside_and_its_bridge_talks(self):
+        # Panels calls it "controlCenter", tessera-ui "controlcenter": RustUi
+        # maps the one to the other both ways; both looks' loaders step
+        # aside; the bridge sends the shell's state and answers its calls
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn('controlcenter: "controlCenter"', rust_ui)
+        self.assertIn("surfaceOf(Panels.open)", rust_ui)
+        self.assertIn("panelOf(e.surface)", rust_ui)
+        cc = (ROOT / "shell/modules/controlcenter/ControlCenter.qml").read_text()
+        self.assertEqual(cc.count('elsewhere: RustUi.drawing("controlcenter")'), 2)
+        self.assertIn("RustBridge {}", cc)
+        bridge = (ROOT / "shell/modules/controlcenter/RustBridge.qml").read_text()
+        for word in ('RustUi.tell("controlcenter", { state:', 'RustUi.tell("controlcenter", { page:', "function onCcCall(", 'case "cc.block":'):
+            self.assertIn(word, bridge)
+        part = (CRATE / "src/surfaces/controlcenter/mod.rs").read_text()
+        for word in ('v.get("state")', 'v.get("page")', 'v["ccPage"]', 'v["editing"]'):
+            self.assertTrue(word in part or word in (CRATE / "src/surfaces/controlcenter/bridge.rs").read_text(), word)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old

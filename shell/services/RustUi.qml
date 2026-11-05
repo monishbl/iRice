@@ -28,6 +28,16 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // Panels whose name isn't the surface's (surface names are lowercase)
+    readonly property var panelNames: ({ controlcenter: "controlCenter" })
+    function panelOf(surface) {
+        return panelNames[surface] ?? surface;
+    }
+    function surfaceOf(panel) {
+        return Object.keys(panelNames).find(k => panelNames[k] === panel) ?? panel;
+    }
+    // Control Center's calls, for its RustBridge (cc.act, cc.block…)
+    signal ccCall(string name, var args)
     // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
     // capsule shows (the banners move down under it)
     property bool osdShown: false
@@ -85,7 +95,7 @@ Singleton {
             // it closed itself (Esc, a click outside, a pick)
             if (forwarded === e.surface)
                 forwarded = "";
-            if (Panels.open === e.surface)
+            if (Panels.open === panelOf(e.surface))
                 Panels.close();
         } else if (e.kind === "call") {
             call(e.call, e.args ?? []);
@@ -102,7 +112,7 @@ Singleton {
             proc.write(JSON.stringify(o) + "\n");
     }
     function follow() {
-        const want = Panels.open !== "" && drawing(Panels.open) ? Panels.open : "";
+        const want = Panels.open !== "" && drawing(surfaceOf(Panels.open)) ? surfaceOf(Panels.open) : "";
         const scr = want !== "" ? (Panels.screen?.name ?? "") : "";
         if (forwarded !== "" && forwarded !== want)
             send({ cmd: "close", surface: forwarded });
@@ -143,6 +153,24 @@ Singleton {
         case "launch.open":
             if (/^https:\/\//.test(a[0] ?? ""))
                 Launch.open(a[0]);
+            break;
+        case "panels.show":
+            Panels.show(String(a[0] ?? ""), Quickshell.screens.find(s => s.name === a[1]) ?? undefined);
+            break;
+        case "audio.hush":
+            Audio.hush();
+            break;
+        case "brightness.hush":
+            Brightness.hush();
+            break;
+        case "cc.act":
+        case "cc.page":
+        case "cc.editing":
+        case "cc.layout":
+        case "cc.media":
+        case "cc.block":
+        case "cc.pick":
+            ccCall(name, a);
             break;
         default:
             console.warn("tessera-ui: no call " + name);

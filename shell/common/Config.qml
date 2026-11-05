@@ -633,7 +633,7 @@ Singleton {
             // the surfaces it draws in place of this shell's, as they move over
             // (services/RustUi.qml). Empty: this shell draws everything
             property JsonObject rust: JsonObject {
-                property list<string> surfaces: [] // previews: menubar (no island or status menus yet), dock (no Downloads stack or badges yet), emoji, clipboard, osd (no DDC monitors yet); build it with tools/build-native.sh --ui
+                property list<string> surfaces: [] // previews: menubar (no island or status menus yet), dock (no Downloads stack or badges yet), emoji, clipboard, osd (no DDC monitors yet), controlcenter (its state still from this shell: RustBridge.qml); build it with tools/build-native.sh --ui
             }
         }
     }
