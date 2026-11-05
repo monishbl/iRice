@@ -4,13 +4,16 @@
 //! r(θ) = R(1 + a·cos(nθ)), which is what the cookie, clover and burst
 //! shapes are, near enough at 64 px.
 
-/// "cookie9" (nine soft scallops), "clover4" (four round leaves) or
-/// "softBurst" (ten soft points); anything else a circle
+/// "cookie9" (nine soft scallops), "clover4" (four round leaves),
+/// "softBurst" (ten soft points), "sunny" (eight) or "cookie12" (twelve
+/// scallops); anything else a circle
 pub fn outline(name: &str) -> String {
     let (n, a, r) = match name {
         "cookie9" => (9.0, 0.07, 46.0),
         "clover4" => (4.0, 0.2, 41.0),
         "softBurst" => (10.0, 0.09, 45.0),
+        "sunny" => (8.0, 0.09, 45.0),
+        "cookie12" => (12.0, 0.05, 47.0),
         _ => (0.0, 0.0, 48.0),
     };
     let steps = 180;
@@ -32,7 +35,7 @@ mod tests {
 
     #[test]
     fn outlines_stay_in_their_box() {
-        for name in ["cookie9", "clover4", "softBurst", "circle"] {
+        for name in ["cookie9", "clover4", "softBurst", "sunny", "cookie12", "circle"] {
             let d = outline(name);
             assert!(d.starts_with("M ") && d.ends_with('Z'));
             let nums: Vec<f64> = d.split(|c: char| c == ' ' || c.is_ascii_alphabetic()).filter_map(|s| s.parse().ok()).collect();

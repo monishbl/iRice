@@ -191,6 +191,38 @@ Singleton {
         case "desktop":
             root.desktopCall(String(a[0] ?? ""), a.slice(1));
             break;
+        case "search.query": // (search: spotlight)
+            Search.rustQuery(a[0], a[1]);
+            break;
+        case "search.run":
+            Search.rustRun(String(a[0] ?? ""));
+            break;
+        case "search.action":
+            Search.rustAction(String(a[0] ?? ""));
+            break;
+        case "ai.quickAsk":
+            Ai.quickAsk(String(a[0] ?? ""));
+            break;
+        case "ai.stopQuick":
+            Ai.stopQuick();
+            break;
+        case "ai.continueQuick":
+            Ai.continueQuick();
+            break;
+        case "panels.show":
+            if (["sidebar"].includes(a[0]))
+                Panels.show(a[0]);
+            break;
+        case "panels.quickLook":
+            Panels.quickLook(String(a[0] ?? ""));
+            break;
+        case "files.open":
+            if (String(a[0] ?? "").startsWith("/"))
+                Files.open(String(a[0]));
+            break;
+        case "search.command":
+            Search.rustCommand(String(a[0] ?? ""));
+            break;
         default:
             console.warn("tessera-ui: no call " + name);
         }

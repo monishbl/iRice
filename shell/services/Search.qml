@@ -491,4 +491,102 @@ Singleton {
     function refreshClipboard() {
         Clipboard.refresh();
     }
+
+    // ── Search drawn in Rust (rust.surfaces: spotlight) ─────────────────
+    // tessera-ui ranks the results itself (native/tessera-ui/src/surfaces/
+    // spotlight/rank.rs, query()'s order above); the rows only this shell
+    // knows come from here, asked with RustUi's "search.query" call and
+    // answered on its stdin ({"to":"spotlight","extras":…}). Their run()
+    // stay here, run by key ("search.run"); actions by title ("search.action").
+    property var rustAsked: null // [raw, store: tessera-ui's half of wantStore]
+    property var rustRuns: ({})
+    function rustQuery(raw, store) {
+        rustAsked = [String(raw ?? ""), store === true];
+        rustSend();
+    }
+    function rustSend() {
+        if (rustAsked === null)
+            return;
+        const raw = rustAsked[0].trim();
+        const q = raw.toLowerCase();
+        const runs = {};
+        let n = 0;
+        const pack = list => list.map(r => {
+            const key = "r" + (n++);
+            runs[key] = r.run;
+            return { key: key, section: r.section ?? "", title: String(r.title ?? ""), subtitle: String(r.subtitle ?? ""), glyph: r.glyph ?? "", icon: r.icon ? String(r.icon).replace(/^file:\/\//, "") : "", picture: r.picture ?? "", path: r.path ?? "", loading: !!r.loading };
+        });
+        const out = { q: rustAsked[0], ai: { configured: Ai.configured, name: Ai.model.name }, cast: castActions.map(a => ({ title: a.title, glyph: a.glyph, keywords: a.keywords })), intents: [], reminder: [], store: [], calendar: [], contacts: [], notes: [], shots: [], clipboard: [] };
+        if (raw.startsWith(";")) {
+            out.clipboard = pack(query(raw));
+        } else if (raw !== "" && !/^[?>:\/]/.test(raw)) {
+            const intents = Intents.rows(raw);
+            out.intents = pack(intents);
+            if (!/^remind/i.test(raw) && (/^add (an? )?reminder/i.test(raw) || /\s(at\s+\d|in\s+\d+\s*(m|h))/i.test(raw))) {
+                const r = Calendar.parseQuick(raw);
+                if (r)
+                    out.reminder = pack([{ section: "Calendar", title: "Add reminder: " + r.title, subtitle: Qt.formatDateTime(r.start, "ddd d MMM, h:mm AP"), glyph: "bell-ringing", run: () => {
+                            Calendar.add(r.title, r.start, r.start, false, 0, "");
+                            Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Reminder added", r.title + " · " + Qt.formatDateTime(r.start, "ddd h:mm AP")]);
+                        } }]);
+            }
+            if (rustAsked[1] && AppStore.available && intents.length === 0) {
+                AppStore.lookUp(raw);
+                const st = AppStore.quick.map(a => ({ section: "Software", title: a.name, subtitle: "Get · " + AppStore.sourceName(a) + (a.source === "aur" && a.votes ? " · " + a.votes + " votes" : ""), icon: AppStore.iconFor(a), glyph: "package", run: () => Panels.openAppStore(a) }));
+                if (AppStore.quickLoading)
+                    st.push({ section: "Software", title: AppStore.quick.length > 0 ? "Looking on Flathub…" : "Looking for apps…", subtitle: "", glyph: "circle-notch", loading: true, run: () => Panels.openAppStore() });
+                out.store = pack(st);
+            } else {
+                AppStore.forget();
+            }
+            if (q.length >= 3)
+                out.calendar = pack(Calendar.search(raw, 3).map(e => ({ section: "Calendar", title: e.title, subtitle: Qt.formatDate(e.start, "ddd d MMM") + " · " + Calendar.timeText(e), glyph: "calendar-blank", run: () => {
+                        Panels.ncTab = 0;
+                        Panels.show("notificationCenter");
+                    } })));
+            if (q.length >= 2)
+                out.contacts = pack(CloudAccounts.searchContacts(raw, 3).map(c => {
+                    const how = c.emails[0] ?? c.phones[0] ?? "";
+                    return { section: "Contacts", title: c.name, subtitle: [c.emails[0], c.phones[0]].filter(x => x).join(" · "), glyph: "user-circle", run: () => {
+                            Quickshell.execDetached(["wl-copy", "--", how]);
+                            Island.post({ kind: "custom", icon: "copy", title: "Copied " + (c.emails[0] ? "email" : "number"), subtitle: how, color: Theme.accent }, 3000);
+                        } };
+                }));
+            if (q.length >= 3)
+                out.notes = pack(Notes.search(raw, 4).map(nt => ({ section: "Notes", title: nt.name.replace(/^\d{4}-\d{2}-\d{2} \d{4} /, ""), subtitle: Qt.formatDate(nt.modified, "d MMM yyyy"), glyph: "note", run: () => Notes.open(nt.path) })));
+            if (q.length >= 3)
+                out.shots = pack(LiveText.search(raw, 4).map(sh => ({ section: "Screenshots", title: sh.snippet, subtitle: Qt.formatDateTime(new Date(sh.modified * 1000), "d MMM yyyy, " + TimeFormat.hm), picture: sh.path, glyph: "image", path: sh.path, run: () => LiveText.preview(sh.path, raw) })));
+        }
+        rustRuns = runs;
+        RustUi.tell("spotlight", { extras: out });
+    }
+    function rustRun(key) {
+        const f = rustRuns[key];
+        if (f)
+            f();
+    }
+    // ">command" typed in the Rust search: query()'s own row runs it
+    function rustCommand(cmd) {
+        const r = query(">" + cmd)[0];
+        if (r && r.section === "Command")
+            r.run();
+    }
+    function rustAction(title) {
+        const a = actions.concat(castActions).find(x => x.title === title);
+        if (a)
+            a.run();
+    }
+    // (the App Store's and the screenshots' rows arrive later: sent again)
+    onRevisionChanged: if (rustAsked !== null && RustUi.drawing("spotlight")) rustSend()
+    // The AI's quick answer, as it streams
+    readonly property Connections rustQuick: Connections {
+        target: Ai.quick
+        function onBusyChanged() { root.rustTellQuick(); }
+        function onAnswerChanged() { root.rustTellQuick(); }
+        function onErrorChanged() { root.rustTellQuick(); }
+    }
+    function rustTellQuick() {
+        if (rustAsked !== null)
+            RustUi.tell("spotlight", { quick: { busy: Ai.quick.busy, answer: Ai.quick.answer, error: Ai.quick.error } });
+    }
 }

@@ -20,6 +20,7 @@ Variants {
         required property var modelData
         panel: "spotlight"
         screen: modelData
+        elsewhere: RustUi.drawing("spotlight") // (drawn in Rust: tessera-ui)
 
         GlassWindow {
             id: win
