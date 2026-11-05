@@ -123,7 +123,7 @@ component Analog inherits Rectangle {
     property <color> hour-ink: Theme.material ? (c.night ? Theme.m3-tertiary : Theme.m3-primary) : ink;
     property <float> ah: c.angle-h;
     property <float> am: c.angle-m;
-    animate ah, am { duration: 400ms; easing: ease-out-back; }
+    animate ah, am { duration: 400ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
     width: 120px;
     height: self.width;
     if !Theme.material: Rectangle {
@@ -374,7 +374,7 @@ component WeatherW inherits Rectangle {
             y: root.height - self.preferred-height;
             height: self.preferred-height;
             spacing: 2px;
-            Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; horizontal-alignment: left; }
+            HorizontalLayout { alignment: start; Icon { text: w.g1; fill: true; font-size: 18px; color: Theme.label; } }
             T { text: w.t3; font-weight: 500; }
             T { text: w.t4; color: Theme.secondary; }
         }
@@ -716,7 +716,7 @@ component NowPlayingW inherits Rectangle {
             width: 40px;
             height: 40px;
             border-radius: w.on ? 12px : 20px;
-            animate border-radius { duration: 250ms; easing: ease-out-back; }
+            animate border-radius { duration: 250ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
             background: w.flag ? Theme.m3-primary : Theme.m3-on-surface.with-alpha(0.12);
         }
         for b[i] in [{ g: "\u{e5a4}", a: "previous" }, { g: w.on ? "\u{e39e}" : "\u{e3d0}", a: "toggle" }, { g: "\u{e5a6}", a: "next" }]: Rectangle {
@@ -890,7 +890,7 @@ component ShortcutsW inherits Rectangle {
         width: bw;
         height: bh;
         border-radius: Theme.material ? (ta.pressed ? 12px : 20px) : 12px;
-        animate border-radius { duration: 200ms; easing: ease-out-back; }
+        animate border-radius { duration: 200ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
         background: Theme.material ? b.bg.mix(b.ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1) : b.tint.with-alpha(ta.pressed ? 0.32 : ta.has-hover ? 0.26 : 0.18);
         animate background { duration: 150ms; }
         transform-scale: ta.pressed ? (Theme.material ? 1.04 : 0.95) : 1;
@@ -903,7 +903,7 @@ component ShortcutsW inherits Rectangle {
             width: parent.width - 14px;
             alignment: center;
             spacing: 4px;
-            Icon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; horizontal-alignment: left; }
+            HorizontalLayout { alignment: start; Icon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; } }
             T { text: b.label; wrap: word-wrap; overflow: elide; color: Theme.material ? b.ink : Theme.label; font-size: Theme.caption; font-weight: 500; }
         }
         ta := TouchArea {
@@ -1119,8 +1119,8 @@ component Frame inherits Rectangle {
         shown = 1;
         grow = 1;
     }
-    animate shown { duration: 260ms; easing: ease-out-cubic; }
-    animate grow { duration: 420ms; easing: ease-out-back; }
+    animate shown { duration: 260ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate grow { duration: 420ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
     x: w.x + dx;
     y: w.y + dy;
     animate x, y {
@@ -1195,7 +1195,7 @@ component Frame inherits Rectangle {
             Rectangle {
                 width: 5px;
                 height: i == w.stack-i ? 12px : 5px;
-                animate height { duration: 200ms; easing: ease-out-cubic; }
+                animate height { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                 border-radius: 2.5px;
                 background: Theme.material ? (i == w.stack-i ? Theme.m3-primary : dt.has-hover ? Theme.m3-on-surface-variant : Theme.m3-outline-variant) : i == w.stack-i || dt.has-hover ? Theme.label : Theme.tertiary;
             }
@@ -1365,7 +1365,7 @@ export component Desktop inherits Window {
     callback drag(int, length, length, bool); // a widget dragged (its top left), released
     callback menu(int, length, length); // right-click: a widget's index, or -1 the desktop
     callback bare(); // a click on the bare desktop
-    callback icon(int, string, length, length); // click | open | menu | grab | drop
+    callback file(int, string, length, length); // a file or stack: click | open | menu | grab | drop
     callback stack-file(int, bool); // an open stack's file: open, or (true) its menu
     callback stack-file-menu(int, length, length);
     background: transparent;
@@ -1416,7 +1416,7 @@ export component Desktop inherits Window {
     for ic in icons: IconCell {
         ic: ic;
         spot: root.spot;
-        icon(i, what, x, y) => { root.icon(i, what, x, y); }
+        icon(i, what, x, y) => { root.file(i, what, x, y); }
     }
 
     for w in widgets: Frame {

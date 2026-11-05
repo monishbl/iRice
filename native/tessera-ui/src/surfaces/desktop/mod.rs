@@ -49,6 +49,7 @@ use serde_json::{json, Value};
 use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
+use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -368,7 +369,7 @@ impl Desktop {
         let t = to.clone();
         ui.on_bare(move || t(Box::new(M::Bare)));
         let t = to.clone();
-        ui.on_icon(move |i, a, x, y| t(Box::new(M::Icon(i, a.into(), x, y))));
+        ui.on_file(move |i, a, x, y| t(Box::new(M::Icon(i, a.into(), x, y))));
         let t = to.clone();
         ui.on_stack_file(move |i, _| t(Box::new(M::StackFile(i))));
         let t = to;
@@ -442,6 +443,8 @@ impl Desktop {
         let editing = self.feed.editing && self.win.as_ref().is_some_and(|w| self.feed.edit_screen.is_empty() || self.feed.edit_screen == w.output);
         let want_keys = self.list.iter().any(|w| w.kind == "notes" || ((w.kind == "reminders" || w.kind == "calendar") && w.size == "l"));
         let glass = st.shell.plugin && !st.shell.look.material;
+        let stack = self.items.iter().find(|i| i.key == self.open_stack && i.is_stack()).cloned();
+        let stack_at = stack.as_ref().map(|it| self.stack_panel_at(it));
         let win = self.win.as_mut().unwrap();
         // one slot per widget, changed in place: adding or removing one
         // inserts or removes just that one (the rest don't appear again)
@@ -485,10 +488,8 @@ impl Desktop {
             None => win.ui.set_ghost_on(false),
         }
         // an open stack's files
-        let stack = self.items.iter().find(|i| i.key == self.open_stack && i.is_stack()).cloned();
         win.ui.set_stack_open(stack.is_some() && c.icons);
-        if let Some(it) = stack {
-            let (sx, sy) = self.stack_panel_at(&it);
+        if let (Some(it), Some((sx, sy))) = (stack, stack_at) {
             win.ui.set_stack_x(sx);
             win.ui.set_stack_y(sy);
             win.ui.set_stack_name(it.name.as_str().into());

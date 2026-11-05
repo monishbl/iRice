@@ -68,10 +68,6 @@ pub fn hm_short(ms: i64, h24: bool) -> String {
     fmt(if h24 { "%H:%M" } else { "%-I:%M" }, ms)
 }
 
-pub fn same_day(a: (i64, i64, i64), b: (i64, i64, i64)) -> bool {
-    a == b
-}
-
 /// Calendar.when: an event's time on the small and medium calendar
 /// ("Tomorrow 3:00 PM", "Fri all day"; medium: just the time)
 pub fn when(start: i64, all_day: bool, today: (i64, i64, i64), small: bool, h24: bool) -> String {
