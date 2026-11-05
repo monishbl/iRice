@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.common
+import qs.services
 
 // Emoji picker (Super+Period): emoji, kaomoji, text symbols and GIFs, opened
 // near the pointer in the app you're typing in. Enter or click types the pick
@@ -17,11 +18,11 @@ Scope {
     }
 
     // Look up the pointer and focused window whenever the picker opens, however
-    // it was opened (shortcut, IPC, Panels.show)
+    // it was opened (shortcut, IPC, Panels.show); not while tessera-ui draws it
     Connections {
         target: Panels
         function onOpenChanged() {
-            if (Panels.open === "emoji")
+            if (Panels.open === "emoji" && !slots.rust)
                 EmojiStore.prepare();
         }
     }
@@ -48,13 +49,17 @@ Scope {
     }
 
     Variants {
+        id: slots
         model: Quickshell.screens
+        // (tessera-ui draws it: rust.surfaces lists "emoji")
+        readonly property bool rust: RustUi.drawing("emoji")
 
         PanelLoader {
             id: slot
             required property var modelData
             panel: "emoji"
             screen: modelData
+            elsewhere: slots.rust
             // Kept for a while after closing: a new window draws every emoji
             // glyph again (Qt rasterises each colour emoji on first use), so
             // reopening within five minutes is instant

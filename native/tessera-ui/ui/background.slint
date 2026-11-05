@@ -15,6 +15,14 @@ export component Background inherits Window {
     in property <float> a-from: -1;
     in property <float> b-from: -2;
     in property <float> target: 0; // where the fade is headed
+    // the first picture of a screen plugged in later: 120 ms, ease-out cubic
+    // (Background.qml's firstFade once the desktop has started)
+    in property <bool> quick;
+    // The lock's settle (LockFx.wallpaperScale): a touch larger at once, then
+    // back to 1 over `zoom-ms`, ease-out cubic
+    in property <float> zoom: 1;
+    in property <int> zoom-ms: 0;
+    property <float> scale: zoom;
     property <float> fade: target;
     // the newest is fully in (Rust lets the one below go)
     callback faded();
@@ -24,7 +32,14 @@ export component Background inherits Window {
     title: "Wallpaper";
     accessible-role: none;
 
-    animate fade { duration: 700ms; easing: ease-in-out-quad; }
+    animate fade {
+        duration: quick ? 120ms : 700ms;
+        easing: quick ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
+    }
+    animate scale {
+        duration: zoom-ms * 1ms;
+        easing: cubic-bezier(0.33, 1, 0.68, 1); // (out-cubic)
+    }
     changed fade => {
         if fade >= max(a-from, b-from) + 0.999 { faded(); }
     }
@@ -37,6 +52,7 @@ export component Background inherits Window {
         opacity: clamp(fade - a-from, 0, 1);
         visible: self.opacity > 0;
         z: a-from > b-from ? 1 : 0;
+        transform-scale: scale;
         accessible-role: none;
     }
     Image {
@@ -47,6 +63,7 @@ export component Background inherits Window {
         opacity: clamp(fade - b-from, 0, 1);
         visible: self.opacity > 0;
         z: b-from > a-from ? 1 : 0;
+        transform-scale: scale;
         accessible-role: none;
     }
 }

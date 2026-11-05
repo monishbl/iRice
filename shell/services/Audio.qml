@@ -25,6 +25,7 @@ Singleton {
     property real quietUntil: 0
     function hush() {
         quietUntil = Date.now() + 1000;
+        RustUi.tell("osd", { hush: "sound" }); // (tessera-ui's OSD, when it draws it)
     }
     function setVolume(v, quiet) {
         if (quiet)

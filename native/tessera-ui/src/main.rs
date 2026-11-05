@@ -5,13 +5,17 @@
 //! stdin, and messages from the data threads).
 //!
 //!   tessera-ui [--surfaces a,b]  draw these (default: all it has); ends on SIGTERM/SIGINT,
-//!                                or when stdin, a pipe, closes (the shell that started it quit)
+//!                                or when stdin, a pipe, closes (the shell that started it quit);
+//!                                the shell's JSON lines on stdin: commands
+//!                                `{"cmd":…,"surface":…}` (src/shell.rs) and
+//!                                `{"to":"osd",…}` for that surface (RustUi.tell)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
 //! SIGUSR1 prints frame statistics.
 
 mod a11y;
+mod appicon;
 mod egl;
 mod env;
 mod seed;
@@ -86,6 +90,15 @@ fn handle(state: &mut State, msg: Msg) {
     }
 }
 
+/// A line from the shell on stdin (RustUi.tell): `{"to": "<surface>", …}`
+/// reaches that part's `message` as the serde_json::Value
+fn shell_said(state: &mut State, line: &[u8]) {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { return };
+    let Some(to) = v["to"].as_str().and_then(|t| surfaces::KNOWN.iter().find(|k| **k == t)) else { return };
+    let mut v = Some(v);
+    state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
+}
+
 /// Fonts that aren't system fonts: Phosphor (icons) and Google Sans Flex
 /// ("Tessera Sans Flex", Material's), mapped from the repo, registered with
 /// Slint's font collection at run time (not compiled in)
@@ -96,7 +109,7 @@ fn register_fonts() {
         std::path::PathBuf::from(crate::env::var("ROOT").unwrap_or_default()),
     ];
     let mut collection = slint::fontique_011::shared_collection();
-    for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf"] {
+    for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf", "material/assets/fonts/MaterialSymbolsRounded.ttf"] {
         let Some(file) = roots.iter().find_map(|r| std::fs::File::open(r.join(f)).ok()) else {
             eprintln!("tessera-ui: font {f} not found");
             continue;
@@ -193,16 +206,15 @@ fn main() {
         })
         .unwrap();
 
-    // Ends when stdin (a pipe from whoever started us) closes. The shell
-    // also writes to it: one JSON line per message for a part,
-    // {"to": "<part>", …} (RustUi.tell), handed to that part as shell::FromShell
+    // The shell's commands, a JSON line each (src/shell.rs); ends when stdin
+    // (a pipe from whoever started us) closes
     let stdin_is_pipe = unsafe {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
     };
     if stdin_is_pipe {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
-        let mut line: Vec<u8> = Vec::new();
+        let mut lines = shell::Lines::default();
         lh
             .insert_source(src, move |_, _, state: &mut State| {
                 let mut buf = [0u8; 4096];
@@ -211,16 +223,11 @@ fn main() {
                     state.exit = true;
                     return Ok(PostAction::Remove);
                 }
-                line.extend_from_slice(&buf[..n as usize]);
-                while let Some(end) = line.iter().position(|&b| b == b'\n') {
-                    let one: Vec<u8> = line.drain(..=end).collect();
-                    if let Some((to, v)) = shell::from_shell(&one) {
-                        let mut v = Some(v);
-                        state.part(&to, |p, st| p.message(st, Box::new(v.take().unwrap())));
+                for l in lines.feed(&buf[..n as usize]) {
+                    match shell::Command::parse(&l) {
+                        Some(c) => state.command(c),
+                        None => shell_said(state, l.as_bytes()),
                     }
-                }
-                if line.len() > 1 << 20 {
-                    line.clear(); // (no newline in a megabyte: not ours)
                 }
                 Ok(PostAction::Continue)
             })
@@ -237,6 +244,11 @@ fn main() {
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());
     state.each_part(|p, st| p.start(st));
+    // (parts that show nothing until something happens, as the OSD: no first
+    // frame to wait for, they draw from now; the shell steps aside at once)
+    if state.surfaces.is_empty() {
+        surfaces::announce(&state.shell.surfaces);
+    }
 
     while !state.exit {
         let timeout = if state.wants_frame_soon() {

@@ -1,9 +1,8 @@
 //! What the picker lists, as WallpaperPicker.qml's two folder models: the
 //! wallpaper folder's pictures, newest first (*.jpg *.jpeg *.png *.webp *.JPG
-//! *.PNG, no hidden files), then the bundled ones by name (*.jpg). And
-//! opening the folder as Files.qml does.
+//! *.PNG, no hidden files), then the bundled ones by name (*.jpg).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The user's folder's pictures, newest first, then the bundled ones by name
 pub fn list(dir: &str, bundled: &[PathBuf]) -> Vec<String> {
@@ -52,36 +51,6 @@ pub fn index_of(files: &[String], picture: &str) -> Option<usize> {
     }
     let real = std::fs::canonicalize(picture).ok()?;
     files.iter().position(|f| std::fs::canonicalize(f).is_ok_and(|r| r == real))
-}
-
-/// A folder in the file manager (Settings → Desktop → Files app, else the
-/// first installed of Files.qml's list), else whatever opens folders
-pub fn open_folder(cfg: &serde_json::Value, dir: &str) {
-    let want = cfg["desktop"]["fileManager"].as_str().unwrap_or("");
-    let list = ["nautilus", "dolphin", "thunar", "nemo", "caja", "pcmanfm-qt", "pcmanfm"];
-    let manager = std::iter::once(want).chain(list).filter(|m| !m.is_empty()).find(|m| on_path(m));
-    let (cmd, arg) = match manager {
-        Some(m) => (m.to_string(), dir.to_string()),
-        None => ("xdg-open".to_string(), format!("file://{dir}")),
-    };
-    std::thread::spawn(move || {
-        // (its own session: it outlives this process, and never reads the shell's pipe)
-        let _ = std::process::Command::new("setsid")
-            .args(["-f", &cmd, &arg])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    });
-}
-
-fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| is_executable(&d.join(bin))))
-}
-
-fn is_executable(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
 #[cfg(test)]

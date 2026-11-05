@@ -50,15 +50,21 @@ Variants {
         }
 
         // tessera-ui hears the day's sunrise and sunset from here (the
-        // weather service knows them): the time of day's picture
+        // weather service knows them): the time of day's picture, and the
+        // picker's ring round it
         function tellSun() {
-            if (rust && win.screen === Quickshell.screens[0])
-                RustUi.tell("background", { sunrise: Daylight.sunrise, sunset: Daylight.sunset });
+            if (win.screen !== Quickshell.screens[0])
+                return;
+            RustUi.tell("background", { sunrise: Daylight.sunrise, sunset: Daylight.sunset });
+            RustUi.tell("wallpaper", { sunrise: Daylight.sunrise, sunset: Daylight.sunset });
         }
-        onRustChanged: {
-            tellSun();
-            if (rust)
-                Wallpaper.started = true;
+        onRustChanged: if (rust)
+            Wallpaper.started = true
+        Connections {
+            target: RustUi
+            function onDrawnChanged() {
+                win.tellSun();
+            }
         }
         Connections {
             target: Daylight
@@ -67,6 +73,15 @@ Variants {
             }
             function onSunsetChanged() {
                 win.tellSun();
+            }
+        }
+        // ...and the lock's settle (LockFx: the wallpaper a touch larger,
+        // easing back as the desktop is revealed)
+        Connections {
+            target: LockFx
+            enabled: win.rust && win.screen === Quickshell.screens[0]
+            function onStepped(step, ms) {
+                RustUi.tell("background", { settle: step, zoom: LockFx.zoom, ms: ms });
             }
         }
 

@@ -12,6 +12,7 @@ tessera-ui says it draws it. These tests hold that agreement:
     MaterialColor.js and the wallpaper seed against matugen among them).
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -56,19 +57,76 @@ class Agreement(unittest.TestCase):
             self.assertIn(word, rs)
         self.assertIn('"--surfaces"', qml)
 
-    def test_the_binary_reads_what_the_shell_tells(self):
-        # RustUi.tell writes {"to": surface, …} lines on tessera-ui's stdin;
-        # shell.rs hands them to the part of that name
+    def test_panels_drawn_in_rust_open_and_close_through_the_shell(self):
+        # RustUi forwards Panels' open and close as commands on tessera-ui's
+        # stdin; tessera-ui says when a panel closed itself and asks for
+        # what only the shell does (src/shell.rs)
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
-        self.assertRegex(qml, r"proc\.write\(JSON\.stringify\(Object\.assign\(\{ to: name \}")
-        self.assertIn("stdinEnabled: true", qml)
-        rs = (CRATE / "src/shell.rs").read_text()
-        self.assertIn('v["to"]', rs)
-        told = set()
-        for p in qml_files():
-            told |= set(re.findall(r'RustUi\.tell\("([a-z]+)"', p.read_text(errors="replace")))
-        self.assertTrue(told, "nothing tells tessera-ui anything")
-        self.assertEqual(sorted(told - set(known_surfaces())), [], "told to a surface tessera-ui doesn't draw")
+        shell_rs = (CRATE / "src/shell.rs").read_text()
+        for word in ('cmd: "open"', 'cmd: "close"', "proc.write(", 'e.kind === "closed"', 'e.kind === "call"', "Panels.close()"):
+            self.assertIn(word, qml)
+        for word in ('"cmd"', '"surface"', '"screen"', '"closed"', '"call"'):
+            self.assertIn(word, shell_rs)
+        main_rs = (CRATE / "src/main.rs").read_text()
+        self.assertIn("Command::parse", main_rs)
+        # every call a part asks for is one RustUi.qml answers
+        asked = set()
+        for p in (CRATE / "src").rglob("*.rs"):
+            asked |= set(re.findall(r'shell::ask\("([a-zA-Z.]+)"', p.read_text()))
+        answered = set(re.findall(r'case "([a-zA-Z.]+)":', qml))
+        self.assertTrue(asked, "no calls found")
+        self.assertEqual(sorted(asked - answered), [], "asked of the shell, never answered")
+
+    def test_panel_twins_step_aside_through_their_loader(self):
+        # a panel's twin steps aside with its PanelLoader (`elsewhere`), so
+        # Panels' opening goes to tessera-ui and the QML window never loads
+        loader = (ROOT / "shell/common/PanelLoader.qml").read_text()
+        self.assertRegex(loader, r"wanted: !elsewhere &&")
+        for name, path in (("emoji", "shell/modules/emoji/EmojiPicker.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml")):
+            src = (ROOT / path).read_text()
+            self.assertIn(f'RustUi.drawing("{name}")', src)
+            self.assertIn("elsewhere:", src)
+    def test_the_osd_and_the_shell_tell_each_other(self):
+        # tessera-ui says when its capsule shows (the banners move under it);
+        # the shell tells it what its own sliders set (no OSD for those) and
+        # passes `qs ipc call osd preview` on, as stdin lines {"to": "osd", …}
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        osd_rs = (CRATE / "src/surfaces/osd/mod.rs").read_text()
+        main_rs = (CRATE / "src/main.rs").read_text()
+        self.assertIn('e.kind === "osd"', rust_ui)
+        self.assertIn('"kind": "osd", "shown"', osd_rs)
+        self.assertIn("send(Object.assign({ to: surface }", rust_ui)
+        self.assertIn('v["to"]', main_rs)
+        self.assertIn('RustUi.tell("osd", { hush: "sound" })', (ROOT / "shell/services/Audio.qml").read_text())
+        self.assertIn('RustUi.tell("osd", { hush: "brightness" })', (ROOT / "shell/services/Brightness.qml").read_text())
+        osd_qml = (ROOT / "shell/modules/osd/Osd.qml").read_text()
+        self.assertIn('RustUi.tell("osd", { preview: kind })', osd_qml)
+        self.assertIn("RustUi.osdShown", osd_qml)
+        for word in ('v["hush"]', 'v["preview"]'):
+            self.assertIn(word, osd_rs)
+
+    def test_the_wallpaper_and_its_picker(self):
+        # the picker is a panel (its PanelLoader steps aside; choosing and
+        # Open folder are the shell's); the background hears the day's sun
+        # and the lock's settle from Background.qml, which moves its own
+        # window up to the bottom layer, clear, while Rust draws the picture
+        picker = (ROOT / "shell/modules/wallpaper/WallpaperPicker.qml").read_text()
+        self.assertIn('elsewhere: RustUi.drawing("wallpaper")', picker)
+        bg = (ROOT / "shell/modules/background/Background.qml").read_text()
+        self.assertIn('RustUi.drawing("background")', bg)
+        self.assertIn("rust ? WlrLayer.Bottom : WlrLayer.Background", bg)
+        for word in ('RustUi.tell("background", { sunrise:', 'RustUi.tell("wallpaper", { sunrise:', 'RustUi.tell("background", { settle: step'):
+            self.assertIn(word, bg)
+        lockfx = (ROOT / "shell/common/LockFx.qml").read_text()
+        for step in ("prepare", "reveal", "rest"):
+            self.assertIn(f'stepped("{step}"', lockfx)
+        rs = (CRATE / "src/surfaces/background/mod.rs").read_text()
+        for word in ('"prepare"', '"reveal"', '"rest"', 'v["settle"]', 'v["zoom"]', 'v["ms"]'):
+            self.assertIn(word, rs)
+        self.assertIn('v["sunrise"]', (CRATE / "src/surfaces/background/wallpaper.rs").read_text())
+        # (the namespaces the Hyprland rules keep unblurred)
+        rules = (ROOT / "hypr/tessera/rules.lua").read_text()
+        self.assertRegex(rules, r"namespace = \"tessera:\([^)]*\bbackground\b")
 
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
@@ -90,16 +148,27 @@ def binary():
 
 @unittest.skipUnless(binary(), "tessera-ui isn't built (tools/build-native.sh)")
 class Binary(unittest.TestCase):
-    def run_ui(self, *args):
-        return subprocess.run([str(binary()), *args], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+    # (never with a display: a surface it can draw would appear on the
+    # session running the tests)
+    ENV = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY")}
+
+    def run_ui(self, *args, input=None):
+        return subprocess.run([str(binary()), *args], capture_output=True, text=True, timeout=30, env=self.ENV, input=input, stdin=None if input is not None else subprocess.DEVNULL)
 
     def test_a_list_it_cant_draw_is_answered_without_a_display(self):
         # (no Wayland needed: nothing to draw, so it says so and ends)
-        r = self.run_ui("--surfaces", "dock,osd")
+        r = self.run_ui("--surfaces", "lock,greeter")
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
-        self.assertEqual({l["surface"] for l in lines[:-1]}, {"dock", "osd"})
+        self.assertEqual({l["surface"] for l in lines[:-1]}, {"lock", "greeter"})
+
+    def test_commands_on_stdin_and_its_end(self):
+        # (nothing to draw, it answers and ends whatever comes on stdin; how
+        # the lines are read is the crate's own test: shell::tests)
+        r = self.run_ui("--surfaces", "lock", input='nonsense\n{"cmd":"open","surface":"lock"}\n{"to":"osd","hush":"sound"}\n')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout.splitlines()[-1]), {"src": "ui", "kind": "ready", "surfaces": []})
 
     def test_version(self):
         r = self.run_ui("--version")

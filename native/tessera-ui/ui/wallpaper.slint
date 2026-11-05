@@ -1,6 +1,10 @@
 // The wallpaper picker (src/surfaces/wallpaper; compare
 // shell/modules/wallpaper/WallpaperPicker.qml): a strip of thumbnails above
-// the dock. Arrow keys move, Enter applies, Esc closes; a click applies.
+// the dock. Arrow keys move, Enter applies, Esc closes; a click applies
+// (and brings it to the middle, as the ListView's highlight range). The strip
+// is dragged with the pointer and flicked on letting go (Flickable's 1500
+// px/s² deceleration); a touchpad's scroll glides on after the fingers lift
+// (Momentum.qml: at the speed it was going, after a 50 ms pause).
 // Glass: the panel sits on the plugin's glass (Rust sends its shape);
 // Material: a solid surface container. Numbers are the QML's.
 
@@ -40,6 +44,20 @@ export component WallpaperPicker inherits Window {
     property <length> thumb-h: 124px; // (220 × 9 / 16)
     property <length> list-offset: 0;
     property <duration> glide: 220ms;
+    property <bool> flinging; // (a flick decelerates evenly: ease-out quad)
+    // A drag of the strip: where it started (window x, offset), the latest
+    // two samples (x, time) for its speed, and whether it moved enough to be one
+    property <length> drag-x0;
+    property <length> drag-off0;
+    property <length> drag-x;
+    property <duration> drag-t;
+    property <length> drag-px;
+    property <duration> drag-pt;
+    property <bool> dragging;
+    // A touchpad's scroll: its speed (px/s, smoothed) and when it last moved
+    property <float> wheel-v;
+    property <duration> wheel-at;
+    property <bool> wheeling;
 
     background: transparent;
     no-frame: true;
@@ -54,7 +72,8 @@ export component WallpaperPicker inherits Window {
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
     }
-    animate list-offset { duration: glide; easing: ease-out; }
+    // (out-quad for a flick, else ease-out)
+    animate list-offset { duration: glide; easing: flinging ? cubic-bezier(0.5, 1, 0.89, 1) : cubic-bezier(0, 0, 0.58, 1); }
 
     function max-offset() -> length {
         max(0px, thumbs.length * step - 12px - strip.width)
@@ -65,18 +84,91 @@ export component WallpaperPicker inherits Window {
     function move(d: int) {
         if thumbs.length == 0 { return; }
         current = clamp(current + d, 0, thumbs.length - 1);
+        flinging = false;
         glide = 220ms;
         list-offset = centred(current);
     }
     function wheel(dx: length, dy: length) {
+        let d = abs(dx) > abs(dy) ? dx : dy;
+        let before = list-offset;
+        flinging = false;
         glide = 120ms;
-        list-offset = clamp(list-offset - (abs(dx) > abs(dy) ? dx : dy), 0px, max-offset());
+        list-offset = clamp(list-offset - d, 0px, max-offset());
+        // (Momentum.qml's speed: the last few events', smoothed)
+        let now = animation-tick();
+        let dt = clamp((now - wheel-at) / 1ms, 4, 100) / 1000;
+        wheel-v = wheeling ? wheel-v * 0.4 + (list-offset - before) / 1px / dt * 0.6 : (list-offset - before) / 1px / dt * 0.6;
+        wheel-at = now;
+        wheeling = true;
+    }
+    // Glide on at `v` px/s, slowing evenly (Flickable: 1500 px/s², at most 2500 px/s)
+    function fling(v: float) {
+        let speed = clamp(abs(v), 0, 2500);
+        if speed < 120 { return; }
+        let dist = speed * speed / 3000 * 1px;
+        flinging = true;
+        glide = speed / 1500 * 1000ms;
+        list-offset = clamp(list-offset + (v > 0 ? dist : -dist), 0px, max-offset());
+    }
+    function drag-press(x: length) {
+        drag-x0 = x;
+        drag-off0 = list-offset;
+        drag-x = x;
+        drag-px = x;
+        drag-t = animation-tick();
+        drag-pt = drag-t;
+        dragging = false;
+    }
+    function drag-move(x: length) {
+        if !dragging && abs(x - drag-x0) < 8px { return; }
+        if !dragging {
+            // (from where it is, not where a glide was headed)
+            drag-off0 = drag-off0 + (x - drag-x0 > 0 ? 8px : -8px);
+        }
+        dragging = true;
+        flinging = false;
+        glide = 0ms;
+        drag-px = drag-x;
+        drag-pt = drag-t;
+        drag-x = x;
+        drag-t = animation-tick();
+        list-offset = clamp(drag-off0 - (x - drag-x0), 0px, max-offset());
+    }
+    function drag-release() {
+        if !dragging { return; }
+        // (let go after holding still: no flick)
+        let dt = (drag-t - drag-pt) / 1ms;
+        if animation-tick() - drag-t < 80ms && dt > 0 {
+            fling(-(drag-x - drag-px) / 1px / dt * 1000);
+        }
+    }
+    // A thumbnail picked with the pointer: chosen, and brought to the middle
+    function pick(i: int) {
+        current = i;
+        flinging = false;
+        glide = 220ms;
+        list-offset = centred(i);
+        apply(i);
     }
     // Opened: the current one in the middle at once, the keyboard here
     public function reveal() {
+        flinging = false;
+        dragging = false;
         glide = 0ms;
         list-offset = centred(current);
         keys.focus();
+    }
+
+    // The fingers lifted (no phases here: a 50 ms pause in the events)
+    Timer {
+        interval: 25ms;
+        running: wheeling;
+        triggered => {
+            if animation-tick() - wheel-at >= 50ms {
+                wheeling = false;
+                if animation-tick() - wheel-at < 80ms { fling(wheel-v); }
+            }
+        }
     }
 
     keys := FocusScope {
@@ -159,12 +251,17 @@ export component WallpaperPicker inherits Window {
                 accessible-role: list;
                 accessible-label: "Wallpapers";
 
-                // (the gaps between thumbnails scroll too)
-                TouchArea {
+                // (the gaps between thumbnails scroll and drag too)
+                gap := TouchArea {
                     scroll-event(e) => {
                         wheel(e.delta-x, e.delta-y);
                         accept
                     }
+                    pointer-event(e) => {
+                        if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { drag-press(self.absolute-position.x + self.mouse-x); }
+                        if e.button == PointerEventButton.left && e.kind == PointerEventKind.up { drag-release(); }
+                    }
+                    moved => { if self.pressed { drag-move(self.absolute-position.x + self.mouse-x); } }
                 }
 
                 for t[i] in thumbs: Rectangle {
@@ -176,10 +273,7 @@ export component WallpaperPicker inherits Window {
                     accessible-item-selectable: true;
                     accessible-item-selected: i == applied;
                     accessible-item-index: i;
-                    accessible-action-default => {
-                        current = i;
-                        apply(i);
-                    }
+                    accessible-action-default => { pick(i); }
 
                     frame := Rectangle {
                         property <bool> chosen: i == applied;
@@ -217,9 +311,14 @@ export component WallpaperPicker inherits Window {
                         }
                         touch := TouchArea {
                             mouse-cursor: pointer;
+                            // (a drag that started here moves the strip, and picks nothing)
+                            pointer-event(e) => {
+                                if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { drag-press(self.absolute-position.x + self.mouse-x); }
+                                if e.button == PointerEventButton.left && e.kind == PointerEventKind.up { drag-release(); }
+                            }
+                            moved => { if self.pressed { drag-move(self.absolute-position.x + self.mouse-x); } }
                             clicked => {
-                                current = i;
-                                apply(i);
+                                if !dragging { pick(i); }
                             }
                             scroll-event(e) => {
                                 wheel(e.delta-x, e.delta-y);

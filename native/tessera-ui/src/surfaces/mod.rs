@@ -4,25 +4,43 @@
 //! of a surface only once this process says it draws it, a JSON line on
 //! stdout per event:
 //!   {"src":"ui","kind":"ready","surfaces":["menubar"]}   drawing these
-//!   {"src":"ui","kind":"unknown","surface":"dock"}       not in Rust yet
+//!   {"src":"ui","kind":"unknown","surface":"lock"}       not in Rust yet
+//!   {"src":"ui","kind":"osd","shown":true}               a surface's own news (`tell`)
 //! If this process ends, the shell draws them again itself.
 
-pub mod background;
+pub mod clipboard;
+pub mod dock;
+pub mod emoji;
 pub mod menubar;
+pub mod osd;
+pub mod shapes;
+pub mod background;
 pub mod wallpaper;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "background", "wallpaper"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
     match name {
         "menubar" => Some(Box::new(menubar::Menubar::default())),
+        "dock" => Some(Box::new(dock::Dock::default())),
+        "emoji" => Some(Box::new(emoji::Emoji::default())),
+        "clipboard" => Some(Box::new(clipboard::Clipboard::default())),
+        "osd" => Some(Box::new(osd::Osd::default())),
         "background" => Some(Box::new(background::Background::default())),
         "wallpaper" => Some(Box::new(wallpaper::WallpaperPicker::default())),
         _ => None,
     }
+}
+
+/// A line for the shell (RustUi.qml reads it), from a surface
+pub fn tell(v: serde_json::Value) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{v}");
+    let _ = out.flush();
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -99,21 +117,23 @@ mod tests {
 
     #[test]
     fn only_the_ones_asked_for() {
-        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,dock"]));
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,lock"]));
         assert_eq!(s.on, vec!["menubar"]);
-        assert_eq!(s.unknown, vec!["dock"]);
-        assert!(s.on.contains(&"menubar") && !s.on.contains(&"dock"));
-        let s = Surfaces::from_args(&args(&["--surfaces=dock"]));
+        assert_eq!(s.unknown, vec!["lock"]);
+        let s = Surfaces::from_args(&args(&["--surfaces=lock"]));
         assert!(s.on.is_empty());
+        // (in KNOWN's order, whatever order they're asked in)
+        let s = Surfaces::from_args(&args(&["--surfaces", "dock,menubar"]));
+        assert_eq!(s.on, vec!["menubar", "dock"]);
         let s = Surfaces::from_args(&args(&["--surfaces", ""]));
         assert!(s.on.is_empty() && s.unknown.is_empty());
     }
 
     #[test]
     fn says_what_it_draws_as_json_lines() {
-        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,osd"]));
+        let s = Surfaces::from_args(&args(&["--surfaces", "menubar,lock"]));
         let lines: Vec<serde_json::Value> = s.ready_lines().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "osd"}));
+        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "lock"}));
         assert_eq!(lines[1], json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
     }
 

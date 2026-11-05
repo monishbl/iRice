@@ -1,0 +1,512 @@
+// The clipboard history in Rust (rust.surfaces: clipboard), compare
+// shell/modules/clipboard/ClipboardPanel.qml and shell/glass/Dialog.qml: a
+// centred dialog over a light scrim (a click outside or Esc closes it):
+// search, All / Text / Images, the history in sections by when it was
+// copied (Images: a two-column grid), pins, picture previews; Material adds
+// a floating toolbar for the chosen item. Rust (src/surfaces/clipboard)
+// lays the list out and owns the state; this draws it.
+
+import { Theme, Icon } from "theme.slint";
+import { SearchField, IconButton, KeyHint, StateShape } from "widgets.slint";
+
+// kind: 0 a section's title, 1 a list row, 2 a grid tile
+export struct CItem {
+    kind: int,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    index: int, // its row (selection, actions)
+    title: string,
+    text: string,
+    icon: string, // the row's icon (text, link); "" for colours and pictures
+    is-color: bool,
+    swatch: color,
+    image: image,
+    has-image: bool, // decoded and ready
+    picture: bool, // a picture entry (shows a preview, ready or not)
+    aspect: float,
+    pinned: bool,
+    first: bool, // first row of its section (Material's rounder corners)
+    last: bool,
+}
+
+export component ClipboardPanel inherits Window {
+    in property <bool> shown;
+    in property <[CItem]> items;
+    in property <length> items-height;
+    in-out property <length> list-y;
+    in property <int> sel;
+    in property <int> count; // rows listed
+    in property <int> kind; // 0 all, 1 text, 2 images
+    in property <bool> grid;
+    in property <int> history-count; // (Clear history: how many)
+    in property <bool> confirm-clear;
+    in property <bool> sel-image;
+    in property <bool> sel-pinned;
+    in property <string> query;
+    in property <string> empty-outline;
+    in property <[string]> hint-keys: ["↵", "⇧↵", "Alt ↵", "Ctrl P", "Del"];
+
+    out property <float> openness: shown ? 1 : 0;
+    out property <length> body-width: 560px + 2 * 16px;
+    out property <length> body-height: 480px + 2 * 16px;
+    out property <length> body-x: body.x;
+    out property <length> body-y: body.y;
+    out property <float> body-scale: body.transform-scale;
+    out property <float> body-opacity: body.opacity;
+    out property <length> list-height: list.height;
+    property <length> pad: 16px;
+    property <bool> toolbar: Theme.material && count > 0;
+
+    callback key(string, bool, bool, bool) -> bool; // text, shift, alt, control: handled?
+    callback edited(string);
+    callback hovered(int);
+    callback activate(int, bool, bool); // row, plain text, copy only
+    callback pin(int);
+    callback remove(int);
+    callback set-kind(int);
+    callback clear-clicked();
+    callback clear-left();
+    callback scrolled(length);
+    callback dismissed();
+    callback closed();
+
+    background: transparent;
+    no-frame: true;
+    title: "Clipboard";
+    default-font-family: Theme.font;
+
+    animate openness {
+        duration: shown ? 420ms : 192ms;
+        easing: shown ? spring(0.15) : cubic-bezier(0.4, 0, 1, 1);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    public function open() {
+        field.set-text("");
+        field.focus-field();
+    }
+
+    // The scrim: a click on it closes
+    Rectangle {
+        background: #000000.with-alpha(0.25 * max(0, min(1, openness)));
+        TouchArea {
+            enabled: shown;
+            clicked => { dismissed(); }
+        }
+    }
+
+    body := Rectangle {
+        width: body-width;
+        height: body-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 40px;
+        opacity: min(1, openness);
+        transform-scale: 0.96 + 0.04 * min(1, openness);
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: 28px;
+        background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+        border-width: Theme.material ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: Theme.material ? 32px : 0;
+        drop-shadow-offset-y: Theme.material ? 8px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.32 : 0.14) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Clipboard history";
+
+        // clicks on the dialog don't reach the scrim
+        TouchArea { }
+
+        content := Rectangle {
+            x: pad;
+            y: pad;
+            width: 560px;
+            height: 480px;
+
+            field := SearchField {
+                x: 0;
+                y: 0;
+                width: parent.width - 210px - 12px;
+                placeholder: "Search clipboard";
+                clearable: false;
+                edited(t) => { root.edited(t); }
+                key(e) => { return root.key(e.text, e.modifiers.shift, e.modifiers.alt, e.modifiers.control); }
+            }
+
+            // All / Text / Images (Segmented.qml)
+            seg := Rectangle {
+                x: parent.width - 210px;
+                width: 210px;
+                height: Theme.material ? 36px : 30px;
+                y: (36px - self.height) / 2;
+                border-radius: self.height / 2;
+                background: Theme.material ? transparent : Theme.toggle-off;
+                accessible-role: tab-list;
+                accessible-label: "Show";
+                property <length> gap: Theme.material ? 2px : 0;
+                property <length> avail: self.width - 4px - 2 * gap;
+                property <length> extra: (avail - (t0.preferred-width + t1.preferred-width + t2.preferred-width + 3 * 24px)) / 3;
+                property <length> w0: t0.preferred-width + 24px + extra;
+                property <length> w1: t1.preferred-width + 24px + extra;
+                property <length> w2: t2.preferred-width + 24px + extra;
+                property <length> x0: 2px;
+                property <length> x1: x0 + w0 + gap;
+                property <length> x2: x1 + w1 + gap;
+                // Glass: the sliding pill
+                if !Theme.material: Rectangle {
+                    x: kind == 0 ? x0 : kind == 1 ? x1 : x2;
+                    y: 2px;
+                    width: kind == 0 ? w0 : kind == 1 ? w1 : w2;
+                    height: parent.height - 4px;
+                    border-radius: self.height / 2;
+                    background: Theme.dark ? #ffffff33 : #ffffff;
+                    animate x, width { duration: 220ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+                }
+                for i in 3: Rectangle {
+                    x: i == 0 ? x0 : i == 1 ? x1 : x2;
+                    width: i == 0 ? w0 : i == 1 ? w1 : w2;
+                    height: parent.height;
+                    property <bool> chosen: i == kind;
+                    accessible-role: tab;
+                    accessible-label: ["All", "Text", "Images"][i];
+                    accessible-item-selectable: true;
+                    accessible-item-selected: chosen;
+                    accessible-action-default => { set-kind(i); }
+                    // Material: each its own button, round outer ends, the chosen one filled and fully round
+                    if Theme.material: Rectangle {
+                        property <length> full: self.height / 2;
+                        property <length> inner: chosen ? full : segTa.pressed ? 4px : 8px;
+                        border-top-left-radius: i == 0 ? full : inner;
+                        border-bottom-left-radius: i == 0 ? full : inner;
+                        border-top-right-radius: i == 2 ? full : inner;
+                        border-bottom-right-radius: i == 2 ? full : inner;
+                        background: chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, segTa.pressed ? 0.9 : segTa.has-hover ? 0.92 : 1)
+                            : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, segTa.pressed ? 0.9 : segTa.has-hover ? 0.92 : 1);
+                        animate background { duration: 150ms; }
+                    }
+                    Text {
+                        text: ["All", "Text", "Images"][i];
+                        color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+                        font-size: Theme.material ? Theme.body : Theme.small;
+                        font-weight: Theme.material ? 500 : 600;
+                        accessible-role: none;
+                    }
+                    segTa := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { set-kind(i); }
+                    }
+                }
+                // (each label's natural width: segments fit their labels)
+                t0 := Text { visible: false; text: "All"; font-size: Theme.material ? Theme.body : Theme.small; font-weight: Theme.material ? 500 : 600; }
+                t1 := Text { visible: false; text: "Text"; font-size: Theme.material ? Theme.body : Theme.small; font-weight: Theme.material ? 500 : 600; }
+                t2 := Text { visible: false; text: "Images"; font-size: Theme.material ? Theme.body : Theme.small; font-weight: Theme.material ? 500 : 600; }
+            }
+
+            // ── The list (All, Text) or the grid (Images) ──
+            list := Flickable {
+                y: 36px + 12px;
+                width: parent.width;
+                height: parent.height - self.y - 28px - 8px;
+                content-height: max(self.height, items-height + (toolbar ? 64px + 12px : 0));
+                content-y <=> root.list-y;
+                changed content-y => { scrolled(self.content-y); }
+                accessible-role: AccessibleRole.list;
+                accessible-label: grid ? "Copied pictures" : "Copied items";
+
+                for it in items: Rectangle {
+                    x: it.x;
+                    y: it.y;
+                    width: it.w;
+                    height: it.h;
+                    property <bool> near: it.y + it.h > -list.content-y - 200px && it.y < -list.content-y + list.height + 200px;
+                    property <bool> selected: it.index == root.sel && it.kind != 0;
+
+                    // a section's title (Material: a list's label, in primary)
+                    if near && it.kind == 0: Text {
+                        x: Theme.material ? 16px : 10px;
+                        y: parent.height - self.preferred-height - (Theme.material ? 8px : 4px);
+                        text: it.title;
+                        color: Theme.material ? Theme.m3-primary : Theme.tertiary;
+                        font-size: Theme.material ? Theme.small : Theme.caption;
+                        font-weight: Theme.material ? 500 : 600;
+                    }
+
+                    // ── a row ──
+                    if near && it.kind == 1: Rectangle {
+                        accessible-role: list-item;
+                        accessible-label: it.picture ? (it.pinned ? "Pinned picture" : "Picture") : it.text;
+                        accessible-item-selectable: true;
+                        accessible-item-selected: selected;
+                        accessible-action-default => { activate(it.index, false, false); }
+                        // Glass: the accent behind the chosen row, a fill on hover
+                        if !Theme.material: Rectangle {
+                            border-radius: Theme.radius-control;
+                            background: selected ? Theme.accent.with-alpha(Theme.dark ? 0.32 : 0.16) : rowTa.has-hover ? Theme.fill : transparent;
+                        }
+                        // Material: a segmented list, each section a group (16 px
+                        // outer corners, 4 px between); the chosen row rounds
+                        // fully in secondary container
+                        if Theme.material: Rectangle {
+                            property <length> top: selected || it.first ? 16px : 4px;
+                            property <length> bottom: selected || it.last ? 16px : 4px;
+                            border-top-left-radius: top;
+                            border-top-right-radius: top;
+                            border-bottom-left-radius: bottom;
+                            border-bottom-right-radius: bottom;
+                            background: selected ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, rowTa.pressed ? 0.9 : 1) : Theme.m3-surface-container-high;
+                            animate background { duration: 150ms; }
+                        }
+                        rowTa := TouchArea {
+                            changed has-hover => { if self.has-hover { hovered(it.index); } }
+                            pointer-event(e) => {
+                                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && self.has-hover {
+                                    activate(it.index, false, e.modifiers.shift);
+                                }
+                            }
+                        }
+                        if it.is-color: Rectangle {
+                            x: 12px;
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 4px;
+                            background: it.swatch;
+                            border-width: 1px;
+                            border-color: Theme.separator;
+                        }
+                        if !it.picture && !it.is-color: Icon {
+                            x: 10px;
+                            width: 20px;
+                            text: it.icon;
+                            font-size: 16px;
+                            color: Theme.material ? (selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : Theme.tertiary;
+                        }
+                        // the picture, its own shape (wide ones capped)
+                        if it.picture: Rectangle {
+                            x: 8px;
+                            height: 152px;
+                            width: max(96px, min(parent.width - 120px, it.aspect > 0 ? self.height * it.aspect : 200px));
+                            border-radius: Theme.material ? 12px : 10px;
+                            background: Theme.fill;
+                            clip: true;
+                            if it.has-image: Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: it.image;
+                                image-fit: cover;
+                                accessible-role: none;
+                            }
+                        }
+                        if !it.picture: Text {
+                            x: 40px;
+                            width: parent.width - 40px - 8px - actions.width - 8px;
+                            text: it.text;
+                            overflow: elide;
+                            vertical-alignment: center;
+                            color: Theme.material && selected ? Theme.m3-on-secondary-container : Theme.label;
+                            font-size: Theme.body;
+                            accessible-role: none;
+                        }
+                        actions := HorizontalLayout {
+                            x: parent.width - self.width - 8px;
+                            width: self.preferred-width;
+                            y: (parent.height - 28px) / 2;
+                            height: 28px;
+                            spacing: 2px;
+                            opacity: selected || it.pinned ? 1 : 0;
+                            IconButton {
+                                icon: "\u{e3e2}";
+                                fill: it.pinned;
+                                icon-color: it.pinned ? Theme.accent : Theme.secondary;
+                                label: it.pinned ? "Unpin" : "Pin";
+                                clicked => { pin(it.index); }
+                            }
+                            if selected: IconButton {
+                                icon: "\u{e4a6}";
+                                label: "Remove";
+                                clicked => { remove(it.index); }
+                            }
+                        }
+                    }
+
+                    // ── a tile (Images) ──
+                    if near && it.kind == 2: Rectangle {
+                        border-radius: Theme.material ? 16px : 12px;
+                        border-width: selected ? (Theme.material ? 3px : 2px) : 0;
+                        border-color: Theme.accent;
+                        accessible-role: list-item;
+                        accessible-label: it.pinned ? "Pinned picture" : "Picture";
+                        accessible-item-selectable: true;
+                        accessible-item-selected: selected;
+                        accessible-action-default => { activate(it.index, false, false); }
+                        Rectangle {
+                            x: Theme.material ? 4px : 2px;
+                            y: self.x;
+                            width: parent.width - 2 * self.x;
+                            height: parent.height - 2 * self.y;
+                            border-radius: Theme.material ? 12px : 10px;
+                            background: Theme.fill;
+                            clip: true;
+                            if it.has-image: Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: it.image;
+                                image-fit: cover;
+                                accessible-role: none;
+                            }
+                        }
+                        TouchArea {
+                            changed has-hover => { if self.has-hover { hovered(it.index); } }
+                            pointer-event(e) => {
+                                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && self.has-hover {
+                                    activate(it.index, false, e.modifiers.shift);
+                                }
+                            }
+                        }
+                        // pin and remove on a chip that reads over any picture
+                        // (Material: a small vibrant toolbar in primary container)
+                        if selected || it.pinned: Rectangle {
+                            x: parent.width - self.width - (Theme.material ? 10px : 8px);
+                            y: Theme.material ? 10px : 8px;
+                            width: chip.preferred-width + 4px;
+                            height: 32px;
+                            border-radius: Theme.material ? self.height / 2 : 10px;
+                            background: Theme.material ? Theme.m3-primary-container : #17171ccc;
+                            chip := HorizontalLayout {
+                                alignment: center;
+                                padding-top: 2px;
+                                padding-bottom: 2px;
+                                IconButton {
+                                    icon: "\u{e3e2}";
+                                    fill: it.pinned;
+                                    icon-color: Theme.material ? Theme.m3-on-primary-container : it.pinned ? Theme.accent : #ffffff;
+                                    label: it.pinned ? "Unpin" : "Pin";
+                                    clicked => { pin(it.index); }
+                                }
+                                if selected: IconButton {
+                                    icon: "\u{e4a6}";
+                                    icon-color: Theme.material ? Theme.m3-on-primary-container : #ffffff;
+                                    label: "Remove";
+                                    clicked => { remove(it.index); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Nothing copied, or nothing found ──
+            if count == 0: VerticalLayout {
+                y: list.y;
+                width: parent.width;
+                height: list.height;
+                alignment: center;
+                spacing: 8px;
+                if !Theme.material: Icon {
+                    text: query == "" ? "\u{e198}" : "\u{e30c}";
+                    font-size: 32px;
+                    color: Theme.tertiary;
+                }
+                if Theme.material: HorizontalLayout {
+                    alignment: center;
+                    padding-bottom: 8px;
+                    StateShape {
+                        width: 72px;
+                        height: 72px;
+                        outline: empty-outline;
+                        icon: query == "" ? "\u{e198}" : "\u{e30c}";
+                        icon-size: 30px;
+                        shape-color: Theme.m3-secondary-container;
+                        icon-color: Theme.m3-on-secondary-container;
+                    }
+                }
+                Text {
+                    horizontal-alignment: center;
+                    text: query != "" ? "No matches for “" + query + "”" : kind == 2 ? "No images copied yet" : "Nothing copied yet";
+                    color: Theme.label;
+                    font-size: Theme.material ? Theme.large : Theme.title;
+                    font-weight: Theme.material ? 400 : 600;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    text: query != "" ? "Try a different word, or switch to All." : "Text and images you copy appear here.";
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                }
+            }
+
+            // ── Material: the chosen item's actions, a floating toolbar over
+            // the list's foot ──
+            if toolbar: Rectangle {
+                y: list.y + list.height - self.height - 12px + 8px;
+                x: (parent.width - self.width) / 2;
+                width: bar.preferred-width + 16px;
+                height: 64px;
+                border-radius: self.height / 2;
+                background: Theme.m3-surface-container;
+                drop-shadow-blur: 12px;
+                drop-shadow-offset-y: 3px;
+                drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.18);
+                accessible-role: groupbox;
+                accessible-label: "Actions";
+                bar := HorizontalLayout {
+                    alignment: center;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 4px;
+                    IconButton { width: 48px; height: 48px; icon: "\u{e198}"; icon-size: 22px; icon-color: Theme.m3-on-surface-variant; label: "Paste"; clicked => { activate(sel, false, false); } }
+                    if !sel-image: IconButton { width: 48px; height: 48px; icon: "\u{e6ee}"; icon-size: 22px; icon-color: Theme.m3-on-surface-variant; label: "Paste as plain text"; clicked => { activate(sel, true, false); } }
+                    IconButton { width: 48px; height: 48px; icon: "\u{e1ca}"; icon-size: 22px; icon-color: Theme.m3-on-surface-variant; label: "Copy only"; clicked => { activate(sel, false, true); } }
+                    IconButton { width: 48px; height: 48px; icon: "\u{e3e2}"; fill: sel-pinned; icon-size: 22px; icon-color: Theme.m3-on-surface-variant; label: sel-pinned ? "Unpin" : "Pin"; clicked => { pin(sel); } }
+                    IconButton { width: 48px; height: 48px; icon: "\u{e4a6}"; icon-size: 22px; icon-color: Theme.m3-error; label: "Delete"; clicked => { remove(sel); } }
+                }
+            }
+
+            // ── The footer: the keys, and Clear history ──
+            footer := Rectangle {
+                y: parent.height - 28px;
+                width: parent.width;
+                height: 28px;
+                HorizontalLayout {
+                    x: 0;
+                    y: (parent.height - 22px) / 2;
+                    width: self.preferred-width;
+                    height: 22px;
+                    spacing: 14px;
+                    for h[i] in ["Paste", "Copy", "Plain text", "Pin", "Remove"]: KeyHint {
+                        keys: [hint-keys[i]];
+                        text: h;
+                        spacing: 6px;
+                    }
+                }
+                // Clearing can't be undone (cliphist wipe), so it asks once, inline
+                if history-count > 0: Rectangle {
+                    x: parent.width - self.width;
+                    y: (parent.height - self.height) / 2;
+                    width: clearText.preferred-width + (Theme.material ? 24px : 20px);
+                    height: Theme.material ? 32px : 28px;
+                    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+                    background: Theme.material ? (confirm-clear ? Theme.m3-error : Theme.m3-error.with-alpha(clearTa.pressed ? 0.1 : clearTa.has-hover ? 0.08 : 0))
+                        : confirm-clear ? Theme.danger : clearTa.has-hover ? Theme.fill : transparent;
+                    accessible-role: button;
+                    accessible-label: clearText.text;
+                    accessible-action-default => { clear-clicked(); }
+                    clearText := Text {
+                        text: confirm-clear ? "Clear " + history-count + " items" : "Clear history";
+                        color: confirm-clear ? (Theme.material ? Theme.m3-on-error : #ffffff) : Theme.danger;
+                        font-size: Theme.small;
+                        font-weight: 500;
+                        accessible-role: none;
+                    }
+                    clearTa := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { clear-clicked(); }
+                        changed has-hover => { if !self.has-hover { clear-left(); } }
+                    }
+                }
+            }
+        }
+    }
+}

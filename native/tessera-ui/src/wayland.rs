@@ -252,6 +252,9 @@ pub struct State {
     keyboard: Option<WlKeyboard>,
     pointer_on: Option<Rc<Surface>>,
     keyboard_on: Option<Rc<Surface>>,
+    /// shift, control, alt, logo as Slint last heard them (key events or
+    /// the seat's modifiers: a virtual keyboard sends only the latter)
+    mods_sent: [bool; 4],
     pub surfaces: Vec<Rc<Surface>>,
     pub egl: Rc<Egl>,
     pub qh: QueueHandle<State>,
@@ -296,6 +299,7 @@ impl State {
             keyboard: None,
             pointer_on: None,
             keyboard_on: None,
+            mods_sent: [false; 4],
             surfaces: Vec::new(),
             egl,
             qh,
@@ -360,6 +364,27 @@ impl State {
         }
         if self.keyboard_on.as_ref().is_some_and(|p| Rc::ptr_eq(p, s)) {
             self.keyboard_on = None;
+        }
+    }
+
+    /// Where a surface takes the pointer (QML's `mask`): these rectangles, in
+    /// surface-local logical px; `Some(&[])` nowhere (clicks go through to
+    /// what's below); `None` everywhere
+    pub fn set_input_region(&self, s: &Surface, rects: Option<&[(i32, i32, i32, i32)]>) {
+        match rects {
+            None => s.wl.set_input_region(None),
+            Some(rects) => {
+                let Ok(r) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
+                for &(x, y, w, h) in rects {
+                    r.add(x, y, w, h);
+                }
+                s.wl.set_input_region(Some(r.wl_region()));
+            }
+        }
+        // (double-buffered: the next frame's commit carries it; a surface
+        // already on screen and idle gets one now)
+        if s.mapped.get() {
+            s.wl.commit();
         }
     }
 
@@ -533,6 +558,8 @@ impl SeatHandler for State {
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlSeat) {}
 }
 
+const MODS: [Key; 4] = [Key::Shift, Key::Control, Key::Alt, Key::Meta];
+
 enum KeyKind {
     Press,
     Repeat,
@@ -573,6 +600,9 @@ impl State {
     fn key(&mut self, e: KeyEvent, kind: KeyKind) {
         let Some(s) = self.keyboard_on.clone() else { return };
         let Some(text) = key_text(&e, matches!(kind, KeyKind::Release)) else { return };
+        if let Some(i) = MODS.iter().position(|m| text == slint::SharedString::from(*m)) {
+            self.mods_sent[i] = !matches!(kind, KeyKind::Release);
+        }
         s.window.dispatch_event(match kind {
             KeyKind::Press => WindowEvent::KeyPressed { text },
             KeyKind::Repeat => WindowEvent::KeyPressRepeated { text },
@@ -584,6 +614,7 @@ impl State {
 impl KeyboardHandler for State {
     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, wl: &WlSurface, _: u32, _: &[u32], _: &[Keysym]) {
         self.keyboard_on = self.find(wl);
+        self.mods_sent = [false; 4]; // (the seat's modifiers follow)
         if let Some(s) = &self.keyboard_on {
             s.window.dispatch_event(WindowEvent::WindowActiveChanged(true));
         }
@@ -604,7 +635,22 @@ impl KeyboardHandler for State {
     fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, _: u32, e: KeyEvent) {
         self.key(e, KeyKind::Release);
     }
-    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, _: u32, _: Modifiers, _: RawModifiers, _: u32) {}
+    /// The seat's modifiers: Slint follows modifier key presses, so one it
+    /// didn't see go down or up (a virtual keyboard's, wtype -M) is pressed
+    /// or released for it here
+    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, _: u32) {
+        if crate::env::is_set("DEBUG") {
+            eprintln!("debug: modifiers {m:?} (sent {:?})", self.mods_sent);
+        }
+        let Some(s) = self.keyboard_on.clone() else { return };
+        for (i, want) in [m.shift, m.ctrl, m.alt, m.logo].into_iter().enumerate() {
+            if self.mods_sent[i] != want {
+                self.mods_sent[i] = want;
+                let text = slint::SharedString::from(MODS[i]);
+                s.window.dispatch_event(if want { WindowEvent::KeyPressed { text } } else { WindowEvent::KeyReleased { text } });
+            }
+        }
+    }
 }
 
 impl PointerHandler for State {

@@ -8,9 +8,22 @@
 //!            active window, per monitor; from its event socket
 //!   status   battery (status::Battery, UPower) and Wi-Fi (status::Wifi,
 //!            NetworkManager), over the system bus
+//!   clipboard  the clipboard history (clipboard::History: cliphist, the
+//!            shell's pins and times) and its pictures (clipboard::Previews)
+//!   clients  Hyprland's windows and monitors (clients::Windows): what's open,
+//!            where, in front, asking for attention
+//!   apps     the installed apps' desktop entries (apps::Apps), and starting them
+//!   icons    icon names to files in the shell's icon theme (icons::Icons)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod apps;
+pub mod audio;
+pub mod brightness;
+pub mod clients;
+pub mod clipboard;
 pub mod hypr;
+pub mod icons;
+pub mod pulse;
 pub mod status;
 
 use crate::Msg;
@@ -20,6 +33,12 @@ pub fn start(name: &str, tx: Sender<Msg>) {
     match name {
         "hypr" => hypr::spawn_events(tx),
         "status" => status::spawn(tx),
+        "clipboard" => clipboard::spawn(tx),
+        "clients" => clients::spawn(tx),
+        "apps" => apps::spawn(tx),
+        "icons" => icons::spawn(tx),
+        "audio" => audio::spawn(tx),
+        "brightness" => brightness::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

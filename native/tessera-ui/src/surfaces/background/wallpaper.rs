@@ -1,9 +1,10 @@
 //! The wallpaper's settings, read and written as shell/common/Wallpaper.qml
 //! does: which picture shows now (the chosen one, the bundled default for the
 //! look and mode, the time of day's, the light or dark one of a pair, or a
-//! live wallpaper's poster), the pictures of a time-of-day folder, and
-//! choosing a picture (config.json's `wallpaper` section; Config.qml's
-//! defaults when a key is missing). Shared by the background and the picker.
+//! live wallpaper's poster) and the pictures of a time-of-day folder
+//! (config.json's `wallpaper` section; Config.qml's defaults when a key is
+//! missing). Shared by the background and the picker; choosing a picture is
+//! the shell's (`wallpaper.set`, its Wallpaper.set).
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,25 @@ use std::path::{Path, PathBuf};
 /// Daylight.qml's defaults until the weather says (6:30 and 18:30)
 pub const SUNRISE: i32 = 390;
 pub const SUNSET: i32 = 1110;
+
+/// Today's sunrise and sunset as the shell last told them (either part
+/// hears them), else the defaults
+static SUN: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
+
+pub fn sun() -> (i32, i32) {
+    SUN.lock().ok().and_then(|g| *g).unwrap_or((SUNRISE, SUNSET))
+}
+
+/// A message from the shell with `sunrise` and `sunset` (minutes): kept;
+/// true when they changed
+pub fn told_sun(v: &Value) -> bool {
+    let (Some(r), Some(s)) = (v["sunrise"].as_i64(), v["sunset"].as_i64()) else { return false };
+    let new = Some(((r as i32).clamp(0, 1439), (s as i32).clamp(0, 1439)));
+    let Ok(mut g) = SUN.lock() else { return false };
+    let changed = *g != new;
+    *g = new;
+    changed
+}
 
 /// Where the day is (Daylight.qml): minutes since midnight, and today's
 /// sunrise and sunset (the QML shell's weather service knows them and tells
@@ -307,41 +327,6 @@ pub fn md5_hex(data: &[u8]) -> String {
     [a0, b0, c0, d0].iter().flat_map(|v| v.to_le_bytes()).map(|b| format!("{b:02x}")).collect()
 }
 
-// ── Choosing a picture ──────────────────────────────────────────────────────
-
-/// Wallpaper.set: a chosen picture turns the dynamic and live wallpapers off
-pub fn with_picture(mut cfg: Value, picture: &str) -> Value {
-    if !cfg.is_object() {
-        cfg = Value::Object(Default::default());
-    }
-    if !cfg["wallpaper"].is_object() {
-        cfg["wallpaper"] = Value::Object(Default::default());
-    }
-    let w = &mut cfg["wallpaper"];
-    w["dynamic"] = "off".into();
-    w["live"] = "".into();
-    w["path"] = picture.into();
-    cfg
-}
-
-/// Write the choice into config.json, all at once (a file beside it, renamed
-/// over it: the running shell never reads half of one). A file that isn't
-/// JSON is left alone
-pub fn choose(config: &Path, picture: &str) -> std::io::Result<()> {
-    let cfg: Value = match std::fs::read_to_string(config) {
-        Ok(text) => serde_json::from_str(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
-        Err(e) => return Err(e),
-    };
-    let text = serde_json::to_string_pretty(&with_picture(cfg, picture))? + "\n";
-    if let Some(d) = config.parent() {
-        std::fs::create_dir_all(d)?;
-    }
-    let tmp = config.with_extension(format!("json.tessera-ui-{}", std::process::id()));
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, config)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,6 +440,15 @@ mod tests {
     }
 
     #[test]
+    fn the_sun_as_told() {
+        assert!(!told_sun(&json!({"open": "DP-1"})));
+        assert!(told_sun(&json!({"sunrise": 400, "sunset": 1100})));
+        assert_eq!(sun(), (400, 1100));
+        assert!(!told_sun(&json!({"sunrise": 400, "sunset": 1100})));
+        assert!(told_sun(&json!({"sunrise": SUNRISE, "sunset": SUNSET})));
+    }
+
+    #[test]
     fn config_reads_with_qml_defaults() {
         let home = std::env::var("HOME").unwrap_or_default();
         assert_eq!(directory(&json!({})), format!("{home}/Pictures/Wallpapers"));
@@ -463,36 +457,6 @@ mod tests {
         assert_eq!(time_folder(&json!({"wallpaper": {"dynamicFolder": "/f"}})), "");
         assert_eq!(time_folder(&json!({"wallpaper": {"dynamic": "time", "dynamicFolder": "/f"}})), "/f");
         assert!(dark(&json!({}), &Day { minute: 600, sunrise: SUNRISE, sunset: SUNSET }));
-    }
-
-    #[test]
-    fn choosing_turns_dynamic_and_live_off() {
-        let v = with_picture(json!({"wallpaper": {"dynamic": "time", "live": "/v.mp4", "path": "", "directory": "/w"}, "dock": {"iconSize": 40}}), "/p/new.jpg");
-        assert_eq!(v["wallpaper"], json!({"dynamic": "off", "live": "", "path": "/p/new.jpg", "directory": "/w"}));
-        assert_eq!(v["dock"]["iconSize"], 40);
-        assert_eq!(with_picture(json!(null), "/p.jpg")["wallpaper"]["path"], "/p.jpg");
-    }
-
-    #[test]
-    fn choose_writes_config_json_whole() {
-        let d = std::env::temp_dir().join(format!("tessera-ui-wallpaper-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        let f = d.join("tessera/config.json");
-        // (no file yet: one with just the choice)
-        choose(&f, "/p/a.jpg").unwrap();
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(v["wallpaper"]["path"], "/p/a.jpg");
-        std::fs::write(&f, r#"{"appearance": {"look": "material"}, "wallpaper": {"live": "/v.mp4"}}"#).unwrap();
-        choose(&f, "/p/b.jpg").unwrap();
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!((v["appearance"]["look"].as_str(), v["wallpaper"]["live"].as_str(), v["wallpaper"]["path"].as_str()), (Some("material"), Some(""), Some("/p/b.jpg")));
-        // (nothing else left behind)
-        assert_eq!(std::fs::read_dir(f.parent().unwrap()).unwrap().count(), 1);
-        // a broken file isn't overwritten
-        std::fs::write(&f, "{not json").unwrap();
-        assert!(choose(&f, "/p/c.jpg").is_err());
-        assert_eq!(std::fs::read_to_string(&f).unwrap(), "{not json");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

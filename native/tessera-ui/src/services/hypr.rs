@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
-fn dir() -> Option<PathBuf> {
+/// Hyprland's socket folder (this instance's)
+pub fn dir() -> Option<PathBuf> {
     let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
     let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     Some(PathBuf::from(rt).join("hypr").join(sig))
@@ -42,6 +43,9 @@ pub struct Workspace {
     pub monitor: String,
     #[serde(default)]
     pub windows: u32,
+    /// a window is fullscreen on it
+    #[serde(default, rename = "hasfullscreen")]
+    pub fullscreen: bool,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +58,8 @@ struct Monitor {
     name: String,
     #[serde(rename = "activeWorkspace")]
     active: WsRef,
+    #[serde(default)]
+    focused: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -67,6 +73,16 @@ pub struct Snapshot {
     pub workspaces: Vec<Workspace>,
     pub active: BTreeMap<String, i32>, // monitor -> its current workspace
     pub class: String,
+    /// the monitor with focus
+    pub focused: String,
+}
+
+impl Snapshot {
+    /// The focused monitor's current workspace has a fullscreen window
+    pub fn fullscreen(&self) -> bool {
+        let Some(id) = self.active.get(&self.focused) else { return false };
+        self.workspaces.iter().any(|w| w.id == *id && w.fullscreen)
+    }
 }
 
 fn snapshot() -> Option<Snapshot> {
@@ -75,6 +91,7 @@ fn snapshot() -> Option<Snapshot> {
     let client: Client = serde_json::from_str(&request("j/activewindow").ok()?).unwrap_or_default();
     Some(Snapshot {
         workspaces,
+        focused: monitors.iter().find(|m| m.focused).map(|m| m.name.clone()).unwrap_or_default(),
         active: monitors.into_iter().map(|m| (m.name, m.active.id)).collect(),
         class: client.class,
     })
@@ -83,6 +100,7 @@ fn snapshot() -> Option<Snapshot> {
 const RELEVANT: &[&str] = &[
     "workspacev2>>", "focusedmonv2>>", "activewindow>>", "createworkspacev2>>", "destroyworkspacev2>>",
     "moveworkspacev2>>", "openwindow>>", "closewindow>>", "movewindowv2>>", "monitoraddedv2>>", "monitorremovedv2>>",
+    "fullscreen>>",
 ];
 
 /// Watches socket2; sends a fresh snapshot after each burst of relevant events
@@ -206,5 +224,20 @@ mod tests {
         // Hyprland without the plugin answers an unknown command with an error
         assert_eq!(find_plugin(|_| Some("unknown request".into())), None);
         assert_eq!(find_plugin(|_| None), None);
+    }
+
+    #[test]
+    fn fullscreen_on_the_focused_monitor() {
+        use super::{Snapshot, Workspace};
+        let ws = |id, monitor: &str, fullscreen| Workspace { id, monitor: monitor.into(), fullscreen, ..Default::default() };
+        let mut h = Snapshot { focused: "DP-1".into(), workspaces: vec![ws(1, "DP-1", false), ws(2, "HDMI-A-1", true)], ..Default::default() };
+        h.active.insert("DP-1".into(), 1);
+        h.active.insert("HDMI-A-1".into(), 2);
+        assert!(!h.fullscreen());
+        h.focused = "HDMI-A-1".into();
+        assert!(h.fullscreen());
+        // (as Hyprland's JSON says it)
+        let w: Workspace = serde_json::from_str(r#"{"id":3,"monitor":"DP-1","windows":1,"hasfullscreen":true}"#).unwrap();
+        assert!(w.fullscreen);
     }
 }

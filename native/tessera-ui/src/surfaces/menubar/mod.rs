@@ -459,7 +459,7 @@ mod tests {
     use crate::services::hypr::Workspace;
 
     fn ws(id: i32, monitor: &str, windows: u32) -> Workspace {
-        Workspace { id, monitor: monitor.into(), windows }
+        Workspace { id, monitor: monitor.into(), windows, ..Default::default() }
     }
 
     #[test]

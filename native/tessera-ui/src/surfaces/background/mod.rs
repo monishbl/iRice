@@ -18,7 +18,7 @@
 pub mod picture;
 pub mod wallpaper;
 
-use crate::shell::{FromShell, Part};
+use crate::shell::Part;
 use crate::ui;
 use crate::wayland::{Spec, State, Surface};
 use picture::{Decoded, Pool};
@@ -53,6 +53,18 @@ struct Win {
     settled: bool,
 }
 
+/// LockFx's wallpaper settle, from the shell's steps: (scale, ms to get there)
+pub fn settle(step: &str, zoom: bool, ms: i64) -> Option<(f32, i64)> {
+    match step {
+        "prepare" => Some((if zoom { SETTLE_SCALE } else { 1.0 }, 0)),
+        "reveal" => Some((1.0, ms.clamp(0, 10_000))),
+        "rest" => Some((1.0, 0)),
+        _ => None,
+    }
+}
+/// (LockFx.wallpaperScale at its start: 1 + 0.05)
+const SETTLE_SCALE: f32 = 1.05;
+
 struct Screen {
     output: String,
     /// its pixels (the output's mode, then the window's own size)
@@ -67,14 +79,18 @@ struct Screen {
 pub struct Background {
     screens: Vec<Screen>,
     pool: Option<Pool>,
-    /// today's sunrise and sunset, minutes (the QML shell's weather knows them)
-    sun: Option<(i32, i32)>,
     /// the time-of-day folder and its pictures
     folder: (String, Vec<String>),
     /// the live wallpaper's video and its poster, once made
     poster: (String, Option<String>),
     bundled: Option<Bundled>,
     clock: slint::Timer,
+    /// the first picture is up (a screen that comes later fades in quickly
+    /// from black, as the QML's: its connect effect already covers it)
+    started: bool,
+    /// the lock's settle: the scale now, when not 1 (a window made meanwhile
+    /// starts there)
+    zoom: Option<f32>,
 }
 
 /// An output's pixels: its current mode, turned as the output is
@@ -90,7 +106,7 @@ fn output_pixels(st: &State, output: &WlOutput) -> (u32, u32) {
 
 impl Background {
     fn day(&self) -> Day {
-        let (r, s) = self.sun.unwrap_or((wallpaper::SUNRISE, wallpaper::SUNSET));
+        let (r, s) = wallpaper::sun();
         Day::now(r, s)
     }
 
@@ -201,17 +217,25 @@ impl Background {
             });
             let ui = ui::Background::new().expect("Background");
             // The first picture is there at once: the QML's own (the same
-            // picture) is still under it when this window appears
+            // picture) is still under it when this window appears. A screen
+            // that comes later fades in from black, quickly (Background.qml's
+            // firstFade once Wallpaper.started: 120 ms)
+            let later = self.started;
             ui.set_a(img);
-            ui.set_a_from(-1.0);
+            ui.set_a_from(if later { 0.0 } else { -1.0 });
             ui.set_b_from(-2.0);
-            ui.set_target(0.0);
+            ui.set_quick(later);
+            ui.set_zoom(self.zoom.unwrap_or(1.0));
+            ui.set_target(if later { 1.0 } else { 0.0 });
             let (to, out) = (st.shell.sender(NAME), sc.output.clone());
             ui.on_faded(move || to(Box::new(M::Faded(out.clone()))));
             ui.show().expect("show background");
-            sc.win = Some(Win { surface, ui, a_from: -1.0, b_from: -2.0, top: 0.0, settled: false });
+            let (a_from, top) = if later { (0.0, 1.0) } else { (-1.0, 0.0) };
+            sc.win = Some(Win { surface, ui, a_from, b_from: -2.0, top, settled: false });
+            self.started = true;
             return;
         };
+        w.ui.set_quick(false);
         // Into the older slot, which then starts fading in from where the fade is
         if w.a_from <= w.b_from {
             w.ui.set_a(img);
@@ -291,13 +315,18 @@ impl Part for Background {
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
-        let msg = match msg.downcast::<FromShell>() {
-            // The shell's daylight (Daylight.qml, from the weather)
-            Ok(m) => {
-                let (r, s) = (m.0["sunrise"].as_i64(), m.0["sunset"].as_i64());
-                if let (Some(r), Some(s)) = (r, s) {
-                    self.sun = Some((r as i32, s as i32));
+        let msg = match msg.downcast::<serde_json::Value>() {
+            // From the shell (RustUi.tell): its daylight, the lock's settle
+            Ok(v) => {
+                if wallpaper::told_sun(&v) {
                     self.refresh(st);
+                }
+                if let Some((scale, ms)) = v["settle"].as_str().and_then(|s| settle(s, v["zoom"].as_bool().unwrap_or(true), v["ms"].as_i64().unwrap_or(0))) {
+                    self.zoom = (scale != 1.0).then_some(scale);
+                    for w in self.screens.iter().filter_map(|s| s.win.as_ref()) {
+                        w.ui.set_zoom_ms(ms as i32);
+                        w.ui.set_zoom(scale);
+                    }
                 }
                 return;
             }

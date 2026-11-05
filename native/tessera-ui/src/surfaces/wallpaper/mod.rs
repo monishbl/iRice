@@ -1,23 +1,30 @@
 //! The wallpaper picker (rust.surfaces: wallpaper): a strip of thumbnails
 //! above the dock, on the screen it was opened on. Compare
-//! shell/modules/wallpaper/WallpaperPicker.qml. The QML shell still owns
-//! which panel is open (Panels.qml, its shortcut and IPC): it tells this part
-//! over stdin (`{"to": "wallpaper", "open": "<screen>"|""}`, RustUi.tell),
-//! and this part closes the shell's panel over IPC when it closes itself
-//! (Esc, Open folder). Choosing writes config.json as Wallpaper.set does
-//! (picture chosen, dynamic and live off); the background follows from there.
+//! shell/modules/wallpaper/WallpaperPicker.qml. A panel: the QML shell still
+//! owns which panel is open (Panels.qml: its shortcut, IPC, Spotlight), and
+//! RustUi.qml forwards its open and close here (`Part::command`); when it
+//! closes itself (Esc, Open folder) it says so (`shell::closed`). Choosing a
+//! picture and opening the folder are the shell's (`wallpaper.set`, its
+//! Wallpaper.set: picture chosen, dynamic and live off; `wallpaper.openFolder`,
+//! Files.openFolder); the background follows config.json from there.
 //!
 //! Thumbnails are decoded off the UI thread, cropped to the thumbnail's
 //! shape at its pixels, and only for the ones in view (and a few either
 //! side); ones scrolled far away are let go, and all of them when it closes.
-//! Not yet: dragging the strip with the mouse (the wheel, a touchpad's swipe
-//! and the arrow keys scroll it; the QML's ListView also flicks).
+//! The strip scrolls with the wheel, a touchpad (gliding on after the fingers
+//! lift, as Momentum.qml) and the arrow keys, and drags and flicks with the
+//! pointer, as the QML's ListView. Where it differs: Slint gets no scroll
+//! phases or wheel clicks from this platform, so a mouse wheel spun fast
+//! glides a little too (Momentum.qml leaves the wheel alone); a flick stops at
+//! the ends instead of overshooting; the motion doesn't follow Glass's Snappy
+//! pace or cool-down's slower motion (Theme.motion.pace).
 
 pub mod files;
 
-use crate::shell::{FromShell, Part};
+use crate::shell::{self, Command, Part};
 use crate::surfaces::background::picture::{self, Pool};
 use crate::surfaces::background::wallpaper::{self, Bundled, Context, Day};
+use serde_json::json;
 use crate::theme;
 use crate::ui;
 use crate::wayland::{Spec, State, Surface};
@@ -69,7 +76,6 @@ pub struct WallpaperPicker {
     /// the range in view when the thumbnails were last asked for
     range: (usize, usize),
     pool: Option<Pool>,
-    sun: Option<(i32, i32)>,
     bundled: Option<Bundled>,
 }
 
@@ -119,7 +125,7 @@ pub fn wanted(offset: f32, width: f32, step: f32, count: usize) -> Vec<usize> {
 
 impl WallpaperPicker {
     fn day(&self) -> Day {
-        let (r, s) = self.sun.unwrap_or((wallpaper::SUNRISE, wallpaper::SUNSET));
+        let (r, s) = wallpaper::sun();
         Day::now(r, s)
     }
 
@@ -142,7 +148,9 @@ impl WallpaperPicker {
         files::index_of(&self.files, &now).map_or(-1, |i| i as i32)
     }
 
-    fn open(&mut self, st: &mut State, output: String) {
+    fn open(&mut self, st: &mut State, screen: Option<String>) {
+        let output = screen.or_else(|| self.win.as_ref().map(|w| w.output.clone())).or_else(|| st.outputs_now().first().map(|o| o.1.clone()));
+        let Some(output) = output else { return };
         if self.win.as_ref().is_some_and(|w| w.output != output) {
             let w = self.win.take().unwrap();
             st.shell.glass.set(&w.output, NS, &[]);
@@ -275,10 +283,8 @@ impl WallpaperPicker {
 
     fn apply(&mut self, i: i32) {
         let Some(path) = usize::try_from(i).ok().and_then(|i| self.files.get(i)).cloned() else { return };
-        if let Err(e) = wallpaper::choose(&theme::config_path(), &path) {
-            eprintln!("tessera-ui: couldn't save the wallpaper: {e}");
-            return;
-        }
+        // (the shell's Wallpaper.set writes config.json)
+        shell::ask("wallpaper.set", json!([path]));
         // (at once; config.json's change confirms it)
         if let Some(w) = &self.win {
             w.ui.set_applied(i);
@@ -296,7 +302,7 @@ impl WallpaperPicker {
             w.surface.wl.commit();
         }
         if tell_shell {
-            shell_ipc(&["panels", "close"]);
+            shell::closed(NAME);
         }
     }
 
@@ -314,24 +320,12 @@ impl WallpaperPicker {
         }
     }
 
-    fn open_folder(&mut self, st: &mut State) {
+    /// Open folder: the panel closes, the shell opens the folder (its file
+    /// manager setting)
+    fn open_folder(&mut self) {
         self.close(true);
-        files::open_folder(&st.shell.cfg, &wallpaper::directory(&st.shell.cfg));
+        shell::ask("wallpaper.openFolder", json!([]));
     }
-}
-
-/// The QML shell's IPC (shell-ipc.sh call …), on a thread of its own
-fn shell_ipc(args: &[&str]) {
-    let script = wallpaper::shell_dir().join("assets/scripts/shell-ipc.sh");
-    let args: Vec<String> = std::iter::once("call".to_string()).chain(args.iter().map(|s| s.to_string())).collect();
-    std::thread::spawn(move || {
-        let _ = std::process::Command::new(script)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    });
 }
 
 impl Part for WallpaperPicker {
@@ -373,16 +367,13 @@ impl Part for WallpaperPicker {
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
-        let msg = match msg.downcast::<FromShell>() {
-            // The shell opened or closed its panel (Panels.qml)
-            Ok(m) => {
-                if let (Some(r), Some(s)) = (m.0["sunrise"].as_i64(), m.0["sunset"].as_i64()) {
-                    self.sun = Some((r as i32, s as i32));
-                }
-                match m.0["open"].as_str() {
-                    Some("") => self.close(false),
-                    Some(o) => self.open(st, o.to_string()),
-                    None => {}
+        let msg = match msg.downcast::<serde_json::Value>() {
+            // From the shell (RustUi.tell): the day's sunrise and sunset (the
+            // ring round the picture a time-of-day wallpaper shows now)
+            Ok(v) => {
+                if wallpaper::told_sun(&v) && self.win.is_some() {
+                    let applied = self.applied(st);
+                    self.win.as_ref().unwrap().ui.set_applied(applied);
                 }
                 return;
             }
@@ -393,9 +384,18 @@ impl Part for WallpaperPicker {
             Msg::Listed(gen, list) => self.listed(st, gen, list),
             Msg::Thumb(gen, i, path, px) => self.thumb(gen, i, path, px),
             Msg::Apply(i) => self.apply(i),
-            Msg::OpenFolder => self.open_folder(st),
+            Msg::OpenFolder => self.open_folder(),
             Msg::Dismissed => self.close(true),
             Msg::Closed => self.closed(st),
+        }
+    }
+
+    /// Panels opened or closed it (RustUi.qml forwards them)
+    fn command(&mut self, st: &mut State, cmd: &Command) {
+        match cmd.cmd.as_str() {
+            "open" => self.open(st, cmd.screen.clone()),
+            "close" => self.close(false),
+            _ => {}
         }
     }
 
