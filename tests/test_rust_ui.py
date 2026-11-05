@@ -134,6 +134,29 @@ class Agreement(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout), json.loads((d / "golden.json").read_text()),
                          "Search.qml ranks differently now: run node golden.js > golden.json and match rank.rs")
 
+    def test_the_wallpaper_and_its_picker(self):
+        # the picker is a panel (its PanelLoader steps aside; choosing and
+        # Open folder are the shell's); the background hears the day's sun
+        # and the lock's settle from Background.qml, which moves its own
+        # window up to the bottom layer, clear, while Rust draws the picture
+        picker = (ROOT / "shell/modules/wallpaper/WallpaperPicker.qml").read_text()
+        self.assertIn('elsewhere: RustUi.drawing("wallpaper")', picker)
+        bg = (ROOT / "shell/modules/background/Background.qml").read_text()
+        self.assertIn('RustUi.drawing("background")', bg)
+        self.assertIn("rust ? WlrLayer.Bottom : WlrLayer.Background", bg)
+        for word in ('RustUi.tell("background", { sunrise:', 'RustUi.tell("wallpaper", { sunrise:', 'RustUi.tell("background", { settle: step'):
+            self.assertIn(word, bg)
+        lockfx = (ROOT / "shell/common/LockFx.qml").read_text()
+        for step in ("prepare", "reveal", "rest"):
+            self.assertIn(f'stepped("{step}"', lockfx)
+        rs = (CRATE / "src/surfaces/background/mod.rs").read_text()
+        for word in ('"prepare"', '"reveal"', '"rest"', 'v["settle"]', 'v["zoom"]', 'v["ms"]'):
+            self.assertIn(word, rs)
+        self.assertIn('v["sunrise"]', (CRATE / "src/surfaces/background/wallpaper.rs").read_text())
+        # (the namespaces the Hyprland rules keep unblurred)
+        rules = (ROOT / "hypr/tessera/rules.lua").read_text()
+        self.assertRegex(rules, r"namespace = \"tessera:\([^)]*\bbackground\b")
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old
@@ -142,6 +165,49 @@ class Agreement(unittest.TestCase):
         self.assertNotRegex(qml, r"wanted:\s*root\.wanted\.length")
         self.assertRegex(qml, r"wanted:\s*root\.armed")
         self.assertIn("Qt.callLater", qml)
+
+
+class Bridge(unittest.TestCase):
+    """The Rust menu bar and the QML shell talk both ways (src/services/bridge.rs):
+    what the bar asks the shell to do must exist there, and what the shell
+    sends must be read."""
+
+    def rust(self):
+        return "\n".join(p.read_text() for p in (CRATE / "src").rglob("*.rs"))
+
+    def test_every_act_the_bar_asks_for_is_answered(self):
+        rs = self.rust()
+        asked = set(re.findall(r'"rustui", "act", "([A-Za-z]+)"', rs)) | set(re.findall(r'Action::Act\("([A-Za-z]+)"', rs))
+        asked |= set(re.findall(r'\bact\("([A-Za-z]+)", ', (CRATE / "src/surfaces/menubar/mod.rs").read_text()))
+        self.assertGreater(len(asked), 15, asked)
+        qml = (ROOT / "shell/modules/menubar/RustBridge.qml").read_text()
+        answered = set(re.findall(r'case "([A-Za-z]+)":', qml))
+        self.assertEqual(sorted(asked - answered), [], "the Rust bar asks for these, RustBridge.qml has no case")
+        self.assertIn('target: "rustui"', qml)
+        # (the bridge is made by the shell, and steps in only while Rust draws the bar)
+        self.assertIn("RustBridge {}", (ROOT / "shell/TesseraShell.qml").read_text())
+        self.assertIn('RustUi.drawing("menubar")', qml)
+
+    def test_the_island_forwards_what_rust_reads(self):
+        island = (ROOT / "shell/services/Island.qml").read_text()
+        for op in ("post", "update", "remove", "dismiss"):
+            self.assertIn(f'forward("{op}"', island)
+            self.assertIn(f'"{op}"', (CRATE / "src/surfaces/menubar/mod.rs").read_text())
+        # every line kind the shell writes is parsed
+        bridge = (CRATE / "src/services/bridge.rs").read_text()
+        sent = set(re.findall(r'kind: "([a-z]+)"', (ROOT / "shell/modules/menubar/RustBridge.qml").read_text())) | {"island"}
+        for kind in sent:
+            self.assertIn(f'"{kind}" =>', bridge)
+        self.assertIn("function send(", (ROOT / "shell/services/RustUi.qml").read_text())
+
+    def test_toggled_panels_exist_in_the_shell(self):
+        # the status items open the QML popovers by name (Panels)
+        rs = "\n".join(p.read_text() for p in (CRATE / "src/surfaces/menubar").glob("*.rs"))
+        panels = set(re.findall(r'toggle_at\(&output, "([A-Za-z]+)"', rs))
+        self.assertGreater(len(panels), 10)
+        qml = "\n".join(p.read_text(errors="replace") for p in qml_files())
+        for p in panels:
+            self.assertRegex(qml, rf'(panel|popoverName|name):\s*"{p}"', p)
 
 
 def binary():

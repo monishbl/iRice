@@ -1,0 +1,1127 @@
+// The spaces strip and the dynamic island, compare shell/modules/menubar/
+// Workspaces.qml, IslandView.qml, IslandLive.qml, IslandEvent.qml and
+// IslandGlyph.qml. Rust decides what shows (src/surfaces/menubar/island.rs,
+// spaces.rs); this draws it and springs between sizes.
+// (Slint has no shaders: the Glass island's black melts into the glass with
+// a gradient, its album art isn't faded at the edges, and the alerts' glyphs
+// pop in without their ripples, shakes and flips.)
+
+import { Theme } from "theme.slint";
+
+// The Material look's icons: a Material Symbol where the shell has one for
+// the Phosphor glyph (common/Icon.qml, material-symbols.js; Rust answers
+// with icons::symbol), 1.2x the size. (Slint sets no font axes: symbols draw
+// with the font's default fill, outlined where Icon.qml fills them.)
+export global Symbols {
+    pure callback of(string) -> string;
+}
+
+export component SymIcon {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size: 15px;
+    in property <bool> fill: false;
+    in property <bool> bold: false;
+    property <string> sym: Theme.material && root.text != "" ? Symbols.of(root.text) : "";
+    preferred-width: t.preferred-width;
+    preferred-height: t.preferred-height;
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: sym != "" ? sym : root.text;
+        color: root.color;
+        font-size: sym != "" ? round(root.font-size * 1.2 / 1px) * 1px : root.font-size;
+        font-family: sym != "" ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        font-weight: sym != "" && bold ? 600 : 400;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
+export struct Chip {
+    id: int,
+    x: length,
+    w: length,
+    active: bool,
+    elsewhere: bool,
+    shown-there: bool,
+    occupied: bool,
+    icons: bool,
+    apps: [image],
+    mark: string,
+    mark-w: length,
+    // dynamic overflow: 1 inside, smaller and fainter past the ends
+    fall: float,
+}
+
+// ── Spaces: one chip per space; occupied ones show their apps' icons (or a
+// dot), the current one is highlighted. Click to go, right-click to move it
+// to another display, scroll to step through. ─────────────────────────────
+export component Spaces inherits Rectangle {
+    in property <[Chip]> chips;
+    in property <length> strip-w: 40px;
+    in property <bool> arrows;
+    in property <length> left-x;
+    in property <length> right-x;
+    in property <bool> left-more;
+    in property <bool> left-hot;
+    in property <bool> right-more;
+    in property <bool> right-hot;
+    in property <color> ink: Theme.fg; // marks, dots (Glass), arrows
+    in property <bool> plain; // inside the island: no capsule of its own
+    in property <bool> hot; // running hot: the current chip turns red
+    callback go(int);
+    callback menu(int, length);
+    callback arrow(int);
+    callback wheel(int);
+    // (Material: Android's page indicator; its own colours, not the bar's)
+    property <color> mark-ink: Theme.material ? Theme.m3-on-surface-variant : ink;
+    width: strip-w + 8px;
+    height: 22px;
+    border-radius: self.height / 2;
+    background: plain ? transparent : Theme.material ? Theme.pill : ink.with-alpha(0.1);
+    accessible-role: tab-list;
+    accessible-label: "Spaces";
+
+    TouchArea {
+        scroll-event(e) => {
+            if e.delta-y != 0 {
+                root.wheel(e.delta-y < 0 ? 1 : -1);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if arrows: Rectangle {
+        x: 4px + left-x;
+        width: 12px;
+        height: parent.height;
+        opacity: left-more ? 1 : 0.25;
+        SymIcon {
+            y: left-hot ? -2px : 0;
+            height: parent.height;
+            text: "\u{e138}"; // caret-left
+            bold: true;
+            font-size: 10px;
+            color: mark-ink.with-alpha(la.has-hover && left-more ? 1 : 0.7);
+        }
+        if left-hot: Rectangle {
+            y: parent.height - 4px;
+            width: 3px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: mark-ink;
+        }
+        la := TouchArea {
+            enabled: left-more;
+            clicked => { root.arrow(-1); }
+        }
+    }
+    if arrows: Rectangle {
+        x: 4px + right-x;
+        width: 12px;
+        height: parent.height;
+        opacity: right-more ? 1 : 0.25;
+        SymIcon {
+            y: right-hot ? -2px : 0;
+            height: parent.height;
+            text: "\u{e13a}"; // caret-right
+            bold: true;
+            font-size: 10px;
+            color: mark-ink.with-alpha(ra.has-hover && right-more ? 1 : 0.7);
+        }
+        if right-hot: Rectangle {
+            y: parent.height - 4px;
+            width: 3px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: mark-ink;
+        }
+        ra := TouchArea {
+            enabled: right-more;
+            clicked => { root.arrow(1); }
+        }
+    }
+
+    for c[i] in chips: Rectangle {
+        x: 4px + c.x;
+        y: (parent.height - 18px) / 2;
+        width: c.mark-w + c.w;
+        height: 18px;
+        visible: c.fall > 0.01;
+        opacity: (c.elsewhere && !c.shown-there ? 0.55 : 1) * (c.fall >= 0.99 ? 1 : c.fall >= 0.69 ? 0.6 : 0.3);
+        animate x, width { duration: Theme.material ? 420ms : Theme.popover; easing: Theme.material ? spring(0.2) : ease-out; }
+        animate opacity { duration: Theme.popover; }
+        accessible-role: tab;
+        accessible-label: "Space " + Math.mod(c.id, 100) + (c.occupied ? ", has windows" : ", empty") + (c.elsewhere ? ", on another display" : "");
+        accessible-item-selectable: true;
+        accessible-item-selected: c.active;
+        accessible-action-default => { root.go(c.id); }
+
+        if c.mark != "": Text {
+            x: 6px;
+            height: parent.height;
+            text: c.mark;
+            color: mark-ink.with-alpha(0.6);
+            font-size: 10px;
+            font-weight: 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        chip := Rectangle {
+            x: c.mark-w;
+            width: c.w;
+            height: 18px;
+            border-radius: 9px;
+            background: Theme.material
+                ? (c.icons && c.active ? (root.hot ? Theme.m3-error : Theme.m3-primary) : c.icons && c.shown-there ? Theme.m3-secondary-container : touch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+                : (c.active ? (root.hot ? #ff453a.with-alpha(0.55) : ink.with-alpha(0.28)) : c.shown-there ? ink.with-alpha(0.22) : touch.has-hover ? ink.with-alpha(0.14) : transparent);
+            animate background { duration: Theme.hover; }
+
+            if c.icons: HorizontalLayout {
+                alignment: center;
+                spacing: 2px;
+                padding-top: 3px;
+                padding-bottom: 3px;
+                for a in c.apps: Image {
+                    width: 12px;
+                    height: 12px;
+                    source: a;
+                    image-fit: contain;
+                    accessible-role: none;
+                }
+            }
+            if !c.icons: Rectangle {
+                width: Theme.material ? (c.active ? 22px : c.shown-there ? 14px : 8px) : (c.active || c.shown-there ? 14px : c.occupied ? 10px : 5px);
+                height: Theme.material ? 8px : 5px;
+                border-radius: self.height / 2;
+                background: !Theme.material ? ink : c.active ? (root.hot ? Theme.m3-error : Theme.m3-primary) : c.shown-there ? Theme.m3-secondary : Theme.m3-on-surface-variant;
+                opacity: c.active || c.shown-there ? 1 : c.occupied ? (Theme.material ? 1 : 0.85) : (Theme.material ? 0.38 : 0.35);
+                animate width { duration: Theme.material ? 420ms : Theme.hover; easing: Theme.material ? spring(0.2) : ease-out; }
+            }
+            // On another display: a small bar under it
+            if c.elsewhere: Rectangle {
+                y: parent.height - 2.5px;
+                width: 8px;
+                height: 1.5px;
+                border-radius: 1px;
+                background: mark-ink.with-alpha(c.shown-there ? 0.9 : 0.5);
+            }
+            touch := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.up && e.button == PointerEventButton.right {
+                        root.menu(c.id, self.absolute-position.x + self.width / 2);
+                    }
+                }
+                clicked => { root.go(c.id); }
+            }
+        }
+    }
+}
+
+// ── The island ──────────────────────────────────────────────────────────────
+export struct Ctl {
+    icon: string,
+    fill: bool,
+    on: bool,
+    danger: bool,
+}
+
+// A live activity: what its collapsed pill and open card show
+export struct Live {
+    kind: string,
+    icon: string,
+    tint: color,
+    title: string,
+    artist: string,
+    time: string,
+    art: image,
+    has-art: bool,
+    playing: bool,
+    show-lead: bool,
+    show-title: bool,
+    show-time: bool,
+    show-bars: bool,
+    controls: [Ctl],
+}
+
+// A battery ring (a device's, or its left, right and case): its arc drawn by Rust
+export struct Ring {
+    arc: string,
+    color: color,
+    text: string,
+    label: string,
+}
+
+export struct AlertRow {
+    uid: int,
+    kind: string,
+    icon: string,
+    tint: color,
+    title: string,
+    subtitle: string,
+    sub-color: color,
+    has-sub-color: bool,
+    // the glyph's ring (charging, battery, timer, temperature): its arc
+    ringed: bool,
+    ring-arc: string,
+    rings: [Ring],
+    action: string,
+    action2: string,
+    more: [string],
+    picture: image,
+    has-picture: bool,
+    art: image,
+    has-art: bool,
+    // a notification (iOS's card)
+    card: bool,
+    headline: string,
+    card-name: string,
+    card-time: string,
+    card-text: string,
+    card-initials: string,
+    app-icon: image,
+    has-app-icon: bool,
+    // the volume and brightness row
+    hud: bool,
+    hud-value: float,
+    device: string,
+    leaving: bool,
+    delay: duration,
+}
+
+// Its buttons: a pill (the action: filled; others outlined)
+component Pill inherits Rectangle {
+    in property <string> text;
+    in property <bool> filled: true;
+    in property <bool> outlined;
+    in property <color> ink;
+    callback clicked();
+    width: label.preferred-width + 24px;
+    height: Theme.material ? 32px : 28px;
+    border-radius: self.height / 2;
+    background: Theme.material
+        ? (filled ? Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : outlined ? Theme.m3-on-surface.with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0) : Theme.m3-secondary-container)
+        : (outlined ? #ffffff.with-alpha(t.pressed ? 0.16 : t.has-hover ? 0.1 : 0) : #ffffff.with-alpha(t.pressed ? 0.3 : t.has-hover ? 0.24 : 0.16));
+    border-width: outlined ? 1px : 0;
+    border-color: Theme.material ? Theme.m3-on-surface.with-alpha(0.38) : #ffffff33;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: Theme.material ? (filled ? Theme.m3-on-primary : outlined ? root.ink : Theme.m3-on-secondary-container) : root.ink;
+        font-size: Theme.small;
+        font-weight: outlined ? 500 : 600;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> fill;
+    in property <color> ink;
+    in property <length> size: 13px;
+    in property <string> label;
+    callback clicked();
+    border-radius: self.height / 2;
+    background: ink.with-alpha(t.pressed ? 0.2 : t.has-hover ? 0.12 : 0);
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SymIcon {
+        text: icon;
+        fill: root.fill;
+        font-size: size;
+        color: ink;
+    }
+    t := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// One alert in the open island (IslandEvent): the glyph, title and detail,
+// trailing battery rings and buttons; or the HUD's level row; or a card
+component AlertView inherits Rectangle {
+    in property <AlertRow> a;
+    in property <bool> first;
+    in property <color> ink;
+    in property <color> ink2;
+    callback act(int, string); // uid, "1" | "2" | "more <i>"
+    callback dismiss(int);
+    callback set-level(float);
+    property <bool> in-view;
+    property <length> row-h: a.has-picture && !a.has-art ? 60px : 52px;
+    init => { in-view = true; }
+    height: a.hud ? 34px : a.card ? card.preferred-height : row-h + (a.more.length > 0 ? 36px : 0);
+    opacity: in-view && !a.leaving ? 1 : 0;
+    animate opacity { duration: a.leaving ? 140ms : 320ms; delay: a.leaving ? 0 : a.delay; easing: a.leaving ? ease-in : ease-out; }
+
+    // (a hairline between stacked alerts; Material: space alone)
+    if !first && !Theme.material: Rectangle {
+        y: -6px;
+        height: 1px;
+        background: #ffffff14;
+    }
+
+    // ── HUD
+    if a.hud: Rectangle {
+        SymIcon {
+            x: 6px;
+            width: 18px;
+            text: a.icon;
+            fill: true;
+            font-size: 18px;
+            color: ink;
+        }
+        // (the symbol mutes, not brightness's)
+        TouchArea {
+            x: 0;
+            width: 30px;
+            mouse-cursor: pointer;
+            clicked => { root.act(a.uid, "mute"); }
+        }
+        // the outputs, inputs or displays (IslandLevels opens them inline;
+        // here: the shell's Sound menu, or the Control Center for displays)
+        IconButton {
+            x: parent.width - self.width - 2px;
+            y: (parent.height - self.height) / 2;
+            width: 28px;
+            height: 28px;
+            icon: "\u{e136}"; // caret-down
+            ink: root.ink;
+            label: "Outputs";
+            clicked => { root.act(a.uid, "levels " + (self.absolute-position.x / 1px)); }
+        }
+        if a.device != "": Text {
+            x: 34px;
+            width: min(self.preferred-width, parent.width * 0.4);
+            height: parent.height;
+            text: a.device;
+            color: ink;
+            font-size: Theme.small;
+            font-weight: 500;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+        bar := Rectangle {
+            x: a.device != "" ? 34px + min(parent.width * 0.4, 140px) + 12px : 36px;
+            width: parent.width - self.x - 40px;
+            y: (parent.height - self.height) / 2;
+            height: Theme.material ? 16px : 8px;
+            border-radius: self.height / 2;
+            background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0, min(1, a.hud-value));
+                border-radius: parent.border-radius;
+                background: Theme.material ? Theme.m3-primary : ink;
+                animate width { duration: 260ms; easing: spring(0.3); }
+            }
+            level := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.down { root.set-level(self.mouse-x / self.width); }
+                }
+                moved => { if self.pressed { root.set-level(self.mouse-x / self.width); } }
+                scroll-event(e) => {
+                    root.set-level(a.hud-value + (e.delta-y > 0 ? 0.05 : -0.05));
+                    accept
+                }
+            }
+        }
+    }
+
+    // ── Alert
+    if !a.hud && !a.card: Rectangle {
+        height: row-h;
+        y: 0;
+        glyph := Rectangle {
+            x: 0;
+            width: row-h - 8px;
+            height: self.width;
+            y: (parent.height - self.height) / 2;
+            property <length> disc-inset: Theme.material && a.ringed ? 6px : 0;
+            transform-scale: in-view ? 1 : 0.6;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            animate transform-scale { duration: 420ms; delay: a.delay; easing: spring(0.35); }
+            Rectangle {
+                x: disc-inset;
+                y: disc-inset;
+                width: parent.width - 2 * disc-inset;
+                height: self.width;
+                border-radius: a.has-art ? 12px : self.width / 2;
+                clip: true;
+                background: a.has-art ? (Theme.material ? transparent : #ffffff1a) : a.has-picture ? transparent : Theme.material ? a.tint : a.tint.with-alpha(0.24);
+                if a.has-art: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: a.art;
+                    image-fit: cover;
+                }
+            }
+            if a.has-picture && !a.has-art: Image {
+                width: 100%;
+                height: 100%;
+                source: a.picture;
+                image-fit: contain;
+            }
+            if !a.has-art && !a.has-picture: SymIcon {
+                text: a.icon;
+                fill: true;
+                font-size: round(parent.width * (a.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48) / 1px) * 1px;
+                color: Theme.material ? Theme.m3-on-primary : a.tint;
+            }
+            if a.ringed: Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 44;
+                viewbox-height: 44;
+                commands: "M 22 2 A 20 20 0 1 1 21.99 2";
+                stroke: ink.with-alpha(0.14);
+                stroke-width: 3px;
+                fill: transparent;
+            }
+            if a.ringed: Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 44;
+                viewbox-height: 44;
+                commands: a.ring-arc;
+                stroke: a.tint;
+                stroke-width: 3px;
+                stroke-line-cap: round;
+                fill: transparent;
+            }
+        }
+        VerticalLayout {
+            x: glyph.width + (a.kind == "audio" ? 26px : 14px);
+            width: parent.width - self.x - trailing.width - 14px;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: a.title;
+                color: ink;
+                font-size: 15px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            if a.subtitle != "": Text {
+                text: a.subtitle;
+                color: a.has-sub-color ? a.sub-color : ink2;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+        }
+        trailing := HorizontalLayout {
+            x: parent.width - self.width - 4px;
+            width: self.preferred-width;
+            y: (parent.height - self.height) / 2;
+            height: a.rings.length > 1 ? 42px : 34px;
+            alignment: end;
+            spacing: 6px;
+            for r in a.rings: VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Rectangle {
+                    width: a.rings.length > 1 ? 28px : 34px;
+                    height: self.width;
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 34;
+                        viewbox-height: 34;
+                        commands: "M 17 2 A 15 15 0 1 1 16.99 2";
+                        stroke: ink.with-alpha(0.16);
+                        stroke-width: a.rings.length > 1 ? 2.5px : 3px;
+                        fill: transparent;
+                    }
+                    Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 34;
+                        viewbox-height: 34;
+                        commands: r.arc;
+                        stroke: r.color;
+                        stroke-width: a.rings.length > 1 ? 2.5px : 3px;
+                        stroke-line-cap: round;
+                        fill: transparent;
+                    }
+                    Text {
+                        text: r.text;
+                        color: ink;
+                        font-size: a.rings.length > 1 ? 10px : 11px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                if r.label != "": Text {
+                    text: r.label;
+                    color: ink2;
+                    font-size: 10px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                }
+            }
+            if a.action2 != "": Pill {
+                text: a.action2;
+                outlined: true;
+                filled: false;
+                ink: root.ink;
+                clicked => { root.act(a.uid, "2"); }
+            }
+            if a.action != "": Pill {
+                text: a.action;
+                ink: root.ink;
+                clicked => { root.act(a.uid, "1"); }
+            }
+        }
+        TouchArea {
+            // (a wheel or two-finger swipe up dismisses it)
+            scroll-event(e) => {
+                if e.delta-y > 0 { root.dismiss(a.uid); }
+                accept
+            }
+        }
+    }
+    // More buttons, under the title's (a notification's own)
+    if !a.hud && !a.card && a.more.length > 0: HorizontalLayout {
+        y: row-h + 8px;
+        height: 28px;
+        alignment: end;
+        spacing: 6px;
+        for m[i] in a.more: Pill {
+            text: m;
+            filled: false;
+            ink: root.ink;
+            clicked => { root.act(a.uid, "more " + i); }
+        }
+    }
+
+    // ── Card (a notification)
+    card := VerticalLayout {
+        visible: a.card;
+        spacing: 12px;
+        if a.card && a.headline != "": Text {
+            text: a.headline;
+            color: ink;
+            font-size: 18px;
+            font-weight: 500;
+            wrap: word-wrap;
+            max-height: 66px;
+            overflow: elide;
+        }
+        // the glass card: lighter than the island, with a soft rim
+        // (Material: a tonal layer, no rim)
+        if a.card: Rectangle {
+            border-radius: 20px;
+            background: Theme.material ? Theme.m3-on-surface.with-alpha(0.1) : #ffffff24;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: #ffffff38;
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 12px;
+                // the avatar: initials on grey (Material: tertiary), the app's badge
+                VerticalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: 46px;
+                        height: 46px;
+                        border-radius: 23px;
+                        background: Theme.material ? Theme.m3-tertiary-container : #8E8E93;
+                        Text {
+                            text: a.card-initials;
+                            color: Theme.material ? Theme.m3-on-tertiary-container : #ffffff;
+                            font-size: 17px;
+                            font-weight: Theme.material ? 500 : 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if a.has-app-icon: Image {
+                            x: parent.width - self.width + 3px;
+                            y: parent.height - self.height + 3px;
+                            width: 20px;
+                            height: 20px;
+                            source: a.app-icon;
+                            image-fit: contain;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: a.card-name;
+                            color: ink;
+                            font-size: 15px;
+                            font-weight: 600;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: a.card-time;
+                            color: ink2;
+                            font-size: Theme.small;
+                        }
+                    }
+                    Text {
+                        text: a.card-text;
+                        color: ink.with-alpha(0.85);
+                        font-size: 14px;
+                        wrap: word-wrap;
+                        max-height: 60px;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One side of the collapsed live activity (IslandLive): art or icon, title,
+// time, dancing bars | its controls
+component LiveInfo inherits HorizontalLayout {
+    in property <Live> live;
+    in property <color> ink;
+    in property <int> tick;
+    alignment: start;
+    spacing: 7px;
+    if live.show-lead: VerticalLayout {
+        alignment: center;
+        Rectangle {
+            width: Theme.material ? 20px : 18px;
+            height: self.width;
+            border-radius: Theme.material || !live.has-art ? self.width / 2 : 5px;
+            clip: true;
+            background: live.has-art ? ink.with-alpha(0.15) : Theme.material ? (live.kind == "recording" ? Theme.m3-error : Theme.m3-primary) : transparent;
+            if live.has-art: Image {
+                width: 100%;
+                height: 100%;
+                source: live.art;
+                image-fit: cover;
+            }
+            // recording: a pulsing red dot
+            if live.kind == "recording": Rectangle {
+                width: Theme.material ? 8px : 9px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.material ? Theme.m3-on-error : Theme.danger;
+                opacity: 0.675 + 0.325 * Math.cos(tick * 83ms / 700ms * 180deg);
+            }
+            if !live.has-art && live.kind != "recording": SymIcon {
+                text: live.icon;
+                fill: true;
+                font-size: Theme.material ? 12px : 14px;
+                color: Theme.material ? Theme.m3-on-primary : live.tint;
+            }
+        }
+    }
+    if live.show-title && live.title != "": Text {
+        max-width: live.kind == "music" ? 132px : 90px;
+        text: live.title;
+        color: ink;
+        font-size: Theme.small;
+        font-weight: 500;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    if live.show-time && live.time != "": Text {
+        text: live.time;
+        color: live.kind == "recording" ? (Theme.material ? Theme.m3-error : Theme.danger) : Theme.material ? ink : live.tint;
+        font-size: Theme.small;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+    // three bars that dance while it plays (12 frames a second)
+    if live.show-bars && live.playing: Rectangle {
+        width: 3 * 2.5px + 2 * 2px;
+        for b[i] in [{ lo: 5, hi: 11, p: 0.70 }, { lo: 4, hi: 10, p: 0.66 }, { lo: 4, hi: 13, p: 0.74 }]: Rectangle {
+            x: i * 4.5px;
+            width: 2.5px;
+            height: (b.lo + (b.hi - b.lo) * (0.5 - 0.5 * Math.cos(360deg * tick * 0.083 / b.p + i * 108.86deg))) * 1px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 1.25px;
+            background: Theme.material ? Theme.m3-primary : Theme.success;
+        }
+    }
+}
+
+export component Island inherits Rectangle {
+    // what Rust decided (island.rs: Mode)
+    in property <int> mode; // 0 idle, 1 compact, 2 expanded, 3 pill, 4 hidden
+    in property <bool> event-inside;
+    in property <bool> has-card;
+    in property <bool> pilled; // Material, no bar background: it idles in a pill
+    in property <bool> hot;
+    in property <bool> pinned;
+    in property <string> layout: "replace"; // replace | split | beside
+    in property <color> fg; // the bar's text colour (idle and compact)
+    // the spaces
+    in property <[Chip]> chips;
+    in property <length> strip-w;
+    in property <bool> arrows;
+    in property <length> left-x;
+    in property <length> right-x;
+    in property <bool> left-more;
+    in property <bool> left-hot;
+    in property <bool> right-more;
+    in property <bool> right-hot;
+    in property <bool> spaces-on: true;
+    // the live activity shown, and how many there are
+    in property <Live> live;
+    in property <int> live-count;
+    in property <int> live-index;
+    in property <[AlertRow]> alerts;
+    in property <string> pill-text; // over a fullscreen app (compact)
+    in property <string> pill-icon;
+    in property <color> pill-tint;
+    in property <string> status; // the open island's last line
+    in property <int> tick; // the bars' clock
+    callback go(int);
+    callback space-menu(int, length);
+    callback arrow(int);
+    callback space-wheel(int);
+    callback hover(bool);
+    callback open-pill();
+    callback cycle(length, length); // a wheel over the activity
+    callback control(int); // the activity's control
+    callback act(int, string);
+    callback dismiss(int);
+    callback set-level(float);
+    callback pin();
+    callback holding(bool);
+    // for the glass and the input region
+    out property <length> shape-x: shape.x;
+    out property <length> shape-y: shape.y;
+    out property <length> shape-w: shape.width;
+    out property <length> shape-h: shape.height;
+    out property <length> shape-r: radius;
+    out property <float> fade: shape.fade;
+
+    property <bool> filled: mode == 2 || mode == 3;
+    property <bool> compact: mode == 1;
+    property <bool> expanded: mode == 2;
+    // Material, idle: no pill unless the bar's groups have theirs
+    property <bool> bare: Theme.material && !filled && !compact && !pilled;
+    property <color> ink: Theme.material ? (bare ? fg : Theme.m3-on-surface) : filled || hot ? #F5F5F7 : fg;
+    property <color> ink2: Theme.material ? Theme.m3-on-surface-variant : #ffffff99;
+    property <length> pad: Theme.material ? 4px : 10px;
+    property <length> dots-w: spaces.width;
+    property <length> lead-w: lead.preferred-width;
+    property <length> trail-w: trail.preferred-width;
+    property <length> side: max(lead-w, trail-w);
+    property <length> area: max(dots-w, trail-w + 26px);
+    property <length> compact-w: layout == "split" ? 2 * pad + 2 * side + 24px + dots-w : layout == "beside" ? 2 * pad + dots-w + 21px + area : pad + lead-w + 12px + trail-w + pad;
+    property <length> target-w: mode == 3 ? min(420px, pill-row.preferred-width + 28px) : expanded && event-inside ? (has-card ? 440px : 392px) : expanded ? 392px : compact ? compact-w : dots-w + 14px;
+    property <length> target-h: expanded ? body.y + body.preferred-height + (event-inside ? 16px : 14px) : mode == 3 ? 30px : 26px;
+    property <length> radius: min(Theme.radius-tile, shape.height / 2);
+    property <length> group-left: shape.width / 2 - compact-w / 2 + pad;
+    property <length> lead-x: layout == "split" ? shape.width / 2 - dots-w / 2 - 12px - lead-w : layout == "beside" ? group-left + dots-w + 21px : group-left;
+    property <length> trail-x: layout == "split" ? shape.width / 2 + dots-w / 2 + 12px : shape.width / 2 + compact-w / 2 - pad - trail-w + (Theme.material ? 0 : 4px);
+    // closing: how open it still is, as the height comes down
+    property <length> close-from: 80px;
+    changed filled => {
+        if !filled { close-from = max(shape.height, 27px); }
+    }
+    // the open content fades in as it opens, and is gone at once as it closes
+    property <float> content-in: expanded ? 1 : 0;
+    animate content-in { duration: expanded ? Theme.hover : 0ms; easing: ease-out; }
+
+    // hover opens it (after a moment), leaving closes it
+    property <bool> hovering: over.has-hover;
+    property <bool> hover-open;
+    Timer {
+        interval: 140ms;
+        running: hovering && !hover-open;
+        triggered => { hover-open = true; root.hover(true); }
+    }
+    Timer {
+        interval: 260ms;
+        running: !hovering && hover-open;
+        triggered => { hover-open = false; root.hover(false); }
+    }
+    changed hovering => { root.holding(hovering && event-inside); }
+
+    background: transparent;
+
+    shape := Rectangle {
+        x: round((root.width - self.width) / 2 / 1px) * 1px;
+        y: 3px;
+        width: target-w;
+        height: target-h;
+        animate width, height { duration: 480ms; easing: spring(0.22); }
+        property <float> open-fade: filled ? 1 : 0;
+        animate open-fade { duration: Theme.hover; }
+        property <float> fade: filled ? open-fade : max(0, min(1, (self.height - 26px) / max(1px, close-from - 26px)));
+        visible: mode != 4 || self.height > 27px;
+
+        // Material: the island's tonal surface, its shadow while it floats open
+        if Theme.material: Rectangle {
+            border-radius: radius;
+            opacity: bare ? 0 : 1;
+            animate opacity { duration: Theme.hover; }
+            // (Theme.veil: see-through with Material's transparency)
+            property <color> solid: hot && expanded ? Theme.m3-surface-container-high.mix(Theme.m3-error, 0.86) : event-inside ? Theme.m3-surface-container-highest : Theme.m3-surface-container-high;
+            background: Theme.blur ? solid.with-alpha(Theme.panel-alpha) : solid;
+            animate background { duration: Theme.popover; }
+            drop-shadow-blur: expanded || mode == 3 ? 12px : 0;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+        }
+        // Glass: black at the top melting into the glass below (the plugin's)
+        if !Theme.material: Rectangle {
+            border-radius: radius;
+            opacity: shape.fade;
+            background: @linear-gradient(180deg, #000000f0 0%, #000000e6 30%, #0000001f 100%);
+        }
+        // running hot, closed: the chip's glow (no ripples: Slint has no shaders)
+        if !Theme.material && hot && !filled: Rectangle {
+            border-radius: radius;
+            background: #ff3b3026;
+        }
+        // a faint rim on the same curve
+        if !Theme.material: Rectangle {
+            border-radius: radius;
+            border-width: 1px;
+            border-color: #ffffff24;
+            opacity: shape.fade;
+        }
+
+        over := TouchArea {
+            // (a click on the compact pill opens it; right-click pins it)
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.up && e.button == PointerEventButton.right { root.pin(); }
+            }
+            clicked => {
+                if mode == 3 { root.open-pill(); } else if compact { hover-open = true; root.hover(true); }
+            }
+            scroll-event(e) => {
+                if compact || (expanded && !event-inside) {
+                    root.cycle(e.delta-x, e.delta-y);
+                    return accept;
+                }
+                reject
+            }
+
+            Rectangle {
+                clip: true;
+                border-radius: radius;
+
+                // Top row: the spaces
+                spaces := Spaces {
+                    visible: spaces-on;
+                    plain: true;
+                    hot: root.hot && !expanded;
+                    ink: root.ink;
+                    chips: root.chips;
+                    strip-w: root.strip-w;
+                    arrows: root.arrows;
+                    left-x: root.left-x;
+                    right-x: root.right-x;
+                    left-more: root.left-more;
+                    left-hot: root.left-hot;
+                    right-more: root.right-more;
+                    right-hot: root.right-hot;
+                    x: !compact || layout != "beside" ? (shape.width - self.width) / 2 : group-left;
+                    y: expanded ? 7px : 2px;
+                    opacity: event-inside || mode == 3 || mode == 4 || (compact && layout == "replace") ? 0 : 1;
+                    animate opacity { duration: Theme.hover; }
+                    animate y { duration: 400ms; easing: spring(0.25); }
+                    go(id) => { root.go(id); }
+                    menu(id, x) => { root.space-menu(id, x); }
+                    arrow(d) => { root.arrow(d); }
+                    wheel(d) => { root.space-wheel(d); }
+                }
+
+                // Compact: the live activity's info and controls
+                lead := LiveInfo {
+                    x: lead-x;
+                    y: 2px;
+                    width: self.preferred-width;
+                    height: 22px;
+                    live: root.live;
+                    ink: root.ink;
+                    tick: root.tick;
+                    opacity: compact ? 1 : 0;
+                    animate opacity { duration: Theme.hover; }
+                }
+                trail := HorizontalLayout {
+                    x: trail-x;
+                    y: 2px;
+                    width: self.preferred-width;
+                    height: 22px;
+                    opacity: compact ? 1 : 0;
+                    animate opacity { duration: Theme.hover; }
+                    for c[i] in live.controls: IconButton {
+                        width: 24px;
+                        height: 22px;
+                        icon: c.icon;
+                        fill: c.fill;
+                        ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
+                        opacity: c.on ? 1 : 0.4;
+                        label: c.icon;
+                        clicked => { if c.on && compact { root.control(i); } }
+                    }
+                }
+                // Beside: a thin divider between the spaces and the activity
+                if compact && layout == "beside": Rectangle {
+                    x: group-left + dots-w + 10px;
+                    y: 6px;
+                    width: 1px;
+                    height: 14px;
+                    background: root.ink.with-alpha(0.3);
+                }
+
+                // Over a fullscreen app: the newest alert in one line; a click opens it
+                pill-row := HorizontalLayout {
+                    x: (shape.width - self.preferred-width) / 2;
+                    y: (30px - 20px) / 2;
+                    width: self.preferred-width;
+                    height: 20px;
+                    spacing: 8px;
+                    opacity: mode == 3 ? 1 : 0;
+                    animate opacity { duration: Theme.hover; }
+                    SymIcon {
+                        text: pill-icon;
+                        fill: true;
+                        font-size: 16px;
+                        color: Theme.material ? Theme.m3-primary : pill-tint;
+                    }
+                    Text {
+                        max-width: 300px;
+                        text: pill-text;
+                        color: root.ink;
+                        font-size: Theme.body;
+                        font-weight: 500;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Open: the alerts, or the live activity's card and a status line
+                body := VerticalLayout {
+                    x: event-inside ? 18px : 12px;
+                    y: event-inside ? 16px : 36px;
+                    width: (event-inside ? (has-card ? 440px : 392px) : 392px) - 2 * self.x;
+                    spacing: 10px;
+                    opacity: expanded ? content-in : 0;
+                    visible: shape.height > 30px;
+                    if event-inside: VerticalLayout {
+                        spacing: 10px;
+                        for a[i] in alerts: AlertView {
+                            a: a;
+                            first: i == 0;
+                            ink: root.ink;
+                            ink2: root.ink2;
+                            act(u, w) => { root.act(u, w); }
+                            dismiss(u) => { root.dismiss(u); }
+                            set-level(v) => { root.set-level(v); }
+                        }
+                    }
+                    // the focused activity, open (IslandFocusCard, simplified)
+                    if !event-inside && live-count > 0: VerticalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Rectangle {
+                                width: live.has-art ? 64px : 40px;
+                                height: self.width;
+                                border-radius: live.has-art ? (Theme.material ? 16px : 12px) : self.width / 2;
+                                clip: true;
+                                background: live.has-art ? ink.with-alpha(0.1) : Theme.material ? Theme.m3-primary : live.tint.with-alpha(0.24);
+                                if live.has-art: Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: live.art;
+                                    image-fit: cover;
+                                }
+                                if !live.has-art: SymIcon {
+                                    text: live.icon;
+                                    fill: true;
+                                    font-size: 20px;
+                                    color: Theme.material ? Theme.m3-on-primary : live.tint;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: live.title;
+                                    color: ink;
+                                    font-size: 15px;
+                                    font-weight: 600;
+                                    overflow: elide;
+                                }
+                                if live.artist != "" || live.time != "": Text {
+                                    text: live.kind == "music" ? live.artist : live.time;
+                                    color: ink2;
+                                    font-size: Theme.small;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 18px;
+                            for c[i] in live.controls: IconButton {
+                                width: 36px;
+                                height: 32px;
+                                icon: c.icon;
+                                fill: c.fill;
+                                size: 20px;
+                                ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
+                                opacity: c.on ? 1 : 0.4;
+                                label: c.icon;
+                                clicked => { if c.on { root.control(i); } }
+                            }
+                        }
+                        // which one this is, when there are several
+                        if live-count > 1: HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            for n[i] in live-count: Rectangle {
+                                width: i == live-index ? 14px : 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: Theme.material ? (i == live-index ? Theme.m3-primary : Theme.m3-on-surface-variant.with-alpha(0.38)) : #ffffff.with-alpha(i == live-index ? 0.9 : 0.35);
+                                animate width { duration: Theme.hover; }
+                            }
+                        }
+                    }
+                    if !event-inside: Text {
+                        height: 22px;
+                        text: status;
+                        color: ink2;
+                        font-size: Theme.small;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Pin: keep the island open even with nothing happening
+        if !event-inside: IconButton {
+            x: parent.width - self.width - 6px;
+            y: 3px;
+            width: 26px;
+            height: 26px;
+            visible: expanded && shape.height > 40px;
+            opacity: content-in;
+            icon: pinned ? "\u{e3e4}" : "\u{e3e2}"; // push-pin-slash | push-pin
+            fill: pinned;
+            size: 14px;
+            ink: pinned ? root.ink : root.ink2;
+            label: pinned ? "Unpin the island" : "Keep the island open";
+            clicked => { root.pin(); }
+        }
+    }
+}

@@ -16,6 +16,7 @@ A surface moves when its Rust version does what the QML one does, **in both look
 | Its export | `ui/main.slint` | one `export { … } from "<name>.slint";` line |
 | Data it needs from the system | `src/services/<service>.rs` | a thread that sends `Msg::Data(Box::new(value))`; registered in `services::start` by name; a part asks with `st.shell.want("<service>")` and reads `st.shell.get::<T>()` |
 | The QML twin stepping aside | the QML surface's model or `visible` | `RustUi.drawing("<name>")` (e.g. MenuBar.qml's model is `[]` then) |
+| Hearing from the shell | the QML twin, then the part's `message` | `RustUi.tell("<name>", {…})` writes `{"to": "<name>", …}` on tessera-ui's stdin (only while it draws that surface); the part's `message` gets it as a `serde_json::Value`. E.g. Background.qml tells the background the day's sunrise and sunset and the lock's settle (LockFx's steps). Panels' open and close come as commands instead ("Panels" below) |
 | Tests | the part's `#[cfg(test)] mod tests`, and `tests/test_rust_ui.py` checks the twin | |
 
 Shared, so ask before changing their meaning (add, don't rename): `src/shell.rs`, `src/theme.rs` + `ui/theme.slint` (tokens follow `shell/common/Theme.qml`; add a token there when a surface needs one the QML Theme has), `ui/widgets.slint` (search field, icon button, key caps, spinner, Material state shapes, text button), `src/wayland.rs` (the platform), `src/a11y.rs`.
@@ -64,6 +65,7 @@ impl Part for Dock {
 - **Keyboard:** `KeyboardInteractivity::OnDemand` for things you type into; `keyboard_left` is the moment to close (another window was clicked).
 - **Accessibility:** `crate::a11y::A11y::new(&surface, st.tx.clone())`, `a.update(false, focused)` in `after_frame`, and return them from `a11y()`. Give every control an `accessible-role` and `accessible-label` (see menubar.slint); icon glyphs `accessible-role: none` (wrap them: `Icon`).
 - **Settings:** read from `st.shell.cfg` (config.json as JSON) with the QML Config.qml defaults when a key is missing; small pure functions with tests (see `surfaces/menubar/settings.rs`).
+- **Pictures:** decode off the UI thread and hand Slint a buffer no larger than it shows (`surfaces/background/picture.rs`: `cover`, `decode`, a small `Pool`). A still surface needs a second frame: the first is drawn while the EGL window is still 1×1 and the compositor stretches it (`background::second_frame`).
 - **Actions** the QML surface does through Hyprland: `services::hypr::request("dispatch …")` on a thread (never block the UI thread). Things the QML shell does itself (open a panel, run its IPC): `shell/assets/scripts/shell-ipc.sh call …` from a thread, until that piece is in Rust too.
 
 ## Fidelity: what "matches" means

@@ -7,7 +7,6 @@
 //! icon fonts' maps (phosphor.js, material-symbols.js).
 
 use super::rank::{Answer, Definition};
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -165,26 +164,9 @@ pub fn icon_file_name(url: &str) -> String {
 
 // ── Lists read once ─────────────────────────────────────────────────────
 
-/// `"key": "value"` and `["a", "b"]` lines of a generated .js list
+/// `["a", "b"]` lines of a generated .js list (emoji.js)
 fn js_pairs(text: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for l in text.lines() {
-        let t = l.trim().trim_end_matches(',');
-        if t.starts_with('[') {
-            if let Ok([a, b]) = serde_json::from_str::<[String; 2]>(t) {
-                out.push((a, b));
-            }
-        } else if t.starts_with('"') {
-            if let Ok(v) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&format!("{{{t}}}")) {
-                for (k, v) in v {
-                    if let Some(s) = v.as_str() {
-                        out.push((k, s.to_string()));
-                    }
-                }
-            }
-        }
-    }
-    out
+    text.lines().filter_map(|l| serde_json::from_str::<[String; 2]>(l.trim().trim_end_matches(',')).ok()).map(|[a, b]| (a, b)).collect()
 }
 
 /// emoji.js: (emoji, name)
@@ -193,22 +175,14 @@ pub fn emoji() -> &'static [(String, String)] {
     E.get_or_init(|| shell_file("shell/common/emoji.js").and_then(|p| std::fs::read_to_string(p).ok()).map(|t| js_pairs(&t)).unwrap_or_default())
 }
 
-fn map(rel: &str) -> HashMap<String, String> {
-    shell_file(rel).and_then(|p| std::fs::read_to_string(p).ok()).map(|t| js_pairs(&t).into_iter().collect()).unwrap_or_default()
-}
-
 /// A glyph as Icon.qml draws it: Material's Material Symbol when there's one
-/// (1.2× the size), else Phosphor's. (text, font family, size factor)
+/// (1.2× the size), else Phosphor's (crate::icons). (text, font family, size factor)
 pub fn glyph(name: &str, material: bool, fill: bool, bold: bool) -> (String, String, f32) {
-    static P: OnceLock<HashMap<String, String>> = OnceLock::new();
-    static S: OnceLock<HashMap<String, String>> = OnceLock::new();
-    if material {
-        if let Some(s) = S.get_or_init(|| map("shell/common/material-symbols.js")).get(name) {
-            return (s.clone(), "Tessera Symbols".into(), 1.2);
-        }
+    let sym = crate::icons::symbol(name);
+    if material && !sym.is_empty() {
+        return (sym.into(), "Tessera Symbols".into(), 1.2);
     }
-    let p = P.get_or_init(|| map("shell/common/phosphor.js")).get(name).cloned().unwrap_or_default();
-    (p, if fill { "Phosphor-Fill" } else if bold { "Phosphor-Bold" } else { "Phosphor" }.into(), 1.0)
+    (crate::icons::glyph(name).into(), if fill { "Phosphor-Fill" } else if bold { "Phosphor-Bold" } else { "Phosphor" }.into(), 1.0)
 }
 
 #[cfg(test)]
@@ -256,8 +230,6 @@ mod tests {
     fn generated_lists() {
         let e = js_pairs("var list = [\n    [\"😀\", \"grinning face\"],\n    [\"\\u00a9\", \"copyright\"]\n];");
         assert_eq!(e, vec![("😀".into(), "grinning face".into()), ("©".into(), "copyright".into())]);
-        let m = js_pairs("var glyphs = {\n    \"acorn\": \"\\ueb9a\",\n    \"x\": \"\\ue4f6\"\n};");
-        assert_eq!(m[0], ("acorn".into(), "\u{eb9a}".into()));
         // the repo's own lists
         assert!(emoji().len() > 1000);
         assert_eq!(glyph("magnifying-glass", false, false, false), ("\u{e30c}".into(), "Phosphor".into(), 1.0));
