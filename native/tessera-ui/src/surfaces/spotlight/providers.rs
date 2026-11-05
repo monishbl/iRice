@@ -178,11 +178,12 @@ pub fn emoji() -> &'static [(String, String)] {
 /// A glyph as Icon.qml draws it: Material's Material Symbol when there's one
 /// (1.2× the size), else Phosphor's (crate::icons). (text, font family, size factor)
 pub fn glyph(name: &str, material: bool, fill: bool, bold: bool) -> (String, String, f32) {
-    let sym = crate::icons::symbol(name);
+    let g = crate::icons::glyph(name);
+    let sym = crate::icons::symbol(g);
     if material && !sym.is_empty() {
         return (sym.into(), "Tessera Symbols".into(), 1.2);
     }
-    (crate::icons::glyph(name).into(), if fill { "Phosphor-Fill" } else if bold { "Phosphor-Bold" } else { "Phosphor" }.into(), 1.0)
+    (g.into(), if fill { "Phosphor-Fill" } else if bold { "Phosphor-Bold" } else { "Phosphor" }.into(), 1.0)
 }
 
 #[cfg(test)]
