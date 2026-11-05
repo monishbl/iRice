@@ -14,6 +14,8 @@
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
 //!   tessera-ui --greeter [--style …] [--demo [STATE]]   the login screen (surfaces/greeter)
+//!   tessera-ui … --demo          the lock, session and polkit surfaces without their real
+//!                                roles (no session lock, no PAM, no polkit agent: their top comments)
 //! SIGUSR1 prints frame statistics.
 
 mod surfaces;
@@ -87,6 +89,10 @@ fn main() {
         }
         return;
     }
+    // (the lock's PAM conversations run in a child of their own: surfaces/lock/auth.rs)
+    if args.get(1).map(String::as_str) == Some("--pam-helper") {
+        std::process::exit(tessera_lock::auth::helper_main(&args));
+    }
     if args.get(1).map(String::as_str) == Some("--version") {
         println!("tessera-ui {}", env!("CARGO_PKG_VERSION"));
         return;
@@ -100,7 +106,7 @@ fn main() {
     // it here, before it opens a display: started by mistake, it never draws
     // on whatever session it was started from
     if let Some(bad) = surfaces::unknown_arg(&args) {
-        eprintln!("tessera-ui: unknown argument {bad} (tessera-ui [--surfaces a,b] | --material-roles SEED dark|light [style] | --seed PICTURE | --version)");
+        eprintln!("tessera-ui: unknown argument {bad} (tessera-ui [--surfaces a,b] [--demo] | --material-roles SEED dark|light [style] | --seed PICTURE | --version)");
         std::process::exit(2);
     }
     let surfaces = surfaces::from_args(&args);

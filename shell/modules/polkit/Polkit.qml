@@ -14,6 +14,9 @@ import qs.services
 Scope {
     id: root
 
+    // tessera-ui draws it (rust.surfaces: polkit): then it's the agent, and
+    // the previews go there (native/tessera-ui/src/surfaces/polkit)
+    readonly property bool inRust: RustUi.drawing("polkit")
     readonly property var flow: agent.flow ?? null
     property bool preview: false
     readonly property bool shown: (agent.isActive && flow !== null) || preview
@@ -67,7 +70,7 @@ Scope {
     }
     LazyLoader {
         id: agentLoader
-        active: !System.sandboxed
+        active: !System.sandboxed && !root.inRust
         component: PolkitAgent {}
     }
 
@@ -112,10 +115,12 @@ Scope {
     IpcHandler {
         target: "polkit"
         function preview(): void {
+            RustUi.tell("polkit", { preview: true, finger: false });
             root.preview = true;
         }
         // (the fingerprint step, as it looks while PAM waits for a finger)
         function previewFinger(): void {
+            RustUi.tell("polkit", { preview: true, finger: true });
             root.preview = true;
             root.previewFinger = true;
         }
@@ -128,7 +133,7 @@ Scope {
     Timer { id: windowUnload; interval: 600; onTriggered: root.windowAlive = false }
 
     LazyLoader {
-        active: root.windowAlive
+        active: root.windowAlive && !root.inRust
 
         GlassWindow {
             id: win

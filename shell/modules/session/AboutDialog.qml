@@ -14,6 +14,34 @@ Variants {
         required property var modelData
         panel: "about"
         screen: modelData
+        // tessera-ui draws it with the power menu (rust.surfaces: session):
+        // this says when it opens, where and what it shows, and hears when it
+        // closed itself (the first screen's loader speaks for all)
+        elsewhere: RustUi.drawing("session")
+        readonly property bool speaks: modelData === Quickshell.screens[0]
+        function tellRust() {
+            const open = Panels.open === "about";
+            RustUi.send({ cmd: "about", surface: "session", open: open, screen: open ? (Panels.screen?.name ?? "") : "", info: {
+                    osName: SystemInfo.osName, hostname: SystemInfo.hostname, cpu: SystemInfo.cpu, gpu: SystemInfo.gpu,
+                    memory: SystemInfo.memory, kernel: SystemInfo.kernel,
+                    logo: IconLookup.path(SystemInfo.osLogo || "distributor-logo", "computer")
+                } });
+        }
+        property Connections rustOpen: Connections {
+            target: Panels
+            enabled: slot.speaks && RustUi.drawing("session")
+            function onOpenChanged() {
+                Qt.callLater(slot.tellRust);
+            }
+        }
+        property Connections rustClosed: Connections {
+            target: RustUi
+            enabled: slot.speaks
+            function onMessage(e) {
+                if (e.kind === "session" && e.close === "about" && Panels.open === "about")
+                    Panels.close();
+            }
+        }
 
         Dialog {
             id: dialog

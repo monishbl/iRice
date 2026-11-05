@@ -1,0 +1,2102 @@
+// The lock screen, both looks, and Bedside Mode over it (compare
+// shell/modules/lock: LockSurface.qml, LockGlass.qml, LockMaterial.qml,
+// LockClock.qml, MaterialClock.qml, StandBy.qml), and the login intro
+// (LoginIntro.qml). Rust keeps every rule (src/surfaces/lock/mod.rs) and
+// fills LockData; this draws it and plays its motion.
+// (Slint has no shaders or blur: Glass's cards are the blurred wallpaper
+// under a tint and a rim; no soft shadow under the big clock; Material's
+// clocks set only the font's weight axis.)
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { SymIcon, Symbols } from "@tessera/symbols.slint";
+import { Busy } from "@tessera/widgets.slint";
+
+export struct LNote {
+    icon: image,
+    has-icon: bool,
+    app: string,
+    summary: string,
+    body: string,
+    when: string,
+}
+
+export struct LDay {
+    label: string,
+    col: int,
+    row: int,
+    today: bool,
+}
+
+// Everything a lock screen shows, the same on every screen (Rust sets it)
+export global LockData {
+    // Settings and the look
+    in property <bool> ios: true;
+    in property <string> plate: "glass"; // glass | frost | solid
+    in property <bool> dark-ink;
+    in property <string> note-style: "shelf"; // shelf | column | icons
+    in property <bool> previews;
+    in property <string> lock-fx: "zoom";
+    in property <bool> zoom-out: true;
+    in property <string> sb-mode: "morph";
+    in property <float> sb-opacity: 0.7;
+    in property <int> sb-weight: 200;
+    in property <string> clock-face: "dynamic";
+    in property <bool> compact;
+    in property <int> clock-weight: 640;
+    in property <bool> h24;
+    in property <bool> wake-on-mouse: true;
+    in property <bool> reduce-motion;
+    // Material's fixed inks (the same in light and dark)
+    in property <color> m-clock-ink: white;
+    in property <color> m-clock-ink2: white;
+    in property <color> m-clock-ink3: white;
+    in property <color> m-ink: white;
+    in property <color> m-ink2: white;
+    in property <color> sb-m-ink: white;
+    in property <color> sb-m-ink2: white;
+    in property <color> sb-m-ink3: white;
+    // The wallpaper and its blurred copy (the cards' frost)
+    in property <image> wallpaper;
+    in property <image> soft;
+    in property <bool> has-wallpaper;
+    // Time
+    in property <string> date;
+    in property <string> time;
+    in property <string> hh;
+    in property <string> hh2;
+    in property <string> mm;
+    in property <string> half;
+    in property <float> angle-h;
+    in property <float> angle-m;
+    // Widgets
+    in property <bool> has-battery;
+    in property <float> level;
+    in property <bool> charging;
+    in property <bool> full;
+    in property <bool> weather-ready;
+    in property <string> weather-glyph; // Phosphor's (Glass)
+    in property <string> weather-sym; // Material Symbols' (Material)
+    in property <string> temp;
+    in property <string> condition;
+    in property <bool> has-event;
+    in property <string> event-time;
+    in property <string> event-line;
+    in property <int> todos;
+    // Notifications (newest first) and the shelf's apps
+    in property <[LNote]> notes;
+    // the cards this screen shows (Rust picks them by the style and the
+    // screen's shape: the newest, the latest three or four, or none)
+    in property <[LNote]> cards;
+    in property <[LNote]> apps;
+    in property <int> note-count;
+    // Now Playing
+    in property <bool> has-player;
+    in property <string> track;
+    in property <string> artist;
+    in property <image> art;
+    in property <image> art-cookie;
+    in property <bool> has-art;
+    in property <bool> playing;
+    in property <bool> has-timeline;
+    in property <float> progress;
+    // You
+    in property <string> name;
+    in property <image> avatar;
+    in property <image> avatar-cookie;
+    in property <bool> has-avatar;
+    // The field, the reader, the camera
+    in-out property <string> password;
+    in property <string> error;
+    in property <int> error-count;
+    in property <bool> busy;
+    in property <string> finger-text;
+    in property <string> finger-state;
+    in property <string> face-text;
+    in property <bool> face-looking;
+    in property <bool> demo-face;
+    in property <bool> finger-on;
+    in property <bool> face-on;
+    in property <bool> leaving;
+    in property <bool> revealed;
+    // Bedside Mode
+    in property <bool> standby;
+    in property <bool> standby-here: true;
+    in property <int> sb-view;
+    in property <int> sb-views: 2;
+    in property <bool> sb-night;
+    in property <length> sb-dy;
+    in property <bool> sb-jump;
+    in property <bool> sb-resting;
+    in property <int> sb-dots;
+    in property <image> photo;
+    in property <bool> has-photo;
+    in property <[LDay]> days;
+    in property <string> month;
+
+    callback edited(string);
+    callback submit();
+    callback woke();
+    callback step(int);
+    callback player(string);
+
+    // Material shapes (src/surfaces/lock/shape.rs, 0..100 box)
+    in property <string> cookie9: "M 50 0 A 50 50 0 1 1 49.99 0 Z";
+    in property <string> cookie12: "M 50 0 A 50 50 0 1 1 49.99 0 Z";
+    in property <string> sunny: "M 50 0 A 50 50 0 1 1 49.99 0 Z";
+    in property <string> circle: "M 50 0 A 50 50 0 1 1 49.99 0 Z";
+}
+
+// ── Small pieces ─────────────────────────────────────────────────────────
+
+// Digits placed by their ink, not their line box: Google Sans Flex's digits
+// are 0.716 em tall, 0.25 em under the line's top (LockClock.qml's Ink)
+component Ink inherits Rectangle {
+    in property <string> text;
+    in property <length> px: 100px;
+    in property <int> wght: 640;
+    in property <color> tone: white;
+    width: t.preferred-width;
+    height: px * 0.716;
+    t := Text {
+        x: 0;
+        y: -root.px * 0.25;
+        text: root.text;
+        color: root.tone;
+        font-family: "Tessera Sans Flex";
+        font-size: root.px;
+        font-weight: root.wght;
+        accessible-role: none;
+    }
+}
+
+// Material's big two-line clock (MaterialClock.qml): the hours over the
+// minutes; `align-left` puts both lines on the left
+component StackClock inherits Rectangle {
+    in property <string> hours;
+    in property <string> minutes;
+    in property <length> size: 200px;
+    in property <int> wght: 640;
+    in property <color> ink: white;
+    in property <color> ink2: white;
+    in property <bool> align-left;
+    in property <bool> ticks;
+    property <length> digits: size * 0.716;
+    property <length> gap: size * 0.085;
+    width: max(h.width, m.width);
+    height: digits * 2 + gap;
+    // (the minutes dip as they change, Pixel's tick: a thinner weight a moment)
+    property <bool> dipping;
+    changed minutes => {
+        if ticks { dipping = true; }
+    }
+    Timer {
+        interval: 600ms;
+        running: root.dipping;
+        triggered => { root.dipping = false; }
+    }
+    h := Ink {
+        x: align-left ? 0px : (root.width - self.width) / 2;
+        y: 0;
+        text: hours;
+        px: size;
+        wght: round(root.wght / 40) * 40;
+        tone: ink;
+    }
+    m := Ink {
+        x: align-left ? 0px : (root.width - self.width) / 2;
+        y: digits + gap;
+        text: minutes;
+        px: size;
+        wght: dipping ? max(100, round((root.wght - 240) / 40) * 40) : round(root.wght / 40) * 40;
+        tone: ink2;
+        animate wght { duration: 180ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    }
+}
+
+// The weather's icon: Material's own symbol (Today's), else Phosphor's
+component WxIcon inherits Rectangle {
+    in property <color> ink: white;
+    in property <length> size: 20px;
+    width: Theme.material ? round(size * 1.2 / 1px) * 1px : size;
+    height: self.width;
+    if Theme.material: Text {
+        text: LockData.weather-sym;
+        color: ink;
+        font-family: "Tessera Symbols";
+        font-size: round(size * 1.2 / 1px) * 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    if !Theme.material: Icon {
+        text: LockData.weather-glyph;
+        fill: true;
+        font-size: size;
+        color: ink;
+    }
+}
+
+// A shape filled (Material): its outline in a 0..100 box
+component Shape inherits Path {
+    viewbox-width: 100;
+    viewbox-height: 100;
+    accessible-role: none;
+}
+
+// An analog face (AnalogClock.qml): Glass's round dial, Material's cookie
+component Analog inherits Rectangle {
+    in property <float> ah;
+    in property <float> am;
+    in property <bool> night: true;
+    property <color> face: Theme.material ? (night ? Theme.m3-tertiary-container : Theme.m3-primary-container) : night ? #1C1C1E : #F5F5F7;
+    property <color> ink: Theme.material ? (night ? Theme.m3-on-tertiary-container : Theme.m3-on-primary-container) : night ? #F5F5F7 : #1C1C1E;
+    property <color> hour-ink: Theme.material ? (night ? Theme.m3-tertiary : Theme.m3-primary) : ink;
+    if !Theme.material: Rectangle {
+        border-radius: self.width / 2;
+        background: face;
+    }
+    if Theme.material: Shape {
+        width: 100%;
+        height: 100%;
+        commands: LockData.cookie12;
+        fill: face;
+    }
+    for i in 12: Rectangle {
+        visible: !Theme.material || Math.mod(i, 3) == 0;
+        width: root.width;
+        height: root.height;
+        transform-rotation: i * 30deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            property <bool> quarter: Math.mod(i, 3) == 0;
+            width: Theme.material ? max(3px, root.width * 0.04) : quarter ? 2.5px : 1.5px;
+            height: Theme.material ? self.width : root.width * (quarter ? 0.09 : 0.06);
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.width * 0.13 : root.width * 0.06;
+            border-radius: Theme.material ? self.width / 2 : 1px;
+            background: ink.with-alpha(Theme.material ? 0.6 : quarter ? 0.85 : 0.45);
+        }
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        transform-rotation: ah * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            width: Theme.material ? max(5px, root.width * 0.085) : max(3px, root.width * 0.045);
+            height: Theme.material ? root.height * 0.23 + self.width : root.height * 0.27;
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.height * 0.27 - self.width / 2 : root.height * 0.25;
+            border-radius: self.width / 2;
+            background: hour-ink;
+        }
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        transform-rotation: am * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Rectangle {
+            width: Theme.material ? max(3px, root.width * 0.05) : max(2px, root.width * 0.03);
+            height: Theme.material ? root.height * 0.34 + self.width / 2 : root.height * 0.42;
+            x: (root.width - self.width) / 2;
+            y: Theme.material ? root.height * 0.16 : root.height * 0.1;
+            border-radius: self.width / 2;
+            background: ink;
+        }
+    }
+    Rectangle {
+        width: Theme.material ? max(6px, root.width * 0.06) : max(6px, root.width * 0.07);
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.material ? (night ? Theme.m3-primary : Theme.m3-tertiary) : Theme.accent;
+        border-width: Theme.material ? 0px : 1.5px;
+        border-color: face;
+    }
+}
+
+// The month (Bedside Mode's large calendar)
+component Month inherits Rectangle {
+    in property <color> ink: Theme.label;
+    property <length> cw: self.width / 7;
+    property <length> ch: (self.height - 34px) / 7;
+    Text {
+        x: 0;
+        y: 0;
+        text: LockData.month;
+        color: root.ink;
+        font-size: 15px;
+        font-weight: 700;
+        accessible-role: none;
+    }
+    for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: Text {
+        x: i * cw;
+        y: 34px;
+        width: cw;
+        height: ch;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        text: l;
+        color: ink.with-alpha(0.5);
+        font-size: 12px;
+        font-weight: 600;
+        accessible-role: none;
+    }
+    for d in LockData.days: Rectangle {
+        x: d.col * cw;
+        y: 34px + (d.row + 1) * ch;
+        width: cw;
+        height: ch;
+        if d.today: Rectangle {
+            width: min(parent.width, parent.height) - 2px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.material ? Theme.m3-primary : #FF453A;
+        }
+        Text {
+            text: d.label;
+            color: d.today ? (Theme.material ? Theme.m3-on-primary : white) : ink;
+            font-size: 13px;
+            font-weight: d.today ? 700 : 500;
+            accessible-role: none;
+        }
+    }
+}
+
+// A card's background (LockGlass's Plate): the blurred wallpaper under a
+// tint and a light rim (glass, frost), or solid
+component Plate inherits Rectangle {
+    in property <length> radius: 20px;
+    in property <length> win-w: 1920px;
+    in property <length> win-h: 1080px;
+    property <bool> see-through: LockData.plate != "solid";
+    border-radius: radius;
+    clip: true;
+    background: !see-through ? (LockData.dark-ink ? #FFFFFF : #232327) : transparent;
+    if see-through && LockData.has-wallpaper: Image {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        source: LockData.soft;
+        image-fit: fill;
+        source-clip-x: round(max(0, root.absolute-position.x / root.win-w * LockData.soft.width));
+        source-clip-y: round(max(0, root.absolute-position.y / root.win-h * LockData.soft.height));
+        source-clip-width: round(max(1, root.width / root.win-w * LockData.soft.width));
+        source-clip-height: round(max(1, root.height / root.win-h * LockData.soft.height));
+        accessible-role: none;
+    }
+    if see-through: Rectangle {
+        background: LockData.plate == "frost" ? (LockData.dark-ink ? #ffffff6b : #00000047) : LockData.dark-ink ? #ffffff4d : #16161a8c;
+    }
+    // (glass: a brighter rim along the top, the light catching its edge)
+    if LockData.plate == "glass": Rectangle {
+        y: 0;
+        height: min(root.height / 2, 24px);
+        background: @linear-gradient(180deg, #ffffff26 0%, #ffffff00 100%);
+    }
+    @children
+    Rectangle {
+        border-radius: root.radius;
+        background: transparent;
+        border-width: 1px;
+        border-color: LockData.plate == "glass" ? (LockData.dark-ink ? #ffffff80 : #ffffff38) : LockData.dark-ink ? #00000014 : #ffffff1f;
+    }
+}
+
+// What the reader is doing (FingerGlyph.qml): waiting pulses, a miss shakes
+// red, a match pops green
+component FingerGlyph inherits Rectangle {
+    in property <string> phase;
+    in property <color> ink: Theme.label;
+    in property <length> size: 22px;
+    width: size;
+    height: size;
+    property <duration> t0;
+    property <bool> moving;
+    property <float> k: moving ? (animation-tick() - t0) / 1ms : 1000;
+    changed phase => {
+        if !LockData.reduce-motion && phase != "" {
+            t0 = animation-tick();
+            moving = true;
+        }
+    }
+    Timer {
+        interval: 460ms;
+        running: root.moving;
+        triggered => { root.moving = false; }
+    }
+    // (waiting: 1 → 1.14 → 1; match: 0.6 → 1.12 → 1; miss: a shake)
+    property <float> s: phase == "waiting" ? (k < 180 ? 1 + 0.14 * k / 180 : k < 440 ? 1.14 - 0.14 * (k - 180) / 260 : 1)
+        : phase == "match" ? (k < 200 ? 0.6 + 0.52 * k / 200 : k < 340 ? 1.12 - 0.12 * (k - 200) / 140 : 1) : 1;
+    property <length> dx: phase != "miss" ? 0px : k < 50 ? -4px * k / 50 : k < 120 ? -4px + 8px * (k - 50) / 70 : k < 180 ? 4px - 7px * (k - 120) / 60 : k < 230 ? -3px + 5px * (k - 180) / 50 : k < 270 ? 2px - 2px * (k - 230) / 40 : 0px;
+    Icon {
+        x: dx;
+        width: root.width;
+        height: root.height;
+        transform-scale: s;
+        text: phase == "match" ? "\u{e184}" : "\u{e23e}";
+        fill: phase == "match";
+        font-size: size;
+        color: phase == "miss" ? Theme.danger : phase == "match" ? Theme.success : ink;
+        animate color { duration: 150ms; }
+    }
+}
+
+// Glass's battery: a solid capsule, the charge from the left, faint rest
+// (BatteryGlyph.qml at the lock's size)
+component Capsule inherits Rectangle {
+    in property <float> level;
+    in property <bool> charging;
+    in property <bool> plugged;
+    in property <color> ink: white;
+    in property <length> size: 11px;
+    property <length> cap-w: round(size * 2.05 / 1px) * 1px;
+    property <length> nub-w: max(2px, round(size * 0.17 / 1px) * 1px);
+    property <length> mark: round(size * 1.3 / 1px) * 1px;
+    width: cap-w + 1px + nub-w;
+    height: (charging || plugged) ? mark : size;
+    property <color> fill-c: !charging && !plugged && level <= 0.2 ? Theme.danger : ink;
+    Rectangle {
+        x: 0;
+        y: (root.height - root.size) / 2;
+        width: cap-w;
+        height: root.size;
+        border-radius: round(root.size * 0.32 / 1px) * 1px;
+        background: ink.with-alpha(0.35);
+        clip: true;
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(level, 0, 1);
+            background: fill-c;
+        }
+    }
+    Rectangle {
+        x: cap-w + 1px;
+        y: (root.height - self.height) / 2;
+        width: nub-w;
+        height: round(root.size * 0.38 / 1px) * 1px;
+        border-radius: self.width / 2;
+        background: ink.with-alpha(0.35);
+    }
+    if charging || plugged: Text {
+        x: (cap-w - self.width) / 2;
+        text: charging ? "\u{e2de}" : "\u{e946}";
+        font-family: "Phosphor-Fill";
+        font-size: mark;
+        color: ink;
+        // (the gap round it, cut out on the QML: an outline in the faint tone)
+        stroke: #00000059;
+        stroke-width: 1.5px;
+        accessible-role: none;
+    }
+}
+
+// Glass's spinner: circle-notch, a turn every 800 ms while it shows
+component Spin inherits Rectangle {
+    in property <color> ink: white;
+    in property <length> size: 22px;
+    width: size;
+    height: size;
+    Icon {
+        width: root.width;
+        height: root.height;
+        text: "\u{eb44}";
+        font-size: size;
+        color: ink;
+        transform-rotation: mod(animation-tick() / 800ms, 1) * 360deg;
+    }
+}
+
+// ── The Glass lock (LockGlass.qml) ───────────────────────────────────────
+
+component GlassLock inherits Rectangle {
+    in property <float> reveal: 1;
+    in property <float> exit: 0;
+    in property <float> sb: 0;
+    in property <bool> morph-on;
+    callback focus-field();
+    property <bool> ios: LockData.ios;
+    property <bool> split: LockData.note-style == "column" && self.width > self.height;
+    property <color> ink: LockData.dark-ink ? #18181B : #FFFFFF;
+    property <color> ink2: LockData.dark-ink ? rgba(23, 23, 28, 0.66) : rgba(255, 255, 255, 0.72);
+    property <length> W: self.width;
+    property <length> H: self.height;
+    opacity: 1 - exit;
+    transform-scale: LockData.zoom-out ? 1 + 0.08 * exit : 1;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    visible: !(LockData.standby && sb >= 1);
+
+    public function focus-input() { input.focus(); }
+    init => { input.focus(); }
+    property <bool> busy-now: LockData.busy;
+    changed busy-now => { if !busy-now && !LockData.standby { input.focus(); } }
+    // (back from Bedside Mode once this shows again: an item still hidden can't take the focus)
+    property <bool> sb-now: LockData.standby || sb >= 1;
+    changed sb-now => { if !sb-now { input.focus(); } }
+
+    // ── Date and time
+    property <length> header-y: H * (ios ? 0.07 : 0.1) + (LockData.lock-fx == "zoom" ? (1 - reveal) * -20px : 0px);
+    header := VerticalLayout {
+        x: (W - self.width) / 2;
+        y: header-y;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        opacity: reveal;
+        alignment: start;
+        Text {
+            horizontal-alignment: center;
+            text: LockData.date;
+            color: ink2;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        Text {
+            horizontal-alignment: center;
+            opacity: morph-on && sb > 0 ? 0 : 1;
+            text: LockData.time;
+            color: LockData.dark-ink ? rgba(23, 23, 28, 0.85) : rgba(255, 255, 255, 0.85);
+            font-size: ios ? 168px : 150px;
+            font-weight: 700;
+            letter-spacing: -5px;
+            accessible-label: "It's " + LockData.time;
+        }
+    }
+
+    // ── iOS: small widgets under the clock
+    property <int> n-comp: (LockData.has-battery ? 1 : 0) + (LockData.weather-ready ? 1 : 0) + (LockData.has-event ? 1 : 0) + (LockData.todos > 0 ? 1 : 0);
+    property <length> comp-y: header-y + header.height + 4px;
+    if ios: HorizontalLayout {
+        x: (W - self.width) / 2;
+        y: comp-y;
+        width: self.preferred-width;
+        height: 64px;
+        spacing: 16px;
+        opacity: reveal;
+        if LockData.has-battery: Plate {
+            width: 64px;
+            height: 64px;
+            radius: 32px;
+            win-w: W;
+            win-h: H;
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                HorizontalLayout {
+                    alignment: center;
+                    Capsule { level: LockData.level; charging: LockData.charging && !LockData.full; plugged: LockData.charging && LockData.full; ink: root.ink; size: 11px; }
+                }
+                Text { horizontal-alignment: center; text: round(LockData.level * 100) + "%"; color: ink; font-size: 13px; font-weight: 600; }
+            }
+        }
+        if LockData.weather-ready: Plate {
+            width: 64px;
+            height: 64px;
+            radius: 32px;
+            win-w: W;
+            win-h: H;
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                Icon { text: LockData.weather-glyph; fill: true; font-size: 18px; color: ink; }
+                Text { horizontal-alignment: center; text: LockData.temp; color: ink; font-size: 13px; font-weight: 600; }
+            }
+        }
+        if LockData.has-event: Plate {
+            width: 64px;
+            height: 64px;
+            radius: 32px;
+            win-w: W;
+            win-h: H;
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                Icon { text: "\u{e10a}"; fill: true; font-size: 18px; color: ink; }
+                Text { horizontal-alignment: center; text: LockData.event-time; color: ink; font-size: 13px; font-weight: 600; }
+            }
+        }
+        if LockData.todos > 0: Plate {
+            width: 64px;
+            height: 64px;
+            radius: 32px;
+            win-w: W;
+            win-h: H;
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                Icon { text: "\u{eadc}"; fill: true; font-size: 18px; color: ink; }
+                Text { horizontal-alignment: center; text: LockData.todos; color: ink; font-size: 13px; font-weight: 600; }
+            }
+        }
+    }
+
+    // ── Sign in (laid out first: the player sits over it)
+    // (its height as laid out: the error and the reader's line come and go)
+    property <length> login-y: login.y;
+
+    // ── Notifications and Now Playing
+    property <length> cards-w: split ? min(420px, W * 0.3) : 420px;
+    property <length> cards-x: split ? round((W * 0.74 - cards-w / 2) / 1px) * 1px : round((W - cards-w) / 2 / 1px) * 1px;
+    property <length> cards-y: split ? header-y + (LockData.has-player ? 94px : 0px) : (ios ? comp-y + (n-comp > 0 ? 64px : 0px) : header-y + header.height) + 40px;
+    if LockData.has-player: Plate {
+        x: cards-x;
+        y: split ? header-y : login-y - 84px - 24px;
+        width: cards-w;
+        height: 84px;
+        radius: 22px;
+        win-w: W;
+        win-h: H;
+        opacity: reveal;
+        Rectangle {
+            x: 12px;
+            y: 12px;
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            clip: true;
+            background: #ffffff1f;
+            if LockData.has-art: Image { width: 100%; height: 100%; source: LockData.art; image-fit: cover; }
+        }
+        VerticalLayout {
+            x: 84px;
+            width: parent.width - 84px - 130px;
+            alignment: center;
+            Text { text: LockData.track; overflow: elide; color: ink; font-size: Theme.body; font-weight: 600; }
+            Text { text: LockData.artist; overflow: elide; color: ink2; font-size: Theme.small; }
+        }
+        // previous, play or pause, next (36, 40 and 36 wide)
+        Rectangle {
+            x: parent.width - 10px - 112px;
+            width: 112px;
+            for b[bi] in [{ g: "\u{e5a4}", a: "prev", s: 36px, i: 18px, l: "Previous track" }, { g: LockData.playing ? "\u{e39e}" : "\u{e3d0}", a: "toggle", s: 40px, i: 22px, l: LockData.playing ? "Pause" : "Play" }, { g: "\u{e5a6}", a: "next", s: 36px, i: 18px, l: "Next track" }]: Rectangle {
+                x: bi == 0 ? 0px : bi == 1 ? 36px : 76px;
+                width: b.s;
+                height: b.s;
+                y: (84px - b.s) / 2;
+                border-radius: Theme.radius-control - 2px;
+                background: pt.pressed ? #ffffff38 : pt.has-hover ? #ffffff1a : transparent;
+                accessible-role: button;
+                accessible-label: b.l;
+                accessible-action-default => { LockData.player(b.a); }
+                Icon { text: b.g; fill: true; font-size: b.i; color: ink; }
+                pt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { LockData.player(b.a); }
+                }
+            }
+        }
+    }
+
+    cards := VerticalLayout {
+        x: cards-x;
+        y: cards-y;
+        width: cards-w;
+        height: self.preferred-height;
+        spacing: 10px;
+        opacity: reveal;
+        // Who sent them, as a row of app icons (shelf, icons)
+        if !split && LockData.note-count > 0: HorizontalLayout {
+            alignment: center;
+            Plate {
+                width: shelf.preferred-width + 20px;
+                height: 48px;
+                radius: 24px;
+                win-w: W;
+                win-h: H;
+                accessible-role: text;
+                accessible-label: LockData.note-count + (LockData.note-count == 1 ? " notification" : " notifications");
+                shelf := HorizontalLayout {
+                    x: 10px;
+                    width: self.preferred-width;
+                    spacing: 6px;
+                    alignment: center;
+                    for a in LockData.apps: Rectangle {
+                        width: 30px;
+                        Image {
+                            y: (parent.height - 30px) / 2;
+                            width: 30px;
+                            height: 30px;
+                            source: a.icon;
+                            image-fit: contain;
+                        }
+                    }
+                    if LockData.note-count > LockData.apps.length: Text {
+                        vertical-alignment: center;
+                        text: "+" + (LockData.note-count - LockData.apps.length);
+                        color: ink2;
+                        font-size: Theme.small;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+        // The newest (shelf) or the latest three (column): LockData.cards
+        for n in LockData.cards: Plate {
+            height: 64px;
+            radius: 18px;
+            win-w: W;
+            win-h: H;
+            Image {
+                x: 12px;
+                y: 15px;
+                width: 34px;
+                height: 34px;
+                source: n.icon;
+                image-fit: contain;
+            }
+            VerticalLayout {
+                x: 56px;
+                width: parent.width - 56px - 14px;
+                alignment: center;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: LockData.previews ? (n.summary != "" ? n.summary : n.app) : (n.app != "" ? n.app : "Notification");
+                        overflow: elide;
+                        color: ink;
+                        font-size: Theme.body;
+                        font-weight: 600;
+                    }
+                    Text { horizontal-stretch: 0; text: n.when; color: ink2; font-size: Theme.small; }
+                }
+                Text {
+                    text: LockData.previews ? n.body : "Notification";
+                    overflow: elide;
+                    color: ink2;
+                    font-size: Theme.small;
+                }
+            }
+        }
+        if split && LockData.note-count > 3: Text {
+            horizontal-alignment: center;
+            text: (LockData.note-count - 3) + " more";
+            color: ink2;
+            font-size: Theme.small;
+            font-weight: 500;
+        }
+    }
+
+    // ── Sign in: your picture and name, the field
+    property <duration> shake-t0;
+    property <bool> shaking;
+    property <int> errors: LockData.error-count;
+    changed errors => {
+        if LockData.error != "" {
+            shake-t0 = animation-tick();
+            shaking = true;
+        }
+    }
+    Timer {
+        interval: 280ms;
+        running: root.shaking;
+        triggered => { root.shaking = false; }
+    }
+    property <float> sk: shaking ? (animation-tick() - shake-t0) / 1ms : 1000;
+    property <length> shake-x: !shaking ? 0px : sk < 50 ? 10px * sk / 50 : sk < 130 ? 10px - 20px * (sk - 50) / 80 : sk < 200 ? -10px + 16px * (sk - 130) / 70 : sk < 260 ? 6px - 6px * (sk - 200) / 60 : 0px;
+
+    login := VerticalLayout {
+        x: (W - 360px) / 2;
+        y: H - H * (ios ? 0.06 : 0.1) - self.preferred-height;
+        width: 360px;
+        height: self.preferred-height;
+        spacing: 10px;
+        opacity: reveal;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 64px;
+                height: 64px;
+                border-radius: 32px;
+                clip: true;
+                background: LockData.dark-ink ? #0000001f : #ffffff2e;
+                accessible-role: text;
+                accessible-label: LockData.name;
+                if !LockData.has-avatar: Icon { text: "\u{e4c2}"; fill: true; font-size: 32px; color: ink; }
+                if LockData.has-avatar: Image { width: 100%; height: 100%; source: LockData.avatar; image-fit: cover; }
+            }
+        }
+        Text {
+            height: 20px;
+            horizontal-alignment: center;
+            text: LockData.name;
+            overflow: elide;
+            color: ink;
+            font-size: Theme.title;
+            font-weight: 600;
+        }
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 240px;
+                height: 36px;
+                Plate {
+                    x: shake-x;
+                    width: 240px;
+                    height: 36px;
+                    radius: 18px;
+                    win-w: W;
+                    win-h: H;
+                    input := TextInput {
+                        x: 16px;
+                        width: parent.width - 32px - 24px;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        input-type: password;
+                        enabled: !LockData.busy;
+                        color: ink;
+                        font-size: Theme.title;
+                        letter-spacing: 1px;
+                        single-line: true;
+                        text <=> LockData.password;
+                        accessible-label: "Password";
+                        edited => { LockData.edited(self.text); }
+                        accepted => { LockData.submit(); }
+                    }
+                    if LockData.password == "": Text {
+                        x: 16px;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        text: LockData.finger-state != "" ? "Fingerprint or Password" : "Enter Password";
+                        color: ink2;
+                        font-size: Theme.body;
+                        accessible-role: none;
+                    }
+                    // The reader, in the field while it's empty (as on a Mac)
+                    property <bool> finger-in-field: LockData.finger-state != "" && LockData.password == "" && !LockData.busy;
+                    if finger-in-field: FingerGlyph {
+                        x: parent.width - 30px + 1px;
+                        y: 7px;
+                        phase: LockData.finger-state;
+                        size: 22px;
+                        ink: root.ink;
+                    }
+                    if !LockData.busy && !finger-in-field: Rectangle {
+                        x: parent.width - 30px;
+                        y: 6px;
+                        width: 24px;
+                        height: 24px;
+                        accessible-role: button;
+                        accessible-label: "Unlock";
+                        accessible-action-default => { LockData.submit(); }
+                        Icon { text: "\u{e02e}"; fill: true; font-size: 22px; color: ink; opacity: LockData.password == "" ? 0.4 : 1; }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { LockData.submit(); }
+                        }
+                    }
+                    if LockData.busy: Spin {
+                        x: parent.width - 30px;
+                        y: 6px;
+                        size: 22px;
+                        ink: root.ink;
+                    }
+                }
+            }
+        }
+        if LockData.error != "": Text {
+            horizontal-alignment: center;
+            text: LockData.error;
+            wrap: word-wrap;
+            color: ink;
+            font-size: Theme.small;
+            font-weight: 500;
+        }
+        // What the reader or the camera wants, under a wrong password too
+        if LockData.finger-text != "" || LockData.face-text != "": HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+            Icon {
+                text: LockData.face-text != "" && LockData.finger-text == "" ? "\u{e436}" : "\u{e23e}";
+                font-size: 14px;
+                color: ink;
+            }
+            Text {
+                text: LockData.finger-text != "" ? LockData.finger-text : LockData.face-text;
+                color: ink;
+                opacity: 0.85;
+                font-size: Theme.small;
+                font-weight: 500;
+            }
+        }
+    }
+}
+
+// ── The Material lock (LockMaterial.qml, LockClock.qml) ─────────────────
+
+// The lock screen clock in one of Android's styles, large or small
+component MClock inherits Rectangle {
+    in property <string> face: "dynamic";
+    in property <length> size: 200px;
+    in property <length> small-size: 64px;
+    in property <float> small: 0;
+    in property <int> wght: 640;
+    in property <color> ink: white;
+    in property <color> ink2: white;
+    in property <color> ink3: white;
+    in property <bool> align-left;
+    in property <bool> ticks;
+    property <float> k: clamp(small, 0, 1);
+    // the large face's and the small form's sizes
+    property <length> lw: face == "dynamic" ? dyn-h.width + size * 0.1 + max(dyn-m.width, dyn-half.preferred-width)
+        : face == "wide" ? wide.width : face == "overlap" ? max(ov-h.width, ov-h.width * 0.4 + ov-m.width)
+        : face == "analog" ? size * 1.5 : face == "weather" ? max(wx-t.width, wx-row.preferred-width) : stack.width;
+    property <length> lh: face == "dynamic" ? dyn-h.height : face == "wide" ? wide.height : face == "overlap" ? ov-h.height * 0.58 + ov-m.height
+        : face == "analog" ? size * 1.5 : face == "weather" ? wx-t.height + (LockData.weather-ready ? size * 0.12 + size * 0.5 * 0.716 : 0px) : stack.height;
+    property <length> sw: face == "analog" ? round(small-size * 1.1 / 1px) * 1px : small-line.width;
+    property <length> sh: face == "analog" ? round(small-size * 1.1 / 1px) * 1px : small-size * 0.716;
+    width: lw + (sw - lw) * k;
+    height: lh + (sh - lh) * k;
+    property <float> ratio: lh > 0px ? max(0.05, sh / lh) : 1;
+
+    large := Rectangle {
+        x: 0;
+        y: 0;
+        width: lw;
+        height: lh;
+        visible: k < 1;
+        opacity: max(0, 1 - k * 1.7);
+        transform-scale: 1 - (1 - ratio) * k;
+        transform-origin: { x: 0px, y: 0px };
+        stack := StackClock {
+            visible: face == "stacked" || (face != "dynamic" && face != "wide" && face != "overlap" && face != "analog" && face != "weather");
+            hours: LockData.hh2;
+            minutes: LockData.mm;
+            size: root.size;
+            wght: root.wght;
+            ink: root.ink;
+            ink2: root.ink2;
+            align-left: root.align-left;
+            ticks: root.ticks;
+        }
+        // dynamic: the hours tall, the minutes beside their top, AM/PM under
+        Rectangle {
+            visible: face == "dynamic";
+            dyn-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 1.6 / 1px) * 1px; wght: root.wght; tone: root.ink; }
+            dyn-m := Ink { x: dyn-h.width + root.size * 0.1; y: 0; text: LockData.mm; px: round(root.size * 0.95 / 1px) * 1px; wght: root.wght; tone: root.ink2; }
+            dyn-half := Text {
+                x: dyn-m.x + round((dyn-m.width - self.preferred-width) / 2 / 1px) * 1px;
+                y: dyn-h.height - round(self.preferred-height * 0.8 / 1px) * 1px;
+                text: LockData.half;
+                color: root.ink2;
+                font-family: "Tessera Sans Flex";
+                font-size: max(14px, round(root.size * 0.3 / 1px) * 1px);
+                font-weight: round(root.wght * 0.8 / 40) * 40;
+            }
+        }
+        wide := Ink { visible: face == "wide"; x: 0; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.8 / 1px) * 1px; wght: root.wght; tone: root.ink; }
+        Rectangle {
+            visible: face == "overlap";
+            ov-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 0.95 / 1px) * 1px; wght: max(root.wght, 760); tone: root.ink; }
+            ov-m := Ink { x: round(ov-h.width * 0.4 / 1px) * 1px; y: round(ov-h.height * 0.58 / 1px) * 1px; text: LockData.mm; px: ov-h.px; wght: max(root.wght, 760); tone: root.ink3; }
+        }
+        if face == "analog": Rectangle {
+            width: root.size * 1.5;
+            height: root.size * 1.5;
+            Shape { width: 100%; height: 100%; commands: LockData.cookie12; fill: root.ink3.with-alpha(0.2); }
+            Rectangle {
+                transform-rotation: LockData.angle-h * 1deg;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                animate transform-rotation { duration: 450ms; easing: ease-out-back; }
+                Rectangle {
+                    width: parent.width * 0.085;
+                    height: parent.width * 0.27 + self.width / 2;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height / 2 - parent.width * 0.27;
+                    border-radius: self.width / 2;
+                    background: root.ink;
+                }
+            }
+            Rectangle {
+                transform-rotation: LockData.angle-m * 1deg;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                animate transform-rotation { duration: 450ms; easing: ease-out-back; }
+                Rectangle {
+                    width: parent.width * 0.05;
+                    height: parent.width * 0.38 + self.width / 2;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height / 2 - parent.width * 0.38;
+                    border-radius: self.width / 2;
+                    background: root.ink2;
+                }
+            }
+            Rectangle {
+                width: parent.width * 0.06;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: root.ink.darker(0.4);
+            }
+        }
+        Rectangle {
+            visible: face == "weather";
+            wx-t := Ink { x: (lw - self.width) / 2; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.78 / 1px) * 1px; wght: root.wght; tone: root.ink; }
+            wx-row := HorizontalLayout {
+                visible: LockData.weather-ready;
+                x: (lw - self.preferred-width) / 2;
+                y: wx-t.height + round(root.size * 0.12 / 1px) * 1px;
+                spacing: round(root.size * 0.06 / 1px) * 1px;
+                WxIcon { size: round(root.size * 0.42 / 1px) * 1px; ink: root.ink3; }
+                Ink { text: LockData.temp; px: round(root.size * 0.5 / 1px) * 1px; wght: root.wght; tone: root.ink2; }
+            }
+        }
+    }
+    // The small form: one line of the same digits, or a small dial
+    Rectangle {
+        x: 0;
+        y: 0;
+        visible: k > 0;
+        opacity: max(0, min(1, (k - 0.35) / 0.65));
+        transform-scale: 1 / ratio + (1 - 1 / ratio) * k;
+        transform-origin: { x: 0px, y: 0px };
+        small-line := Ink {
+            visible: face != "analog";
+            text: LockData.hh + ":" + LockData.mm;
+            px: small-size;
+            wght: face == "overlap" ? max(root.wght, 760) : root.wght;
+            tone: root.ink;
+        }
+        if face == "analog": Shape {
+            width: round(small-size * 1.1 / 1px) * 1px;
+            height: self.width;
+            commands: LockData.cookie12;
+            fill: root.ink3.with-alpha(0.2);
+        }
+    }
+}
+
+component MaterialLock inherits Rectangle {
+    in property <float> reveal: 1;
+    in property <float> exit: 0;
+    in property <float> sb: 0;
+    in property <bool> morph-on;
+    property <bool> ios: LockData.ios;
+    property <bool> split: LockData.note-style == "column" && self.width > self.height;
+    property <bool> dark-ink: LockData.dark-ink;
+    property <color> ink: LockData.m-ink;
+    property <color> ink2: LockData.m-ink2;
+    property <length> W: self.width;
+    property <length> H: self.height;
+    property <length> clock-size: round((split ? min(H * 0.2, W * 0.12) : min(H * (ios ? 0.17 : 0.15), W * 0.2)) / 1px) * 1px;
+    property <float> small-t: LockData.compact ? 1 : 0;
+    animate small-t { duration: 450ms; easing: spring(0.15); }
+    property <bool> left-aligned: split || small-t > 0.5;
+    property <bool> zoom-in: LockData.lock-fx == "zoom";
+    property <length> rise: zoom-in ? (1 - reveal) * 32px : 0px;
+    property <length> part: LockData.zoom-out ? H * 0.05 * exit : 0px;
+    out property <length> clock-x: header.x;
+    out property <length> clock-y: header.y;
+
+    init => { input.focus(); }
+    property <bool> busy-now: LockData.busy;
+    changed busy-now => { if !busy-now && !LockData.standby { input.focus(); } }
+    // (back from Bedside Mode once this shows again: an item still hidden can't take the focus)
+    property <bool> sb-now: LockData.standby || sb >= 1;
+    changed sb-now => { if !sb-now { input.focus(); } }
+
+    // The pill opens on a key or a mouse move, closes 10 s after the last
+    property <bool> typing;
+    property <bool> open: typing || LockData.password != "" || LockData.busy || LockData.error != "";
+    property <float> open-t: open ? 1 : 0;
+    animate open-t { duration: 450ms; easing: spring(0.15); }
+    function wake() {
+        typing = true;
+        idle.stop();
+        idle.start();
+    }
+    idle := Timer {
+        interval: 10s;
+        running: false;
+        triggered => { root.typing = false; idle.stop(); }
+    }
+
+    // A mouse move (past a little jitter) opens the pill, and is someone at
+    // the lock (the reader and the camera get their tries back). Under
+    // everything: the pill and the buttons take their own clicks.
+    TouchArea {
+        property <length> lx: -1px;
+        property <length> ly: -1px;
+        changed mouse-x => { self.moved-by(); }
+        changed mouse-y => { self.moved-by(); }
+        function moved-by() {
+            if !self.has-hover || LockData.standby {
+                return;
+            }
+            if lx >= 0px && (abs(self.mouse-x - lx) > 2px || abs(self.mouse-y - ly) > 2px) {
+                root.wake();
+                LockData.woke();
+            }
+            lx = self.mouse-x;
+            ly = self.mouse-y;
+        }
+    }
+
+    content := Rectangle {
+        opacity: 1 - exit;
+        visible: !(LockData.standby && sb >= 1);
+
+        // ── Lock icon (the face camera's loading indicator)
+        Rectangle {
+            x: (W - 40px) / 2;
+            y: 24px - part;
+            width: 40px;
+            height: 40px;
+            opacity: reveal;
+            accessible-role: text;
+            accessible-label: LockData.face-looking || LockData.demo-face ? "Looking for your face" : "Locked";
+            if !(LockData.face-looking || LockData.demo-face): SymIcon { text: "\u{e2fa}"; fill: true; font-size: 22px; color: ink; }
+            if LockData.face-looking || LockData.demo-face: Busy { }
+        }
+
+        // ── Battery, in the corner like Android's status bar
+        if ios && LockData.has-battery: HorizontalLayout {
+            x: W - 24px - self.preferred-width;
+            y: 30px - part;
+            spacing: 4px;
+            opacity: reveal;
+            SymIcon { text: LockData.charging ? "\u{e0ba}" : LockData.level <= 0.2 ? "\u{e0c4}" : "\u{e0c2}"; fill: true; font-size: 18px; color: ink; }
+            Text { text: round(LockData.level * 100) + "%"; color: ink; font-size: 14px; font-weight: 500; vertical-alignment: center; }
+        }
+
+        // ── Clock, date and smartspace
+        property <length> large-x: split ? round(W * 0.08 / 1px) * 1px : round((W - header.width) / 2 / 1px) * 1px;
+        property <length> large-y: round(H * (split ? 0.14 : ios ? 0.09 : 0.11) / 1px) * 1px;
+        header := Rectangle {
+            x: large-x + (max(48px, round(W * 0.04 / 1px) * 1px) - large-x) * small-t;
+            y: large-y + (72px - large-y) * small-t + rise - part;
+            width: max(clock.width, lines.preferred-width);
+            height: clock.height + (20px - 8px * small-t) + lines.preferred-height;
+            opacity: reveal;
+            clock := MClock {
+                x: left-aligned ? 0px : (parent.width - self.width) / 2;
+                y: 0;
+                face: LockData.clock-face;
+                size: clock-size;
+                small-size: round(min(72px, H * 0.07) / 1px) * 1px;
+                small: small-t;
+                wght: zoom-in ? round((160 + (LockData.clock-weight - 160) * reveal) / 40) * 40 : LockData.clock-weight;
+                ink: LockData.m-clock-ink;
+                ink2: LockData.m-clock-ink2;
+                ink3: LockData.m-clock-ink3;
+                align-left: left-aligned;
+                ticks: !LockData.standby;
+                opacity: morph-on && sb > 0 ? 0 : 1;
+            }
+            lines := VerticalLayout {
+                x: left-aligned ? 4px : (parent.width - self.preferred-width) / 2;
+                y: clock.height + 20px - 8px * small-t;
+                width: self.preferred-width;
+                spacing: 8px;
+                HorizontalLayout {
+                    alignment: left-aligned ? LayoutAlignment.start : LayoutAlignment.center;
+                    spacing: 12px;
+                    if !(LockData.clock-face == "dynamic" && LockData.h24 && small-t < 0.5): Text {
+                        vertical-alignment: center;
+                        text: LockData.date;
+                        color: ink;
+                        font-size: 18px;
+                        font-weight: 500;
+                    }
+                    if ios && LockData.weather-ready: HorizontalLayout {
+                        spacing: 4px;
+                        WxIcon { size: 20px; ink: root.ink; }
+                        Text { vertical-alignment: center; text: LockData.temp; color: ink; font-size: 18px; font-weight: 500; }
+                    }
+                }
+                // Smartspace: the next event and the open to-dos
+                if ios && (LockData.has-event || LockData.todos > 0): HorizontalLayout {
+                    alignment: left-aligned ? LayoutAlignment.start : LayoutAlignment.center;
+                    spacing: 16px;
+                    if LockData.has-event: HorizontalLayout {
+                        spacing: 6px;
+                        SymIcon { text: "\u{e10a}"; fill: true; font-size: 18px; color: ink2; }
+                        Text { vertical-alignment: center; max-width: 320px; overflow: elide; text: LockData.event-line; color: ink2; font-size: 16px; font-weight: 500; }
+                    }
+                    if LockData.todos > 0: HorizontalLayout {
+                        spacing: 6px;
+                        SymIcon { text: "\u{eadc}"; font-size: 18px; color: ink2; }
+                        Text { vertical-alignment: center; text: LockData.todos + (LockData.todos == 1 ? " to-do" : " to-dos"); color: ink2; font-size: 16px; font-weight: 500; }
+                    }
+                }
+            }
+        }
+
+        // ── Now Playing: beside the clock (column), or over the account pill
+        property <length> cards-w: split ? min(380px, W * 0.3) : 380px;
+        property <length> cards-x: split ? round((W * 0.72 - cards-w / 2) / 1px) * 1px : round((W - cards-w) / 2 / 1px) * 1px;
+        if LockData.has-player: Rectangle {
+            x: cards-x;
+            y: split ? header.y : unlock.y - 80px - 20px;
+            width: cards-w;
+            height: 80px;
+            border-radius: Theme.radius-tile;
+            background: Theme.m3-surface-container-high;
+            opacity: reveal;
+            Rectangle {
+                x: 12px;
+                y: 12px;
+                width: 56px;
+                height: 56px;
+                if LockData.has-art: Image { width: 100%; height: 100%; source: LockData.playing ? LockData.art-cookie : LockData.art; image-fit: cover; }
+                if !LockData.has-art: Shape { width: 100%; height: 100%; commands: LockData.playing ? LockData.cookie9 : LockData.circle; fill: Theme.m3-surface-container-highest; }
+                if !LockData.has-art: SymIcon { text: "\u{e340}"; fill: true; font-size: 28px; color: Theme.m3-on-surface-variant; }
+            }
+            VerticalLayout {
+                x: 80px;
+                width: parent.width - 80px - 140px;
+                alignment: center;
+                spacing: 2px;
+                Text { text: LockData.track; overflow: elide; color: Theme.m3-on-surface; font-size: 14px; font-weight: 500; }
+                Text { text: LockData.artist; overflow: elide; color: Theme.m3-on-surface-variant; font-size: 13px; }
+                if LockData.has-timeline: Rectangle {
+                    height: 18px;
+                    Rectangle {
+                        y: 7px;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.m3-secondary-container;
+                        Rectangle { x: 0; width: parent.width * LockData.progress; border-radius: 2px; background: Theme.m3-primary; }
+                    }
+                }
+            }
+            // previous (36), play or pause (44), next (36), 2 apart
+            Rectangle {
+                x: parent.width - 12px - 120px;
+                width: 120px;
+                for b[bi] in [{ g: "\u{e5a4}", a: "prev", l: "Previous track" }, { g: "", a: "toggle", l: "" }, { g: "\u{e5a6}", a: "next", l: "Next track" }]: Rectangle {
+                    x: bi == 0 ? 0px : bi == 1 ? 38px : 84px;
+                    width: b.a == "toggle" ? 44px : 36px;
+                    height: self.width;
+                    y: (80px - self.height) / 2;
+                    accessible-role: button;
+                    accessible-label: b.a == "toggle" ? (LockData.playing ? "Pause" : "Play") : b.l;
+                    accessible-action-default => { LockData.player(b.a); }
+                    if b.a != "toggle": Rectangle {
+                        border-radius: pt.pressed ? 8px : self.height / 2;
+                        background: pt.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : pt.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                        animate border-radius { duration: 150ms; }
+                    }
+                    if b.a == "toggle": Rectangle {
+                        // (selected, playing, squares off as Material's toggles do)
+                        border-radius: LockData.playing ? 14px : self.width / 2;
+                        background: pt.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, pt.pressed ? 0.9 : 0.92) : Theme.m3-primary;
+                        animate border-radius { duration: 300ms; easing: spring(0.3); }
+                        transform-scale: pt.pressed ? 1.06 : 1;
+                        animate transform-scale { duration: 250ms; easing: spring(0.4); }
+                    }
+                    SymIcon {
+                        text: b.a == "toggle" ? (LockData.playing ? "\u{e39e}" : "\u{e3d0}") : b.g;
+                        fill: true;
+                        font-size: b.a == "toggle" ? 22px : 20px;
+                        color: b.a == "toggle" ? Theme.m3-on-primary : Theme.m3-on-surface-variant;
+                    }
+                    pt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { LockData.player(b.a); }
+                    }
+                }
+            }
+        }
+
+        // ── Notifications: a shelf of app icons, compact cards in a segmented group
+        VerticalLayout {
+            x: cards-x;
+            y: split ? header.y + (LockData.has-player ? 92px : 0px) : header.y + header.height + 32px;
+            width: cards-w;
+            height: self.preferred-height;
+            spacing: 12px;
+            opacity: reveal;
+            if !split && LockData.note-count > 0: HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: mshelf.preferred-width + 16px;
+                    height: 52px;
+                    border-radius: 26px;
+                    background: Theme.m3-surface-container-high;
+                    accessible-role: text;
+                    accessible-label: LockData.note-count + (LockData.note-count == 1 ? " notification" : " notifications");
+                    mshelf := HorizontalLayout {
+                        x: 8px;
+                        width: self.preferred-width;
+                        spacing: 4px;
+                        alignment: center;
+                        for a in LockData.apps: Rectangle {
+                            width: 40px;
+                            Rectangle {
+                                y: (parent.height - 40px) / 2;
+                                width: 40px;
+                                height: 40px;
+                                border-radius: 20px;
+                                background: Theme.m3-surface-container-highest;
+                                Image { width: 26px; height: 26px; source: a.icon; image-fit: contain; }
+                            }
+                        }
+                        if LockData.note-count > LockData.apps.length: Text {
+                            vertical-alignment: center;
+                            text: "  +" + (LockData.note-count - LockData.apps.length) + "  ";
+                            color: Theme.m3-on-surface-variant;
+                            font-size: 14px;
+                            font-weight: 500;
+                        }
+                    }
+                }
+            }
+            // (newest first: the newest, or the latest four beside the clock;
+            // Rust picks them: LockData.cards)
+            if LockData.cards.length > 0: VerticalLayout {
+                spacing: 2px;
+                property <int> count: LockData.cards.length;
+                for n[i] in LockData.cards: Rectangle {
+                    height: 72px;
+                    background: Theme.m3-surface-container-high;
+                    border-top-left-radius: i == 0 ? 24px : 6px;
+                    border-top-right-radius: i == 0 ? 24px : 6px;
+                    border-bottom-left-radius: i == count - 1 ? 24px : 6px;
+                    border-bottom-right-radius: i == count - 1 ? 24px : 6px;
+                    Rectangle {
+                        x: 16px;
+                        y: 16px;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: Theme.m3-surface-container-highest;
+                        Image { width: 26px; height: 26px; source: n.icon; image-fit: contain; }
+                    }
+                    VerticalLayout {
+                        x: 68px;
+                        width: parent.width - 68px - 16px;
+                        alignment: center;
+                        spacing: 2px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                horizontal-stretch: 1;
+                                text: LockData.previews && n.summary != "" ? n.summary : n.app != "" ? n.app : "Notification";
+                                overflow: elide;
+                                color: Theme.m3-on-surface;
+                                font-size: 14px;
+                                font-weight: 500;
+                            }
+                            Text { horizontal-stretch: 0; text: n.when; color: Theme.m3-on-surface-variant; font-size: 12px; vertical-alignment: center; }
+                        }
+                        Text {
+                            text: LockData.previews ? (n.body != "" ? n.body : n.app) : "New notification";
+                            overflow: elide;
+                            color: Theme.m3-on-surface-variant;
+                            font-size: 14px;
+                        }
+                    }
+                }
+            }
+            if split && LockData.note-count > 4: HorizontalLayout {
+                padding-left: 8px;
+                Text {
+                    text: (LockData.note-count - 4) + " more";
+                    color: ink;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+            }
+        }
+
+        // ── Unlock: one pill
+        property <bool> fingered: LockData.finger-on || LockData.finger-state != "";
+        property <length> rest-w: 8px + 40px + 12px + min(name-t.preferred-width, 240px) + (fingered ? 12px + 40px + 8px : 24px);
+        property <length> pill-w: round((rest-w + (360px - rest-w) * open-t) / 1px) * 1px;
+        property <length> error-h: LockData.error != "" ? err.preferred-height + 20px + 12px : 0px;
+        property <length> unlock-h: error-h + 56px + 12px + 20px;
+        unlock := Rectangle {
+            x: (W - 460px) / 2;
+            y: H - unlock-h - round(H * 0.06 / 1px) * 1px + part;
+            width: 460px;
+            height: unlock-h;
+            opacity: reveal;
+            // What went wrong and how to fix it, above the pill (always
+            // there, shown with an error: the pill's place follows its height)
+            Rectangle {
+                visible: LockData.error != "";
+                x: (parent.width - self.width) / 2;
+                y: 0;
+                width: min(err.preferred-width, 460px) + 32px;
+                height: err.preferred-height + 20px;
+                border-radius: err.preferred-height > 24px ? 20px : self.height / 2;
+                background: Theme.m3-surface-container-high;
+                err := HorizontalLayout {
+                    x: 16px;
+                    y: 10px;
+                    width: parent.width - 32px;
+                    spacing: 8px;
+                    SymIcon { text: "\u{e4e2}"; fill: true; font-size: 18px; color: Theme.m3-error; }
+                    Text {
+                        max-width: 434px;
+                        text: LockData.error;
+                        wrap: word-wrap;
+                        color: Theme.m3-error;
+                        font-size: 14px;
+                        font-weight: 500;
+                    }
+                }
+            }
+            // the pill (a loose spring shakes it on a wrong password)
+            property <duration> shake-t0;
+            property <bool> shaking;
+            property <int> errors: LockData.error-count;
+            changed errors => {
+                if LockData.error != "" {
+                    shake-t0 = animation-tick();
+                    shaking = true;
+                }
+            }
+            Timer {
+                interval: 700ms;
+                running: parent.shaking;
+                triggered => { parent.shaking = false; }
+            }
+            property <float> st: shaking ? (animation-tick() - shake-t0) / 1s : 10;
+            property <length> shake: shaking ? 18px * exp(-6 * st) * cos(st * 2 * 3.14159 * 6 * 1rad) : 0px;
+            pill := Rectangle {
+                x: (parent.width - pill-w) / 2 + parent.shake;
+                y: error-h;
+                width: pill-w;
+                height: 56px;
+                border-radius: 28px;
+                background: Theme.m3-surface-container-high;
+                border-width: open && (input.has-focus || LockData.error != "") ? 2px : 0px;
+                border-color: LockData.error != "" ? Theme.m3-error : Theme.m3-primary;
+                // Your picture in a cookie (a turn while the password is checked)
+                Rectangle {
+                    x: 8px;
+                    y: 8px;
+                    width: 40px;
+                    height: 40px;
+                    transform-rotation: LockData.busy ? 40deg : 0deg;
+                    animate transform-rotation { duration: 600ms; easing: spring(0.35); }
+                    if LockData.has-avatar: Image { width: 100%; height: 100%; source: LockData.avatar-cookie; image-fit: cover; }
+                    if !LockData.has-avatar: Shape { width: 100%; height: 100%; commands: LockData.cookie9; fill: Theme.m3-primary-container; }
+                    if !LockData.has-avatar: SymIcon { text: "\u{e4c2}"; fill: true; font-size: 18px; color: Theme.m3-on-primary-container; }
+                }
+                // your name, closed; the field, open
+                name-t := Text {
+                    x: 60px;
+                    width: min(self.preferred-width, 240px);
+                    height: parent.height;
+                    vertical-alignment: center;
+                    text: LockData.name;
+                    overflow: elide;
+                    color: Theme.m3-on-surface;
+                    opacity: 1 - open-t;
+                    visible: self.opacity > 0.01;
+                    font-size: 16px;
+                    font-weight: 500;
+                }
+                Rectangle {
+                    x: 60px;
+                    width: max(0px, (send.visible ? send.x : finger.x) - 60px - 8px);
+                    height: parent.height;
+                    clip: true;
+                    opacity: open-t;
+                    input := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        vertical-alignment: center;
+                        input-type: password;
+                        enabled: !LockData.busy;
+                        single-line: true;
+                        color: Theme.m3-on-surface;
+                        selection-background-color: Theme.m3-primary;
+                        selection-foreground-color: Theme.m3-on-primary;
+                        font-size: 18px;
+                        letter-spacing: 2px;
+                        text <=> LockData.password;
+                        accessible-label: "Password";
+                        edited => {
+                            LockData.edited(self.text);
+                            root.wake();
+                        }
+                        accepted => { LockData.submit(); }
+                        key-pressed(e) => {
+                            root.wake();
+                            reject
+                        }
+                    }
+                    if LockData.password == "": Text {
+                        x: 0;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        text: "Enter password";
+                        color: Theme.m3-on-surface-variant;
+                        font-size: 16px;
+                        accessible-role: none;
+                    }
+                }
+                // Send: a circle, filled once there's something to send
+                send := Rectangle {
+                    x: finger.x - (fingered ? 4px : 0px) - 40px;
+                    y: 8px;
+                    width: 40px;
+                    height: 40px;
+                    visible: open-t > 0.5 && !LockData.busy;
+                    property <bool> ready: LockData.password != "";
+                    opacity: ready ? 1 : 0.6;
+                    transform-scale: sm.pressed ? 1.06 : 1;
+                    animate transform-scale { duration: 250ms; easing: spring(0.4); }
+                    border-radius: 20px;
+                    background: ready ? (sm.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, sm.pressed ? 0.9 : 0.92) : Theme.m3-primary) : Theme.m3-on-surface.with-alpha(0.12);
+                    accessible-role: button;
+                    accessible-label: "Unlock";
+                    accessible-action-default => { LockData.submit(); }
+                    SymIcon { text: "\u{e06c}"; font-size: 20px; color: send.ready ? Theme.m3-on-primary : Theme.m3-on-surface.with-alpha(0.38); }
+                    sm := TouchArea {
+                        mouse-cursor: send.ready ? MouseCursor.pointer : MouseCursor.default;
+                        clicked => { LockData.submit(); }
+                    }
+                }
+                if LockData.busy: Busy {
+                    x: send.x;
+                    y: 8px;
+                }
+                // The fingerprint glyph at the end
+                finger := Rectangle {
+                    x: pill.width - 8px - self.width;
+                    y: 8px;
+                    width: fingered ? 40px : 0px;
+                    height: 40px;
+                    property <string> phase: LockData.leaving ? "match" : LockData.finger-state;
+                    accessible-role: text;
+                    accessible-label: LockData.finger-text != "" ? LockData.finger-text : "Fingerprint";
+                    property <duration> t0;
+                    property <bool> moving;
+                    changed phase => {
+                        if !LockData.reduce-motion && phase != "" {
+                            t0 = animation-tick();
+                            moving = true;
+                        }
+                    }
+                    Timer {
+                        interval: 700ms;
+                        running: finger.moving;
+                        triggered => { finger.moving = false; }
+                    }
+                    property <float> k: moving ? (animation-tick() - t0) / 1s : 10;
+                    // listening: a spring out and back; a miss: a shake
+                    property <float> pulse: (phase == "waiting" || phase == "match") && moving ? 1 + 0.15 * exp(-8 * k) * cos(k * 2 * 3.14159 * 2.2 * 1rad) : 1;
+                    property <length> sx: phase == "miss" && moving ? 8px * exp(-6 * k) * cos(k * 2 * 3.14159 * 6 * 1rad) : 0px;
+                    // Android's ripple from the sensor on a match
+                    if phase == "match" && moving: Rectangle {
+                        property <float> grow: 1 - pow(1 - min(1, finger.k / 0.6), 3);
+                        x: (finger.width - self.width) / 2;
+                        y: (finger.height - self.height) / 2;
+                        width: 40px + grow * 240px;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: transparent;
+                        border-width: 2px;
+                        border-color: Theme.m3-primary;
+                        opacity: (1 - grow) * 0.8;
+                    }
+                    if fingered: Rectangle {
+                        x: finger.sx;
+                        transform-scale: finger.pulse;
+                        Shape {
+                            width: 100%;
+                            height: 100%;
+                            commands: finger.phase == "match" ? LockData.cookie9 : LockData.circle;
+                            fill: finger.phase == "match" ? Theme.m3-primary-container : finger.phase == "miss" ? Theme.m3-error-container : finger.phase == "waiting" ? Theme.m3-secondary-container : transparent;
+                            animate fill { duration: 150ms; }
+                        }
+                        SymIcon {
+                            text: finger.phase == "match" ? "\u{e182}" : "\u{e23e}";
+                            font-size: 22px;
+                            color: finger.phase == "match" ? Theme.m3-on-primary-container : finger.phase == "miss" ? Theme.m3-on-error-container : Theme.m3-primary;
+                            animate color { duration: 150ms; }
+                        }
+                    }
+                }
+                // A click on the closed pill opens it
+                if !open: TouchArea {
+                    mouse-cursor: text;
+                    clicked => {
+                        root.wake();
+                        input.focus();
+                    }
+                }
+            }
+            // What the reader or the camera wants, under the pill
+            property <bool> has-text: (LockData.finger-text != "" && LockData.finger-state != "waiting") || LockData.face-text != "";
+            HorizontalLayout {
+                x: (parent.width - self.preferred-width) / 2;
+                y: error-h + 56px + 12px;
+                width: self.preferred-width;
+                height: 20px;
+                spacing: 6px;
+                opacity: parent.has-text ? 1 : 0;
+                animate opacity { duration: 150ms; }
+                SymIcon { text: LockData.face-text != "" && LockData.finger-text == "" ? "\u{e436}" : "\u{e23e}"; font-size: 16px; color: ink; }
+                Text { vertical-alignment: center; text: LockData.finger-text != "" ? LockData.finger-text : LockData.face-text; color: ink; font-size: 14px; font-weight: 500; }
+            }
+        }
+    }
+
+    // ── The light reveal (lock.lockTransition zoom): black, a circle opening
+    if zoom-in && reveal < 1: Rectangle {
+        property <length> reach: sqrt(W * W / 1px / 1px + H * H / 1px / 1px) * 1px;
+        property <length> hole: reveal * reach / 2 * 1.04;
+        width: (hole + reach) * 2;
+        height: self.width;
+        x: (W - self.width) / 2;
+        y: (H - self.height) / 2;
+        border-radius: self.width / 2;
+        background: transparent;
+        border-width: reach;
+        border-color: black;
+    }
+}
+
+// ── Bedside Mode (StandBy.qml) ───────────────────────────────────────────
+
+component Bedside inherits Rectangle {
+    in property <float> clock-fade: 1;
+    in property <float> date-fade: 1;
+    in property <bool> blank;
+    in property <float> sb: 1; // (how far it has come in: a move counts only once it's all there)
+    property <length> W: self.width;
+    property <length> H: self.height;
+    property <bool> night: LockData.sb-night;
+    property <int> view: LockData.sb-view;
+    property <color> ink: night ? #FF3B30 : #F5F5F7;
+    property <color> ink2: night ? rgba(255, 59, 48, 0.6) : rgba(255, 255, 255, 0.6);
+    property <color> m-ink: night || !Theme.material ? ink : LockData.sb-m-ink;
+    property <color> m-ink2: night || !Theme.material ? ink : LockData.sb-m-ink2;
+    property <color> m-ink3: night || !Theme.material ? ink2 : LockData.sb-m-ink3;
+    out property <length> clock-size: round(min(H * 0.16, W * 0.14) / 1px) * 1px;
+    out property <length> m-clock-size: round(min(H * 0.3, W * 0.17) / 1px) * 1px;
+    background: black;
+
+    // Keys: arrows change the view, anything else brings the field back
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.LeftArrow || e.text == Key.RightArrow {
+                LockData.step(e.text == Key.RightArrow ? 1 : -1);
+            } else {
+                LockData.woke();
+            }
+            accept
+        }
+    }
+    property <bool> on: LockData.standby;
+    changed on => { if on { fs.focus(); } }
+
+    // Photos (full screen; they change on their own)
+    if view == 2 && !blank && LockData.has-photo: Image {
+        width: W;
+        height: H;
+        source: LockData.photo;
+        image-fit: cover;
+        opacity: LockData.sb-resting ? 0 : 1;
+        animate opacity { duration: 800ms; }
+    }
+
+    stage := Rectangle {
+        visible: !blank;
+        y: LockData.sb-dy;
+        animate y { duration: LockData.sb-resting || LockData.sb-jump ? 0ms : 3000ms; easing: ease-in-out-sine; }
+        width: W;
+        height: H;
+        opacity: LockData.sb-resting ? 0 : 1;
+        animate opacity { duration: 2000ms; easing: ease-in-out-quad; }
+
+        // Clock (Glass): the time and the date
+        if view == 0 && !Theme.material: VerticalLayout {
+            x: (W - self.preferred-width) / 2;
+            y: (H - self.preferred-height) / 2;
+            width: self.preferred-width;
+            height: self.preferred-height;
+            spacing: -round(clock-size * 0.06 / 1px) * 1px;
+            Text {
+                horizontal-alignment: center;
+                text: LockData.time;
+                color: ink;
+                opacity: LockData.sb-opacity * clock-fade;
+                font-size: clock-size;
+                font-weight: LockData.sb-weight;
+                letter-spacing: -clock-size * 0.03;
+            }
+            Text {
+                horizontal-alignment: center;
+                opacity: LockData.sb-opacity * date-fade;
+                text: LockData.date + (LockData.weather-ready ? "   " + LockData.temp + " " + LockData.condition : "");
+                color: ink2;
+                font-size: max(16px, round(clock-size * 0.14 / 1px) * 1px);
+                font-weight: 500;
+            }
+        }
+        // Clock (Material): Android's big two-line clock, battery and weather in shapes
+        if view == 0 && Theme.material: HorizontalLayout {
+            x: (W - self.preferred-width) / 2;
+            y: (H - self.preferred-height) / 2;
+            width: self.preferred-width;
+            height: self.preferred-height;
+            spacing: round(m-clock-size * 0.3 / 1px) * 1px;
+            VerticalLayout {
+                alignment: center;
+                spacing: round(m-clock-size * 0.14 / 1px) * 1px;
+                HorizontalLayout {
+                    alignment: center;
+                    StackClock {
+                        hours: LockData.hh2;
+                        minutes: LockData.mm;
+                        size: m-clock-size;
+                        wght: LockData.sb-weight;
+                        ink: m-ink;
+                        ink2: m-ink2;
+                        opacity: LockData.sb-opacity * clock-fade;
+                    }
+                }
+                Text {
+                    horizontal-alignment: center;
+                    opacity: LockData.sb-opacity * date-fade;
+                    text: LockData.date + (LockData.weather-ready && night ? "   " + LockData.temp + " " + LockData.condition : "");
+                    color: m-ink3;
+                    font-size: max(18px, round(m-clock-size * 0.09 / 1px) * 1px);
+                    font-weight: 500;
+                }
+            }
+            // (not at night: then only the dim red clock)
+            if !night && (LockData.has-battery || LockData.weather-ready): VerticalLayout {
+                alignment: center;
+                spacing: 24px;
+                opacity: LockData.sb-opacity * date-fade;
+                property <length> side: round(m-clock-size * 0.66 / 1px) * 1px;
+                if LockData.has-battery: Rectangle {
+                    width: parent.side;
+                    height: parent.side;
+                    Shape { width: 100%; height: 100%; commands: LockData.cookie9; fill: Theme.m3-primary-container; }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        SymIcon { text: LockData.charging ? "\u{e2de}" : "\u{e0c2}"; fill: true; font-size: round(side * 0.16 / 1px) * 1px; color: Theme.m3-on-primary-container; }
+                        Text { horizontal-alignment: center; text: round(LockData.level * 100) + "%"; color: Theme.m3-on-primary-container; font-size: round(side * 0.2 / 1px) * 1px; font-weight: 600; }
+                    }
+                }
+                if LockData.weather-ready: Rectangle {
+                    width: parent.side;
+                    height: parent.side;
+                    Shape { width: 100%; height: 100%; commands: LockData.sunny; fill: Theme.m3-tertiary-container; }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        WxIcon { size: round(side * 0.16 / 1px) * 1px; ink: Theme.m3-on-tertiary-container; }
+                        Text { horizontal-alignment: center; text: LockData.temp; color: Theme.m3-on-tertiary-container; font-size: round(side * 0.2 / 1px) * 1px; font-weight: 600; }
+                    }
+                }
+            }
+        }
+        // Widgets: an analog clock and the calendar
+        if view == 1: HorizontalLayout {
+            property <length> side: min(H * 0.38, W * 0.26);
+            x: (W - self.preferred-width) / 2;
+            y: (H - side) / 2;
+            width: self.preferred-width;
+            height: side;
+            spacing: Theme.material ? round(W * 0.03 / 1px) * 1px : W * 0.03;
+            Analog {
+                width: parent.side;
+                height: parent.side;
+                ah: LockData.angle-h;
+                am: LockData.angle-m;
+                night: true;
+            }
+            Rectangle {
+                width: parent.side;
+                height: parent.side;
+                border-radius: Theme.material ? 48px : 28px;
+                background: Theme.material ? Theme.m3-surface-container : #1C1C1E;
+                Month {
+                    x: Theme.material ? 28px : 20px;
+                    y: Theme.material ? 28px : 20px;
+                    width: parent.width - 2 * self.x;
+                    height: parent.height - 2 * self.y;
+                    ink: Theme.material ? Theme.m3-on-surface : #F5F5F7;
+                }
+            }
+        }
+        // Photos: a small clock in the corner
+        if view == 2: Text {
+            x: W - self.preferred-width - 48px;
+            y: H - self.preferred-height - 48px;
+            text: LockData.time;
+            color: white;
+            stroke: #00000080;
+            stroke-width: 1px;
+            font-size: 40px;
+            font-weight: 600;
+        }
+    }
+
+    // Night: everything a dim red
+    if night && view != 0 && !blank: Rectangle { background: #FF20108c; }
+    if night: Rectangle { background: #00000059; }
+
+    // Which view: shown for a moment after a change
+    property <int> dots: LockData.sb-dots;
+    property <bool> dots-shown;
+    changed dots => {
+        dots-shown = true;
+        dt.stop();
+        dt.start();
+    }
+    dt := Timer {
+        interval: 4s;
+        running: false;
+        triggered => { root.dots-shown = false; dt.stop(); }
+    }
+    if !blank: HorizontalLayout {
+        x: (W - self.preferred-width) / 2;
+        y: H - 24px - 7px;
+        width: self.preferred-width;
+        height: 7px;
+        spacing: 8px;
+        opacity: dots-shown ? 1 : 0;
+        animate opacity { duration: 400ms; }
+        for i in LockData.sb-views: Rectangle {
+            width: Theme.material && i == view ? 20px : 7px;
+            height: 7px;
+            border-radius: 3.5px;
+            background: Theme.material ? m-ink : ink;
+            opacity: i == view ? 0.9 : 0.3;
+        }
+    }
+
+    // A click or a mouse move (past a little jitter) brings the lock back;
+    // the wheel changes the view
+    TouchArea {
+        enabled: LockData.standby;
+        property <length> fx: -1px;
+        property <length> fy: -1px;
+        changed enabled => { fx = -1px; }
+        changed mouse-x => { self.check(); }
+        changed mouse-y => { self.check(); }
+        function check() {
+            if !LockData.wake-on-mouse || !self.has-hover || root.sb < 1 {
+                return;
+            }
+            if fx < 0px {
+                fx = self.mouse-x;
+                fy = self.mouse-y;
+            } else if sqrt(pow((self.mouse-x - fx) / 1px, 2) + pow((self.mouse-y - fy) / 1px, 2)) > 24 {
+                LockData.woke();
+            }
+        }
+        clicked => { LockData.woke(); }
+        scroll-event(e) => {
+            LockData.step(e.delta-x + e.delta-y < 0px ? 1 : -1);
+            accept
+        }
+    }
+}
+
+// ── One screen of the lock (LockSurface.qml) ─────────────────────────────
+
+export component LockScreen inherits Window {
+    background: black;
+    title: "Lock screen";
+    default-font-family: Theme.font;
+    property <length> W: self.width;
+    property <length> H: self.height;
+    // Unlock: the content lifts away (LockData.leaving, 220 ms)
+    property <float> exit: LockData.leaving ? 1 : 0;
+    animate exit { duration: 220ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    // Lock: the entrance, once the first frame has shown
+    property <float> reveal: LockData.lock-fx == "none" || LockData.revealed ? 1 : 0;
+    animate reveal { duration: LockData.lock-fx == "none" ? 0ms : 450ms; easing: Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+    property <float> enter: LockData.lock-fx == "zoom" && !LockData.revealed ? 1 : 0;
+    animate enter { duration: 450ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    // Lock → Bedside Mode: `sb` runs 0 → 1
+    property <float> sb: LockData.standby ? 1 : 0;
+    animate sb { duration: LockData.sb-mode == "none" ? 0ms : LockData.sb-mode == "morph" ? 650ms : 400ms; easing: cubic-bezier(0.65, 0, 0.35, 1); }
+    property <bool> morphable: !Theme.material || (LockData.clock-face == "stacked" && !LockData.compact);
+    property <bool> morph-on: LockData.sb-mode == "morph" && LockData.standby-here && LockData.sb-view == 0 && morphable;
+    property <bool> morphing: morph-on && sb > 0 && sb < 1;
+    function ramp(a: float, b: float) -> float {
+        let t = clamp((sb - a) / (b - a), 0, 1);
+        t * t * (3 - 2 * t)
+    }
+
+    if LockData.has-wallpaper: Image {
+        width: W;
+        height: H;
+        source: LockData.wallpaper;
+        image-fit: cover;
+        transform-scale: 1 + 0.05 * max(LockData.zoom-out ? exit : 0, enter);
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        accessible-role: none;
+    }
+
+    // Someone at the pointer: the reader and the camera get their tries back
+    TouchArea {
+        changed mouse-x => { if self.has-hover && !LockData.standby { LockData.woke(); } }
+    }
+
+    if !Theme.material: GlassLock {
+        width: W;
+        height: H;
+        reveal: root.reveal;
+        exit: root.exit;
+        sb: root.sb;
+        morph-on: root.morph-on;
+    }
+    if Theme.material: MaterialLock {
+        width: W;
+        height: H;
+        reveal: root.reveal;
+        exit: root.exit;
+        sb: root.sb;
+        morph-on: root.morph-on;
+    }
+
+    bedside := Bedside {
+        width: W;
+        height: H;
+        blank: !LockData.standby-here;
+        sb: root.sb;
+        visible: self.opacity > 0.01;
+        opacity: sb;
+        clock-fade: morph-on && sb < 1 ? 0 : 1;
+        date-fade: morph-on ? ramp(0.6, 1) : 1;
+    }
+
+    // ── The morph's flying clock (Glass): from the lock's clock to Bedside
+    // Mode's, the bold copy handing over to one in its weight
+    if morphing && !Theme.material: Rectangle {
+        property <length> px: LockData.ios ? 168px : 150px;
+        property <length> from-y: H * (LockData.ios ? 0.07 : 0.1) + 24px * 1.21 + px * 1.21 / 2;
+        property <length> size: bedside.clock-size;
+        property <length> date-px: max(16px, round(size * 0.14 / 1px) * 1px);
+        property <length> to-y: H / 2 + LockData.sb-dy - (size * 1.21 + date-px * 1.21 - size * 0.06) / 2 + size * 1.21 / 2;
+        property <float> ratio: size / px;
+        property <length> cy: from-y + (to-y - from-y) * sb;
+        Text {
+            x: (W - self.preferred-width) / 2;
+            y: cy - self.preferred-height / 2;
+            text: LockData.time;
+            color: LockData.dark-ink ? rgba(23, 23, 28, 0.85) : rgba(255, 255, 255, 0.85);
+            font-size: parent.px;
+            font-weight: 700;
+            letter-spacing: -5px;
+            transform-scale: 1 + (parent.ratio - 1) * sb;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            opacity: 1 - ramp(0.3, 0.8);
+        }
+        Text {
+            x: (W - self.preferred-width) / 2;
+            y: cy - self.preferred-height / 2;
+            text: LockData.time;
+            color: LockData.sb-night ? #FF3B30 : #F5F5F7;
+            font-size: parent.size;
+            font-weight: LockData.sb-weight;
+            letter-spacing: -parent.size * 0.03;
+            transform-scale: 1 / parent.ratio + (1 - 1 / parent.ratio) * sb;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            opacity: ramp(0.2, 0.75) * LockData.sb-opacity;
+        }
+    }
+    // (Material: the lock's stacked clock itself flies, thinning on the way)
+    if morphing && Theme.material: Rectangle {
+        property <length> lsize: round(min(H * (LockData.ios ? 0.17 : 0.15), W * 0.2) / 1px) * 1px;
+        property <length> m: bedside.m-clock-size;
+        property <float> ratio: m / lsize;
+        property <length> from-cy: round(H * (LockData.ios ? 0.09 : 0.11) / 1px) * 1px + lsize * (0.716 * 2 + 0.085) / 2;
+        property <length> col-h: m * (0.716 * 2 + 0.085) + m * 0.14 + max(18px, m * 0.09) * 1.2;
+        property <length> to-cy: H / 2 + LockData.sb-dy - col-h / 2 + m * (0.716 * 2 + 0.085) / 2;
+        property <length> to-cx: W / 2 - (LockData.has-battery || LockData.weather-ready ? (m * 0.3 + m * 0.66) / 2 : 0px);
+        property <length> cx: W / 2 + (to-cx - W / 2) * sb;
+        property <length> cy: from-cy + (to-cy - from-cy) * sb;
+        fly := StackClock {
+            x: cx - self.width / 2;
+            y: cy - self.height / 2;
+            hours: LockData.hh2;
+            minutes: LockData.mm;
+            size: parent.lsize;
+            wght: round((LockData.clock-weight + (LockData.sb-weight - LockData.clock-weight) * sb) / 40) * 40;
+            ink: LockData.m-clock-ink.mix(LockData.sb-night ? #FF3B30 : LockData.sb-m-ink, 1 - sb);
+            ink2: LockData.m-clock-ink2.mix(LockData.sb-night ? #FF3B30 : LockData.sb-m-ink2, 1 - sb);
+            transform-scale: 1 + (parent.ratio - 1) * sb;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            opacity: 1 + (LockData.sb-opacity - 1) * sb;
+        }
+    }
+}
+
+// ── The login intro (LoginIntro.qml) ─────────────────────────────────────
+
+export component LoginIntro inherits Window {
+    in property <bool> material;
+    // Glass: the wallpaper coming into focus
+    in property <image> wallpaper;
+    in property <image> soft;
+    in property <bool> has-picture;
+    in property <float> cover-opacity: 1;
+    in property <float> picture-scale: 1.06;
+    in property <float> blur: 1;
+    in property <float> veil: 1; // the black over the picture
+    // Material: the cover with its opening, the mark's ring, the badge
+    in property <string> cover;
+    in property <string> ring;
+    in property <float> badge-opacity: 1;
+    in property <float> badge-scale: 1;
+    in property <float> mark: 180;
+    background: transparent;
+    title: "Login intro";
+    default-font-family: Theme.font;
+
+    if !material: Rectangle {
+        opacity: cover-opacity;
+        Rectangle { background: black; }
+        if has-picture: Image {
+            width: root.width;
+            height: root.height;
+            source: wallpaper;
+            image-fit: ImageFit.cover;
+            transform-scale: picture-scale;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+        }
+        if has-picture: Image {
+            width: root.width;
+            height: root.height;
+            source: soft;
+            image-fit: ImageFit.cover;
+            opacity: blur;
+            transform-scale: picture-scale;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+        }
+        Rectangle { background: black; opacity: root.veil; }
+    }
+    if material: Rectangle {
+        Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: cover;
+            fill: Theme.m3-surface;
+            fill-rule: evenodd;
+        }
+        Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: ring;
+            fill: Theme.m3-primary;
+            fill-rule: evenodd;
+        }
+        Text {
+            text: "\u{e604}";
+            color: Theme.m3-on-primary;
+            font-family: "Phosphor-Fill";
+            font-size: round(mark * 0.42) * 1px;
+            opacity: badge-opacity;
+            transform-scale: badge-scale;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+        }
+    }
+}

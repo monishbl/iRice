@@ -330,16 +330,16 @@ class Binary(unittest.TestCase):
 
     def test_a_list_it_cant_draw_is_answered_without_a_display(self):
         # (no Wayland needed: nothing to draw, so it says so and ends)
-        r = self.run_ui("--surfaces", "lock,greeter")
+        r = self.run_ui("--surfaces", "nosuch,nothere")
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
-        self.assertEqual({l["surface"] for l in lines[:-1]}, {"lock", "greeter"})
+        self.assertEqual({l["surface"] for l in lines[:-1]}, {"nosuch", "nothere"})
 
     def test_commands_on_stdin_and_its_end(self):
         # (nothing to draw, it answers and ends whatever comes on stdin; how
         # the lines are read is the crate's own test: shell::tests)
-        r = self.run_ui("--surfaces", "lock", input='nonsense\n{"cmd":"open","surface":"lock"}\n{"to":"osd","hush":"sound"}\n')
+        r = self.run_ui("--surfaces", "nosuch", input='nonsense\n{"cmd":"open","surface":"nosuch"}\n{"to":"osd","hush":"sound"}\n')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout.splitlines()[-1]), {"src": "ui", "kind": "ready", "surfaces": []})
 

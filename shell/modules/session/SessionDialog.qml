@@ -13,6 +13,33 @@ Variants {
         required property var modelData
         panel: "session"
         screen: modelData
+        // tessera-ui draws it (rust.surfaces: session): Panels opens it there,
+        // Panels.sessionAction goes with it, and it says what was chosen (the
+        // first screen's loader speaks for all)
+        elsewhere: RustUi.drawing("session")
+        readonly property bool speaks: modelData === Quickshell.screens[0]
+        function sendAction() {
+            RustUi.send({ cmd: "action", surface: "session", action: Panels.sessionAction });
+        }
+        property Connections rustChoice: Connections {
+            target: RustUi
+            enabled: slot.speaks
+            function onMessage(e) {
+                if (e.kind === "session" && ["lock", "sleep", "logout", "restart", "shutdown"].includes(e.power))
+                    System.power(e.power);
+            }
+        }
+        property Connections rustAction: Connections {
+            target: Panels
+            enabled: slot.speaks && RustUi.drawing("session")
+            function onSessionActionChanged() {
+                slot.sendAction();
+            }
+            function onOpenChanged() {
+                if (Panels.open === "session")
+                    slot.sendAction();
+            }
+        }
 
         Dialog {
             id: dialog

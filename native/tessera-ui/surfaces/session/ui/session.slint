@@ -1,0 +1,233 @@
+// The power and session menu and "About This Computer", both looks (compare
+// shell/modules/session/SessionDialog.qml, AboutDialog.qml and the dialog
+// they sit in, shell/glass/Dialog.qml). Rust opens and closes them, keeps
+// the chosen option and morphs Material's shapes
+// (src/surfaces/session/mod.rs).
+// (No elastic pull while dragging the dialog: Slint draws it still.)
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { SymIcon, Symbols } from "@tessera/symbols.slint";
+
+export struct SOpt {
+    id: string,
+    text: string,
+    icon: string,
+    // Material: the shape now (it morphs), its colours chosen and not
+    path: string,
+    fill-hot: color,
+    ink-hot: color,
+    fill: color,
+    ink: color,
+    danger: bool,
+}
+
+export struct SRow {
+    label: string,
+    value: string,
+}
+
+export component SessionDialog inherits Window {
+    in property <string> which: "session"; // session | about
+    in property <bool> shown;
+    in property <[SOpt]> options;
+    in property <int> current: 4;
+    in property <bool> keyboard-confirm;
+    // About
+    in property <image> logo;
+    in property <bool> has-logo;
+    in property <string> os-name;
+    in property <string> host;
+    in property <[SRow]> rows;
+    in property <string> cookie12;
+    callback hover(int);
+    callback choose(int);
+    callback pressing(int, bool);
+    callback dismissed();
+    callback key(string, bool) -> bool;
+    background: transparent;
+    title: "Session";
+    default-font-family: Theme.font;
+
+    // Opens on a spring, closes quickly (Dialog.qml)
+    property <float> progress: shown ? 1 : 0;
+    animate progress { duration: shown ? 420ms : 192ms; easing: shown ? (Theme.material ? spring(0.12) : spring(0.3)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
+    property <length> m: 24px;
+    property <length> pad: Theme.material ? 24px : 20px;
+    property <length> content-w: which == "about" ? 300px : Theme.material ? 5 * 96px + 4 * 8px : 5 * 80px + 4 * 12px;
+    out property <length> body-w: content-w + 2 * pad;
+    out property <length> body-h: col.preferred-height + 2 * pad;
+    out property <length> body-x: (root.width - body-w) / 2;
+    out property <length> body-y: (root.height - body-h) / 2 - 40px;
+    out property <float> body-scale: 0.96 + 0.04 * progress;
+    out property <float> body-opacity: min(1, progress);
+
+    public function focus-keys() { fs.focus(); }
+
+    // The scrim: a click outside closes it
+    Rectangle {
+        background: rgba(0, 0, 0, 0.25 * max(0, progress));
+        TouchArea {
+            clicked => { root.dismissed(); }
+        }
+    }
+
+    body := Rectangle {
+        x: body-x;
+        y: body-y;
+        width: body-w;
+        height: body-h;
+        opacity: body-opacity;
+        transform-scale: body-scale;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: 28px;
+        // Glass: the plugin's glass under Theme.panel; Material: its container
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        border-width: Theme.material ? 0px : 1px;
+        border-color: #ffffff1a;
+        // (clicks on the dialog don't reach the scrim)
+        TouchArea { }
+        fs := FocusScope {
+            key-pressed(e) => {
+                if root.key(e.text, e.repeat) { return accept; }
+                reject
+            }
+        }
+        col := VerticalLayout {
+            x: pad;
+            y: pad;
+            width: content-w;
+            height: self.preferred-height;
+            spacing: which == "about" ? 6px : 20px;
+            if which == "session": Text {
+                horizontal-alignment: center;
+                text: "What would you like to do?";
+                color: Theme.label;
+                font-size: Theme.material ? 24px : Theme.large;
+                font-weight: Theme.material ? 400 : 600;
+            }
+            if which == "session": HorizontalLayout {
+                spacing: Theme.material ? 8px : 12px;
+                for o[i] in options: VerticalLayout {
+                    property <bool> hot: current == i;
+                    width: Theme.material ? 96px : 80px;
+                    spacing: Theme.material ? 12px : 8px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: Theme.material ? 88px : 64px;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: Theme.material ? transparent : hot ? (o.danger ? Theme.danger : Theme.accent) : Theme.toggle-off;
+                            animate background { duration: Theme.hover; }
+                            transform-scale: Theme.material ? (ta.pressed ? 1.06 : 1) : ta.pressed ? 0.94 : 1;
+                            animate transform-scale { duration: Theme.material ? 250ms : 100ms; easing: Theme.material ? spring(0.4) : ease-out; }
+                            accessible-role: button;
+                            accessible-label: o.text;
+                            accessible-action-default => { root.choose(i); }
+                            if Theme.material: Path {
+                                width: 100%;
+                                height: 100%;
+                                viewbox-width: 100;
+                                viewbox-height: 100;
+                                commands: o.path;
+                                fill: (hot ? o.fill-hot : o.fill).mix(hot ? o.ink-hot : o.ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1);
+                                animate fill { duration: Theme.hover; }
+                            }
+                            if Theme.material: SymIcon {
+                                text: o.icon;
+                                fill: hot;
+                                font-size: 32px;
+                                color: hot ? o.ink-hot : o.ink;
+                                animate color { duration: Theme.hover; }
+                            }
+                            if !Theme.material: Icon {
+                                text: o.icon;
+                                bold: true;
+                                font-size: 26px;
+                                color: hot ? Theme.on-accent : Theme.label;
+                            }
+                            ta := TouchArea {
+                                changed has-hover => { if self.has-hover && !root.keyboard-confirm { root.hover(i); } }
+                                changed pressed => { root.pressing(i, self.pressed); }
+                                clicked => { root.choose(i); }
+                            }
+                        }
+                    }
+                    Text {
+                        horizontal-alignment: center;
+                        text: o.text;
+                        color: hot ? Theme.label : Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.small;
+                        font-weight: Theme.material && hot ? 600 : 500;
+                    }
+                }
+            }
+            if which == "session" && keyboard-confirm: Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: "Click, or choose with the arrow keys and press Enter · Esc to cancel";
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+
+            // About This Computer
+            if which == "about": HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: Theme.material ? 104px : 72px;
+                    height: self.width;
+                    if Theme.material: Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 100;
+                        viewbox-height: 100;
+                        commands: cookie12;
+                        fill: Theme.m3-primary-container;
+                    }
+                    if has-logo: Image {
+                        width: Theme.material ? 64px : 72px;
+                        height: self.width;
+                        source: logo;
+                        image-fit: contain;
+                    }
+                }
+            }
+            if which == "about": Rectangle { height: 6px; }
+            if which == "about": Text {
+                horizontal-alignment: center;
+                text: os-name;
+                color: Theme.label;
+                font-size: Theme.display;
+                font-weight: Theme.material ? 400 : 600;
+            }
+            if which == "about": Text {
+                horizontal-alignment: center;
+                text: host;
+                color: Theme.secondary;
+                font-size: Theme.body;
+            }
+            if which == "about": Rectangle { height: 12px; }
+            if which == "about": VerticalLayout {
+                for r in rows: Rectangle {
+                    height: 22px;
+                    Text {
+                        x: 0;
+                        text: r.label;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                    }
+                    Text {
+                        x: 90px;
+                        width: parent.width - 90px;
+                        horizontal-alignment: right;
+                        overflow: elide;
+                        text: r.value;
+                        color: Theme.label;
+                        font-size: Theme.small;
+                        font-weight: 500;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -49,6 +49,10 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
 };
+// (the lock's: ext-session-lock-v1, and an idle inhibitor while Bedside Mode shows)
+use smithay_client_toolkit::delegate_session_lock;
+use smithay_client_toolkit::reexports::protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1};
+use smithay_client_toolkit::session_lock::{SessionLock, SessionLockHandler, SessionLockState, SessionLockSurface, SessionLockSurfaceConfigure};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
@@ -59,7 +63,7 @@ pub struct Surface {
     window: slint::Window,
     renderer: FemtoVGRenderer,
     pub wl: WlSurface,
-    pub layer: LayerSurface,
+    pub layer: Role,
     viewport: Option<WpViewport>,
     _fractional: Option<WpFractionalScaleV1>,
     pub namespace: String,
@@ -75,6 +79,40 @@ pub struct Surface {
     hidden: Cell<bool>,
     ime: RefCell<Option<slint_ime::Props>>, // what the focused text field wants from the input method
     pub stats: RefCell<crate::stats::Frames>,
+}
+
+/// What a surface is to the compositor: a layer surface (every part's) or a
+/// session-lock surface (the lock's, ext-session-lock-v1). `layer` derefs to
+/// the layer surface as it always did; only the lock part makes lock
+/// surfaces, and it never calls layer-surface methods on them.
+pub enum Role {
+    Layer(LayerSurface),
+    Lock(SessionLockSurface),
+}
+
+impl std::ops::Deref for Role {
+    type Target = LayerSurface;
+    fn deref(&self) -> &LayerSurface {
+        match self {
+            Role::Layer(l) => l,
+            Role::Lock(_) => panic!("tessera-ui: a session-lock surface has no layer surface"),
+        }
+    }
+}
+
+impl PartialEq<LayerSurface> for Role {
+    fn eq(&self, other: &LayerSurface) -> bool {
+        matches!(self, Role::Layer(l) if l == other)
+    }
+}
+
+/// The session lock's news, for the lock part (its `message`)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LockEvent {
+    /// the compositor locked the session: every output shows only lock surfaces
+    Locked,
+    /// refused, or taken away (another lock client holds it)
+    Finished,
 }
 
 /// The input-method request a TextInput made (kept for text-input-v3)
@@ -290,6 +328,9 @@ pub struct State {
     pub started: Instant,
     pub first_frame_logged: bool,
     pub exit: bool,
+    /// ext-session-lock-v1 (the lock part's; unbound when the compositor has none)
+    pub session_lock: SessionLockState,
+    idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
 }
 
 impl State {
@@ -303,6 +344,9 @@ impl State {
         parts: Vec<Box<dyn crate::shell::Part>>,
         started: Instant,
     ) -> Self {
+        // (the lock's globals, bound before `qh` moves into the state)
+        let session_lock = SessionLockState::new(globals, &qh);
+        let idle_inhibit = globals.bind(&qh, 1..=1, ()).ok();
         Self {
             registry: RegistryState::new(globals),
             outputs: OutputState::new(globals, &qh),
@@ -333,6 +377,8 @@ impl State {
             started,
             first_frame_logged: false,
             exit: false,
+            session_lock,
+            idle_inhibit,
         }
     }
 
@@ -361,7 +407,7 @@ impl State {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
             renderer: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"),
             wl,
-            layer,
+            layer: Role::Layer(layer),
             viewport,
             _fractional: fractional,
             namespace: spec.namespace.to_string(),
@@ -805,6 +851,7 @@ macro_rules! no_events {
     )*};
 }
 no_events!(WpViewporter, WpViewport, WpFractionalScaleManagerV1, ZwpTextInputManagerV3);
+no_events!(ZwpIdleInhibitManagerV1, ZwpIdleInhibitorV1);
 
 delegate_compositor!(State);
 delegate_output!(State);
@@ -813,10 +860,77 @@ delegate_seat!(State);
 delegate_keyboard!(State);
 delegate_pointer!(State);
 delegate_registry!(State);
+delegate_session_lock!(State);
 
 impl ProvidesRegistryState for State {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry
     }
     registry_handlers![OutputState, SeatState];
+}
+
+// ── The session lock (ext-session-lock-v1), for the lock part ───────────────
+// Taken only when the lock part asks (src/surfaces/lock: its top comment says
+// when); its news reach that part's `message` as a LockEvent.
+
+impl State {
+    /// Ask the compositor to lock the session (None: it has no session lock)
+    pub fn lock_session(&mut self) -> Option<SessionLock> {
+        self.session_lock.lock(&self.qh).ok()
+    }
+
+    /// A lock surface on `output`, ready to become the window of the next
+    /// Slint component made (as `prepare_surface`)
+    pub fn prepare_lock_surface(&mut self, lock: &SessionLock, output: &WlOutput, output_name: &str) -> Rc<Surface> {
+        let wl = self.compositor.create_surface(&self.qh);
+        let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&wl, &self.qh, ()));
+        let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
+        let role = lock.create_lock_surface(wl.clone(), output, &self.qh);
+        let gl = GlSurface::new(self.egl.clone(), WlProxy::id(&wl)).expect("EGL window surface");
+        slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
+        let surface = Rc::new_cyclic(|weak: &Weak<Surface>| Surface {
+            window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
+            renderer: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"),
+            wl,
+            layer: Role::Lock(role),
+            viewport,
+            _fractional: fractional,
+            namespace: "tessera:lock".to_string(),
+            output: output_name.to_string(),
+            logical: Cell::new((1, 1)),
+            scale: Cell::new(1.0),
+            configured: Cell::new(false),
+            needs_redraw: Cell::new(true),
+            frame_pending: Cell::new(false),
+            mapped: Cell::new(false),
+            hidden: Cell::new(false),
+            ime: RefCell::new(None),
+            stats: RefCell::new(Default::default()),
+        });
+        NEXT.with(|n| *n.borrow_mut() = Some(surface.clone()));
+        self.surfaces.push(surface.clone());
+        surface
+    }
+
+    /// Keep the screen on while this surface shows (None: the compositor has
+    /// no idle-inhibit protocol); `destroy` the inhibitor to let it sleep again
+    pub fn inhibit_idle(&self, s: &Surface) -> Option<ZwpIdleInhibitorV1> {
+        self.idle_inhibit.as_ref().map(|m| m.create_inhibitor(&s.wl, &self.qh, ()))
+    }
+}
+
+impl SessionLockHandler for State {
+    fn locked(&mut self, _: &Connection, _: &QueueHandle<Self>, _: SessionLock) {
+        self.part("lock", |p, st| p.message(st, Box::new(LockEvent::Locked)));
+    }
+    fn finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: SessionLock) {
+        self.part("lock", |p, st| p.message(st, Box::new(LockEvent::Finished)));
+    }
+    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: SessionLockSurface, c: SessionLockSurfaceConfigure, _: u32) {
+        let Some(s) = self.surfaces.iter().find(|s| s.wl == *surface.wl_surface()).cloned() else { return };
+        s.logical.set((c.new_size.0.max(1), c.new_size.1.max(1)));
+        s.configured.set(true);
+        s.frame_pending.set(false);
+        s.apply_geometry();
+    }
 }

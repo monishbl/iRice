@@ -10,6 +10,8 @@
 //! If this process ends, the shell draws them again itself.
 
 pub mod shapes;
+// (polar outlines that morph, and pictures cut to a shape: the lock, the session menu, polkit)
+pub mod polar;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Surfaces {

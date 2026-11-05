@@ -12,6 +12,17 @@ pub fn is_set(name: &str) -> bool {
     var(name).is_some()
 }
 
+/// `--demo` (or TESSERA_UI_DEMO=1): the security surfaces (lock, session,
+/// polkit) draw without their real roles (their top comments)
+pub fn demo_mode() -> bool {
+    std::env::args().any(|a| a == "--demo") || var("UI_DEMO").as_deref() == Some("1")
+}
+
+/// The shell's sandbox (TESSERA_SANDBOX=1, as System.qml's `sandboxed`)
+pub fn sandboxed() -> bool {
+    var("SANDBOX").as_deref() == Some("1")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

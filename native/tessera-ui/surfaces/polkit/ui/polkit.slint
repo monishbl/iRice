@@ -1,0 +1,230 @@
+// The authentication dialog, both looks (compare
+// shell/modules/polkit/Polkit.qml): a modal dialog over a scrim that doesn't
+// dismiss, asking for your password (or a finger) when an app needs admin
+// rights. Rust runs the agent and the conversation
+// (src/surfaces/polkit/mod.rs); this draws it.
+
+import { Theme, Icon } from "@tessera/theme.slint";
+import { SymIcon, Symbols } from "@tessera/symbols.slint";
+
+export component PolkitDialog inherits Window {
+    in property <bool> shown;
+    in property <string> message;
+    in property <string> prompt: "Password";
+    in property <bool> secret: true;
+    in property <string> error;
+    in property <int> error-count;
+    in property <bool> waiting;
+    in property <bool> finger-wait;
+    in property <bool> finger-missed;
+    in property <string> user: "your account";
+    in property <string> hero; // Material: the hero's shape (0..100 box)
+    in-out property <string> text;
+    callback submit(string);
+    callback cancel();
+    background: transparent;
+    title: "Authentication";
+    default-font-family: Theme.font;
+
+    property <float> progress: shown ? 1 : 0;
+    animate progress { duration: 320ms; easing: shown ? (Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
+    property <length> pad: Theme.material ? 24px : 20px;
+    out property <length> body-w: 340px;
+    out property <length> body-h: col.preferred-height + 2 * pad;
+    out property <length> body-x: (root.width - body-w) / 2 + shake;
+    out property <length> body-y: (root.height - body-h) / 2 - 40px;
+    out property <float> body-scale: 0.96 + 0.04 * progress;
+    out property <float> body-opacity: progress;
+
+    public function focus-field() {
+        if finger-wait { fs.focus(); } else { field.focus(); }
+    }
+    changed finger-wait => { root.focus-field(); }
+
+    // Shake on a wrong password
+    property <duration> t0;
+    property <bool> shaking;
+    changed error-count => {
+        if error != "" {
+            t0 = animation-tick();
+            shaking = true;
+        }
+    }
+    Timer {
+        interval: 280ms;
+        running: root.shaking;
+        triggered => { root.shaking = false; }
+    }
+    property <float> k: shaking ? (animation-tick() - t0) / 1ms : 1000;
+    property <length> shake: !shaking ? 0px : k < 50 ? 10px * k / 50 : k < 130 ? 10px - 20px * (k - 50) / 80 : k < 200 ? -10px + 16px * (k - 130) / 70 : k < 260 ? 6px - 6px * (k - 200) / 60 : 0px;
+
+    // Modal scrim: blocks the desktop, does not dismiss
+    Rectangle {
+        background: Theme.material ? Theme.m3-scrim.with-alpha(0.32 * progress) : rgba(0, 0, 0, 0.3 * progress);
+        TouchArea { }
+    }
+
+    Rectangle {
+        x: body-x;
+        y: body-y;
+        width: body-w;
+        height: body-h;
+        opacity: body-opacity;
+        transform-scale: body-scale;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: 28px;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        border-width: Theme.material ? 0px : 1px;
+        border-color: #ffffff1a;
+        accessible-role: none;
+        accessible-label: "Authentication required";
+        TouchArea { }
+        // (Escape while the field is away, waiting for a finger)
+        fs := FocusScope {
+            key-pressed(e) => {
+                if e.text == Key.Escape {
+                    root.cancel();
+                    return accept;
+                }
+                reject
+            }
+        }
+        col := VerticalLayout {
+            x: pad;
+            y: pad;
+            width: 340px - 2 * pad;
+            height: self.preferred-height;
+            spacing: Theme.material ? 12px : 10px;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: Theme.material ? 64px : 56px;
+                    height: self.width;
+                    border-radius: 16px;
+                    background: Theme.material ? transparent : Theme.toggle-off;
+                    if Theme.material: Path {
+                        width: 100%;
+                        height: 100%;
+                        viewbox-width: 100;
+                        viewbox-height: 100;
+                        commands: hero;
+                        fill: (finger-wait && finger-missed) || error != "" ? Theme.m3-error-container : Theme.m3-secondary-container;
+                        animate fill { duration: Theme.hover; }
+                    }
+                    if !finger-wait && !Theme.material: Icon { text: "\u{e2fe}"; fill: true; font-size: 28px; color: Theme.label; }
+                    if !finger-wait && Theme.material: SymIcon { text: "\u{e2fe}"; fill: true; font-size: 28px; color: error != "" ? Theme.m3-on-error-container : Theme.m3-on-secondary-container; }
+                    if finger-wait && !Theme.material: Icon {
+                        text: "\u{e23e}";
+                        font-size: 30px;
+                        color: finger-missed ? Theme.danger : Theme.accent;
+                    }
+                    if finger-wait && Theme.material: SymIcon {
+                        text: "\u{e23e}";
+                        font-size: 30px;
+                        color: finger-missed ? Theme.m3-on-error-container : Theme.m3-on-secondary-container;
+                    }
+                }
+            }
+            Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: message;
+                color: Theme.label;
+                font-size: Theme.material ? 24px : Theme.title;
+                font-weight: Theme.material ? 400 : 600;
+            }
+            Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: finger-wait && finger-missed ? "Not recognised. Try again, or wait for the password field."
+                    : finger-wait ? "Touch the fingerprint reader to allow this. The password field comes back in a few seconds."
+                    : "Enter the password for " + user + " to allow this.";
+                color: Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.small;
+            }
+            // (always there, hidden while a finger is asked for: it keeps the focus target)
+            Rectangle {
+                visible: !finger-wait;
+                height: finger-wait ? 0px : Theme.material ? 52px : 36px;
+                border-radius: Theme.material ? 26px : Theme.radius-control;
+                background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+                border-width: Theme.material ? (field.has-focus || error != "" ? 2px : 0px) : 1px;
+                border-color: error != "" ? (Theme.material ? Theme.m3-error : Theme.danger) : field.has-focus ? (Theme.material ? Theme.m3-primary : Theme.accent) : Theme.separator;
+                Rectangle {
+                    x: Theme.material ? 16px : 12px;
+                    width: parent.width - 2 * self.x;
+                    clip: true;
+                    field := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        vertical-alignment: center;
+                        input-type: secret ? InputType.password : InputType.text;
+                        enabled: !waiting;
+                        single-line: true;
+                        color: Theme.label;
+                        font-size: Theme.material ? 16px : Theme.body;
+                        text <=> root.text;
+                        accessible-label: prompt;
+                        accepted => { root.submit(self.text); }
+                        key-pressed(e) => {
+                            if e.text == Key.Escape {
+                                root.cancel();
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+                    if root.text == "": Text {
+                        x: 0;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        text: prompt;
+                        color: Theme.tertiary;
+                        font-size: Theme.material ? 16px : Theme.body;
+                        accessible-role: none;
+                    }
+                }
+            }
+            if error != "": Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: error;
+                color: Theme.danger;
+                font-size: Theme.small;
+                font-weight: 500;
+            }
+            HorizontalLayout {
+                spacing: Theme.material ? 8px : 10px;
+                padding-top: Theme.material ? 12px : 6px;
+                for b in finger-wait ? [{ t: "Cancel", p: false }] : [{ t: "Cancel", p: false }, { t: waiting ? "Checking…" : "Allow", p: true }]: Rectangle {
+                    property <bool> off: b.p && root.text == "";
+                    property <color> ink: !Theme.material ? (b.p ? Theme.on-accent : Theme.label)
+                        : off ? Theme.m3-on-surface.with-alpha(0.38) : b.p ? Theme.m3-on-primary : Theme.m3-on-secondary-container;
+                    property <color> base: off ? Theme.m3-on-surface.with-alpha(0.12) : b.p ? Theme.m3-primary : Theme.m3-secondary-container;
+                    height: Theme.material ? 40px : 34px;
+                    horizontal-stretch: 1;
+                    transform-scale: Theme.material && ta.pressed && !off ? 1.04 : 1;
+                    animate transform-scale { duration: 250ms; easing: spring(0.4); }
+                    border-radius: Theme.material ? (ta.pressed && !off ? 8px : self.height / 2) : 17px;
+                    animate border-radius { duration: 200ms; easing: spring(0.3); }
+                    background: Theme.material ? (off ? base : base.mix(ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1))
+                        : b.p ? Theme.accent : ta.has-hover ? Theme.fill-hover : Theme.fill;
+                    opacity: !Theme.material && off ? 0.5 : 1;
+                    accessible-role: button;
+                    accessible-label: b.t;
+                    accessible-action-default => { if b.p { root.submit(root.text); } else { root.cancel(); } }
+                    Text {
+                        text: b.t;
+                        color: ink;
+                        font-size: Theme.material ? 14px : Theme.body;
+                        font-weight: Theme.material ? 500 : 600;
+                    }
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { if b.p { root.submit(root.text); } else { root.cancel(); } }
+                    }
+                }
+            }
+        }
+    }
+}

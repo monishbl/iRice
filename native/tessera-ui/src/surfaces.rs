@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -26,6 +26,9 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "spotlight" => Some(Box::new(tessera_spotlight::Spotlight::default())),
         "controlcenter" => Some(Box::new(tessera_controlcenter::ControlCenter::default())),
         "sidebar" => Some(Box::new(tessera_sidebar::Sidebar::default())),
+        "lock" => Some(Box::new(tessera_lock::Lock::default())),
+        "session" => Some(Box::new(tessera_session::Session::default())),
+        "polkit" => Some(Box::new(tessera_polkit::Polkit::default())),
         _ => None,
     }
 }
@@ -42,6 +45,8 @@ pub fn unknown_arg(args: &[String]) -> Option<&str> {
     while let Some(a) = it.next() {
         if a == "--surfaces" {
             it.next();
+        } else if a == "--demo" {
+            // (the security surfaces without their real roles: tessera_core::env::demo_mode)
         } else if !a.starts_with("--surfaces=") {
             return Some(a);
         }
@@ -65,10 +70,10 @@ mod tests {
 
     #[test]
     fn only_the_ones_asked_for() {
-        let s = from_args(&args(&["--surfaces", "menubar,lock"]));
+        let s = from_args(&args(&["--surfaces", "menubar,nosuch"]));
         assert_eq!(s.on, vec!["menubar"]);
-        assert_eq!(s.unknown, vec!["lock"]);
-        let s = from_args(&args(&["--surfaces=lock"]));
+        assert_eq!(s.unknown, vec!["nosuch"]);
+        let s = from_args(&args(&["--surfaces=nosuch"]));
         assert!(s.on.is_empty());
         // (in KNOWN's order, whatever order they're asked in)
         let s = from_args(&args(&["--surfaces", "dock,menubar"]));
@@ -79,9 +84,9 @@ mod tests {
 
     #[test]
     fn says_what_it_draws_as_json_lines() {
-        let s = from_args(&args(&["--surfaces", "menubar,lock"]));
+        let s = from_args(&args(&["--surfaces", "menubar,nosuch"]));
         let lines: Vec<serde_json::Value> = s.ready_lines().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "lock"}));
+        assert_eq!(lines[0], json!({"src": "ui", "kind": "unknown", "surface": "nosuch"}));
         assert_eq!(lines[1], json!({"src": "ui", "kind": "ready", "surfaces": ["menubar"]}));
     }
 
@@ -104,6 +109,7 @@ mod tests {
         assert_eq!(unknown_arg(&args(&["--surfaces=menubar"])), None);
         assert_eq!(unknown_arg(&args(&["--surfaces"])), None);
         assert_eq!(unknown_arg(&args(&["--list"])), Some("--list"));
+        assert_eq!(unknown_arg(&args(&["--surfaces", "lock", "--demo"])), None);
         assert_eq!(unknown_arg(&args(&["--surfaces", "dock", "--format", "terse"])), Some("--format"));
         assert_eq!(unknown_arg(&args(&["menubar"])), Some("menubar"));
     }

@@ -68,6 +68,11 @@ Scope {
         t = 0;
         shown = true;
         holdLimit.restart();
+        // (tessera-ui draws it while it draws the lock: it brings its own picture)
+        if (RustUi.drawing("lock")) {
+            pictureReady = true;
+            RustUi.tell("lock", { intro: "arm" });
+        }
     }
     function maybePlay() {
         if (shown && !playing && chimed && (Theme.material || pictureReady))
@@ -78,6 +83,7 @@ Scope {
         playing = true;
         clock.restart();
         revealAt.restart();
+        RustUi.tell("lock", { intro: "play", pace: root.pace });
     }
     function finish() {
         clock.stop();
@@ -87,6 +93,7 @@ Scope {
         shown = false;
         pictureReady = false;
         LockFx.intro = false;
+        RustUi.tell("lock", { intro: "stop" });
         if (!System.locked)
             LockFx.rest();
     }
@@ -167,7 +174,8 @@ Scope {
     }
 
     Variants {
-        model: root.shown ? Quickshell.screens : []
+        // (tessera-ui's own while it draws the lock: src/surfaces/lock/intro.rs)
+        model: root.shown && !RustUi.drawing("lock") ? Quickshell.screens : []
 
         PanelWindow {
             id: win

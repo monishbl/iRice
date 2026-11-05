@@ -30,6 +30,13 @@ Scope {
     function submit() {
         if (busy || password === "")
             return;
+        // A sandbox never checks a password: its PAM would be your real
+        // account's (`./dev.sh ipc lock unlock` unlocks it instead)
+        if (System.sandboxed) {
+            password = "";
+            error = "This is a sandbox: unlock it with ./dev.sh ipc lock unlock.";
+            return;
+        }
         error = "";
         fingerTries = 0; // (someone's here: the reader gets its tries back)
         faceTries = 0;
@@ -205,6 +212,8 @@ Scope {
         }
     }
     onHeldChanged: {
+        // (whoever draws the lock as it begins keeps it: rustLock below)
+        rustLock = held && RustUi.drawing("lock");
         if (!held)
             idle = false;
         // (a new lock: everything starts over)
@@ -301,9 +310,90 @@ Scope {
         resting = false;
     }
 
+    // ── tessera-ui (rust.surfaces: lock) ────────────────────────────────
+    // A lock begun while tessera-ui draws the lock is its own to the end:
+    // it takes the session lock and runs the password, the reader and the
+    // camera (native/tessera-ui/src/surfaces/lock); this keeps when to lock,
+    // the veil and LockFx. Never handed over while locked (the compositor
+    // allows one lock at a time); if tessera-ui ends or the compositor
+    // refuses it, this one locks again at once.
+    property bool rustLock: false // (set as `held` changes: onHeldChanged above)
+    Connections {
+        target: RustUi
+        function onRunningChanged() {
+            if (!RustUi.running)
+                root.rustLock = false;
+        }
+        function onStarted() {
+            root.tellRust();
+            root.tellNotes();
+        }
+        function onMessage(e) {
+            if (e.kind !== "lock")
+                return;
+            if (e.secure !== undefined) {
+                System.lockSecure = e.secure === true;
+                if (e.secure === true && System.locked) {
+                    root.veiled = false;
+                    LockFx.rest();
+                } else if (e.secure !== true && !System.locked && revealTimer.running) {
+                    revealTimer.interval = 60;
+                    revealTimer.restart();
+                    revealTimer.interval = 150;
+                }
+            }
+            if (e.unlocked === true && root.rustLock) {
+                root.error = "";
+                root.fails = 0;
+                System.locked = false;
+            }
+            if (e.sound === "error")
+                Sounds.play("error");
+            if (e.refused === true && root.rustLock) {
+                console.warn("Lock: tessera-ui couldn't lock the session; locking here");
+                root.rustLock = false;
+            }
+        }
+    }
+    function tellRust() {
+        RustUi.tell("lock", { held: root.held && root.rustLock, leaving: root.leaving, finger: Fingerprint.lockScreen, face: Face.lockScreen });
+    }
+    onRustLockChanged: {
+        tellRust();
+        tellNotes();
+    }
+    onLeavingChanged: if (rustLock) tellRust()
+    readonly property bool fingerOn: Fingerprint.lockScreen
+    readonly property bool faceOn: Face.lockScreen
+    onFingerOnChanged: tellRust()
+    onFaceOnChanged: tellRust()
+    // The notifications it shows (whoever serves them, this shell has the list)
+    function tellNotes() {
+        if (!RustUi.drawing("lock"))
+            return;
+        RustUi.tell("lock", { notes: Notifications.list.map(n => {
+                const at = Notifications.received[n.id]; // (a Date: sent as ms)
+                return {
+                    key: n.appName || n.desktopEntry || String(n.id),
+                    app: n.appName ?? "",
+                    icon: Notifications.iconFor(n),
+                    summary: n.summary ?? "",
+                    body: n.body ?? "",
+                    at: at ? at.getTime() : 0
+                };
+            }) });
+    }
+    Connections {
+        target: Notifications
+        function onListChanged() {
+            if (root.rustLock)
+                root.tellNotes();
+        }
+    }
+
     WlSessionLock {
         id: lock
-        locked: root.held
+        locked: root.held && !root.rustLock
 
         LockSurface {
             lockScope: root
@@ -332,7 +422,7 @@ Scope {
     property bool fingerAsked: false // (this conversation got as far as asking)
     property int fingerBusy: 0
     readonly property int fingerQuickMs: 700
-    readonly property bool fingerWanted: held && !leaving && !sleeping && Fingerprint.lockScreen && fingerTries < 5
+    readonly property bool fingerWanted: held && !rustLock && !System.sandboxed && !leaving && !sleeping && Fingerprint.lockScreen && fingerTries < 5
     onFingerWantedChanged: {
         if (fingerWanted) {
             fingerRetry.restart();
@@ -515,7 +605,7 @@ Scope {
     readonly property bool faceLooking: face.active // (the Material lock spins its loading indicator meanwhile)
     property int faceTries: 0
     property bool faceBroken: false // (Howdy or the camera failed: not again until the next lock)
-    readonly property bool faceWanted: held && !leaving && !standby && Face.lockScreen && faceArmed && !faceBroken && faceTries < 3
+    readonly property bool faceWanted: held && !rustLock && !System.sandboxed && !leaving && !standby && Face.lockScreen && faceArmed && !faceBroken && faceTries < 3
     onFaceWantedChanged: {
         if (faceWanted) {
             faceRetry.interval = 0;
@@ -663,10 +753,12 @@ Scope {
         // or camera): `./dev.sh ipc lock demo standby | wake | finger | face
         // | match | off` plays StandBy, coming back from it, the reader or
         // the camera asking, and a match (shown, not unlocked: `lock unlock`
-        // then, so the match can be seen first)
+        // then, so the match can be seen first). With tessera-ui drawing the
+        // lock it plays them, and typing | wrong | busy | lockout | miss too
         function demo(what: string): void {
             if (!System.sandboxed)
                 return;
+            RustUi.tell("lock", { demo: what });
             if (what === "standby") {
                 root.demoCharging = true;
                 root.idle = true;

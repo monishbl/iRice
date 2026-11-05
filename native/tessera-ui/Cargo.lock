@@ -4822,6 +4822,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-lock"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "libc",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
 name = "tessera-menubar"
 version = "0.1.0"
 dependencies = [
@@ -4847,6 +4861,30 @@ dependencies = [
 
 [[package]]
 name = "tessera-osd"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
+name = "tessera-polkit"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
+name = "tessera-session"
 version = "0.1.0"
 dependencies = [
  "serde_json",
@@ -4911,9 +4949,12 @@ dependencies = [
  "tessera-dock",
  "tessera-emoji",
  "tessera-greeter",
+ "tessera-lock",
  "tessera-menubar",
  "tessera-notifications",
  "tessera-osd",
+ "tessera-polkit",
+ "tessera-session",
  "tessera-sidebar",
  "tessera-spotlight",
  "tessera-today",
