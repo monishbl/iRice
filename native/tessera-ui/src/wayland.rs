@@ -223,6 +223,24 @@ impl slint::platform::Platform for Platform {
     fn new_event_loop_proxy(&self) -> Option<Box<dyn slint::platform::EventLoopProxy>> {
         Some(Box::new(LoopProxy(std::sync::Mutex::new(self.tx.clone()))))
     }
+    // The clipboard, through wl-clipboard (as the QML shell copies): Ctrl+C,
+    // Ctrl+X and Ctrl+V in text fields
+    fn set_clipboard_text(&self, text: &str, clipboard: slint::platform::Clipboard) {
+        if clipboard != slint::platform::Clipboard::DefaultClipboard {
+            return;
+        }
+        let text = text.to_string();
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new("wl-copy").args(["--", &text]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+        });
+    }
+    fn clipboard_text(&self, clipboard: slint::platform::Clipboard) -> Option<String> {
+        if clipboard != slint::platform::Clipboard::DefaultClipboard {
+            return None;
+        }
+        let out = std::process::Command::new("timeout").args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output().ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
 }
 
 // ── State: everything the Wayland handlers touch ────────────────────────────

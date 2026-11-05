@@ -179,6 +179,19 @@ class Agreement(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout), json.loads((d / "golden.json").read_text()),
                          "Search.qml ranks differently now: run node golden.js > golden.json and match rank.rs")
 
+    def test_the_sidebar_hand_off_agrees(self):
+        # The sidebar's twin steps aside through its PanelLoader; the shell
+        # sends it its own commands (the tab, pictures and Spotlight's
+        # exchange for its chat) and every one is handled (src/surfaces/sidebar)
+        sidebar_qml = (ROOT / "shell/modules/sidebar/Sidebar.qml").read_text()
+        self.assertIn('elsewhere: RustUi.drawing("sidebar")', sidebar_qml)
+        qml = "".join((ROOT / f"shell/services/{n}.qml").read_text() for n in ("RustUi", "Ai", "ScreenTools"))
+        sent = set(re.findall(r'cmd: "([a-z]+)", surface: "sidebar"', qml))
+        self.assertEqual(sent, {"tab", "attach", "continue"})
+        rs = (CRATE / "src/surfaces/sidebar/mod.rs").read_text()
+        handled = set(re.findall(r'^\s*"([a-z]+)" =>', rs.split("fn command(")[1].split("fn output_removed")[0], re.M))
+        self.assertEqual((sent | {"open", "close"}) - handled, set(), "sent but not handled")
+        self.assertIn("shell::closed(NAME)", rs)
     def test_the_wallpaper_and_its_picker(self):
         # the picker is a panel (its PanelLoader steps aside; choosing and
         # Open folder are the shell's); the background hears the day's sun

@@ -16,6 +16,8 @@
 //!   icons    icon names to files in the shell's icon theme (icons::Icons)
 //!   notify   the notification server, org.freedesktop.Notifications on the
 //!            session bus (notify::Event; answers through notify::bus())
+//!   ai       the AI chat's credentials (ai::keys::Keys, from the keyring);
+//!            the chat, its history and its requests are ai::Chat and ai::stream
 //!   mpris    media players (mpris::Players), session bus
 //!   tray     the apps' tray items (tray::Tray, StatusNotifierItem), session bus
 //!   bluez    Bluetooth (bluez::Bluetooth), system bus
@@ -28,6 +30,7 @@
 //!   weather  wttr.in's weather (weather::Weather)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod ai;
 pub mod apps;
 pub mod audio;
 pub mod bluez;
@@ -64,6 +67,7 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "audio" => audio::spawn(tx),
         "brightness" => brightness::spawn(tx),
         "notify" => notify::spawn(tx),
+        "ai" => ai::spawn(tx),
         "calendar" => calendar::spawn(tx),
         "todos" => todos::spawn(tx),
         "weather" => weather::spawn(tx),

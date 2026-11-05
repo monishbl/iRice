@@ -4,9 +4,12 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.common
 import qs.glass
+import qs.services
 
 // Left sidebar: a floating glass panel with AI chat, translator and the
 // anime image browser. Slides in from the left; outside click or Esc closes.
+// (Drawn by tessera-ui instead while Settings lists it in rust.surfaces: its
+// PanelLoader steps aside and services/RustUi.qml tells it when to open.)
 Variants {
     model: Quickshell.screens
 
@@ -14,6 +17,7 @@ Variants {
         id: slot
         required property var modelData
         panel: "sidebar"
+        elsewhere: RustUi.drawing("sidebar")
         screen: modelData
         linger: 60000 // freed a minute after closing (the chat lives in the Ai service)
 

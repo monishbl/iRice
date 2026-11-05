@@ -21,10 +21,11 @@ pub mod background;
 pub mod today;
 pub mod spotlight;
 pub mod wallpaper;
+pub mod sidebar;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
@@ -41,16 +42,9 @@ pub fn make(name: &str) -> Option<Box<dyn crate::shell::Part>> {
         "desktop" => Some(Box::new(desktop::Desktop::default())),
         "spotlight" => Some(Box::new(spotlight::Spotlight::default())),
         "controlcenter" => Some(Box::new(controlcenter::ControlCenter::default())),
+        "sidebar" => Some(Box::new(sidebar::Sidebar::default())),
         _ => None,
     }
-}
-
-/// A line for the shell (RustUi.qml reads it), from a surface
-pub fn tell(v: serde_json::Value) {
-    use std::io::Write;
-    let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{v}");
-    let _ = out.flush();
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -114,6 +108,14 @@ pub fn announce(s: &Surfaces) {
     for l in s.ready_lines() {
         let _ = writeln!(out, "{l}");
     }
+    let _ = out.flush();
+}
+
+/// One event for the shell, a JSON line on stdout (`{"src":"ui","kind":…}`)
+pub fn tell(event: serde_json::Value) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{event}");
     let _ = out.flush();
 }
 

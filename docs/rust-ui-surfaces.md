@@ -70,6 +70,10 @@ impl Part for Dock {
 - **Pictures:** decode off the UI thread and hand Slint a buffer no larger than it shows (`surfaces/background/picture.rs`: `cover`, `decode`, a small `Pool`). A still surface needs a second frame: the first is drawn while the EGL window is still 1×1 and the compositor stretches it (`background::second_frame`).
 - **Actions** the QML surface does through Hyprland: `services::hypr::request("dispatch …")` on a thread (never block the UI thread). Things the QML shell does itself (open a panel, run its IPC): `shell/assets/scripts/shell-ipc.sh call …` from a thread, until that piece is in Rust too.
 
+## A panel's own commands (the sidebar)
+
+Beyond `open` and `close`, RustUi.qml can send a panel commands of its own, `RustUi.send({cmd, surface, …})` (any other `cmd` reaches `Part::command` with the whole object in `Command::args`). The sidebar's: `tab` (Panels.sidebarTab, sent before it opens and whenever it changes), `attach` (a screenshot or circled picture's file for the chat, `lens: true` when circled: ScreenTools.qml) and `continue` (Spotlight's question and answer: Ai.qml). It asks the shell for `sidebar.tab` (its tab row), `ai.reloadHistory` (it wrote the chat history: the QML Ai service reads it again), `screen.ask` (its screenshot menu), `launch.openLink` and `panels.openSettings`. tests/test_rust_ui.py checks that what RustUi sends is handled.
+
 ## Fidelity: what "matches" means
 
 Read the QML surface and everything it imports (its module folder, `shell/common/*` it uses, the services it reads, and `material/` overrides). Match: layout and sizes (the QML numbers, in logical px), the look's tokens (`Theme`), motion (durations and springs: `Theme.motion`; Slint `animate … { easing: spring(…) }`), every state it shows (empty, hover, pressed, focus, disabled), what each click, scroll, key and drag does, and its settings. Where Slint can't do something QML does (custom shaders, `ShaderEffect`), say so in the part's top comment and pick the closest built-in.

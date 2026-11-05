@@ -582,6 +582,27 @@ Singleton {
         chatModel.append({ role: "note", text: text, thinking: "", status: "done", model: "", image: "", search: "" });
     }
 
+    // The chat history again from its files, written by tessera-ui's sidebar
+    // (RustUi.qml): this shell's own chat stands aside while that one draws
+    // it, and once it's back here (`adopt`), the chat that was open there
+    // opens here
+    function reloadHistory(adopt) {
+        if (!historyReady)
+            return;
+        const idx = Chats.parseIndex(readText(indexPath));
+        if (!idx)
+            return;
+        stop();
+        chatModel.clear();
+        history = [];
+        currentId = "";
+        chatChanged = false;
+        sessions = idx.chats;
+        trash = idx.trash;
+        if (adopt && keepHistory && idx.current !== "")
+            openChat(idx.current);
+    }
+
     // Circle to search: the circled picture, asked about at once. (A model
     // that can't read pictures keeps it attached: once they've switched,
     // Send asks the same question.)
@@ -881,7 +902,16 @@ Singleton {
 
     // Move the quick exchange into the sidebar chat (the open one)
     function continueQuick() {
-        if (quick.answer === "" || busy)
+        if (quick.answer === "")
+            return;
+        // (the sidebar drawn by tessera-ui: the exchange goes to its chat)
+        if (RustUi.drawing("sidebar")) {
+            RustUi.send({ cmd: "continue", surface: "sidebar", question: quick.question, answer: quick.answer });
+            Panels.sidebarTab = 0;
+            Panels.show("sidebar");
+            return;
+        }
+        if (busy)
             return;
         history = history.concat([{ role: "user", text: quick.question }, { role: "assistant", text: quick.answer }]);
         chatModel.append({ role: "user", text: quick.question, thinking: "", status: "done", model: "", image: "", search: "" });

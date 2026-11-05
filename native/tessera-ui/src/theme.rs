@@ -287,6 +287,11 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_glass_solid(r("surfaceContainer"));
         t.set_blur(look.transparency > 0.0);
         t.set_panel_alpha(1.0 - 0.55 * look.transparency);
+        t.set_m3_inverse_primary(r("inversePrimary"));
+        t.set_accent_ink(r("primary"));
+        t.set_accent_tint(r("secondaryContainer"));
+        t.set_code_fill(hi);
+
         t.set_control_alpha(1.0 - 0.4 * look.transparency);
         t.set_caption(11.0);
         t.set_small(12.0);
@@ -339,6 +344,10 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_on_selection(on_accent);
         t.set_menu_hover(accent);
         t.set_menu_hover_fg(on_accent);
+        t.set_accent_ink(accent_ink(accent, if d { hex("#1E1E21") } else { hex("#F5F5F7") }));
+        // (Theme.qml's pale ramp shade in light mode: the accent near white)
+        t.set_accent_tint(if d { accent.with_alpha(0.26) } else { mix(accent, Color::from_rgb_u8(255, 255, 255), 0.82).with_alpha(0.9) });
+        t.set_code_fill(if d { rgba(255, 255, 255, 0.08) } else { rgba(0, 0, 0, 0.05) });
         t.set_field_focus(accent);
         t.set_danger(hex(if d { "#FF453A" } else { "#FF3B30" }));
         t.set_success(hex(if d { "#30D158" } else { "#34C759" }));
@@ -364,6 +373,26 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_radius_panel(26.0);
         t.set_spring(0.32);
     }
+}
+
+/// `a` toward `b` by `t`
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color::from_rgb_u8(m(a.red(), b.red()), m(a.green(), b.green()), m(a.blue(), b.blue()))
+}
+
+/// Accent text on a background, at least 4.5:1 (Theme.accentFor): the accent
+/// when it reads; on a dark background a lighter shade of it (here: toward
+/// white, in place of AccentRamp's OKLCH ramp), else near-black
+fn accent_ink(accent: Color, bg: Color) -> Color {
+    if contrast_ratio(accent, bg) >= 4.5 {
+        return accent;
+    }
+    let dark_bg = contrast_ratio(bg, Color::from_rgb_u8(0, 0, 0)) < contrast_ratio(bg, Color::from_rgb_u8(255, 255, 255));
+    if !dark_bg {
+        return hex("#1C1C1E");
+    }
+    (1..=20).map(|i| mix(accent, Color::from_rgb_u8(255, 255, 255), i as f32 * 0.05)).find(|c| contrast_ratio(*c, bg) >= 4.5).unwrap_or(Color::from_rgb_u8(255, 255, 255))
 }
 
 /// `over` laid on `base` at `alpha` (Qt.tint)

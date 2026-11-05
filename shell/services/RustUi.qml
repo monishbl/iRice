@@ -148,6 +148,23 @@ Singleton {
     }
     onDrawnChanged: if (drawn.length === 0) forwarded = ""
 
+    // The sidebar drawn in Rust: the tab Panels shows (sent before it opens,
+    // and again once it's drawing), Screen tools' and Spotlight's pictures and
+    // exchanges go to its chat (ScreenTools.qml, Ai.qml), and once it's back
+    // here the chat it had goes on in this shell's sidebar
+    readonly property bool sidebarHere: drawing("sidebar")
+    function sidebarTab() {
+        if (sidebarHere)
+            send({ cmd: "tab", surface: "sidebar", tab: Panels.sidebarTab });
+    }
+    onSidebarHereChanged: sidebarHere ? sidebarTab() : Ai.reloadHistory(true)
+    Connections {
+        target: Panels
+        function onSidebarTabChanged() {
+            root.sidebarTab();
+        }
+    }
+
     // What a panel drawn in Rust asks of this shell (its files, its windows)
     function call(name, a) {
         switch (name) {
@@ -176,6 +193,22 @@ Singleton {
         case "wallpaper.openFolder":
             Files.openFolder(Wallpaper.directory);
             break;
+        case "sidebar.tab": // (its tab row: Panels keeps it for next time)
+            Panels.sidebarTab = Number(a[0] ?? 0);
+            break;
+        case "ai.reloadHistory": // (it wrote the chat history files)
+            Ai.reloadHistory(false);
+            break;
+        case "screen.ask": // (its screenshot menu: the picture comes back as "attach")
+            if (a[0] === "screen")
+                ScreenTools.askScreen();
+            else if (a[0] === "ask" || a[0] === "circle")
+                ScreenTools.select(a[0]);
+            break;
+        case "launch.openLink": // (web and mail links only: Launch says)
+            Launch.openLink(a[0] ?? "");
+            break;
+
         case "today.close":
             Today.close();
             break;

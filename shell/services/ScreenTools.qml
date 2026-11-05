@@ -269,7 +269,11 @@ Singleton {
             Panels.sidebarTab = 0;
             // (circle: in the sidebar of the screen it was drawn on)
             Panels.show("sidebar", kind === "circle" ? selectingScreen : focusedScreen());
-            if (kind === "circle")
+            // (the sidebar drawn by tessera-ui: the picture goes to its chat,
+            // which reads the file itself)
+            if (RustUi.drawing("sidebar"))
+                RustUi.send({ cmd: "attach", surface: "sidebar", path: picture.path, lens: kind === "circle" });
+            else if (kind === "circle")
                 Ai.searchPicture(picture);
             else
                 Ai.attach(picture);

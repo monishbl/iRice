@@ -100,6 +100,15 @@ export global Theme {
     // materialTransparency; Theme.veil(c) is c.with-alpha(panel-alpha))
     in property <bool> blur: false;
     in property <float> panel-alpha: 1;
+    in property <color> m3-inverse-primary: #0a84ff;
+    // Accent text and small glyphs on the window background (≥ 4.5:1),
+    // selected rows' soft tint, Markdown's code boxes (Theme.accentInk,
+    // accentTint, codeFill), and the code font
+    in property <color> accent-ink: #409cff;
+    in property <color> accent-tint: #0a84ff42;
+    in property <color> code-fill: #ffffff14;
+    in property <string> mono: "JetBrains Mono";
+
     // (Theme.qml's controlAlpha: Material's container roles, see-through as far as Transparency says)
     in property <float> control-alpha: 1;
     // Type: sizes (Theme.font)
