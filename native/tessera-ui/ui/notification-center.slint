@@ -9,7 +9,7 @@
 
 import { Theme, Icon } from "theme.slint";
 import { IconButton, StateShape } from "widgets.slint";
-import { Banner, GlassCard, MaterialCard, Expander } from "notifications.slint";
+import { Banner, GlassCard, MaterialCard, Expander, Frost } from "notifications.slint";
 
 export struct NcRow {
     kind: int, // 0 a notification, 1 an island alert, 2 an open group's header
@@ -197,11 +197,18 @@ component Tick inherits Rectangle {
 // Material, its tonal surface
 component Platter inherits Rectangle {
     in property <bool> chip;
+    // the plugin draws a chip's glass; without it, Glass.qml's frosted
+    // fallback: its tint under the chip's veil
+    in property <bool> plugin: true;
     border-radius: 18px;
-    // (Material, see-through: Theme.qml's controlAlpha on its containers)
-    background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-    border-width: chip && !Theme.material ? 1px : 0;
-    border-color: Theme.dark ? #ffffff0f : #ffffff4d;
+    background: !Theme.material && chip && !plugin ? Frost.tint : transparent;
+    Rectangle {
+        border-radius: parent.border-radius;
+        // (Material, see-through: Theme.qml's controlAlpha on its containers)
+        background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
+        border-width: chip && !Theme.material ? 1px : 0;
+        border-color: Theme.dark ? #ffffff0f : #ffffff4d;
+    }
 }
 
 // ── The calendar (CalendarWidget.qml) ───────────────────────────────────────
@@ -939,7 +946,8 @@ export component Center inherits Window {
         border-radius: radius;
         // Material: its tonal surface; Glass: the plugin's glass and a tint
         // (bare: nothing; the pieces are glass of their own)
-        background: bare ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : glass-plugin ? transparent : Theme.panel;
+        // (Glass, no plugin: Glass.qml's frosted fallback, as the chips)
+        background: bare ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : glass-plugin ? transparent : Frost.tint;
         border-width: !Theme.material && !bare ? 0.5px : 0;
         border-color: Theme.separator;
         drop-shadow-blur: Theme.material && !bare ? 32px : 0;
@@ -1020,6 +1028,7 @@ export component Center inherits Window {
                 // Nothing here (in the list's place: no room of its own)
                 if !anything && !Theme.material: Platter {
                     chip: bare;
+                    plugin: glass-plugin;
                     height: 84px;
                     VerticalLayout {
                         alignment: center;
@@ -1142,6 +1151,7 @@ export component Center inherits Window {
                                 // the stack's edges below the front card
                                 for k in r.edges: Platter {
                                     chip: bare;
+                                    plugin: glass-plugin;
                                     x: (k + 1) * 8px;
                                     y: gcard.height - 4px + k * 8px;
                                     width: parent.width - 2 * (k + 1) * 8px;
@@ -1151,6 +1161,7 @@ export component Center inherits Window {
                                 }
                                 Platter {
                                     chip: bare;
+                                    plugin: glass-plugin;
                                     y: 0;
                                     height: gcard.height;
                                     border-radius: 18px;
@@ -1342,6 +1353,7 @@ export component Center inherits Window {
             // Calendar, To-do and Focus: one card, the tabs its first row
             widgets := Platter {
                 chip: bare;
+                plugin: glass-plugin;
                 border-radius: Theme.material ? 24px : 36px;
                 height: tabs.height + 12px + (Theme.material ? 4px : 0) + (tab == 0 ? cal.height : tab == 1 ? todo.height : focus.height);
                 tabs := Segmented {

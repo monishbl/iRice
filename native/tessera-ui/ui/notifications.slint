@@ -7,6 +7,13 @@
 
 import { Theme, Icon } from "theme.slint";
 
+// Glass without the tessera-glass plugin (Glass.qml's frosted fallback,
+// Theme.glass.frost): this tint over Hyprland's blur of what's behind (it
+// blurs "tessera:*" layers where alpha passes 0.4)
+export global Frost {
+    out property <color> tint: Theme.dark ? #1c1c21.with-alpha(0.62) : #f7f7fa.with-alpha(0.66);
+}
+
 export struct NoteButton {
     key: string,
     text: string,
@@ -683,7 +690,7 @@ export component Banners inherits Window {
             // Material: its tonal card, elevation 3 when it's in front
             border-radius: Theme.material ? 24px : 22px;
             // (Material, see-through: Theme.qml's controlAlpha on its containers)
-            background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : glass-plugin ? transparent : Theme.panel;
+            background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : glass-plugin ? transparent : Frost.tint;
             border-width: !Theme.material && !glass-plugin ? 0.5px : 0;
             border-color: Theme.separator;
             drop-shadow-blur: Theme.material && live ? 16px : 0;
