@@ -1,7 +1,7 @@
 //! The OSD (rust.surfaces: osd): volume, microphone and brightness shown
 //! for a moment when they change, as shell/modules/osd/Osd.qml. Glass: a
 //! capsule on the plugin's glass under the menu bar at the right (unless the
-//! island shows it, the default while the QML menu bar draws the island);
+//! island shows it, the default, either menu bar's);
 //! Material: Android's volume panel at the right edge
 //! (MaterialVolumePanel.qml); over a fullscreen app, either look: a thin bar
 //! along the top. Each takes the pointer: resting on it keeps it up; click,
@@ -181,7 +181,7 @@ impl Osd {
     fn show(&mut self, st: &mut State, kind: Kind, device: String) {
         let quiet = self.now() < self.quiet_until[slot(kind)];
         let fullscreen = st.shell.get::<Snapshot>().is_some_and(|s| s.fullscreen());
-        let island = settings::island_hud(&st.shell.cfg, st.shell.look.material, st.shell.surfaces.on.contains(&"menubar"));
+        let island = settings::island_hud(&st.shell.cfg, st.shell.look.material);
         match logic::place(self.armed, quiet, !device.is_empty(), fullscreen, island) {
             Place::Nowhere | Place::Island => {}
             Place::Bar => {

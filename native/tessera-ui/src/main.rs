@@ -18,6 +18,8 @@ mod a11y;
 mod appicon;
 mod egl;
 mod env;
+mod icon_theme;
+mod icons;
 mod seed;
 mod services;
 mod shell;
@@ -206,8 +208,9 @@ fn main() {
         })
         .unwrap();
 
-    // The shell's commands, a JSON line each (src/shell.rs); ends when stdin
-    // (a pipe from whoever started us) closes
+    // The shell's commands, a JSON line each (src/shell.rs), and its state
+    // for the surfaces (services::bridge); ends when stdin (a pipe from
+    // whoever started us) closes
     let stdin_is_pipe = unsafe {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
@@ -226,7 +229,11 @@ fn main() {
                 for l in lines.feed(&buf[..n as usize]) {
                     match shell::Command::parse(&l) {
                         Some(c) => state.command(c),
-                        None => shell_said(state, l.as_bytes()),
+                        None => match services::bridge::parse_line(&l) {
+                            // (the shell's state for the menu bar: services::bridge)
+                            Some(v) => handle(state, Msg::Data(v)),
+                            None => shell_said(state, l.as_bytes()),
+                        },
                     }
                 }
                 Ok(PostAction::Continue)

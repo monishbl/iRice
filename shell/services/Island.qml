@@ -179,7 +179,29 @@ Singleton {
     // A ringing call is up (it's never shrunk to the compact pill)
     readonly property bool ringingUp: { byUid; count; for (let i = 0; i < alerts.count; i++) if (byUid[alerts.get(i).uid]?.kind === "ringing") return true; return false; }
 
+    // While tessera-ui draws the menu bar (Settings' rust.surfaces), its
+    // island in Rust shows these alerts: each call goes to it as well
+    // (functions stay here: its buttons come back as `rustui act island…`,
+    // modules/menubar/RustBridge.qml)
+    function forward(op, uid, e, ms) {
+        if (!RustUi.drawing("menubar"))
+            return;
+        const c = {};
+        for (const k in (e ?? {})) {
+            const v = e[k];
+            if (typeof v === "function")
+                continue;
+            c[k] = k === "color" || k === "subtitleColor" ? String(v) : k === "more" ? (v ?? []).map(m => ({ text: m.text })) : v;
+        }
+        RustUi.send({ src: "shell", kind: "island", op: op, uid: uid, ms: ms ?? 3000, event: c });
+    }
     function post(e, ms) {
+        const uid = postHere(e, ms);
+        if (uid)
+            forward("post", uid, e, ms);
+        return uid;
+    }
+    function postHere(e, ms) {
         if (!enabled || !armed)
             return;
         // Not now (a fullscreen app, "Only important"): only into the history
@@ -255,6 +277,7 @@ Singleton {
     function update(uid, patch) {
         if (!byUid[uid])
             return;
+        forward("update", uid, patch);
         byUid = Object.assign({}, byUid, { [uid]: Object.assign({}, byUid[uid], patch) });
         const hid = byUid[uid].hid;
         if (hid) {
@@ -270,6 +293,7 @@ Singleton {
     function remove(uid, since) {
         if (since && (byUid[uid]?.at ?? 0) >= since)
             return;
+        forward("remove", uid, {});
         for (let i = 0; i < alerts.count; i++)
             if (alerts.get(i).uid === uid)
                 return removeAt(i);
@@ -289,6 +313,7 @@ Singleton {
     // given `since`, alerts posted or changed from then on (the action's own
     // "Connecting…")
     function dismiss(since) {
+        forward("dismiss", 0, { since: since ?? 0 });
         for (let i = alerts.count - 1; i >= 0; i--) {
             const u = alerts.get(i).uid;
             if (!byUid[u]?.sticky && !(since && (byUid[u]?.at ?? 0) >= since))

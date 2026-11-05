@@ -77,6 +77,7 @@ ShellRoot {
     Background {}
     ScreenCorners {}
     MenuBar {}
+    RustBridge {} // (the menu bar drawn in Rust: what it shows from here)
     Dock {}
     StageStrip {}
     AppLibrary {}

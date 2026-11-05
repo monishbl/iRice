@@ -376,7 +376,9 @@ impl State {
             Some(rects) => {
                 let Ok(r) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
                 for &(x, y, w, h) in rects {
-                    r.add(x, y, w, h);
+                    if w > 0 && h > 0 {
+                        r.add(x, y, w, h);
+                    }
                 }
                 s.wl.set_input_region(Some(r.wl_region()));
             }
