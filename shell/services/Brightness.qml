@@ -36,7 +36,7 @@ Singleton {
         .concat(ddcDisplays.map(d => ({ id: d.output, name: d.model || d.output, value: ddcValues[d.output] ?? 0.5, builtIn: false })))
     function setFor(id, v, quiet) {
         if (quiet)
-            quietUntil = Date.now() + 1000;
+            hush();
         if (id !== "backlight")
             return setDdc(id, v);
         if (!backlightAvailable)
@@ -49,9 +49,13 @@ Singleton {
 
     // (`quiet`: set with Tessera's own slider, so no brightness bar: Audio.hush)
     property real quietUntil: 0
+    function hush() {
+        quietUntil = Date.now() + 1000;
+        RustUi.tell("osd", { hush: "brightness" }); // (tessera-ui's OSD, when it draws it)
+    }
     function set(v, quiet) {
         if (quiet)
-            quietUntil = Date.now() + 1000;
+            hush();
         if (target)
             return setDdc(target.output, v);
         if (!backlightAvailable)

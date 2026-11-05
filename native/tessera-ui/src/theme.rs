@@ -22,6 +22,9 @@ pub struct Look {
     pub accent: String,
     /// 0 standard, 1 higher, 2 maximum (Theme.qml's contrastLevel)
     pub contrast: u8,
+    /// Material: how see-through panels are, 0..1 (Theme.qml's transparency:
+    /// appearance.materialTransparency, 0 with Reduce transparency; Glass: 0)
+    pub transparency: f32,
 }
 
 pub fn config_path() -> PathBuf {
@@ -83,7 +86,9 @@ pub fn look_from(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
         _ if a["increaseContrast"].as_bool().unwrap_or(false) => 1,
         _ => 0,
     };
-    Look { material, dark, seed, style: s("materialStyle", "tonalSpot"), accent, contrast }
+    let reduce = a["reduceTransparency"].as_bool().unwrap_or(false);
+    let transparency = if material && !reduce { a["materialTransparency"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32 } else { 0.0 };
+    Look { material, dark, seed, style: s("materialStyle", "tonalSpot"), accent, contrast, transparency }
 }
 
 /// Theme.qml's accents, by name (blue when unknown)
@@ -255,10 +260,17 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_m3_on_error(r("onError"));
         t.set_m3_error_container(r("errorContainer"));
         t.set_m3_on_error_container(r("onErrorContainer"));
+        t.set_m3_tertiary_container(r("tertiaryContainer"));
+        t.set_m3_on_tertiary_container(r("onTertiaryContainer"));
         t.set_m3_inverse_surface(r("inverseSurface"));
         t.set_m3_inverse_on_surface(r("inverseOnSurface"));
+        t.set_m3_primary_fixed(r("primaryFixed"));
+        t.set_m3_primary_fixed_dim(r("primaryFixedDim"));
         t.set_m3_shadow(r("shadow"));
+        t.set_m3_scrim(r("scrim"));
         t.set_glass_solid(r("surfaceContainer"));
+        t.set_blur(look.transparency > 0.0);
+        t.set_panel_alpha(1.0 - 0.55 * look.transparency);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(16.0);
@@ -316,6 +328,8 @@ pub fn apply(t: &crate::ui::Theme, look: &Look, plugin: bool) {
         t.set_warning(hex(if d { "#FF9F0A" } else { "#FF9500" }));
         t.set_panel(if d { rgba(0x1e, 0x1e, 0x22, if plugin { 0.45 } else { 0.85 }) } else { rgba(0xf6, 0xf6, 0xf8, if plugin { 0.5 } else { 0.88 }) });
         t.set_glass_solid(hex(if d { "#26262A" } else { "#F2F2F5" }));
+        t.set_blur(false);
+        t.set_panel_alpha(1.0);
         t.set_caption(11.0);
         t.set_small(12.0);
         t.set_title(15.0);
@@ -410,6 +424,17 @@ mod tests {
     fn light_accents_get_dark_text() {
         assert!(contrast_ratio(hex("#FFD60A"), Color::from_rgb_u8(255, 255, 255)) < 3.0);
         assert!(contrast_ratio(hex("#0A84FF"), Color::from_rgb_u8(255, 255, 255)) >= 3.0);
+    }
+
+    #[test]
+    fn material_panels_see_through_as_settings_say() {
+        assert_eq!(look_from(&json!({"appearance": {"look": "material"}}), None, none).transparency, 0.0);
+        let v = json!({"appearance": {"look": "material", "materialTransparency": 0.6}});
+        assert!((look_from(&v, None, none).transparency - 0.6).abs() < 1e-6);
+        let v = json!({"appearance": {"look": "material", "materialTransparency": 0.6, "reduceTransparency": true}});
+        assert_eq!(look_from(&v, None, none).transparency, 0.0);
+        let v = json!({"appearance": {"look": "glass", "materialTransparency": 0.6}});
+        assert_eq!(look_from(&v, None, none).transparency, 0.0);
     }
 
     #[test]

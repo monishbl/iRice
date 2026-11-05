@@ -28,6 +28,15 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
+    // capsule shows (the banners move down under it)
+    property bool osdShown: false
+    // Tells a surface it draws something only this shell knows (a line on
+    // its stdin, {"to":"osd",…}): e.g. Audio.hush, the OSD's preview
+    function tell(surface, what) {
+        if (drawing(surface))
+            send(Object.assign({ to: surface }, what));
+    }
 
     // (armed a moment after the list changes, once `command` has the new
     // list: started in the same instant, it could run with the old one)
@@ -37,8 +46,10 @@ Singleton {
         wanted: root.armed
         command: [root.binary, "--surfaces", root.wanted.join(",")]
         stdinEnabled: true // (it ends when this closes: the shell quit)
-        onRunningChanged: if (!running)
-            root.drawn = []
+        onRunningChanged: if (!running) {
+            root.drawn = [];
+            root.osdShown = false;
+        }
         stdout: SplitParser {
             onRead: line => root.handle(line)
         }
@@ -78,6 +89,8 @@ Singleton {
                 Panels.close();
         } else if (e.kind === "call") {
             call(e.call, e.args ?? []);
+        } else if (e.kind === "osd") {
+            osdShown = e.shown === true;
         }
     }
 

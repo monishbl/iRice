@@ -17,10 +17,13 @@
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
 pub mod apps;
+pub mod audio;
+pub mod brightness;
 pub mod clients;
 pub mod clipboard;
 pub mod hypr;
 pub mod icons;
+pub mod pulse;
 pub mod status;
 
 use crate::Msg;
@@ -34,6 +37,8 @@ pub fn start(name: &str, tx: Sender<Msg>) {
         "clients" => clients::spawn(tx),
         "apps" => apps::spawn(tx),
         "icons" => icons::spawn(tx),
+        "audio" => audio::spawn(tx),
+        "brightness" => brightness::spawn(tx),
         _ => eprintln!("tessera-ui: no service called {name}"),
     }
 }

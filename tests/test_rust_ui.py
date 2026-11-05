@@ -12,6 +12,7 @@ tessera-ui says it draws it. These tests hold that agreement:
     MaterialColor.js and the wallpaper seed against matugen among them).
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -85,6 +86,24 @@ class Agreement(unittest.TestCase):
             src = (ROOT / path).read_text()
             self.assertIn(f'RustUi.drawing("{name}")', src)
             self.assertIn("elsewhere:", src)
+    def test_the_osd_and_the_shell_tell_each_other(self):
+        # tessera-ui says when its capsule shows (the banners move under it);
+        # the shell tells it what its own sliders set (no OSD for those) and
+        # passes `qs ipc call osd preview` on, as stdin lines {"to": "osd", …}
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        osd_rs = (CRATE / "src/surfaces/osd/mod.rs").read_text()
+        main_rs = (CRATE / "src/main.rs").read_text()
+        self.assertIn('e.kind === "osd"', rust_ui)
+        self.assertIn('"kind": "osd", "shown"', osd_rs)
+        self.assertIn("send(Object.assign({ to: surface }", rust_ui)
+        self.assertIn('v["to"]', main_rs)
+        self.assertIn('RustUi.tell("osd", { hush: "sound" })', (ROOT / "shell/services/Audio.qml").read_text())
+        self.assertIn('RustUi.tell("osd", { hush: "brightness" })', (ROOT / "shell/services/Brightness.qml").read_text())
+        osd_qml = (ROOT / "shell/modules/osd/Osd.qml").read_text()
+        self.assertIn('RustUi.tell("osd", { preview: kind })', osd_qml)
+        self.assertIn("RustUi.osdShown", osd_qml)
+        for word in ('v["hush"]', 'v["preview"]'):
+            self.assertIn(word, osd_rs)
 
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
@@ -106,21 +125,25 @@ def binary():
 
 @unittest.skipUnless(binary(), "tessera-ui isn't built (tools/build-native.sh)")
 class Binary(unittest.TestCase):
-    def run_ui(self, *args):
-        return subprocess.run([str(binary()), *args], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+    # (never with a display: a surface it can draw would appear on the
+    # session running the tests)
+    ENV = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY")}
+
+    def run_ui(self, *args, input=None):
+        return subprocess.run([str(binary()), *args], capture_output=True, text=True, timeout=30, env=self.ENV, input=input, stdin=None if input is not None else subprocess.DEVNULL)
 
     def test_a_list_it_cant_draw_is_answered_without_a_display(self):
         # (no Wayland needed: nothing to draw, so it says so and ends)
-        r = self.run_ui("--surfaces", "osd,notifications")
+        r = self.run_ui("--surfaces", "lock,greeter")
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = [json.loads(l) for l in r.stdout.splitlines()]
         self.assertEqual(lines[-1], {"src": "ui", "kind": "ready", "surfaces": []})
-        self.assertEqual({l["surface"] for l in lines[:-1]}, {"osd", "notifications"})
+        self.assertEqual({l["surface"] for l in lines[:-1]}, {"lock", "greeter"})
 
     def test_commands_on_stdin_and_its_end(self):
-        # (no Wayland: nothing to draw, it answers and ends; a bad line or a
-        # command for a surface it doesn't draw changes nothing)
-        r = subprocess.run([str(binary()), "--surfaces", "dock"], input='nonsense\n{"cmd":"open","surface":"dock"}\n', capture_output=True, text=True, timeout=30)
+        # (nothing to draw, it answers and ends whatever comes on stdin; how
+        # the lines are read is the crate's own test: shell::tests)
+        r = self.run_ui("--surfaces", "lock", input='nonsense\n{"cmd":"open","surface":"lock"}\n{"to":"osd","hush":"sound"}\n')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout.splitlines()[-1]), {"src": "ui", "kind": "ready", "surfaces": []})
 

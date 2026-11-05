@@ -6,7 +6,9 @@
 //!
 //!   tessera-ui [--surfaces a,b]  draw these (default: all it has); ends on SIGTERM/SIGINT,
 //!                                or when stdin, a pipe, closes (the shell that started it quit);
-//!                                the shell's commands on stdin, a JSON line each (src/shell.rs)
+//!                                the shell's JSON lines on stdin: commands
+//!                                `{"cmd":…,"surface":…}` (src/shell.rs) and
+//!                                `{"to":"osd",…}` for that surface (RustUi.tell)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
@@ -86,6 +88,15 @@ fn handle(state: &mut State, msg: Msg) {
             }
         }
     }
+}
+
+/// A line from the shell on stdin (RustUi.tell): `{"to": "<surface>", …}`
+/// reaches that part's `message` as the serde_json::Value
+fn shell_said(state: &mut State, line: &[u8]) {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { return };
+    let Some(to) = v["to"].as_str().and_then(|t| surfaces::KNOWN.iter().find(|k| **k == t)) else { return };
+    let mut v = Some(v);
+    state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
 }
 
 /// Fonts that aren't system fonts: Phosphor (icons) and Google Sans Flex
@@ -213,8 +224,9 @@ fn main() {
                     return Ok(PostAction::Remove);
                 }
                 for l in lines.feed(&buf[..n as usize]) {
-                    if let Some(c) = shell::Command::parse(&l) {
-                        state.command(c);
+                    match shell::Command::parse(&l) {
+                        Some(c) => state.command(c),
+                        None => shell_said(state, l.as_bytes()),
                     }
                 }
                 Ok(PostAction::Continue)
@@ -232,6 +244,11 @@ fn main() {
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());
     state.each_part(|p, st| p.start(st));
+    // (parts that show nothing until something happens, as the OSD: no first
+    // frame to wait for, they draw from now; the shell steps aside at once)
+    if state.surfaces.is_empty() {
+        surfaces::announce(&state.shell.surfaces);
+    }
 
     while !state.exit {
         let timeout = if state.wants_frame_soon() {

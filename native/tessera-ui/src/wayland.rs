@@ -367,21 +367,25 @@ impl State {
         }
     }
 
-    /// The part of a surface that takes the pointer (`None`: all of it):
-    /// rectangles in surface-local logical px. Elsewhere clicks go to what's
-    /// below (a dock's full-width window over other windows)
+    /// Where a surface takes the pointer (QML's `mask`): these rectangles, in
+    /// surface-local logical px; `Some(&[])` nowhere (clicks go through to
+    /// what's below); `None` everywhere
     pub fn set_input_region(&self, s: &Surface, rects: Option<&[(i32, i32, i32, i32)]>) {
         match rects {
             None => s.wl.set_input_region(None),
             Some(rects) => {
-                let Ok(region) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
+                let Ok(r) = smithay_client_toolkit::compositor::Region::new(&self.compositor) else { return };
                 for &(x, y, w, h) in rects {
-                    region.add(x, y, w, h);
+                    r.add(x, y, w, h);
                 }
-                s.wl.set_input_region(Some(region.wl_region()));
+                s.wl.set_input_region(Some(r.wl_region()));
             }
         }
-        s.wl.commit();
+        // (double-buffered: the next frame's commit carries it; a surface
+        // already on screen and idle gets one now)
+        if s.mapped.get() {
+            s.wl.commit();
+        }
     }
 
     pub fn keyboard_surface(&self) -> Option<Rc<Surface>> {
