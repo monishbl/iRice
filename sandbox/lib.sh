@@ -61,7 +61,10 @@ stop_sandbox_apps() {
 stop_sandbox_shells() {
     local pids
     # (not the look-switching or update screens: they cover the restart)
-    pids="$(for p in $(sandbox_pids tessera-shell; sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell); do
+    # (tessera-ui too: standalone it is the shell, and a reload must restart it;
+    # beside the QML it would end with its shell anyway. "tessera-ui.real" is
+    # the verification script's wrapped binary)
+    pids="$(for p in $(sandbox_pids tessera-shell; sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell; sandbox_pids tessera-ui; sandbox_pids tessera-ui.real); do
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/tessera-look\.' -e '/tessera-update\.' || echo "$p"
     done)"
     [[ -z "$pids" ]] && return 0

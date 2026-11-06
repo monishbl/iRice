@@ -25,5 +25,23 @@ pub fn services() -> Vec<Box<dyn Service>> {
     v.extend(input::services());
     v.extend(sysinfo::services());
     v.extend(accounts::services());
+    v.push(Box::new(Mirror));
     v
+}
+
+/// What other crates read of this one's services, mirrored from the bus into
+/// the shell's state after every turn (the lock reads `fingerprint.lockScreen`
+/// and `face.lockScreen`, as Lock.qml read Fingerprint and Face)
+struct Mirror;
+
+impl Service for Mirror {
+    fn name(&self) -> &'static str {
+        "SystemMirror"
+    }
+    fn settled(&mut self, h: &mut tessera_core::host::Host) {
+        for (svc, key) in [("fingerprint", "lockScreen"), ("face", "lockScreen")] {
+            let v = bus::field(svc, key);
+            h.set_state(&format!("{svc}.{key}"), if v.is_null() { serde_json::json!(false) } else { v });
+        }
+    }
 }

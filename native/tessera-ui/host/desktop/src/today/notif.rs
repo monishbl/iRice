@@ -147,6 +147,18 @@ impl Notif {
         let fresh: Vec<Note> = new.iter().filter(|n| !old.contains(&n.id)).cloned().collect();
         let gone: Vec<u32> = old.difference(&now_ids).copied().collect();
         self.list = new;
+        // the lock screen's list (Lock.qml tellNotes): whoever serves them, the
+        // lock shows them; it keeps the latest, so it's current when it locks
+        let notes: Vec<Value> = self
+            .list
+            .iter()
+            .map(|n| {
+                let key = [&n.app_name, &n.desktop_entry].into_iter().find(|s| !s.is_empty()).cloned().unwrap_or_else(|| n.id.to_string());
+                let icon = [&n.image, &n.app_icon, &n.desktop_entry].into_iter().find(|s| !s.is_empty()).cloned().unwrap_or_default();
+                serde_json::json!({"key": key, "app": n.app_name, "icon": icon, "summary": n.summary, "body": n.body, "at": n.at})
+            })
+            .collect();
+        h.tell("lock", serde_json::json!({"notes": notes}));
         for id in gone {
             let dismissed = self.dismissed_here.remove(&id);
             calls.note_gone(h, id, dismissed);

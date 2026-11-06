@@ -356,7 +356,7 @@ for look_log in sorted(out.glob("logs/*-standalone-probe.txt")):
                 except Exception:
                     pass
         return "?"
-    L += [f"- Memory (RSS) and CPU, standalone: start {mem('start', 'tessera-ui')}, end {mem('end', 'tessera-ui')}; QML shell in the reference pass: {mem('qml-settled', 'qs')}", ""]
+    L += [f"- Memory (RSS) and CPU, standalone: start {mem('start', 'tessera-ui')}, end {mem('end', 'tessera-ui')}; QML shell in the reference pass: {mem('qml-settled', 'quickshell') if mem('qml-settled', 'quickshell') != '?' else mem('qml-settled', 'qs')}", ""]
     tl = out / f"logs/{look}-tessera-ui.log"
     t = tl.read_text(errors="replace").split("\n") if tl.exists() else []
     na = collections.Counter(m.group(1) for x in t for m in [re.search(r"host: nothing answers (\S+)", x)] if m)

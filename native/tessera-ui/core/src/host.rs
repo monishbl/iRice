@@ -169,6 +169,9 @@ pub trait Service {
     /// a message from its own threads (Host::sender)
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {}
     fn quit(&mut self, h: &mut Host) {}
+    /// After every turn of the host (a call, an IPC call, a message): a
+    /// service that mirrors what it keeps into the shell's state does it here
+    fn settled(&mut self, h: &mut Host) {}
 }
 
 fn prefix(call: &str) -> &str {
@@ -220,6 +223,10 @@ impl HostPart {
             for a in std::mem::take(&mut self.pending) {
                 self.answer(st, a);
             }
+        }
+        for s in self.services.iter_mut() {
+            let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
+            s.settled(&mut h);
         }
         if self.state_dirty {
             self.state_dirty = false;

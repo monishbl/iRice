@@ -162,6 +162,8 @@ pub struct Panels {
     sent_action: Option<(String, String)>,
     sent_about: bool,
     sent_settings: Option<(bool, String)>,
+    /// the App Store window as last told to host-sharing (appstore.panel / .app)
+    sent_app_store: Option<(bool, Value)>,
     /// host-system's settings bridges were told the window is open / which page shows
     sent_live: bool,
     sent_bridge_page: String,
@@ -380,6 +382,16 @@ impl Panels {
             h.command("about", "session", None, json!({"open": about, "screen": if about { self.m.screen.clone() } else { String::new() }, "info": if info.is_null() { json!({}) } else { info }}));
         }
         self.sent_about = about;
+        // The App Store: Panels.appStoreOpen and .appStoreApp, to host-sharing's
+        // AppStore (it keeps the backend and the window's state feed)
+        let store = (self.m.app_store_open, self.m.app_store_app.clone());
+        if self.sent_app_store.as_ref() != Some(&store) {
+            if self.sent_app_store.as_ref().map(|s| s.1 != store.1).unwrap_or(true) {
+                h.ask("appstore.app", json!([store.1]));
+            }
+            h.ask("appstore.panel", json!([store.0]));
+            self.sent_app_store = Some(store);
+        }
         // Settings: Panels.settingsOpen, .settingsPage and .settingsTarget as commands
         if drawing(h, "settings") {
             let focus = focused(h);
@@ -471,6 +483,7 @@ impl Panels {
                 self.forwarded.clear();
                 self.sent_tab = -1;
                 self.sent_settings = None;
+                self.sent_app_store = None;
                 self.sent_quick_look.clear();
                 h.ask("lock.resend", json!([]));
             }
