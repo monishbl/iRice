@@ -41,6 +41,8 @@ use std::time::Duration;
 
 const NAME: &str = "clipboard";
 pub const NS: &str = "tessera:clipboard";
+/// how long it stays closed before its window goes (made again on opening)
+const RETIRE_SECS: u64 = 10;
 const WIDTH: f32 = 560.0;
 const KINDS: [Filter; 3] = [Filter::All, Filter::Text, Filter::Images];
 
@@ -58,8 +60,12 @@ enum M {
     ClearClicked,
     ClearLeft,
     Scrolled(f32),
+    /// closed long enough (its opening's number): the window goes
+    Retire(u32),
     Dismissed,
     Closed,
+    /// waited long enough for the history and its first pictures: open
+    ShowAnyway(u32),
 }
 
 // ── Layout ───────────────────────────────────────────────────────────────
@@ -230,6 +236,18 @@ pub struct Clipboard {
     total: f32,
     scroll: f32,
     later: slint::Timer,
+    /// opened, waiting to show until the history and the pictures of its
+    /// first rows are here (so glass, rows and pictures come in together)
+    waiting: bool,
+    opening: u32,
+    show_timer: slint::Timer,
+    /// the frame that first draws it opening: its glass waits until that
+    /// one is on screen (the glass never shows empty)
+    glass_from: u32,
+    /// the pictures as Slint images, kept from open to open (their
+    /// textures stay uploaded)
+    images: std::collections::HashMap<std::path::PathBuf, slint::Image>,
+    retire_timer: slint::Timer,
 }
 
 impl Clipboard {
@@ -311,6 +329,7 @@ impl Clipboard {
         if let Some(p) = st.shell.get::<Previews>() {
             self.previews = p.clone();
         }
+        self.keep_images();
         self.open = true;
         self.kind = 0;
         self.query.clear();
@@ -323,7 +342,30 @@ impl Clipboard {
         w.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         w.surface.show(0, 0);
         self.rebuild(st);
-        self.win.as_ref().unwrap().ui.set_shown(true);
+        self.waiting = true;
+        self.opening = self.opening.wrapping_add(1);
+        let (to, n) = (st.shell.sender(NAME), self.opening);
+        self.show_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(250), move || to(Box::new(M::ShowAnyway(n))));
+        self.show_when_ready(st, false);
+    }
+
+    /// Show it once what its first screen shows is here: the history, and
+    /// the pictures of the rows in view (or when waiting ran out)
+    fn show_when_ready(&mut self, st: &State, anyway: bool) {
+        if !self.waiting || !self.open {
+            return;
+        }
+        let rows_here = st.shell.get::<History>().is_some();
+        let pictures_here = self.items.iter().filter(|p| p.y < 480.0).all(|p| self.rows[p.row].image.as_ref().map_or(true, |i| self.previews.0.contains_key(i)));
+        if !anyway && !(rows_here && pictures_here) {
+            return;
+        }
+        self.waiting = false;
+        self.show_timer.stop();
+        if let Some(w) = &self.win {
+            self.glass_from = w.surface.rendered.get().wrapping_add(1);
+            w.ui.set_shown(true);
+        }
     }
 
     fn close(&mut self, tell: bool) {
@@ -350,6 +392,21 @@ impl Clipboard {
             st.shell.glass.set(&w.output, NS, &[]);
             w.glass_sent.clear();
         }
+        // (a hidden layer stays in Hyprland's list: closed for a while, the
+        // window goes, and is made again at the next open)
+        let (to, n) = (st.shell.sender(NAME), self.opening);
+        self.retire_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(RETIRE_SECS), move || to(Box::new(M::Retire(n))));
+    }
+
+    /// Still closed since then: the window goes
+    fn retire(&mut self, st: &mut State, n: u32) {
+        if self.open || n != self.opening {
+            return;
+        }
+        if let Some(w) = self.win.take() {
+            st.shell.glass.set(&w.output, NS, &[]);
+            st.drop_surface(&w.surface);
+        }
     }
 
     /// The rows for the search and filter, laid out, into the window
@@ -364,6 +421,16 @@ impl Clipboard {
         self.push(st);
     }
 
+    /// A Slint image for each picture (made once: the same image keeps its
+    /// texture), the ones no longer listed forgotten
+    fn keep_images(&mut self) {
+        let p = &self.previews.0;
+        self.images.retain(|k, _| p.contains_key(k));
+        for (k, px) in p {
+            self.images.entry(k.clone()).or_insert_with(|| slint::Image::from_rgba8(px.clone()));
+        }
+    }
+
     fn push_items(&self) {
         let Some(w) = &self.win else { return };
         let items: Vec<ui::CItem> = self
@@ -371,8 +438,8 @@ impl Clipboard {
             .iter()
             .map(|p| {
                 let r = &self.rows[p.row];
-                let (image, has_image, aspect) = match r.image.as_ref().and_then(|i| self.previews.0.get(i)) {
-                    Some(px) => (slint::Image::from_rgba8(px.clone()), true, px.width() as f32 / px.height().max(1) as f32),
+                let (image, has_image, aspect) = match r.image.as_ref().and_then(|i| self.previews.0.get(i).map(|px| (i, px))) {
+                    Some((i, px)) => (self.images.get(i).cloned().unwrap_or_else(|| slint::Image::from_rgba8(px.clone())), true, px.width() as f32 / px.height().max(1) as f32),
                     None => (slint::Image::default(), false, 0.0),
                 };
                 let text = clip::norm(&r.text);
@@ -639,10 +706,12 @@ impl Part for Clipboard {
             if let Some(p) = st.shell.get::<Previews>() {
                 self.previews = p.clone();
             }
+            self.keep_images();
             if self.open {
                 self.push_items();
             }
         }
+        self.show_when_ready(st, false);
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
@@ -683,8 +752,14 @@ impl Part for Clipboard {
                 }
             }
             M::Scrolled(y) => self.scroll = -y,
+            M::Retire(n) => self.retire(st, n),
             M::Dismissed => self.close(true),
             M::Closed => self.closed(st),
+            M::ShowAnyway(n) => {
+                if n == self.opening {
+                    self.show_when_ready(st, true);
+                }
+            }
         }
     }
 
@@ -719,6 +794,10 @@ impl Part for Clipboard {
             a.update(false, f);
         }
         if !w.surface.mapped.get() || !st.shell.plugin || st.shell.look.material {
+            return;
+        }
+        // (the glass comes with the first frame of it opening, never before)
+        if self.open && (self.waiting || w.surface.presented.get().wrapping_sub(self.glass_from) > u32::MAX / 2) {
             return;
         }
         let ui = &w.ui;

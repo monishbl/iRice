@@ -12,33 +12,10 @@ import qs.services
 Scope {
     RustBridge {}
 
-    Variants {
-        model: Quickshell.screens
-
-        Scope {
-            id: perScreen
-            required property var modelData
-
-            PanelLoader {
-                panel: "controlCenter"
-                screen: perScreen.modelData
-                active: alive && !Theme.material
-                elsewhere: RustUi.drawing("controlcenter")
-
-                ControlCenterGlass {
-                    screen: perScreen.modelData
-                }
-            }
-            PanelLoader {
-                panel: "controlCenter"
-                screen: perScreen.modelData
-                active: alive && Theme.material
-                elsewhere: RustUi.drawing("controlcenter")
-
-                QuickSettings {
-                    screen: perScreen.modelData
-                }
-            }
-        }
+    // The windows (ControlCenterSlots.qml), loaded only while tessera-ui
+    // isn't to draw it (RustUi.away); RustBridge above stays
+    LazyLoader {
+        active: !RustUi.away("controlcenter")
+        source: Qt.resolvedUrl("ControlCenterSlots.qml")
     }
 }

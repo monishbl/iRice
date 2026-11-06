@@ -32,7 +32,16 @@ Variants {
         // A note on the desktop takes typing (focus only when clicked)
         WlrLayershell.keyboardFocus: desktopWidgets.visible && desktopWidgets.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
-        anchors { top: true; bottom: true; left: true; right: true }
+        // While tessera-ui draws both the picture and the desktop, and there's
+        // no video, strip or backdrop bake here, nothing of this window shows:
+        // it shrinks to one clear pixel, so Hyprland doesn't composite a
+        // full-screen layer for nothing (it stays mapped: its helpers still
+        // render for the next bake, the icon measures)
+        readonly property bool parked: rust && RustUi.drawing("desktop") && Wallpaper.liveVideo === "" && !(StageManager.enabled && Config.options.stageManager.strip) && !bakeTimer.running && !baking && !desktopWidgets.visible
+        property bool baking: false
+        anchors { top: true; left: true; bottom: !parked; right: !parked }
+        implicitWidth: 1
+        implicitHeight: 1
         color: rust ? "transparent" : "black"
 
         // On the bottom layer this window sits over Stage Manager's strip
@@ -250,13 +259,14 @@ Variants {
             id: blurred
             z: -1
             x: win.rust ? -width - 64 : 0
-            width: Math.max(1, Math.round(win.width / 4))
-            height: Math.max(1, Math.round(win.height / 4))
+            // (the screen's, not the window's: parked, that's one pixel)
+            width: Math.max(1, Math.round((win.screen?.width ?? win.width) / 4))
+            height: Math.max(1, Math.round((win.screen?.height ?? win.height) / 4))
 
             Image {
                 id: small
                 anchors.fill: parent
-                source: Wallpaper.source
+                source: win.parked ? "" : Wallpaper.source // (parked: nothing to bake, no picture held)
                 fillMode: Image.PreserveAspectCrop
                 sourceSize: Qt.size(parent.width * 2, parent.height * 2)
                 asynchronous: true
@@ -315,15 +325,23 @@ Variants {
                     return;
                 }
                 const path = Wallpaper.backdropPath(win.screen?.name ?? "default");
+                win.baking = true;
                 blurred.grabToImage(result => {
                     if (result.saveToFile(path))
                         Wallpaper.backdropBaked(win.screen?.name ?? "default");
                     strip.src = result.url;
                     strip.loadImage(result.url);
+                    bakeSettle.restart();
                 });
             }
         }
-        onWidthChanged: bakeTimer.restart()
+        // (the strip's sample is painted a moment after the grab)
+        Timer {
+            id: bakeSettle
+            interval: 1000
+            onTriggered: win.baking = false
+        }
+        onWidthChanged: if (!parked) bakeTimer.restart()
 
         // Widgets live on the first screen (one layout; macOS shows them on one display)
         DesktopWidgets {

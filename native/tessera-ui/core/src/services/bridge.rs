@@ -9,6 +9,8 @@
 //!        IslandCall: the QML Island service's alerts, as they're posted
 //!   {"src":"shell","kind":"live","activities":[…]}
 //!        LiveActivities: its ongoing activities (timers, recording…)
+//!   {"src":"shell","kind":"glass","tone":"#rrggbb","cooldown":"keep"}
+//!        theme::ShellGlass: what the glass follows that only it knows
 //!
 //! Out: `call(&["panels", "toggleAt", …])` runs shell/assets/scripts/
 //! shell-ipc.sh call … on a thread (opening a QML panel, an island action).
@@ -69,6 +71,8 @@ pub fn parse_line(line: &str) -> Option<Box<dyn Any + Send>> {
             event: if v["event"].is_null() { v["patch"].clone() } else { v["event"].clone() },
         })),
         "live" => Some(Box::new(LiveActivities(v["activities"].as_array().cloned().unwrap_or_default()))),
+        // (the wallpaper's tone and Cool-down's glass: theme.rs's ShellGlass)
+        "glass" => Some(Box::new(crate::theme::shell_glass_from(&v))),
         _ => None,
     }
 }

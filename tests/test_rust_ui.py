@@ -95,7 +95,7 @@ class Agreement(unittest.TestCase):
         # Panels' opening goes to tessera-ui and the QML window never loads
         loader = (ROOT / "shell/common/PanelLoader.qml").read_text()
         self.assertRegex(loader, r"wanted: !elsewhere &&")
-        for name, path in (("emoji", "shell/modules/emoji/EmojiPicker.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml"),
+        for name, path in (("emoji", "shell/modules/emoji/EmojiSlots.qml"), ("clipboard", "shell/modules/clipboard/ClipboardPanel.qml"),
                            ("spotlight", "shell/modules/spotlight/SpotlightGlass.qml"), ("spotlight", "shell/modules/spotlight/SearchView.qml")):
             src = (ROOT / path).read_text()
             self.assertIn(f'RustUi.drawing("{name}")', src)
@@ -249,8 +249,10 @@ class Agreement(unittest.TestCase):
         self.assertIn("surfaceOf(Panels.open)", rust_ui)
         self.assertIn("panelOf(e.surface)", rust_ui)
         cc = (ROOT / "shell/modules/controlcenter/ControlCenter.qml").read_text()
-        self.assertEqual(cc.count('elsewhere: RustUi.drawing("controlcenter")'), 2)
+        slots = (ROOT / "shell/modules/controlcenter/ControlCenterSlots.qml").read_text()
+        self.assertEqual(slots.count('elsewhere: RustUi.drawing("controlcenter")'), 2)
         self.assertIn("RustBridge {}", cc)
+        self.assertIn('RustUi.away("controlcenter")', cc)
         bridge = (ROOT / "shell/modules/controlcenter/RustBridge.qml").read_text()
         for word in ('RustUi.tell("controlcenter", { state:', 'RustUi.tell("controlcenter", { page:', "function onCcCall(", 'case "cc.block":'):
             self.assertIn(word, bridge)
@@ -295,6 +297,29 @@ class Agreement(unittest.TestCase):
         for word in ('{ livetext: k', '{ wifi: k', 'RustUi.tell("screentools", { state: s })'):
             self.assertIn(word, bridge)
 
+    def test_twins_are_not_loaded_while_rust_draws_them(self):
+        # a surface tessera-ui draws (or is starting to) has no QML twin at
+        # all, not even compiled (TesseraShell's Twin, the emoji picker's and
+        # Control Center's windows); it loads again if tessera-ui ends or
+        # refuses the surface
+        shell = (ROOT / "shell/TesseraShell.qml").read_text()
+        self.assertIn("active: !RustUi.away(surface)", shell)
+        for name, f in (("menubar", "MenuBar"), ("dock", "Dock"), ("notifications", "NotificationCenter"), ("sidebar", "Sidebar"), ("wallpaper", "WallpaperPicker"), ("clipboard", "ClipboardPanel")):
+            self.assertRegex(shell, rf'Twin {{ surface: "{name}"; file: "modules/\w+/{f}.qml" }}')
+            self.assertNotRegex(shell, rf"^\s*{f} {{}}", f)
+        self.assertIn('RustUi.away("emoji")', (ROOT / "shell/modules/emoji/EmojiPicker.qml").read_text())
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        for word in ("function away(name)", "root.failed = true", "refused.concat("):
+            self.assertIn(word, rust_ui)
+
+    def test_started_once_for_one_list(self):
+        # the list read again unchanged (Config's second read at start) doesn't
+        # restart it; the glass line says the tone and Cool-down
+        qml = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn("list !== root.armedWith", qml)
+        self.assertIn('kind: "glass", tone: hex(Wallpaper.tone), cooldown: CoolDown.glass', qml)
+        self.assertIn('"glass" => Some(Box::new(crate::theme::shell_glass_from(&v)))', (CRATE / "core/src/services/bridge.rs").read_text())
+
     def test_sharing_surfaces_feed_their_part_and_step_aside(self):
         # share, appstore, shelf, network (the Wi-Fi menu), captions, notes:
         # each QML twin steps aside, its feed tells the part the shell's state
@@ -335,6 +360,32 @@ class Agreement(unittest.TestCase):
             self.assertIn(word, dnd)
         self.assertIn("fn drag(&mut self, st: &mut State", (CORE / "src/shell.rs").read_text())
 
+    def test_a_dropped_surface_leaves_the_compositor(self):
+        # Slint keeps a shown window's component, which holds its Surface:
+        # drop_surface hides the Slint window (breaking that cycle), unmaps it
+        # and destroys its layer role so it can't stay mapped, keep its
+        # exclusive zone or stay in Hyprland's layer list
+        wl = (CORE / "src/wayland.rs").read_text()
+        body = wl[wl.index("pub fn drop_surface("):]
+        body = body[:body.index("\n    }\n")]
+        for word in ("s.window.hide()", "s.hide()", "s.retire_role()"):
+            self.assertIn(word, body)
+        self.assertIn("wlr.destroy()", wl)
+        self.assertIn("if self.retired.get()", wl)
+
+    def test_started_once_when_the_list_settles(self):
+        # Config's second read empties the list for a moment: a timer takes
+        # the list as it ends up, so tessera-ui isn't stopped and started again
+        qml = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn("onWantedChanged: arming.restart()", qml)
+        self.assertNotIn("onWantedChanged: Qt.callLater", qml)
+
+    def test_bar_lets_go_when_a_qml_popover_closes(self):
+        # the item that opened a QML popover isn't left lit after Esc
+        bar = (CRATE / "surfaces/menubar/src/lib.rs").read_text()
+        self.assertIn("let closed = !self.shell_open.is_empty();", bar)
+        self.assertIn("if closed || !on.as_ref()", bar)
+
     def test_never_started_with_the_old_list(self):
         # Bound straight to the list, the process can start in the same instant
         # the list changes, before its command has the new list: with the old
@@ -342,7 +393,7 @@ class Agreement(unittest.TestCase):
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
         self.assertNotRegex(qml, r"wanted:\s*root\.wanted\.length")
         self.assertRegex(qml, r"wanted:\s*root\.armed")
-        self.assertIn("Qt.callLater", qml)
+        self.assertIn("arming.restart()", qml)
 
 
 class Bridge(unittest.TestCase):

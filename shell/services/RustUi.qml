@@ -29,6 +29,18 @@ Singleton {
     function drawing(name) {
         return proc.running && drawn.includes(name);
     }
+    // Left to tessera-ui altogether: listed in rust.surfaces while it runs
+    // or is starting (TesseraShell's Twin then doesn't even load this
+    // shell's copy). Not once it has ended and isn't back within a moment
+    // (failed: not built, crashed, waiting out a back-off) or said it has
+    // no such surface (refused); then this shell's copy loads again.
+    // (Until the settings are read, nothing is loaded either way.)
+    property bool failed: false
+    property var refused: []
+    property bool ready: false
+    function away(name) {
+        return !Config.ready || (wanted.includes(name) && !failed && !refused.includes(name));
+    }
     // A line for it (its stdin): what this shell still owns that its surfaces
     // show (modules/menubar/RustBridge.qml), {"src":"shell","kind":…};
     // send() is below, with the panels'
@@ -89,6 +101,9 @@ Singleton {
         onRunningChanged: if (!running) {
             root.drawn = [];
             root.osdShown = false;
+            root.ready = false;
+        } else {
+            root.refused = [];
         }
         stdout: SplitParser {
             onRead: line => root.handle(line)
@@ -96,15 +111,51 @@ Singleton {
     }
     // A new list: start it again with that one (what's drawn waits for it to
     // say). An empty list just stops it (a restart then would leave it
-    // waiting out a back-off the next time it's wanted).
-    onWantedChanged: Qt.callLater(() => {
-        const on = root.wanted.length > 0;
-        if (on && root.armed && proc.running) {
-            root.drawn = [];
-            proc.restart();
+    // waiting out a back-off the next time it's wanted). The same list again
+    // (Config reads the file once more after the shell starts, and the list
+    // changes without changing) leaves it running.
+    // (gone for 3 s, or started and silent for 8 s: this shell draws again)
+    Timer {
+        interval: 3000
+        running: root.armed && !proc.running
+        onTriggered: root.failed = true
+    }
+    Timer {
+        interval: 8000
+        running: root.armed && proc.running && !root.ready
+        onTriggered: root.failed = true
+    }
+    property string armedWith: ""
+    // (settled first: Config reading the file again empties the list for a
+    // moment and fills it in a later turn. Qt.callLater with a new closure
+    // each time doesn't merge those, so the empty list stopped it and the
+    // full one started it again: two starts at every shell start. A short
+    // quiet moment takes the list as it ends up.)
+    onWantedChanged: arming.restart()
+    Timer {
+        id: arming
+        interval: 250
+        onTriggered: {
+            const on = root.wanted.length > 0;
+            const list = root.wanted.join(",");
+            if (on && root.armed && proc.running && list !== root.armedWith) {
+                root.drawn = [];
+                proc.restart();
+            }
+            root.armedWith = on ? list : "";
+            root.armed = on;
         }
-        root.armed = on;
-    })
+    }
+
+    // The glass follows two things only this shell knows (tessera-ui's
+    // theme::ShellGlass): the wallpaper's tone (appearance.wallpaperTint)
+    // and Cool-down's cheaper glass; said at its start and on each change
+    function hex(c) {
+        return "#" + [c.r, c.g, c.b].map(x => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
+    }
+    readonly property string glassLine: JSON.stringify({ src: "shell", kind: "glass", tone: hex(Wallpaper.tone), cooldown: CoolDown.glass })
+    onGlassLineChanged: if (proc.running) proc.write(glassLine + "\n")
+    onStarted: proc.write(glassLine + "\n")
 
     function handle(line) {
         let e;
@@ -116,12 +167,16 @@ Singleton {
         if (e.src !== "ui")
             return;
         if (e.kind === "ready") {
+            ready = true;
+            failed = false;
             drawn = e.surfaces ?? [];
             forwarded = "";
             Qt.callLater(follow); // (a panel already open moves over)
             started();
         } else if (e.kind === "unknown") {
             console.info("tessera-ui: no " + e.surface + " in Rust yet: this shell draws it");
+            if (!refused.includes(e.surface))
+                refused = refused.concat([e.surface]);
         } else if (e.kind === "closed") {
             // it closed itself (Esc, a click outside, a pick)
             if (forwarded === e.surface)

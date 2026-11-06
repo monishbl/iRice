@@ -15,6 +15,12 @@ pub fn handle(state: &mut State, msg: Msg) {
         Msg::Run(f) => f(),
         Msg::Quit => state.exit = true,
         Msg::Data(v) => {
+            // (the glass the shell said, its wallpaper tone and Cool-down: the look follows)
+            if let Some(g) = v.downcast_ref::<crate::theme::ShellGlass>() {
+                if crate::theme::set_shell_glass(g.clone()) {
+                    state.config_changed();
+                }
+            }
             let what = state.shell.store(v);
             state.each_part(|p, st| p.data(st, what));
         }

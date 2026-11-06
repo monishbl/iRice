@@ -25,6 +25,9 @@ pub struct Look {
     /// Material: how see-through panels are, 0..1 (Theme.qml's transparency:
     /// appearance.materialTransparency, 0 with Reduce transparency; Glass: 0)
     pub transparency: f32,
+    /// The glass material Settings chose (Theme.glass: Glass, Frost, Solid,
+    /// Custom, the optics, the wallpaper's tint, Cool-down's cheaper glass)
+    pub glass: GlassMaterial,
 }
 
 pub fn config_path() -> PathBuf {
@@ -69,6 +72,11 @@ pub fn read() -> Look {
 /// Material look follows the wallpaper (as the shell, Material's baseline
 /// purple when there's none to read)
 pub fn look_from(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str) -> Option<String>) -> Look {
+    look_with(v, look_override, wallpaper, &shell_glass())
+}
+
+/// The same, with what the shell said about the glass given
+pub fn look_with(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str) -> Option<String>, shell: &ShellGlass) -> Look {
     let a = &v["appearance"];
     let s = |k: &str, d: &str| a[k].as_str().unwrap_or(d).to_string();
     let look = look_override.map(str::to_string).unwrap_or_else(|| s("look", "glass"));
@@ -95,8 +103,227 @@ pub fn look_from(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
         _ => 0,
     };
     let reduce = a["reduceTransparency"].as_bool().unwrap_or(false);
-    let transparency = if material && !reduce { a["materialTransparency"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32 } else { 0.0 };
-    Look { material, dark, seed, style: s("materialStyle", "tonalSpot"), accent, contrast, transparency }
+    // (Theme.transparency: none while Cool-down makes glass solid either)
+    let transparency = if material && !reduce && shell.cooldown != "solid" { a["materialTransparency"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32 } else { 0.0 };
+    let style = s("materialStyle", "tonalSpot");
+    let glass = glass_material(v, material, dark, transparency, shell, || {
+        let roles = material_roles(&seed, dark, &style);
+        rgbf(roles.iter().find(|(n, _)| n == "surfaceContainer").map_or("#000000", |(_, c)| c.as_str()))
+    });
+    Look { material, dark, seed, style, accent, contrast, transparency, glass }
+}
+
+// ── Glass: Theme.glass (shell/common/Theme.qml) ─────────────────────────────
+
+/// What only the QML shell knows that the glass follows, as it last said
+/// (RustUi.qml's {"src":"shell","kind":"glass"} line): the wallpaper's tone
+/// (Wallpaper.tone, for appearance.wallpaperTint) and Cool-down's glass
+/// (CoolDown.glass: keep, frosted or solid)
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShellGlass {
+    pub tone: Option<[f32; 3]>,
+    pub cooldown: String,
+}
+
+impl Default for ShellGlass {
+    fn default() -> Self {
+        Self { tone: None, cooldown: "keep".into() }
+    }
+}
+
+static SHELL_GLASS: std::sync::Mutex<Option<ShellGlass>> = std::sync::Mutex::new(None);
+
+pub fn shell_glass() -> ShellGlass {
+    SHELL_GLASS.lock().ok().and_then(|g| g.clone()).unwrap_or_default()
+}
+
+/// The shell said it again; true when it changed (the look is read again)
+pub fn set_shell_glass(g: ShellGlass) -> bool {
+    let Ok(mut cur) = SHELL_GLASS.lock() else { return false };
+    let changed = cur.as_ref() != Some(&g);
+    *cur = Some(g);
+    changed
+}
+
+/// The glass line from the shell: {"src":"shell","kind":"glass","tone":"#rrggbb","cooldown":"keep"}
+pub fn shell_glass_from(v: &Value) -> ShellGlass {
+    let tone = v["tone"].as_str().filter(|t| t.len() >= 7 && is_hex(&t[..7])).map(|t| {
+        let c = rgbf(&t[..7]);
+        [c[0], c[1], c[2]]
+    });
+    let cooldown = v["cooldown"].as_str().filter(|c| ["keep", "frosted", "solid"].contains(c)).unwrap_or("keep").to_string();
+    ShellGlass { tone, cooldown }
+}
+
+/// "#rrggbb" as 0..1 channels, opaque
+fn rgbf(s: &str) -> [f32; 4] {
+    let v = u32::from_str_radix(s.trim_start_matches('#').get(..6).unwrap_or("000000"), 16).unwrap_or(0);
+    [((v >> 16) & 255) as f32 / 255.0, ((v >> 8) & 255) as f32 / 255.0, (v & 255) as f32 / 255.0, 1.0]
+}
+
+/// A material: lens (bends what's behind), frost (blurs it), solid
+/// (opacity) and tint (darkens it), with the optics and colours it's drawn
+/// with (Theme.glass's properties, as they are once its glide settles)
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlassMaterial {
+    /// the material after Reduce transparency and Cool-down (liquid,
+    /// frosted, solid, custom, veil)
+    pub name: String,
+    pub lens: f32,
+    pub frost: f32,
+    pub solid: f32,
+    pub tint_amount: f32,
+    /// thin | depth | auto (thick on small controls)
+    pub depth: String,
+    pub material_look: bool,
+    pub dark: bool,
+    /// the clear tint (Theme.glass.tint: the base, toward the wallpaper's tone)
+    pub tint: [f32; 4],
+    pub frost_color: [f32; 4],
+    pub solid_color: [f32; 4],
+    pub bend: f32,
+    pub band: f32,
+    pub dispersion: f32,
+}
+
+/// The plugin's numbers for one shape's material (Theme.glass.preset)
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlassPreset {
+    pub mode: f32,
+    pub refraction: f32,
+    pub depth: f32,
+    pub bevel: f32,
+    pub frost: f32,
+    pub chroma: f32,
+    pub rim: f32,
+    pub gloss: f32,
+    pub tint: [f32; 4],
+    pub saturation: f32,
+}
+
+impl GlassMaterial {
+    /// Theme.glass.gloss: 3D lighting, full for clear glass, none solid
+    pub fn gloss(&self) -> f32 {
+        self.lens * (1.0 - 0.85 * self.frost) * (1.0 - self.solid)
+    }
+    /// Theme.glass.tier: the nearest named material
+    pub fn tier(&self) -> &'static str {
+        if self.solid >= 0.97 {
+            "solid"
+        } else if self.solid < 0.4 && (self.frost < 0.4 || self.lens >= 0.6) {
+            "liquid"
+        } else {
+            "frosted"
+        }
+    }
+    /// Theme.glass.preset(minSide)
+    pub fn preset(&self, min_side: f32) -> GlassPreset {
+        let (l, f, s) = (self.lens, self.frost, self.solid);
+        let thick = self.depth == "depth" || (self.depth == "auto" && min_side <= 140.0);
+        if s >= 0.99 {
+            return GlassPreset { mode: 2.0, refraction: 0.0, depth: 0.0, bevel: 8.0, frost: 0.0, chroma: 0.0, rim: 0.0, gloss: 0.0, tint: self.solid_color, saturation: 1.0 };
+        }
+        let ta = self.tint_amount;
+        let k = 0.3 + 1.4 * ta;
+        let alpha = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        let clear = alpha(self.tint, (if self.dark { 0.16 } else { 0.18 } * k).min(0.9));
+        let frost = alpha(self.frost_color, (if self.dark { 0.38 } else { 0.45 } * (0.6 + 0.8 * ta)).min(0.9));
+        let body = mixc(clear, frost, f);
+        let t = mixc(body, alpha(self.solid_color, 1.0), ((s - body[3]) / (1.0 - body[3]).max(0.01)).max(0.0));
+        GlassPreset {
+            mode: 0.0,
+            refraction: if thick { 30.0 } else { 22.0 } * l * self.bend,
+            depth: if thick { 0.55 } else { 0.0 } * l * self.bend.min(1.5),
+            bevel: if thick { 26.0 } else { 18.0 } * (0.5 + 0.5 * l) * self.band,
+            frost: f,
+            chroma: if thick { 0.28 } else { 0.18 } * l * self.dispersion,
+            rim: if self.material_look { 0.0 } else { (0.12 + 0.16 * l) * (1.0 - s) },
+            gloss: self.gloss(),
+            tint: t,
+            saturation: 1.35 + 0.15 * f - 0.5 * s,
+        }
+    }
+}
+
+/// Theme.glass.mixc: a toward b by t, alpha too
+fn mixc(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t]
+}
+
+/// Theme.glass from the settings (appearance.glass, glassLens, glassFrost,
+/// glassSolid, glassTint, glassIor, glassRefraction, glassDispersion,
+/// glassDepth, wallpaperTint, reduceTransparency), the look, and what the
+/// shell said (the wallpaper's tone, Cool-down). `m3_container`: Material's
+/// surfaceContainer (asked only in that look)
+pub fn glass_material(v: &Value, material: bool, dark: bool, transparency: f32, shell: &ShellGlass, m3_container: impl Fn() -> [f32; 4]) -> GlassMaterial {
+    let a = &v["appearance"];
+    let num = |k: &str, d: f64| a[k].as_f64().unwrap_or(d) as f32;
+    let reduce = a["reduceTransparency"].as_bool().unwrap_or(false);
+    let blur = transparency > 0.0;
+    let panel_alpha = 1.0 - 0.55 * transparency;
+    let control_alpha = 1.0 - 0.4 * transparency;
+    let setting = a["glass"].as_str().unwrap_or("frosted");
+    let chosen = if reduce {
+        "solid"
+    } else if material {
+        if blur {
+            "veil"
+        } else {
+            "solid"
+        }
+    } else if setting == "auto" {
+        "frosted"
+    } else {
+        setting
+    };
+    // Cool-down swaps in a cheaper material (never a heavier one)
+    let name = if shell.cooldown == "solid" {
+        "solid"
+    } else if shell.cooldown == "frosted" && chosen != "solid" && chosen != "veil" {
+        "frosted"
+    } else {
+        chosen
+    };
+    let [lens, frost, solid, tint_amount] = match name {
+        "custom" => [num("glassLens", 1.0), num("glassFrost", 0.75), num("glassSolid", 0.0), num("glassTint", 0.75)],
+        "frosted" => [0.3, 1.0, 0.45, 0.5],
+        "solid" => [0.0, 0.0, 1.0, 0.0],
+        "veil" => [0.0, 1.0, panel_alpha, 0.5],
+        _ => [1.0, 0.75, 0.0, 0.75],
+    };
+    let base = if dark { [0.08, 0.08, 0.1, 0.16] } else { [0.98, 0.98, 1.0, 0.3] };
+    let tint = match (a["wallpaperTint"].as_bool().unwrap_or(true), shell.tone) {
+        // (Qt.tint: the tone at 10% (light: 8%) over the base)
+        (true, Some(t)) => {
+            let ta = if dark { 0.1 } else { 0.08 };
+            [t[0] * ta + base[0] * (1.0 - ta), t[1] * ta + base[1] * (1.0 - ta), t[2] * ta + base[2] * (1.0 - ta), ta + (1.0 - ta) * base[3]]
+        }
+        _ => base,
+    };
+    let frost_color = if dark { [0.11, 0.11, 0.13, 0.62] } else { [0.97, 0.97, 0.98, 0.66] };
+    let solid_color = if material {
+        let c = m3_container();
+        [c[0], c[1], c[2], if transparency > 0.0 { control_alpha } else { 1.0 }]
+    } else {
+        rgbf(if dark { "#26262A" } else { "#F2F2F5" })
+    };
+    let ior = num("glassIor", 1.5).clamp(1.0, 2.0);
+    GlassMaterial {
+        name: name.to_string(),
+        lens,
+        frost,
+        solid,
+        tint_amount,
+        depth: a["glassDepth"].as_str().unwrap_or("auto").to_string(),
+        material_look: material,
+        dark,
+        tint,
+        frost_color,
+        solid_color,
+        bend: (1.0 - 1.0 / ior) / (1.0 - 1.0 / 1.5),
+        band: num("glassRefraction", 1.0).clamp(0.4, 2.0),
+        dispersion: num("glassDispersion", 0.35).clamp(0.0, 1.0) / 0.35,
+    }
 }
 
 /// Theme.qml's accents, by name (blue when unknown)
@@ -579,32 +806,28 @@ pub fn contrast_ratio(a: Color, b: Color) -> f32 {
     (x.max(y) + 0.05) / (x.min(y) + 0.05)
 }
 
-/// The plugin's numbers for one glass shape (Theme.glass.preset with the
-/// default Liquid material: lens 1, frost 0.75, tint 0.75): x y w h radius
-/// mode refraction depth bevel frost chroma rim tintRGBA saturation opacity gloss
-/// (`lens` < 1: menus under the bar bend less, MaterialMenu's `lens: 0.35`)
+/// The plugin's numbers for one glass shape, as the QML shell's Glass.qml
+/// sends them (Theme.glass.preset for the material Settings chose): x y w h
+/// radius mode refraction depth bevel frost chroma rim tintRGBA saturation
+/// opacity gloss. (`lens` < 1: menus under the bar bend less, MaterialMenu's
+/// `lens: 0.35`.) The solid tier, which the QML draws itself without the
+/// plugin, is the plugin's solid shape here (mode 2, the solid colour).
+/// (Theme.qml glides 0.6 s between materials; here a change shows at once.)
 pub fn glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opacity: f32, lens: f32) -> [f32; 19] {
-    let thick = w.min(h) <= 140.0;
-    let (l, f) = (1.0f32, 0.75f32);
-    // Body: the clear tint toward the frosted one (Theme.qml's mixc)
-    let (clear, frost): ([f32; 4], [f32; 4]) = if look.dark {
-        ([0.10, 0.10, 0.12, 0.216], [0.11, 0.11, 0.13, 0.456])
-    } else {
-        ([0.96, 0.96, 0.97, 0.243], [0.97, 0.97, 0.98, 0.54])
-    };
-    let t: Vec<f32> = (0..4).map(|i| clear[i] + (frost[i] - clear[i]) * f).collect();
+    let g = &look.glass;
+    let p = if g.tier() == "solid" { GlassMaterial { solid: 1.0, ..g.clone() }.preset(w.min(h)) } else { g.preset(w.min(h)) };
     [
-        x, y, w, h, radius, 0.0,
-        if thick { 30.0 } else { 22.0 } * l * lens,
-        if thick { 0.55 } else { 0.0 } * l * lens,
-        (if thick { 26.0f32 } else { 18.0 }).min(radius),
-        f,
-        if thick { 0.28 } else { 0.18 } * l * lens,
-        0.12 + 0.16 * l,
-        t[0], t[1], t[2], t[3],
-        1.35 + 0.15 * f,
+        x, y, w, h, radius, p.mode,
+        p.refraction * lens,
+        p.depth * lens,
+        p.bevel.min(radius),
+        p.frost,
+        p.chroma * lens,
+        p.rim,
+        p.tint[0], p.tint[1], p.tint[2], p.tint[3],
+        p.saturation,
         opacity,
-        l * (1.0 - 0.85 * f),
+        p.gloss,
     ]
 }
 
@@ -710,6 +933,103 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         // nothing yet: Tessera's
         assert_eq!(config_in(&d), d.join("tessera/config.json"));
+    }
+
+    /// The glass is Theme.qml's own: glass_golden.js runs its `glass` object
+    /// (preset() and everything it reads) and Glass.qml's sum for one shape
+    /// under node, for a grid of settings; every number here is the same
+    #[test]
+    fn glass_shapes_match_the_shell() {
+        let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/glass_golden.js");
+        let Ok(out) = std::process::Command::new("node").arg(&script).output() else {
+            eprintln!("node not installed: skipped");
+            return;
+        };
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let cases: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let cases = cases.as_array().unwrap();
+        assert!(cases.len() > 150, "only {} cases", cases.len());
+        let mut seen = std::collections::HashSet::new();
+        for c in cases {
+            let f = |k: &str| c[k].as_f64().unwrap() as f32;
+            let mut v = json!({"appearance": c["appearance"].clone()});
+            v["appearance"]["look"] = c["look"].clone();
+            v["appearance"]["mode"] = json!(if c["dark"].as_bool().unwrap() { "dark" } else { "light" });
+            if let Some(s) = c["seed"].as_str() {
+                v["appearance"]["materialSeed"] = json!(s);
+            }
+            let shell = shell_glass_from(&json!({"tone": c["tone"], "cooldown": c["cooldown"]}));
+            let look = look_with(&v, None, none, &shell);
+            assert_eq!(look.glass.name, c["material"].as_str().unwrap(), "{c}");
+            assert_eq!(look.glass.tier(), c["tier"].as_str().unwrap(), "{c}");
+            seen.insert(format!("{}/{}", look.glass.name, look.glass.tier()));
+            let got = glass_shape(&look, f("x"), f("y"), f("w"), f("h"), f("radius"), f("opacity"), f("lens"));
+            let want: Vec<f32> = c["shape"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect();
+            if c["tier"] == "solid" {
+                // (the QML draws the solid tier itself; here the plugin's solid shape in its colour)
+                assert_eq!(got[5], 2.0, "{c}");
+                let solid = &look.glass.solid_color;
+                for i in 0..3 {
+                    assert!((got[12 + i] - solid[i]).abs() < 1e-6, "{c}");
+                }
+                continue;
+            }
+            for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+                assert!((g - w).abs() <= 2e-4 * w.abs().max(1.0), "value {i}: {g} against the shell's {w} in {c}");
+            }
+        }
+        // (every material and tier came up)
+        for m in ["liquid/liquid", "frosted/frosted", "solid/solid", "veil/frosted"] {
+            assert!(seen.contains(m), "no {m} case: {seen:?}");
+        }
+        assert!(seen.iter().any(|m| m.starts_with("custom/")), "{seen:?}");
+    }
+
+    /// Fixed numbers from Theme.qml's formulas (glass_golden.js's output, kept
+    /// here so the check runs without node): the default Frosted bar, Custom
+    /// with water's IOR and the wallpaper's tint, and Liquid's thin depth with
+    /// a narrow refraction band at a menu's lens
+    #[test]
+    fn glass_settings_give_the_shells_numbers() {
+        let cases = [
+            (json!({}), "#3366cc", (12.0, 30.0, 640.0, 40.0, 0.0, 0.8, 1.0),
+             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 9.0, 0.165, 0.0, 1.0, 0.084, 0.0924, 0.11441215, 0.11441215, 0.13392844, 0.45000381, 1.275, 0.8, 0.02475]),
+            (json!({"glass": "custom", "glassLens": 1, "glassFrost": 0.25, "glassSolid": 0, "glassTint": 1, "glassIor": 1.33}), "#8a5a3c", (12.0, 30.0, 640.0, 40.0, 0.0, 0.8, 1.0),
+             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 22.330827, 0.4093985, 0.0, 0.25, 0.28, 0.28, 0.12210269, 0.10797284, 0.11766232, 0.33701076, 1.3875, 0.8, 0.7875]),
+            (json!({"glass": "liquid", "glassLens": 0.3, "glassFrost": 0, "glassSolid": 1, "glassTint": 0.45, "glassIor": 1.2, "glassRefraction": 0.4, "glassDispersion": 0.35, "glassDepth": "thin", "wallpaperTint": false}), "#808080", (8.701146, 50.0, 141.0, 400.0, 28.0, 1.0, 0.35),
+             [8.701146, 50.0, 141.0, 400.0, 28.0, 0.0, 3.85, 0.0, 7.2, 0.75, 0.063, 0.28, 0.10251011, 0.10251011, 0.12251469, 0.39600214, 1.4625, 1.0, 0.3625]),
+        ];
+        for (appearance, tone, (x, y, w, h, r, o, lens), want) in cases {
+            let mut v = json!({"appearance": appearance});
+            v["appearance"]["look"] = json!("glass");
+            v["appearance"]["mode"] = json!("dark");
+            let shell = shell_glass_from(&json!({"tone": tone, "cooldown": "keep"}));
+            let got = glass_shape(&look_with(&v, None, none, &shell), x, y, w, h, r, o, lens);
+            for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+                assert!((g - w).abs() <= 2e-4 * w.abs().max(1.0), "value {i}: {g} against Theme.qml's {w} for {v}");
+            }
+        }
+        // Reduce transparency and Cool-down's solid glass both make it solid
+        for (a, cd) in [(json!({"reduceTransparency": true}), "keep"), (json!({}), "solid")] {
+            let mut v = json!({"appearance": a});
+            v["appearance"]["look"] = json!("glass");
+            let look = look_with(&v, None, none, &shell_glass_from(&json!({"cooldown": cd})));
+            assert_eq!(look.glass.tier(), "solid", "{v} {cd}");
+            assert_eq!(glass_shape(&look, 0.0, 0.0, 100.0, 40.0, 10.0, 1.0, 1.0)[5], 2.0);
+        }
+    }
+
+    #[test]
+    fn the_shell_says_the_tone_and_cool_down() {
+        let g = shell_glass_from(&json!({"src": "shell", "kind": "glass", "tone": "#3366cc", "cooldown": "solid"}));
+        assert_eq!(g.cooldown, "solid");
+        assert!((g.tone.unwrap()[2] - 0.8).abs() < 1e-6);
+        // (anything else: no tone, glass kept)
+        assert_eq!(shell_glass_from(&json!({"tone": "blue", "cooldown": "melt"})), ShellGlass::default());
+        // Cool-down's solid glass makes Material's panels opaque too
+        let v = json!({"appearance": {"look": "material", "materialTransparency": 0.6, "materialSeed": "#3b6ea5"}});
+        assert!((look_with(&v, None, none, &ShellGlass::default()).transparency - 0.6).abs() < 1e-6);
+        assert_eq!(look_with(&v, None, none, &g).transparency, 0.0);
     }
 
     /// The Material roles match the shell's own MaterialColor.js (node runs it,

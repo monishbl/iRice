@@ -74,17 +74,28 @@ ShellRoot {
     FontLoader { source: Theme.material ? Qt.resolvedUrl("assets/fonts/GoogleSansFlex.ttf") : "" }
     FontLoader { source: Theme.material ? Qt.resolvedUrl("assets/fonts/MaterialSymbolsRounded.ttf") : "" }
 
+    // A surface's QML twin, made only while tessera-ui isn't to draw it
+    // (RustUi.away): while it is, the twin's files aren't even compiled and
+    // the services only it used never start; if tessera-ui ends or gives the
+    // surface up, the twin loads again (the shell's own fallback)
+    component Twin: LazyLoader {
+        required property string surface
+        required property string file
+        active: !RustUi.away(surface)
+        source: Qt.resolvedUrl(file)
+    }
+
     Background {}
     ScreenCorners {}
-    MenuBar {}
+    Twin { surface: "menubar"; file: "modules/menubar/MenuBar.qml" }
     RustBridge {} // (the menu bar drawn in Rust: what it shows from here)
-    Dock {}
+    Twin { surface: "dock"; file: "modules/dock/Dock.qml" }
     StageStrip {}
     AppLibrary {}
     ControlCenter {}
-    NotificationCenter {}
+    Twin { surface: "notifications"; file: "modules/notifications/NotificationCenter.qml" }
     NotificationPopups {}
-    Spotlight {}
+    Twin { surface: "spotlight"; file: "modules/spotlight/Spotlight.qml" }
     Menus {}
     NowPlaying {}
     CaptionsWindow {}
@@ -112,13 +123,13 @@ ShellRoot {
     IncomingCard {}
     LinkShareCard {}
     WidgetGallery {}
-    Sidebar {}
+    Twin { surface: "sidebar"; file: "modules/sidebar/Sidebar.qml" }
     Polkit {}
-    WallpaperPicker {}
+    Twin { surface: "wallpaper"; file: "modules/wallpaper/WallpaperPicker.qml" }
     Settings {}
     AppStoreWindow {}
     Cheatsheet {}
-    ClipboardPanel {}
+    Twin { surface: "clipboard"; file: "modules/clipboard/ClipboardPanel.qml" }
     Overlay {}
     Keyboard {}
     RegionSelector {}

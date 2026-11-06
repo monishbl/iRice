@@ -12,6 +12,7 @@
 
 pub mod a11y;
 pub mod appicon;
+pub mod damage;
 pub mod dnd;
 pub mod egl;
 pub mod env;

@@ -582,12 +582,12 @@ impl Dock {
     }
 
     fn menu_closed(&mut self, st: &mut State) {
-        if let Some(mw) = &mut self.menu {
-            if !mw.open {
-                mw.surface.hide();
-                st.shell.glass.set(&mw.output, MENU_NS, &[]);
-                mw.glass_sent.clear();
-            }
+        // (closed, it goes: a hidden layer stays in Hyprland's list; a menu
+        // is made again in a moment when it's next opened)
+        if self.menu.as_ref().is_some_and(|m| !m.open) {
+            let m = self.menu.take().unwrap();
+            st.shell.glass.set(&m.output, MENU_NS, &[]);
+            st.drop_surface(&m.surface);
         }
     }
 

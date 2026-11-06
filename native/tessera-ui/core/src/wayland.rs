@@ -66,7 +66,15 @@ use std::time::Instant;
 
 pub struct Surface {
     window: slint::Window,
-    renderer: FemtoVGRenderer,
+    /// FemtoVG, and what changed in each frame (src/damage.rs)
+    renderer: crate::damage::Renderer,
+    /// where render() leaves that for the EGL swap
+    damage: Rc<RefCell<Option<(Vec<[i32; 4]>, i32)>>>,
+    egl: Rc<Egl>,
+    /// frames drawn, and of those the ones the compositor has shown (one
+    /// is in flight at most: frame n is on screen once `presented` >= n)
+    pub rendered: Cell<u32>,
+    pub presented: Cell<u32>,
     pub wl: WlSurface,
     /// what it is to the compositor (`Role`): `layer` derefs to the layer
     /// surface, as it always did, for every part's layer surfaces
@@ -84,6 +92,8 @@ pub struct Surface {
     /// hidden by `hide` until `show`: a configure meanwhile (Hyprland answers
     /// the null buffer with one) must not draw and map it again
     hidden: Cell<bool>,
+    /// its role destroyed by drop_surface: never shown again
+    retired: Cell<bool>,
     ime: RefCell<Option<slint_ime::Props>>, // what the focused text field wants from the input method
     pub stats: RefCell<crate::stats::Frames>,
     /// the pointer's shape Slint asked for over this surface (a TouchArea's `mouse-cursor`)
@@ -172,6 +182,7 @@ impl Surface {
         self.window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: self.scale.get() });
         self.window.dispatch_event(WindowEvent::Resized { size: LogicalSize::new(w as f32, h as f32) });
         self.needs_redraw.set(true);
+        self.renderer.damage.all();
     }
     fn render(&self, qh: &QueueHandle<State>) {
         if !self.configured.get() || self.frame_pending.get() || !self.needs_redraw.get() {
@@ -180,10 +191,18 @@ impl Surface {
         self.needs_redraw.set(false);
         self.wl.frame(qh, self.wl.clone());
         let t = Instant::now();
-        if let Err(e) = self.renderer.render() {
+        // What changed since the last frame: the compositor repaints only that
+        if self.egl.has_damage() {
+            let (w, h) = self.logical.get();
+            let px = self.physical();
+            let region = self.renderer.damage.region(&self.window, (w as f32, h as f32));
+            *self.damage.borrow_mut() = region.map(|r| (crate::damage::to_buffer(&r, self.scale.get(), (px.width as i32, px.height as i32)), px.height as i32));
+        }
+        if let Err(e) = self.renderer.femto.render() {
             eprintln!("tessera-ui: render failed: {e}");
         }
         self.stats.borrow_mut().rendered(t.elapsed());
+        self.rendered.set(self.rendered.get().wrapping_add(1));
         self.frame_pending.set(true);
         self.mapped.set(true);
         // (no "redraw while animations run" here: Slint's animation clock is
@@ -198,8 +217,33 @@ impl Surface {
         self.frame_pending.set(false);
         self.mapped.set(false);
         self.hidden.set(true);
+        self.presented.set(self.rendered.get()); // (a frame in flight won't be shown now)
+    }
+    /// Destroy the compositor's role object (layer surface or window) ahead
+    /// of the Rust value: unmapped, its exclusive zone and layer entry gone
+    fn retire_role(&self) {
+        self.retired.set(true);
+        match &self.layer {
+            Role::Layer(l) => {
+                #[allow(irrefutable_let_patterns)]
+                if let smithay_client_toolkit::shell::wlr_layer::SurfaceKind::Wlr(wlr) = l.kind() {
+                    wlr.destroy();
+                }
+            }
+            Role::Window(win) => {
+                use smithay_client_toolkit::shell::xdg::XdgSurface as _;
+                win.xdg_toplevel().destroy();
+                win.xdg_surface().destroy();
+            }
+            // (the lock part ends its lock itself)
+            Role::Lock(_) => {}
+        }
+        self.wl.commit();
     }
     pub fn show(&self, w: u32, h: u32) {
+        if self.retired.get() {
+            return;
+        }
         self.hidden.set(false);
         match &self.layer {
             Role::Layer(l) => {
@@ -504,11 +548,16 @@ impl State {
     /// A surface with its role: its EGL window and renderer, made the next component's window
     fn adopt(&mut self, wl: WlSurface, layer: Role, viewport: Option<WpViewport>, fractional: Option<WpFractionalScaleV1>, namespace: &str, output: String, size: (u32, u32)) -> Rc<Surface> {
         let gl = GlSurface::new(self.egl.clone(), WlProxy::id(&wl)).expect("EGL window surface");
+        let damage = gl.damage.clone();
         // (FemtoVG loads GL as it's made: the context must be current)
         slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
         let surface = Rc::new_cyclic(|weak: &Weak<Surface>| Surface {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
-            renderer: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"),
+            renderer: crate::damage::Renderer { femto: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"), damage: Default::default() },
+            damage,
+            egl: self.egl.clone(),
+            rendered: Cell::new(0),
+            presented: Cell::new(0),
             wl,
             layer,
             viewport,
@@ -522,6 +571,7 @@ impl State {
             frame_pending: Cell::new(false),
             mapped: Cell::new(false),
             hidden: Cell::new(false),
+            retired: Cell::new(false),
             ime: RefCell::new(None),
             stats: RefCell::new(Default::default()),
             cursor: Cell::new(Shape::Default),
@@ -531,7 +581,18 @@ impl State {
         surface
     }
 
+    /// The surface is done with: off the screen and out of the compositor's
+    /// lists now, freed once the part lets go of it and its component.
+    /// (Slint keeps a shown window's component alive, and the component
+    /// holds its window adapter, this Surface: a cycle. Hiding the Slint
+    /// window breaks it. The layer role is destroyed here too, so a
+    /// reference still held elsewhere can't keep it mapped, keep its
+    /// exclusive zone or stay in Hyprland's layer list; the role's own drop
+    /// later sends a second destroy, which wayland-client ignores.)
     pub fn drop_surface(&mut self, s: &Rc<Surface>) {
+        let _ = s.window.hide();
+        s.hide();
+        s.retire_role();
         self.surfaces.retain(|x| !Rc::ptr_eq(x, s));
         if self.pointer_on.as_ref().is_some_and(|p| Rc::ptr_eq(p, s)) {
             self.pointer_on = None;
@@ -566,6 +627,11 @@ impl State {
 
     pub fn keyboard_surface(&self) -> Option<Rc<Surface>> {
         self.keyboard_on.clone()
+    }
+
+    /// The surface the pointer is on, if one of ours
+    pub fn pointer_surface(&self) -> Option<Rc<Surface>> {
+        self.pointer_on.clone()
     }
 
     fn find(&self, wl: &WlSurface) -> Option<Rc<Surface>> {
@@ -649,6 +715,7 @@ impl CompositorHandler for State {
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, wl: &WlSurface, time: u32) {
         if let Some(s) = self.find(wl) {
             s.frame_pending.set(false);
+            s.presented.set(s.presented.get().wrapping_add(1).min(s.rendered.get()));
             s.stats.borrow_mut().presented(time);
             if !self.first_frame_logged {
                 self.first_frame_logged = true;
@@ -876,11 +943,17 @@ impl PointerHandler for State {
             match &e.kind {
                 PointerEventKind::Enter { serial } => {
                     POINTER_SERIAL.set(*serial);
+                    if crate::env::is_set("DEBUG") {
+                        eprintln!("debug: pointer enters {} at {:?}", s.namespace, e.position);
+                    }
                     self.set_cursor(*serial, s.cursor.get());
                     self.pointer_on = Some(s.clone());
                     s.window.dispatch_event(WindowEvent::PointerMoved { position });
                 }
                 PointerEventKind::Leave { .. } => {
+                    if crate::env::is_set("DEBUG") {
+                        eprintln!("debug: pointer leaves {}", s.namespace);
+                    }
                     s.window.dispatch_event(WindowEvent::PointerExited);
                     self.pointer_on = None;
                 }
@@ -1022,31 +1095,7 @@ impl State {
         let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&wl, &self.qh, ()));
         let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
         let role = lock.create_lock_surface(wl.clone(), output, &self.qh);
-        let gl = GlSurface::new(self.egl.clone(), WlProxy::id(&wl)).expect("EGL window surface");
-        slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
-        let surface = Rc::new_cyclic(|weak: &Weak<Surface>| Surface {
-            window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
-            renderer: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"),
-            wl,
-            layer: Role::Lock(role),
-            viewport,
-            _fractional: fractional,
-            namespace: "tessera:lock".to_string(),
-            output: output_name.to_string(),
-            logical: Cell::new((1, 1)),
-            scale: Cell::new(1.0),
-            configured: Cell::new(false),
-            needs_redraw: Cell::new(true),
-            frame_pending: Cell::new(false),
-            mapped: Cell::new(false),
-            hidden: Cell::new(false),
-            ime: RefCell::new(None),
-            stats: RefCell::new(Default::default()),
-            cursor: Cell::new(Shape::Default),
-        });
-        NEXT.with(|n| *n.borrow_mut() = Some(surface.clone()));
-        self.surfaces.push(surface.clone());
-        surface
+        self.adopt(wl, Role::Lock(role), viewport, fractional, "tessera:lock", output_name.to_string(), (1, 1))
     }
 
     /// Keep the screen on while this surface shows (None: the compositor has

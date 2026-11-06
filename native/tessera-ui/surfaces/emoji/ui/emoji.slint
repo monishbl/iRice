@@ -44,6 +44,9 @@ export component EmojiPicker inherits Window {
     in property <length> panel-x;
     in property <length> panel-y;
     in property <bool> shown; // drives the open/close animation
+    // (the first open: drawn once all but invisible first, so the fonts and
+    // glyphs are ready before the animation starts)
+    in property <bool> warm;
     in property <string> emoji-font: "Noto Color Emoji";
     in property <[ETab]> tabs;
     in property <int> tab;
@@ -142,7 +145,7 @@ export component EmojiPicker inherits Window {
         y: panel-y + (1 - openness) * -6px;
         width: panel-width;
         height: panel-height;
-        opacity: min(1, openness);
+        opacity: warm && openness < 0.004 ? 0.004 : min(1, openness);
         transform-scale: 0.97 + 0.03 * min(1, openness);
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         // Glass: the tint over the plugin's glass; Material: its tonal surface

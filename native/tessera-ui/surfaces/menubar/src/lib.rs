@@ -149,6 +149,8 @@ struct MenuEntry {
 pub struct Menubar {
     bars: Vec<BarEntry>,
     menu: Option<MenuEntry>,
+    /// the shell's open panel, as last heard (a QML popover under an item)
+    shell_open: String,
     names: HashMap<String, String>,
     clock: slint::Timer,
     sweep: slint::Timer,
@@ -913,12 +915,12 @@ impl Menubar {
     }
 
     fn menu_closed(&mut self, st: &mut State) {
-        if let Some(m) = &mut self.menu {
-            if !m.open {
-                m.surface.hide();
-                st.shell.glass.set(&m.output, MENU_NS, &[]);
-                m.glass_sent.clear();
-            }
+        // (closed, it goes: a hidden layer stays in Hyprland's list; a menu
+        // is made again in a moment when it's next opened)
+        if self.menu.as_ref().is_some_and(|m| !m.open) {
+            let m = self.menu.take().unwrap();
+            st.shell.glass.set(&m.output, MENU_NS, &[]);
+            st.drop_surface(&m.surface);
         }
     }
 
@@ -1457,6 +1459,25 @@ impl Part for Menubar {
             self.update_activities(st);
         }
         if what == TypeId::of::<ShellState>() {
+            // A QML popover opened or closed over the bar (Esc, a click
+            // elsewhere): the pointer may have left an item without the bar
+            // hearing it go (the popover's catcher took it, and Hyprland
+            // says the bar has it again when the catcher goes even though
+            // nothing moved), so every bar lets go of its hover and press,
+            // as the QML bar does; the next motion over an item lights it
+            // again. (Only a bar the pointer was off had let go: the item
+            // that opened the popover stayed lit after Esc.)
+            let open = st.shell.get::<ShellState>().map(|s| s.str("open").to_string()).unwrap_or_default();
+            if open != self.shell_open {
+                let closed = !self.shell_open.is_empty();
+                self.shell_open = open;
+                let on = st.pointer_surface();
+                for b in &self.bars {
+                    if closed || !on.as_ref().is_some_and(|p| Rc::ptr_eq(p, &b.surface)) {
+                        b.surface.window().dispatch_event(slint::platform::WindowEvent::PointerExited);
+                    }
+                }
+            }
             // (a recording's time counts each second)
             self.tick(st);
             return;

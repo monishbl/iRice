@@ -66,6 +66,8 @@ ALLOWED = [
     r"Tahoe (?:Light|Dark)\b",
     r"Tahoe Beach",
     r"\b\d+-Tahoe-[\w-]+\.png",
+    # a module's file path (TesseraShell's Twin loaders), never shown
+    r"^modules/[\w/]+\.qml$",
 ]
 ALLOWED_RX = re.compile("|".join(ALLOWED))
 

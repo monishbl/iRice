@@ -46,6 +46,8 @@ use view::{Kind, Mode, View};
 
 const NAME: &str = "emoji";
 pub const NS: &str = "tessera:emoji";
+/// how long it stays closed before its window goes (made again on opening)
+const RETIRE_SECS: u64 = 10;
 const PANEL_W: f32 = 420.0;
 const PANEL_H: f32 = 428.0;
 const LIST_TOP: f32 = 36.0 + 8.0 + 32.0 + 4.0; // in the content, under the tabs
@@ -55,6 +57,8 @@ enum M {
     Loaded(Result<Arc<Data>, String>, Vec<String>),
     Placed(Placement),
     PlaceTimeout(u64),
+    /// its first drawing took too long to reach the screen: open anyway
+    WarmTimeout(u64),
     Search,
     Key(String, bool, bool),
     Edited(String),
@@ -71,6 +75,8 @@ enum M {
     GifPage(u64, u32, Result<(Vec<klipy::Gif>, bool), klipy::Status>),
     GifPreview(u64, usize, slint::SharedPixelBuffer<slint::Rgba8Pixel>),
     StateAct(bool),
+    /// closed long enough (its opening's number): the window goes
+    Retire(u64),
     Dismissed,
     Closed,
 }
@@ -186,6 +192,8 @@ struct Win {
     glass_sent: String,
     /// the screen's origin and size (logical)
     screen: (f64, f64, f64, f64),
+    /// its content has been drawn once (fonts loaded, glyphs in the atlas)
+    warmed: bool,
 }
 
 struct Gifs {
@@ -232,6 +240,15 @@ pub struct Emoji {
     search_timer: slint::Timer,
     place_timer: slint::Timer,
     gifs: Gifs,
+    /// where it opens is known (or waited for long enough)
+    placed: bool,
+    /// the first open: the frame that draws the content unseen, awaited
+    /// before the opening animation starts (else that slow frame eats it)
+    warm: Option<u32>,
+    warm_timer: slint::Timer,
+    /// the first frame of it opening: its glass waits for that one
+    glass_from: u32,
+    retire_timer: slint::Timer,
 }
 
 impl Default for Emoji {
@@ -258,6 +275,11 @@ impl Default for Emoji {
             search_timer: slint::Timer::default(),
             place_timer: slint::Timer::default(),
             gifs: Gifs::default(),
+            placed: false,
+            warm: None,
+            warm_timer: slint::Timer::default(),
+            glass_from: 0,
+            retire_timer: slint::Timer::default(),
         }
     }
 }
@@ -344,7 +366,7 @@ impl Emoji {
         on!(on_closed, | | M::Closed);
         ui.show().expect("show emoji");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), screen: (ox as f64, oy as f64, sw as f64, sh as f64) });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), screen: (ox as f64, oy as f64, sw as f64, sh as f64), warmed: false });
         self.settings(st);
         true
     }
@@ -384,6 +406,8 @@ impl Emoji {
         self.mem = Remembered::load();
         self.open = true;
         self.opening += 1;
+        self.placed = false;
+        self.warm = None;
         // reset: the list opens at the top, frequently used
         self.tab = 0;
         self.query.clear();
@@ -417,12 +441,50 @@ impl Emoji {
         self.place_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(250), move || to(Box::new(M::PlaceTimeout(n))));
     }
 
-    fn show_at(&mut self) {
-        let Some(w) = &self.win else { return };
+    fn show_at(&mut self, st: &State) {
+        self.placed = true;
+        self.open_when_ready(st);
+    }
+
+    /// Open it once it's placed and its emoji are read. The first time, the
+    /// content is drawn once unseen first and the animation starts when that
+    /// frame is on screen: loading the emoji font and drawing its glyphs
+    /// takes long enough that the spring would be over before its first frame
+    fn open_when_ready(&mut self, st: &State) {
+        if !self.open || !self.placed || (self.data.is_none() && !self.failed) || self.warm.is_some() {
+            return;
+        }
+        let Some(w) = &mut self.win else { return };
+        if w.ui.get_shown() {
+            return;
+        }
         let (x, y) = place(w.screen, &self.placement, (PANEL_W as f64, PANEL_H as f64));
         w.ui.set_panel_x(x as f32);
         w.ui.set_panel_y(y as f32);
+        if !w.warmed {
+            w.warmed = true;
+            w.ui.set_warm(true);
+            self.warm = Some(w.surface.rendered.get().wrapping_add(1));
+            let (to, n) = (Self::send(st), self.opening);
+            self.warm_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(400), move || to(Box::new(M::WarmTimeout(n))));
+            return;
+        }
+        self.glass_from = w.surface.rendered.get().wrapping_add(1);
         w.ui.set_shown(true);
+    }
+
+    /// The unseen frame is on screen (or it took too long): open
+    fn warmed(&mut self) {
+        if self.warm.take().is_none() {
+            return;
+        }
+        self.warm_timer.stop();
+        let Some(w) = &self.win else { return };
+        w.ui.set_warm(false);
+        if self.open {
+            self.glass_from = w.surface.rendered.get().wrapping_add(1);
+            w.ui.set_shown(true);
+        }
     }
 
     /// Close it (`tell`: it closed itself, so the shell's Panels follows)
@@ -433,6 +495,12 @@ impl Emoji {
         self.open = false;
         self.tone = None;
         self.place_timer.stop();
+        if self.warm.take().is_some() {
+            self.warm_timer.stop();
+            if let Some(w) = &self.win {
+                w.ui.set_warm(false);
+            }
+        }
         if let Some(w) = &self.win {
             w.ui.set_shown(false);
             w.ui.set_tone_open(false);
@@ -452,6 +520,21 @@ impl Emoji {
             w.surface.hide();
             st.shell.glass.set(&w.output, NS, &[]);
             w.glass_sent.clear();
+        }
+        // (a hidden layer stays in Hyprland's list: closed for a while, the
+        // window goes, and is made again at the next open)
+        let (to, n) = (st.shell.sender(NAME), self.opening);
+        self.retire_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(RETIRE_SECS), move || to(Box::new(M::Retire(n))));
+    }
+
+    /// Still closed since then: the window goes
+    fn retire(&mut self, st: &mut State, n: u64) {
+        if self.open || n != self.opening {
+            return;
+        }
+        if let Some(w) = self.win.take() {
+            st.shell.glass.set(&w.output, NS, &[]);
+            st.drop_surface(&w.surface);
         }
     }
 
@@ -926,6 +1009,11 @@ impl Part for Emoji {
         NAME
     }
 
+    /// The emoji are read now, off this thread, so the first open needn't wait
+    fn start(&mut self, st: &mut State) {
+        self.load(st);
+    }
+
     fn command(&mut self, st: &mut State, cmd: &Command) {
         match cmd.cmd.as_str() {
             "open" => self.open(st, cmd.screen.clone()),
@@ -974,17 +1062,23 @@ impl Part for Emoji {
                 self.settings(st);
                 self.rebuild();
                 self.push(st);
+                self.open_when_ready(st);
             }
             M::Placed(p) => {
                 self.placement = p;
                 if self.open {
                     self.place_timer.stop();
-                    self.show_at();
+                    self.show_at(st);
                 }
             }
             M::PlaceTimeout(n) => {
                 if self.open && n == self.opening && !self.win.as_ref().is_some_and(|w| w.ui.get_shown()) {
-                    self.show_at();
+                    self.show_at(st);
+                }
+            }
+            M::WarmTimeout(n) => {
+                if n == self.opening {
+                    self.warmed();
                 }
             }
             M::Search => {
@@ -1064,6 +1158,7 @@ impl Part for Emoji {
                 }
             }
             M::StateAct(s) => self.state_act(st, s),
+            M::Retire(n) => self.retire(st, n),
             M::Dismissed => self.close(true),
             M::Closed => self.closed(st),
         }
@@ -1096,12 +1191,21 @@ impl Part for Emoji {
     /// closes; the accessibility tree
     fn after_frame(&mut self, st: &mut State) {
         let kbd = st.keyboard_surface();
+        // (the unseen first frame is on screen: now it opens)
+        let on_screen = |m: u32, w: &Win| w.surface.presented.get().wrapping_sub(m) <= u32::MAX / 2;
+        if self.warm.zip(self.win.as_ref()).is_some_and(|(m, w)| on_screen(m, w)) {
+            self.warmed();
+        }
         let Some(w) = &mut self.win else { return };
         let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &w.surface));
         if let Some(a) = w.a11y.as_mut() {
             a.update(false, f);
         }
         if !w.surface.mapped.get() || !st.shell.plugin || st.shell.look.material {
+            return;
+        }
+        // (the glass comes with the first frame of it opening, never before)
+        if self.open && (!w.ui.get_shown() || w.surface.presented.get().wrapping_sub(self.glass_from) > u32::MAX / 2) {
             return;
         }
         let ui = &w.ui;
