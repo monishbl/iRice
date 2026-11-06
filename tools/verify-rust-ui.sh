@@ -87,7 +87,6 @@ lock|fingerprint|ipc lock lock; sleep 2; ipc lock demo finger|2
 lock|bedside|ipc lock lock; sleep 2; ipc lock demo standby|3
 lock|login-intro|ipc loginIntro play|1.5
 overlay|open|ipc panels open overlay $SCREEN|2
-welcome|open|ipc welcome open|2.5
 resources|menu|ipc panels open resourcesMenu $SCREEN|2
 cheatsheet|open|ipc panels open cheatsheet $SCREEN|2
 osk|open|ipc panels open keyboard $SCREEN|2
@@ -98,11 +97,12 @@ shelf|open|ipc shelf open|2
 captions|demo|ipc captions demo 'Hello there' 'This is a test of live captions'|2
 notes|open|ipc panels open quickNote $SCREEN|2
 settings|appearance|ipc panels settings appearance|3
-overview|open|ipc panels open overview $SCREEN|2.5
-missioncontrol|open|ipc panels open missionControl $SCREEN|2.5
-switcher|open|ipc panels open switcher $SCREEN|1.5
-launchpad|open|ipc panels open launchpad $SCREEN|2.5
 network|wifi-menu|ipc panels open wifiMenu $SCREEN|2.5
+overview|open|ipc panels open overview $SCREEN|2.5|w
+missioncontrol|open|ipc panels open missionControl $SCREEN|2.5|w
+switcher|open|ipc panels open switcher $SCREEN|1.5|w
+launchpad|open|ipc panels open launchpad $SCREEN|2.5|w
+welcome|open|ipc welcome open|2.5
 EOF
 )
 # (behaviour without a picture of its own: hotcorners, tiling, decorations,
@@ -145,26 +145,33 @@ fi
 
 # ── 2. Capture ──────────────────────────────────────────────────────────────
 USED=$(surfaces_in_use)
+PIDF=/tmp/tessera-verify-$ARENA.windows   # (the test windows' pids: closed by pid, never by name)
 capture() { # look pass(qml|rust)
     local look=$1 pass=$2
-    printf '%s\n' "$STATES" | while IFS='|' read -r s name cmd wait; do
+    printf '%s\n' "$STATES" | while IFS='|' read -r s name cmd wait flag; do
         want "$s" || continue
         quiet
+        if [[ $flag == w && ! -s $PIDF ]]; then   # (windows for Overview & co., from here on)
+            inbox "foot >/dev/null 2>&1 & echo \$! >> $PIDF; foot >/dev/null 2>&1 & echo \$! >> $PIDF" </dev/null >/dev/null 2>&1
+            sleep 2
+        fi
         inbox "$cmd" </dev/null >/dev/null 2>&1
         sleep "$wait"
         dev shot "$OUT/shots/$look-$s-$name-$pass.png" </dev/null >/dev/null 2>&1 || log "  no shot: $look $s $name ($pass)"
     done
     quiet
+    [[ -s $PIDF ]] && inbox "kill \$(cat $PIDF) 2>/dev/null; rm -f $PIDF" </dev/null >/dev/null 2>&1
+    rm -f "$PIDF"
 }
 for look in ${LOOKS//,/ }; do
     log "[$look] setting up the arena (fixed wallpaper, 1920x1080)"
     setup "$look" "$WALLS/wall-tiles.jpg" 1
     install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
-    inbox "pgrep -x foot >/dev/null || (foot >/dev/null 2>&1 & foot >/dev/null 2>&1 &)" >/dev/null 2>&1   # windows for Overview & co.
-    sleep 2
     log "[$look] QML pass"
     set_rust ""; sleep 3
     capture "$look" qml
+    log "[$look] reloading the shell (nothing of the QML pass carries over)"
+    dev reload </dev/null >/dev/null 2>&1; sleep 18
     log "[$look] Rust pass ($USED)"
     set_rust "$USED"; sleep 6
     capture "$look" rust
