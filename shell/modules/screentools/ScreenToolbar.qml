@@ -117,6 +117,7 @@ Variants {
         required property var modelData
         panel: "screenTools"
         screen: modelData
+        elsewhere: RustUi.drawing("screentools")
 
         GlassWindow {
             id: win

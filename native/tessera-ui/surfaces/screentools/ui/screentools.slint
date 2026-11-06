@@ -1,0 +1,1251 @@
+// Screen tools in Rust (rust.surfaces: screentools; src/surfaces/screentools):
+// the region selector and Circle to Search (RegionSelector.qml), the ⇧⌘5
+// toolbar and its Options (ScreenToolbar.qml), the recording countdown
+// (RecordCountdown.qml) and the translation card (TranslationCard.qml), both
+// looks. The screenshot thumbnail and editor are in shoteditor.slint. Rust
+// owns the state; this draws it. Shared controls (the editor's buttons, the
+// icon, the spinner) are here and used by shoteditor.slint and quicklook.slint.
+
+import { Theme } from "@tessera/theme.slint";
+
+// An icon: Phosphor, or in Material the matching Material Symbols glyph (s)
+export struct StIc {
+    t: string,
+    s: bool,
+}
+
+export component StIcon {
+    in property <StIc> icon;
+    in property <color> color: Theme.label;
+    in property <length> size: 16px;
+    in property <bool> fill;
+    in property <bool> bold;
+    preferred-width: size;
+    preferred-height: size;
+    Text {
+        width: 100%;
+        height: 100%;
+        text: icon.t;
+        color: root.color;
+        font-size: icon.s ? round(size * 1.2 / 1px) * 1px : size;
+        font-family: icon.s ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// Loading: Glass, the circle-notch turning; Material, its loading indicator
+// (an arc that grows and shrinks as it turns)
+export component StSpin {
+    in property <length> size: 16px;
+    in property <color> color: Theme.tertiary;
+    width: size;
+    height: size;
+    accessible-role: progress-indicator;
+    accessible-label: "Loading";
+    property <duration> t: animation-tick();
+    if !Theme.material: Text {
+        width: 100%;
+        height: 100%;
+        text: "\u{eb44}";
+        font-family: "Phosphor";
+        font-size: size;
+        color: root.color;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        transform-rotation: mod(root.t / 900ms, 1) * 360deg;
+        accessible-role: none;
+    }
+    if Theme.material: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 40;
+        viewbox-height: 40;
+        stroke: root.color;
+        stroke-width: max(2px, size / 10);
+        stroke-line-cap: round;
+        property <float> a: mod(root.t / 1333ms, 1) * 360;
+        property <float> sweep: 40 + 220 * abs(sin(mod(root.t / 2666ms, 1) * 180deg));
+        transform-rotation: a * 1deg;
+        MoveTo { x: 20 + 16 * cos(0deg); y: 20 + 16 * sin(0deg); }
+        ArcTo { x: 20 + 16 * cos(sweep * 1deg); y: 20 + 16 * sin(sweep * 1deg); radius-x: 16; radius-y: 16; large-arc: sweep > 180; sweep: true; }
+    }
+}
+
+// The screenshot editor's button (EditorButton.qml): icon, optional label,
+// a tooltip after a hover. variant: 0 ghost, 1 secondary, 2 primary, 3
+// danger; `selected` marks the active tool; `busy` turns the icon into a
+// spinner. Material: Material 3 Expressive's buttons, round, squaring off
+// while pressed; a selected toggle squares off in secondaryContainer (on a
+// vibrant toolbar, in primary). `glyph`: 0 the icon, 1 an "A" (text sizes),
+// 2 a dot (stroke widths), 3 a block (redaction sizes)
+export component EditorButton inherits Rectangle {
+    in property <StIc> icon;
+    in property <string> label;
+    in property <string> tooltip;
+    in property <string> shortcut;
+    in property <int> variant;
+    in property <bool> selected;
+    in property <bool> busy;
+    in property <bool> tip-below: true;
+    in property <bool> vibrant;
+    in property <bool> enabled: true;
+    in property <int> glyph;
+    in property <int> glyph-size; // 0..2 for the A, the dot and the block
+    in property <color> dot-color; // (a selected width's dot: the ink)
+    callback clicked();
+
+    property <bool> primary: variant == 2;
+    property <bool> live: enabled && !busy;
+    property <bool> has-icon: icon.t != "" || busy;
+    property <color> mfg: !enabled ? Theme.m3-on-surface.with-alpha(0.38) : primary ? Theme.m3-on-primary : variant == 3 ? Theme.m3-error
+        : selected ? (vibrant ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : vibrant ? Theme.m3-on-primary-container
+        : variant == 1 ? Theme.m3-on-secondary-container : label != "" ? Theme.m3-primary : Theme.m3-on-surface-variant;
+    out property <color> fg: Theme.material ? mfg : !enabled ? Theme.tertiary : primary ? Theme.on-accent : variant == 3 ? Theme.danger : selected ? Theme.accent : Theme.label;
+    property <float> layer: !live ? 0 : touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0;
+    property <bool> filled: primary || variant == 1 || selected;
+    property <color> mbg: filled ? (!enabled ? Theme.m3-on-surface.with-alpha(0.12) : (primary || (selected && vibrant) ? Theme.m3-primary : Theme.m3-secondary-container).mix(mfg, 1 - layer)) : mfg.with-alpha(layer);
+    property <color> gbg: primary ? (!enabled ? Theme.fill : touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.09) : Theme.accent)
+        : selected ? Theme.accent.with-alpha(touch.pressed ? 0.28 : 0.18)
+        : !live ? (variant == 1 ? Theme.fill : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : variant == 1 ? Theme.fill : transparent;
+
+    height: Theme.material ? 40px : 36px;
+    width: label == "" ? self.height : row.preferred-width + (Theme.material ? 32px : 28px);
+    border-radius: Theme.material ? (touch.pressed && live ? 8px : selected ? 12px : self.height / 2) : Theme.radius-control;
+    animate border-radius { duration: 250ms; easing: spring(0.55); }
+    background: Theme.material ? mbg : gbg;
+    animate background { duration: Theme.hover; }
+    // (Glass shrinks on press; Material swells and springs back)
+    transform-scale: touch.pressed && live ? (Theme.material ? 1 + min(0.06, 10px / max(1px, self.width)) : 0.97) : 1;
+    animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.35) : cubic-bezier(0, 0, 0.58, 1); }
+    accessible-role: button;
+    accessible-label: label != "" ? label : tooltip;
+    accessible-enabled: live;
+    accessible-action-default => { if live { clicked(); } }
+
+    // Keyboard focus ring (Material: 3 px in secondary, 2 px out)
+    if keys.has-focus: Rectangle {
+        x: Theme.material ? -5px : -4px;
+        y: self.x;
+        width: root.width - 2 * self.x;
+        height: root.height - 2 * self.y;
+        border-radius: root.border-radius - self.x;
+        border-width: Theme.material ? 3px : 2px;
+        border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    }
+
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        if has-icon && glyph == 0: Rectangle {
+            width: 16px;
+            height: 16px;
+            if !busy: StIcon {
+                width: Theme.material ? 18px : 16px;
+                height: self.width;
+                icon: root.icon;
+                fill: Theme.material && selected;
+                size: Theme.material ? 18px : 16px;
+                color: root.fg;
+            }
+            if busy: StSpin {
+                size: Theme.material ? 20px : 16px;
+                color: root.fg;
+            }
+        }
+        if label != "": Text {
+            text: label;
+            color: root.fg;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: 500;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    if glyph == 1: Text {
+        text: "A";
+        color: root.fg;
+        font-size: glyph-size == 0 ? 11px : glyph-size == 1 ? 14px : 18px;
+        font-weight: 600;
+        accessible-role: none;
+    }
+    if glyph >= 2: Rectangle {
+        property <length> d: glyph-size == 0 ? 4px : glyph-size == 1 ? 7px : 11px;
+        width: d;
+        height: d;
+        border-radius: glyph == 3 ? 1px : d / 2;
+        background: glyph == 3 ? root.fg : selected ? dot-color : root.fg;
+    }
+
+    touch := TouchArea {
+        enabled: live;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    keys := FocusScope {
+        focus-on-click: false;
+        enabled: live;
+        key-pressed(e) => {
+            if e.text == " " || e.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Tooltip after a short hover
+    property <bool> hov: touch.has-hover;
+    property <bool> tip-ready;
+    changed hov => { if !hov { tip-ready = false; } }
+    Timer {
+        interval: 600ms;
+        running: touch.has-hover && tooltip != "" && !touch.pressed && !tip-ready;
+        triggered => { tip-ready = true; }
+    }
+    tip := Rectangle {
+        visible: self.opacity > 0;
+        opacity: tip-ready && touch.has-hover && tooltip != "" ? 1 : 0;
+        animate opacity { duration: Theme.hover; }
+        x: (root.width - self.width) / 2;
+        y: tip-below ? root.height + 8px : -self.height - 8px;
+        width: tip-row.preferred-width + 16px;
+        height: Theme.material ? 24px : 26px;
+        border-radius: Theme.material ? 4px : 8px;
+        background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3a3a3f : #1c1c1e;
+        tip-row := HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+            Text {
+                text: tooltip;
+                color: Theme.material ? Theme.m3-inverse-on-surface : #f2f2f5;
+                font-size: Theme.small;
+                font-weight: 500;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            if shortcut != "": Text {
+                text: shortcut;
+                color: Theme.material ? Theme.m3-inverse-on-surface.with-alpha(0.7) : #ffffff8c;
+                font-size: Theme.small;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+}
+
+// ── The region selector ──────────────────────────────────────────────────
+
+// Dims the screen but the selection; drag to select (its size beside it), or
+// click a highlighted window. Circle to Search: the stroke shows from the
+// first pixel, in the accent with a soft light glow. Pointer moves reach Rust
+// synchronously (the callbacks), so the box and the stroke follow the hand in
+// the same frame.
+export component RegionSelector inherits Window {
+    in property <string> hint;
+    in property <bool> circling;
+    in property <bool> dragging;
+    in property <length> sel-x;
+    in property <length> sel-y;
+    in property <length> sel-w;
+    in property <length> sel-h;
+    in property <bool> show-box; // a box (Circle to Search: the drag reads as one)
+    in property <bool> show-size;
+    in property <string> stroke; // the path drawn so far
+    callback down(length, length, bool); // x, y, the right button
+    callback moved-to(length, length);
+    callback up(length, length);
+    callback key(string) -> bool;
+
+    background: transparent;
+    no-frame: true;
+    title: "Select an area";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    property <color> dim: #00000059;
+    Rectangle { x: 0; y: 0; width: root.width; height: max(0, sel-y); background: dim; }
+    Rectangle { x: 0; y: sel-y + sel-h; width: root.width; height: max(0, root.height - self.y); background: dim; }
+    Rectangle { x: 0; y: sel-y; width: max(0, sel-x); height: sel-h; background: dim; }
+    Rectangle { x: sel-x + sel-w; y: sel-y; width: max(0, root.width - self.x); height: sel-h; background: dim; }
+
+    if show-box: Rectangle {
+        x: sel-x - 1px;
+        y: sel-y - 1px;
+        width: sel-w + 2px;
+        height: sel-h + 2px;
+        // (Material: a 2 px primary outline)
+        border-width: Theme.material ? 2px : 1px;
+        border-color: Theme.material ? Theme.m3-primary : #ffffff;
+        border-radius: dragging ? 0 : Theme.material ? 16px : 12px;
+    }
+
+    // Circle to Search: the glow (drawn whole, then faded, so it doesn't
+    // build up where the stroke crosses itself), then the stroke
+    if circling && dragging: Rectangle {
+        opacity: 0.45;
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.stroke;
+            stroke: #ffffff;
+            stroke-width: 14px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
+    }
+    if circling && dragging: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        commands: root.stroke;
+        stroke: Theme.accent;
+        stroke-width: 5px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+
+    // The size
+    if show-size: Rectangle {
+        width: size-text.preferred-width + 16px;
+        height: Theme.material ? 28px : 22px;
+        x: min(sel-x + sel-w + 8px, root.width - self.width - 8px);
+        y: min(sel-y + sel-h + 8px, root.height - self.height - 8px);
+        border-radius: self.height / 2;
+        // (Material: a primary badge)
+        background: Theme.material ? Theme.m3-primary : #1a1a1fd9;
+        size-text := Text {
+            text: round(sel-w / 1px) + " × " + round(sel-h / 1px);
+            color: Theme.material ? Theme.m3-on-primary : #ffffff;
+            font-size: Theme.small;
+            font-weight: 500;
+            accessible-role: none;
+        }
+    }
+
+    // The hint (Material: a snackbar-like pill in inverseSurface)
+    Rectangle {
+        y: 48px;
+        x: (root.width - self.width) / 2;
+        width: hint-text.preferred-width + (Theme.material ? 40px : 28px);
+        height: Theme.material ? 48px : 32px;
+        border-radius: self.height / 2;
+        background: Theme.material ? Theme.m3-inverse-surface : #1a1a1fd9;
+        hint-text := Text {
+            text: hint;
+            color: Theme.material ? Theme.m3-inverse-on-surface : #ffffff;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: 500;
+        }
+    }
+
+    TouchArea {
+        mouse-cursor: crosshair;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.down(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                root.up(self.mouse-x, self.mouse-y);
+            } else if e.kind == PointerEventKind.move {
+                root.moved-to(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+}
+
+// ── The toolbar ──────────────────────────────────────────────────────────
+
+// kind: 0 a tool, 1 a separator, 2 Options
+export struct StTool {
+    kind: int,
+    icon: StIc,
+    label: string,
+    picked: bool, // recording only: the chosen area
+    red: bool, // the record glyph while recording
+}
+
+// One choice in the options (a microphone)
+export struct StOpt {
+    text: string,
+    checked: bool,
+}
+
+// A toggle switch (Switch.qml): macOS's, or Material 3 Expressive's (a
+// 52 × 32 outlined track, the handle growing as it turns on)
+component StSwitch inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled();
+    width: Theme.material ? 52px : 38px;
+    height: Theme.material ? 32px : 22px;
+    border-radius: self.height / 2;
+    background: Theme.material ? (checked ? Theme.m3-primary : Theme.m3-surface-container-highest) : checked ? Theme.accent : Theme.toggle-off;
+    border-width: Theme.material && !checked ? 2px : 0;
+    border-color: Theme.m3-outline;
+    animate background { duration: 150ms; }
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-label: label;
+    accessible-action-default => { toggled(); }
+    property <length> knob: !Theme.material ? self.height - 4px : touch.pressed ? 28px : checked ? 24px : 16px;
+    if Theme.material && (touch.has-hover || touch.pressed): Rectangle {
+        width: 40px;
+        height: 40px;
+        border-radius: 20px;
+        x: handle.x + handle.width / 2 - 20px;
+        y: (root.height - 40px) / 2;
+        background: (checked ? Theme.m3-primary : Theme.m3-on-surface).with-alpha(touch.pressed ? 0.1 : 0.08);
+    }
+    handle := Rectangle {
+        width: knob;
+        height: knob;
+        border-radius: knob / 2;
+        y: (root.height - self.height) / 2;
+        x: Theme.material ? (checked ? root.width - 16px - knob / 2 : 16px - knob / 2) : checked ? root.width - self.width - 2px : 2px;
+        animate x, width, height { duration: Theme.material ? 300ms : Theme.popover; easing: Theme.material ? spring(0.54) : cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+        background: !Theme.material ? #ffffff : checked ? Theme.m3-on-primary : touch.has-hover || touch.pressed ? Theme.m3-on-surface-variant : Theme.m3-outline;
+        if Theme.material && checked: Text {
+            text: "\u{e182}";
+            font-family: "Phosphor-Bold";
+            font-size: 13px;
+            color: Theme.m3-on-primary-container;
+            accessible-role: none;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+// Segmented.qml: Glass, a track with a sliding pill; Material, a connected
+// button group (the chosen one fills and turns round)
+component StSegmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <string> label;
+    callback selected(int);
+    property <length> gap: Theme.material ? 2px : 0;
+    property <length> seg: (self.width - 4px - gap * (options.length - 1)) / max(1, options.length);
+    height: Theme.material ? 36px : 30px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    accessible-label: label;
+    if !Theme.material: Rectangle {
+        x: 2px + current * seg;
+        y: 2px;
+        width: seg;
+        height: parent.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff33 : #ffffff;
+        animate x { duration: 280ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+    }
+    for o[i] in options: Rectangle {
+        property <bool> chosen: i == current;
+        property <length> full: self.height / 2;
+        property <length> inner: chosen ? full : touch.pressed ? 4px : 8px;
+        x: 2px + i * (seg + gap);
+        width: seg;
+        height: parent.height;
+        border-top-left-radius: !Theme.material ? 0 : i == 0 ? full : inner;
+        border-bottom-left-radius: self.border-top-left-radius;
+        border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 ? full : inner;
+        border-bottom-right-radius: self.border-top-right-radius;
+        animate border-top-left-radius, border-top-right-radius { duration: 200ms; easing: spring(0.6); }
+        background: !Theme.material ? transparent : chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+            : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
+        animate background { duration: 150ms; }
+        accessible-role: tab;
+        accessible-label: o;
+        accessible-checked: chosen;
+        accessible-action-default => { selected(i); }
+        Text {
+            text: o;
+            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.selected(i); }
+        }
+    }
+}
+
+// The options' small heading (8 in, 2 above, 4 below)
+component Caption inherits Rectangle {
+    in property <string> text;
+    height: t.preferred-height + 6px;
+    t := Text {
+        x: 8px;
+        y: 2px;
+        text: root.text;
+        color: Theme.tertiary;
+        font-size: Theme.caption;
+        font-weight: 600;
+        accessible-role: AccessibleRole.text;
+    }
+}
+
+// A note under a choice (8 in on both sides)
+component Note inherits Rectangle {
+    in property <string> text;
+    in property <length> top;
+    height: t.preferred-height + top;
+    t := Text {
+        x: 8px;
+        y: top;
+        width: parent.width - 16px;
+        text: root.text;
+        wrap: word-wrap;
+        color: Theme.tertiary;
+        font-size: Theme.caption;
+    }
+}
+
+// A choice (Material: a menu item, the chosen one in tertiaryContainer)
+component OptionRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    callback clicked();
+    height: Theme.material ? 40px : 32px;
+    border-radius: Theme.material ? 12px : 8px;
+    background: Theme.material ? (checked ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+            : touch.pressed ? Theme.m3-on-surface.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    Text {
+        x: Theme.material ? 12px : 8px;
+        width: 14px;
+        text: "\u{e182}";
+        font-family: "Phosphor-Bold";
+        font-size: 14px;
+        color: Theme.material ? Theme.m3-on-tertiary-container : Theme.accent-ink;
+        opacity: checked ? 1 : 0;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    Text {
+        x: (Theme.material ? 12px : 8px) + 14px + 8px;
+        width: parent.width - self.x - 8px;
+        text: root.text;
+        overflow: elide;
+        color: Theme.material && checked ? Theme.m3-on-tertiary-container : Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component SwitchRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    callback toggled();
+    height: 36px;
+    Text {
+        x: 8px;
+        text: root.text;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    StSwitch {
+        x: parent.width - self.width;
+        checked: root.checked;
+        label: root.text;
+        toggled => { root.toggled(); }
+    }
+}
+
+component SegmentRow inherits Rectangle {
+    in property <string> text;
+    in property <[string]> options;
+    in property <int> current;
+    in property <length> segment-width: 168px;
+    callback selected(int);
+    height: 36px;
+    Text {
+        x: 8px;
+        width: parent.width - segment-width - 16px;
+        text: root.text;
+        overflow: elide;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    StSegmented {
+        x: parent.width - self.width;
+        width: segment-width;
+        options: root.options;
+        current: root.current;
+        label: root.text;
+        selected(i) => { root.selected(i); }
+    }
+}
+
+// A small round icon button (IconButton.qml's look)
+component SmallButton inherits Rectangle {
+    in property <StIc> icon;
+    in property <string> label;
+    callback clicked();
+    width: 32px;
+    height: 32px;
+    border-radius: Theme.material ? (touch.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
+    background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    StIcon {
+        icon: root.icon;
+        size: 16px;
+        color: Theme.secondary;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ⇧⌘5's toolbar above the dock, its Options above it. Material: a vibrant
+// floating toolbar (a primaryContainer pill), the picked area filled in
+// primary, the Record split button with its menu upward.
+export component ScreenToolbar inherits Window {
+    in property <bool> shown;
+    in property <[StTool]> tools;
+    in property <bool> record-only;
+    in property <bool> options-open;
+    in property <bool> available: true;
+    in property <bool> gsr;
+    in property <length> bottom: 82px;
+    // the options
+    in property <[StOpt]> mics;
+    in property <bool> system-audio;
+    in property <bool> cursor;
+    in property <int> countdown;
+    in property <int> fps;
+    in property <int> codec;
+    in property <int> quality;
+    in property <string> codec-note;
+    in property <string> folder;
+    in property <bool> custom-folder;
+    in property <StIc> ic-record;
+    in property <StIc> ic-monitor;
+    in property <StIc> ic-window;
+    in property <StIc> ic-selection;
+    in property <StIc> ic-reset;
+    in property <StIc> ic-pencil;
+    in property <StIc> ic-folder;
+    in property <StIc> ic-caret-up;
+    in property <StIc> ic-caret-down;
+    in-out property <bool> menu-open; // Material: the split button's menu
+
+    callback tool(int);
+    callback record();
+    callback record-area(string); // the split button's menu
+    callback mic(int);
+    callback set-system-audio();
+    callback set-cursor();
+    callback set-countdown(int);
+    callback set-fps(int);
+    callback set-codec(int);
+    callback set-quality(int);
+    callback folder-reset();
+    callback folder-pick();
+    callback folder-open();
+    callback key(string) -> bool;
+    callback closed();
+
+    out property <float> progress: shown ? 1 : 0;
+    // (for the glass and the input region)
+    out property <length> bar-x: bar.x;
+    out property <length> bar-y: bar.y + body.y;
+    out property <length> bar-w: bar.width;
+    out property <length> bar-h: bar.height;
+    out property <length> opt-x: opts.x;
+    out property <length> opt-y: opts.y + body.y;
+    out property <length> opt-w: opts.width;
+    out property <length> opt-h: options-open ? opts.height : 0;
+    out property <length> menu-top: menu-open ? menu.y + body.y : bar.y + body.y;
+
+    background: transparent;
+    no-frame: true;
+    title: "Screen tools";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    animate progress {
+        duration: Theme.popover;
+        easing: shown ? (Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0)) : (Theme.material ? cubic-bezier(0.3, 0.0, 0.8, 0.15) : cubic-bezier(0.4, 0.0, 1.0, 1.0));
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+    // (measures the Options button's label)
+    opt-measure := Text {
+        visible: false;
+        text: "Options";
+        font-size: Theme.body;
+        font-weight: 500;
+    }
+
+    // A click beside the menu closes it
+    if menu-open: TouchArea {
+        clicked => { menu-open = false; }
+    }
+
+    body := Rectangle {
+        y: (1 - progress) * 12px;
+        opacity: progress;
+
+        // ── Options, above the bar ──
+        opts := Rectangle {
+            visible: options-open;
+            width: 340px;
+            height: list.preferred-height + 28px;
+            x: (root.width - self.width) / 2;
+            y: bar.y - 8px - self.height;
+            border-radius: Theme.radius-popover;
+            background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+            drop-shadow-blur: Theme.material ? 16px : 0;
+            drop-shadow-offset-y: Theme.material ? 4px : 0;
+            drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Options";
+            TouchArea { }
+            list := VerticalLayout {
+                x: 14px;
+                y: 14px;
+                width: parent.width - 28px;
+                height: self.preferred-height;
+                spacing: 2px;
+                Caption { text: "Microphone"; }
+                for m[i] in mics: OptionRow {
+                    text: m.text;
+                    checked: m.checked;
+                    clicked => { root.mic(i); }
+                }
+                Rectangle { height: 6px; }
+                SwitchRow {
+                    text: "System audio";
+                    checked: system-audio;
+                    toggled => { root.set-system-audio(); }
+                }
+                if gsr: SwitchRow {
+                    text: "Show mouse pointer";
+                    checked: cursor;
+                    toggled => { root.set-cursor(); }
+                }
+                SegmentRow {
+                    text: "Countdown";
+                    options: ["None", "3 s", "5 s"];
+                    current: countdown;
+                    selected(i) => { root.set-countdown(i); }
+                }
+                Rectangle { height: 6px; }
+                Caption { text: "Video"; }
+                SegmentRow {
+                    text: "Frame rate";
+                    options: ["30 fps", "60 fps"];
+                    current: fps;
+                    selected(i) => { root.set-fps(i); }
+                }
+                if gsr: SegmentRow {
+                    text: "Format";
+                    segment-width: 192px;
+                    options: ["H.264", "HEVC", "AV1"];
+                    current: codec;
+                    selected(i) => { root.set-codec(i); }
+                }
+                if gsr: Note {
+                    text: codec-note;
+                }
+                if gsr: SegmentRow {
+                    text: "Quality";
+                    segment-width: 232px;
+                    options: ["Medium", "High", "Very high", "Ultra"];
+                    current: quality;
+                    selected(i) => { root.set-quality(i); }
+                }
+                Rectangle { height: 6px; }
+                Rectangle {
+                    height: 36px;
+                    Text {
+                        x: 8px;
+                        width: parent.width - folder-row.preferred-width - 16px;
+                        text: "Save to " + folder;
+                        overflow: elide;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        vertical-alignment: center;
+                    }
+                    folder-row := HorizontalLayout {
+                        x: parent.width - self.preferred-width;
+                        spacing: 2px;
+                        alignment: end;
+                        if custom-folder: SmallButton {
+                            icon: ic-reset;
+                            label: "Save to ~/Videos/Screen Recordings again";
+                            clicked => { root.folder-reset(); }
+                        }
+                        SmallButton {
+                            icon: ic-pencil;
+                            label: "Choose the folder";
+                            clicked => { root.folder-pick(); }
+                        }
+                        SmallButton {
+                            icon: ic-folder;
+                            label: "Open the folder";
+                            clicked => { root.folder-open(); }
+                        }
+                    }
+                }
+                if !gsr: Note {
+                    top: 4px;
+                    text: available ? "Install gpu-screen-recorder to pause recordings and record the microphone together with system audio." : "Install gpu-screen-recorder to record the screen.";
+                }
+            }
+        }
+
+        // ── The bar ──
+        bar := Rectangle {
+            width: row.preferred-width + 24px;
+            height: 64px;
+            x: (root.width - self.width) / 2;
+            y: root.height - bottom - self.height;
+            // Glass: the plugin's glass under a tint; Material: a vibrant
+            // floating toolbar, a pill in primaryContainer
+            border-radius: Theme.material ? self.height / 2 : 22px;
+            background: Theme.material ? Theme.m3-primary-container : Theme.panel;
+            drop-shadow-blur: Theme.material ? 10px : 0;
+            drop-shadow-offset-y: Theme.material ? 3px : 0;
+            drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.18) : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Screen tools";
+            TouchArea { }
+            row := HorizontalLayout {
+                alignment: center;
+                spacing: 4px;
+                for t[i] in tools: Rectangle {
+                    width: t.kind == 1 ? 17px : t.kind == 2 ? opt-measure.preferred-width + 40px : 104px;
+                    height: 56px;
+                    property <bool> active: tt.pressed || (t.kind == 2 && options-open);
+                    if t.kind == 1: Rectangle {
+                        width: 1px;
+                        height: Theme.material ? 32px : 36px;
+                        background: Theme.material ? Theme.m3-on-primary-container.with-alpha(0.24) : Theme.separator;
+                    }
+                    face := Rectangle {
+                        visible: t.kind != 1;
+                        // Material: round, squaring off while pressed; the
+                        // picked one filled in primary
+                        border-radius: Theme.material ? (tt.pressed ? 16px : t.picked ? 20px : self.height / 2) : 12px;
+                        animate border-radius { duration: 250ms; easing: spring(0.55); }
+                        background: Theme.material ? (t.picked ? Theme.m3-primary : Theme.m3-on-primary-container.with-alpha(parent.active ? 0.1 : tt.has-hover ? 0.08 : 0))
+                            : t.picked ? Theme.accent.with-alpha(0.22) : parent.active ? Theme.fill-pressed : tt.has-hover ? Theme.fill : transparent;
+                        transform-scale: Theme.material && tt.pressed ? 1.04 : 1;
+                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        accessible-role: button;
+                        accessible-label: t.label;
+                        accessible-checked: t.picked;
+                        accessible-action-default => { root.tool(i); }
+                        if t.kind == 0: VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            StIcon {
+                                height: 22px;
+                                icon: t.icon;
+                                size: 22px;
+                                fill: Theme.material && (t.picked || t.red);
+                                color: t.red ? Theme.danger : Theme.material ? (t.picked ? Theme.m3-on-primary : Theme.m3-on-primary-container) : t.picked ? Theme.accent : Theme.label;
+                            }
+                            Text {
+                                text: t.label;
+                                horizontal-alignment: center;
+                                color: Theme.material ? (t.picked ? Theme.m3-on-primary : Theme.m3-on-primary-container) : t.picked ? Theme.label : Theme.secondary;
+                                font-size: Theme.caption;
+                                font-weight: 500;
+                                accessible-role: none;
+                            }
+                        }
+                        if t.kind == 2: HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Text {
+                                text: "Options";
+                                color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                                font-size: Theme.body;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                            StIcon {
+                                width: 11px;
+                                icon: options-open ? ic-caret-down : ic-caret-up;
+                                bold: true;
+                                size: 11px;
+                                color: Theme.material ? Theme.m3-on-primary-container : Theme.secondary;
+                            }
+                        }
+                        tt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.tool(i); }
+                        }
+                    }
+                }
+                // Recording only: Record (Material: a split button whose menu
+                // records the other areas straight away)
+                if record-only && !Theme.material: Rectangle {
+                    width: rec-label.preferred-width + 40px;
+                    height: 56px;
+                    Rectangle {
+                        width: parent.width;
+                        height: 36px;
+                        border-radius: 18px;
+                        background: !available ? Theme.fill : rt.pressed ? Theme.danger.darker(0.17) : rt.has-hover ? Theme.danger.darker(0.07) : Theme.danger;
+                        transform-scale: rt.pressed ? 0.97 : 1;
+                        animate transform-scale { duration: 100ms; }
+                        accessible-role: button;
+                        accessible-label: "Record";
+                        accessible-action-default => { if available { root.record(); } }
+                        rec-label := Text {
+                            text: "Record";
+                            color: available ? #ffffff : Theme.tertiary;
+                            font-size: Theme.body;
+                            font-weight: 600;
+                            accessible-role: none;
+                        }
+                        rt := TouchArea {
+                            enabled: available;
+                            mouse-cursor: pointer;
+                            clicked => { root.record(); }
+                        }
+                    }
+                }
+                if record-only && Theme.material: Rectangle {
+                    width: split.width + 16px;
+                    height: 56px;
+                    split := Rectangle {
+                        x: 16px;
+                        width: lead.width + 2px + 40px;
+                        height: 40px;
+                        opacity: available ? 1 : 0.38;
+                        lead := Rectangle {
+                            width: lead-row.preferred-width + 32px;
+                            height: 40px;
+                            border-top-left-radius: 20px;
+                            border-bottom-left-radius: 20px;
+                            border-top-right-radius: lt.pressed ? 8px : 4px;
+                            border-bottom-right-radius: self.border-top-right-radius;
+                            background: Theme.m3-primary.mix(Theme.m3-on-primary, lt.pressed ? 0.9 : lt.has-hover ? 0.92 : 1);
+                            animate background { duration: Theme.hover; }
+                            accessible-role: button;
+                            accessible-label: "Record";
+                            accessible-action-default => { if available { root.record(); } }
+                            lead-row := HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                StIcon {
+                                    width: 18px;
+                                    icon: ic-record;
+                                    size: 18px;
+                                    color: Theme.m3-on-primary;
+                                }
+                                Text {
+                                    text: "Record";
+                                    color: Theme.m3-on-primary;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                    vertical-alignment: center;
+                                    accessible-role: none;
+                                }
+                            }
+                            lt := TouchArea {
+                                enabled: available;
+                                mouse-cursor: pointer;
+                                clicked => { root.record(); }
+                            }
+                        }
+                        Rectangle {
+                            x: lead.width + 2px;
+                            width: 40px;
+                            height: 40px;
+                            property <length> inner: menu-open ? 20px : tr.pressed ? 8px : 4px;
+                            border-top-left-radius: inner;
+                            border-bottom-left-radius: inner;
+                            border-top-right-radius: 20px;
+                            border-bottom-right-radius: 20px;
+                            animate border-top-left-radius, border-bottom-left-radius { duration: 300ms; easing: spring(0.3); }
+                            background: Theme.m3-primary.mix(Theme.m3-on-primary, tr.pressed ? 0.9 : tr.has-hover ? 0.92 : 1);
+                            accessible-role: button;
+                            accessible-label: "More record options";
+                            accessible-action-default => { menu-open = !menu-open; }
+                            StIcon {
+                                icon: menu-open ? ic-caret-down : ic-caret-up;
+                                size: 18px;
+                                color: Theme.m3-on-primary;
+                            }
+                            tr := TouchArea {
+                                enabled: available;
+                                mouse-cursor: pointer;
+                                clicked => { menu-open = !menu-open; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Material: the split button's menu, upward
+        menu := Rectangle {
+            visible: self.opacity > 0.01;
+            opacity: menu-open ? 1 : 0;
+            animate opacity { duration: menu-open ? Theme.popover : Theme.hover; }
+            width: 220px;
+            height: menu-col.preferred-height + 16px;
+            x: min(root.width - self.width - 8px, bar.x + bar.width - self.width - 12px);
+            y: bar.y - self.height - 8px + (menu-open ? 0 : 6px);
+            border-radius: 16px;
+            background: Theme.m3-surface-container;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+            accessible-role: AccessibleRole.list;
+            TouchArea { }
+            menu-col := VerticalLayout {
+                y: 8px;
+                height: self.preferred-height;
+                for it[i] in [
+                    { text: "Record entire screen", area: "screen", icon: ic-monitor },
+                    { text: "Record a window", area: "window", icon: ic-window },
+                    { text: "Record a region", area: "region", icon: ic-selection },
+                ]: Rectangle {
+                    height: 44px;
+                    background: mt.has-hover ? Theme.m3-on-surface.with-alpha(mt.pressed ? 0.1 : 0.08) : transparent;
+                    accessible-role: AccessibleRole.list-item;
+                    accessible-label: it.text;
+                    accessible-action-default => { root.record-area(it.area); }
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        spacing: 12px;
+                        StIcon {
+                            width: 20px;
+                            icon: it.icon;
+                            size: 20px;
+                            color: Theme.m3-on-surface-variant;
+                        }
+                        Text {
+                            text: it.text;
+                            color: Theme.m3-on-surface;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+                    mt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.record-area(it.area); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── The countdown before a recording ─────────────────────────────────────
+
+// A glass disc (Material: a hero shape in primaryContainer, the next shape
+// each second) in the middle of the screen; each second pops in
+export component RecordCountdown inherits Window {
+    in property <int> count;
+    in property <string> shape; // Material: the outline (src/surfaces/shapes.rs)
+    in property <float> pop: 1;
+    background: transparent;
+    no-frame: true;
+    title: "Recording countdown";
+    default-font-family: Theme.font;
+    width: 168px;
+    height: 168px;
+    if !Theme.material: Rectangle {
+        x: 24px;
+        y: 24px;
+        width: 120px;
+        height: 120px;
+        border-radius: 60px;
+        background: Theme.panel;
+    }
+    if Theme.material: Path {
+        x: 24px;
+        y: 24px;
+        width: 120px;
+        height: 120px;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: shape;
+        fill: Theme.m3-primary-container;
+    }
+    Text {
+        text: count;
+        color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+        font-size: 56px;
+        font-weight: 600;
+        transform-scale: pop;
+        accessible-role: AccessibleRole.text;
+        accessible-label: "Recording in " + count;
+    }
+}
+
+// ── A screen translation's card ──────────────────────────────────────────
+
+// Next to the translated area: the translation (or what went wrong), the
+// text it read, Copy and close; Esc closes it
+export component TranslationCard inherits Window {
+    in property <length> area-x;
+    in property <length> area-y;
+    in property <length> area-w;
+    in property <length> area-h;
+    in property <string> text;
+    in property <string> source;
+    in property <bool> busy;
+    in property <string> error;
+    in property <StIc> ic-copy;
+    in property <StIc> ic-close;
+    callback copy();
+    callback dismiss();
+    callback key(string) -> bool;
+
+    out property <length> card-x: card.x;
+    out property <length> card-y: card.y;
+    out property <length> card-w: card.width;
+    out property <length> card-h: card.height;
+
+    background: transparent;
+    no-frame: true;
+    title: "Translation";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+
+    card := Rectangle {
+        width: max(280px, min(460px, area-w));
+        height: content.preferred-height + 28px;
+        x: max(0, min(area-x, root.width - self.width - 24px));
+        y: max(30px + 24px, min(area-y + area-h + 8px, root.height - self.height - 24px));
+        border-radius: Theme.material ? 24px : 20px;
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
+        drop-shadow-blur: Theme.material ? 16px : 0;
+        drop-shadow-offset-y: Theme.material ? 4px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Translation";
+        TouchArea {
+            clicked => { keys.focus(); }
+        }
+        content := VerticalLayout {
+            x: Theme.material ? 20px : 14px;
+            y: Theme.material ? 16px : 14px;
+            width: parent.width - 2 * self.x;
+            height: self.preferred-height;
+            spacing: 8px;
+            Rectangle {
+                height: Theme.material ? 32px : 22px;
+                Text {
+                    x: 0;
+                    // (Material: a label in primary, sentence case)
+                    text: Theme.material ? "Translation" : "TRANSLATION";
+                    color: Theme.material ? Theme.m3-primary : Theme.secondary;
+                    font-size: Theme.material ? Theme.small : Theme.caption;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                HorizontalLayout {
+                    x: parent.width - self.preferred-width;
+                    spacing: 4px;
+                    for b[i] in [{ icon: ic-copy, label: "Copy" }, { icon: ic-close, label: "Close" }]: Rectangle {
+                        width: Theme.material ? 32px : 22px;
+                        height: self.width;
+                        border-radius: Theme.material && bt.pressed ? 8px : self.width / 2;
+                        background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, bt.pressed ? 0.9 : bt.has-hover ? 0.92 : 1)
+                            : bt.has-hover ? Theme.fill-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: b.label;
+                        accessible-action-default => { if i == 0 { root.copy(); } else { root.dismiss(); } }
+                        StIcon {
+                            icon: b.icon;
+                            bold: !Theme.material;
+                            size: Theme.material ? 16px : 12px;
+                            color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+                        }
+                        bt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { if i == 0 { root.copy(); } else { root.dismiss(); } }
+                        }
+                    }
+                }
+            }
+            Text {
+                text: busy ? "Translating…" : error != "" ? error : root.text;
+                wrap: word-wrap;
+                color: error != "" ? Theme.danger : Theme.label;
+                font-size: Theme.title;
+            }
+            if source != "": Text {
+                text: source;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 4 * Theme.small * 1.3;
+                color: Theme.tertiary;
+                font-size: Theme.small;
+            }
+        }
+    }
+}

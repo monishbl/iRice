@@ -4999,6 +4999,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-screentools"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "image",
+ "libc",
+ "resvg",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-session"
 version = "0.1.0"
 dependencies = [
@@ -5117,6 +5132,7 @@ dependencies = [
  "tessera-overlay",
  "tessera-polkit",
  "tessera-resources",
+ "tessera-screentools",
  "tessera-session",
  "tessera-share",
  "tessera-shelf",

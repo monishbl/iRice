@@ -1,0 +1,1424 @@
+// The screenshot's thumbnail and markup editor in Rust (rust.surfaces:
+// screentools; src/surfaces/screentools/shots.rs), compare
+// shell/modules/screentools/editor: ShotThumbnail.qml, ShotEditorWindow.qml,
+// Annotation.qml, LiveTextLayer.qml and LiveTextBar.qml. Live Text's layer
+// and bar are shared with Quick Look (quicklook.slint). Rust owns the
+// session, the marks (in the image's pixels) and their history; this draws
+// them in display pixels, as Rust lays them out.
+
+import { Theme } from "@tessera/theme.slint";
+import { StIc, StIcon, StSpin, EditorButton } from "screentools.slint";
+
+// ── Live Text ────────────────────────────────────────────────────────────
+
+// A word's box, as drawn: selected, joined to the word before / after (one band)
+export struct LtBox {
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    sel: bool,
+    jl: bool,
+    jr: bool,
+}
+
+export struct LtChip {
+    icon: StIc,
+    label: string,
+    tooltip: string,
+}
+
+// What the bar shows (LiveTextBar.qml)
+export struct LtBar {
+    status: string, // "" | reading | ready | none | missing | error
+    message: string,
+    glyph: StIc,
+    danger: bool,
+    spinning: bool,
+    chips: [LtChip],
+    has-sel: bool,
+    installing: bool,
+    updates-running: bool,
+}
+
+// The words over the picture: drag across them, click one, double-click for
+// its line, Shift+click to extend (Rust keeps the selection)
+export component LiveTextLayer {
+    in property <[LtBox]> boxes;
+    in property <float> glow;
+    in property <bool> ready;
+    in property <bool> over-word;
+    callback press(length, length, bool);
+    callback drag-to(length, length);
+    callback hover(length, length);
+    callback double(length, length);
+    accessible-role: AccessibleRole.text;
+    accessible-label: ready ? "Text in the picture" : "";
+    for b in boxes: Rectangle {
+        x: b.x;
+        y: b.y;
+        width: b.w;
+        height: b.h;
+        property <length> r: Theme.material ? 4px : 3px;
+        border-top-left-radius: b.jl ? 0 : r;
+        border-bottom-left-radius: b.jl ? 0 : r;
+        border-top-right-radius: b.jr ? 0 : r;
+        border-bottom-right-radius: b.jr ? 0 : r;
+        background: Theme.accent.with-alpha(b.sel ? 0.36 : 0.22 * glow);
+    }
+    if ready: TouchArea {
+        mouse-cursor: over-word ? MouseCursor.text : MouseCursor.default;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.press(self.mouse-x, self.mouse-y, e.modifiers.shift);
+            } else if e.kind == PointerEventKind.move {
+                if self.pressed {
+                    root.drag-to(self.mouse-x, self.mouse-y);
+                } else {
+                    root.hover(self.mouse-x, self.mouse-y);
+                }
+            }
+        }
+        double-clicked => { root.double(self.mouse-x, self.mouse-y); }
+    }
+}
+
+// What Live Text found, its chips, and copying; every state says what next
+export component LiveTextBar inherits Rectangle {
+    in property <LtBar> bar;
+    in property <StIc> ic-copy;
+    in property <StIc> ic-download;
+    in property <StIc> no-icon;
+    callback chip(int);
+    callback copy-sel();
+    callback copy-all();
+    callback retry();
+    callback install();
+    height: Theme.material ? 40px : 36px;
+    width: content.preferred-width;
+    visible: bar.status != "";
+    content := HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 8px;
+            padding-right: 4px;
+            alignment: start;
+            if bar.spinning: Rectangle {
+                width: Theme.material ? 20px : 16px;
+                StSpin {
+                    size: Theme.material ? 20px : 16px;
+                    color: Theme.material ? Theme.m3-primary : Theme.secondary;
+                }
+            }
+            if !bar.spinning && bar.glyph.t != "": StIcon {
+                width: 16px;
+                icon: bar.glyph;
+                size: 16px;
+                color: bar.danger ? Theme.danger : Theme.secondary;
+            }
+            Text {
+                text: bar.message;
+                color: Theme.secondary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+            }
+        }
+        for c[i] in bar.chips: EditorButton {
+            variant: 1;
+            icon: c.icon;
+            label: c.label;
+            tip-below: false;
+            tooltip: c.tooltip;
+            clicked => { root.chip(i); }
+        }
+        if bar.status == "ready" && bar.has-sel: EditorButton {
+            variant: 1;
+            icon: ic-copy;
+            label: "Copy text";
+            tip-below: false;
+            shortcut: "Ctrl+C";
+            tooltip: "Copy the selected text";
+            clicked => { root.copy-sel(); }
+        }
+        if bar.status == "ready": EditorButton {
+            icon: bar.has-sel ? no-icon : ic-copy;
+            label: "Copy all text";
+            tip-below: false;
+            clicked => { root.copy-all(); }
+        }
+        if bar.status == "error": EditorButton {
+            variant: 1;
+            label: "Try again";
+            clicked => { root.retry(); }
+        }
+        // (through Software Update, which asks for your password)
+        if bar.status == "missing": EditorButton {
+            variant: 1;
+            icon: ic-download;
+            label: bar.installing ? "Installing…" : "Install Tesseract";
+            busy: bar.installing;
+            enabled: !bar.updates-running;
+            tip-below: false;
+            tooltip: "Reads text on this computer; nothing is uploaded";
+            clicked => { root.install(); }
+        }
+    }
+}
+
+// ── Markup ───────────────────────────────────────────────────────────────
+
+// One mark as drawn (display px). kind: 0 pen, 1 highlighter, 2 arrow,
+// 3 rectangle, 4 ellipse, 5 text, 6 redaction
+export struct StAnn {
+    kind: int,
+    cmd: string,
+    head: string,
+    color: color,
+    width: length,
+    head-width: length,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    radius: length,
+    text: string,
+    size: length,
+    img: image,
+}
+
+component AnnView {
+    in property <StAnn> a;
+    in property <length> vw;
+    in property <length> vh;
+    width: vw;
+    height: vh;
+    if a.kind == 0 || a.kind == 4: Path {
+        x: 0;
+        y: 0;
+        width: vw;
+        height: vh;
+        viewbox-width: vw / 1px;
+        viewbox-height: vh / 1px;
+        commands: a.cmd;
+        stroke: a.color;
+        stroke-width: a.width;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+    // (translucent: drawn opaque in its own layer, then faded as a whole)
+    if a.kind == 1: Rectangle {
+        x: 0;
+        y: 0;
+        width: vw;
+        height: vh;
+        opacity: 0.4;
+        Path {
+            x: 0;
+            y: 0;
+            width: vw;
+            height: vh;
+            viewbox-width: vw / 1px;
+            viewbox-height: vh / 1px;
+            commands: a.cmd;
+            stroke: a.color;
+            stroke-width: a.width;
+            stroke-line-cap: butt;
+            stroke-line-join: round;
+        }
+    }
+    if a.kind == 2: Path {
+        x: 0;
+        y: 0;
+        width: vw;
+        height: vh;
+        viewbox-width: vw / 1px;
+        viewbox-height: vh / 1px;
+        commands: a.cmd;
+        stroke: a.color;
+        stroke-width: a.width;
+        stroke-line-cap: round;
+    }
+    if a.kind == 2: Path {
+        x: 0;
+        y: 0;
+        width: vw;
+        height: vh;
+        viewbox-width: vw / 1px;
+        viewbox-height: vh / 1px;
+        commands: a.head;
+        fill: a.color;
+        stroke: a.color;
+        stroke-width: a.head-width;
+        stroke-line-join: round;
+    }
+    if a.kind == 3: Rectangle {
+        x: a.x;
+        y: a.y;
+        width: a.w;
+        height: a.h;
+        border-width: a.width;
+        border-color: a.color;
+        border-radius: a.radius;
+    }
+    if a.kind == 5: Text {
+        x: a.x;
+        y: a.y;
+        text: a.text;
+        color: a.color;
+        font-size: a.size;
+        font-weight: 600;
+    }
+    if a.kind == 6: Image {
+        x: a.x;
+        y: a.y;
+        width: a.w;
+        height: a.h;
+        source: a.img;
+        image-fit: fill;
+        image-rendering: pixelated;
+    }
+}
+
+// ── The floating thumbnail ───────────────────────────────────────────────
+
+// Bottom right after a screenshot: slides in, waits 5 s (held while
+// hovered), slides out. Click to mark it up, swipe right (or the close
+// button) to dismiss, Copy text copies the text in it. After Delete it is
+// the Undo toast. The window is a fixed box; the card sits at its bottom right.
+export component ShotThumbnail inherits Window {
+    in property <bool> shown;
+    in property <bool> fade; // (leaving after a drop: fades in place)
+    in property <bool> deleted;
+    in property <length> card-w: 212px;
+    in property <length> card-h: 145px;
+    in property <image> preview;
+    in property <int> status; // 0 loading, 1 ready, 2 couldn't load
+    in property <length> offset; // the swipe
+    in property <bool> swiping;
+    in property <bool> hold; // a press is on (no hover buttons, no hint)
+    in property <bool> reading;
+    in property <string> said;
+    in property <StIc> ic-image;
+    in property <StIc> ic-warning;
+    in property <StIc> ic-text;
+    in property <StIc> ic-close;
+    in property <StIc> ic-trash;
+    callback press(length, length);
+    callback drag-to(length, length);
+    callback release();
+    callback hovered(bool);
+    callback copy-text();
+    callback dismiss();
+    callback undo();
+    callback gone();
+
+    out property <float> progress: shown ? 1 : 0;
+    out property <length> card-x: card.x;
+    out property <length> card-y: card.y;
+    out property <bool> hovering: hover.has-hover;
+    property <length> m: 24px;
+    property <length> travel: card-w + 24px;
+
+    background: transparent;
+    no-frame: true;
+    title: "Screenshot";
+    default-font-family: Theme.font;
+
+    animate progress {
+        duration: shown ? 300ms : 200ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { gone(); }
+    }
+    property <bool> over: hover.has-hover;
+    changed over => { hovered(over); }
+
+    card := Rectangle {
+        width: card-w;
+        height: card-h;
+        x: root.width - m - card-w + offset + (1 - progress) * (fade ? 0 : travel);
+        y: root.height - m - card-h;
+        opacity: fade ? progress : 1;
+        // (Material: a card, corner 16; deleted, a snackbar's corner 4)
+        border-radius: Theme.material ? (deleted ? 4px : 16px) : deleted ? 22px : 14px;
+        background: Theme.material ? (deleted ? Theme.m3-inverse-surface : Theme.m3-surface-container) : Theme.panel;
+        drop-shadow-blur: Theme.material ? 16px : 0;
+        drop-shadow-offset-y: Theme.material ? 4px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+        accessible-role: groupbox;
+        accessible-label: deleted ? "Screenshot deleted" : "Screenshot";
+
+        hover := TouchArea {
+            enabled: !deleted;
+            mouse-cursor: swiping ? MouseCursor.grabbing : MouseCursor.pointer;
+            pointer-event(e) => {
+                if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                    root.press(self.mouse-x + card.x, self.mouse-y + card.y);
+                } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+                    root.release();
+                } else if e.kind == PointerEventKind.move && self.pressed {
+                    root.drag-to(self.mouse-x + card.x, self.mouse-y + card.y);
+                } else if e.kind == PointerEventKind.cancel {
+                    root.release();
+                }
+            }
+
+        // ── Screenshot ──
+        if !deleted: Rectangle {
+            x: 6px;
+            y: 6px;
+            width: parent.width - 12px;
+            height: parent.height - 12px;
+            border-radius: Theme.material ? 10px : 8px;
+            background: Theme.fill;
+            clip: true;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: preview;
+                image-fit: cover;
+            }
+            if status == 0: StIcon {
+                icon: ic-image;
+                size: 24px;
+                color: Theme.tertiary;
+            }
+            if status == 2: VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                StIcon {
+                    height: 20px;
+                    icon: ic-warning;
+                    size: 20px;
+                    color: Theme.secondary;
+                }
+                Text {
+                    text: "Couldn't load preview";
+                    horizontal-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+            // press feedback
+            Rectangle {
+                background: Theme.material ? Theme.m3-on-surface : #000000;
+                opacity: hover.pressed && !swiping ? (Theme.material ? 0.1 : 0.12) : 0;
+                animate opacity { duration: 100ms; }
+            }
+        }
+
+        // The hint while hovered: what a click does (or what Copy text did)
+        if !deleted: Rectangle {
+            y: parent.height - 12px - self.height;
+            x: (parent.width - self.width) / 2;
+            width: hint-text.preferred-width + 16px;
+            height: Theme.material ? 24px : 22px;
+            // (Material: a plain tooltip)
+            border-radius: Theme.material ? 4px : 11px;
+            background: Theme.material ? Theme.m3-inverse-surface : #1a1a1fc7;
+            opacity: (hover.has-hover && !hold && status == 1) || said != "" ? 1 : 0;
+            animate opacity { duration: Theme.hover; }
+            hint-text := Text {
+                text: said != "" ? said : "Click to mark up";
+                color: Theme.material ? Theme.m3-inverse-on-surface : #ffffff;
+                font-size: Theme.caption;
+                font-weight: 500;
+            }
+        }
+
+        // Copy the text in it, top right (on hover)
+        if !deleted: Rectangle {
+            x: parent.width - 12px - self.width;
+            y: 12px;
+            width: 28px;
+            height: 28px;
+            border-radius: 14px;
+            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, tt.pressed ? 0.9 : 1)
+                : tt.pressed ? Theme.fill-pressed : Theme.dark ? #3a3a3f : #ffffff;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: Theme.separator;
+            opacity: hover.has-hover && !hold && status == 1 && !reading ? 1 : 0;
+            visible: self.opacity > 0;
+            animate opacity { duration: Theme.hover; }
+            accessible-role: button;
+            accessible-label: "Copy text";
+            accessible-action-default => { root.copy-text(); }
+            StIcon {
+                icon: ic-text;
+                size: Theme.material ? 15px : 14px;
+                color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+            }
+            tt := TouchArea {
+                x: -8px;
+                y: -8px;
+                width: parent.width + 16px;
+                height: parent.height + 16px;
+                mouse-cursor: pointer;
+                clicked => { root.copy-text(); }
+            }
+        }
+
+        // Dismiss without swiping
+        if !deleted: Rectangle {
+            x: -6px;
+            y: -6px;
+            width: Theme.material ? 24px : 22px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ct.pressed ? 0.9 : 1)
+                : ct.pressed ? Theme.fill-pressed : Theme.dark ? #3a3a3f : #ffffff;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: Theme.separator;
+            opacity: hover.has-hover && !hold ? 1 : 0;
+            visible: self.opacity > 0;
+            animate opacity { duration: Theme.hover; }
+            accessible-role: button;
+            accessible-label: "Dismiss";
+            accessible-action-default => { root.dismiss(); }
+            StIcon {
+                icon: ic-close;
+                bold: true;
+                size: Theme.material ? 13px : 11px;
+                color: Theme.material ? Theme.m3-on-secondary-container : Theme.secondary;
+            }
+            ct := TouchArea {
+                x: -6px;
+                y: -6px;
+                width: parent.width + 12px;
+                height: parent.height + 12px;
+                mouse-cursor: pointer;
+                clicked => { root.dismiss(); }
+            }
+        }
+
+        // ── The Undo toast after Delete ──
+        if deleted: HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            StIcon {
+                width: 16px;
+                icon: ic-trash;
+                size: 16px;
+                color: Theme.material ? Theme.m3-inverse-on-surface : Theme.secondary;
+            }
+            Text {
+                text: "Screenshot deleted";
+                color: Theme.material ? Theme.m3-inverse-on-surface : Theme.label;
+                font-size: Theme.body;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: undo-text.preferred-width + 20px;
+                height: Theme.material ? 32px : 28px;
+                // (Material: the snackbar's text action in inversePrimary)
+                border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+                background: Theme.material ? Theme.m3-inverse-primary.with-alpha(ut.pressed ? 0.1 : ut.has-hover ? 0.08 : 0)
+                    : ut.pressed ? Theme.fill-pressed : ut.has-hover ? Theme.fill-hover : Theme.fill;
+                transform-scale: ut.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
+                animate transform-scale { duration: 100ms; }
+                accessible-role: button;
+                accessible-label: "Undo";
+                accessible-action-default => { root.undo(); }
+                undo-text := Text {
+                    text: "Undo";
+                    color: Theme.material ? Theme.m3-inverse-primary : Theme.accent-ink;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                }
+                ut := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.undo(); }
+                }
+            }
+        }
+        }
+    }
+}
+
+// ── The editor ───────────────────────────────────────────────────────────
+
+export struct StToolBtn {
+    icon: StIc,
+    label: string,
+    key: string,
+}
+
+// A banner over the canvas: kind 0 none, 1 a failed action, 2 unsaved changes
+export struct StBanner {
+    kind: int,
+    title: string,
+    body: string,
+}
+
+// A floating card sized to the screenshot: the tools on top, the canvas,
+// colours and widths (or Live Text's bar) and the actions at the bottom.
+export component ShotEditor inherits Window {
+    in property <bool> shown;
+    in property <length> pad: 12px;
+    in property <length> bar: Theme.material ? 48px : 36px;
+    in property <length> canvas-w: 720px;
+    in property <length> canvas-h: 440px;
+    in property <int> status; // 0 loading, 1 ready, 2 couldn't open
+    in property <image> base;
+    in property <int> clip-x;
+    in property <int> clip-y;
+    in property <int> clip-w;
+    in property <int> clip-h;
+    in property <length> view-w; // the shown part at display size
+    in property <length> view-h;
+    in property <[StAnn]> anns;
+    in property <StAnn> draft;
+    in property <bool> has-draft;
+    in property <[StToolBtn]> tool-list;
+    in property <int> tool; // index in tool-list
+    in property <bool> crop-mode;
+    in property <bool> live-mode;
+    in property <bool> text-tool;
+    in property <bool> pixel-tool;
+    in property <bool> busy-any;
+    in property <string> busy;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    in property <bool> dirty;
+    in property <bool> has-path;
+    in property <[color]> palette;
+    in property <[string]> palette-names;
+    in property <int> color-index;
+    in property <int> width-index;
+    in property <color> ink;
+    in property <[string]> width-tips;
+    // crop (display px within the view)
+    in property <length> crop-x;
+    in property <length> crop-y;
+    in property <length> crop-w;
+    in property <length> crop-h;
+    in property <string> crop-size;
+    in property <bool> crop-whole;
+    in property <int> crop-cursor; // 0 cross, 1 ↖↘, 2 ↗↙, 3 move
+    // typing a label
+    in property <bool> typing;
+    in property <length> text-x;
+    in property <length> text-y;
+    in property <length> text-size;
+    in property <color> text-color;
+    in property <StBanner> banner;
+    in property <string> retry;
+    in property <string> toast;
+    // Live Text
+    in property <[LtBox]> boxes;
+    in property <float> glow;
+    in property <bool> over-word;
+    in property <LtBar> lt;
+    in property <StIc> ic-close;
+    in property <StIc> ic-undo;
+    in property <StIc> ic-redo;
+    in property <StIc> ic-check;
+    in property <StIc> ic-trash;
+    in property <StIc> ic-share;
+    in property <StIc> ic-copy;
+    in property <StIc> ic-files;
+    in property <StIc> ic-save;
+    in property <StIc> ic-image;
+    in property <StIc> ic-warning;
+    in property <StIc> ic-floppy;
+    in property <StIc> ic-download;
+    in property <StIc> ic-caret;
+    in property <StIc> no-icon;
+    in property <string> empty-shape;
+    in-out property <bool> menu-open;
+
+    callback key(string, bool, bool) -> bool; // text, control, shift
+    callback set-tool(int);
+    callback close-clicked();
+    callback undo();
+    callback redo();
+    callback canvas-down(length, length, bool);
+    callback canvas-move(length, length, bool, bool); // x, y, shift, pressed
+    callback canvas-up();
+    callback text-done(string);
+    callback text-cancel();
+    callback swatch(int);
+    callback set-width(int);
+    callback crop-reset();
+    callback crop-apply();
+    callback remove();
+    callback share();
+    callback copy();
+    callback save();
+    callback save-copy();
+    callback keep-editing();
+    callback discard();
+    callback dismiss-banner();
+    callback banner-copy();
+    callback try-again();
+    callback lt-press(length, length, bool);
+    callback lt-drag(length, length);
+    callback lt-hover(length, length);
+    callback lt-double(length, length);
+    callback lt-chip(int);
+    callback lt-copy-sel();
+    callback lt-copy-all();
+    callback lt-retry();
+    callback lt-install();
+    callback closed();
+
+    out property <float> progress: shown ? 1 : 0;
+    property <length> m: 24px;
+
+    background: transparent;
+    no-frame: true;
+    title: "Mark up screenshot";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    public function focus-keys() {
+        keys.focus();
+    }
+    public function focus-text() {
+        text-field.focus();
+    }
+    public function set-text(t: string) {
+        text-field.text = t;
+    }
+    public function text-value() -> string {
+        return text-field.text;
+    }
+
+    animate progress {
+        duration: shown ? 300ms : 200ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text, e.modifiers.control, e.modifiers.shift) { return accept; }
+            reject
+        }
+    }
+
+    body := Rectangle {
+        x: m;
+        y: m;
+        width: root.width - 2 * m;
+        height: root.height - 2 * m;
+        opacity: progress;
+        transform-scale: 0.97 + 0.03 * progress;
+        border-radius: Theme.radius-module;
+        background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+        drop-shadow-blur: Theme.material ? 24px : 0;
+        drop-shadow-offset-y: Theme.material ? 6px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+        accessible-role: groupbox;
+        accessible-label: "Mark up screenshot";
+        TouchArea { }
+
+        // -- The canvas
+        canvas := Rectangle {
+            x: pad;
+            y: pad + bar + pad;
+            width: canvas-w;
+            height: canvas-h;
+            border-radius: Theme.radius-module - pad;
+            background: Theme.fill;
+            clip: true;
+
+            view := Rectangle {
+                width: view-w;
+                height: view-h;
+                visible: status == 1;
+                clip: true;
+                Image {
+                    x: 0;
+                    y: 0;
+                    width: view-w;
+                    height: view-h;
+                    source: base;
+                    source-clip-x: clip-x;
+                    source-clip-y: clip-y;
+                    source-clip-width: clip-w;
+                    source-clip-height: clip-h;
+                    image-fit: fill;
+                }
+                for ann in anns: AnnView {
+                    x: 0;
+                    y: 0;
+                    a: ann;
+                    vw: view-w;
+                    vh: view-h;
+                }
+                if has-draft: AnnView {
+                    x: 0;
+                    y: 0;
+                    a: draft;
+                    vw: view-w;
+                    vh: view-h;
+                }
+
+                // Typing a label
+                if typing: Rectangle {
+                    x: text-x - 4px;
+                    y: text-y - 4px;
+                    width: max(text-field.preferred-width + 2px, text-size * 4) + 8px;
+                    height: text-field.preferred-height + 8px;
+                    border-width: 1px;
+                    border-color: Theme.accent;
+                    border-radius: 4px;
+                }
+                text-field := TextInput {
+                    visible: typing;
+                    enabled: typing;
+                    x: text-x;
+                    y: text-y;
+                    width: max(self.preferred-width + 2px, text-size * 4);
+                    height: self.preferred-height;
+                    color: text-color;
+                    font-size: text-size;
+                    font-weight: 600;
+                    single-line: true;
+                    selection-background-color: Theme.accent.with-alpha(0.4);
+                    accessible-label: "Label";
+                    accepted => { root.text-done(self.text); }
+                    key-pressed(e) => {
+                        if e.text == Key.Escape {
+                            root.text-cancel();
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+
+                // Crop: the frame (thirds while adjusting) and its handles
+                if crop-mode: Rectangle {
+                    property <color> dim: #00000080;
+                    Rectangle { x: 0; y: 0; width: view-w; height: max(0, crop-y); background: dim; }
+                    Rectangle { x: 0; y: crop-y + crop-h; width: view-w; height: max(0, view-h - self.y); background: dim; }
+                    Rectangle { x: 0; y: crop-y; width: max(0, crop-x); height: crop-h; background: dim; }
+                    Rectangle { x: crop-x + crop-w; y: crop-y; width: max(0, view-w - self.x); height: crop-h; background: dim; }
+                    Rectangle {
+                        x: crop-x;
+                        y: crop-y;
+                        width: crop-w;
+                        height: crop-h;
+                        border-width: Theme.material ? 2px : 1px;
+                        border-color: Theme.material ? Theme.m3-primary : #ffffff;
+                        if input.pressed: Rectangle { x: parent.width / 3; y: 0; width: 1px; height: parent.height; background: #ffffff80; }
+                        if input.pressed: Rectangle { x: parent.width * 2 / 3; y: 0; width: 1px; height: parent.height; background: #ffffff80; }
+                        if input.pressed: Rectangle { x: 0; y: parent.height / 3; width: parent.width; height: 1px; background: #ffffff80; }
+                        if input.pressed: Rectangle { x: 0; y: parent.height * 2 / 3; width: parent.width; height: 1px; background: #ffffff80; }
+                    }
+                    for c in [0, 1, 2, 3]: Rectangle {
+                        x: (mod(c, 2) == 1 ? crop-x + crop-w : crop-x) - 6px;
+                        y: (c > 1 ? crop-y + crop-h : crop-y) - 6px;
+                        width: 12px;
+                        height: 12px;
+                        // (Material: round handles in primary)
+                        border-radius: Theme.material ? 6px : 3px;
+                        background: Theme.material ? Theme.m3-primary : #ffffff;
+                        border-width: Theme.material ? 2px : 1px;
+                        border-color: Theme.material ? Theme.m3-on-primary : #0000004d;
+                    }
+                }
+
+                // Drawing (native pixels are Rust's: display px here)
+                input := TouchArea {
+                    x: crop-mode ? -8px : 0;
+                    y: crop-mode ? -8px : 0;
+                    width: view-w + (crop-mode ? 16px : 0);
+                    height: view-h + (crop-mode ? 16px : 0);
+                    enabled: status == 1 && !busy-any && banner.kind != 2 && !live-mode;
+                    mouse-cursor: text-tool ? MouseCursor.text : crop-mode ? (crop-cursor == 1 ? MouseCursor.nwse-resize : crop-cursor == 2 ? MouseCursor.nesw-resize : crop-cursor == 3 ? MouseCursor.move : MouseCursor.crosshair) : MouseCursor.crosshair;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                            root.canvas-down(self.mouse-x + self.x, self.mouse-y + self.y, e.modifiers.shift);
+                        } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                            root.canvas-up();
+                        } else if e.kind == PointerEventKind.move {
+                            root.canvas-move(self.mouse-x + self.x, self.mouse-y + self.y, e.modifiers.shift, self.pressed);
+                        } else if e.kind == PointerEventKind.cancel {
+                            root.canvas-up();
+                        }
+                    }
+                }
+
+                // Live Text: the screenshot's words to select
+                if live-mode: LiveTextLayer {
+                    x: 0;
+                    y: 0;
+                    width: view-w;
+                    height: view-h;
+                    boxes: root.boxes;
+                    glow: root.glow;
+                    ready: lt.status == "ready";
+                    over-word: root.over-word;
+                    press(x, y, s) => { root.lt-press(x, y, s); }
+                    drag-to(x, y) => { root.lt-drag(x, y); }
+                    hover(x, y) => { root.lt-hover(x, y); }
+                    double(x, y) => { root.lt-double(x, y); }
+                }
+            }
+
+            // Loading
+            if status == 0 && has-path: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+                HorizontalLayout {
+                    alignment: center;
+                    StSpin {
+                        size: Theme.material ? 48px : 24px;
+                        color: Theme.material ? Theme.m3-primary : Theme.tertiary;
+                    }
+                }
+                Text {
+                    text: "Opening screenshot…";
+                    horizontal-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                }
+            }
+
+            // The file couldn't be read
+            if status == 2: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+                width: min(360px, parent.width - 48px);
+                x: (parent.width - self.width) / 2;
+                HorizontalLayout {
+                    alignment: center;
+                    if !Theme.material: StIcon {
+                        width: 32px;
+                        height: 32px;
+                        icon: ic-image;
+                        size: 32px;
+                        color: Theme.tertiary;
+                    }
+                    // (Material: the empty state's icon on a shape)
+                    if Theme.material: Rectangle {
+                        width: 72px;
+                        height: 72px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: empty-shape;
+                            fill: Theme.m3-secondary-container;
+                        }
+                        StIcon {
+                            icon: ic-image;
+                            size: 32px;
+                            color: Theme.m3-on-secondary-container;
+                        }
+                    }
+                }
+                Text {
+                    text: "Couldn't open this screenshot";
+                    horizontal-alignment: center;
+                    color: Theme.label;
+                    font-size: Theme.title;
+                    font-weight: 600;
+                }
+                Text {
+                    text: "It may have been moved or deleted. Take it again, or open it from the Screenshots folder.";
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+                Rectangle { height: 8px; }
+                HorizontalLayout {
+                    alignment: center;
+                    EditorButton {
+                        variant: 1;
+                        label: "Close editor";
+                        clicked => { root.discard(); }
+                    }
+                }
+            }
+
+            // A failed action, or unsaved changes
+            if banner.kind != 0: Rectangle {
+                property <bool> error: banner.kind == 1;
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                height: banner-row.preferred-height + 24px;
+                border-radius: Theme.menu-radius;
+                // (Material: errorContainer, or a raised surfaceContainerHigh card)
+                background: Theme.material ? (error ? Theme.m3-error-container : Theme.m3-surface-container-high) : error ? (Theme.dark ? #3a1f1e : #fdecea) : (Theme.dark ? #2c2c31 : #ffffff);
+                border-width: Theme.material ? 0 : 1px;
+                border-color: error ? Theme.danger.with-alpha(0.4) : Theme.separator;
+                accessible-role: AccessibleRole.text;
+                accessible-label: banner.title;
+                TouchArea { } // (keeps clicks off the canvas)
+                banner-row := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 12px;
+                    StIcon {
+                        width: 20px;
+                        icon: error ? ic-warning : ic-floppy;
+                        size: 20px;
+                        color: Theme.material && error ? Theme.m3-on-error-container : error ? Theme.danger : Theme.secondary;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: banner.title;
+                            wrap: word-wrap;
+                            color: Theme.material && error ? Theme.m3-on-error-container : Theme.label;
+                            font-size: Theme.body;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: banner.body;
+                            wrap: word-wrap;
+                            color: Theme.material && error ? Theme.m3-on-error-container : Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                    }
+                    if error && retry != "copy": EditorButton {
+                        variant: 1;
+                        label: "Copy to clipboard";
+                        clicked => { root.banner-copy(); }
+                    }
+                    if error: EditorButton {
+                        variant: 1;
+                        label: "Try again";
+                        clicked => { root.try-again(); }
+                    }
+                    if error: EditorButton {
+                        icon: ic-close;
+                        tooltip: "Dismiss";
+                        clicked => { root.dismiss-banner(); }
+                    }
+                    if !error: EditorButton {
+                        label: "Keep editing";
+                        clicked => { root.keep-editing(); }
+                    }
+                    if !error: EditorButton {
+                        variant: 1;
+                        label: "Discard changes";
+                        clicked => { root.discard(); }
+                    }
+                    if !error: EditorButton {
+                        variant: 2;
+                        label: "Save";
+                        busy: root.busy == "save";
+                        clicked => { root.save(); }
+                    }
+                }
+            }
+
+            // A confirmation (Material: a snackbar, corner 4)
+            Rectangle {
+                y: parent.height - 16px - self.height;
+                x: (parent.width - self.width) / 2;
+                width: toast-row.preferred-width + 32px;
+                height: Theme.material ? 48px : 32px;
+                border-radius: Theme.material ? 4px : 16px;
+                background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3a3a3f : #1c1c1e;
+                opacity: toast != "" ? 1 : 0;
+                visible: self.opacity > 0;
+                animate opacity { duration: toast != "" ? 200ms : 140ms; }
+                toast-row := HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    StIcon {
+                        width: 14px;
+                        icon: ic-check;
+                        bold: true;
+                        size: 14px;
+                        color: Theme.material ? Theme.m3-inverse-on-surface : #f2f2f5;
+                    }
+                    Text {
+                        text: toast;
+                        color: Theme.material ? Theme.m3-inverse-on-surface : #f2f2f5;
+                        font-size: Theme.body;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // -- The bottom bar: tool options (or Live Text's) left, actions right
+        Rectangle {
+            x: pad;
+            y: canvas.y + canvas-h + pad;
+            width: canvas-w;
+            height: bar;
+
+            // Crop: its size, Reset, Apply
+            if crop-mode: HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                Text {
+                    width: 112px;
+                    text: crop-size;
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                    vertical-alignment: center;
+                }
+                EditorButton {
+                    label: "Reset";
+                    tip-below: false;
+                    tooltip: "Use the whole image";
+                    enabled: !crop-whole;
+                    clicked => { root.crop-reset(); }
+                }
+                EditorButton {
+                    variant: 1;
+                    icon: ic-check;
+                    label: "Apply crop";
+                    tip-below: false;
+                    shortcut: "Enter";
+                    tooltip: "Apply";
+                    clicked => { root.crop-apply(); }
+                }
+            }
+
+            // Colour and width
+            if !crop-mode && !live-mode: HorizontalLayout {
+                alignment: start;
+                spacing: 12px;
+                opacity: status == 1 ? 1 : 0.5;
+                if !pixel-tool: HorizontalLayout {
+                    spacing: 2px;
+                    for c[i] in palette: Rectangle {
+                        width: Theme.material ? 24px : 26px;
+                        height: 36px;
+                        property <bool> current: color-index == i;
+                        accessible-role: button;
+                        accessible-label: palette-names[i];
+                        accessible-checked: current;
+                        accessible-action-default => { root.swatch(i); }
+                        Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            border-radius: 12px;
+                            border-width: 2px;
+                            border-color: current ? Theme.label : st.has-hover ? Theme.separator : transparent;
+                        }
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            background: c;
+                            // (Glass shrinks on press; Material grows)
+                            transform-scale: st.pressed ? (Theme.material ? 1.12 : 0.9) : 1;
+                            animate transform-scale { duration: 100ms; }
+                        }
+                        st := TouchArea {
+                            enabled: status == 1 && !busy-any;
+                            mouse-cursor: pointer;
+                            clicked => { root.swatch(i); }
+                        }
+                    }
+                }
+                if pixel-tool: Text {
+                    text: "Block size";
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                    vertical-alignment: center;
+                }
+                if !pixel-tool: Rectangle {
+                    width: 1px;
+                    height: 20px;
+                    background: Theme.separator;
+                }
+                HorizontalLayout {
+                    spacing: 2px;
+                    for i in 3: EditorButton {
+                        selected: width-index == i;
+                        tip-below: false;
+                        tooltip: width-tips[i];
+                        enabled: status == 1 && !busy-any;
+                        glyph: text-tool ? 1 : pixel-tool ? 3 : 2;
+                        glyph-size: i;
+                        dot-color: ink;
+                        clicked => { root.set-width(i); }
+                    }
+                }
+            }
+
+            // Live Text: what it found, chips and copying
+            if live-mode: LiveTextBar {
+                x: 0;
+                y: (parent.height - self.height) / 2;
+                bar: lt;
+                ic-copy: root.ic-copy;
+                ic-download: root.ic-download;
+                no-icon: root.no-icon;
+                chip(i) => { root.lt-chip(i); }
+                copy-sel => { root.lt-copy-sel(); }
+                copy-all => { root.lt-copy-all(); }
+                retry => { root.lt-retry(); }
+                install => { root.lt-install(); }
+            }
+
+            // Actions
+            actions := HorizontalLayout {
+                x: parent.width - self.preferred-width;
+                alignment: end;
+                spacing: 8px;
+                EditorButton {
+                    icon: ic-trash;
+                    variant: 3;
+                    tip-below: false;
+                    tooltip: "Delete screenshot";
+                    enabled: root.busy == "" && has-path;
+                    clicked => { root.remove(); }
+                }
+                EditorButton {
+                    icon: ic-share;
+                    label: "Share";
+                    variant: 1;
+                    tip-below: false;
+                    tooltip: "Send to a nearby device";
+                    enabled: status == 1 && (root.busy == "" || root.busy == "share");
+                    busy: root.busy == "share";
+                    clicked => { root.share(); }
+                }
+                EditorButton {
+                    icon: ic-copy;
+                    label: "Copy";
+                    variant: 1;
+                    tip-below: false;
+                    shortcut: "Ctrl+C";
+                    tooltip: "Copy image";
+                    enabled: status == 1 && (root.busy == "" || root.busy == "copy");
+                    busy: root.busy == "copy";
+                    clicked => { root.copy(); }
+                }
+                // Save, with Save as a copy beside it
+                if !Theme.material: HorizontalLayout {
+                    spacing: 2px;
+                    EditorButton {
+                        variant: 2;
+                        label: dirty ? "Save" : "Done";
+                        tip-below: false;
+                        tooltip: dirty ? "Save over the original" : "Close the editor";
+                        shortcut: dirty ? "Ctrl+S" : "";
+                        enabled: status == 1 && (root.busy == "" || root.busy == "save");
+                        busy: root.busy == "save";
+                        clicked => { root.save(); }
+                    }
+                    EditorButton {
+                        variant: 1;
+                        icon: ic-files;
+                        tip-below: false;
+                        tooltip: "Save as a copy";
+                        shortcut: "Ctrl+Shift+S";
+                        enabled: status == 1 && (root.busy == "" || root.busy == "saveCopy");
+                        busy: root.busy == "saveCopy";
+                        clicked => { root.save-copy(); }
+                    }
+                }
+                // (Material: a split button, Save as a copy, Copy and Share in its menu)
+                if Theme.material: Rectangle {
+                    width: lead.width + 2px + 40px;
+                    height: 40px;
+                    property <bool> can: status == 1 && (root.busy == "" || root.busy == "save" || root.busy == "saveCopy");
+                    opacity: can ? 1 : 0.38;
+                    lead := Rectangle {
+                        width: lead-row.preferred-width + 32px;
+                        height: 40px;
+                        border-top-left-radius: 20px;
+                        border-bottom-left-radius: 20px;
+                        border-top-right-radius: lt-touch.pressed ? 8px : 4px;
+                        border-bottom-right-radius: self.border-top-right-radius;
+                        background: Theme.m3-primary.mix(Theme.m3-on-primary, lt-touch.pressed ? 0.9 : lt-touch.has-hover ? 0.92 : 1);
+                        accessible-role: button;
+                        accessible-label: dirty ? "Save" : "Done";
+                        accessible-action-default => { root.save(); }
+                        lead-row := HorizontalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            if root.busy == "save" || root.busy == "saveCopy": StSpin {
+                                size: 20px;
+                                color: Theme.m3-on-primary;
+                            }
+                            if root.busy != "save" && root.busy != "saveCopy": StIcon {
+                                width: 18px;
+                                icon: dirty ? ic-floppy : ic-check;
+                                size: 18px;
+                                color: Theme.m3-on-primary;
+                            }
+                            Text {
+                                text: dirty ? "Save" : "Done";
+                                color: Theme.m3-on-primary;
+                                font-size: 14px;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+                        }
+                        lt-touch := TouchArea {
+                            enabled: status == 1 && (root.busy == "" || root.busy == "save" || root.busy == "saveCopy");
+                            mouse-cursor: pointer;
+                            clicked => { root.save(); }
+                        }
+                    }
+                    Rectangle {
+                        x: lead.width + 2px;
+                        width: 40px;
+                        height: 40px;
+                        property <length> inner: menu-open ? 20px : tr.pressed ? 8px : 4px;
+                        border-top-left-radius: inner;
+                        border-bottom-left-radius: inner;
+                        border-top-right-radius: 20px;
+                        border-bottom-right-radius: 20px;
+                        animate border-top-left-radius, border-bottom-left-radius { duration: 300ms; easing: spring(0.3); }
+                        background: Theme.m3-primary.mix(Theme.m3-on-primary, tr.pressed ? 0.9 : tr.has-hover ? 0.92 : 1);
+                        accessible-role: button;
+                        accessible-label: "More save options";
+                        accessible-action-default => { menu-open = !menu-open; }
+                        StIcon {
+                            icon: ic-caret;
+                            size: 18px;
+                            color: Theme.m3-on-primary;
+                            transform-rotation: menu-open ? 0deg : 180deg;
+                            animate transform-rotation { duration: Theme.popover; }
+                        }
+                        tr := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { menu-open = !menu-open; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -- The top bar: close, the tools, undo and redo
+        Rectangle {
+            x: pad;
+            y: pad;
+            width: canvas-w;
+            height: bar;
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                EditorButton {
+                    icon: ic-close;
+                    tooltip: "Close editor";
+                    shortcut: "Esc";
+                    clicked => { root.close-clicked(); }
+                }
+                Rectangle {
+                    width: 1px;
+                    height: 20px;
+                    background: Theme.separator;
+                }
+                // Material: a vibrant toolbar, a primaryContainer pill, the
+                // chosen tool filled in primary
+                Rectangle {
+                    width: tool-row.preferred-width + (Theme.material ? 8px : 0);
+                    height: tool-row.preferred-height + (Theme.material ? 8px : 0);
+                    border-radius: self.height / 2;
+                    background: Theme.material ? Theme.m3-primary-container : transparent;
+                    drop-shadow-blur: Theme.material ? 10px : 0;
+                    drop-shadow-offset-y: Theme.material ? 3px : 0;
+                    drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.18) : transparent;
+                    tool-row := HorizontalLayout {
+                        x: Theme.material ? 4px : 0;
+                        y: Theme.material ? 4px : 0;
+                        width: self.preferred-width;
+                        height: self.preferred-height;
+                        spacing: Theme.material ? 2px : 4px;
+                        for t[i] in tool-list: EditorButton {
+                            icon: t.icon;
+                            tooltip: t.label;
+                            shortcut: t.key;
+                            selected: tool == i;
+                            vibrant: true;
+                            enabled: status == 1 && !busy-any;
+                            clicked => { root.set-tool(i); }
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                x: parent.width - self.preferred-width;
+                alignment: end;
+                spacing: 4px;
+                EditorButton {
+                    icon: ic-undo;
+                    tooltip: "Undo";
+                    shortcut: "Ctrl+Z";
+                    enabled: can-undo && !busy-any;
+                    clicked => { root.undo(); }
+                }
+                EditorButton {
+                    icon: ic-redo;
+                    tooltip: "Redo";
+                    shortcut: "Ctrl+Shift+Z";
+                    enabled: can-redo && !busy-any;
+                    clicked => { root.redo(); }
+                }
+            }
+        }
+
+        // Material: the Save split button's menu, upward
+        if menu-open: TouchArea {
+            clicked => { menu-open = false; }
+        }
+        Rectangle {
+            visible: self.opacity > 0.01;
+            opacity: menu-open ? 1 : 0;
+            animate opacity { duration: menu-open ? Theme.popover : Theme.hover; }
+            width: 230px;
+            height: menu-col.preferred-height + 16px;
+            x: parent.width - pad - self.width;
+            y: canvas.y + canvas-h + pad - self.height - 8px + (menu-open ? 0 : 6px);
+            border-radius: 16px;
+            background: Theme.m3-surface-container-high;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+            TouchArea { }
+            menu-col := VerticalLayout {
+                y: 8px;
+                height: self.preferred-height;
+                for it[i] in [
+                    { text: "Save as a copy", icon: ic-files },
+                    { text: "Copy image", icon: ic-copy },
+                    { text: "Send to a nearby device", icon: ic-share },
+                ]: Rectangle {
+                    height: 44px;
+                    background: mt.has-hover ? Theme.m3-on-surface.with-alpha(mt.pressed ? 0.1 : 0.08) : transparent;
+                    accessible-role: AccessibleRole.list-item;
+                    accessible-label: it.text;
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        spacing: 12px;
+                        StIcon {
+                            width: 20px;
+                            icon: it.icon;
+                            size: 20px;
+                            color: Theme.m3-on-surface-variant;
+                        }
+                        Text {
+                            text: it.text;
+                            color: Theme.m3-on-surface;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                        }
+                    }
+                    mt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            menu-open = false;
+                            if i == 0 { root.save-copy(); } else if i == 1 { root.copy(); } else { root.share(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

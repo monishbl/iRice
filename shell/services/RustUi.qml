@@ -37,6 +37,7 @@ Singleton {
     // Panels whose name isn't the surface's (surface names are lowercase)
     readonly property var panelNames: ({
             controlcenter: "controlCenter",
+            screentools: "screenTools",
             osk: "keyboard",
             notes: "quickNote", // (the quick note)
             network: "wifiMenu" // (the menu bar's Wi-Fi menu, with the speed test)
@@ -49,6 +50,8 @@ Singleton {
     }
     // Control Center's calls, for its RustBridge (cc.act, cc.block…)
     signal ccCall(string name, var args)
+    // The screen tools' and Quick Look's calls, for modules/screentools/RustBridge.qml
+    signal screenCall(string name, var args)
     // What its surfaces say ({"src":"ui","kind":"osd","shown":…}): the OSD's
     // capsule shows (the banners move down under it)
     property bool osdShown: false
@@ -296,6 +299,16 @@ Singleton {
         case "search.command":
             Search.rustCommand(String(a[0] ?? ""));
             break;
+        case "screen.captured": // (screentools, quicklook: modules/screentools/RustBridge.qml)
+        case "screen.cancel":
+        case "screen.do":
+        case "recorder.set":
+        case "recorder.folder":
+        case "livetext.read":
+        case "livetext.act":
+        case "livetext.install":
+        case "panels.share":
+            screenCall(name, a);
         case "overlay.widget": // (overlay: Overlay.qml)
         case "overlay.crosshair":
         case "overlay.record":

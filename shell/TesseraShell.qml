@@ -279,6 +279,10 @@ ShellRoot {
         function close(): void {
             Panels.close();
         }
+        // qs ipc call panels quickLook /path (Quick Look on a file; again: closes it)
+        function quickLook(path: string): void {
+            Panels.quickLook(path);
+        }
         function reset(): void {
             root.panicReset();
         }

@@ -10,7 +10,7 @@ import qs.services
 // go through. Esc, or Stop in the island, cancels it (Recorder.stop()).
 Scope {
     LazyLoader {
-        active: Recorder.countdown > 0
+        active: Recorder.countdown > 0 && !RustUi.drawing("screentools")
 
         GlassWindow {
             id: win

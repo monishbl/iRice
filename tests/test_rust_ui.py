@@ -258,6 +258,43 @@ class Agreement(unittest.TestCase):
         for word in ('v.get("state")', 'v.get("page")', 'v["ccPage"]', 'v["editing"]'):
             self.assertTrue(word in part or word in (surface("controlcenter") / "src/bridge.rs").read_text(), word)
 
+    def test_the_screen_tools_and_quick_look_step_aside_and_talk(self):
+        # Every QML window of the screen tools and Quick Look steps aside while
+        # tessera-ui draws them; their bridge answers what the parts ask, and the
+        # commands the shell sends them are handled (surfaces/screentools)
+        st = ROOT / "shell/modules/screentools"
+        for f in ("RegionSelector.qml", "RecordCountdown.qml", "TranslationCard.qml"):
+            self.assertIn('!RustUi.drawing("screentools")', (st / f).read_text(), f)
+        self.assertIn('elsewhere: RustUi.drawing("screentools")', (st / "ScreenToolbar.qml").read_text())
+        editor = (st / "editor/ScreenshotEditor.qml").read_text()
+        self.assertIn('RustUi.drawing("screentools")', editor)
+        self.assertEqual(editor.count("&& !root.rust"), 2)
+        ql = (ROOT / "shell/modules/quicklook/QuickLook.qml").read_text()
+        self.assertIn('RustUi.drawing("quicklook")', ql)
+        self.assertIn("active: alive && !scope.rust", ql)
+        self.assertIn("RustBridge {}", (st / "RegionSelector.qml").read_text())
+        rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
+        self.assertIn('screentools: "screenTools"', rust_ui)
+        bridge = (st / "RustBridge.qml").read_text()
+        src = surface("screentools") / "src"
+        asked = set()
+        for p in src.rglob("*.rs"):
+            asked |= set(re.findall(r'shell::ask\("([a-zA-Z.]+)"', p.read_text()))
+        shells_own = {"panels.quickLook", "files.open"}
+        for call in sorted(asked - shells_own):
+            self.assertIn(f'case "{call}":', bridge, call)
+            self.assertIn(f'case "{call}":', rust_ui, call)
+        sent = set(re.findall(r'cmd: "([a-zA-Z]+)", surface: "screentools"', editor + bridge))
+        sent |= set(re.findall(r'toRust\("([a-zA-Z]+)"', editor))
+        lib = (src / "lib.rs").read_text()
+        handled = set(re.findall(r'"([a-zA-Z]+)"', lib.split("fn command(")[1].split("fn config_changed")[0]))
+        self.assertEqual(sent - handled, set(), "sent but not handled")
+        qlr = (src / "quicklook.rs").read_text()
+        for word in ('"open"', '"close"', 'v["livetext"]', 'v["wifi"]'):
+            self.assertIn(word, qlr)
+        for word in ('{ livetext: k', '{ wifi: k', 'RustUi.tell("screentools", { state: s })'):
+            self.assertIn(word, bridge)
+
     def test_sharing_surfaces_feed_their_part_and_step_aside(self):
         # share, appstore, shelf, network (the Wi-Fi menu), captions, notes:
         # each QML twin steps aside, its feed tells the part the shell's state

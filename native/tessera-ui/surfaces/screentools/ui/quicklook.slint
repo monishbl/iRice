@@ -1,0 +1,412 @@
+// Quick Look in Rust (rust.surfaces: quicklook; src/surfaces/quicklook),
+// compare shell/modules/quicklook/QuickLook.qml: a preview of a file over a
+// light scrim: pictures (with Live Text, T), video and audio, a PDF's first
+// page, text and code, a folder's contents, or the file's details. Space or
+// Esc closes it, Return opens the file in its app. Rust reads the file and
+// sizes nothing; the card takes the preview's own shape within 80% of the
+// screen, as the QML's.
+
+import { Theme } from "@tessera/theme.slint";
+import { IconButton } from "@tessera/widgets.slint";
+import { StIc, StIcon, EditorButton } from "screentools.slint";
+import { LtBox, LtBar, LiveTextLayer, LiveTextBar } from "shoteditor.slint";
+
+export struct QlRow {
+    icon: image,
+    name: string,
+}
+
+export component QuickLook inherits Window {
+    in property <bool> shown;
+    // image | video | audio | pdf | text | folder | other | "" (not known yet)
+    in property <string> kind;
+    in property <string> file-name;
+    in property <string> subtitle;
+    in property <image> picture; // the image, the PDF's page, the video's frame
+    in property <float> natural-w: 420;
+    in property <float> natural-h: 260;
+    in property <bool> picture-ready;
+    in property <string> text-body;
+    in property <[QlRow]> rows;
+    in property <image> file-icon;
+    in property <bool> playing;
+    in property <float> position; // 0..1
+    in property <string> wave; // Material's wavy progress (its path, 0..1000 × 0..12)
+    in property <bool> text-mode;
+    in property <[LtBox]> boxes;
+    in property <float> glow;
+    in property <bool> over-word;
+    in property <LtBar> lt;
+    in property <string> shape; // Material: the shape under the icon
+    in property <string> play-shape; // Material: the play button's
+    in property <StIc> ic-text;
+    in property <StIc> ic-copy;
+    in property <StIc> ic-download;
+    in property <StIc> ic-play;
+    in property <StIc> ic-pause;
+    in property <StIc> no-icon;
+    in property <string> glyph-x;
+    in property <string> glyph-share;
+    callback close-it();
+    callback open-it();
+    callback share();
+    callback toggle-text();
+    callback toggle-play();
+    callback key(string, bool) -> bool; // text, control
+    callback closed();
+    callback lt-press(length, length, bool);
+    callback lt-drag(length, length);
+    callback lt-hover(length, length);
+    callback lt-double(length, length);
+    callback lt-chip(int);
+    callback lt-copy-sel();
+    callback lt-copy-all();
+    callback lt-retry();
+    callback lt-install();
+
+    out property <float> progress: shown ? 1 : 0;
+    out property <length> card-x: card.x;
+    out property <length> card-y: card.y;
+    out property <length> card-w: card.width;
+    out property <length> card-h: card.height;
+    out property <float> card-scale: card.transform-scale;
+    // the picture as drawn (Live Text's layer goes exactly over it)
+    out property <length> shown-w: pic-w;
+    out property <length> shown-h: pic-h;
+
+    background: transparent;
+    no-frame: true;
+    title: "Quick Look";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    animate progress {
+        duration: shown ? 200ms : 140ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text, e.modifiers.control) { return accept; }
+            reject
+        }
+    }
+
+    // The scrim: a click on it closes
+    Rectangle {
+        background: Theme.material ? Theme.m3-scrim.with-alpha(0.32 * progress) : #000000.with-alpha(0.3 * progress);
+        TouchArea {
+            enabled: shown;
+            clicked => { root.close-it(); }
+        }
+    }
+
+    property <length> header: 52px;
+    property <length> footer: text-mode && kind == "image" ? (Theme.material ? 40px : 36px) + 12px : 0;
+    property <length> max-w: root.width * 0.8;
+    property <length> max-h: root.height * 0.8 - header - footer;
+    property <float> nat-w: kind == "image" && picture-ready ? natural-w : kind == "video" ? 1280 : kind == "pdf" ? natural-w : kind == "text" || kind == "folder" ? 760 : 420;
+    property <float> nat-h: kind == "image" && picture-ready ? natural-h : kind == "video" ? 720 : kind == "pdf" ? natural-h : kind == "text" || kind == "folder" ? 900 : 260;
+    property <float> k: min(1, max-w / 1px / max(1, nat-w), max-h / 1px / max(1, nat-h));
+    // the picture inside the body, fitted (PreserveAspectFit)
+    property <length> body-w: card.width - 24px;
+    property <length> body-h: card.height - header - 12px - footer;
+    property <float> aspect: max(0.01, nat-w) / max(0.01, nat-h);
+    property <length> pic-w: min(body-w, body-h * aspect);
+    property <length> pic-h: min(body-h, body-w / aspect);
+
+    card := Rectangle {
+        width: max(360px, nat-w * k * 1px);
+        height: nat-h * k * 1px + header + footer;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        opacity: progress;
+        transform-scale: 0.94 + 0.06 * progress;
+        border-radius: Theme.material ? Theme.radius-panel : 20px;
+        background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+        drop-shadow-blur: Theme.material ? 24px : 0;
+        drop-shadow-offset-y: Theme.material ? 6px : 0;
+        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+        accessible-role: groupbox;
+        accessible-label: file-name;
+        TouchArea { } // (clicks on the card don't close it)
+
+        // Title bar: close, name and what it is, Text, Share, Open
+        Rectangle {
+            height: header;
+            y: 0;
+            IconButton {
+                x: 12px;
+                icon: glyph-x;
+                label: "Close";
+                clicked => { root.close-it(); }
+            }
+            VerticalLayout {
+                x: 12px + 28px + 10px;
+                width: right-row.x - self.x - 12px;
+                alignment: center;
+                Text {
+                    text: file-name;
+                    overflow: elide;
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                }
+                Text {
+                    text: subtitle;
+                    overflow: elide;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+            right-row := HorizontalLayout {
+                x: parent.width - self.preferred-width - (Theme.material ? 16px : 12px);
+                spacing: 6px;
+                alignment: end;
+                // A picture: Live Text on or off
+                if kind == "image": EditorButton {
+                    icon: ic-text;
+                    label: "Text";
+                    selected: text-mode;
+                    tooltip: text-mode ? "Stop selecting text" : "Select the text in this picture";
+                    shortcut: "T";
+                    enabled: picture-ready;
+                    clicked => { root.toggle-text(); }
+                }
+                if kind != "folder": Rectangle {
+                    width: 28px;
+                    IconButton {
+                        icon: glyph-share;
+                        label: "Share";
+                        clicked => { root.share(); }
+                    }
+                }
+                // (Material: a filled primary pill, its corners tightening while pressed)
+                Rectangle {
+                    width: open-text.preferred-width + (Theme.material ? 32px : 28px);
+                    Rectangle {
+                        width: parent.width;
+                        height: Theme.material ? 36px : 28px;
+                        border-radius: Theme.material ? (ot.pressed ? 8px : self.height / 2) : Theme.radius-control;
+                        animate border-radius { duration: 250ms; easing: spring(0.55); }
+                        transform-scale: Theme.material && ot.pressed ? 1.04 : 1;
+                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ot.pressed ? 0.9 : ot.has-hover ? 0.92 : 1)
+                            : ot.pressed ? Theme.accent.darker(0.17) : ot.has-hover ? Theme.accent.darker(0.09) : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: open-text.text;
+                        accessible-action-default => { root.open-it(); }
+                        open-text := Text {
+                            text: kind == "folder" ? (Theme.material ? "Open folder" : "Open Folder") : (Theme.material ? "Open file" : "Open File");
+                            color: Theme.on-accent;
+                            font-size: Theme.material ? 14px : Theme.small;
+                            font-weight: 500;
+                        }
+                        ot := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-it(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // The preview
+        body := Rectangle {
+            x: 12px;
+            y: header;
+            width: body-w;
+            height: body-h;
+            clip: true;
+
+            if (kind == "image" || kind == "pdf" || kind == "video") && picture-ready: Image {
+                width: pic-w;
+                height: pic-h;
+                source: picture;
+                image-fit: contain;
+            }
+            // Live Text over the picture as drawn
+            if kind == "image" && text-mode: LiveTextLayer {
+                width: pic-w;
+                height: pic-h;
+                boxes: root.boxes;
+                glow: root.glow;
+                ready: lt.status == "ready";
+                over-word: root.over-word;
+                press(x, y, s) => { root.lt-press(x, y, s); }
+                drag-to(x, y) => { root.lt-drag(x, y); }
+                hover(x, y) => { root.lt-hover(x, y); }
+                double(x, y) => { root.lt-double(x, y); }
+            }
+            // Video: click to pause
+            if kind == "video": TouchArea {
+                clicked => { root.toggle-play(); }
+            }
+
+            // Audio, other files, an empty folder: the icon (Material: on a shape)
+            if kind == "audio" || kind == "other" || (kind == "folder" && rows.length == 0): VerticalLayout {
+                alignment: center;
+                spacing: 16px;
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: Theme.material ? 144px : 96px;
+                        height: self.width;
+                        if Theme.material: Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: shape;
+                            fill: Theme.m3-surface-container-highest;
+                        }
+                        Image {
+                            width: 96px;
+                            height: 96px;
+                            source: file-icon;
+                        }
+                    }
+                }
+                if kind == "audio": HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: Theme.material ? 64px : 44px;
+                        height: self.width;
+                        border-radius: Theme.material ? 0 : Theme.radius-control;
+                        background: Theme.material ? transparent : pt.pressed ? Theme.fill-pressed : pt.has-hover ? Theme.fill : transparent;
+                        transform-scale: Theme.material && pt.pressed ? 1.06 : 1;
+                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        accessible-role: button;
+                        accessible-label: playing ? "Pause" : "Play";
+                        accessible-action-default => { root.toggle-play(); }
+                        // Material: play on a primary-container shape that
+                        // morphs (a rounded square paused, a circle playing)
+                        if Theme.material: Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: play-shape;
+                            fill: Theme.m3-primary-container.mix(Theme.m3-on-primary-container, pt.pressed ? 0.9 : pt.has-hover ? 0.92 : 1);
+                        }
+                        StIcon {
+                            icon: playing ? ic-pause : ic-play;
+                            fill: true;
+                            size: Theme.material ? 28px : 22px;
+                            color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                        }
+                        pt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.toggle-play(); }
+                        }
+                    }
+                }
+                if kind != "audio": Text {
+                    text: kind == "folder" ? "Empty folder" : "No preview for this kind of file";
+                    horizontal-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                }
+            }
+
+            // Video and audio: the progress (Material: wavy while it plays)
+            if (kind == "video" || kind == "audio") && !Theme.material: Rectangle {
+                y: parent.height - 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: Theme.fill;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * position;
+                    border-radius: 1.5px;
+                    background: Theme.accent;
+                }
+            }
+            if (kind == "video" || kind == "audio") && Theme.material: Rectangle {
+                y: parent.height - 12px;
+                height: 12px;
+                Path {
+                    x: 0;
+                    width: parent.width * position;
+                    height: 12px;
+                    viewbox-width: 1000 * position;
+                    viewbox-height: 12;
+                    commands: wave;
+                    stroke: Theme.m3-primary;
+                    stroke-width: 4px;
+                    stroke-line-cap: round;
+                    clip: true;
+                }
+                Rectangle {
+                    x: parent.width * position + 8px;
+                    y: 4px;
+                    width: max(0, parent.width - self.x);
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Theme.m3-secondary-container;
+                }
+            }
+
+            // Text and code: the first 200 KB
+            if kind == "text": Flickable {
+                content-height: text-view.preferred-height;
+                text-view := TextInput {
+                    width: parent.width;
+                    text: text-body;
+                    read-only: true;
+                    single-line: false;
+                    wrap: word-wrap;
+                    color: Theme.label;
+                    selection-background-color: Theme.accent.with-alpha(0.4);
+                    font-family: Theme.mono;
+                    font-size: 12px;
+                }
+            }
+
+            // A folder: what's inside
+            if kind == "folder" && rows.length > 0: Flickable {
+                content-height: rows.length * 32px;
+                for r[i] in rows: Rectangle {
+                    y: i * 32px;
+                    height: 32px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Image {
+                            width: 20px;
+                            height: 20px;
+                            source: r.icon;
+                        }
+                        Text {
+                            text: r.name;
+                            color: Theme.label;
+                            font-size: Theme.body;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Live Text: what it found, chips and copying
+        if text-mode && kind == "image" && lt.status != "": LiveTextBar {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - 12px - self.height;
+            bar: lt;
+            ic-copy: root.ic-copy;
+            ic-download: root.ic-download;
+            no-icon: root.no-icon;
+            chip(i) => { root.lt-chip(i); }
+            copy-sel => { root.lt-copy-sel(); }
+            copy-all => { root.lt-copy-all(); }
+            retry => { root.lt-retry(); }
+            install => { root.lt-install(); }
+        }
+    }
+}

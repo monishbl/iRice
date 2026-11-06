@@ -20,11 +20,25 @@ import qs.services
 Scope {
     id: scope
 
+    // Drawn by tessera-ui (rust.surfaces: quicklook): the path goes there
+    readonly property bool rust: RustUi.drawing("quicklook")
+    function forward() {
+        if (!rust)
+            return;
+        const p = Panels.quickLookPath;
+        RustUi.send(p !== "" ? { cmd: "open", surface: "quicklook", path: p, query: LiveText.takeQuery(p), screen: Hyprland.focusedMonitor?.name ?? "" } : { cmd: "close", surface: "quicklook" });
+    }
+    onRustChanged: if (rust && Panels.quickLookPath !== "") forward()
+    Connections {
+        target: Panels
+        function onQuickLookPathChanged() { scope.forward(); }
+    }
+
     LazyLoader {
         id: loader
         // Kept a moment after closing, for the exit animation
         property bool alive: false
-        active: alive
+        active: alive && !scope.rust
         Component.onCompleted: alive = Panels.quickLookPath !== ""
         property Connections watch: Connections {
             target: Panels

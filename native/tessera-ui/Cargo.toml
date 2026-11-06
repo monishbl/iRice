@@ -76,6 +76,7 @@ tessera-notifications = { path = "surfaces/notifications" }
 tessera-spotlight = { path = "surfaces/spotlight" }
 tessera-controlcenter = { path = "surfaces/controlcenter" }
 tessera-sidebar = { path = "surfaces/sidebar" }
+tessera-screentools = { path = "surfaces/screentools" }
 tessera-overlay = { path = "surfaces/overlay" }
 tessera-welcome = { path = "surfaces/welcome" }
 tessera-resources = { path = "surfaces/resources" }

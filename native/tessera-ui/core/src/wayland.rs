@@ -86,6 +86,8 @@ pub struct Surface {
     hidden: Cell<bool>,
     ime: RefCell<Option<slint_ime::Props>>, // what the focused text field wants from the input method
     pub stats: RefCell<crate::stats::Frames>,
+    /// the pointer's shape Slint asked for over this surface (a TouchArea's `mouse-cursor`)
+    pub cursor: Cell<Shape>,
 }
 
 /// What a surface is to the compositor: a layer surface (every part's), a
@@ -255,12 +257,47 @@ impl i_slint_core::window::WindowAdapterInternal for Surface {
     fn handle_focus_change(&self, _old: Option<i_slint_core::items::ItemRc>, _new: Option<i_slint_core::items::ItemRc>) {
         crate::a11y::FOCUS_DIRTY.set(true);
     }
+    // (a TouchArea's mouse-cursor: applied after the pointer event that changed it)
+    fn set_mouse_cursor(&self, cursor: i_slint_core::cursor::MouseCursorInner) {
+        let shape = match cursor {
+            i_slint_core::cursor::MouseCursorInner::BuiltIn(c) => cursor_shape(c),
+            _ => Shape::Default,
+        };
+        if self.cursor.replace(shape) != shape {
+            CURSOR_DIRTY.set(true);
+        }
+    }
+}
+
+/// Slint's cursor as cursor-shape-v1's
+fn cursor_shape(c: i_slint_core::items::BuiltInMouseCursor) -> Shape {
+    use i_slint_core::items::BuiltInMouseCursor as C;
+    match c {
+        C::Pointer => Shape::Pointer,
+        C::Crosshair => Shape::Crosshair,
+        C::Text => Shape::Text,
+        C::Move => Shape::Move,
+        C::Grab => Shape::Grab,
+        C::Grabbing => Shape::Grabbing,
+        C::NwseResize => Shape::NwseResize,
+        C::NeswResize => Shape::NeswResize,
+        C::EwResize => Shape::EwResize,
+        C::NsResize => Shape::NsResize,
+        C::NotAllowed => Shape::NotAllowed,
+        C::Wait => Shape::Wait,
+        C::Progress => Shape::Progress,
+        C::Help => Shape::Help,
+        _ => Shape::Default,
+    }
 }
 
 thread_local! {
     // Component::new() asks the platform for a window adapter: this one
     static NEXT: RefCell<Option<Rc<Surface>>> = const { RefCell::new(None) };
     static IME_DIRTY: Cell<bool> = const { Cell::new(false) };
+    // a surface asked for another pointer shape; the serial of the pointer's last enter
+    static CURSOR_DIRTY: Cell<bool> = const { Cell::new(false) };
+    static POINTER_SERIAL: Cell<u32> = const { Cell::new(0) };
 }
 
 // ── The Slint platform ──────────────────────────────────────────────────────
@@ -487,6 +524,7 @@ impl State {
             hidden: Cell::new(false),
             ime: RefCell::new(None),
             stats: RefCell::new(Default::default()),
+            cursor: Cell::new(Shape::Default),
         });
         NEXT.with(|n| *n.borrow_mut() = Some(surface.clone()));
         self.surfaces.push(surface.clone());
@@ -837,7 +875,8 @@ impl PointerHandler for State {
             let position = LogicalPosition::new(e.position.0 as f32, e.position.1 as f32);
             match &e.kind {
                 PointerEventKind::Enter { serial } => {
-                    self.set_cursor(*serial, Shape::Default);
+                    POINTER_SERIAL.set(*serial);
+                    self.set_cursor(*serial, s.cursor.get());
                     self.pointer_on = Some(s.clone());
                     s.window.dispatch_event(WindowEvent::PointerMoved { position });
                 }
@@ -869,6 +908,9 @@ impl PointerHandler for State {
                     let d = |a: &smithay_client_toolkit::seat::pointer::AxisScroll| -(a.absolute as f32);
                     s.window.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: d(horizontal), delta_y: d(vertical) });
                 }
+            }
+            if CURSOR_DIRTY.replace(false) && self.pointer_on.as_ref().is_some_and(|p| Rc::ptr_eq(p, &s)) {
+                self.set_cursor(POINTER_SERIAL.get(), s.cursor.get());
             }
         }
     }
@@ -1000,6 +1042,7 @@ impl State {
             hidden: Cell::new(false),
             ime: RefCell::new(None),
             stats: RefCell::new(Default::default()),
+            cursor: Cell::new(Shape::Default),
         });
         NEXT.with(|n| *n.borrow_mut() = Some(surface.clone()));
         self.surfaces.push(surface.clone());

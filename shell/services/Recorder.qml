@@ -351,6 +351,10 @@ Singleton {
         function toolbar(): void {
             root.openToolbar();
         }
+        // the toolbar with its Options showing (Spotlight's "Screen Recording Options")
+        function options(): void {
+            root.openOptions();
+        }
         function stop(): void {
             root.stop();
         }

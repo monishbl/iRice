@@ -8,7 +8,7 @@ import qs.services
 // Result of a screen translation: a glass card next to the translated area.
 // Copy the translation or dismiss with Esc / the close button.
 LazyLoader {
-    active: ScreenTools.translation !== null
+    active: ScreenTools.translation !== null && !RustUi.drawing("screentools")
 
     GlassWindow {
         id: win

@@ -54,8 +54,11 @@ Scope {
         }
     }
 
+    // (tessera-ui draws the screen tools: it tells and asks the shell here)
+    RustBridge {}
+
     LazyLoader {
-        active: root.mode !== ""
+        active: root.mode !== "" && !RustUi.drawing("screentools")
 
         PanelWindow {
             id: win

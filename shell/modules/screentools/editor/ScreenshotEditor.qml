@@ -17,6 +17,12 @@ Scope {
 
     readonly property bool enabled: (Config.options.screenshot.editor ?? "tessera") !== "swappy"
     readonly property bool thumbnails: Config.options.screenshot.thumbnail ?? true
+    // Drawn by tessera-ui (rust.surfaces: screentools): the session lives
+    // there; screenshots and edits are sent to it
+    readonly property bool rust: RustUi.drawing("screentools")
+    function toRust(cmd, file, scr) {
+        RustUi.send({ cmd: cmd, surface: "screentools", file: file ?? "", screen: (scr ?? ScreenTools.focusedScreen())?.name ?? "" });
+    }
 
     // ---- Session ----------------------------------------------------------
     property string path: "" // the screenshot being edited
@@ -100,6 +106,10 @@ Scope {
             notify(file);
             return;
         }
+        if (rust) {
+            toRust("shot", file);
+            return;
+        }
         if (!editorOpen) {
             path = file;
             resetEdits();
@@ -111,6 +121,10 @@ Scope {
     }
 
     function openEditor(file) {
+        if (rust) {
+            toRust("edit", file, screen);
+            return;
+        }
         const f = file || thumbFile || path;
         if (!f)
             return;
@@ -248,17 +262,19 @@ Scope {
             root.shot(file);
         }
         function close(): void {
+            if (root.rust)
+                RustUi.send({ cmd: "editorClose", surface: "screentools" });
             root.thumbGone();
             root.closeEditor();
         }
     }
 
     LazyLoader {
-        active: root.thumb !== ""
+        active: root.thumb !== "" && !root.rust
         ShotThumbnail { session: root }
     }
     LazyLoader {
-        active: root.editorOpen
+        active: root.editorOpen && !root.rust
         ShotEditorWindow { session: root }
     }
 }

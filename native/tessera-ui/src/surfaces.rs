@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "captions", "notes"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "screentools", "quicklook", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "captions", "notes"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -26,6 +26,8 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "spotlight" => Some(Box::new(tessera_spotlight::Spotlight::default())),
         "controlcenter" => Some(Box::new(tessera_controlcenter::ControlCenter::default())),
         "sidebar" => Some(Box::new(tessera_sidebar::Sidebar::default())),
+        "screentools" => Some(Box::new(tessera_screentools::ScreenTools::default())),
+        "quicklook" => Some(Box::new(tessera_screentools::quicklook::QuickLook::default())),
         "lock" => Some(Box::new(tessera_lock::Lock::default())),
         "session" => Some(Box::new(tessera_session::Session::default())),
         "polkit" => Some(Box::new(tessera_polkit::Polkit::default())),
