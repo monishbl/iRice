@@ -163,6 +163,11 @@ capture() { # look pass(qml|rust)
         inbox "$cmd" </dev/null >/dev/null 2>&1
         sleep "$wait"
         dev shot "$OUT/shots/$look-$s-$name-$pass.png" </dev/null >/dev/null 2>&1 || log "  no shot: $look $s $name ($pass)"
+        # (Settings and the App Store are real app windows: they'd stay open into the next states)
+        case "$s|$name" in
+            "settings|appearance") dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-settings" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
+            "appstore|discover") dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-appstore" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
+        esac
     done
     quiet
     inbox "ipc island holdAlerts false" </dev/null >/dev/null 2>&1   # (the look's captures are done: alerts show again)
@@ -172,7 +177,10 @@ capture() { # look pass(qml|rust)
 for look in ${LOOKS//,/ }; do
     log "[$look] setting up the arena (fixed wallpaper, 1920x1080)"
     setup "$look" "$WALLS/wall-tiles.jpg" 1
-    install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+    # (behind a wrapper that keeps tessera-ui's own messages: logs/<look>-tessera-ui.log)
+    install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui.real"
+    printf '#!/bin/sh\nexec env TESSERA_DEBUG=1 RUST_BACKTRACE=1 "$(dirname "$0")/tessera-ui.real" "$@" 2>>"%s"\n' "$OUT/logs/$look-tessera-ui.log" > "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+    chmod 755 "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
     log "[$look] QML pass"
     set_rust ""; sleep 3
     capture "$look" qml
@@ -252,7 +260,7 @@ b = out / "logs/build.log"
 if b.exists() and "error" in b.read_text():
     L += ["", "## Build errors", "", "```", *[x for x in b.read_text().split("\n") if x.startswith("error")][:20], "```"]
 L += ["", "## Files", "", f"- shots/: every QML and Rust picture, `*-pair.jpg` side by side, `*-diff.png` differences",
-      "- logs/: build, cargo tests, pytest, the arena's shell and compositor logs per look", "- visual.json: the table above as data"]
+      "- logs/: build, cargo tests, pytest, the arena's shell and compositor logs per look, tessera-ui's own messages per look (*-tessera-ui.log)", "- visual.json: the table above as data"]
 (out / "report.md").write_text("\n".join(L) + "\n")
 json.dump({"visual": rows}, open(out / "report.json", "w"), indent=1)
 print(out / "report.md")

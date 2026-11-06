@@ -150,12 +150,12 @@ export component EmojiPicker inherits Window {
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         // Glass: the tint over the plugin's glass; Material: its tonal surface
         border-radius: Theme.radius-popover + 4px;
-        background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+        background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
         border-width: Theme.material ? 0 : 0.5px;
         border-color: Theme.separator;
         drop-shadow-blur: Theme.material ? 24px : 0;
         drop-shadow-offset-y: Theme.material ? 6px : 0;
-        drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12) : transparent;
+        drop-shadow-color: Theme.material && Theme.panel-alpha >= 1 ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12) : transparent;
         accessible-role: groupbox;
         accessible-label: "Emoji, kaomoji, symbols and GIFs";
 
