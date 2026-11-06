@@ -50,6 +50,7 @@ Singleton {
     readonly property var panelNames: ({
             controlcenter: "controlCenter",
             screentools: "screenTools",
+            missioncontrol: "missionControl",
             osk: "keyboard",
             notes: "quickNote", // (the quick note)
             network: "wifiMenu" // (the menu bar's Wi-Fi menu, with the speed test)
@@ -82,6 +83,9 @@ Singleton {
     // (their "share", "appstore", "shelf", "network", "captions" and "notes"
     // calls): done by each one's feed (modules/<name>/*Feed.qml)
     signal feedCall(string surface, string what, var args)
+    // The window-management surfaces' calls (Spaces, Stage Manager…): done by
+    // modules/overview/RustWindows.qml
+    signal wmCall(string name, var args)
     // Its surfaces' other lines ({"src":"ui","kind":"notifications",…}: the
     // notification list, services/Notifications.qml) and whether it runs
     signal message(var e)
@@ -353,6 +357,9 @@ Singleton {
         case "files.open":
             if (String(a[0] ?? "").startsWith("/"))
                 Files.open(String(a[0]));
+            break;
+        case "wm": // (overview, missioncontrol, switcher, stagemanager, launchpad: RustWindows.qml)
+            root.wmCall(String(a[0] ?? ""), a.slice(1));
             break;
         case "search.command":
             Search.rustCommand(String(a[0] ?? ""));

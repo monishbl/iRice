@@ -44,6 +44,10 @@ resvg = { version = "0.48", default-features = false }
 # checked against the system's trust store (core/src/services/ai/mod.rs)
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 wayland-protocols-misc = { version = "0.3", features = ["client"] } # (src/bin/fake-ime.rs only)
+# Window pictures: Hyprland's toplevel export protocol, generated from
+# core/protocols/ (core/src/services/capture.rs; already built for the protocols above)
+wayland-scanner = "0.31"
+wayland-backend = "0.3" # (what the generated code names)
 
 [package]
 name = "tessera-ui"
@@ -77,6 +81,12 @@ tessera-spotlight = { path = "surfaces/spotlight" }
 tessera-controlcenter = { path = "surfaces/controlcenter" }
 tessera-sidebar = { path = "surfaces/sidebar" }
 tessera-screentools = { path = "surfaces/screentools" }
+tessera-overview = { path = "surfaces/overview" }
+tessera-missioncontrol = { path = "surfaces/missioncontrol" }
+tessera-switcher = { path = "surfaces/switcher" }
+tessera-stagemanager = { path = "surfaces/stagemanager" }
+tessera-launchpad = { path = "surfaces/launchpad" }
+tessera-tabs = { path = "surfaces/tabs" }
 tessera-overlay = { path = "surfaces/overlay" }
 tessera-welcome = { path = "surfaces/welcome" }
 tessera-resources = { path = "surfaces/resources" }

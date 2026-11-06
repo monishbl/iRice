@@ -15,7 +15,7 @@ import qs.services
 // move or spaces switch, the strips step out of the way and come back
 // once things settle, so they never trail behind.
 Variants {
-    model: Config.options.appearance.windowTabs === "finder" ? Quickshell.screens : []
+    model: Config.options.appearance.windowTabs === "finder" && !RustUi.drawing("tabs") ? Quickshell.screens : []
 
     Scope {
         id: win

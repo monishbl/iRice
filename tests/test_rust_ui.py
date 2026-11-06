@@ -166,9 +166,9 @@ class Agreement(unittest.TestCase):
 
     def test_search_ranks_the_same_actions_in_rust(self):
         # Search's actions (title, glyph, keywords) are ranked in Rust too
-        # (surfaces/spotlight/src/rank.rs): the same list, in the same order
+        # (core/src/rank.rs, Search's and the Overview's): the same list, in the same order
         qml = (ROOT / "shell/services/Search.qml").read_text()
-        rs = (surface("spotlight") / "src/rank.rs").read_text()
+        rs = (CORE / "src/rank.rs").read_text()
         block = qml[qml.index("readonly property var actions: ["):qml.index("// \"Cast to <TV>\"")]
         q = re.findall(r'\{ title: "([^"]+)", glyph: "([^"]+)", keywords: "([^"]+)"', block)
         r = re.findall(r'\("([^"]+)", "([^"]+)", "([^"]+)"\),', rs[rs.index("pub const ACTIONS"):])
@@ -460,6 +460,26 @@ class Bridge(unittest.TestCase):
         qml = "\n".join(p.read_text(errors="replace") for p in qml_files())
         for p in panels:
             self.assertRegex(qml, rf'(panel|popoverName|name):\s*"{p}"', p)
+
+    def test_the_window_surfaces_step_aside_and_their_calls_are_answered(self):
+        # overview, missioncontrol and launchpad through their PanelLoader;
+        # the switcher forwards its shortcuts; every `wm` call the parts ask
+        # is one modules/overview/RustWindows.qml answers
+        for name, path in (("overview", "shell/modules/overview/Overview.qml"), ("missioncontrol", "shell/modules/missioncontrol/MissionControl.qml"),
+                           ("launchpad", "shell/modules/launchpad/AppLibraryGlass.qml"), ("launchpad", "shell/modules/launchpad/AppDrawer.qml")):
+            self.assertIn(f'elsewhere: RustUi.drawing("{name}")', (ROOT / path).read_text())
+        switcher = (ROOT / "shell/modules/switcher/Switcher.qml").read_text()
+        for word in ('RustUi.drawing("switcher")', 'cmd: "step"', 'cmd: "commit"', "!root.rust"):
+            self.assertIn(word, switcher)
+        self.assertIn('missioncontrol: "missionControl"', (ROOT / "shell/services/RustUi.qml").read_text())
+        asked = set()
+        for p in rust_sources():
+            asked |= set(re.findall(r'wm::ask\("([a-zA-Z.]+)"', p.read_text()))
+        feed = (ROOT / "shell/modules/overview/RustWindows.qml").read_text()
+        answered = set(re.findall(r'case "([a-zA-Z.]+)":', feed))
+        self.assertTrue(asked)
+        self.assertEqual(sorted(asked - answered), [], "asked of the shell, never answered")
+        self.assertIn("RustWindows {}", (ROOT / "shell/TesseraShell.qml").read_text())
 
 
 def binary():

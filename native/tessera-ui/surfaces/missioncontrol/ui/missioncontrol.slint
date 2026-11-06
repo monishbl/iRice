@@ -1,0 +1,335 @@
+// Mission Control in Rust (rust.surfaces: missioncontrol), both looks,
+// compare shell/modules/missioncontrol/MissionControl.qml: the spaces along
+// the top (plain containers, a tile per window; drag one to reorder), the
+// current space's windows spread out below as pictures; App Exposé: one
+// app's windows from every space, its name on top instead of the spaces.
+// Glass sits on a full-screen borderless glass (the plugin's, Rust sends
+// it) under a light veil; Material on its surface. Rust lays it out and
+// decides hover, clicks and drags from the pointer (one tracker).
+
+import { Theme } from "@tessera/theme.slint";
+
+export struct McMini {
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    icon: image,
+    has-icon: bool,
+}
+
+export struct McCard {
+    id: int,
+    x: length,
+    w: length,
+    h: length,
+    title: string,
+    current: bool,
+    minis: [McMini],
+}
+
+export struct McTile {
+    address: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    picture: image,
+    has-picture: bool,
+    icon: image,
+    has-icon: bool,
+    chip-icon: image,
+    title: string,
+}
+
+export component MissionControlPanel inherits Window {
+    in property <bool> shown;
+    in property <[McCard]> cards;
+    in property <length> card-y: 44px;
+    in property <[McTile]> tiles;
+    in property <length> stage-x;
+    in property <length> stage-y;
+    in property <length> stage-w;
+    in property <length> stage-h;
+    in property <bool> expose;
+    in property <string> expose-name;
+    in property <string> expose-count;
+    in property <image> expose-icon;
+    in property <bool> wallpapers;
+    in property <image> wallpaper;
+    in property <color> glass-fill;
+    in property <string> hover-win;
+    in property <int> drag-space;
+    in property <length> drag-dx;
+    in property <int> drop-on;
+    in property <int> current-ws;
+    in property <string> cursor: "default";
+
+    out property <float> progress: shown ? 1 : 0;
+    animate progress {
+        duration: 320ms;
+        easing: shown ? (Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1));
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+
+    callback key(string) -> bool;
+    callback pointer(length, length, bool);
+    callback press(length, length, int);
+    callback release(length, length, int);
+    callback closed();
+
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Mission Control";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    // The blurred wallpaper (Glass: the plugin's glass, with a veil;
+    // Material: its surface)
+    Rectangle {
+        background: Theme.material ? Theme.panel : glass-fill;
+        opacity: progress;
+    }
+    if !Theme.material: Rectangle {
+        background: #000000.with-alpha(0.18 * progress);
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+
+    // App Exposé: the app's icon and name where the spaces would be
+    if expose: HorizontalLayout {
+        y: 56px + (1 - progress) * -30px;
+        height: 40px;
+        alignment: center;
+        spacing: 12px;
+        opacity: progress;
+        Image {
+            width: 40px;
+            height: 40px;
+            source: expose-icon;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: expose-name;
+                color: Theme.material ? Theme.m3-on-surface : white;
+                font-size: 20px;
+                font-weight: 600;
+            }
+            Text {
+                text: expose-count;
+                color: Theme.material ? Theme.m3-on-surface-variant : #ffffff.with-alpha(0.7);
+                font-size: Theme.small;
+            }
+        }
+    }
+
+    // The spaces bar
+    if !expose: Rectangle {
+        y: card-y + (1 - progress) * -30px - card-y;
+        opacity: progress;
+        for c in cards: card := Rectangle {
+            property <bool> dragged: drag-space == c.id;
+            property <bool> marked: c.current || (drop-on == c.id && drag-space > 0 && !dragged);
+            x: c.x + (dragged ? drag-dx : 0);
+            y: card-y;
+            width: c.w;
+            height: c.h + 6px + 16px;
+            opacity: dragged ? 0.85 : 1;
+            accessible-role: button;
+            accessible-label: c.title;
+            Rectangle {
+                height: c.h;
+                border-radius: Theme.material ? 16px : 8px;
+                background: Theme.material ? (c.current ? Theme.m3-secondary-container : Theme.m3-surface-container-highest) : Theme.dark ? #1A1A1D : #F4F4F5;
+                border-width: Theme.material ? 0 : card.marked ? 2px : 1px;
+                border-color: card.marked ? Theme.accent : Theme.dark ? #36363C : #D4D4D8;
+                clip: true;
+                if wallpapers: Rectangle {
+                    x: Theme.material ? 0 : 1px;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: parent.height - 2 * self.x;
+                    border-radius: Theme.material ? 16px : 7px;
+                    clip: true;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: wallpaper;
+                        image-fit: cover;
+                        accessible-role: none;
+                    }
+                }
+                for m in c.minis: Rectangle {
+                    x: m.x;
+                    y: m.y;
+                    width: m.w;
+                    height: m.h;
+                    border-radius: Theme.material ? 4px : 3px;
+                    background: Theme.material ? Theme.m3-surface-container-low : Theme.dark ? #2C2C31 : #FFFFFF;
+                    border-width: 1px;
+                    border-color: Theme.material ? Theme.m3-outline-variant : Theme.dark ? #36363C : #E4E4E7;
+                    if m.has-icon: Image {
+                        width: min(20px, parent.height * 0.6);
+                        height: self.width;
+                        source: m.icon;
+                        accessible-role: none;
+                    }
+                }
+                // Material: the current space (or where a drag lands) outlined in primary
+                if Theme.material && card.marked: Rectangle {
+                    border-radius: 16px;
+                    border-width: 3px;
+                    border-color: Theme.m3-primary;
+                }
+            }
+            Text {
+                y: c.h + 6px;
+                width: parent.width;
+                horizontal-alignment: center;
+                text: c.title;
+                color: Theme.material ? (c.current ? Theme.m3-on-surface : Theme.m3-on-surface-variant) : c.current ? white : #ffffff.with-alpha(0.7);
+                font-size: Theme.small;
+                font-weight: c.current ? 600 : 500;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+    }
+
+    // The windows
+    Rectangle {
+        x: stage-x;
+        y: stage-y;
+        width: stage-w;
+        height: stage-h;
+        opacity: progress;
+        transform-scale: 0.96 + 0.04 * progress;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        if tiles.length == 0: Text {
+            text: expose ? "No open windows" : "No windows on this desktop";
+            color: Theme.material ? Theme.m3-on-surface-variant : #ffffff.with-alpha(0.7);
+            font-size: Theme.title;
+        }
+        for t in tiles: tile := Rectangle {
+            property <bool> hot: hover-win == t.address;
+            x: t.x - stage-x;
+            y: t.y - stage-y;
+            width: t.w;
+            height: t.h;
+            accessible-role: button;
+            accessible-label: t.title;
+            // (Material: a recents card, outlined in primary when hovered)
+            Rectangle {
+                border-radius: Theme.material ? Theme.radius-tile : 12px;
+                background: Theme.material ? Theme.m3-surface-container-highest : #1a1a1f;
+                transform-scale: tile.hot ? 1.02 : 1;
+                animate transform-scale { duration: 150ms; }
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                clip: true;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: t.picture;
+                    image-fit: fill;
+                    visible: t.has-picture;
+                    accessible-role: none;
+                }
+                Rectangle {
+                    border-radius: Theme.material ? Theme.radius-tile : 12px;
+                    border-width: tile.hot ? 3px : 0;
+                    border-color: Theme.accent;
+                }
+            }
+            if !Theme.material && t.has-icon: Image {
+                x: (parent.width - 40px) / 2;
+                y: parent.height - 40px + 16px;
+                width: 40px;
+                height: 40px;
+                source: t.icon;
+                accessible-role: none;
+            }
+            if !Theme.material && tile.hot: Rectangle {
+                property <length> tw: min(lbl.preferred-width + 20px, parent.width + 40px);
+                x: (parent.width - tw) / 2;
+                y: parent.height + 30px;
+                width: tw;
+                height: 24px;
+                border-radius: 12px;
+                background: #1f1f24.with-alpha(0.9);
+                lbl := Text {
+                    width: min(self.preferred-width, parent.width - 20px);
+                    text: t.title;
+                    overflow: elide;
+                    color: white;
+                    font-size: Theme.small;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    accessible-role: none;
+                }
+            }
+            // Material: Android's recents chip under the card
+            if Theme.material: Rectangle {
+                property <length> cw: min(chip.preferred-width + 24px, parent.width + 40px);
+                x: (parent.width - cw) / 2;
+                y: parent.height + 10px;
+                width: cw;
+                height: 32px;
+                border-radius: 16px;
+                background: tile.hot ? Theme.m3-secondary-container : Theme.m3-surface-container-high;
+                animate background { duration: 150ms; }
+                chip := HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    if t.has-icon: Image {
+                        width: 20px;
+                        height: 20px;
+                        source: t.chip-icon;
+                        accessible-role: none;
+                    }
+                    Text {
+                        max-width: t.w + 40px - 24px - 28px;
+                        text: t.title;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        color: tile.hot ? Theme.m3-on-secondary-container : Theme.m3-on-surface;
+                        font-size: Theme.small;
+                        font-weight: 500;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+    }
+
+    // One tracker: hover, clicks and the spaces' drags are decided in Rust
+    TouchArea {
+        mouse-cursor: cursor == "pointer" ? MouseCursor.pointer : cursor == "grabbing" ? MouseCursor.grabbing : MouseCursor.default;
+        changed mouse-x => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        changed mouse-y => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        changed has-hover => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.press(self.mouse-x, self.mouse-y, e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : 2);
+            } else if e.kind == PointerEventKind.up {
+                root.release(self.mouse-x, self.mouse-y, e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : 2);
+            } else if e.kind == PointerEventKind.cancel {
+                root.release(-1px, -1px, 3);
+            }
+        }
+    }
+}

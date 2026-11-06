@@ -118,6 +118,7 @@ ShellRoot {
     HotCorners {}
     SnapPreview {}
     TabStrip {}
+    RustWindows {} // (the window-management surfaces drawn in Rust: what they show from here)
     QuickLook {}
     ShareSheet {}
     IncomingCard {}

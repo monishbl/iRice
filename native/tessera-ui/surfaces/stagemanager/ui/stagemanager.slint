@@ -1,0 +1,96 @@
+// Stage Manager's strip in Rust (rust.surfaces: stagemanager), both looks,
+// compare shell/modules/stagemanager/StageStrip.qml: the waiting stages of
+// the space on this screen as stacks of window pictures on the left edge
+// (up to three windows each, back to front), the app's icon in front
+// (Material: on a round chip). Click one to bring it forward; Shift+click
+// adds its windows to the stage in front.
+
+import { Theme } from "@tessera/theme.slint";
+
+export struct StCard {
+    picture: image,
+    has-picture: bool,
+    depth: int,
+}
+
+export struct StStage {
+    id: int,
+    cards: [StCard],
+    icon: image,
+    has-icon: bool,
+    label: string,
+}
+
+export component StageStrip inherits Window {
+    in property <[StStage]> stages;
+    callback activate(int, bool); // stage id, shift held
+
+    background: transparent;
+    no-frame: true;
+    title: "Stage Manager";
+    default-font-family: Theme.font;
+
+    VerticalLayout {
+        x: 20px;
+        width: 140px;
+        alignment: center;
+        spacing: 24px;
+        for s in stages: Rectangle {
+            width: 140px;
+            height: 104px;
+            transform-scale: ta.pressed ? 0.96 : ta.has-hover ? 1.04 : 1;
+            animate transform-scale { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            accessible-role: button;
+            accessible-label: s.label;
+            accessible-action-default => { activate(s.id, false); }
+            // up to three windows, stacked back to front
+            for c in s.cards: Rectangle {
+                x: 12px - c.depth * 6px;
+                y: c.depth * 6px;
+                width: 120px;
+                height: 80px;
+                opacity: 1 - c.depth * 0.2;
+                border-radius: Theme.material ? 16px : 8px;
+                background: Theme.material ? Theme.m3-surface-container-highest : Theme.dark ? #1A1A1D : #FFFFFF;
+                border-width: Theme.material ? 0 : 1px;
+                border-color: Theme.dark ? #36363C : #D4D4D8;
+                clip: true;
+                if c.has-picture: Image {
+                    x: Theme.material ? 0 : 1px;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: parent.height - 2 * self.x;
+                    source: c.picture;
+                    image-fit: fill;
+                    accessible-role: none;
+                }
+            }
+            // Material: the app icon on a round chip
+            if Theme.material: Rectangle {
+                x: -4px;
+                y: 60px;
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: Theme.m3-surface-container-high;
+            }
+            if s.has-icon: Image {
+                x: 0;
+                y: 64px;
+                width: 36px;
+                height: 36px;
+                source: s.icon;
+                accessible-role: none;
+            }
+            ta := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && self.has-hover {
+                        activate(s.id, e.modifiers.shift);
+                    }
+                }
+            }
+        }
+    }
+}

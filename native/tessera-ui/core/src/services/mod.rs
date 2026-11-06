@@ -47,6 +47,7 @@ pub mod status;
 pub mod tray;
 pub mod wallpaper;
 pub mod calendar;
+pub mod capture;
 pub mod todos;
 pub mod weather;
 

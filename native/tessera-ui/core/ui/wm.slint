@@ -1,0 +1,204 @@
+// What the window-management surfaces share (overview, missioncontrol,
+// switcher, stagemanager, launchpad, tabs; src/surfaces/wm): a glyph as each
+// look draws it, a window's picture with its app icon (WindowPreview.qml),
+// and the glass context menu they open at the pointer (ContextMenu.qml).
+
+import { Theme } from "theme.slint";
+
+// A glyph as Icon.qml picks it (Material: a Material Symbol, 1.2× the size)
+export struct WGlyph {
+    text: string,
+    family: string,
+    scale: float,
+}
+
+export component WIcon inherits Rectangle {
+    in property <WGlyph> glyph;
+    in property <length> size: 16px;
+    in property <color> tint: Theme.secondary;
+    accessible-role: none;
+    Text {
+        text: glyph.text;
+        font-family: glyph.family;
+        font-size: size * glyph.scale;
+        color: tint;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// One window: its picture (fading in when it comes), its app icon in the
+// middle while there's none (with the app's name when it failed and there's
+// room), then as a badge in the corner; outlined, in the accent when hovered.
+export component WPreview inherits Rectangle {
+    in property <image> picture;
+    in property <bool> has-picture;
+    in property <image> icon; // styled, for the middle
+    in property <image> badge; // styled, for the corner
+    in property <bool> has-icon;
+    in property <string> name;
+    in property <bool> failed;
+    in property <bool> hovered;
+    in property <length> radius: 4px;
+    property <bool> roomy: root.height >= 56px && root.width >= 72px;
+    property <float> shown: has-picture ? 1 : 0;
+    animate shown { duration: 150ms; easing: ease-out; }
+    accessible-role: none;
+    Rectangle {
+        border-radius: radius;
+        clip: true;
+        background: Theme.material ? Theme.m3-surface-container-highest : Theme.dark ? #2C2C31 : #FFFFFF;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: picture;
+            image-fit: fill;
+            opacity: shown;
+            accessible-role: none;
+        }
+    }
+    // Loading or failed: the icon in the middle
+    property <length> mid: round(max(12px, min(32px, root.height * (roomy ? 0.4 : 0.7))) / 1px) * 1px;
+    if !has-picture: VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                width: root.mid;
+                height: root.mid;
+                source: icon;
+                visible: has-icon;
+                accessible-role: none;
+            }
+        }
+        if roomy && failed: Text {
+            width: root.width - 12px;
+            x: 6px;
+            text: name;
+            horizontal-alignment: center;
+            overflow: elide;
+            color: Theme.material ? Theme.m3-on-surface : Theme.dark ? #EDEDEF : #18181B;
+            font-size: 12px;
+            font-weight: 500;
+            accessible-role: none;
+        }
+    }
+    // Loaded: the icon as a badge (Material: on a round chip)
+    property <length> bs: round(max(12px, min(20px, root.height * 0.22)) / 1px) * 1px;
+    property <length> bm: Theme.material ? 8px : 4px;
+    if has-picture && has-icon && root.width >= 40px && root.height >= 32px: Rectangle {
+        x: root.width - bm - bs - (Theme.material ? 4px : 0px);
+        y: root.height - bm - bs - (Theme.material ? 4px : 0px);
+        width: bs + (Theme.material ? 8px : 0px);
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.material ? Theme.m3-surface-container-high : transparent;
+        Image {
+            width: bs;
+            height: bs;
+            source: badge;
+            accessible-role: none;
+        }
+    }
+    // Outline (Material: none at rest; primary, 3 px, when hovered)
+    Rectangle {
+        border-radius: radius;
+        border-width: Theme.material ? (hovered ? 3px : 0px) : hovered ? 2px : 1px;
+        border-color: hovered ? Theme.accent : Theme.material ? transparent : Theme.dark ? #36363C : #E4E4E7;
+    }
+}
+
+export struct WMenuRow {
+    text: string,
+    header: bool,
+    separator: bool,
+    enabled: bool,
+}
+
+// A context menu inside the surface (ContextMenu.qml): headers, separators,
+// rows that highlight under the pointer or the arrows; Glass on the plugin's
+// glass (Rust sends the shape: x, y, w, h out), Material on its surface
+export component WMenu inherits Rectangle {
+    in property <[WMenuRow]> rows;
+    in property <length> point-x;
+    in property <length> point-y;
+    in property <bool> upward;
+    in property <length> area-w;
+    in property <length> area-h;
+    in property <color> fill; // Glass over the plugin: clear; else its tint
+    in-out property <int> current: -1;
+    callback activate(int);
+    callback dismissed();
+    // (from Rust: the widest row's width and the rows' height)
+    in property <length> menu-w: 200px;
+    in property <length> rows-h;
+    property <length> natural: rows-h + 10px;
+    property <length> below: area-h - point-y;
+    property <bool> up: upward ? (natural <= point-y || point-y >= below) : (natural > below && point-y > below);
+    out property <length> mx: max(0px, min(area-w - menu-w, point-x - menu-w / 2));
+    out property <length> my: max(8px, min(area-h - 8px - natural, up ? point-y - natural : point-y));
+    out property <length> mh: natural;
+    out property <float> openness: 0;
+    init => { openness = 1; }
+    animate openness { duration: 300ms; easing: spring(0.36); }
+    // a click outside closes it
+    TouchArea {
+        clicked => { dismissed(); }
+    }
+    body := Rectangle {
+        x: mx;
+        y: my;
+        width: menu-w;
+        height: natural;
+        border-radius: Theme.material ? 18px : 14px;
+        background: fill;
+        opacity: min(1, openness);
+        accessible-role: list;
+        TouchArea { }
+        VerticalLayout {
+            padding: 5px;
+            for r[i] in rows: Rectangle {
+                height: r.separator ? 11px : r.header ? 26px : 28px;
+                accessible-role: list-item;
+                accessible-label: r.text;
+                accessible-action-default => { activate(i); }
+                property <bool> hot: (rt.has-hover || current == i) && r.enabled && !r.header && !r.separator;
+                if r.separator: Rectangle {
+                    width: parent.width - 18px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+                if r.header: Text {
+                    x: 12px;
+                    y: parent.height - self.height - 4px;
+                    text: r.text;
+                    color: Theme.material ? Theme.m3-primary : Theme.secondary;
+                    font-size: 12px;
+                    font-weight: 500;
+                    accessible-role: none;
+                }
+                if !r.separator && !r.header: Rectangle {
+                    border-radius: Theme.material ? 10px : 8px;
+                    background: hot ? Theme.highlight : transparent;
+                    Text {
+                        x: 12px;
+                        text: r.text;
+                        color: hot ? (Theme.material ? Theme.on-highlight : white) : !r.enabled ? Theme.tertiary : Theme.label;
+                        font-size: Theme.body;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+                rt := TouchArea {
+                    enabled: r.enabled && !r.header && !r.separator;
+                    changed has-hover => {
+                        if self.has-hover { current = i; }
+                    }
+                    clicked => { activate(i); }
+                }
+            }
+        }
+    }
+}

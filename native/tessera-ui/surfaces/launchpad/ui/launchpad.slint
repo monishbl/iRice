@@ -1,0 +1,725 @@
+// The app drawer in Rust (rust.surfaces: launchpad), both looks, compare
+// shell/modules/launchpad: Glass's App Library (AppLibraryGlass.qml, a
+// centred glass dialog) and Material's app drawer (AppDrawer.qml, a large
+// surface rising from the dock on a spring). The same list either way
+// (AppLibraryModel.qml: src/surfaces/launchpad/model.rs): category folders
+// or every app A–Z with a letter index, a search over them, the selection,
+// the keys, an app's menu. Rust owns the state; this draws it.
+
+import { Theme } from "@tessera/theme.slint";
+import { WGlyph, WIcon, WMenu, WMenuRow } from "@tessera/wm.slint";
+
+export struct LpCell {
+    name: string,
+    icon: image,
+    has-icon: bool,
+    folder: bool,
+    count: int,
+    previews: [image], // a folder's first icons
+    letter: string,
+}
+
+export struct LpLetter {
+    letter: string,
+    index: int,
+    next: int, // the next letter's first app
+}
+
+export struct LpFab {
+    text: string,
+    glyph: WGlyph,
+}
+
+// Categories / All apps (Segmented.qml: Glass's sliding pill; Material's
+// connected button group)
+component LpSegmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback chosen(int);
+    property <length> seg: (self.width - 4px - (Theme.material ? 2px : 0px) * (options.length - 1)) / max(1, options.length);
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    if !Theme.material: Rectangle {
+        x: 2px + current * seg;
+        y: 2px;
+        width: seg;
+        height: parent.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff.with-alpha(0.2) : white;
+        animate x { duration: 220ms; easing: cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+    }
+    for o[i] in options: sg := Rectangle {
+        x: 2px + i * (seg + (Theme.material ? 2px : 0px));
+        width: seg;
+        property <bool> chosen-here: i == current;
+        property <length> full: self.height / 2;
+        border-top-left-radius: !Theme.material ? 0 : i == 0 || sg.chosen-here ? full : st.pressed ? 4px : 8px;
+        border-bottom-left-radius: self.border-top-left-radius;
+        border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 || sg.chosen-here ? full : st.pressed ? 4px : 8px;
+        border-bottom-right-radius: self.border-top-right-radius;
+        animate border-top-left-radius, border-top-right-radius { duration: 200ms; easing: spring(0.4); }
+        background: !Theme.material ? transparent : (sg.chosen-here ? Theme.m3-primary : Theme.m3-surface-container-highest).mix(sg.chosen-here ? Theme.m3-on-primary : Theme.m3-on-surface-variant, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1);
+        animate background { duration: 150ms; }
+        accessible-role: tab;
+        accessible-label: o;
+        accessible-item-selected: sg.chosen-here;
+        accessible-action-default => { chosen(i); }
+        Text {
+            text: o;
+            color: Theme.material ? (sg.chosen-here ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : sg.chosen-here ? Theme.label : Theme.secondary;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            accessible-role: none;
+        }
+        st := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { chosen(i); }
+        }
+    }
+}
+
+export component LaunchpadPanel inherits Window {
+    in property <bool> shown;
+    in property <[LpCell]> cells;
+    in property <bool> apps; // showing apps (else folders)
+    in property <int> selected;
+    in property <string> picked; // a letter picked on the index
+    in property <[LpLetter]> letters;
+    in property <bool> alphabetical;
+    in property <bool> in-folder;
+    in property <string> folder-name;
+    in property <string> folder-count;
+    in property <int> view;
+    in property <int> app-count;
+    in property <bool> no-results;
+    in property <bool> app-names: true;
+    in property <bool> entering;
+    in-out property <length> scroll-y;
+    in property <WGlyph> g-search;
+    in property <WGlyph> g-back;
+    in property <WGlyph> g-clear;
+    in property <WGlyph> g-dots;
+    in property <WGlyph> g-x;
+    in property <string> cookie9;
+    in property <[LpFab]> fab-items;
+    in property <bool> fab-open;
+    in property <color> glass-fill;
+    in property <color> scrim: black;
+    // An app's menu
+    in property <bool> menu-shown;
+    in property <[WMenuRow]> menu-rows;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    in property <length> menu-w;
+    in property <length> menu-h;
+    in-out property <int> menu-current: -1;
+
+    out property <float> progress: shown ? 1 : 0;
+    animate progress {
+        duration: shown ? (Theme.material ? 560ms : 480ms) : 192ms;
+        easing: shown ? spring(0.4) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1));
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
+    // Glass: the dialog's box (content + padding 24), for its glass
+    out property <length> gw: min(1120px, root.width - 160px) + 48px;
+    out property <length> gh: min(720px, root.height - 200px) + 48px;
+    out property <length> gx: round((root.width - gw) / 2 / 1px) * 1px;
+    out property <length> gy: round((root.height - gh) / 2 / 1px) * 1px - 40px;
+    out property <float> gscale: 0.96 + 0.04 * progress;
+    // The grid (Rust needs its columns for the arrows)
+    out property <int> cols: max(1, floor(grid.width / (Theme.material ? (apps ? 116px : 212px) : (apps ? 120px : 210px))));
+    out property <length> cell-w: floor(grid.width / cols / 1px) * 1px;
+    out property <length> cell-h: Theme.material ? (apps ? 120px : 244px) : (apps ? 116px : 236px);
+    out property <length> view-h: grid.height;
+    out property <length> grid-x: sheet.x + 24px + grid.x;
+    out property <length> grid-y: sheet.y + 24px + grid.y;
+    out property <length> content-h: ceil(cells.length / cols) * cell-h;
+    out property <bool> has-text: field.text != "";
+    property <duration> intro-t0;
+    property <int> top-row: floor(-scroll-y / cell-h + 0.5) * cols;
+
+    callback key(string, bool) -> bool; // text, shift: handled?
+    callback edited(string);
+    callback hovered(int);
+    callback activate(int);
+    callback cell-menu(int, length, length); // right-click, or press and hold
+    callback cell-down(int, length, length);
+    callback cell-up();
+    callback back();
+    callback view-chosen(int);
+    callback jump(int); // a letter on the index
+    callback fab-toggle();
+    callback fab-pick(int);
+    callback menu-activate(int);
+    callback menu-dismissed();
+    callback dismissed(); // a click on the scrim
+    callback sheet-clicked();
+    callback closed();
+
+    public function open() {
+        field.text = "";
+        field.focus();
+    }
+    public function focus-field() {
+        field.focus();
+    }
+    public function clear-field() {
+        field.text = "";
+    }
+    public function start-intro() {
+        intro-t0 = animation-tick();
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: Theme.material ? "App drawer" : "App Library";
+    default-font-family: Theme.font;
+
+    // The scrim; a click on it closes
+    Rectangle {
+        background: Theme.material ? scrim.with-alpha(0.32 * max(0, min(1, progress))) : #000000.with-alpha(0.25 * progress);
+        TouchArea {
+            clicked => { dismissed(); }
+        }
+    }
+
+    // The sheet (Material) or the dialog (Glass)
+    sheet := Rectangle {
+        property <length> sw: Theme.material ? min(1120px, root.width - 160px) : gw;
+        property <length> sh: Theme.material ? min(780px, root.height - 120px) : gh;
+        x: Theme.material ? round((root.width - sw) / 2 / 1px) * 1px : gx;
+        y: Theme.material ? round((root.height - sh) / 2 / 1px) * 1px + (1 - progress) * 96px : gy;
+        width: sw;
+        height: sh;
+        border-radius: 28px;
+        background: Theme.material ? Theme.m3-surface.with-alpha(Theme.panel-alpha) : glass-fill;
+        opacity: Theme.material ? max(0, min(1, progress * 1.6)) : min(1, progress);
+        transform-scale: Theme.material ? 0.94 + 0.06 * progress : gscale;
+        transform-origin: { x: self.width / 2, y: Theme.material ? self.height : self.height / 2 };
+        accessible-role: groupbox;
+        accessible-label: root.title;
+        // (a click on it doesn't reach the scrim; it closes the More menu)
+        TouchArea {
+            clicked => { sheet-clicked(); }
+        }
+
+        content := Rectangle {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            height: parent.height - 48px;
+
+            // ── Header ──
+            header := Rectangle {
+                height: Theme.material ? 56px : 36px;
+                y: 0;
+                // Glass: back (in a folder) and the folder's name
+                if !Theme.material && in-folder: Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: Theme.radius-control - 2px;
+                    background: bb.pressed ? Theme.fill-pressed : bb.has-hover ? Theme.fill : transparent;
+                    accessible-role: button;
+                    accessible-label: "Back to categories";
+                    accessible-action-default => { back(); }
+                    WIcon {
+                        glyph: g-back;
+                        size: 18px;
+                        tint: Theme.label;
+                    }
+                    bb := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { back(); }
+                    }
+                }
+                if !Theme.material && in-folder: Text {
+                    x: 44px;
+                    text: folder-name;
+                    color: Theme.label;
+                    font-size: Theme.large;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                // the search
+                searchbox := Rectangle {
+                    x: Theme.material ? 0 : (parent.width - 320px) / 2;
+                    width: Theme.material ? parent.width - 260px - 16px : 320px;
+                    height: parent.height;
+                    border-radius: Theme.material ? 28px : Theme.radius-control;
+                    background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
+                    border-width: Theme.material ? 0 : 1px;
+                    border-color: field.has-focus ? Theme.accent : transparent;
+                    if !(Theme.material && in-folder): WIcon {
+                        x: Theme.material ? 18px : 10px;
+                        width: Theme.material ? 22px : 16px;
+                        glyph: g-search;
+                        size: Theme.material ? 22px : 16px;
+                        tint: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                    }
+                    if Theme.material && in-folder: Rectangle {
+                        x: 8px;
+                        y: 8px;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: mb.pressed ? 8px : 20px;
+                        background: mb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : mb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                        accessible-role: button;
+                        accessible-label: "Back to categories";
+                        accessible-action-default => { back(); }
+                        WIcon {
+                            glyph: g-back;
+                            size: 22px;
+                            tint: Theme.m3-on-surface;
+                        }
+                        mb := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { back(); }
+                        }
+                    }
+                    Rectangle {
+                        x: Theme.material ? 56px : 34px;
+                        width: parent.width - self.x - (Theme.material ? (field.text != "" ? 56px : 24px) : 10px);
+                        clip: true;
+                        field := TextInput {
+                            width: 100%;
+                            height: 100%;
+                            color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                            selection-background-color: Theme.material ? Theme.m3-primary-container : Theme.accent.with-alpha(0.4);
+                            selection-foreground-color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                            font-size: Theme.material ? 16px : Theme.body + 1px;
+                            vertical-alignment: center;
+                            single-line: true;
+                            input-type: search;
+                            accessible-label: "Search apps";
+                            accessible-placeholder-text: "Search " + app-count + " apps";
+                            edited => { root.edited(self.text); }
+                            key-pressed(e) => {
+                                if root.key(e.text, e.modifiers.shift) { return accept; }
+                                reject
+                            }
+                        }
+                        if field.text == "": Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "Search " + app-count + " apps";
+                            color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                            font-size: field.font-size;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            accessible-role: none;
+                        }
+                    }
+                    if Theme.material && field.text != "": Rectangle {
+                        x: parent.width - 48px;
+                        y: 8px;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: cb.pressed ? 8px : 20px;
+                        background: cb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : cb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                        accessible-role: button;
+                        accessible-label: "Clear search";
+                        accessible-action-default => { field.text = ""; root.edited(""); }
+                        WIcon {
+                            glyph: g-x;
+                            size: 22px;
+                            tint: Theme.m3-on-surface-variant;
+                        }
+                        cb := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                field.text = "";
+                                root.edited("");
+                                field.focus();
+                            }
+                        }
+                    }
+                }
+                LpSegmented {
+                    x: parent.width - self.width;
+                    y: (parent.height - self.height) / 2;
+                    width: Theme.material ? 260px : 200px;
+                    height: Theme.material ? 48px : 30px;
+                    options: Theme.material ? ["Categories", "All apps"] : ["Categories", "All Apps"];
+                    current: view;
+                    chosen(i) => {
+                        view-chosen(i);
+                        field.focus();
+                    }
+                }
+            }
+
+            // Material: an open folder's name
+            if Theme.material && in-folder && field.text == "": HorizontalLayout {
+                x: 8px;
+                y: header.height + 20px;
+                height: 32px;
+                spacing: 12px;
+                alignment: start;
+                Text {
+                    text: folder-name;
+                    color: Theme.m3-on-surface;
+                    font-size: 24px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: folder-count;
+                    color: Theme.m3-on-surface-variant;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+            }
+
+            // ── The grid ──
+            grid := Flickable {
+                property <bool> titled: Theme.material && in-folder && field.text == "";
+                // (whether the index shows, judged at the full width: the grid's own width depends on it)
+                property <bool> scrubbed: alphabetical && letters.length > 1 && ceil(cells.length / max(1, floor(content.width / (Theme.material ? 116px : 120px)))) * cell-h > self.height;
+                y: titled ? header.height + 20px + 32px + 12px : header.height + (Theme.material ? 20px : 24px);
+                width: parent.width - (scrubbed ? (Theme.material ? 28px : 24px) + 8px : 0);
+                height: parent.height - self.y;
+                content-height: max(self.height, content-h);
+                content-y <=> scroll-y;
+                for c[i] in cells: cell := Rectangle {
+                    property <bool> sel: i == selected;
+                    property <bool> lit: picked != "" && alphabetical && c.letter == picked;
+                    property <duration> delay: 16ms + min(i, 24) * 14ms;
+                    property <float> intro: entering && i <= 40 ? max(0, min(1, (animation-tick() - intro-t0 - delay) / 260ms)) : 1;
+                    x: mod(i, cols) * cell-w;
+                    y: floor(i / cols) * cell-h + (1 - intro) * 20px;
+                    width: cell-w;
+                    height: cell-h;
+                    opacity: intro;
+                    // ── an app ──
+                    if !c.folder: Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: Theme.material ? 4px : 0;
+                        width: Theme.material ? 108px : 104px;
+                        height: self.width;
+                        border-radius: Theme.material ? (cell.sel ? 36px : 20px) : Theme.radius-module;
+                        animate border-radius { duration: 250ms; easing: spring(0.5); }
+                        background: Theme.material ? (cell.sel || cell.lit ? Theme.m3-secondary-container : transparent) : cell.sel || cell.lit ? Theme.accent.with-alpha(Theme.dark ? 0.3 : 0.16) : at.has-hover ? Theme.fill : transparent;
+                        animate background { duration: 150ms; }
+                        opacity: picked != "" && alphabetical && !cell.lit ? 0.4 : 1;
+                        animate opacity { duration: 150ms; }
+                        accessible-role: button;
+                        accessible-label: c.name;
+                        accessible-action-default => { activate(i); }
+                        // Material: a state layer
+                        if Theme.material: Rectangle {
+                            border-radius: parent.border-radius;
+                            background: (cell.sel || cell.lit ? Theme.m3-on-secondary-container : Theme.m3-on-surface).with-alpha(at.pressed ? 0.1 : at.has-hover ? 0.08 : 0);
+                        }
+                        if c.has-icon: Image {
+                            x: (parent.width - 56px) / 2;
+                            y: 12px;
+                            width: 56px;
+                            height: 56px;
+                            source: c.icon;
+                            transform-scale: at.pressed ? (Theme.material ? 1.06 : 0.94) : 1;
+                            animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.5) : ease-out; }
+                            transform-origin: { x: 28px, y: 28px };
+                            accessible-role: none;
+                        }
+                        if app-names || !Theme.material: Text {
+                            x: 6px;
+                            y: parent.height - self.height - (Theme.material ? 12px : 10px);
+                            width: parent.width - 12px;
+                            horizontal-alignment: center;
+                            text: c.name;
+                            overflow: elide;
+                            color: Theme.material ? (cell.sel || cell.lit ? Theme.m3-on-secondary-container : Theme.m3-on-surface) : Theme.label;
+                            font-size: Theme.material ? 13px : Theme.small;
+                            font-weight: Theme.material && cell.sel ? 500 : 400;
+                            accessible-role: none;
+                        }
+                        at := TouchArea {
+                            mouse-cursor: Theme.material ? pointer : default;
+                            changed has-hover => {
+                                if self.has-hover { hovered(i); }
+                            }
+                            pointer-event(e) => {
+                                if e.button == PointerEventButton.right && e.kind == PointerEventKind.up && self.has-hover {
+                                    cell-menu(i, root.grid-x + cell.x + (cell.width - (Theme.material ? 108px : 104px)) / 2 + self.mouse-x, root.grid-y + cell.y + root.scroll-y + (Theme.material ? 4px : 0px) + self.mouse-y);
+                                } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                                    cell-down(i, root.grid-x + cell.x + (cell.width - (Theme.material ? 108px : 104px)) / 2 + self.mouse-x, root.grid-y + cell.y + root.scroll-y + (Theme.material ? 4px : 0px) + self.mouse-y);
+                                } else if e.button == PointerEventButton.left && (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                                    cell-up();
+                                }
+                            }
+                            clicked => { activate(i); }
+                        }
+                    }
+                    // ── a folder ──
+                    if c.folder: Rectangle {
+                        x: (parent.width - 188px) / 2;
+                        y: Theme.material ? 4px : 0;
+                        width: 188px;
+                        height: 188px + (Theme.material ? 12px : 8px) + 24px;
+                        accessible-role: button;
+                        accessible-label: c.name + ", " + c.count + " apps";
+                        accessible-action-default => { activate(i); }
+                        Rectangle {
+                            height: 188px;
+                            border-radius: Theme.material ? (cell.sel ? 64px : 28px) : Theme.radius-panel;
+                            animate border-radius { duration: 250ms; easing: spring(0.5); }
+                            background: Theme.material ? (cell.sel ? Theme.m3-secondary-container : Theme.m3-surface-container-high) : ft.has-hover || cell.sel ? Theme.fill-hover : Theme.platter;
+                            animate background { duration: 150ms; }
+                            border-width: Theme.material ? 0 : cell.sel ? 2px : 1px;
+                            border-color: cell.sel ? Theme.accent : Theme.separator;
+                            transform-scale: ft.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
+                            animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.5) : ease-out; }
+                            transform-origin: { x: 94px, y: 94px };
+                            if Theme.material: Rectangle {
+                                border-radius: parent.border-radius;
+                                background: (cell.sel ? Theme.m3-on-secondary-container : Theme.m3-on-surface).with-alpha(ft.pressed ? 0.1 : ft.has-hover ? 0.08 : 0);
+                            }
+                            // Material: a 2×2 preview; Glass: three large icons and a cluster of small ones
+                            for p[k] in c.previews: Image {
+                                property <bool> small: !Theme.material && c.previews.length > 4 && k >= 3;
+                                property <length> big: Theme.material ? 60px : 64px;
+                                property <length> gap: 16px;
+                                property <length> x0: (188px - 2 * big - gap) / 2;
+                                property <int> slot: small ? 3 : k;
+                                property <int> sk: k - 3;
+                                x: x0 + mod(slot, 2) * (big + gap) + (small ? 2px + mod(sk, 2) * 31px : 0);
+                                y: x0 + floor(slot / 2) * (big + gap) + (small ? 2px + floor(sk / 2) * 31px : 0);
+                                width: small ? 27px : big;
+                                height: self.width;
+                                source: p;
+                                accessible-role: none;
+                            }
+                            ft := TouchArea {
+                                mouse-cursor: Theme.material ? pointer : default;
+                                changed has-hover => {
+                                    if self.has-hover { hovered(i); }
+                                }
+                                clicked => { activate(i); }
+                            }
+                        }
+                        if Theme.material: HorizontalLayout {
+                            y: 188px + 12px;
+                            height: 24px;
+                            alignment: center;
+                            spacing: 8px;
+                            Text {
+                                text: c.name;
+                                color: Theme.m3-on-surface;
+                                font-size: 16px;
+                                font-weight: cell.sel ? 600 : 500;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                            Text {
+                                text: c.count;
+                                color: Theme.m3-on-surface-variant;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                                accessible-role: none;
+                            }
+                        }
+                        if !Theme.material: Text {
+                            y: 188px + 8px;
+                            width: parent.width;
+                            horizontal-alignment: center;
+                            text: c.name + "  " + c.count;
+                            color: Theme.label;
+                            font-size: Theme.body;
+                            font-weight: 500;
+                            accessible-role: none;
+                        }
+                    }
+                }
+            }
+
+            // ── The letter index (A–Z) ──
+            if grid.scrubbed: scrub := Rectangle {
+                property <length> col-w: Theme.material ? 28px : 24px;
+                property <length> avail: grid.height - (Theme.material ? 64px : 0);
+                property <length> step: min(Theme.material ? 24px : 22px, avail / letters.length);
+                property <length> col-y: (avail - step * letters.length) / 2;
+                x: parent.width - col-w;
+                y: grid.y;
+                width: scrub.col-w;
+                height: scrub.avail;
+                for l[k] in letters: lt := Rectangle {
+                    property <bool> marked: picked != "" ? l.letter == picked : (l.index <= top-row && top-row < l.next);
+                    y: scrub.col-y + k * scrub.step;
+                    height: scrub.step;
+                    accessible-role: button;
+                    accessible-label: "Jump to " + l.letter;
+                    accessible-action-default => { jump(k); }
+                    Rectangle {
+                        width: min(Theme.material ? 24px : 20px, parent.height);
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: Theme.material ? Theme.m3-primary : Theme.fill;
+                        opacity: Theme.material ? (lt.marked ? 1 : 0) : (sc.has-hover && floor((sc.mouse-y - scrub.col-y) / scrub.step) == k ? 1 : 0);
+                        animate opacity { duration: 150ms; }
+                    }
+                    Text {
+                        text: l.letter;
+                        color: Theme.material ? (lt.marked ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : lt.marked ? Theme.accent-ink : Theme.secondary;
+                        font-size: Theme.material ? 11px : Theme.caption;
+                        font-weight: lt.marked && !Theme.material ? 700 : 500;
+                        accessible-role: none;
+                    }
+                }
+                sc := TouchArea {
+                    mouse-cursor: pointer;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down {
+                            jump(max(0, min(letters.length - 1, floor((self.mouse-y - scrub.col-y) / scrub.step))));
+                        }
+                    }
+                    moved => {
+                        if self.pressed {
+                            jump(max(0, min(letters.length - 1, floor((self.mouse-y - scrub.col-y) / scrub.step))));
+                        }
+                    }
+                }
+            }
+
+            // ── No results ──
+            if no-results: VerticalLayout {
+                y: grid.y;
+                height: grid.height;
+                alignment: center;
+                spacing: 8px;
+                HorizontalLayout {
+                    alignment: center;
+                    if Theme.material: Rectangle {
+                        width: 80px;
+                        height: 80px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            commands: cookie9;
+                            fill: Theme.m3-surface-container-high;
+                        }
+                        WIcon {
+                            glyph: g-search;
+                            size: 32px;
+                            tint: Theme.m3-on-surface-variant;
+                        }
+                    }
+                    if !Theme.material: WIcon {
+                        width: 40px;
+                        height: 40px;
+                        glyph: g-search;
+                        size: 32px;
+                        tint: Theme.tertiary;
+                    }
+                }
+                if Theme.material: Rectangle { height: 8px; }
+                Text {
+                    horizontal-alignment: center;
+                    text: "No apps match “" + field.text + "”";
+                    color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                    font-size: Theme.material ? 22px : Theme.title;
+                    font-weight: Theme.material ? 400 : 600;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    text: Theme.material ? "Check the spelling, or search the web from the search bar." : "Check the spelling, or search the web in Search.";
+                    color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.body;
+                }
+            }
+        }
+
+        // Material: More (the FAB menu) in the corner
+        if Theme.material: Rectangle {
+            x: parent.width - 24px - 56px;
+            y: parent.height - 24px - 56px;
+            width: 56px;
+            height: 56px;
+            border-radius: fab-open ? 28px : fb.pressed ? 20px : 16px;
+            animate border-radius { duration: 250ms; easing: spring(0.5); }
+            background: fab-open ? Theme.m3-primary : Theme.m3-primary-container.mix(Theme.m3-on-primary-container, fb.pressed ? 0.9 : fb.has-hover ? 0.92 : 1);
+            animate background { duration: 150ms; }
+            drop-shadow-offset-y: 3px;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.18);
+            accessible-role: button;
+            accessible-label: "More";
+            accessible-action-default => { fab-toggle(); }
+            WIcon {
+                glyph: fab-open ? g-x : g-dots;
+                size: 24px;
+                tint: fab-open ? Theme.m3-on-primary : Theme.m3-on-primary-container;
+            }
+            fb := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { fab-toggle(); }
+            }
+        }
+        if Theme.material: VerticalLayout {
+            x: parent.width - 24px - self.width;
+            y: parent.height - 24px - 56px - 8px - self.height;
+            width: 320px;
+            alignment: end;
+            spacing: 4px;
+            for f[k] in fab-items: HorizontalLayout {
+                alignment: end;
+                Rectangle {
+                    property <float> t: fab-open ? 1 : 0;
+                    animate t { duration: 350ms; delay: fab-open ? (fab-items.length - 1 - k) * 30ms : 0ms; easing: spring(0.4); }
+                    width: row.preferred-width + 40px;
+                    height: 56px;
+                    visible: self.t > 0.01;
+                    opacity: min(1, t);
+                    transform-scale: 0.6 + 0.4 * t;
+                    transform-origin: { x: self.width, y: self.height / 2 };
+                    border-radius: 28px;
+                    background: Theme.m3-primary.mix(Theme.m3-on-primary, pt.pressed ? 0.9 : pt.has-hover ? 0.92 : 1);
+                    accessible-role: button;
+                    accessible-label: f.text;
+                    accessible-action-default => { fab-pick(k); }
+                    row := HorizontalLayout {
+                        alignment: center;
+                        spacing: 12px;
+                        WIcon {
+                            width: 24px;
+                            glyph: f.glyph;
+                            size: 22px;
+                            tint: Theme.m3-on-primary;
+                        }
+                        Text {
+                            text: f.text;
+                            color: Theme.m3-on-primary;
+                            font-size: 16px;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            accessible-role: none;
+                        }
+                    }
+                    pt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { fab-pick(k); }
+                    }
+                }
+            }
+        }
+    }
+
+    // An app's menu
+    if menu-shown: WMenu {
+        rows: menu-rows;
+        point-x: menu-x;
+        point-y: menu-y;
+        upward: false;
+        area-w: root.width;
+        area-h: root.height;
+        menu-w: root.menu-w;
+        rows-h: root.menu-h;
+        fill: Theme.material ? Theme.panel : glass-fill;
+        current <=> menu-current;
+        activate(i) => { menu-activate(i); }
+        dismissed => { menu-dismissed(); }
+    }
+}

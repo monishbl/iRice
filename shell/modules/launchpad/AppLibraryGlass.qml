@@ -17,6 +17,7 @@ Variants {
         required property var modelData
         panel: "launchpad"
         screen: modelData
+        elsewhere: RustUi.drawing("launchpad") // (tessera-ui draws it)
 
         Dialog {
             id: dialog

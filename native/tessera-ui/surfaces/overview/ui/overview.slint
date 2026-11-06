@@ -1,0 +1,754 @@
+// The Overview in Rust (rust.surfaces: overview), both looks and both
+// styles, compare shell/modules/overview/Overview.qml and WindowPreview.qml:
+// the spaces as miniatures of the screen (grid: a row per display with
+// several) or a strip of them on a bar at the top (macos), each window a
+// picture at its place, a search field that searches like Search, the edge
+// zones of the other displays. Rust (src/surfaces/overview) lays it out and
+// decides every hover, click and drag from the pointer (one tracker over the
+// spaces); this draws it.
+
+import { Theme } from "@tessera/theme.slint";
+import { WGlyph, WIcon, WPreview, WMenu, WMenuRow } from "@tessera/wm.slint";
+
+export struct OvWin {
+    address: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    radius: length,
+    picture: image,
+    has-picture: bool,
+    icon: image,
+    badge: image,
+    has-icon: bool,
+    name: string,
+    failed: bool,
+}
+
+export struct OvCell {
+    id: int,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    title: string,
+    title-y: length,
+    current: bool,
+    guest: bool,
+    wins: [OvWin],
+}
+
+export struct OvLabel {
+    x: length,
+    y: length,
+    text: string,
+}
+
+export struct OvMini {
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    icon: image,
+    has-icon: bool,
+    address: string,
+}
+
+export struct OvTile {
+    id: int,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    title: string,
+    title-y: length,
+    current: bool,
+    minis: [OvMini],
+}
+
+export struct OvPlus {
+    x: length,
+    y: length,
+    size: length,
+}
+
+export struct OvChip {
+    id: int,
+    x: length,
+    y: length,
+    n: string,
+    current: bool,
+}
+
+export struct OvZone {
+    name: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    head-h: length,
+    vertical: bool,
+    label: string,
+    radius: length,
+    chips: [OvChip],
+}
+
+export struct OvResult {
+    title: string,
+    sub: string,
+    icon: image,
+    has-icon: bool,
+    emoji: string,
+    glyph: WGlyph,
+}
+
+export component OverviewPanel inherits Window {
+    in property <bool> shown;
+    in property <bool> mac;
+    in property <bool> rows-mode;
+    in property <bool> wallpapers;
+    in property <image> wallpaper;
+    in property <[OvCell]> cells;
+    in property <[OvLabel]> labels;
+    in property <[OvTile]> tiles;
+    in property <[OvPlus]> pluses;
+    in property <[OvZone]> zones;
+    in property <length> bar-h;
+    in property <[OvResult]> results;
+    in property <int> selected;
+    in-out property <length> results-y;
+    in property <string> placeholder: mac ? "Search" : "Search apps, or pick a space";
+    in property <WGlyph> g-search;
+    in property <WGlyph> g-plus;
+    in property <WGlyph> g-monitor;
+    in property <string> emoji-font: "Noto Color Emoji";
+    in property <color> glass-fill: Theme.panel;
+    in property <color> scrim: black;
+    // What the pointer is doing (Rust decides from where it is)
+    in property <int> picked;
+    in property <int> hover-cell;
+    in property <int> pressed-cell;
+    in property <string> hover-win;
+    in property <int> plus-hover: -1;
+    in property <int> plus-pressed: -1;
+    in property <string> zone-hover;
+    in property <string> zone-hot;
+    in property <int> chip-hot;
+    // Dragging: a space (moved by drag-dx/dy, drop-on its new place), a
+    // window (hidden in its space while its copy follows the pointer)
+    in property <int> drag-space;
+    in property <length> drag-dx;
+    in property <length> drag-dy;
+    in property <int> drop-on;
+    in property <string> drag-win;
+    in property <OvWin> drag-copy;
+    in property <bool> dragging-win;
+    in property <int> drop-cell; // where a dragged window would land
+    in property <string> edge-hot; // the display a drag is pushed toward
+    in property <int> edge-cell; // that display's current space, lit
+    in property <bool> any-drag;
+    in property <string> gone-win; // dropped elsewhere, hidden until it lands
+    in property <int> space-gone;
+    in property <bool> proxy-shown; // macOS: the app's icon follows the pointer
+    in property <length> proxy-x;
+    in property <length> proxy-y;
+    in property <image> proxy-icon;
+    in property <string> cursor: "default";
+    // The right-click menu
+    in property <bool> menu-shown;
+    in property <[WMenuRow]> menu-rows;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    in property <length> menu-w;
+    in property <length> menu-h;
+    in property <bool> menu-up;
+    in-out property <int> menu-current: -1;
+
+    out property <float> openness: shown ? 1 : 0;
+    out property <length> sx: round((root.width - 600px) / 2 / 1px) * 1px;
+    out property <length> sy: (mac ? round(root.height * 0.36 / 1px) * 1px : 64px);
+    out property <length> res-h: results.length > 0 ? min(results.length * 40px, 420px) + 56px : 0;
+    out property <length> res-y: sy + 62px;
+    out property <float> content-scale: 0.97 + 0.03 * openness;
+
+    callback key(string, bool, bool) -> bool; // text, shift, control: handled?
+    callback edited(string);
+    callback pointer(length, length, bool);
+    callback press(length, length, int);
+    callback release(length, length, int);
+    callback run-result(int);
+    callback menu-activate(int);
+    callback menu-dismissed();
+    callback closed();
+
+    public function open() {
+        field.text = "";
+        field.focus();
+    }
+    public function focus-field() {
+        field.focus();
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Overview";
+    default-font-family: Theme.font;
+
+    // (opens on the shell's spring, closes quickly)
+    animate openness {
+        duration: shown ? 520ms : 154ms;
+        easing: shown ? spring(0.4) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    // Dim the screen behind (a click on it closes)
+    Rectangle {
+        background: Theme.material ? scrim.with-alpha((mac ? 0.24 : 0.4) * min(1, openness)) : #000000.with-alpha((mac ? 0.18 : 0.35) * min(1, openness));
+    }
+
+    content := Rectangle {
+        opacity: min(1, openness);
+        transform-scale: content-scale;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+
+        // macOS style: the bar at the top (the compositor blurs behind it)
+        if mac: Rectangle {
+            y: -(1 - min(1, openness)) * 40px;
+            height: bar-h;
+            background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1f1f24.with-alpha(0.6) : #ffffff.with-alpha(0.5);
+            border-bottom-left-radius: Theme.material ? Theme.radius-panel : 0;
+            border-bottom-right-radius: Theme.material ? Theme.radius-panel : 0;
+            if !Theme.material: Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.separator;
+            }
+            for l in labels: Text {
+                x: l.x;
+                y: l.y;
+                text: l.text;
+                color: Theme.secondary;
+                font-size: Theme.small;
+                font-weight: 600;
+                accessible-role: none;
+            }
+            for t in tiles: tile := Rectangle {
+                property <bool> dragged: drag-space == t.id;
+                property <bool> target: drag-space > 0 && drop-on == t.id && !dragged;
+                property <bool> hot: drop-cell == t.id;
+                x: t.x + (dragged ? drag-dx : 0);
+                y: t.y + (dragged ? drag-dy : 0);
+                width: t.w;
+                height: t.title-y - t.y + 16px;
+                opacity: dragged ? 0.85 : space-gone == t.id ? 0 : 1;
+                accessible-role: button;
+                accessible-label: t.title;
+                Rectangle {
+                    width: t.w;
+                    height: t.h;
+                    transform-scale: pressed-cell == t.id && !tile.dragged ? 0.97 : hover-cell == t.id ? 1.03 : 1;
+                    animate transform-scale { duration: 150ms; }
+                    transform-origin: { x: self.width / 2, y: self.height / 2 };
+                    // the current space, or where a dragged one (or a window) lands
+                    if t.current || tile.target || tile.hot: Rectangle {
+                        x: Theme.material ? -5px : -3px;
+                        y: self.x;
+                        width: parent.width - 2 * self.x;
+                        height: parent.height - 2 * self.x;
+                        border-radius: Theme.material ? 21px : 13px;
+                        border-width: 3px;
+                        border-color: Theme.accent;
+                    }
+                    Rectangle {
+                        border-radius: Theme.material ? 16px : 10px;
+                        background: Theme.material ? (t.current ? Theme.m3-secondary-container : Theme.m3-surface-container-highest) : Theme.dark ? #1A1A1D : #F4F4F5;
+                        border-width: Theme.material ? 0 : 1px;
+                        border-color: Theme.dark ? #36363C : #D4D4D8;
+                        clip: true;
+                        if wallpapers: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: wallpaper;
+                            image-fit: cover;
+                            accessible-role: none;
+                        }
+                        for m in t.minis: Rectangle {
+                            x: m.x;
+                            y: m.y;
+                            width: m.w;
+                            height: m.h;
+                            opacity: proxy-shown && drag-win == m.address ? 0.4 : 1;
+                            border-radius: Theme.material ? 6px : 3px;
+                            background: Theme.material ? Theme.m3-surface-container-low : Theme.dark ? #2C2C31 : #FFFFFF;
+                            border-width: 1px;
+                            border-color: Theme.material ? Theme.m3-outline-variant : Theme.dark ? #36363C : #E4E4E7;
+                            if m.has-icon: Image {
+                                width: min(18px, parent.height * 0.6);
+                                height: self.width;
+                                source: m.icon;
+                                accessible-role: none;
+                            }
+                        }
+                    }
+                }
+                Text {
+                    y: t.title-y - t.y;
+                    width: parent.width;
+                    horizontal-alignment: center;
+                    text: t.title;
+                    color: Theme.label;
+                    font-size: Theme.small;
+                    font-weight: t.current ? 600 : 400;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
+            // + a new empty space on this display
+            for p[i] in pluses: Rectangle {
+                x: p.x;
+                y: p.y;
+                width: p.size;
+                height: p.size;
+                border-radius: Theme.material && plus-pressed == i ? 12px : self.width / 2;
+                animate border-radius { duration: 100ms; }
+                transform-scale: Theme.material && plus-pressed == i ? 0.94 : 1;
+                animate transform-scale { duration: 200ms; easing: spring(0.5); }
+                background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, plus-pressed == i ? 0.9 : plus-hover == i ? 0.92 : 1)
+                    : plus-pressed == i ? Theme.fill-hover : plus-hover == i ? Theme.fill : transparent;
+                border-width: Theme.material ? 0 : 1px;
+                border-color: Theme.separator;
+                accessible-role: button;
+                accessible-label: "New space";
+                WIcon {
+                    glyph: g-plus;
+                    size: Theme.material ? 20px : 18px;
+                    tint: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+                }
+            }
+        }
+
+        // The grid: a row per display with several (labelled), or this display's
+        if !mac && results.length == 0: Rectangle {
+            for l in labels: Rectangle {
+                x: l.x;
+                y: l.y;
+                width: lt.preferred-width;
+                height: lt.preferred-height;
+                // Material: on a chip (no light text on the scrim)
+                if Theme.material: Rectangle {
+                    x: -12px;
+                    y: -5px;
+                    width: parent.width + 24px;
+                    height: parent.height + 10px;
+                    border-radius: self.height / 2;
+                    background: Theme.m3-surface-container-high;
+                }
+                lt := Text {
+                    text: l.text;
+                    color: Theme.material ? Theme.m3-on-surface : #ffffff.with-alpha(0.85);
+                    font-size: Theme.body;
+                    font-weight: 600;
+                    accessible-role: none;
+                }
+            }
+            for c in cells: cell := Rectangle {
+                property <bool> dragged: drag-space == c.id;
+                property <bool> target: drag-space > 0 && drop-on == c.id && !dragged;
+                property <bool> lit: c.id == picked || drop-cell == c.id || target || edge-cell == c.id;
+                property <bool> soft: c.current && rows-mode;
+                x: c.x + (dragged ? drag-dx : 0);
+                y: c.y + (dragged ? drag-dy : 0);
+                width: c.w;
+                height: c.title-y - c.y + 16px;
+                opacity: dragged ? 0.85 : space-gone == c.id ? 0 : 1;
+                accessible-role: button;
+                accessible-label: c.title;
+                // The space: a plain neutral container (Material: a card,
+                // the current space in secondaryContainer)
+                Rectangle {
+                    width: c.w;
+                    height: c.h;
+                    border-radius: Theme.material ? Theme.radius-tile : 14px;
+                    background: Theme.material ? (c.current ? Theme.m3-secondary-container : Theme.m3-surface-container) : Theme.dark ? #1A1A1D : #F4F4F5;
+                    border-width: Theme.material ? 0 : cell.lit || cell.soft ? 2px : 1px;
+                    border-color: cell.lit ? Theme.accent : c.current ? (rows-mode ? Theme.accent.with-alpha(0.55) : Theme.dark ? #36363C : #D4D4D8) : Theme.dark ? #26262A : #E4E4E7;
+                    transform-scale: pressed-cell == c.id ? 0.97 : hover-cell == c.id ? 1.02 : 1;
+                    animate transform-scale { duration: 300ms; easing: spring(0.36); }
+                    transform-origin: { x: self.width / 2, y: self.height / 2 };
+                    clip: true;
+                    if wallpapers: Rectangle {
+                        x: Theme.material ? 0 : 1px;
+                        y: self.x;
+                        width: parent.width - 2 * self.x;
+                        height: parent.height - 2 * self.x;
+                        border-radius: Theme.material ? Theme.radius-tile : 13px;
+                        clip: true;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: wallpaper;
+                            image-fit: cover;
+                            accessible-role: none;
+                        }
+                    }
+                    if c.wins.length == 0: Text {
+                        text: "No windows";
+                        color: Theme.material ? (c.current ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : Theme.dark ? #94949D : #6B6B74;
+                        font-size: Theme.small;
+                        accessible-role: none;
+                    }
+                    for w in c.wins: WPreview {
+                        x: w.x;
+                        y: w.y;
+                        width: w.w;
+                        height: w.h;
+                        radius: w.radius;
+                        picture: w.picture;
+                        has-picture: w.has-picture;
+                        icon: w.icon;
+                        badge: w.badge;
+                        has-icon: w.has-icon;
+                        name: w.name;
+                        failed: w.failed;
+                        hovered: hover-win == w.address;
+                        opacity: drag-win == w.address || gone-win == w.address ? 0 : 1;
+                    }
+                    // A space from a display that's unplugged: a monitor badge
+                    if c.guest: Rectangle {
+                        x: 8px;
+                        y: 8px;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        background: Theme.material ? Theme.m3-tertiary-container : #000000.with-alpha(0.55);
+                        accessible-role: text;
+                        accessible-label: "From a display that isn't connected";
+                        WIcon {
+                            glyph: g-monitor;
+                            size: 14px;
+                            tint: Theme.material ? Theme.m3-on-tertiary-container : white;
+                        }
+                    }
+                    // Material: the picked space (or where a drop lands)
+                    // outlined in primary, over its windows; each display's
+                    // current one in secondary
+                    if Theme.material && (cell.lit || cell.soft): Rectangle {
+                        border-radius: Theme.radius-tile;
+                        border-width: cell.lit ? 3px : 2px;
+                        border-color: cell.lit ? Theme.m3-primary : Theme.m3-secondary;
+                    }
+                }
+                title := Text {
+                    y: c.title-y - c.y;
+                    width: parent.width;
+                    horizontal-alignment: center;
+                    text: c.title;
+                    color: Theme.material ? (c.current ? Theme.m3-on-secondary-container : Theme.m3-on-surface) : #ffffff.with-alpha(c.id == picked || c.current ? 0.95 : 0.7);
+                    font-size: Theme.small;
+                    font-weight: c.current ? 600 : 500;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                // Material: the title on a chip
+                if Theme.material: Rectangle {
+                    property <length> tw: min(parent.width, t2.preferred-width);
+                    x: (parent.width - tw) / 2 - 10px;
+                    y: title.y - 4px;
+                    width: tw + 20px;
+                    height: 23px;
+                    border-radius: self.height / 2;
+                    background: c.current ? Theme.m3-secondary-container : c.id == picked ? Theme.m3-surface-container-highest : Theme.m3-surface-container-high;
+                    t2 := Text {
+                        width: tw;
+                        text: c.title;
+                        horizontal-alignment: center;
+                        color: c.current ? Theme.m3-on-secondary-container : Theme.m3-on-surface;
+                        font-size: Theme.small;
+                        font-weight: c.current ? 600 : 500;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+
+        // The other displays as drop zones, each on the edge that faces it
+        for z in zones: zone := Rectangle {
+            property <bool> hot: zone-hot == z.name || edge-hot == z.name;
+            x: z.x;
+            y: z.y;
+            width: z.w;
+            height: z.h;
+            border-radius: z.radius;
+            background: Theme.material ? (hot ? Theme.m3-secondary-container : zone-hover == z.name ? Theme.panel.mix(Theme.m3-on-surface, 0.92) : Theme.panel)
+                : hot ? glass-fill.mix(Theme.accent, 0.78) : zone-hover == z.name ? Theme.fill : glass-fill;
+            border-width: hot ? (Theme.material ? 3px : 2px) : 0;
+            border-color: Theme.accent;
+            accessible-role: button;
+            accessible-label: z.label;
+            if z.vertical: VerticalLayout {
+                height: z.head-h;
+                alignment: center;
+                spacing: 4px;
+                WIcon {
+                    height: 22px;
+                    glyph: g-monitor;
+                    size: 20px;
+                    tint: zone.hot ? (Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink) : Theme.secondary;
+                }
+                Text {
+                    horizontal-alignment: center;
+                    text: z.label;
+                    overflow: elide;
+                    color: Theme.material && zone.hot ? Theme.m3-on-secondary-container : zone.hot || any-drag ? Theme.label : Theme.secondary;
+                    font-size: Theme.small;
+                    font-weight: 600;
+                    accessible-role: none;
+                }
+            }
+            if !z.vertical: HorizontalLayout {
+                height: z.head-h;
+                alignment: center;
+                spacing: 8px;
+                WIcon {
+                    width: 20px;
+                    glyph: g-monitor;
+                    size: 20px;
+                    tint: zone.hot ? (Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink) : Theme.secondary;
+                }
+                Text {
+                    text: z.label;
+                    vertical-alignment: center;
+                    color: Theme.material && zone.hot ? Theme.m3-on-secondary-container : zone.hot || any-drag ? Theme.label : Theme.secondary;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                    accessible-role: none;
+                }
+            }
+            // Its spaces, to drop a window on one
+            for ch in z.chips: Rectangle {
+                x: ch.x;
+                y: ch.y;
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.material ? (chip-hot == ch.id ? 18px : 12px) : 10px;
+                animate border-radius { duration: 100ms; }
+                background: chip-hot == ch.id ? Theme.accent : Theme.material && ch.current ? Theme.m3-secondary-container : Theme.fill;
+                border-width: ch.current && chip-hot != ch.id && !Theme.material ? 2px : 0;
+                border-color: Theme.accent.with-alpha(0.55);
+                Text {
+                    text: ch.n;
+                    color: chip-hot == ch.id ? (Theme.material ? Theme.m3-on-primary : white) : Theme.material && ch.current ? Theme.m3-on-secondary-container : Theme.label;
+                    font-size: Theme.body;
+                    font-weight: ch.current ? 600 : 500;
+                    accessible-role: none;
+                }
+            }
+        }
+    }
+
+    // One tracker over the spaces: every hover, click and drag is decided in
+    // Rust from where the pointer is
+    TouchArea {
+        mouse-cursor: cursor == "pointer" ? MouseCursor.pointer : cursor == "grab" ? MouseCursor.grab : cursor == "grabbing" ? MouseCursor.grabbing : MouseCursor.default;
+        changed mouse-x => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        changed mouse-y => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        changed has-hover => { root.pointer(self.mouse-x, self.mouse-y, self.has-hover); }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.press(self.mouse-x, self.mouse-y, e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : 2);
+            } else if e.kind == PointerEventKind.up {
+                root.release(self.mouse-x, self.mouse-y, e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : 2);
+            } else if e.kind == PointerEventKind.cancel {
+                root.release(-1px, -1px, 3);
+            }
+        }
+    }
+
+    // A window dragged to another space (grid): its miniature follows the pointer
+    if dragging-win: WPreview {
+        x: drag-copy.x;
+        y: drag-copy.y;
+        width: drag-copy.w;
+        height: drag-copy.h;
+        radius: drag-copy.radius;
+        picture: drag-copy.picture;
+        has-picture: drag-copy.has-picture;
+        icon: drag-copy.icon;
+        badge: drag-copy.badge;
+        has-icon: drag-copy.has-icon;
+        name: drag-copy.name;
+        hovered: true;
+        transform-scale: 1.04;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+    }
+    // (macOS) the app's icon follows the pointer
+    if proxy-shown: Rectangle {
+        x: proxy-x - 24px;
+        y: proxy-y - 24px;
+        width: 48px;
+        height: 48px;
+        border-radius: Theme.material ? 16px : 12px;
+        background: Theme.material ? Theme.m3-surface-container-highest : Theme.dark ? #2C2C31 : #FFFFFF;
+        border-width: 2px;
+        border-color: Theme.accent;
+        Image {
+            width: 30px;
+            height: 30px;
+            source: proxy-icon;
+            accessible-role: none;
+        }
+    }
+
+    // The search (Glass: its glass is the plugin's; Material: a pill)
+    Rectangle {
+        x: sx + 20px;
+        y: sy + 20px;
+        width: 560px;
+        height: 52px;
+        opacity: min(1, openness);
+        transform-scale: content-scale;
+        transform-origin: { x: root.width / 2 - self.x, y: root.height / 2 - self.y };
+        border-radius: 26px;
+        background: Theme.material ? Theme.m3-surface-container-high : glass-fill;
+        WIcon {
+            x: 18px;
+            width: 22px;
+            glyph: g-search;
+            size: 20px;
+            tint: Theme.secondary;
+        }
+        Rectangle {
+            x: 50px;
+            width: 490px;
+            clip: true;
+            field := TextInput {
+                width: 100%;
+                height: 100%;
+                color: Theme.label;
+                selection-background-color: Theme.accent.with-alpha(0.5);
+                font-size: 20px;
+                vertical-alignment: center;
+                single-line: true;
+                input-type: search;
+                accessible-label: "Search";
+                accessible-placeholder-text: placeholder;
+                edited => { root.edited(self.text); }
+                key-pressed(e) => {
+                    if root.key(e.text, e.modifiers.shift, e.modifiers.control) { return accept; }
+                    reject
+                }
+            }
+            if field.text == "": Text {
+                width: 100%;
+                height: 100%;
+                text: placeholder;
+                color: Theme.tertiary;
+                font-size: 20px;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+
+    // Results while typing
+    if results.length > 0: Rectangle {
+        x: sx + 20px;
+        y: res-y + 20px;
+        width: 560px;
+        height: res-h - 40px;
+        opacity: min(1, openness);
+        border-radius: Theme.material ? Theme.radius-panel : 22px;
+        background: Theme.material ? Theme.panel : glass-fill;
+        accessible-role: list;
+        TouchArea { }
+        Flickable {
+            x: 8px;
+            y: 8px;
+            width: 544px;
+            height: parent.height - 16px;
+            content-height: results.length * 40px;
+            content-y <=> results-y;
+            for r[i] in results: Rectangle {
+                y: i * 40px;
+                height: 40px;
+                border-radius: Theme.radius-control;
+                background: i == selected ? Theme.accent : rt.has-hover ? Theme.fill : transparent;
+                accessible-role: list-item;
+                accessible-label: r.title;
+                accessible-item-selected: i == selected;
+                accessible-action-default => { run-result(i); }
+                rt := TouchArea {
+                    clicked => { run-result(i); }
+                }
+                if r.has-icon: Image {
+                    x: 10px;
+                    y: 7px;
+                    width: 26px;
+                    height: 26px;
+                    source: r.icon;
+                    accessible-role: none;
+                }
+                if r.emoji != "": Text {
+                    x: 10px;
+                    width: 26px;
+                    text: r.emoji;
+                    font-family: emoji-font;
+                    font-size: 20px;
+                    horizontal-alignment: center;
+                    accessible-role: none;
+                }
+                if !r.has-icon && r.emoji == "": WIcon {
+                    x: 10px;
+                    width: 26px;
+                    glyph: r.glyph;
+                    size: 18px;
+                    tint: i == selected ? Theme.on-accent : Theme.secondary;
+                }
+                HorizontalLayout {
+                    x: 46px;
+                    width: parent.width - 58px;
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 0;
+                        text: r.title;
+                        color: i == selected ? Theme.on-accent : Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 500;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: r.sub;
+                        color: i == selected ? Theme.on-accent.with-alpha(0.75) : Theme.tertiary;
+                        font-size: Theme.body;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+    }
+
+    // A right-click menu: a window or a space to another display
+    if menu-shown: WMenu {
+        rows: menu-rows;
+        point-x: menu-x;
+        point-y: menu-y;
+        upward: menu-up;
+        area-w: root.width;
+        area-h: root.height;
+        menu-w: root.menu-w;
+        rows-h: root.menu-h;
+        fill: Theme.material ? Theme.panel : glass-fill;
+        current <=> menu-current;
+        activate(i) => { menu-activate(i); }
+        dismissed => { menu-dismissed(); }
+    }
+}

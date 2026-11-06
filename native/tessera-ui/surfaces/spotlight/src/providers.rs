@@ -10,7 +10,6 @@ use super::rank::{Answer, Definition};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::OnceLock;
 
 fn shell_file(rel: &str) -> Option<PathBuf> {
     crate::services::apps::shell_file(rel)
@@ -164,16 +163,10 @@ pub fn icon_file_name(url: &str) -> String {
 
 // ── Lists read once ─────────────────────────────────────────────────────
 
-/// `["a", "b"]` lines of a generated .js list (emoji.js)
-fn js_pairs(text: &str) -> Vec<(String, String)> {
-    text.lines().filter_map(|l| serde_json::from_str::<[String; 2]>(l.trim().trim_end_matches(',')).ok()).map(|[a, b]| (a, b)).collect()
-}
-
-/// emoji.js: (emoji, name)
-pub fn emoji() -> &'static [(String, String)] {
-    static E: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    E.get_or_init(|| shell_file("shell/common/emoji.js").and_then(|p| std::fs::read_to_string(p).ok()).map(|t| js_pairs(&t)).unwrap_or_default())
-}
+// (emoji.js's list is read in tessera-core, beside the ranking)
+pub use tessera_core::rank::emoji;
+#[cfg(test)]
+use tessera_core::rank::js_pairs;
 
 /// A glyph as Icon.qml draws it: Material's Material Symbol when there's one
 /// (1.2× the size), else Phosphor's (crate::icons). (text, font family, size factor)

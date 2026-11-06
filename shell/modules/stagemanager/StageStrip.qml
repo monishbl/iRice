@@ -11,7 +11,7 @@ import qs.services
 // to add its windows to the stage in front. It reserves its width, so tiled
 // windows never cover it.
 Variants {
-    model: StageManager.enabled && Config.options.stageManager.strip ? Quickshell.screens : []
+    model: StageManager.enabled && Config.options.stageManager.strip && !RustUi.drawing("stagemanager") ? Quickshell.screens : []
 
     PanelWindow {
         id: win

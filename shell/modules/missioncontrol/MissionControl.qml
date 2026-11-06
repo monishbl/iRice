@@ -20,6 +20,7 @@ Variants {
         required property var modelData
         panel: "missionControl"
         screen: modelData
+        elsewhere: RustUi.drawing("missioncontrol") // (tessera-ui draws it)
 
         GlassWindow {
             id: win

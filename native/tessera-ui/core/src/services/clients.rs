@@ -44,6 +44,18 @@ pub struct Client {
     pub fullscreen: i32,
     #[serde(default)]
     pub monitor: i32,
+    // (the Overview, Mission Control and the switcher: stacking, recency, tabs)
+    #[serde(default)]
+    pub floating: bool,
+    /// 0: focused last (Hyprland's focusHistoryID; 999 when it doesn't say)
+    #[serde(default = "far", rename = "focusHistoryID")]
+    pub focus_history_id: i32,
+    #[serde(default)]
+    pub grouped: Vec<String>,
+}
+
+fn far() -> i32 {
+    999
 }
 
 impl Client {

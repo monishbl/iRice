@@ -47,7 +47,8 @@ use tessera_core::*;
 
 pub mod layout;
 pub mod providers;
-pub mod rank;
+// (Search's ranking lives in tessera-core: the Overview ranks with it too)
+pub use tessera_core::rank;
 
 use tessera_core::appicon::{self, Style};
 use tessera_core::services::apps::Apps;

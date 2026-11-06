@@ -869,6 +869,8 @@ fn key_text(e: &KeyEvent, release: bool) -> Option<slint::SharedString> {
         Keysym::Control_L | Keysym::Control_R => Key::Control,
         Keysym::Alt_L | Keysym::Alt_R => Key::Alt,
         Keysym::Super_L | Keysym::Super_R => Key::Meta,
+        Keysym::Menu => Key::Menu, // (the app drawer's app menu)
+        Keysym::F10 => Key::F10,
         _ => {
             let t = if release { None } else { e.utf8.clone() };
             let t = t.or_else(|| e.keysym.key_char().map(String::from))?;

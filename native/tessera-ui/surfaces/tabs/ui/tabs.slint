@@ -1,0 +1,144 @@
+// Finder-style window tabs in Rust (rust.surfaces: tabs), both looks,
+// compare shell/modules/tabs/TabStrip.qml: one small layer over each tab
+// group's bar (Hyprland keeps the room above the group), its tabs with app
+// icon and title, the front tab raised, close on hover, + for a new window
+// of the app. While windows move the strip steps out of the way (Rust says
+// when things settle).
+
+import { Theme } from "@tessera/theme.slint";
+import { WGlyph, WIcon } from "@tessera/wm.slint";
+
+export struct TbTab {
+    title: string,
+    icon: image,
+    has-icon: bool,
+    front: bool,
+    // a thin divider before it (two back tabs side by side; not in Material)
+    divider: bool,
+}
+
+export component TabBar inherits Window {
+    in property <[TbTab]> tabs;
+    in property <bool> settled: true;
+    in property <WGlyph> g-x;
+    in property <WGlyph> g-plus;
+    callback focus-tab(int);
+    callback close-tab(int);
+    callback new-tab();
+
+    background: transparent;
+    no-frame: true;
+    title: "Tabs";
+    default-font-family: Theme.font;
+
+    strip := Rectangle {
+        opacity: settled ? 1 : 0;
+        animate opacity { duration: settled ? 150ms : 60ms; }
+        // The well the tabs sit in (Material: a surfaceContainer pill)
+        border-radius: Theme.material ? self.height / 2 : 10px;
+        background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1a1a1c.with-alpha(0.82) : #ededf0.with-alpha(0.88);
+        border-width: Theme.material ? 0 : 1px;
+        border-color: Theme.dark ? #26262A : #E4E4E7;
+        accessible-role: tab-list;
+        property <length> tab-w: (self.width - 6px - 24px - 2px) / max(1, tabs.length);
+        for t[i] in tabs: Rectangle {
+            x: 3px + i * strip.tab-w;
+            y: 3px;
+            width: strip.tab-w;
+            height: parent.height - 6px;
+            accessible-role: tab;
+            accessible-label: t.title;
+            accessible-item-selected: t.front;
+            accessible-action-default => { focus-tab(i); }
+            Rectangle {
+                border-radius: Theme.material ? self.height / 2 : 7px;
+                background: Theme.material ? (t.front ? Theme.m3-secondary-container : ta.pressed ? Theme.m3-on-surface.with-alpha(0.1) : ta.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+                    : t.front ? (Theme.dark ? #2C2C31 : #FFFFFF) : ta.has-hover ? (Theme.dark ? #ffffff.with-alpha(0.06) : #000000.with-alpha(0.05)) : transparent;
+                animate background { duration: Theme.material ? 150ms : 0ms; }
+                border-width: t.front && !Theme.material ? 1px : 0;
+                border-color: Theme.dark ? #36363C : #E4E4E7;
+            }
+            if !Theme.material && t.divider: Rectangle {
+                x: 0;
+                width: 1px;
+                height: parent.height * 0.5;
+                background: Theme.separator;
+            }
+            HorizontalLayout {
+                property <length> w: min(self.preferred-width, parent.width - 36px);
+                x: (parent.width - w) / 2;
+                width: w;
+                spacing: 6px;
+                if t.has-icon: Image {
+                    width: 14px;
+                    height: 14px;
+                    source: t.icon;
+                    accessible-role: none;
+                }
+                Text {
+                    max-width: strip.tab-w - 60px;
+                    text: t.title;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    color: t.front ? (Theme.material ? Theme.m3-on-secondary-container : Theme.label) : Theme.secondary;
+                    font-size: Theme.small;
+                    font-weight: t.front ? 500 : 400;
+                    accessible-role: none;
+                }
+            }
+            ta := TouchArea {
+                pointer-event(e) => {
+                    if e.kind == PointerEventKind.up && self.has-hover {
+                        if e.button == PointerEventButton.middle {
+                            close-tab(i);
+                        } else if e.button == PointerEventButton.left {
+                            focus-tab(i);
+                        }
+                    }
+                }
+            }
+            // Close, on hover
+            Rectangle {
+                opacity: ta.has-hover || xa.has-hover ? 1 : 0;
+                x: 6px;
+                y: (parent.height - 16px) / 2;
+                width: 16px;
+                height: 16px;
+                border-radius: Theme.material ? 8px : 4px;
+                background: Theme.material ? (t.front ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant).with-alpha(xa.pressed ? 0.1 : xa.has-hover ? 0.08 : 0)
+                    : xa.has-hover ? Theme.fill-hover : transparent;
+                accessible-role: button;
+                accessible-label: "Close tab";
+                accessible-action-default => { close-tab(i); }
+                WIcon {
+                    glyph: g-x;
+                    size: 10px;
+                    tint: Theme.material && t.front ? Theme.m3-on-secondary-container : Theme.secondary;
+                }
+                xa := TouchArea {
+                    clicked => { close-tab(i); }
+                }
+            }
+        }
+        // A new window of the same app, as another tab
+        Rectangle {
+            x: parent.width - 3px - 24px;
+            y: (parent.height - 24px) / 2;
+            width: 24px;
+            height: 24px;
+            border-radius: Theme.material ? 12px : 7px;
+            background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(pa.pressed ? 0.1 : pa.has-hover ? 0.08 : 0) : pa.has-hover ? Theme.fill : transparent;
+            accessible-role: button;
+            accessible-label: "New tab";
+            accessible-action-default => { new-tab(); }
+            WIcon {
+                glyph: g-plus;
+                size: 12px;
+                tint: Theme.secondary;
+            }
+            pa := TouchArea {
+                clicked => { new-tab(); }
+            }
+        }
+    }
+}

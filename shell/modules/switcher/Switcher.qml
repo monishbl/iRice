@@ -75,7 +75,12 @@ Scope {
         holdTimer.restart();
     }
 
+    // Drawn in Rust (rust.surfaces: switcher): the shortcuts go to tessera-ui,
+    // which keeps the phases and the selection itself
+    readonly property bool rust: RustUi.drawing("switcher")
     function step(d) {
+        if (rust)
+            return RustUi.send({ cmd: "step", surface: "switcher", d: d });
         if (phase === "idle")
             return begin(d);
         if (items.length > 0)
@@ -93,6 +98,8 @@ Scope {
     }
 
     function commit() {
+        if (rust)
+            return RustUi.send({ cmd: "commit", surface: "switcher" });
         if (phase === "idle")
             return;
         const t = items[selected] ?? null;
@@ -199,7 +206,7 @@ Scope {
     }
 
     LazyLoader {
-        active: root.alive
+        active: root.alive && !root.rust
 
         GlassWindow {
             id: win

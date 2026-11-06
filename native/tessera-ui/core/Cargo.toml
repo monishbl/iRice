@@ -29,3 +29,6 @@ calloop.workspace = true
 wayland-client.workspace = true
 resvg.workspace = true
 ureq.workspace = true
+# (window pictures: services/capture.rs, the protocol generated from protocols/)
+wayland-scanner.workspace = true
+wayland-backend.workspace = true

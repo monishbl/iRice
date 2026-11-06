@@ -19,11 +19,13 @@ pub mod env;
 pub mod icon_theme;
 pub mod icons;
 pub mod picture;
+pub mod rank;
 pub mod runloop;
 pub mod seed;
 pub mod services;
 pub mod settings;
 pub mod shell;
+pub mod spacemap;
 pub mod stats;
 pub mod sysstat; // (the last minute of CPU, memory, network: desktop, resources, overlay)
 pub mod surfaces;
@@ -31,6 +33,7 @@ pub mod theme;
 pub mod util;
 pub mod wallpaper;
 pub mod wayland;
+pub mod wm;
 
 pub enum Msg {
     Run(Box<dyn FnOnce() + Send>),

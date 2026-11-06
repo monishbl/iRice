@@ -39,6 +39,7 @@ Variants {
         required property var modelData
         panel: "overview"
         screen: modelData
+        elsewhere: RustUi.drawing("overview") // (tessera-ui draws it)
         everyScreen: Config.options.overview?.displays === "each"
 
         GlassWindow {

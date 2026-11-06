@@ -8,6 +8,9 @@
 //! Rows only the QML shell knows (plain-language actions, the calendar,
 //! contacts, notes, screenshots, the App Store, the clipboard, Chromecasts)
 //! come from it as `Extras` (Search.qml's rustSend) and run there by key.
+//!
+//! In tessera-core because two surfaces rank with it: Search (spotlight,
+//! which re-exports it as `rank` and keeps golden.json) and the Overview.
 
 /// What a row does when it's run
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -909,6 +912,19 @@ pub fn keep_selection(old: &[Row], sel: usize, new: &[Row]) -> usize {
     new.iter().position(|r| &r.title == t).unwrap_or(0)
 }
 
+// ── Lists read once ─────────────────────────────────────────────────────
+
+/// `["a", "b"]` lines of a generated .js list (emoji.js)
+pub fn js_pairs(text: &str) -> Vec<(String, String)> {
+    text.lines().filter_map(|l| serde_json::from_str::<[String; 2]>(l.trim().trim_end_matches(',')).ok()).map(|[a, b]| (a, b)).collect()
+}
+
+/// emoji.js: (emoji, name)
+pub fn emoji() -> &'static [(String, String)] {
+    static E: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+    E.get_or_init(|| crate::services::apps::shell_file("shell/common/emoji.js").and_then(|p| std::fs::read_to_string(p).ok()).map(|t| js_pairs(&t)).unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1077,7 +1093,7 @@ mod tests {
     /// Search.qml's own functions under node (golden.js) gave these
     #[test]
     fn ranks_as_search_qml_does() {
-        let g: serde_json::Value = serde_json::from_str(include_str!("golden.json")).unwrap();
+        let g: serde_json::Value = serde_json::from_str(include_str!("../../surfaces/spotlight/src/golden.json")).unwrap();
         let s = |v: &serde_json::Value| v.as_str().unwrap_or("").to_string();
         for c in g["score"].as_array().unwrap() {
             assert_eq!(score(&s(&c[0]), &s(&c[1])), c[2].as_f64().unwrap(), "score({}, {})", c[0], c[1]);
@@ -1103,7 +1119,7 @@ mod tests {
             .collect();
         let acts = actions();
         let ai = AiMeta { configured: false, name: "Add a model".into() };
-        let k = Known { apps: &apps, actions: &acts, ai: Some(&ai), emoji: super::super::providers::emoji(), home: "/home/u", ..Default::default() };
+        let k = Known { apps: &apps, actions: &acts, ai: Some(&ai), emoji: super::emoji(), home: "/home/u", ..Default::default() };
         for c in g["cases"].as_array().unwrap() {
             let (rows, _) = query(&s(&c["q"]), &k);
             let got: Vec<Vec<String>> = rows.iter().map(|r| vec![r.section.clone(), r.title.clone(), r.subtitle.clone()]).collect();

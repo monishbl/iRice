@@ -1,0 +1,208 @@
+// The window switcher in Rust (rust.surfaces: switcher; hold Alt, press
+// Tab), both looks, compare shell/modules/switcher/Switcher.qml: a centred
+// glass strip of window pictures, most recently focused first, the one
+// selected ringed in the accent (Material: Android's recents, the app chip
+// above its card, the selected card outlined in primary). Rust keeps the
+// selection and the phases (a quick tap switches without showing anything);
+// this draws it, and hears Alt come up (the layer holds the keyboard).
+
+import { Theme } from "@tessera/theme.slint";
+
+export struct SwTile {
+    address: string,
+    title: string,
+    place: string, // "Minimized", or the space it's on when that's elsewhere
+    picture: image,
+    has-picture: bool,
+    icon: image, // 48 px, in the middle while there's no picture
+    small: image, // 16 px, by the title
+    has-icon: bool,
+    card-w: length,
+    card-h: length,
+}
+
+export component SwitcherStrip inherits Window {
+    in property <bool> shown;
+    in property <[SwTile]> tiles;
+    in property <int> selected;
+    in property <int> per-row: 1;
+    in property <length> body-w: 240px;
+    in property <length> body-h: 72px;
+    in-out property <length> scroll-y;
+    in property <color> glass-fill;
+
+    out property <length> cell-w: 208px;
+    out property <length> chip-h: Theme.material ? 28px : 20px;
+    out property <length> cell-h: Theme.material ? 8px + chip-h + 8px + 120px + 12px : 8px + 120px + 8px + 20px + 10px;
+    out property <float> progress: shown ? 1 : 0;
+    animate progress {
+        duration: shown ? 220ms : 143ms;
+        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 { faded(); }
+    }
+
+    callback key(string) -> bool; // a key pressed: handled?
+    callback released(string); // a key came up (Alt: switch)
+    callback picked(int);
+    callback faded();
+
+    public function grab-keys() {
+        keys.focus();
+    }
+
+    background: transparent;
+    no-frame: true;
+    title: "Switch windows";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+        key-released(e) => {
+            root.released(e.text);
+            accept
+        }
+    }
+
+    body := Rectangle {
+        x: 24px;
+        y: 24px;
+        width: body-w;
+        height: body-h;
+        opacity: progress;
+        transform-scale: 0.97 + 0.03 * progress;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        border-radius: Theme.radius-panel;
+        background: Theme.material ? Theme.panel : glass-fill;
+        accessible-role: list;
+        accessible-label: "Windows";
+
+        // Held Alt+Tab with nothing open
+        if tiles.length == 0: Text {
+            text: "No open windows";
+            color: Theme.secondary;
+            font-size: Theme.body;
+            font-weight: 500;
+        }
+
+        Flickable {
+            x: 12px;
+            y: 12px;
+            width: parent.width - 24px;
+            height: parent.height - 24px;
+            content-height: ceil(tiles.length / max(1, per-row)) * (cell-h + 8px) - 8px;
+            content-y <=> scroll-y;
+            interactive: self.viewport-height > self.height;
+            for t[i] in tiles: tile := Rectangle {
+                property <bool> current: i == selected;
+                x: mod(i, per-row) * (cell-w + 8px);
+                y: floor(i / per-row) * (cell-h + 8px);
+                width: cell-w;
+                height: cell-h;
+                transform-scale: ta.pressed ? 0.97 : 1;
+                animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                accessible-role: list-item;
+                accessible-label: t.title + (t.place != "" ? ", " + t.place : "");
+                accessible-item-selectable: true;
+                accessible-item-selected: tile.current;
+                accessible-action-default => { picked(i); }
+                // Selection (accent ring and tint) and hover; Material: a state layer
+                Rectangle {
+                    border-radius: Theme.material ? 16px : 14px;
+                    background: Theme.material ? (ta.pressed ? Theme.m3-on-surface.with-alpha(0.1) : ta.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+                        : tile.current ? Theme.accent.with-alpha(Theme.dark ? 0.22 : 0.14) : ta.has-hover ? Theme.fill-hover : transparent;
+                    animate background { duration: 100ms; }
+                    border-width: tile.current && !Theme.material ? 2px : 0;
+                    border-color: Theme.accent;
+                }
+                // The window, fitted; its app icon until (or if) the picture comes
+                Rectangle {
+                    x: 8px;
+                    y: Theme.material ? 8px + chip-h + 8px : 8px;
+                    width: cell-w - 16px;
+                    height: 120px;
+                    card := Rectangle {
+                        width: t.card-w;
+                        height: t.card-h;
+                        border-radius: Theme.material ? 20px : 8px;
+                        background: Theme.fill;
+                        clip: true;
+                        if t.has-picture: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: t.picture;
+                            image-fit: fill;
+                            accessible-role: none;
+                        }
+                        if !t.has-picture && t.has-icon: Image {
+                            width: 48px;
+                            height: 48px;
+                            source: t.icon;
+                            accessible-role: none;
+                        }
+                    }
+                    // Material: the selected card outlined in primary, a little off its edge
+                    if Theme.material && tile.current: Rectangle {
+                        width: t.card-w + 10px;
+                        height: t.card-h + 10px;
+                        border-radius: 25px;
+                        border-width: 3px;
+                        border-color: Theme.m3-primary;
+                    }
+                }
+                // Icon and title; where it lives if not on this space
+                Rectangle {
+                    x: 10px;
+                    y: Theme.material ? 8px : 8px + 120px + 8px;
+                    width: cell-w - 20px;
+                    height: chip-h;
+                    property <length> room: self.width - 22px - (t.place != "" ? place.preferred-width + (Theme.material ? 18px : 6px) : (Theme.material ? 12px : 0px));
+                    if Theme.material: Rectangle {
+                        x: -6px;
+                        width: 6px + 16px + 6px + min(title.preferred-width, parent.room) + 12px;
+                        border-radius: self.height / 2;
+                        background: tile.current ? Theme.m3-secondary-container : Theme.m3-surface-container-high;
+                        animate background { duration: 100ms; }
+                    }
+                    if t.has-icon: Image {
+                        x: 0;
+                        width: 16px;
+                        height: 16px;
+                        source: t.small;
+                        accessible-role: none;
+                    }
+                    title := Text {
+                        x: 22px;
+                        width: parent.room;
+                        text: t.title;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        color: Theme.material && tile.current ? Theme.m3-on-secondary-container : Theme.label;
+                        font-size: Theme.body;
+                        font-weight: tile.current ? 600 : 500;
+                        accessible-role: none;
+                    }
+                    place := Text {
+                        x: parent.width - self.width;
+                        visible: t.place != "";
+                        text: t.place;
+                        vertical-alignment: center;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        accessible-role: none;
+                    }
+                }
+                ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { picked(i); }
+                }
+            }
+        }
+    }
+}
