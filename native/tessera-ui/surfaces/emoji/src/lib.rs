@@ -59,6 +59,9 @@ enum M {
     PlaceTimeout(u64),
     /// its first drawing took too long to reach the screen: open anyway
     WarmTimeout(u64),
+    /// a while after start: draw the window once unseen, so the first open
+    /// doesn't pay for the window, the emoji font and its glyphs
+    Prewarm,
     Search,
     Key(String, bool, bool),
     Edited(String),
@@ -249,6 +252,10 @@ pub struct Emoji {
     /// the first frame of it opening: its glass waits for that one
     glass_from: u32,
     retire_timer: slint::Timer,
+    /// the unseen frame drawn before anyone opens it (no glass, no keys,
+    /// clicks pass through); the window is kept, hidden, afterwards
+    prewarm: bool,
+    prewarm_timer: slint::Timer,
 }
 
 impl Default for Emoji {
@@ -280,6 +287,8 @@ impl Default for Emoji {
             warm_timer: slint::Timer::default(),
             glass_from: 0,
             retire_timer: slint::Timer::default(),
+            prewarm: false,
+            prewarm_timer: slint::Timer::default(),
         }
     }
 }
@@ -403,6 +412,18 @@ impl Emoji {
             return;
         }
         self.load(st);
+        if self.prewarm {
+            self.prewarm = false;
+            self.warm = None;
+            self.warm_timer.stop();
+            if let Some(w) = &self.win {
+                w.ui.set_warm(false);
+            }
+        }
+        self.prewarm_timer.stop();
+        if let Some(w) = &self.win {
+            st.set_input_region(&w.surface, None);
+        }
         self.mem = Remembered::load();
         self.open = true;
         self.opening += 1;
@@ -481,6 +502,13 @@ impl Emoji {
         self.warm_timer.stop();
         let Some(w) = &self.win else { return };
         w.ui.set_warm(false);
+        if self.prewarm {
+            self.prewarm = false;
+            if !self.open {
+                w.surface.hide();
+            }
+            return;
+        }
         if self.open {
             self.glass_from = w.surface.rendered.get().wrapping_add(1);
             w.ui.set_shown(true);
@@ -1063,6 +1091,32 @@ impl Part for Emoji {
                 self.rebuild();
                 self.push(st);
                 self.open_when_ready(st);
+                if self.win.is_none() && !self.open {
+                    let to = st.shell.sender(NAME);
+                    self.prewarm_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(3), move || to(Box::new(M::Prewarm)));
+                }
+            }
+            M::Prewarm => {
+                // (only if nobody opened it meanwhile and a screen is there)
+                if self.open || self.win.is_some() || self.data.is_none() {
+                    return;
+                }
+                let Some(output) = st.outputs_now().first().map(|o| o.1.clone()) else { return };
+                if !self.window(st, &output) {
+                    return;
+                }
+                self.rebuild();
+                self.push(st);
+                let w = self.win.as_mut().unwrap();
+                w.warmed = true;
+                w.ui.set_warm(true);
+                st.set_input_region(&w.surface, Some(&[]));
+                w.surface.show(0, 0);
+                let next = w.surface.rendered.get().wrapping_add(1);
+                self.prewarm = true;
+                self.warm = Some(next);
+                let (to, n) = (Self::send(st), self.opening);
+                self.warm_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || to(Box::new(M::WarmTimeout(n))));
             }
             M::Placed(p) => {
                 self.placement = p;
@@ -1201,7 +1255,7 @@ impl Part for Emoji {
         if let Some(a) = w.a11y.as_mut() {
             a.update(false, f);
         }
-        if !w.surface.mapped.get() || !st.shell.plugin || st.shell.look.material {
+        if self.prewarm || !w.surface.mapped.get() || !st.shell.plugin || st.shell.look.material {
             return;
         }
         // (the glass comes with the first frame of it opening, never before)
