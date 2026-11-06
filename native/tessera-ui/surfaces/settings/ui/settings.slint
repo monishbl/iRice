@@ -25,6 +25,15 @@ component Control {
     in property <SetRow> r;
     in property <string> menu-open; // the id whose list is open
     property <length> w: r.width > 0 ? r.width : 220px;
+    // What the row's layout reserves. A Control has no size of its own, so a
+    // long label took the whole row and the control hung out past its edge;
+    // controls whose width isn't known here reserve a fair guess
+    property <length> cw: r.control == "switch" ? (Theme.material ? 52px : 38px)
+        : r.control == "slider" || r.control == "field" ? w
+        : r.control == "segmented" || r.control == "choice" ? (r.width > 0 ? r.width : 0px)
+        : 0px;
+    preferred-width: cw;
+    min-width: cw;
     if r.control == "switch": SSwitch {
         on: r.on;
         enabled: r.enabled;

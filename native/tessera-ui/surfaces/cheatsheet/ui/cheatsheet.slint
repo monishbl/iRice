@@ -212,7 +212,7 @@ export component Cheatsheet inherits Window {
                 width: parent.width - 2 * m;
                 height: parent.height - 2 * m;
                 border-radius: 28px;
-                background: on-glass ? transparent : Theme.material ? Theme.glass-solid : Theme.panel;
+                background: on-glass ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : Theme.panel;
                 border-width: Theme.material || on-glass ? 0 : 0.5px;
                 border-color: Theme.separator;
                 drop-shadow-blur: 24px;

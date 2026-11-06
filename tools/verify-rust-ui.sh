@@ -133,7 +133,7 @@ a["accent"] = "blue"
 json.dump(c, open(p, "w"), indent=4)
 PY
 }
-quiet() { inbox </dev/null "ipc panels close; key -k Escape; key -k Escape; ipc lock unlock; ipc shelf close; ipc captions off; ipc today close; ipc panels widgets false; makoctl dismiss -a 2>/dev/null; true" >/dev/null 2>&1; sleep 0.8; }
+quiet() { inbox </dev/null "ipc island holdAlerts true; ipc panels close; key -k Escape; key -k Escape; ipc lock unlock; ipc shelf close; ipc captions off; ipc today close; ipc panels widgets false; makoctl dismiss -a 2>/dev/null; true" >/dev/null 2>&1; sleep 0.8; }
 
 # ── 1. Build ────────────────────────────────────────────────────────────────
 {
@@ -165,6 +165,7 @@ capture() { # look pass(qml|rust)
         dev shot "$OUT/shots/$look-$s-$name-$pass.png" </dev/null >/dev/null 2>&1 || log "  no shot: $look $s $name ($pass)"
     done
     quiet
+    inbox "ipc island holdAlerts false" </dev/null >/dev/null 2>&1   # (the look's captures are done: alerts show again)
     [[ -s $PIDF ]] && inbox "kill \$(cat $PIDF) 2>/dev/null; rm -f $PIDF" </dev/null >/dev/null 2>&1
     rm -f "$PIDF"
 }

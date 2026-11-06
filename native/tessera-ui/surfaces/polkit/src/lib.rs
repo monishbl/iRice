@@ -434,6 +434,7 @@ impl Part for Polkit {
                 if !self.shown() {
                     if let Some(w) = self.win.take() {
                         Glass::clear_now(&w.output, NS);
+                        w.surface.hide(); // (unmapped now: dropping the window alone leaves it on screen)
                         st.drop_surface(&w.surface);
                     }
                 }
@@ -452,6 +453,7 @@ impl Part for Polkit {
     fn output_removed(&mut self, st: &mut State, name: &str) {
         if self.win.as_ref().is_some_and(|w| w.output == name) {
             let w = self.win.take().unwrap();
+            w.surface.hide();
             st.drop_surface(&w.surface);
             if self.shown() {
                 self.push(st);
