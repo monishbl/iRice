@@ -184,10 +184,12 @@ for look in ${LOOKS//,/ }; do
     log "[$look] QML pass"
     set_rust ""; sleep 3
     capture "$look" qml
-    log "[$look] reloading the shell (nothing of the QML pass carries over)"
-    dev reload </dev/null >/dev/null 2>&1; sleep 18
+    log "[$look] reloading the shell with Rust on (nothing of the QML pass carries over)"
+    # (Rust first, then the reload: the QML twins never start, so none of them
+    # holds a bus name a Rust surface needs, e.g. org.freedesktop.Notifications)
+    set_rust "$USED"; sleep 2
+    dev reload </dev/null >/dev/null 2>&1; sleep 20
     log "[$look] Rust pass ($USED)"
-    set_rust "$USED"; sleep 6
     capture "$look" rust
     set_rust ""
     dev logs 300 > "$OUT/logs/$look-logs.txt" 2>&1

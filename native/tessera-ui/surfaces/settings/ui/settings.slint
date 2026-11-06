@@ -25,152 +25,154 @@ component Control {
     in property <SetRow> r;
     in property <string> menu-open; // the id whose list is open
     property <length> w: r.width > 0 ? r.width : 220px;
-    // What the row's layout reserves. A Control has no size of its own, so a
-    // long label took the whole row and the control hung out past its edge;
-    // controls whose width isn't known here reserve a fair guess
-    property <length> cw: r.control == "switch" ? (Theme.material ? 52px : 38px)
-        : r.control == "slider" || r.control == "field" ? w
-        : r.control == "segmented" || r.control == "choice" ? (r.width > 0 ? r.width : 0px)
-        : 0px;
-    preferred-width: cw;
-    min-width: cw;
-    if r.control == "switch": SSwitch {
-        on: r.on;
-        enabled: r.enabled;
-        label: r.label;
-        toggled => { SBus.act(r.id, 0, 0, "toggle"); }
-    }
-    if r.control == "slider" && r.low == "" && r.high == "": SSlider {
-        width: w;
-        value: r.num;
-        from: r.from;
-        to: r.to;
-        step: r.step;
-        enabled: r.enabled;
-        label: r.label;
-        moved(v) => { SBus.act(r.id, 0, v, ""); }
-    }
-    if r.control == "slider" && (r.low != "" || r.high != ""): SWordSlider {
-        width: w;
-        value: r.num;
-        from: r.from;
-        to: r.to;
-        step: r.step;
-        low: r.low;
-        high: r.high;
-        enabled: r.enabled;
-        label: r.label;
-        moved(v) => { SBus.act(r.id, 0, v, ""); }
-    }
-    if r.control == "segmented": SSegmented {
-        width: r.width > 0 ? r.width : self.preferred-width;
-        opts: r.opts;
-        current: r.index;
-        enabled: r.enabled;
-        label: r.label;
-        selected(i) => { SBus.act(r.id, i, 0, ""); }
-    }
-    if r.control == "choice": SChoice {
-        width: r.width > 0 ? r.width : self.preferred-width;
-        cid: r.id;
-        opts: r.opts;
-        current: r.index;
-        placeholder: r.placeholder != "" ? r.placeholder : "Choose";
-        enabled: r.enabled;
-        open: root.menu-open == r.id;
-        label: r.label;
-    }
-    if r.control == "button": SButton {
-        text: r.text;
-        // (no icon: r.icon is the row's own, drawn before its label)
-        style: r.style;
-        busy: r.busy;
-        enabled: r.enabled;
-        label: r.label;
-        clicked => { SBus.act(r.id, 0, 0, ""); }
-    }
-    if r.control == "buttons": HorizontalLayout {
-        spacing: 8px;
+    // (in a layout, so the row reserves what the control takes: a long
+    // label no longer pushes it past the row's edge)
+    min-width: body.min-width;
+    preferred-width: body.preferred-width;
+    min-height: body.min-height;
+    preferred-height: body.preferred-height;
+    body := HorizontalLayout {
         alignment: end;
-        for o[i] in r.opts: VerticalLayout {
-            alignment: center;
-            SButton {
-                text: o.text;
-                icon: o.icon;
-                style: o.style;
-                busy: o.on;
-                enabled: r.enabled && !o.off;
-                label: r.label;
-                clicked => { SBus.act(r.id, i, 0, ""); }
+        if r.control == "switch": SSwitch {
+            on: r.on;
+            enabled: r.enabled;
+            label: r.label;
+            toggled => { SBus.act(r.id, 0, 0, "toggle"); }
+        }
+        if r.control == "slider" && r.low == "" && r.high == "": SSlider {
+            width: w;
+            value: r.num;
+            from: r.from;
+            to: r.to;
+            step: r.step;
+            enabled: r.enabled;
+            label: r.label;
+            moved(v) => { SBus.act(r.id, 0, v, ""); }
+        }
+        if r.control == "slider" && (r.low != "" || r.high != ""): SWordSlider {
+            width: w;
+            value: r.num;
+            from: r.from;
+            to: r.to;
+            step: r.step;
+            low: r.low;
+            high: r.high;
+            enabled: r.enabled;
+            label: r.label;
+            moved(v) => { SBus.act(r.id, 0, v, ""); }
+        }
+        if r.control == "segmented": SSegmented {
+            width: r.width > 0 ? r.width : self.preferred-width;
+            opts: r.opts;
+            current: r.index;
+            enabled: r.enabled;
+            label: r.label;
+            selected(i) => { SBus.act(r.id, i, 0, ""); }
+        }
+        if r.control == "choice": SChoice {
+            width: r.width > 0 ? r.width : self.preferred-width;
+            cid: r.id;
+            opts: r.opts;
+            current: r.index;
+            placeholder: r.placeholder != "" ? r.placeholder : "Choose";
+            enabled: r.enabled;
+            open: root.menu-open == r.id;
+            label: r.label;
+        }
+        if r.control == "button": SButton {
+            text: r.text;
+            // (no icon: r.icon is the row's own, drawn before its label)
+            style: r.style;
+            busy: r.busy;
+            enabled: r.enabled;
+            label: r.label;
+            clicked => { SBus.act(r.id, 0, 0, ""); }
+        }
+        if r.control == "buttons": HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: o.text;
+                    icon: o.icon;
+                    style: o.style;
+                    busy: o.on;
+                    enabled: r.enabled && !o.off;
+                    label: r.label;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
             }
         }
-    }
-    if r.control == "field": SField {
-        width: w;
-        text: r.text;
-        placeholder: r.placeholder;
-        secret: r.secret;
-        enabled: r.enabled;
-        label: r.label;
-        edited(t) => { SBus.act(r.id, 0, 0, t); }
-        committed(t) => { SBus.act(r.id, 1, 0, t); }
-    }
-    if r.control == "path": HorizontalLayout {
-        spacing: 8px;
-        VerticalLayout {
-            alignment: center;
-            SField {
-                width: r.width > 0 ? r.width : 200px;
-                text: r.text;
-                placeholder: r.placeholder;
-                enabled: r.enabled;
-                label: r.label;
-                committed(t) => { SBus.act(r.id, 1, 0, t); }
+        if r.control == "field": SField {
+            width: w;
+            text: r.text;
+            placeholder: r.placeholder;
+            secret: r.secret;
+            enabled: r.enabled;
+            label: r.label;
+            edited(t) => { SBus.act(r.id, 0, 0, t); }
+            committed(t) => { SBus.act(r.id, 1, 0, t); }
+        }
+        if r.control == "path": HorizontalLayout {
+            spacing: 8px;
+            VerticalLayout {
+                alignment: center;
+                SField {
+                    width: r.width > 0 ? r.width : 200px;
+                    text: r.text;
+                    placeholder: r.placeholder;
+                    enabled: r.enabled;
+                    label: r.label;
+                    committed(t) => { SBus.act(r.id, 1, 0, t); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: r.busy ? "Choosing…" : "Choose…";
+                    enabled: r.enabled && !r.busy;
+                    label: r.label;
+                    clicked => { SBus.act(r.id, 2, 0, ""); }
+                }
             }
         }
-        VerticalLayout {
-            alignment: center;
-            SButton {
-                text: r.busy ? "Choosing…" : "Choose…";
-                enabled: r.enabled && !r.busy;
-                label: r.label;
-                clicked => { SBus.act(r.id, 2, 0, ""); }
+        if r.control == "chips": HorizontalLayout {
+            spacing: 6px;
+            alignment: end;
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SChip {
+                    text: o.text;
+                    on: o.on;
+                    enabled: r.enabled && !o.off;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
             }
         }
-    }
-    if r.control == "chips": HorizontalLayout {
-        spacing: 6px;
-        alignment: end;
-        for o[i] in r.opts: VerticalLayout {
-            alignment: center;
-            SChip {
-                text: o.text;
-                on: o.on;
-                enabled: r.enabled && !o.off;
-                clicked => { SBus.act(r.id, i, 0, ""); }
+        if r.control == "swatches": HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SSwatch {
+                    o: o;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
             }
         }
-    }
-    if r.control == "swatches": HorizontalLayout {
-        spacing: 8px;
-        alignment: end;
-        for o[i] in r.opts: VerticalLayout {
-            alignment: center;
-            SSwatch {
-                o: o;
-                clicked => { SBus.act(r.id, i, 0, ""); }
-            }
+        if r.control == "value": Text {
+            text: r.value;
+            color: Theme.secondary;
+            font-size: Theme.material ? 14px : Theme.body;
+            vertical-alignment: center;
+            horizontal-alignment: right;
         }
+        if r.control == "spinner": Busy {}
+        if r.control == "custom" && r.group == "look": LookCtl { r: r; }
     }
-    if r.control == "value": Text {
-        text: r.value;
-        color: Theme.secondary;
-        font-size: Theme.material ? 14px : Theme.body;
-        vertical-alignment: center;
-        horizontal-alignment: right;
-    }
-    if r.control == "spinner": Busy {}
-    if r.control == "custom" && r.group == "look": LookCtl { r: r; }
+    // (outside the layout: these size themselves from the row, and inside
+    // it they would size the row from themselves, a loop)
     if r.control == "custom" && r.group == "notify": NotifyCtl { r: r; }
     if r.control == "custom" && r.group == "devices": DevicesCtl { r: r; }
     if r.control == "custom" && r.group == "input": InputCtl { r: r; }
@@ -214,7 +216,7 @@ component RowView {
     property <length> pad: Theme.material ? 20px : 14px;
     property <bool> link: r.kind == "link";
     property <bool> has-icon: r.icon.p != "" || r.icon.m != "";
-    min-height: r.kind == "custom" ? 0 : Theme.material ? 56px : 44px;
+    min-height: max(r.kind == "custom" ? 0 : Theme.material ? 56px : 44px, body.preferred-height);
     // Material: the row's tile, the group's outer corners round
     if Theme.material && r.kind != "custom": Rectangle {
         border-top-left-radius: first ? 24px : 4px;
@@ -244,82 +246,86 @@ component RowView {
     hover := TouchArea {
         mouse-cursor: link ? MouseCursor.pointer : MouseCursor.default;
         clicked => { if link && r.enabled { SBus.act(r.id, 0, 0, ""); } }
-        if r.kind == "custom" && r.group == "look": LookCtl { r: r; }
-        if r.kind == "custom" && r.group == "notify": NotifyCtl { r: r; }
-        if r.kind == "custom" && r.group == "devices": DevicesCtl { r: r; }
-        if r.kind == "custom" && r.group == "input": InputCtl { r: r; }
-        if r.kind == "custom" && r.group == "accounts": AccountsCtl { r: r; }
-        if r.kind == "custom" && r.group == "system": SystemCtl { r: r; }
-        if r.kind == "custom" && r.group == "about": AboutCtl { r: r; }
-        if r.kind == "text": HorizontalLayout {
-            padding-left: pad;
-            padding-right: pad;
-            padding-top: Theme.material ? 14px : 10px;
-            padding-bottom: Theme.material ? 14px : 10px;
-            Text {
-                text: r.label;
-                wrap: word-wrap;
-                color: r.tone == 2 ? Theme.danger : r.tone == 0 ? Theme.label : Theme.secondary;
-                font-size: Theme.material ? 14px : Theme.small;
-            }
-        }
-        if r.kind == "row" || r.kind == "link": HorizontalLayout {
-            padding-left: pad;
-            padding-right: link ? (Theme.material ? 16px : 12px) : pad;
-            spacing: 0;
-            if has-icon: VerticalLayout {
-                alignment: center;
-                padding-right: link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
-                SIcon {
-                    g: r.icon;
-                    size: link ? (Theme.material ? 24px : 18px) : Theme.material ? 24px : 20px;
-                    color: link ? Theme.secondary : Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
-                }
-            }
-            VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
-                spacing: 2px;
-                padding-top: Theme.material ? 12px : 10px;
-                padding-bottom: Theme.material ? 12px : 10px;
-                padding-right: r.control != "" || link ? (Theme.material ? 16px : 12px) : 0;
+        // (in a layout, so the row grows with what it holds: a TouchArea
+        // is no layout, and the row stayed at its minimum height)
+        body := VerticalLayout {
+            if r.kind == "custom" && r.group == "look": LookCtl { r: r; }
+            if r.kind == "custom" && r.group == "notify": NotifyCtl { r: r; }
+            if r.kind == "custom" && r.group == "devices": DevicesCtl { r: r; }
+            if r.kind == "custom" && r.group == "input": InputCtl { r: r; }
+            if r.kind == "custom" && r.group == "accounts": AccountsCtl { r: r; }
+            if r.kind == "custom" && r.group == "system": SystemCtl { r: r; }
+            if r.kind == "custom" && r.group == "about": AboutCtl { r: r; }
+            if r.kind == "text": HorizontalLayout {
+                padding-left: pad;
+                padding-right: pad;
+                padding-top: Theme.material ? 14px : 10px;
+                padding-bottom: Theme.material ? 14px : 10px;
                 Text {
                     text: r.label;
                     wrap: word-wrap;
-                    color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : Theme.label;
-                    font-size: Theme.material ? 16px : Theme.body;
-                }
-                if r.detail != "": Text {
-                    text: r.detail;
-                    wrap: word-wrap;
-                    color: Theme.secondary;
-                    font-size: Theme.material ? 14px : Theme.caption;
+                    color: r.tone == 2 ? Theme.danger : r.tone == 0 ? Theme.label : Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.small;
                 }
             }
-            if link: HorizontalLayout {
-                spacing: Theme.material ? 8px : 6px;
-                if r.value != "": Text {
-                    text: r.value;
-                    vertical-alignment: center;
-                    color: Theme.secondary;
-                    font-size: Theme.material ? 14px : Theme.body;
-                    accessible-role: AccessibleRole.none;
-                }
-                VerticalLayout {
+            if r.kind == "row" || r.kind == "link": HorizontalLayout {
+                padding-left: pad;
+                padding-right: link ? (Theme.material ? 16px : 12px) : pad;
+                spacing: 0;
+                if has-icon: VerticalLayout {
                     alignment: center;
+                    padding-right: link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
                     SIcon {
-                        g: SG.caret-right;
-                        bold: !Theme.material;
-                        size: Theme.material ? 24px : 12px;
-                        color: Theme.tertiary;
+                        g: r.icon;
+                        size: link ? (Theme.material ? 24px : 18px) : Theme.material ? 24px : 20px;
+                        color: link ? Theme.secondary : Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
                     }
                 }
-            }
-            if !link && r.control != "": VerticalLayout {
-                alignment: center;
-                padding-top: 8px;
-                padding-bottom: 8px;
-                Control { r: r; menu-open: root.menu-open; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    padding-top: Theme.material ? 12px : 10px;
+                    padding-bottom: Theme.material ? 12px : 10px;
+                    padding-right: r.control != "" || link ? (Theme.material ? 16px : 12px) : 0;
+                    Text {
+                        text: r.label;
+                        wrap: word-wrap;
+                        color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : Theme.label;
+                        font-size: Theme.material ? 16px : Theme.body;
+                    }
+                    if r.detail != "": Text {
+                        text: r.detail;
+                        wrap: word-wrap;
+                        color: Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.caption;
+                    }
+                }
+                if link: HorizontalLayout {
+                    spacing: Theme.material ? 8px : 6px;
+                    if r.value != "": Text {
+                        text: r.value;
+                        vertical-alignment: center;
+                        color: Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.body;
+                        accessible-role: AccessibleRole.none;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        SIcon {
+                            g: SG.caret-right;
+                            bold: !Theme.material;
+                            size: Theme.material ? 24px : 12px;
+                            color: Theme.tertiary;
+                        }
+                    }
+                }
+                if !link && r.control != "": VerticalLayout {
+                    alignment: center;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    Control { r: r; menu-open: root.menu-open; }
+                }
             }
         }
     }
@@ -577,6 +583,10 @@ export component SettingsWindow inherits Window {
 
         // ── The sidebar: Glass's translucent list, Material's list pane ──
         side := Rectangle {
+            // (x and y given: Slint centres an element with a width but no x,
+            // and the pane, drawn after it, then covered the whole sidebar)
+            x: 0;
+            y: 0;
             width: Theme.material ? 300px : 230px;
             height: parent.height;
             background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1f1f24c7 : #f0f0f5cc;
@@ -915,6 +925,8 @@ export component SettingsWindow inherits Window {
                     }
                     headline := HorizontalLayout {
                         visible: Theme.material;
+                        // (Glass has no headline: no line for it either)
+                        height: Theme.material ? self.preferred-height : 0px;
                         padding-bottom: Theme.material ? 24px : 0;
                         Text {
                             text: Theme.material ? page-title : "";

@@ -136,19 +136,19 @@ fn today() -> Day {
 
 /// Glass's material is solid (Theme.glass.tier): then Notification Center
 /// keeps its panel; otherwise, unless Settings asks for the panel
-/// (notificationCenter.background), each piece is glass of its own. Material
-/// has no glass to be bare with (NotificationShade.qml: one tonal panel,
-/// translucent by Theme.panel-alpha): never bare
-pub fn bare(cfg: &Value, material: bool, _transparency: f32) -> bool {
-    if material {
-        return false;
-    }
+/// (notificationCenter.background), each piece is glass of its own
+pub fn bare(cfg: &Value, material: bool, transparency: f32) -> bool {
     let a = &cfg["appearance"];
     let solid = a["reduceTransparency"].as_bool().unwrap_or(false)
-        || match a["glass"].as_str().unwrap_or("auto") {
-            "solid" => true,
-            "custom" => a["glassSolid"].as_f64().unwrap_or(0.0) >= 0.97,
-            _ => false,
+        || if material {
+            // (Material's veil: as solid as its panels)
+            1.0 - 0.55 * transparency >= 0.97
+        } else {
+            match a["glass"].as_str().unwrap_or("auto") {
+                "solid" => true,
+                "custom" => a["glassSolid"].as_f64().unwrap_or(0.0) >= 0.97,
+                _ => false,
+            }
         };
     !solid && !cfg["notificationCenter"]["background"].as_bool().unwrap_or(false)
 }
@@ -752,7 +752,7 @@ mod tests {
         assert!(!bare(&json!({"appearance": {"glass": "custom", "glassSolid": 1.0}}), false, 0.0));
         // Material: bare once its panels see through
         assert!(!bare(&json!({}), true, 0.0));
-        assert!(!bare(&json!({}), true, 0.5));
+        assert!(bare(&json!({}), true, 0.5));
     }
 
     #[test]
