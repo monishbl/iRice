@@ -153,6 +153,8 @@ quiet() { inbox </dev/null "ipc island holdAlerts true; ipc panels close; key -k
 } > "$OUT/env.txt"
 if ((BUILD)); then
     log "building tessera-ui (release, low priority)"
+    avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+    ((avail < 4500)) && log "  only $avail MB free: the build waits for 4000 MB (it says so in logs/build.log each minute). Close a big app, or run with MIN_FREE_MB=3000"
     (cd "$ROOT/native/tessera-ui" && run_cargo cargo build --release --keep-going --bin tessera-ui) > "$OUT/logs/build.log" 2>&1 \
         || { log "build FAILED: every error is in report.md (full log: logs/build.log)"; BUILD_FAILED=1; }
 fi
