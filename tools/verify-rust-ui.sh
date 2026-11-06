@@ -187,8 +187,13 @@ capture() { # look pass(qml|rust)
         dev shot "$OUT/shots/$look-$s-$name-$pass.png" </dev/null >/dev/null 2>&1 || log "  no shot: $look $s $name ($pass)"
         # (Settings and the App Store are real app windows: they'd stay open into the next states)
         case "$s|$name" in
-            "settings|appearance") dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-settings" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
-            "appstore|discover") dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-appstore" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
+            # (by class for Rust's windows, by title for the QML's: theirs is Quickshell's class)
+            "settings|appearance")
+                dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-settings" })' </dev/null >/dev/null 2>&1
+                dev hyprctl dispatch 'hl.dsp.window.close({ window = "title:^Tessera Settings$" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
+            "appstore|discover")
+                dev hyprctl dispatch 'hl.dsp.window.close({ window = "class:tessera-appstore" })' </dev/null >/dev/null 2>&1
+                dev hyprctl dispatch 'hl.dsp.window.close({ window = "title:^Software$" })' </dev/null >/dev/null 2>&1; sleep 1 ;;
         esac
     done
     quiet

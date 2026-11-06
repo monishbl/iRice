@@ -272,7 +272,14 @@ impl Panels {
             "pickShare" => h.ask("picker.pick", json!([{"multiple": true, "title": "Send files", "reply": "share"}])),
             "appExpose" => self.m.app_expose(str_arg(a, 0), opt(str_arg(a, 1)), &f, &first),
             // panels.set [key, value]: the plain properties other services keep
-            "set" => self.set(str_arg(a, 0), a.get(1).cloned().unwrap_or(Value::Null)),
+            "set" => {
+                let key = str_arg(a, 0);
+                self.set(key, a.get(1).cloned().unwrap_or(Value::Null));
+                // (host-desktop's desktop feed keeps the edit itself)
+                if key == "widgetEditing" {
+                    h.ask("desktop", json!([if self.m.widget_editing { "edit" } else { "endEdit" }]));
+                }
+            }
             "page" => self.m.cc_page = str_arg(a, 0).to_string(),
             "tab" => self.m.sidebar_tab = a.get(0).and_then(|x| x.as_i64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0),
             "nctab" => self.m.nc_tab = a.get(0).and_then(|x| x.as_i64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0),
@@ -281,6 +288,9 @@ impl Panels {
                 self.m.close(now);
                 self.m.screen = first.clone();
                 self.m.widget_editing = matches!(a.get(0), Some(Value::Bool(true))) || str_arg(a, 0) == "true";
+                // (host-desktop's desktop feed keeps the edit itself: DesktopFeed's
+                // `editing` followed Panels.widgetEditing)
+                h.ask("desktop", json!([if self.m.widget_editing { "edit" } else { "endEdit" }]));
             }
             // panicReset: close everything, in case something is stuck
             "reset" => {

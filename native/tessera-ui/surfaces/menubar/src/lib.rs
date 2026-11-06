@@ -904,6 +904,14 @@ impl Menubar {
     }
 
     fn close_menu(&mut self, st: &mut State) {
+        // (standalone, a System or Window menu Panels opened: Panels hears it
+        // closed, so the next shortcut opens it again rather than closing it)
+        if tessera_core::host::standalone()
+            && matches!(self.shell_open.as_str(), "systemMenu" | "windowMenu")
+            && self.menu.as_ref().is_some_and(|m| m.open && matches!(m.kind, MenuKind::System | MenuKind::Window))
+        {
+            bridge::call(&["panels", "close"]);
+        }
         if let Some(m) = &mut self.menu {
             if m.open {
                 m.open = false;
@@ -1468,6 +1476,38 @@ impl Part for Menubar {
             // again. (Only a bar the pointer was off had let go: the item
             // that opened the popover stayed lit after Esc.)
             let open = st.shell.get::<ShellState>().map(|s| s.str("open").to_string()).unwrap_or_default();
+            // Standalone: the shell's own System and Window menus (Panels'
+            // systemMenu / windowMenu: a shortcut, `ipc panels open`) are this
+            // bar's, as no QML Menus.qml draws them; beside the QML it does
+            if tessera_core::host::standalone() && open != self.shell_open {
+                let ss = Self::shell_state(st);
+                let kind = match open.as_str() {
+                    "systemMenu" => Some(MenuKind::System),
+                    "windowMenu" => Some(MenuKind::Window),
+                    _ => None,
+                };
+                match kind {
+                    Some(k) => {
+                        let screen = ss.str("screen").to_string();
+                        let output = if screen.is_empty() { self.bars.first().map(|b| b.output.clone()).unwrap_or_default() } else { screen };
+                        let x = ss.num("panels.anchorX") as f32;
+                        if !self.menu.as_ref().is_some_and(|m| m.open && m.kind == k && m.output == output) {
+                            self.open_menu(st, output, k, x);
+                        }
+                    }
+                    None => {
+                        // (Panels closed it, or opened something else: closed here
+                        // without telling Panels back)
+                        if matches!(self.shell_open.as_str(), "systemMenu" | "windowMenu") {
+                            if let Some(m) = self.menu.as_mut().filter(|m| m.open && matches!(m.kind, MenuKind::System | MenuKind::Window)) {
+                                m.open = false;
+                                m.ui.set_shown(false);
+                                self.refresh(st);
+                            }
+                        }
+                    }
+                }
+            }
             if open != self.shell_open {
                 let closed = !self.shell_open.is_empty();
                 self.shell_open = open;
