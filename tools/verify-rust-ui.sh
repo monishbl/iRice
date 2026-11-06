@@ -92,12 +92,12 @@ cheatsheet|open|ipc panels open cheatsheet $SCREEN|2
 osk|open|ipc panels open keyboard $SCREEN|2
 share|ask|ipc sharingdemo ask|2
 share|sending|ipc sharingdemo sending 40|2
-appstore|discover|ipc panels appStore|4
 shelf|open|ipc shelf open|2
 captions|demo|ipc captions demo 'Hello there' 'This is a test of live captions'|2
 notes|open|ipc panels open quickNote $SCREEN|2
-settings|appearance|ipc panels settings appearance|3
 network|wifi-menu|ipc panels open wifiMenu $SCREEN|2.5
+settings|appearance|ipc panels settings appearance|3
+appstore|discover|ipc panels appStore|4
 overview|open|ipc panels open overview $SCREEN|2.5|w
 missioncontrol|open|ipc panels open missionControl $SCREEN|2.5|w
 switcher|open|ipc panels open switcher $SCREEN|1.5|w
@@ -125,10 +125,15 @@ try:
 except FileNotFoundError:
     c = {}
 c.setdefault("rust", {})["surfaces"] = names
+# (one Material seed and accent for both passes: the sandbox has no matugen,
+# so the QML would fall back to its rough pick while Rust computes matugen's)
+a = c.setdefault("appearance", {})
+a["materialSeed"] = "#3b6ea5"
+a["accent"] = "blue"
 json.dump(c, open(p, "w"), indent=4)
 PY
 }
-quiet() { inbox </dev/null "ipc panels close; key -k Escape; ipc lock unlock; ipc shelf close; ipc captions off; ipc today close; ipc panels widgets false; makoctl dismiss -a 2>/dev/null; true" >/dev/null 2>&1; sleep 0.8; }
+quiet() { inbox </dev/null "ipc panels close; key -k Escape; key -k Escape; ipc lock unlock; ipc shelf close; ipc captions off; ipc today close; ipc panels widgets false; makoctl dismiss -a 2>/dev/null; true" >/dev/null 2>&1; sleep 0.8; }
 
 # ── 1. Build ────────────────────────────────────────────────────────────────
 {

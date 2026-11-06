@@ -187,7 +187,9 @@ impl Settings {
             app_id: "tessera-settings",
             namespace: NS,
             size,
-            min_size: (640, 480),
+            // (no minimum: given before the first frame, Hyprland opens a floating
+            // window at its minimum instead of the size asked for)
+            min_size: (0, 0),
         });
         let ui = ui::SettingsWindow::new().expect("SettingsWindow");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
