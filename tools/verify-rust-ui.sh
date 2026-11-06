@@ -85,7 +85,7 @@ lock|typing|ipc lock lock; sleep 2; ipc lock demo typing|2
 lock|wrong|ipc lock lock; sleep 2; ipc lock demo wrong|2
 lock|fingerprint|ipc lock lock; sleep 2; ipc lock demo finger|2
 lock|bedside|ipc lock lock; sleep 2; ipc lock demo standby|3
-lock|login-intro|ipc loginIntro play|1.5
+lock|login-intro|ipc loginIntro play|0.5
 overlay|open|ipc panels open overlay $SCREEN|2
 resources|menu|ipc panels open resourcesMenu $SCREEN|2
 cheatsheet|open|ipc panels open cheatsheet $SCREEN|2

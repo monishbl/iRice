@@ -74,6 +74,10 @@ pub struct Surface {
     /// frames drawn, and of those the ones the compositor has shown (one
     /// is in flight at most: frame n is on screen once `presented` >= n)
     pub rendered: Cell<u32>,
+    /// How many times the pointer has entered it (a part that never redraws,
+    /// as a hot corner, tells a new visit from this, even when it left and
+    /// came back between two turns of the loop)
+    pub enters: Cell<u32>,
     pub presented: Cell<u32>,
     pub wl: WlSurface,
     /// what it is to the compositor (`Role`): `layer` derefs to the layer
@@ -557,6 +561,7 @@ impl State {
             damage,
             egl: self.egl.clone(),
             rendered: Cell::new(0),
+            enters: Cell::new(0),
             presented: Cell::new(0),
             wl,
             layer,
@@ -948,6 +953,7 @@ impl PointerHandler for State {
                         eprintln!("debug: pointer enters {} at {:?}", s.namespace, e.position);
                     }
                     self.set_cursor(*serial, s.cursor.get());
+                    s.enters.set(s.enters.get().wrapping_add(1));
                     self.pointer_on = Some(s.clone());
                     s.window.dispatch_event(WindowEvent::PointerMoved { position });
                 }

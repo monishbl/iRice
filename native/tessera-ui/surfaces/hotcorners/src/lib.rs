@@ -80,6 +80,8 @@ struct Corner {
     surface: Rc<Surface>,
     ui: ui::HotCorner,
     hovered: bool,
+    /// the surface's pointer enters seen so far (a new one: a new visit)
+    enters: u32,
     pressed: bool,
     dwell: slint::Timer,
 }
@@ -119,7 +121,7 @@ impl HotCorners {
             let n = name.to_string();
             ui.on_press(move || to(Box::new(Msg::Press(n.clone(), corner))));
             ui.show().expect("show hot corner");
-            corners.push(Corner { corner, action, surface, ui, hovered: false, pressed: false, dwell: slint::Timer::default() });
+            corners.push(Corner { corner, action, surface, ui, hovered: false, enters: 0, pressed: false, dwell: slint::Timer::default() });
         }
         self.screens.push(Screen { output: name.to_string(), corners });
     }
@@ -233,14 +235,29 @@ impl Part for HotCorners {
         }
     }
 
-    /// The pointer came or went (read here: a corner never redraws, so a
-    /// Slint change handler there wouldn't run)
+    /// The pointer came or went. Read from the compositor's own enter and
+    /// leave (which surface the pointer is on, and how many times it entered
+    /// each corner), not Slint's hover: a corner never redraws, and a leave
+    /// and a new enter between two turns of the loop looked like no change,
+    /// so the second visit never started its timer
     fn after_frame(&mut self, st: &mut State) {
-        let changed: Vec<(String, &'static str, bool)> = self
-            .screens
-            .iter()
-            .flat_map(|s| s.corners.iter().filter(|c| c.ui.get_hovered() != c.hovered).map(|c| (s.output.clone(), c.corner, c.ui.get_hovered())))
-            .collect();
+        let on = st.pointer_surface();
+        let mut changed: Vec<(String, &'static str, bool)> = Vec::new();
+        for s in &mut self.screens {
+            for c in &mut s.corners {
+                let here = on.as_ref().is_some_and(|p| Rc::ptr_eq(p, &c.surface));
+                let n = c.surface.enters.get();
+                let again = n != c.enters;
+                c.enters = n;
+                if again && c.hovered {
+                    // (left and came back unseen: a new visit)
+                    changed.push((s.output.clone(), c.corner, false));
+                }
+                if here != c.hovered || (again && here) {
+                    changed.push((s.output.clone(), c.corner, here));
+                }
+            }
+        }
         for (o, c, on) in changed {
             self.hover(st, o, c, on);
         }

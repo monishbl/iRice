@@ -462,6 +462,9 @@ export component LaunchpadPanel inherits Window {
                         accessible-label: c.name + ", " + c.count + " apps";
                         accessible-action-default => { activate(i); }
                         Rectangle {
+                            // (y given: Slint centres an element with a height but
+                            // no y, which put the card 16 px below its name's place)
+                            y: 0;
                             height: 188px;
                             border-radius: Theme.material ? (cell.sel ? 64px : 28px) : Theme.radius-panel;
                             animate border-radius { duration: 250ms; easing: spring(0.5); }
@@ -481,11 +484,17 @@ export component LaunchpadPanel inherits Window {
                                 property <bool> small: !Theme.material && c.previews.length > 4 && k >= 3;
                                 property <length> big: Theme.material ? 60px : 64px;
                                 property <length> gap: 16px;
-                                property <length> x0: (188px - 2 * big - gap) / 2;
+                                // (the icons as one centred grid, as the QML's: one app
+                                // sits in the middle, two side by side mid-height)
+                                property <int> n: min(4, c.previews.length);
+                                property <int> gc: n == 1 ? 1 : 2;
+                                property <int> gr: ceil(n / gc);
+                                property <length> x0: (188px - gc * big - (gc - 1) * gap) / 2;
+                                property <length> y0: (188px - gr * big - (gr - 1) * gap) / 2;
                                 property <int> slot: small ? 3 : k;
                                 property <int> sk: k - 3;
                                 x: x0 + mod(slot, 2) * (big + gap) + (small ? 2px + mod(sk, 2) * 31px : 0);
-                                y: x0 + floor(slot / 2) * (big + gap) + (small ? 2px + floor(sk / 2) * 31px : 0);
+                                y: y0 + floor(slot / 2) * (big + gap) + (small ? 2px + floor(sk / 2) * 31px : 0);
                                 width: small ? 27px : big;
                                 height: self.width;
                                 source: p;
