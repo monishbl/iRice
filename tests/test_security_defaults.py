@@ -653,6 +653,7 @@ SH_C_ALLOWED = {
     "shell/services/RootHelper.qml": 1,  # constants joined (the helper's two paths); the arguments as "$@"
     "shell/services/LoginScreen.qml": 1,  # constants joined (RootHelper.knows: a fixed subcommand)
     "shell/modules/settings/pages/wallpaper.qml": 1,  # constants joined (RootHelper.pick)
+    "shell/modules/settings/RustBridgeLook.qml": 1,  # constants joined (RootHelper.pick), as wallpaper.qml
 }
 
 

@@ -4,7 +4,7 @@
 //! and the host's services take the QML's place on both ends of the seam the
 //! surfaces already use:
 //!
-//!   Out (a surface asks): shell::ask("network.connect", args) and
+//!   Out (a surface asks): shell::ask(call, args), e.g. a Wi-Fi join, and
 //!   services::bridge::call(&["panels", "toggle", …]) reach the service that
 //!   answers that call (Service::calls / Service::ipc), not RustUi.qml.
 //!

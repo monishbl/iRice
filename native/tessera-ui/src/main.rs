@@ -183,7 +183,10 @@ fn main() {
         let mut st: libc::stat = std::mem::zeroed();
         libc::fstat(0, &mut st) == 0 && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
     };
-    if stdin_is_pipe {
+    // (standalone: stdin is whatever started it, not the QML's pipe; its end
+    // means nothing, so it isn't read: the sandbox's reload closed it at once,
+    // and the shell took that for "the QML quit" and left)
+    if stdin_is_pipe && !standalone {
         let src = Generic::new(unsafe { calloop::generic::FdWrapper::new(0) }, Interest::READ, Mode::Level);
         let mut lines = shell::Lines::default();
         lh

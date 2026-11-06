@@ -28,7 +28,9 @@ pub struct Update {
 impl Badges {
     /// Badges.flush: apply an update
     pub fn apply(&mut self, u: Update) -> bool {
-        let id = u.app.trim_start_matches("application://").trim_end_matches(".desktop").to_string();
+        // (one ".desktop" off: org.telegram.desktop.desktop is org.telegram.desktop)
+        let id = u.app.trim_start_matches("application://");
+        let id = id.strip_suffix(".desktop").unwrap_or(id).to_string();
         let prev = self.counts.get(&id).copied().unwrap_or(0);
         let visible = u.visible.unwrap_or(prev > 0 || u.count.unwrap_or(0) > 0);
         let n = u.count.unwrap_or(prev);

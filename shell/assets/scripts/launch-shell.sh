@@ -191,7 +191,7 @@ standalone_ui() {
 }
 if ui="$(standalone_ui)"; then
     export TESSERA_STANDALONE=1
-    exec "$ui" --standalone
+    exec "$ui" --standalone </dev/null
 fi
 # The Material look is experimental: if it doesn't come up (its lock screen
 # isn't answering within 20 s, or it quits first, as Quickshell does when its
