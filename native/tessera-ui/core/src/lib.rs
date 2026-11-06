@@ -16,6 +16,7 @@ pub mod damage;
 pub mod dnd;
 pub mod egl;
 pub mod env;
+pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;
 pub mod icons;
 pub mod picture;
@@ -46,4 +47,7 @@ pub enum Msg {
     ConfigChanged,
     A11yActivate(u64),
     A11yAction(u64, accesskit::ActionRequest),
+    /// A line as the shell writes it to stdin, said by the host (standalone:
+    /// host.rs, Host::say); the binary handles it as if it came on stdin
+    Line(String),
 }

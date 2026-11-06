@@ -8,7 +8,14 @@
 # report.md (read it, or hand it to Claude) and report.json.
 #
 #   tools/verify-rust-ui.sh [--arena N] [--looks glass,material] [--only a,b]
-#                           [--skip-tests] [--skip-build] [--with-network] [--out DIR]
+#                           [--standalone] [--skip-tests] [--skip-build]
+#                           [--with-network] [--out DIR]
+#
+#   --standalone     the second pass is tessera-ui as the whole shell (wave 4:
+#                    rust.standalone, no Quickshell at all) instead of Rust
+#                    surfaces beside the QML; adds the standalone checks (it
+#                    started alone, its IPC, calls nobody answered, crashes,
+#                    memory) and the host crates' tests
 #
 #   --arena N        the sandbox arena (2–9, default 6; 1 is your own and refused)
 #   --only a,b       just these surfaces (default: all below)
@@ -19,7 +26,7 @@
 # memory-capped, through ~/.local/share/tessera-port/slot.sh when present).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARENA=6 LOOKS="glass,material" ONLY="" TESTS=1 BUILD=1 NETWORK=0
+ARENA=6 LOOKS="glass,material" ONLY="" TESTS=1 BUILD=1 NETWORK=0 STANDALONE=0 BUILD_FAILED=0
 OUT="$HOME/tessera-verify/$(date +%Y%m%d-%H%M)"
 while (($#)); do
     case "$1" in
@@ -29,8 +36,9 @@ while (($#)); do
         --skip-tests) TESTS=0 ;;
         --skip-build) BUILD=0 ;;
         --with-network) NETWORK=1 ;;
+        --standalone) STANDALONE=1 ;;
         --out) OUT=$2; shift ;;
-        -h|--help) sed -n 2,19p "$0"; exit 0 ;;
+        -h|--help) sed -n 2,26p "$0"; exit 0 ;;
         *) echo "unknown option $1 (--help)"; exit 2 ;;
     esac
     shift
@@ -116,8 +124,8 @@ want() { # surface → wanted?
 surfaces_in_use() {
     printf '%s\n' "$STATES" | while IFS='|' read -r s _; do want "$s" && echo "$s"; done | sort -u | paste -sd, -
 }
-set_rust() { # comma list (empty: everything QML)
-    python3 -I - "$CFG" "$1" <<'PY'
+set_rust() { # comma list (empty: everything QML) [standalone 0|1]
+    python3 -I - "$CFG" "$1" "${2:-0}" <<'PY'
 import json, sys
 p, names = sys.argv[1], [n for n in sys.argv[2].split(",") if n]
 try:
@@ -125,6 +133,7 @@ try:
 except FileNotFoundError:
     c = {}
 c.setdefault("rust", {})["surfaces"] = names
+c["rust"]["standalone"] = sys.argv[3] == "1"  # (wave 4: tessera-ui as the whole shell)
 # (one Material seed and accent for both passes: the sandbox has no matugen,
 # so the QML would fall back to its rough pick while Rust computes matugen's)
 a = c.setdefault("appearance", {})
@@ -139,14 +148,19 @@ quiet() { inbox </dev/null "ipc island holdAlerts true; ipc panels close; key -k
 {
     echo "commit $(git -C "$ROOT" rev-parse --short HEAD) ($(git -C "$ROOT" log -1 --format=%s | cut -c1-80))"
     echo "dirty files: $(git -C "$ROOT" status --porcelain | grep -vc '^??')"
-    echo "date $(date -Is), arena $ARENA, looks $LOOKS"
+    echo "date $(date -Is), arena $ARENA, looks $LOOKS, mode $( ((STANDALONE)) && echo standalone || echo 'surfaces beside QML')"
+    echo "rustc $(rustc --version 2>/dev/null | cut -d' ' -f2)"
 } > "$OUT/env.txt"
 if ((BUILD)); then
     log "building tessera-ui (release, low priority)"
-    (cd "$ROOT/native/tessera-ui" && run_cargo cargo build --release --locked --bin tessera-ui) > "$OUT/logs/build.log" 2>&1 \
-        || { log "build FAILED: see logs/build.log"; BUILD_FAILED=1; }
+    (cd "$ROOT/native/tessera-ui" && run_cargo cargo build --release --keep-going --bin tessera-ui) > "$OUT/logs/build.log" 2>&1 \
+        || { log "build FAILED: every error is in report.md (full log: logs/build.log)"; BUILD_FAILED=1; }
 fi
-[[ -x $BIN ]] || { log "no tessera-ui binary: nothing to compare"; exit 1; }
+# (--keep-going: every crate's errors at once; not --locked: new crates add
+# their lines to Cargo.lock)
+[[ -x $BIN ]] || { log "no tessera-ui binary: nothing to compare"; BUILD_FAILED=1; }
+# (a failed build never compares an older binary: straight to the report)
+((BUILD_FAILED)) && TESTS=0
 
 # ── 2. Capture ──────────────────────────────────────────────────────────────
 USED=$(surfaces_in_use)
@@ -160,7 +174,13 @@ capture() { # look pass(qml|rust)
             inbox "foot >/dev/null 2>&1 & echo \$! >> $PIDF; foot >/dev/null 2>&1 & echo \$! >> $PIDF" </dev/null >/dev/null 2>&1
             sleep 2
         fi
-        inbox "$cmd" </dev/null >/dev/null 2>&1
+        if [[ $pass == rust && $STANDALONE == 1 ]]; then
+            # (standalone: what each command answered, and its exit code)
+            out=$(inbox "$cmd" </dev/null 2>&1); rc=$?
+            printf '%s|%s|%s|%s|%s\n' "$s" "$name" "$rc" "$cmd" "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" >> "$OUT/logs/$look-standalone-ipc.txt"
+        else
+            inbox "$cmd" </dev/null >/dev/null 2>&1
+        fi
         sleep "$wait"
         dev shot "$OUT/shots/$look-$s-$name-$pass.png" </dev/null >/dev/null 2>&1 || log "  no shot: $look $s $name ($pass)"
         # (Settings and the App Store are real app windows: they'd stay open into the next states)
@@ -174,7 +194,12 @@ capture() { # look pass(qml|rust)
     [[ -s $PIDF ]] && inbox "kill \$(cat $PIDF) 2>/dev/null; rm -f $PIDF" </dev/null >/dev/null 2>&1
     rm -f "$PIDF"
 }
+# Standalone: the shell's processes in the arena (pid, memory, CPU, age)
+probe() { # look label
+    inbox "echo \"ui=\$(pgrep -f 'tessera-ui(.real)? --standalone' | head -1) qs=\$(pgrep -x qs | head -1)\$(pgrep -x quickshell | head -1) sock=\$(test -S \$XDG_RUNTIME_DIR/tessera/ipc.sock && echo yes || echo no)\"; for p in \$(pgrep -f 'tessera-ui(.real)? --standalone'; pgrep -x qs; pgrep -x quickshell); do ps -o pid=,rss=,pcpu=,etimes=,args= -p \$p; done" </dev/null 2>/dev/null | sed "s/^/$2 /" >> "$OUT/logs/$1-standalone-probe.txt"
+}
 for look in ${LOOKS//,/ }; do
+    ((BUILD_FAILED)) && break
     log "[$look] setting up the arena (fixed wallpaper, 1920x1080)"
     setup "$look" "$WALLS/wall-tiles.jpg" 1
     # (behind a wrapper that keeps tessera-ui's own messages: logs/<look>-tessera-ui.log)
@@ -183,15 +208,36 @@ for look in ${LOOKS//,/ }; do
     chmod 755 "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
     log "[$look] QML pass"
     set_rust ""; sleep 3
+    ((STANDALONE)) && probe "$look" qml-settled
     capture "$look" qml
     log "[$look] reloading the shell with Rust on (nothing of the QML pass carries over)"
     # (Rust first, then the reload: the QML twins never start, so none of them
     # holds a bus name a Rust surface needs, e.g. org.freedesktop.Notifications)
-    set_rust "$USED"; sleep 2
-    dev reload </dev/null >/dev/null 2>&1; sleep 20
-    log "[$look] Rust pass ($USED)"
-    capture "$look" rust
-    set_rust ""
+    if ((STANDALONE)); then
+        log "[$look] reloading as the standalone shell (tessera-ui --standalone, no Quickshell)"
+        set_rust "" 1; sleep 2
+        t0=$(date +%s%N)
+        dev reload </dev/null >/dev/null 2>&1
+        # (how long until it answers IPC: its socket appears)
+        up=never
+        for _ in $(seq 1 60); do
+            if inbox 'test -S $XDG_RUNTIME_DIR/tessera/ipc.sock' </dev/null >/dev/null 2>&1; then up=$(( ($(date +%s%N) - t0) / 1000000 ))ms; break; fi
+            sleep 0.5
+        done
+        echo "ipc-up $up" >> "$OUT/logs/$look-standalone-probe.txt"
+        sleep 10
+        probe "$look" start
+        log "[$look] standalone pass (IPC up after $up)"
+        capture "$look" rust
+        probe "$look" end
+        set_rust "" 0
+    else
+        set_rust "$USED"; sleep 2
+        dev reload </dev/null >/dev/null 2>&1; sleep 20
+        log "[$look] Rust pass ($USED)"
+        capture "$look" rust
+        set_rust ""
+    fi
     dev logs 300 > "$OUT/logs/$look-logs.txt" 2>&1
 done
 
@@ -224,10 +270,10 @@ PY
 if ((TESTS)); then
     log "crate tests (one crate at a time, low priority)"
     : > "$OUT/logs/cargo-tests.log"
-    for d in "$ROOT/native/tessera-ui/core" "$ROOT"/native/tessera-ui/surfaces/*/ "$ROOT/native/tessera-ui"; do
+    for d in "$ROOT/native/tessera-ui/core" "$ROOT"/native/tessera-ui/host/*/ "$ROOT"/native/tessera-ui/surfaces/*/ "$ROOT/native/tessera-ui"; do
         crate=$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$d/Cargo.toml" | head -1)
         [[ -n $crate ]] || continue
-        res=$(cd "$ROOT/native/tessera-ui" && run_cargo cargo test --locked -p "$crate" 2>&1 | tee -a "$OUT/logs/cargo-tests.log" | grep -E "^test result|error(\[|:)" | awk '/test result/{p+=$4; f+=$6} /error/{e=1} END {printf "%d %d %d", p, f, e}')
+        res=$(cd "$ROOT/native/tessera-ui" && run_cargo cargo test -p "$crate" 2>&1 | tee -a "$OUT/logs/cargo-tests.log" | grep -E "^test result|error(\[|:)" | awk '/test result/{p+=$4; f+=$6} /error/{e=1} END {printf "%d %d %d", p, f, e}')
         echo "$crate $res" >> "$OUT/logs/cargo-summary.txt"
         log "  $crate: $res (passed failed compile-error)"
     done
@@ -260,9 +306,88 @@ if p.exists():
     L += ["", "## Python suite", "", "```", *[x for x in t if x.startswith("FAILED")][:30], t[-1] if t else "", "```"]
 b = out / "logs/build.log"
 if b.exists() and "error" in b.read_text():
-    L += ["", "## Build errors", "", "```", *[x for x in b.read_text().split("\n") if x.startswith("error")][:20], "```"]
+    # Every error with where it is, grouped by crate (the fixes go crate by crate)
+    import re, collections
+    lines = b.read_text().split("\n"); errs = []
+    for i, x in enumerate(lines):
+        if x.startswith("error") and not x.startswith("error: could not compile") and not x.startswith("error: aborting") and "previous error" not in x:
+            where = next((y.strip()[4:] for y in lines[i + 1:i + 6] if y.strip().startswith("--> ")), "")
+            errs.append((where, x))
+    def crate(w):
+        m = re.match(r"(host|surfaces)/([^/]+)/", w)
+        return f"{m.group(1)}/{m.group(2)}" if m else ("core" if w.startswith("core/") else (w.split("/")[0] or "?"))
+    by = collections.defaultdict(list)
+    for w, e in errs:
+        by[crate(w)].append((w, e))
+    warn = sum(1 for x in lines if x.startswith("warning"))
+    L += ["", "## Build errors", "", f"{len(errs)} errors, {warn} warnings. By crate: " + ", ".join(f"{c} {len(v)}" for c, v in sorted(by.items(), key=lambda kv: -len(kv[1]))), ""]
+    codes = collections.Counter(re.findall(r"error\[(E\d+)\]", "\n".join(e for _, e in errs)))
+    if codes:
+        L += ["Most common: " + ", ".join(f"{c} ×{n}" for c, n in codes.most_common(8)), ""]
+    for c, v in sorted(by.items(), key=lambda kv: -len(kv[1])):
+        L += [f"### {c}", "", "```", *[f"{w}  {e}" for w, e in v[:150]], *(["… and more (logs/build.log)"] if len(v) > 150 else []), "```", ""]
+# Standalone (wave 4): did it run alone, and what went unanswered
+import re, collections
+for look_log in sorted(out.glob("logs/*-standalone-probe.txt")):
+    look = look_log.name.split("-")[0]
+    probe = look_log.read_text().split("\n")
+    L += ["", f"## Standalone: {look}", ""]
+    up = next((x.split()[1] for x in probe if x.startswith("ipc-up")), "?")
+    def first(label, key):
+        for x in probe:
+            m = re.search(rf"(?:^| ){key}=(\S*)", x) if x.startswith(label + " ") else None
+            if m:
+                return m.group(1)
+        return ""
+    ui_start, ui_end = first("start", "ui"), first("end", "ui")
+    qs_start = first("start", "qs")
+    L += [f"- IPC answering after: **{up}** (from the reload)",
+          f"- tessera-ui --standalone running at start: {'yes, pid ' + ui_start if ui_start else '**NO**'}; at the end: {'yes, pid ' + ui_end if ui_end else '**NO (it died)**'}" + (" **(restarted: it crashed in between)**" if ui_start and ui_end and ui_start != ui_end else ""),
+          f"- Quickshell running beside it: {'**yes (pid ' + qs_start + '): not standalone**' if qs_start else 'no (as it should be)'}",
+          f"- IPC socket: {first('start', 'sock') or '?'}"]
+    def mem(label, name):
+        for x in probe:
+            if x.startswith(label + " ") and name in x and "=" not in x.split()[1]:
+                f = x.split()
+                try:
+                    return f"{int(f[2]) / 1024:.0f} MB, CPU {f[3]}%"
+                except Exception:
+                    pass
+        return "?"
+    L += [f"- Memory (RSS) and CPU, standalone: start {mem('start', 'tessera-ui')}, end {mem('end', 'tessera-ui')}; QML shell in the reference pass: {mem('qml-settled', 'qs')}", ""]
+    tl = out / f"logs/{look}-tessera-ui.log"
+    t = tl.read_text(errors="replace").split("\n") if tl.exists() else []
+    na = collections.Counter(m.group(1) for x in t for m in [re.search(r"host: nothing answers (\S+)", x)] if m)
+    ni = collections.Counter(m.group(1) + " " + m.group(2) for x in t for m in [re.search(r"host: no ipc target (\S+) \(([^)]*)\)", x)] if m)
+    if na:
+        L += ["Calls nothing answered (call: times):", "", "```", *[f"{k}: {v}" for k, v in na.most_common()], "```", ""]
+    else:
+        L += ["Calls nothing answered: none", ""]
+    if ni:
+        L += ["IPC targets nothing answered (target function: times):", "", "```", *[f"{k}: {v}" for k, v in ni.most_common()], "```", ""]
+    pan = [i for i, x in enumerate(t) if "panicked at" in x]
+    if pan:
+        L += [f"**Panics: {len(pan)}**", "", "```"]
+        for i in pan[:5]:
+            L += t[i:i + 12] + ["…"]
+        L += ["```", ""]
+    other = collections.Counter(re.sub(r"\d+", "N", x)[:160] for x in t if x.startswith("tessera-ui:") and any(w in x.lower() for w in ("error", "fail", "can't", "cannot", "missing", "unknown")))
+    if other:
+        L += ["Other problems tessera-ui reported (numbers folded):", "", "```", *[f"{v}× {k}" for k, v in other.most_common(40)], "```", ""]
+    ip = out / f"logs/{look}-standalone-ipc.txt"
+    if ip.exists():
+        bad = [r.split("|", 4) for r in ip.read_text().split("\n") if r.count("|") >= 4]
+        bad = [r for r in bad if r[2] != "0" or re.search(r"error|not |unknown|no such", r[4], re.I)]
+        L += [f"IPC commands that failed or complained: {len(bad)}", ""]
+        if bad:
+            L += ["| surface | state | exit | command | said |", "|---|---|---:|---|---|"]
+            L += [f"| {r[0]} | {r[1]} | {r[2]} | `{r[3][:80]}` | {r[4][:120].replace('|', '/')} |" for r in bad]
+            L += [""]
+if list(out.glob("logs/*-standalone-probe.txt")):
+    L += ["", "## Manual checks", "", "What the porting agents say to check by hand (on screen, in the sandbox): native/tessera-ui/host/*/PORT-NOTES.md, \"how to check\" per file."]
 L += ["", "## Files", "", f"- shots/: every QML and Rust picture, `*-pair.jpg` side by side, `*-diff.png` differences",
-      "- logs/: build, cargo tests, pytest, the arena's shell and compositor logs per look, tessera-ui's own messages per look (*-tessera-ui.log)", "- visual.json: the table above as data"]
+      "- logs/: build, cargo tests, pytest, the arena's shell and compositor logs per look, tessera-ui's own messages per look (*-tessera-ui.log)",
+      "- logs/*-standalone-*.txt (standalone): the processes (probe) and every IPC command's exit code and answer (ipc)", "- visual.json: the table above as data"]
 (out / "report.md").write_text("\n".join(L) + "\n")
 json.dump({"visual": rows}, open(out / "report.json", "w"), indent=1)
 print(out / "report.md")

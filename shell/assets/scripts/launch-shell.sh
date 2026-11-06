@@ -172,6 +172,27 @@ done
 # iRice became Tessera, which may run until the next login)
 export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
 [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
+# Standalone (Settings → rust.standalone, off by default; TESSERA_STANDALONE=1
+# forces it, =0 forbids it): no Quickshell. tessera-ui draws every surface and
+# does what the QML shell did (native/tessera-ui/host). This process becomes it,
+# as it becomes the shell below. Without the tessera-ui binary: the QML shell.
+standalone_ui() {
+    [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
+    if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
+        local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
+        [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
+        python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is True else 1)' "$c" 2>/dev/null || return 1
+    fi
+    local b
+    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+        [[ -n "$b" && -x "$b" ]] && { echo "$b"; return 0; }
+    done
+    return 1
+}
+if ui="$(standalone_ui)"; then
+    export TESSERA_STANDALONE=1
+    exec "$ui" --standalone
+fi
 # The Material look is experimental: if it doesn't come up (its lock screen
 # isn't answering within 20 s, or it quits first, as Quickshell does when its
 # files don't load), back to Glass, so a broken Material never leaves you

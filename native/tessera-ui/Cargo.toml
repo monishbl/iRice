@@ -4,7 +4,7 @@
 # A change to one surface recompiles that crate and the binary, nothing else
 # (docs/rust-ui-surfaces.md, "The workspace").
 [workspace]
-members = ["core", "surfaces/*"]
+members = ["core", "surfaces/*", "host/*"]
 resolver = "2"
 
 [workspace.package]
@@ -69,6 +69,11 @@ wayland-protocols-misc.workspace = true
 # The surfaces, one crate each (a new one: its line here, its name in
 # src/surfaces.rs's KNOWN and make(); `members` takes surfaces/* already)
 tessera-menubar = { path = "surfaces/menubar" }
+# The host (wave 4: the QML shell's services, in Rust; standalone only)
+tessera-host-shell = { path = "host/shell" }
+tessera-host-system = { path = "host/system" }
+tessera-host-desktop = { path = "host/desktop" }
+tessera-host-sharing = { path = "host/sharing" }
 tessera-dock = { path = "surfaces/dock" }
 tessera-emoji = { path = "surfaces/emoji" }
 tessera-clipboard = { path = "surfaces/clipboard" }

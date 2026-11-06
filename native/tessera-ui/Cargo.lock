@@ -4869,6 +4869,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-host-desktop"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "libc",
+ "serde",
+ "serde_json",
+ "slint",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
+name = "tessera-host-sharing"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "libc",
+ "serde",
+ "serde_json",
+ "slint",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
+name = "tessera-host-shell"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "libc",
+ "serde",
+ "serde_json",
+ "slint",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
+name = "tessera-host-system"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "libc",
+ "serde",
+ "serde_json",
+ "slint",
+ "tessera-core",
+ "zbus",
+]
+
+[[package]]
 name = "tessera-hotcorners"
 version = "0.1.0"
 dependencies = [
@@ -5204,6 +5256,10 @@ dependencies = [
  "tessera-dock",
  "tessera-emoji",
  "tessera-greeter",
+ "tessera-host-desktop",
+ "tessera-host-sharing",
+ "tessera-host-shell",
+ "tessera-host-system",
  "tessera-hotcorners",
  "tessera-launchpad",
  "tessera-lock",

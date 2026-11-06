@@ -86,6 +86,10 @@ pub fn ipc_script() -> std::path::PathBuf {
 /// `shell-ipc.sh call <args…>` on a thread (the QML shell does it)
 pub fn call(args: &[&str]) {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    // (standalone: no QML to call; the host answers, crate::host)
+    if crate::host::route_ipc(&args, None) {
+        return;
+    }
     std::thread::spawn(move || {
         let out = std::process::Command::new(ipc_script()).arg("call").args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).status();
         if crate::env::is_set("DEBUG") {

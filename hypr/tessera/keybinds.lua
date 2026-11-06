@@ -18,6 +18,45 @@ local function log(msg)
     io.stderr:write("[tessera keybinds] " .. msg .. "\n")
 end
 
+-- Standalone: tessera-ui is the whole shell and no Quickshell listens for
+-- Hyprland's global shortcuts, so a shell shortcut runs
+--   tessera-ui ipc call shortcut <name>
+-- instead of hl.dsp.global("tessera:<name>") (host/shell/src/shortcuts.rs
+-- answers those names). It is decided as launch-shell.sh decides it: the
+-- setting rust.standalone in config.json (TESSERA_STANDALONE=1 forces it, =0
+-- forbids it), and only when the tessera-ui binary is there (without it the
+-- QML shell starts, and its global shortcuts are the ones to bind). Read when
+-- this file loads, so a changed setting takes effect on the next reload.
+-- With it off, nothing below differs from the global shortcuts.
+local dataHome = (os.getenv("XDG_DATA_HOME") ~= nil and os.getenv("XDG_DATA_HOME") ~= "") and os.getenv("XDG_DATA_HOME") or (os.getenv("HOME") .. "/.local/share")
+local function uiBinary()
+    local env = os.getenv("TESSERA_STANDALONE")
+    if env == "0" then return nil end
+    if env ~= "1" then
+        -- (Tessera's config, else iRice's while it has not been moved yet)
+        local c = json.read(userDir .. "/config.json") or json.read(cfg .. "/irice/config.json")
+        if type(c) ~= "table" or type(c.rust) ~= "table" or c.rust.standalone ~= true then return nil end
+    end
+    local home = os.getenv("HOME") or ""
+    for _, b in ipairs({ os.getenv("TESSERA_UI") or "", dataHome .. "/tessera/bin/tessera-ui", home .. "/.local/share/tessera/bin/tessera-ui",
+        dataHome .. "/irice/bin/tessera-ui", home .. "/.local/share/irice/bin/tessera-ui" }) do
+        if b ~= "" then
+            local f = io.open(b, "r")
+            if f then
+                f:close()
+                return b
+            end
+        end
+    end
+    return nil
+end
+local UI = uiBinary()
+-- A shell shortcut by name: the global one, or (standalone) the IPC call
+local function shortcut(name)
+    if UI then return hl.dsp.exec_cmd("'" .. UI .. "' ipc call shortcut " .. name) end
+    return hl.dsp.global("tessera:" .. name)
+end
+
 local function keysOf(k)
     k = k:gsub("%$MODKEY", MOD == "SUPER" and "Super_L" or "Alt_L"):gsub("%$MOD", MOD)
     -- (with ALT as the main key, "$MOD + ALT + D" would name ALT twice, which
@@ -110,7 +149,7 @@ end
 local function actionOf(a)
     if type(a) ~= "table" then return nil, "no action" end
     if a.space then return space(a) end
-    if a.shell then return hl.dsp.global("tessera:" .. a.shell) end
+    if a.shell then return shortcut(a.shell) end
     -- ($IRICE_SHELL: a shortcut saved before iRice became Tessera)
     if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$TESSERA_SHELL", shellDir):gsub("%$IRICE_SHELL", shellDir))) end
     -- (each app in a scope of its own: assets/scripts/app-scope.sh)
@@ -162,7 +201,8 @@ local function bind(e, user)
         -- release of that key, whatever else was held.
         if e.action.shell == "superTap" and keys == modifierKey then
             local releaseKey = keys
-            local released, releaseError = pcall(hl.bind, releaseKey, action, {
+            -- (standalone there is no release event to tell apart: the release has its own name)
+            local released, releaseError = pcall(hl.bind, releaseKey, UI and shortcut("superTapRelease") or action, {
                 release = true, ignore_mods = true, non_consuming = true,
                 description = "Shell: Release tap modifier"
             })
@@ -175,14 +215,14 @@ local function bind(e, user)
         -- a shortcut of its own in the list.)
         if e.action.release then
             local last = keys:match("([^+%s]+)%s*$")
-            local released, releaseError = pcall(hl.bind, last, hl.dsp.global("tessera:" .. e.action.release), {
+            local released, releaseError = pcall(hl.bind, last, shortcut(e.action.release), {
                 release = true, ignore_mods = true, non_consuming = true
             })
             if not released then log("couldn't bind release of " .. tostring(e.id) .. ": " .. tostring(releaseError)) end
         end
         -- Other Super shortcuts cancel a pending tap.
         if e.action.shell ~= "superTap" and norm:find("^" .. MOD .. "%+") then
-            pcall(hl.bind, keys, hl.dsp.global("tessera:superTapCancel"), {})
+            pcall(hl.bind, keys, shortcut("superTapCancel"), {})
         end
     else
         log("couldn't bind " .. tostring(e.id) .. " (" .. keys .. "): " .. tostring(berr))
@@ -219,9 +259,9 @@ for _, e in ipairs(later) do bind(e, false) end
 -- The left button going down and up, for the drop shelf (a shake or an
 -- edge while dragging: services/Shelf.qml). Non-consuming: apps still get
 -- every click. No description: they aren't shortcuts in the list.
-pcall(hl.bind, "mouse:272", hl.dsp.global("tessera:pointerDown"), { non_consuming = true, ignore_mods = true })
-pcall(hl.bind, "mouse:272", hl.dsp.global("tessera:pointerUp"), { release = true, non_consuming = true, ignore_mods = true })
+pcall(hl.bind, "mouse:272", shortcut("pointerDown"), { non_consuming = true, ignore_mods = true })
+pcall(hl.bind, "mouse:272", shortcut("pointerUp"), { release = true, non_consuming = true, ignore_mods = true })
 
 -- Moving or resizing a window with Super and the mouse isn't a tap either
-pcall(hl.bind, MOD .. " + mouse:272", hl.dsp.global("tessera:superTapCancel"), { non_consuming = true })
-pcall(hl.bind, MOD .. " + mouse:273", hl.dsp.global("tessera:superTapCancel"), { non_consuming = true })
+pcall(hl.bind, MOD .. " + mouse:272", shortcut("superTapCancel"), { non_consuming = true })
+pcall(hl.bind, MOD .. " + mouse:273", shortcut("superTapCancel"), { non_consuming = true })

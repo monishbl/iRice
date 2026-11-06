@@ -155,6 +155,22 @@ pub fn event(kind: &str, mut fields: serde_json::Value) -> String {
 /// Say it to the shell (a line on stdout)
 pub fn tell(kind: &str, fields: serde_json::Value) {
     use std::io::Write;
+    // (standalone: no QML reads stdout; the host gets every event. The
+    // notifications surface's list and Notification Center's acts go to
+    // host-desktop by their kind; the rest (closed, osd, session, lock,
+    // ready…) to host-shell as "ui" with the kind inside)
+    if crate::host::standalone() {
+        let routed = if matches!(kind, "notifications" | "nc") {
+            crate::host::route_ask(kind, &fields)
+        } else {
+            let mut e = if fields.is_object() { fields.clone() } else { serde_json::json!({ "value": fields }) };
+            e["kind"] = serde_json::json!(kind);
+            crate::host::route_ask("ui", &e)
+        };
+        if routed {
+            return;
+        }
+    }
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", event(kind, fields));
     let _ = out.flush();
@@ -168,6 +184,10 @@ pub fn closed(surface: &str) {
 
 /// Ask the shell to do something it owns (RustUi.qml's list of calls)
 pub fn ask(call: &str, args: serde_json::Value) {
+    // (standalone: the host answers, crate::host)
+    if crate::host::route_ask(call, &args) {
+        return;
+    }
     tell("call", serde_json::json!({"call": call, "args": args}));
 }
 

@@ -639,6 +639,10 @@ Singleton {
                 // (built here when there's none), "build" built here, "buildTuned" built
                 // here for this processor only
                 property string uiSource: "auto"
+                // Without this shell (Quickshell): tessera-ui is the whole shell and does what
+                // the QML services did (native/tessera-ui/host). launch-shell.sh, keep-shell.sh
+                // and shell-ipc.sh read it; off, nothing changes. Takes effect at the next start
+                property bool standalone: false
             }
         }
     }

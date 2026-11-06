@@ -34,6 +34,8 @@ pub fn handle(state: &mut State, msg: Msg) {
             state.each_part(|p, st| p.plugin_changed(st));
         }
         Msg::ConfigChanged => state.config_changed(),
+        // (the binary's loop handles the host's lines before this; elsewhere, none come)
+        Msg::Line(_) => {}
         Msg::A11yActivate(id) => {
             for p in state.parts.iter_mut() {
                 for a in p.a11y() {

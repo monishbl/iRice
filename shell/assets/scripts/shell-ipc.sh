@@ -5,6 +5,23 @@
 # QS=<quickshell binary> picks the binary (start-idle.sh passes the shell's).
 set -uo pipefail
 SHELL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
+# Standalone (Settings → rust.standalone, off by default): no Quickshell runs;
+# tessera-ui is the whole shell and answers over its own socket
+# ($XDG_RUNTIME_DIR/tessera/ipc.sock), `tessera-ui ipc call <target> <fn> …`.
+# Only while that socket is there, so with the setting on but the QML shell
+# running (tessera-ui missing, or not started yet) calls still reach the QML.
+if [[ "${1:-}" == call ]]; then
+    sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tessera/ipc.sock"
+    if [[ -S "$sock" ]]; then
+        cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
+        [[ -f "$cfg" ]] || cfg="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
+        if [[ "${TESSERA_STANDALONE:-}" == 1 ]] || python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is True else 1)' "$cfg" 2>/dev/null; then
+            for ui in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "$(command -v tessera-ui 2>/dev/null)"; do
+                [[ -n "$ui" && -x "$ui" ]] && exec "$ui" ipc "$@"
+            done
+        fi
+    fi
+fi
 # Tessera's folder under $1, or iRice's while it hasn't been moved yet (the
 # shell moves it as it starts: migrate-names.py)
 app_dir() { if [[ ! -e "$1/tessera" && -d "$1/irice" ]]; then echo "$1/irice"; else echo "$1/tessera"; fi; }

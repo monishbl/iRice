@@ -40,6 +40,19 @@ fn shell_said(state: &mut State, line: &[u8]) {
     state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
 }
 
+/// One line from the shell (stdin), or from the host standalone (Msg::Line):
+/// a command, the shell's state for the surfaces, or a message for one part
+fn shell_line(state: &mut State, l: &str) {
+    match shell::Command::parse(l) {
+        Some(c) => state.command(c),
+        None => match services::bridge::parse_line(l) {
+            // (the shell's state for the menu bar: services::bridge)
+            Some(v) => handle(state, Msg::Data(v)),
+            None => shell_said(state, l.as_bytes()),
+        },
+    }
+}
+
 /// Watch config.json (the shell writes it whole, then renames or closes it)
 fn watch_config(tx: calloop::channel::Sender<Msg>) {
     let path = theme::config_path();
@@ -69,6 +82,16 @@ fn watch_config(tx: calloop::channel::Sender<Msg>) {
             }
         }
     });
+}
+
+/// Every host service (wave 4: the QML shell's services, in Rust), from
+/// the host crates (native/tessera-ui/host/*)
+fn host_services() -> Vec<Box<dyn tessera_core::host::Service>> {
+    let mut v = tessera_host_shell::services();
+    v.extend(tessera_host_system::services());
+    v.extend(tessera_host_desktop::services());
+    v.extend(tessera_host_sharing::services());
+    v
 }
 
 fn main() {
@@ -102,6 +125,14 @@ fn main() {
     if tessera_greeter::wanted(&args) {
         return tessera_greeter::run(&args, started);
     }
+    // `tessera-ui ipc call <target> <function> [args…]`: the standalone
+    // shell's `qs ipc call` (keybinds, scripts); prints the answer
+    if args.get(1).map(String::as_str) == Some("ipc") {
+        std::process::exit(tessera_host_shell::ipc::client(&args[2..]));
+    }
+    // --standalone: no QML shell; every surface, and the host in its place
+    let standalone = args.iter().any(|a| a == "--standalone");
+    let args: Vec<String> = args.into_iter().filter(|a| a != "--standalone").collect();
     // An argument it doesn't know (a test harness's `--list`, a typo) ends
     // it here, before it opens a display: started by mistake, it never draws
     // on whatever session it was started from
@@ -137,7 +168,10 @@ fn main() {
     lh
         .insert_source(rx, |ev, _, state: &mut State| {
             if let calloop::channel::Event::Msg(m) = ev {
-                handle(state, m);
+                match m {
+                    Msg::Line(l) => shell_line(state, &l),
+                    m => handle(state, m),
+                }
             }
         })
         .unwrap();
@@ -162,14 +196,7 @@ fn main() {
                 }
                 slint::platform::update_timers_and_animations();
                 for l in lines.feed(&buf[..n as usize]) {
-                    match shell::Command::parse(&l) {
-                        Some(c) => state.command(c),
-                        None => match services::bridge::parse_line(&l) {
-                            // (the shell's state for the menu bar: services::bridge)
-                            Some(v) => handle(state, Msg::Data(v)),
-                            None => shell_said(state, l.as_bytes()),
-                        },
-                    }
+                    shell_line(state, &l);
                 }
                 Ok(PostAction::Continue)
             })
@@ -181,7 +208,12 @@ fn main() {
     register_fonts();
 
     let glass = services::hypr::Glass::spawn(tx.clone());
-    let parts: Vec<Box<dyn shell::Part>> = surfaces.on.iter().filter_map(|n| surfaces::make(n)).collect();
+    let mut parts: Vec<Box<dyn shell::Part>> = surfaces.on.iter().filter_map(|n| surfaces::make(n)).collect();
+    if standalone {
+        tessera_core::host::set_standalone(tx.clone());
+        // (first: its services are up before any surface asks them)
+        parts.insert(0, Box::new(tessera_core::host::HostPart::new(host_services())));
+    }
     let shell = shell::Shell::new(tx.clone(), glass, surfaces);
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());

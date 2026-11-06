@@ -20,6 +20,12 @@ running() {
         # (-c tessera, or -c irice: started before iRice became Tessera)
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qi -e tessera -e irice && return 0
     done
+    # Standalone (rust.standalone): tessera-ui is the shell. Only one started
+    # with --standalone counts: the one the QML shell starts as its helper ends with it.
+    for p in $(pgrep -x tessera-ui); do
+        { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$SIG" || continue
+        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '--standalone' && return 0
+    done
     return 1
 }
 

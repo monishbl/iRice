@@ -2,7 +2,10 @@
 hl.on("hyprland.start", function()
     hl.exec_cmd("command -v hyprpm >/dev/null && hyprpm reload -n") -- optional plugins (hyprbars)
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
-    hl.exec_cmd(cfg .. "/quickshell/tessera/assets/scripts/launch-shell.sh -c tessera") -- picks the icon theme
+    -- (launch-shell.sh picks the icon theme; with rust.standalone set in Settings'
+    -- config it starts `tessera-ui --standalone` instead of Quickshell, and falls
+    -- back to Quickshell when that binary is missing)
+    hl.exec_cmd(cfg .. "/quickshell/tessera/assets/scripts/launch-shell.sh -c tessera")
     hl.exec_cmd("wl-paste --watch cliphist store")
     -- Passwords for apps (the Secret Service), unless something already
     -- provides it: a keyring unlocked at login (PAM), KWallet, KeePassXC

@@ -1,0 +1,19 @@
+[package]
+name = "tessera-host-sharing"
+description = "tessera-ui: the host's sharing services (wave 4: the QML shell's services, in Rust; standalone only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+tessera-core.workspace = true
+slint.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+libc.workspace = true
+calloop.workspace = true
+zbus.workspace = true
