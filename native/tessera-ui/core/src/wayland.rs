@@ -215,8 +215,16 @@ impl Surface {
     }
     /// Unmap (a null buffer); `show` asks for a new configure
     pub fn hide(&self) {
-        self.wl.attach(None, 0, 0);
-        self.wl.commit();
+        // (a session-lock surface must never get a null buffer: it's a protocol
+        // error, and the compositor drops the whole connection, every surface
+        // with it. It stays as drawn until the lock lets it go; only the
+        // bookkeeping below changes)
+        if !matches!(self.layer, Role::Lock(_)) {
+            self.wl.attach(None, 0, 0);
+            self.wl.commit();
+        } else if crate::env::is_set("DEBUG") {
+            eprintln!("debug: hide on a lock surface: kept its buffer");
+        }
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);

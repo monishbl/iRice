@@ -545,10 +545,11 @@ impl Service for Panels {
         "Panels"
     }
     fn calls(&self) -> &'static [&'static str] {
-        &["panels", "settings", "sidebar"]
+        // ("ui": what surfaces say on stdout, shell::tell; standalone it comes here)
+        &["panels", "settings", "sidebar", "ui"]
     }
     fn ipc_targets(&self) -> &'static [&'static str] {
-        &["panels", "shell", "rustui"]
+        &["panels", "shell", "rustui", "emoji"]
     }
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("hypr");
@@ -581,6 +582,17 @@ impl Service for Panels {
         let out = match target {
             // shell: ready → "yes" once the desktop has drawn
             "shell" => (func == "ready").then(|| "yes".to_string()),
+            // EmojiPicker.qml's target: toggle / open / close, on the focused screen
+            "emoji" => {
+                let s = focused(h);
+                match func {
+                    "toggle" => self.act(h, "toggle", &json!(["emoji", s])),
+                    "open" => self.act(h, "show", &json!(["emoji", s])),
+                    "close" if self.m.open == "emoji" => self.act(h, "close", &json!([])),
+                    _ => {}
+                }
+                None
+            }
             "rustui" => {
                 if func == "act" {
                     self.rustui_act(h, args.first().map_or("", String::as_str), args.get(1).map_or("", String::as_str));
