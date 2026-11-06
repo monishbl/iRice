@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use tessera_core::host::{Host, Service};
 
 /// Panels whose name isn't the surface's (RustUi.panelNames; surface names are lowercase)
-const PANEL_NAMES: &[(&str, &str)] = &[("controlcenter", "controlCenter"), ("screentools", "screenTools"), ("missioncontrol", "missionControl"), ("osk", "keyboard"), ("notes", "quickNote"), ("network", "wifiMenu")];
+const PANEL_NAMES: &[(&str, &str)] = &[("controlcenter", "controlCenter"), ("screentools", "screenTools"), ("missioncontrol", "missionControl"), ("osk", "keyboard"), ("notes", "quickNote"), ("network", "wifiMenu"), ("widgetoptions", "widgetOptions")];
 
 pub fn panel_of(surface: &str) -> String {
     PANEL_NAMES.iter().find(|(s, _)| *s == surface).map_or(surface, |(_, p)| *p).to_string()
@@ -467,6 +467,9 @@ impl Panels {
             } else {
                 let screen = focused(h);
                 let query = h.state("livetext.query").clone();
+                if !query.is_null() && query != "" {
+                    h.set_state("livetext.query", json!("")); // (taken once)
+                }
                 h.command("open", "quicklook", None, json!({"path": self.m.quick_look_path, "query": query, "screen": screen}));
             }
         }

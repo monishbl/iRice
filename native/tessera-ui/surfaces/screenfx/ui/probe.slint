@@ -1,0 +1,11 @@
+// A shelf probe (surfaces/screenfx probe.rs; compare
+// shell/modules/shelf/ShelfProbes.qml): an invisible strip at a screen's
+// edge, or a square under the pointer after a shake. It draws nothing; it
+// takes drops (the platform's drag and drop, tessera_core::dnd) so Rust can
+// tell the host a drag of files arrived.
+
+export component Probe inherits Window {
+    background: transparent;
+    no-frame: true;
+    title: "Shelf probe";
+}

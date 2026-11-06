@@ -78,7 +78,6 @@ struct Alert {
 enum Tick {
     Sweep,
     Live,
-    Watch,
 }
 
 #[derive(Default)]
@@ -111,7 +110,6 @@ pub struct Island {
     low_uid: i64,
     sweep: Option<slint::Timer>,
     live_timer: Option<slint::Timer>,
-    watch: Option<slint::Timer>,
     scroll: Option<Value>,
 }
 
@@ -474,7 +472,7 @@ impl Island {
         (l * 100.0).round() as i64
     }
 
-    /// Charger and battery (Island's onChargingChanged and onLevelChanged), read every few seconds
+    /// Charger and battery (Island's onChargingChanged and onLevelChanged), on each new reading (Service::data)
     fn watch_battery(&mut self, h: &mut Host) {
         let Some(b) = h.st.shell.get::<tessera_core::services::status::Battery>().cloned() else { return };
         let level = if b.percent > 1.0 { b.percent / 100.0 } else { b.percent };
@@ -699,11 +697,12 @@ impl Service for Island {
         h.st.shell.want("status");
         h.st.shell.want("hypr");
         self.publish(h);
-        // (the battery and the live clocks: read every few seconds)
-        let send = h.sender("Island");
-        let t = slint::Timer::default();
-        t.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(3), move || send(Box::new(Tick::Watch)));
-        self.watch = Some(t);
+        // (the battery now comes as data: Service::data below, no 3 s look)
+    }
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<tessera_core::services::status::Battery>() {
+            self.watch_battery(h);
+        }
     }
     fn config_changed(&mut self, h: &mut Host) {
         self.publish(h);
@@ -718,7 +717,6 @@ impl Service for Island {
                     self.live_sent.clear();
                     self.push_live(h);
                 }
-                Tick::Watch => self.watch_battery(h),
             },
             Err(_) => {}
         }
@@ -762,7 +760,8 @@ impl Service for Island {
                 // an alert host-desktop made (Today, Calls, notifications, calendar: uids from
                 // 1_000_000_000): its own table has the button's action, Answer/Decline included
                 if uid >= DESKTOP_UID_BASE {
-                    let w = if which == "more" { format!("more {}", text(2)) } else { which };
+                    // ("more <i>" and the card's own "btn <i>": the index is the argument after)
+                    let w = if which == "more" || which == "btn" { format!("{which} {}", text(2)) } else { which };
                     h.ask("today.islandAct", json!([format!("{uid} {w}")]));
                     self.dismiss(h, since);
                     return;

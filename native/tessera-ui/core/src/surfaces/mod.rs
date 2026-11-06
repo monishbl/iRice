@@ -73,6 +73,17 @@ impl Surfaces {
 /// Say it, once, to whoever started this process
 pub fn announce(s: &Surfaces) {
     use std::io::Write;
+    if crate::host::standalone() {
+        let mut all = true;
+        for l in s.ready_lines() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&l) {
+                all &= crate::host::route_ask("ui", &v);
+            }
+        }
+        if all {
+            return;
+        }
+    }
     let mut out = std::io::stdout().lock();
     for l in s.ready_lines() {
         let _ = writeln!(out, "{l}");
@@ -83,6 +94,10 @@ pub fn announce(s: &Surfaces) {
 /// One event for the shell, a JSON line on stdout (`{"src":"ui","kind":…}`)
 pub fn tell(event: serde_json::Value) {
     use std::io::Write;
+    // (standalone: no QML reads stdout; host-shell's Panels answers "ui" with the kind inside)
+    if crate::host::standalone() && crate::host::route_ask("ui", &event) {
+        return;
+    }
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{event}");
     let _ = out.flush();

@@ -16,7 +16,7 @@ const DOCK_ROOM: f32 = 110.0;
 pub struct KindDef {
     pub id: &'static str,
     pub label: &'static str,
-    #[allow(dead_code)] // (the gallery's, still QML)
+    // (the gallery's list)
     pub icon: &'static str,
     pub sizes: &'static [&'static str],
     /// drawn edge to edge (the frame adds no padding)

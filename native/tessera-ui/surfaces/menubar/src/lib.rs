@@ -406,6 +406,7 @@ impl Menubar {
                 let art = self.picture(&s("art"));
                 let app_icon = card["appIcon"].as_str().filter(|n| !n.is_empty()).and_then(|n| crate::icon_theme::find(n, None)).and_then(|p| load(&p));
                 let sub_color = island::color(&s("subtitleColor"));
+                let card_buttons: Vec<SharedString> = card["buttons"].as_array().map(|m| m.iter().take(2).map(|x| SharedString::from(x["text"].as_str().unwrap_or(""))).collect()).unwrap_or_default();
                 let more: Vec<SharedString> = e["more"].as_array().map(|m| m.iter().map(|x| SharedString::from(x["text"].as_str().unwrap_or(""))).collect()).unwrap_or_default();
                 ui::AlertRow {
                     uid: al.uid as i32,
@@ -422,6 +423,7 @@ impl Menubar {
                     action: s("action").into(),
                     action2: s("action2").into(),
                     more: ModelRc::new(VecModel::from(more)),
+                    card_buttons: ModelRc::new(VecModel::from(card_buttons)),
                     has_picture: picture.is_some(),
                     picture: picture.unwrap_or_default(),
                     has_art: art.is_some(),

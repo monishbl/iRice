@@ -101,7 +101,7 @@ impl Notif {
     /// move down while the OSD shows
     pub fn tell_shell(&mut self, h: &mut Host) {
         let open = h.state("open").as_str().unwrap_or("").to_string();
-        let shell = (open == "notificationCenter" || open == "controlCenter", h.state("osd").as_bool().unwrap_or(false));
+        let shell = (open == "notificationCenter" || open == "controlCenter", h.state("panels.osdVisible").as_bool().unwrap_or(false));
         if shell != self.last_shell {
             self.last_shell = shell;
             h.tell("notifications", json!({"do": "shell", "covered": shell.0, "osd": shell.1}));
@@ -245,7 +245,12 @@ impl Notif {
         };
         match act {
             Some(Act::Invoke(id, key)) => h.tell("notifications", json!({"id": id, "do": "invoke", "action": key})),
-            Some(Act::Reply(_)) | Some(Act::OpenCenter) => h.ask("panels.show", json!(["notificationCenter"])),
+            // Reply (Notifications.startReply): the notification's own banner in Notification Center, where its reply field is
+            Some(Act::Reply(id)) => {
+                h.tell("notifications", json!({"id": id, "do": "banner"}));
+                h.ask("panels.show", json!(["notificationCenter"]));
+            }
+            Some(Act::OpenCenter) => h.ask("panels.show", json!(["notificationCenter"])),
             None => {}
         }
     }

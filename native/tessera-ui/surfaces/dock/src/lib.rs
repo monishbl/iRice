@@ -9,8 +9,8 @@
 //! on a tile, not their last frame (no screencopy here yet); no unread-count
 //! badges (the notifications service isn't in Rust); clicking the app in
 //! front doesn't open App Exposé (the QML shell has no IPC for it: it
-//! focuses the app instead); Downloads opens the folder, not the stack; the
-//! phone item and the touchscreen swipe aren't here; Empty Trash plays no
+//! focuses the app instead); the Downloads stack is its own part
+//! (stack.rs: Glass and Material); the phone item and the touchscreen swipe aren't here; Empty Trash plays no
 //! sound. App icons are styled on the CPU (src/appicon.rs: Slint has no
 //! custom shaders), once per icon and size.
 
@@ -27,6 +27,9 @@ use tessera_core::*;
 pub mod layout;
 pub mod model;
 pub mod settings;
+pub mod stack;
+
+pub use stack::DownloadsStack;
 
 use tessera_core::appicon::{self, Style};
 use tessera_core::services::apps::{self, Apps};
@@ -65,6 +68,8 @@ enum M {
     MenuChosen(i32),
     MenuDismissed,
     MenuClosed,
+    /// the Downloads stack closed (stack.rs)
+    StackClosed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -126,6 +131,8 @@ pub struct Dock {
     ink: [u8; 3],
     trash: usize,
     trash_timer: slint::Timer,
+    /// the Downloads stack is up (the dock stays out meanwhile, as with its menu)
+    stack_open: bool,
 }
 
 fn rgb(c: slint::Color) -> [u8; 3] {
@@ -322,7 +329,7 @@ impl Dock {
         let s = Self::settings(st);
         let m = Self::metrics(st);
         let dividers: Vec<bool> = self.items.iter().map(|i| i.divider).collect();
-        let popup = self.menu.as_ref().is_some_and(|mw| mw.open);
+        let popup = self.menu.as_ref().is_some_and(|mw| mw.open) || self.stack_open;
         let windows = st.shell.get::<Windows>().cloned().unwrap_or_default();
         let plugin = st.shell.plugin;
         let Some(first) = self.wins.first() else { return };
@@ -487,7 +494,7 @@ impl Dock {
                     clients::restore(a, windows.focused_monitor().map_or(1, |m| m.active.id));
                 }
             }
-            Kind::Downloads => open_folder(&cfg, &downloads_dir()),
+            Kind::Downloads => self.open_stack(st, output, i),
             Kind::Trash => open_trash(&cfg),
             Kind::App | Kind::Recent => {
                 if !it.running {
@@ -507,6 +514,17 @@ impl Dock {
                 }
             }
         }
+    }
+
+    /// The Downloads stack, pointing at an item (DockSlot: stackX; stack.rs)
+    fn open_stack(&mut self, st: &mut State, output: &str, i: usize) {
+        let m = Self::metrics(st);
+        let Some(w) = self.wins.iter().find(|w| w.output == output) else { return };
+        let slot = w.slots.row_data(i).unwrap_or_default();
+        let at = w.ui.get_pill_x() + slot.x + if m.material { m.base } else { slot.size } / 2.0;
+        st.shell.sender("downloadsstack")(Box::new(serde_json::json!({"open": true, "screen": output, "x": at, "barH": m.bar_h, "gap": m.bottom_gap})));
+        self.stack_open = true;
+        self.update(st);
     }
 
     // ── The right-click menu ─────────────────────────────────────────────
@@ -608,7 +626,12 @@ impl Dock {
                 }
             }
             Action::CloseWindow => it.windows.iter().for_each(|a| clients::close(a)),
-            Action::OpenDownloads | Action::ShowDownloads => open_folder(&cfg, &downloads_dir()),
+            Action::OpenDownloads => open_folder(&cfg, &downloads_dir()),
+            Action::ShowDownloads => {
+                if let Some(i) = self.items.iter().position(|x| x.id == it.id) {
+                    self.open_stack(st, &output, i);
+                }
+            }
             Action::RemoveDownloads => settings::write("downloads", serde_json::json!(false)),
             Action::OpenTrash => open_trash(&cfg),
             Action::EmptyTrash => apps::run(vec!["gio".into(), "trash".into(), "--empty".into()], "gio", None),
@@ -822,6 +845,12 @@ impl Part for Dock {
                     }
                 }
                 self.update(st);
+            }
+            M::StackClosed => {
+                if self.stack_open {
+                    self.stack_open = false;
+                    self.update(st);
+                }
             }
             M::Trash(n) => {
                 let was = self.trash > 0;

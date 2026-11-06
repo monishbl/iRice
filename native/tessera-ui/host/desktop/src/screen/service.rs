@@ -177,6 +177,8 @@ impl ScreenSvc {
             self.last_state = Some(s.clone());
             util::tell_both(h, json!({"state": s}));
         }
+        // (the menu bar's red recording item: ScreenTools.recording / recordingStarted)
+        h.set_state("recording", json!({"on": self.recording, "started": self.started}));
         h.set_state("recorder", json!({"recording": self.recording, "paused": self.paused, "file": self.file, "started": self.started, "pausedAt": self.paused_at, "countdown": self.countdown, "micMuted": self.mic_muted, "canPause": self.gsr()}));
     }
 

@@ -251,9 +251,50 @@ pub struct Bridges {
     picking: bool,
     fps_busy: bool,
     sent_overlay: String,
+    // idle notifications (Lock.qml's two IdleMonitors): what each last said
+    idle_standby: bool,
+    idle_wake: bool,
 }
 
 impl Bridges {
+    /// Lock.qml's IdleMonitors, stated after every turn (asking again is free):
+    /// - 5 minutes alone while charging (lock.standby, not locked, no Caffeine) locks the screen,
+    ///   which then shows Bedside Mode 20 s later;
+    /// - while the lock is up with a reader or camera on, any input at all (even with the screen
+    ///   off, inhibitors not counted) wakes their tries: the lock hears `{"wake": true}`.
+    fn idle_watches(&mut self, h: &mut Host) {
+        use tessera_core::idle;
+        let charging = h.st.shell.get::<tessera_core::services::status::Battery>().is_some_and(|b| b.present && b.charging);
+        let standby = cfg_bool(h.cfg(), "lock.standby", true) && charging && !self.locked && !h.state("caffeine.on").as_bool().unwrap_or(false);
+        let readers = h.state("fingerprint.lockScreen").as_bool().unwrap_or(false) || h.state("face.lockScreen").as_bool().unwrap_or(false);
+        let wake = self.held && !self.leaving && readers;
+        h.st.idle_set(idle::STANDBY, standby.then_some((300_000, true)));
+        h.st.idle_set(idle::LOCK_WAKE, wake.then_some((500, false)));
+        if !standby {
+            self.idle_standby = false;
+        }
+        if !wake {
+            self.idle_wake = false;
+        }
+    }
+
+    fn idle_heard(&mut self, h: &mut Host) {
+        use tessera_core::idle;
+        let i = h.st.shell.get::<idle::Idle>().cloned().unwrap_or_default();
+        // idle and enabled: lock (System.locked = true)
+        let standby = i.is(idle::STANDBY);
+        if standby && !self.idle_standby {
+            self.set_locked(h, true);
+        }
+        self.idle_standby = standby;
+        // input again while locked: the camera looks at once (the lock itself skips it in Bedside Mode)
+        let wake = i.is(idle::LOCK_WAKE);
+        if self.idle_wake && !wake && self.held && !self.leaving {
+            h.tell("lock", json!({"wake": true}));
+        }
+        self.idle_wake = wake;
+    }
+
     fn later(&mut self, h: &Host, kind: &'static str, ms: u64) {
         let g = self.gens.entry(kind).or_insert(0);
         *g += 1;
@@ -779,6 +820,14 @@ impl Service for Bridges {
         self.later(h, "initial", 1000);
         h.set_state("locked", json!(false));
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));
+    }
+    fn settled(&mut self, h: &mut Host) {
+        self.idle_watches(h);
+    }
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<tessera_core::idle::Idle>() {
+            self.idle_heard(h);
+        }
     }
     fn config_changed(&mut self, h: &mut Host) {
         self.rescan_sets(h);

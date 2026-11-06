@@ -445,7 +445,7 @@ impl Service for CloudAccounts {
                 }
                 (self.was_locked, self.was_nc) = (lk, nc);
                 self.ticks += 1;
-                if self.ticks % 60 == 0 && !self.arr("accounts").is_empty() && !lk && !idle() {
+                if self.ticks % 60 == 0 && !self.arr("accounts").is_empty() && !lk && !idle_long() {
                     self.freshen(15 * 60_000);
                 }
             }

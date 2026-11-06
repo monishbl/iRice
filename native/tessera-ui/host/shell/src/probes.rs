@@ -335,6 +335,16 @@ fn py(sub: &[&str], input: Option<String>, then: impl FnOnce(Option<Value>) + Se
 }
 
 impl Probes {
+    /// Tools.qml's `available`, for the surfaces that hide what needs one
+    /// (tools.hyprpicker: the menu bar's colour picker)
+    fn publish_tools(&self, h: &mut Host) {
+        let mut m = serde_json::Map::new();
+        for t in ["hyprpicker", "wf-recorder", "gpu-screen-recorder", "tesseract", "grim", "slurp", "swappy", "cliphist", "easyeffects", "warp-cli", "songrec", "wtype", "checkupdates", "hyprpm", "mangohud", "qrencode", "adb", "scrcpy", "ddcutil", "hyprsunset", "yt-dlp"] {
+            m.insert(t.into(), json!(tessera_core::util::on_path(t)));
+        }
+        h.set_state("tools", Value::Object(m));
+    }
+
     fn publish_stack(&self, h: &mut Host) {
         let b = backends(&self.stack, self.stack_ready);
         h.set_state("wifi", json!({"elsewhere": b["wifiUnmanaged"] == true && b["hasWifiHardware"] == true, "short": b["wifiShort"], "linkUp": b["wifiLinkUp"]}));
@@ -453,6 +463,7 @@ impl Service for Probes {
         self.polkit = if sandboxed() { "off".into() } else { "no".into() };
         self.health = json!([]);
         self.recheck(h);
+        self.publish_tools(h);
         self.priority_check(h);
         // Needs: after the desktop is up (Startup.later)
         h.ask("startup.later", json!(["Probes", "needs"]));
@@ -564,14 +575,24 @@ impl Service for Probes {
                 let ours = h.st.shell.get::<tessera_core::services::hypr::Snapshot>().and_then(|s| s.active.get(&s.focused).copied()).map(i64::from);
                 let Some(real) = id else { return }; // (no answer: Hyprland is busy or going; nothing to compare)
                 if ours == Some(real) {
+                    // (in step again: events came, or the state was read anew)
+                    self.drift = false;
+                    h.set_state("hyprland.linked", json!(true));
                     return;
                 }
+                // Hyprland.refreshMonitors / refreshWorkspaces / refreshToplevels
+                tessera_core::services::hypr::refresh();
                 if !self.drift {
-                    self.drift = true; // (a second drift means the feed is gone)
-                    eprintln!("HyprlandLink: space {real} was missed");
+                    self.drift = true; // (read again; a second drift means the feed is gone)
+                    eprintln!("HyprlandLink: space {real} was missed: reading the state again");
                     return;
                 }
+                // The event feed is gone (Hyprland drops a listener that falls behind): connect it
+                // again, in place; the QML shell replaced itself (repair-shell.sh) here
+                eprintln!("HyprlandLink: the event socket drifted again: reconnecting it");
                 h.set_state("hyprland.linked", json!(false));
+                tessera_core::services::hypr::reconnect();
+                self.drift = false;
             }
             Msg::Gathered(v) => {
                 self.bug_set("gathering", json!(false));
@@ -604,6 +625,11 @@ impl Service for Probes {
                 "conflicts" => self.check_conflicts(h),
                 "recheck" => self.recheck(h),
                 "link" => {
+                    // (only after a quiet spell: events came meanwhile, nothing to check)
+                    if tessera_core::services::hypr::quiet_ms() <= 30_000 {
+                        self.drift = false;
+                        return;
+                    }
                     let send = h.sender("Probes");
                     std::thread::spawn(move || {
                         let id = capture(&["hyprctl", "-j", "activeworkspace"]).and_then(|o| serde_json::from_str::<Value>(&o).ok()).and_then(|v| v["id"].as_i64());
@@ -666,7 +692,7 @@ impl Service for Probes {
                 }
             }
             // Tools.qml's probe is a PATH look-up every time here (nothing is kept): nothing to redo
-            ("tools", "recheck") => {}
+            ("tools", "recheck") => self.publish_tools(h),
             // (Settings -> About's switch asks it by the QML service's name)
             ("priority" | "shellpriority", "set") => {
                 if self.priority.2 {

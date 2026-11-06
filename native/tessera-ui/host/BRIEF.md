@@ -138,3 +138,43 @@ Written by the integrate pass (no cargo was run; see each crate's PORT-NOTES for
 5. **AI settings** (`ai.accountsSave|removeModel|…`, host/desktop): the credential goes to the keyring/file through core's `Keys::set` on its own copy; a sidebar chat that already runs keeps its cached key until it looks it up again (it does when a key is missing). Errors from `accountsSave` are only logged (the page checked the draft first).
 6. **Behaviour differences accepted**: `apps.launch` focuses an existing window of the app before starting it (Launch.app always started it); `notify.replyLatest` opens Notification Center and shows the banner (no reply field is opened from the host); `tools.recheck` is a no-op (nothing caches tool look-ups); mirroring/airplay/phone calls are the `share.*` actions under other names (`alias()` in host/sharing/src/lib.rs).
 7. **Not checked by a compiler or by running**: every edit of this pass. The likeliest first-build errors: borrow of `self` inside `call()` arms in host/shell/src/probes.rs (`self.call(h, "health.fix", …)` re-entry), `Keys::default()` use in host/desktop/src/ai/mod.rs, and the `m.get("call").map(|_| m)` lifetime in host/shell/src/island.rs `take_actions`.
+
+## Wave 4b (gaps)
+
+Written by the "gaps" agent. Nothing was built or run (standing order); the first `cargo check` is the user's. Rerun the static sweep any time:
+`python3 native/tessera-ui/host/tools/sweep.py [-v]` (exit 1 and a GAPS list when a surface reads, asks or is told something no host service gives; it was at 0 gaps when written).
+
+### What was fixed
+
+1. **Menu bar state** (the QML RustBridge.qml `state` object). Published with the QML's names and values:
+   - `audio.{icon,volume,muted,sink,micMuted}`, `battery.{summary,lowPower}`, `power.{profile,performance}`, `resources.{cpu,memory}` (0 unless Settings → menubar.resources; it also calls `resources.use {kind:menubar}`), `updates`: host/system `Mirror` (host/system/src/lib.rs), from its bus and core's Battery, after every turn and on every data reading.
+   - Also from `Mirror`, because services read them: `power.cooldown`, `google.connected`, `about.info` (the About card's facts and logo), `privacy.micStreams` (host/system privacy.rs).
+   - `recording.{on,started}`: host/desktop screen/service.rs. `tools.*` (hyprpicker and 20 more): host/shell probes.rs, `tools.recheck` now republishes. `shelf.on` (Config shelf.menubar): host/sharing.
+   - Already there and checked: focus, caffeine, unread, privacy, weather, keyboard, wifi, island, spaces, dark, locked, open, screen, `power.ppd`.
+   - Readers that used the wrong path (the sweep found them): `anchorX`, `appStoreOpen`, `settingsOpen`, `osd` are `panels.anchorX|appStoreOpen|settingsOpen|osdVisible`; Spotlight's `search.actions` now comes from `rank::actions()`; Quick Preview's `livetext.query` is set by Search's screenshot rows (`Run::PreviewShot`) and taken once.
+2. **Sweep** (host/tools/sweep.py): state, `{"to":…}` fields (against every RustUi.tell in shell/), all 32 IpcHandler targets and their functions, call prefixes and function names, surface stdout event kinds. Real gap found besides the above: `core/src/surfaces/mod.rs` `tell` and `announce` (the OSD's `osd shown`, `ready`, `unknown`) wrote only to stdout; standalone they now go to `ui`.
+3. **Core needs**:
+   - Idle (ext-idle-notify-v1): `core/src/idle.rs` (`Idle` data, ids), `State::idle_set(id, Some((ms, respect)) | None)` in wayland.rs. Consumers: host-shell `Bridges` (5 min charging idle locks the screen; any input while locked tells the lock `{"to":"lock","wake":true}`, handled in surfaces/lock `told`); host-system `Mirror` puts bus `idle` {isIdle (2 min, ScreenTime), isIdleLong (5 min, Google/CloudAccounts: they now read `idle_long()`)}.
+   - Hyprland link: `hypr::refresh()`, `hypr::reconnect()`, `hypr::quiet_ms()`. Probes: checks only after 30 s of silence; a missed space reads the state again; a second miss reconnects the event socket in place (the QML replaced the whole shell).
+   - Glass: `Glass::window_frost(f)`, `Glass::ping()`, `hypr::plugin_version()`. Appearance sends `appearance.glassWindowFrost` when the plugin is found or the setting changes, pings at 1.5 s and every 30 s while missing, and publishes state `glass` {available, version, frost}.
+   - `Service::data(h, TypeId)` and `Service::plugin_changed(h)` (core/src/host.rs, forwarded from Part::data / plugin_changed). The island's 3 s battery poll is gone (it reacts to the Battery reading). `settle` now answers asks made by `settled` hooks before the state goes out.
+4. **Notification card buttons**: the card shows its buttons (up to two, tonal pills) under its text (surfaces/menubar island.slint `card-buttons`); a click sends `btn <i>`, host-shell's island `act` passes `btn <i>` to `today.islandAct` (it used to drop the index), host-desktop runs the action. Reply now opens the notification's banner and Notification Center.
+
+### How to check on screen
+
+- Menu bar: Wi-Fi/sound/battery icons hover text (battery line "84% · 3:20 left · Balanced"), volume icon follows the volume and mute, mic-muted dot, CPU/Memory text after turning on Settings → Menu bar → resources, red recording item with a timer while recording, update count in the system menu, colour picker hidden without hyprpicker, power-profile item hidden without power-profiles-daemon, shelf icon while the shelf holds items.
+- Spotlight: the actions list (Lock Screen, Sleep…) and a screenshot row opening Quick Preview with the search selected.
+- About (power menu): OS name, kernel, CPU, memory, logo. Calls: Answer/Decline while the microphone is in use.
+- Idle: charging laptop, `lock.standby` on, leave it 5 minutes: it locks, Bedside Mode 20 s later. Locked with fingerprint/face on: touching the keyboard starts the camera at once. (`TESSERA_DEBUG=1` shows the compositor having no ext-idle-notify as nothing happening.)
+- Glass: Settings → Appearance → window frost slider changes the frost over windows; `state glass.version` is the plugin's.
+- Island: send `notify-send -A reply=Reply -A ok=OK Test body` (an app that offers actions): buttons appear on the card, each runs its action.
+- Hyprland link: `HyprlandLink:` lines on stderr only when events were missed.
+
+### What remains
+
+- Find-pointer ring surface (host/desktop CORE-NEEDS wm 1) belongs to the surfaces agent.
+- The lock's face/finger "touch" now counts the compositor's input idle only through ext-idle-notify; a compositor without it (no protocol) falls back to the lock surface's own input.
+- `Mouse` still pings the plugin on its own for its version; `state glass.version` could replace that.
+- Not seen here: a Hyprland `configreloaded` ping (plugins load after a reload): the 30 s ping while the plugin is missing covers it.
+- AI settings errors (`ai.accountsSave`) are still only logged; `pointerDown/Up` binds still start a process per click; both unchanged from "Open after integration".
+- Likeliest first-build errors of this pass: core/src/wayland.rs (`WlProxy::version(&n)`, the new Dispatch for `ExtIdleNotificationV1`), core/src/services/hypr.rs (the `ping` closure's borrows), host/system/src/lib.rs `Mirror::publish` (`h.st.idle_set` borrows), host/shell/src/island.rs after removing the `watch` timer, `Pill` use in island.slint.

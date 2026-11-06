@@ -193,7 +193,7 @@ impl Sharing {
     /// The backend follows `wanted`; the window counts itself
     pub fn store_sync(&mut self, h: &mut Host) {
         // the shell's own word on the window (Panels.appStoreOpen), when it says
-        if let Some(b) = h.state("appStoreOpen").as_bool() {
+        if let Some(b) = h.state("panels.appStoreOpen").as_bool() {
             self.store.panel_open = b;
         }
         let open = self.store.panel_open;

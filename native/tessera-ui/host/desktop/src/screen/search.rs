@@ -23,7 +23,8 @@ enum Run {
     Paste { id: Option<String>, image: Option<String>, text: String },
     NotificationCenter,
     OpenFile(String),
-    PreviewShot(String),
+    /// (path, what was searched for: LiveText.preview(path, query))
+    PreviewShot(String, String),
 }
 
 /// "2026-10-27 1432 Call the bank" → "Call the bank"
@@ -155,7 +156,7 @@ impl SearchSvc {
                             let mut row = Self::row("Screenshots", &s.snippet, &tessera_core::util::strftime("%-d %b %Y, %-I:%M %p", s.modified), "image");
                             row["picture"] = json!(s.path);
                             row["path"] = json!(s.path);
-                            (row, Run::PreviewShot(s.path))
+                            (row, Run::PreviewShot(s.path, raw.to_string()))
                         })
                         .collect();
                     out["shots"] = json!(self.pack(list, &mut n));
@@ -223,7 +224,11 @@ impl SearchSvc {
             Run::Paste { id, image, text } => clipboard::paste(h, id.as_deref(), image.as_deref(), &text, false),
             Run::NotificationCenter => h.ask("panels.show", json!(["notificationCenter"])),
             Run::OpenFile(p) => files::open(&h.cfg().clone(), &p),
-            Run::PreviewShot(p) => h.ask("panels.quickLook", json!([p])),
+            Run::PreviewShot(p, query) => {
+                // (Quick Preview takes it once when it opens: LiveText.takeQuery)
+                h.set_state("livetext.query", json!(query));
+                h.ask("panels.quickLook", json!([p]));
+            }
         }
     }
 }

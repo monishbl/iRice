@@ -229,6 +229,7 @@ impl Privacy {
         h.set_state("privacy.mic", json!(mic));
         h.set_state("privacy.location", json!(location));
         h.set_state("privacy.share", json!(share_dot));
+        h.set_state("privacy.micStreams", json!(self.mic_streams)); // (calls read these: Privacy.micStreams)
     }
 
     fn mic_list(&mut self) {

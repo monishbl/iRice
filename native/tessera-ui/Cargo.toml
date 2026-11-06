@@ -112,6 +112,9 @@ tessera-lock = { path = "surfaces/lock" }
 tessera-session = { path = "surfaces/session" }
 tessera-polkit = { path = "surfaces/polkit" }
 tessera-settings = { path = "surfaces/settings" }
+# (wave 4b: the overlays that had no Rust version: corners, find-pointer ring, space-switch cue,
+# display connect, identify and confirm, shelf probes; all standalone only)
+tessera-screenfx = { path = "surfaces/screenfx" }
 
 [profile.release]
 opt-level = 3

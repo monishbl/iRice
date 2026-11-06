@@ -207,7 +207,7 @@ impl NetworkFeed {
 
     fn send(&mut self, h: &mut Host, force: bool) {
         let mut v = json!({"wifi": self.wifi(h), "speed": build_speed(&crate::bus::get("SpeedTest"))});
-        if let Some(x) = h.state("anchorX").as_f64() {
+        if let Some(x) = h.state("panels.anchorX").as_f64() {
             v["anchorX"] = json!(x);
         }
         if force || v != self.last_sent {

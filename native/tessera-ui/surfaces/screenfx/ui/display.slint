@@ -1,0 +1,399 @@
+// Identify Displays and "Keep these display settings?" (surfaces/screenfx
+// display.rs; compare shell/modules/osd/DisplayOverlay.qml,
+// MaterialDisplayIdentify.qml, MaterialDisplayConfirm.qml): one card per
+// screen in each look. Identify names the screen in its top left corner;
+// Confirm asks, centred, with the countdown. Glass sits on the plugin's glass
+// (Rust sends the shape), Material is a tonal card that springs in.
+
+import { Theme } from "@tessera/theme.slint";
+
+// Material 3 Expressive's wavy bar (WavyProgress.qml; the same as the share
+// sheet's): the done part a moving wave, a gap, then the track and a stop dot
+component WavyBar inherits Rectangle {
+    in property <float> value;
+    property <float> shown: max(0, min(1, value));
+    property <duration> t: animation-tick();
+    property <float> phase: mod(t / 1000ms, 1);
+    property <length> end: root.width * shown;
+    property <float> amplitude: shown <= 0.1 || shown >= 0.95 ? 0 : 3;
+    animate amplitude { duration: 300ms; }
+    height: 10px;
+    accessible-role: progress-indicator;
+    accessible-value: round(shown * 100) + "%";
+    Rectangle {
+        x: min(root.width, end + 4px + (end > 0 ? 2px : 0px));
+        y: (root.height - self.height) / 2;
+        width: max(0px, root.width - self.x);
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-secondary-container;
+        Rectangle {
+            x: parent.width - 4px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.m3-primary;
+        }
+    }
+    for i in 100: Rectangle {
+        property <length> at: i * 2px;
+        visible: at <= end - 2px || (i == 0 && end > 1px);
+        x: at;
+        y: root.height / 2 - 2px + amplitude * sin((at / 40px - phase) * 360deg) * 1px;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-primary;
+    }
+}
+
+// Glass's button (SettingsButton): 32 px, the primary one in the accent
+component GlassButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    callback clicked();
+    width: label.preferred-width + 28px;
+    height: 32px;
+    border-radius: Theme.radius-control;
+    background: primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: primary ? Theme.on-accent : Theme.label;
+        font-size: Theme.small;
+        font-weight: 600;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Material's dialog button: 40 px, fully round (squaring off a little while
+// pressed), filled (primary) or text; state layers in the label's colour
+component DialogButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> filled;
+    callback clicked();
+    property <color> content: filled ? Theme.m3-on-primary : Theme.m3-primary;
+    width: label.preferred-width + (filled ? 48px : 24px);
+    height: 40px;
+    border-radius: touch.pressed ? 12px : self.height / 2;
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    background: (filled ? Theme.m3-primary : Theme.m3-primary.with-alpha(0)).mix(content, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
+    animate background { duration: 150ms; }
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    if keys.has-focus: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: parent.border-radius + 3px;
+        border-width: 3px;
+        border-color: Theme.m3-secondary;
+        background: transparent;
+    }
+    label := Text {
+        text: root.text;
+        color: content;
+        font-size: 14px;
+        font-weight: 500;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Glass, Identify: the screen's number and name in its top left corner
+export component IdentifyGlass inherits Window {
+    in property <string> number: "?";
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> on-glass;
+    // the card, for the glass (window px)
+    out property <float> card-x: m / 1px;
+    out property <float> card-y: m / 1px;
+    out property <float> card-w: card.width / 1px;
+    out property <float> card-h: card.height / 1px;
+    property <length> m: 24px;
+    background: transparent;
+    no-frame: true;
+    title: "Identify display";
+    default-font-family: Theme.font;
+    card := Rectangle {
+        x: m;
+        y: m;
+        width: max(220px, info.preferred-width + 48px);
+        height: 132px;
+        border-radius: 26px;
+        background: on-glass ? transparent : Theme.panel;
+        border-width: on-glass ? 0px : 0.5px;
+        border-color: Theme.separator;
+        info := HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            alignment: center;
+            spacing: 18px;
+            Text {
+                text: number;
+                color: Theme.label;
+                font-size: 72px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: label;
+                    color: Theme.label;
+                    font-size: Theme.large;
+                    font-weight: 600;
+                }
+                Text {
+                    text: detail;
+                    color: Theme.secondary;
+                    font-size: Theme.body;
+                }
+            }
+        }
+    }
+}
+
+// Material, Identify: the number on a cookie in primaryContainer, the name
+// and size beside it, on a surfaceContainerHigh card that springs in
+export component IdentifyMaterial inherits Window {
+    in property <string> number: "?";
+    in property <string> label;
+    in property <string> detail;
+    in property <string> cookie; // the shape's outline (0..100 box)
+    in property <bool> shown;
+    property <float> progress: shown ? 1 : 0;
+    animate progress { duration: 520ms; easing: spring(0.4); }
+    property <length> m: 24px;
+    background: transparent;
+    no-frame: true;
+    title: "Identify display";
+    default-font-family: Theme.font;
+    card := Rectangle {
+        x: m;
+        y: m;
+        width: max(240px, info.preferred-width + 48px);
+        height: 136px;
+        opacity: max(0, min(1, progress * 2));
+        transform-scale: 0.9 + 0.1 * progress;
+        transform-origin: { x: 0px, y: 0px };
+        border-radius: Theme.radius-panel;
+        background: Theme.m3-surface-container-high;
+        drop-shadow-blur: 12px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+        info := HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            alignment: center;
+            spacing: 20px;
+            Rectangle {
+                width: 88px;
+                height: 88px;
+                y: (parent.height - 88px) / 2;
+                Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: cookie;
+                    fill: Theme.m3-primary-container;
+                }
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: number;
+                    color: Theme.m3-on-primary-container;
+                    font-size: 45px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                Text {
+                    text: label;
+                    color: Theme.m3-on-surface;
+                    font-size: 22px;
+                    font-weight: 500;
+                }
+                Text {
+                    text: detail;
+                    color: Theme.m3-on-surface-variant;
+                    font-size: 14px;
+                }
+            }
+        }
+    }
+}
+
+// Glass, Confirm: the question and the countdown, a text button and a
+// primary one, centred on the screen's glass
+export component ConfirmGlass inherits Window {
+    in property <string> countdown;
+    in property <bool> on-glass;
+    callback revert();
+    callback keep();
+    out property <float> card-x: card.x / 1px;
+    out property <float> card-y: card.y / 1px;
+    out property <float> card-w: 360;
+    out property <float> card-h: 150;
+    property <length> m: 24px;
+    background: transparent;
+    no-frame: true;
+    title: "Keep these display settings?";
+    default-font-family: Theme.font;
+    card := Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: 360px;
+        height: 150px;
+        border-radius: 22px;
+        background: on-glass ? transparent : Theme.panel;
+        border-width: on-glass ? 0px : 0.5px;
+        border-color: Theme.separator;
+        Text {
+            x: 20px;
+            y: 18px;
+            width: 320px;
+            text: "Keep these display settings?";
+            color: Theme.label;
+            font-size: Theme.title;
+            font-weight: 600;
+            wrap: word-wrap;
+        }
+        Text {
+            x: 20px;
+            y: 18px + 21px + 6px;
+            width: 320px;
+            text: countdown;
+            color: Theme.secondary;
+            font-size: Theme.body;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            x: 0px;
+            y: parent.height - 32px - 18px;
+            width: parent.width - 20px;
+            height: 32px;
+            alignment: end;
+            spacing: 8px;
+            GlassButton {
+                text: "Go back";
+                clicked => { root.revert(); }
+            }
+            GlassButton {
+                text: "Keep settings";
+                primary: true;
+                clicked => { root.keep(); }
+            }
+        }
+    }
+}
+
+// Material, Confirm: surfaceContainerHigh, corner 28, a headline, the
+// countdown in words and as a wavy bar running down, a text button (go back)
+// and a filled one (keep)
+export component ConfirmMaterial inherits Window {
+    in property <string> countdown;
+    in property <float> value; // left / total
+    in property <bool> shown;
+    callback revert();
+    callback keep();
+    property <float> progress: shown ? 1 : 0;
+    animate progress { duration: 520ms; easing: spring(0.4); }
+    property <length> m: 32px;
+    // the card, for the input region (window px)
+    out property <float> card-x: card.x / 1px;
+    out property <float> card-y: card.y / 1px;
+    out property <float> card-w: card.width / 1px;
+    out property <float> card-h: card.height / 1px;
+    background: transparent;
+    no-frame: true;
+    title: "Keep these display settings?";
+    default-font-family: Theme.font;
+    card := Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: 400px;
+        height: body.preferred-height + 48px;
+        opacity: max(0, min(1, progress * 2));
+        transform-scale: 0.92 + 0.08 * progress;
+        border-radius: Theme.radius-panel;
+        background: Theme.m3-surface-container-high;
+        drop-shadow-blur: 20px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.2);
+        body := VerticalLayout {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            height: parent.height - 48px;
+            spacing: 16px;
+            Text {
+                text: "Keep these display settings?";
+                color: Theme.m3-on-surface;
+                font-size: 24px;
+                wrap: word-wrap;
+            }
+            Text {
+                text: countdown;
+                color: Theme.m3-on-surface-variant;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+            WavyBar {
+                value: root.value;
+            }
+            Rectangle {
+                height: 48px;
+                HorizontalLayout {
+                    width: parent.width;
+                    height: parent.height;
+                    alignment: end;
+                    spacing: 8px;
+                    DialogButton {
+                        text: "Go back";
+                        clicked => { root.revert(); }
+                    }
+                    DialogButton {
+                        text: "Keep settings";
+                        filled: true;
+                        clicked => { root.keep(); }
+                    }
+                }
+            }
+        }
+    }
+}

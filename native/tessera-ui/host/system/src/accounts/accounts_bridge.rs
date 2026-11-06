@@ -321,7 +321,7 @@ impl Service for AccountsBridge {
             }
             Ok(M::Poll) => {
                 // (host-shell may say Settings is open: the state "settingsOpen")
-                if let Some(open) = h.state("settingsOpen").as_bool() {
+                if let Some(open) = h.state("panels.settingsOpen").as_bool() {
                     if open != self.live {
                         self.live = open;
                         if !open {

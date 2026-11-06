@@ -111,8 +111,16 @@ missioncontrol|open|ipc panels open missionControl $SCREEN|2.5|w
 switcher|open|ipc panels open switcher $SCREEN|1.5|w
 launchpad|open|ipc panels open launchpad $SCREEN|2.5|w
 welcome|open|ipc welcome open|2.5
+findpointer|ring|ipc findpointer find|0.6|s
+spaceswitch|cue|ipc cues space $SCREEN glow|0.8|s
+displayconnect|extend|ipc displays preview extend right|1.2|s
+displayoverlay|identify|ipc cues identify|1.5|s
+displayoverlay|confirm|ipc cues confirm|1.5|s
 EOF
 )
+# (a 5th field: w = needs test windows open; s = standalone only, wave 4b's
+# surfaces with no QML command to show them: shot in the standalone pass only,
+# listed as "new (no QML)")
 # (behaviour without a picture of its own: hotcorners, tiling, decorations,
 # stagemanager, tabs, background (it's in every shot); the greeter has its own
 # script: native/tessera-ui/tools/greeter-shots.sh)
@@ -171,8 +179,9 @@ capture() { # look pass(qml|rust)
     local look=$1 pass=$2
     printf '%s\n' "$STATES" | while IFS='|' read -r s name cmd wait flag; do
         want "$s" || continue
+        [[ $flag == *s* && ( $pass == qml || $STANDALONE == 0 ) ]] && continue
         quiet
-        if [[ $flag == w && ! -s $PIDF ]]; then   # (windows for Overview & co., from here on)
+        if [[ $flag == *w* && ! -s $PIDF ]]; then   # (windows for Overview & co., from here on)
             inbox "foot >/dev/null 2>&1 & echo \$! >> $PIDF; foot >/dev/null 2>&1 & echo \$! >> $PIDF" </dev/null >/dev/null 2>&1
             sleep 2
         fi
@@ -203,7 +212,7 @@ capture() { # look pass(qml|rust)
 }
 # Standalone: the shell's processes in the arena (pid, memory, CPU, age)
 probe() { # look label
-    inbox "echo \"ui=\$(pgrep -f 'tessera-ui(.real)? --standalone' | head -1) qs=\$(pgrep -x qs | head -1)\$(pgrep -x quickshell | head -1) sock=\$(test -S \$XDG_RUNTIME_DIR/tessera/ipc.sock && echo yes || echo no)\"; for p in \$(pgrep -f 'tessera-ui(.real)? --standalone'; pgrep -x qs; pgrep -x quickshell); do ps -o pid=,rss=,pcpu=,etimes=,args= -p \$p; done" </dev/null 2>/dev/null | sed "s/^/$2 /" >> "$OUT/logs/$1-standalone-probe.txt"
+    inbox "echo \"ui=\$(pgrep -f 'tessera-ui(.real)? --standalone' | head -1) qs=\$(pgrep -x tessera-shell | head -1)\$(pgrep -x qs | head -1)\$(pgrep -x quickshell | head -1) sock=\$(test -S \$XDG_RUNTIME_DIR/tessera/ipc.sock && echo yes || echo no)\"; for p in \$(pgrep -f 'tessera-ui(.real)? --standalone'; pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell); do ps -o pid=,rss=,pcpu=,etimes=,args= -p \$p; done" </dev/null 2>/dev/null | sed "s/^/$2 /" >> "$OUT/logs/$1-standalone-probe.txt"
 }
 for look in ${LOOKS//,/ }; do
     ((BUILD_FAILED)) && break
@@ -270,6 +279,12 @@ for q in sorted(shots.glob("*-qml.png")):
     row.update(diff=None if d is None else round(d, 2), pair=f"shots/{base}-pair.jpg", diffimg=f"shots/{base}-diff.png",
                verdict="?" if d is None else "same" if d < 2 else "close" if d < 6 else "different")
     rows.append(row)
+# (standalone-only states: a Rust picture with no QML one to compare)
+for r in sorted(shots.glob("*-rust.png")):
+    base = r.name[:-len("-rust.png")]
+    if not (shots / f"{base}-qml.png").exists():
+        look, surface, state = base.split("-", 2)
+        rows.append({"look": look, "surface": surface, "state": state, "rust": str(r.relative_to(out)), "diff": None, "pair": str(r.relative_to(out)), "verdict": "new (no QML)"})
 json.dump(rows, open(out / "visual.json", "w"), indent=1)
 PY
 
@@ -361,7 +376,7 @@ for look_log in sorted(out.glob("logs/*-standalone-probe.txt")):
                 except Exception:
                     pass
         return "?"
-    L += [f"- Memory (RSS) and CPU, standalone: start {mem('start', 'tessera-ui')}, end {mem('end', 'tessera-ui')}; QML shell in the reference pass: {mem('qml-settled', 'quickshell') if mem('qml-settled', 'quickshell') != '?' else mem('qml-settled', 'qs')}", ""]
+    L += [f"- Memory (RSS) and CPU, standalone: start {mem('start', 'tessera-ui')}, end {mem('end', 'tessera-ui')}; QML shell in the reference pass: {next((m for m in (mem('qml-settled', n) for n in ('tessera-shell', 'quickshell', 'qs')) if m != '?'), '?')}", ""]
     tl = out / f"logs/{look}-tessera-ui.log"
     t = tl.read_text(errors="replace").split("\n") if tl.exists() else []
     na = collections.Counter(m.group(1) for x in t for m in [re.search(r"host: nothing answers (\S+)", x)] if m)

@@ -1647,6 +1647,12 @@ impl Lock {
         if let Some(h) = v["held"].as_bool() {
             self.set_held(st, h);
         }
+        // Input at all while locked, heard by the compositor's idle notification
+        // (host-shell, Lock.qml's IdleMonitor): someone is there, unless Bedside
+        // Mode's own rules decide what wakes it
+        if v["wake"].as_bool() == Some(true) && self.held && !self.standby(st) {
+            self.woke(st);
+        }
         if let Some(d) = v["demo"].as_str() {
             self.demo_state(st, d);
         }

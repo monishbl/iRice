@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "screentools", "quicklook", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "captions", "notes", "settings", "overview", "missioncontrol", "switcher", "stagemanager", "launchpad", "tabs"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "screentools", "quicklook", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "captions", "notes", "settings", "overview", "missioncontrol", "switcher", "stagemanager", "launchpad", "tabs", "downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -34,6 +34,15 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "stagemanager" => Some(Box::new(tessera_stagemanager::StageManager::default())),
         "launchpad" => Some(Box::new(tessera_launchpad::Launchpad::default())),
         "tabs" => Some(Box::new(tessera_tabs::Tabs::default())),
+        // (wave 4b: no QML twin gated by RustUi.drawing; the host's panels and feeds start them)
+        "downloadsstack" => Some(Box::new(tessera_dock::DownloadsStack::default())),
+        "widgetoptions" => Some(Box::new(tessera_desktop::WidgetOptions::default())),
+        "screencorners" => Some(Box::new(tessera_screenfx::ScreenCorners::default())),
+        "findpointer" => Some(Box::new(tessera_screenfx::FindPointer::default())),
+        "spaceswitch" => Some(Box::new(tessera_screenfx::SpaceSwitch::default())),
+        "displayconnect" => Some(Box::new(tessera_screenfx::DisplayConnect::default())),
+        "displayoverlay" => Some(Box::new(tessera_screenfx::DisplayOverlay::default())),
+        "shelfprobes" => Some(Box::new(tessera_screenfx::ShelfProbes::default())),
         "lock" => Some(Box::new(tessera_lock::Lock::default())),
         "session" => Some(Box::new(tessera_session::Session::default())),
         "polkit" => Some(Box::new(tessera_polkit::Polkit::default())),

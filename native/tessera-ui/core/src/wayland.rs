@@ -57,6 +57,11 @@ use smithay_client_toolkit::{delegate_xdg_shell, delegate_xdg_window};
 // (the lock's: ext-session-lock-v1, and an idle inhibitor while Bedside Mode shows)
 use smithay_client_toolkit::delegate_session_lock;
 use smithay_client_toolkit::reexports::protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1};
+// (idle notifications, core/src/idle.rs: ext-idle-notify-v1)
+use smithay_client_toolkit::reexports::protocols::ext::idle_notify::v1::client::{
+    ext_idle_notification_v1::{self, ExtIdleNotificationV1},
+    ext_idle_notifier_v1::ExtIdleNotifierV1,
+};
 use smithay_client_toolkit::session_lock::{SessionLock, SessionLockHandler, SessionLockState, SessionLockSurface, SessionLockSurfaceConfigure};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -464,6 +469,11 @@ pub struct State {
     /// ext-session-lock-v1 (the lock part's; unbound when the compositor has none)
     pub session_lock: SessionLockState,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
+    /// ext-idle-notify-v1 (None: the compositor has none), the watches asked
+    /// for by id (idle.rs) and what each last said
+    idle_notifier: Option<ExtIdleNotifierV1>,
+    idle_watches: std::collections::HashMap<u32, (ExtIdleNotificationV1, u32, bool)>,
+    idle_state: std::collections::HashMap<u32, bool>,
 }
 
 impl State {
@@ -480,6 +490,7 @@ impl State {
         // (the lock's globals, bound before `qh` moves into the state)
         let session_lock = SessionLockState::new(globals, &qh);
         let idle_inhibit = globals.bind(&qh, 1..=1, ()).ok();
+        let idle_notifier = globals.bind(&qh, 1..=2, ()).ok();
         Self {
             registry: RegistryState::new(globals),
             outputs: OutputState::new(globals, &qh),
@@ -514,6 +525,9 @@ impl State {
             exit: false,
             session_lock,
             idle_inhibit,
+            idle_notifier,
+            idle_watches: Default::default(),
+            idle_state: Default::default(),
         }
     }
 
@@ -1074,6 +1088,25 @@ macro_rules! no_events {
 }
 no_events!(WpViewporter, WpViewport, WpFractionalScaleManagerV1, ZwpTextInputManagerV3);
 no_events!(ZwpIdleInhibitManagerV1, ZwpIdleInhibitorV1);
+no_events!(ExtIdleNotifierV1);
+
+// An idle watch said idle or resumed: the newest picture of all watches is the
+// shell's `Idle` data, and every part (and the host's services) hear of it
+impl Dispatch<ExtIdleNotificationV1, u32> for State {
+    fn event(state: &mut Self, _: &ExtIdleNotificationV1, event: ext_idle_notification_v1::Event, id: &u32, _: &Connection, _: &QueueHandle<Self>) {
+        let idle = match event {
+            ext_idle_notification_v1::Event::Idled => true,
+            ext_idle_notification_v1::Event::Resumed => false,
+            _ => return,
+        };
+        if !state.idle_watches.contains_key(id) {
+            return; // (a watch dropped a moment ago)
+        }
+        state.idle_state.insert(*id, idle);
+        let what = state.shell.store(Box::new(crate::idle::Idle(state.idle_state.clone())));
+        state.each_part(|p, st| p.data(st, what));
+    }
+}
 
 delegate_compositor!(State);
 delegate_output!(State);
@@ -1111,6 +1144,39 @@ impl State {
         let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
         let role = lock.create_lock_surface(wl.clone(), output, &self.qh);
         self.adopt(wl, Role::Lock(role), viewport, fractional, "tessera:lock", output_name.to_string(), (1, 1))
+    }
+
+    /// ext-idle-notify-v1: watch for `ms` without input (the compositor's idle
+    /// notification, as Quickshell's IdleMonitor; `respect`: a video playing or
+    /// another inhibitor keeps it from going idle). `None` stops the watch.
+    /// Asking again with the same numbers does nothing, so a service may state
+    /// what it wants after every turn. False: the compositor can't say (no
+    /// protocol, no seat yet) and nothing is watched. The answers are the shell's
+    /// `idle::Idle` data (idle.rs).
+    pub fn idle_set(&mut self, id: u32, spec: Option<(u32, bool)>) -> bool {
+        let Some(n) = self.idle_notifier.clone() else { return false };
+        match spec {
+            None => {
+                if let Some((w, _, _)) = self.idle_watches.remove(&id) {
+                    w.destroy();
+                    self.idle_state.remove(&id);
+                }
+            }
+            Some((ms, respect)) => {
+                if self.idle_watches.get(&id).is_some_and(|(_, m, r)| *m == ms && *r == respect) {
+                    return true;
+                }
+                let Some(seat) = self.seat.seats().next() else { return false };
+                if let Some((w, _, _)) = self.idle_watches.remove(&id) {
+                    w.destroy();
+                }
+                // (version 2 has the input-only watch that ignores inhibitors)
+                let w = if respect || WlProxy::version(&n) < 2 { n.get_idle_notification(ms, &seat, &self.qh, id) } else { n.get_input_idle_notification(ms, &seat, &self.qh, id) };
+                self.idle_watches.insert(id, (w, ms, respect));
+                self.idle_state.insert(id, false);
+            }
+        }
+        true
     }
 
     /// Keep the screen on while this surface shows (None: the compositor has

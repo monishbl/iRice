@@ -36,6 +36,7 @@ pub mod hx;
 mod rules;
 mod spacemap;
 mod spaces;
+mod spaceswitch;
 mod stage;
 mod tiling;
 
@@ -173,6 +174,7 @@ impl Wm {
         self.tiling.event(&mut self.io, name, data);
         self.stage.event(h, &mut self.io, name, data);
         self.spaces.event(&mut self.io, name);
+        spaceswitch::event(&self.spaces, h, name, data); // (the cue on the display you moved to)
         self.rules.event(h, &mut self.io, name);
         self.apptheme.event(h, &mut self.io, name);
         if name == "activewindowv2" {
@@ -396,6 +398,7 @@ impl Service for Wm {
         self.deco.config_changed(h, &mut io);
         self.modes.config_changed(h);
         self.findp.config_changed(h);
+        spaceswitch::config_changed(h);
         self.io.restore(io);
         self.spaces.resend(h); // (the always-shown count may have changed)
     }

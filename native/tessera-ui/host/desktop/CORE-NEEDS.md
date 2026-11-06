@@ -23,7 +23,7 @@ Only `src/lib.rs` (the lead's): `mod screen;` and `v.extend(screen::services());
 
 # CORE-NEEDS (today/)
 
-## 1. Surface events (stdout lines) must reach the host when standalone
+## 1. DONE: Surface events (stdout lines) must reach the host when standalone
 
 The notifications surface says its list and Notification Center's acts with
 `shell::tell("notifications", {list})` / `tell("nc", {act,…})`, which only

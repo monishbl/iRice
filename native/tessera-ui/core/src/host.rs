@@ -172,6 +172,13 @@ pub trait Service {
     /// After every turn of the host (a call, an IPC call, a message): a
     /// service that mirrors what it keeps into the shell's state does it here
     fn settled(&mut self, h: &mut Host) {}
+    /// A core service's new reading (`h.st.shell.get::<T>()` has it): the
+    /// Part::data seam, so a service that wants the battery, the sound, the
+    /// clients… need not poll for them (Island's 3 s battery look)
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {}
+    /// The glass plugin was found or lost (`h.st.shell.plugin`; a plugin that
+    /// has just loaded starts blank: GlassPlugin.qml's `ready`)
+    fn plugin_changed(&mut self, h: &mut Host) {}
 }
 
 fn prefix(call: &str) -> &str {
@@ -216,17 +223,23 @@ impl HostPart {
 
     /// Calls services made to each other, then the state if it changed
     fn settle(&mut self, st: &mut State) {
-        for _ in 0..16 {
+        // (a `settled` hook may ask too: those are answered before the state goes out)
+        for _ in 0..4 {
+            for _ in 0..16 {
+                if self.pending.is_empty() {
+                    break;
+                }
+                for a in std::mem::take(&mut self.pending) {
+                    self.answer(st, a);
+                }
+            }
+            for s in self.services.iter_mut() {
+                let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
+                s.settled(&mut h);
+            }
             if self.pending.is_empty() {
                 break;
             }
-            for a in std::mem::take(&mut self.pending) {
-                self.answer(st, a);
-            }
-        }
-        for s in self.services.iter_mut() {
-            let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
-            s.settled(&mut h);
         }
         if self.state_dirty {
             self.state_dirty = false;
@@ -253,6 +266,12 @@ impl crate::shell::Part for HostPart {
     }
     fn output_removed(&mut self, st: &mut State, _: &str) {
         self.each(st, |s, h| s.outputs_changed(h));
+    }
+    fn data(&mut self, st: &mut State, what: std::any::TypeId) {
+        self.each(st, |s, h| s.data(h, what));
+    }
+    fn plugin_changed(&mut self, st: &mut State) {
+        self.each(st, |s, h| s.plugin_changed(h));
     }
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
         let msg = match msg.downcast::<Ask>() {

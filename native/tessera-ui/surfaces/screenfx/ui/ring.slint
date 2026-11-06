@@ -1,0 +1,30 @@
+// The find-pointer ring (surfaces/screenfx ring.rs; compare
+// shell/services/FindPointer.qml): a 150 px ring in the accent (12% fill,
+// 3 px line however it is scaled) that Rust shrinks onto the pointer and
+// fades, following the pointer. Clicks go through.
+
+import { Theme } from "@tessera/theme.slint";
+
+export component FindRing inherits Window {
+    // where the pointer is, in this window
+    in property <length> cx;
+    in property <length> cy;
+    in property <float> ring-scale: 1;
+    in property <float> ring-opacity: 0;
+    in property <bool> ring-visible: false;
+    background: transparent;
+    no-frame: true;
+    title: "Find pointer";
+    if ring-visible: Rectangle {
+        x: cx - 75px;
+        y: cy - 75px;
+        width: 150px;
+        height: 150px;
+        border-radius: 75px;
+        transform-scale: ring-scale;
+        background: Theme.accent.with-alpha(0.12);
+        border-width: 3px / max(0.5, ring-scale);
+        border-color: Theme.accent;
+        opacity: ring-opacity;
+    }
+}

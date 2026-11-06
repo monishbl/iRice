@@ -17,8 +17,10 @@
 //! the Desktop folder are read here.
 //!
 //! Not here yet, and why:
-//! - Edit Widgets' gallery and Widget Options stay QML windows (they're
-//!   panels of their own); the gallery's picks reach this surface as
+//! - Edit Widgets' gallery (gallery.rs, here since its previews are these
+//!   widgets) and Widget Options (options.rs, its own part `widgetOptions`)
+//!   draw only standalone; with the QML shell running they stay its windows,
+//!   and the QML gallery's picks reach this surface as
 //!   `{"to":"desktop","add":…}` lines.
 //! - The large Calendar is Notification Center's calendar in QML (Month /
 //!   Week / To-do, editing); here it's the medium layout at the large size.
@@ -46,6 +48,9 @@ use tessera_core::*;
 
 pub mod feed;
 pub mod files;
+mod gallery;
+mod options;
+pub use options::WidgetOptions;
 pub mod glyphs;
 pub mod grid;
 pub mod sysstat;
@@ -94,6 +99,11 @@ enum M {
     MenuChosen(i32),
     MenuDismissed,
     MenuClosed,
+    // Edit Widgets' gallery (gallery.rs)
+    GalPick(i32),
+    GalAdd(i32),
+    GalDone,
+    GalClosed,
 }
 
 #[derive(Clone, Debug)]
@@ -206,6 +216,9 @@ pub struct Desktop {
     live: Option<(usize, f32, f32)>,
     menu_timer: slint::Timer,
     roles: HashMap<String, Color>,
+    /// Edit Widgets' gallery (standalone only), and the kind it shows
+    gal: Option<gallery::Gal>,
+    gal_picked: usize,
 }
 
 fn hexc(s: &str) -> Option<Color> {
@@ -447,6 +460,7 @@ impl Desktop {
     // ── Building what's drawn ────────────────────────────────────────────
 
     fn update(&mut self, st: &mut State) {
+        self.gallery_sync(st);
         if self.win.is_none() {
             return;
         }
@@ -614,6 +628,11 @@ impl Desktop {
     /// One widget's row (a stack: the widget on top, with its dots)
     fn widget(&mut self, st: &State, i: usize, key: &str) -> ui::DeskWidget {
         let w = self.placed[i].clone();
+        self.widget_of(st, w, i, key)
+    }
+
+    /// One widget of this kind and size, as the desktop draws it (the gallery's previews too)
+    fn widget_of(&mut self, st: &State, w: W, i: usize, key: &str) -> ui::DeskWidget {
         let material = st.shell.look.material;
         let (x, y) = Grid::home(w.col, w.row);
         let (pw, ph) = grid::pixel_size(&w.size);
@@ -1620,6 +1639,7 @@ impl Part for Desktop {
     }
 
     fn output_removed(&mut self, st: &mut State, name: &str) {
+        self.gallery_output_gone(st, name);
         if self.win.as_ref().is_some_and(|w| w.output == name) {
             self.unmake(st);
         }
@@ -1629,6 +1649,7 @@ impl Part for Desktop {
     fn config_changed(&mut self, st: &mut State, look: bool) {
         if look {
             self.apply_theme(st);
+            self.gallery_theme(st);
         }
         let before = (self.stocks_for.clone(), Self::cfg(st).cities);
         self.read_layout(st);
@@ -1643,6 +1664,7 @@ impl Part for Desktop {
 
     fn plugin_changed(&mut self, st: &mut State) {
         self.apply_theme(st);
+        self.gallery_theme(st);
         self.update(st);
     }
 
@@ -1765,6 +1787,10 @@ impl Part for Desktop {
                 }
             }
             M::MenuChosen(i) => self.menu_chosen(st, i),
+            M::GalPick(i) => self.gallery_pick(st, i),
+            M::GalAdd(i) => self.gallery_add(st, i),
+            M::GalDone => self.gallery_done(st),
+            M::GalClosed => self.gallery_closed(st),
             M::MenuDismissed => {
                 self.close_menu(st);
                 self.update(st);
@@ -1803,6 +1829,7 @@ impl Part for Desktop {
     /// The grid once the window has its size; glass under each widget (and
     /// the open stack, the menu) for the plugin; accessibility
     fn after_frame(&mut self, st: &mut State) {
+        self.gallery_frame(st);
         if let Some(w) = &self.win {
             let g = self.grid_now();
             if w.surface.mapped.get() && self.grid != Some(g) {
@@ -1883,6 +1910,9 @@ impl Part for Desktop {
     }
 
     fn quit(&mut self, _: &mut State) {
+        if let Some(g) = &self.gal {
+            crate::services::hypr::Glass::clear_now(&g.output, gallery::NS);
+        }
         if let Some(w) = &self.win {
             crate::services::hypr::Glass::clear_now(&w.output, NS);
             crate::services::hypr::Glass::clear_now(&w.output, MENU_NS);

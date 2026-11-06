@@ -130,7 +130,7 @@ impl Feed {
             "media": {"has": player.is_some(), "playing": player.as_ref().is_some_and(|p| p.playing), "title": player.as_ref().map(|p| p.track.title.clone()).unwrap_or_default(), "artist": player.as_ref().map(|p| p.track.artist.clone()).unwrap_or_default(), "art": player.as_ref().map(|p| p.track.art_url.clone()).unwrap_or_default()},
             "batteries": batteries,
             "power": {"has": bat.present, "level": if bat.present { level } else { 1.0 }, "charging": bat.charging, "onBattery": bat.present && !bat.charging},
-            "actions": if h.state("search.actions").is_array() { h.state("search.actions").clone() } else { json!([]) },
+            "actions": tessera_core::rank::actions().iter().map(|a| json!({"title": a.title, "glyph": a.glyph})).collect::<Vec<_>>(), // (Search.actions: the same list core ranks)
             "notes": notes,
             "stacks": obj(hx::state_get("stacks")),
             "shortcutButtons": obj(hx::state_get("shortcutButtons")),

@@ -18,6 +18,7 @@ pub mod egl;
 pub mod env;
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;
+pub mod idle; // (ext-idle-notify-v1 readings, wayland.rs State::idle_set)
 pub mod icons;
 pub mod picture;
 pub mod rank;

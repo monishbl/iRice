@@ -1,0 +1,58 @@
+// "Which display you moved to" (surfaces/screenfx cue.rs; compare
+// shell/modules/osd/SpaceSwitch.qml): the display you moved to either glows
+// at its edges (a wide faint band in a light shade of the accent, strong at
+// the edge, then nothing) or dims briefly. Rust drives `glow` and `dim`
+// (0..1) through the cue's timeline. Clicks go through.
+
+import { Theme } from "@tessera/theme.slint";
+
+export component Cue inherits Window {
+    in property <string> mode: "glow"; // glow | dim
+    in property <float> glow;
+    in property <float> dim;
+    // the light: Glass a light shade of the accent, Material primary's fixed tone
+    in property <color> tone: Theme.material ? Theme.m3-primary-fixed-dim : Theme.accent.mix(#ffffff, 0.45);
+    in property <color> scrim: Theme.material ? Theme.m3-scrim : #000000;
+    property <length> depth: 72px;
+    property <color> strong: tone.with-alpha(0.45);
+    property <color> soft: tone.with-alpha(0.22);
+    property <color> faint: tone.with-alpha(0.08);
+    property <color> clear: tone.with-alpha(0);
+    background: transparent;
+    no-frame: true;
+    title: "Display cue";
+    if mode == "dim": Rectangle {
+        background: scrim.with-alpha(0.18 * dim);
+    }
+    if mode == "glow": Rectangle {
+        opacity: glow;
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: depth;
+            background: @linear-gradient(180deg, strong 0%, soft 22%, faint 55%, clear 100%);
+        }
+        Rectangle {
+            x: 0px;
+            y: parent.height - depth;
+            width: parent.width;
+            height: depth;
+            background: @linear-gradient(180deg, clear 0%, faint 45%, soft 78%, strong 100%);
+        }
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: depth;
+            height: parent.height;
+            background: @linear-gradient(90deg, strong 0%, soft 22%, faint 55%, clear 100%);
+        }
+        Rectangle {
+            x: parent.width - depth;
+            y: 0px;
+            width: depth;
+            height: parent.height;
+            background: @linear-gradient(90deg, clear 0%, faint 45%, soft 78%, strong 100%);
+        }
+    }
+}

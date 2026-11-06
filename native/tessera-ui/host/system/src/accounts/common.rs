@@ -173,6 +173,12 @@ pub fn idle() -> bool {
     crate::bus::field("idle", "isIdle").as_bool().unwrap_or(false)
 }
 
+/// Idle for 5 minutes (Google.qml's and CloudAccounts.qml's monitors; `idle()` is
+/// ScreenTime's 2)
+pub fn idle_long() -> bool {
+    crate::bus::field("idle", "isIdleLong").as_bool().unwrap_or(false)
+}
+
 /// System.locked (the sysinfo group publishes bus "system")
 pub fn locked() -> bool {
     crate::bus::field("system", "locked").as_bool().unwrap_or(false)

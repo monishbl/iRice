@@ -36,6 +36,14 @@ def rust_sources():
     return [p for d in [CRATE / "src", CORE / "src", *sorted((CRATE / "surfaces").glob("*/src"))] for p in d.rglob("*.rs")]
 
 
+# Wave 4b: surfaces drawn only standalone (`tessera-ui --standalone`, no QML
+# shell). Their QML windows have no RustUi.drawing guard because, beside the
+# QML shell, the QML draws them and these parts stay off; and what they ask is
+# answered by the host (native/tessera-ui/host), not RustUi.qml
+STANDALONE_ONLY = {"downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes"}
+STANDALONE_ONLY_SOURCES = ("surfaces/screenfx/", "surfaces/desktop/src/gallery.rs", "surfaces/desktop/src/options.rs", "surfaces/dock/src/stack.rs")
+
+
 def known_surfaces():
     src = (CRATE / "src/surfaces.rs").read_text()
     m = re.search(r"pub const KNOWN: &\[&str\] = &\[([^\]]*)\]", src)
@@ -53,7 +61,7 @@ class Agreement(unittest.TestCase):
         checked = set()
         for p in qml_files():
             checked |= set(re.findall(r'RustUi\.drawing\("([a-z]+)"\)', p.read_text(errors="replace")))
-        self.assertEqual(sorted(set(known) - checked), [], "drawn in Rust but the QML one never steps aside")
+        self.assertEqual(sorted(set(known) - checked - STANDALONE_ONLY), [], "drawn in Rust but the QML one never steps aside")
         self.assertEqual(sorted(checked - set(known)), [], "QML steps aside for a surface tessera-ui doesn't draw")
 
     def test_nothing_moves_by_default(self):
@@ -85,6 +93,8 @@ class Agreement(unittest.TestCase):
         # every call a part asks for is one RustUi.qml answers
         asked = set()
         for p in rust_sources():
+            if any(part in p.as_posix() for part in STANDALONE_ONLY_SOURCES):
+                continue  # (standalone only: the host answers)
             asked |= set(re.findall(r'shell::ask\("([a-zA-Z.]+)"', p.read_text()))
         answered = set(re.findall(r'case "([a-zA-Z.]+)":', qml))
         self.assertTrue(asked, "no calls found")

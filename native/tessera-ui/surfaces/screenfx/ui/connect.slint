@@ -1,0 +1,204 @@
+// The display connect effect (surfaces/screenfx connect.rs; compare
+// shell/modules/osd/DisplayConnect.qml and displayfx.frag): a screen that
+// just arrived fills with the wallpaper from the edge it shares with its
+// neighbour (extend: a soft wipe; liquid: a drop that swells to fill it;
+// warp: a front with a ring of light), and a screen next to it lights up at
+// that edge (a glow, a glass pill that buds a drop, a ring of light running
+// to the edge). Slint has no custom shaders: Rust works the geometry out
+// (the shader's maths, in px) and this draws it with rectangles, gradients
+// and a clipped picture. Clicks go through.
+//
+// `mode`: 0 nothing, 1 wipe (arrived), 2 drop (arrived), 3 glow (beside),
+// 4 pill (beside), 5 ring (beside), 6 fade from dark (arrived, reduced motion)
+
+import { Theme } from "@tessera/theme.slint";
+
+// A band across the screen from `a` to `b` of the way in from the shared
+// edge (fractions, they may leave 0..1), five colours across it
+component Band inherits Rectangle {
+    in property <int> edge; // the shared edge: 0 left, 1 top, 2 right, 3 bottom
+    in property <float> a;
+    in property <float> b;
+    in property <color> c0;
+    in property <color> c1;
+    in property <color> c2;
+    in property <color> c3;
+    in property <color> c4;
+    property <angle> ang: edge == 0 ? 90deg : edge == 1 ? 180deg : edge == 2 ? 270deg : 0deg;
+    property <float> n: max(b - a, 0);
+    x: edge == 0 ? a * parent.width : edge == 2 ? (1 - b) * parent.width : 0px;
+    y: edge == 1 ? a * parent.height : edge == 3 ? (1 - b) * parent.height : 0px;
+    width: (edge == 0 || edge == 2) ? n * parent.width : parent.width;
+    height: (edge == 1 || edge == 3) ? n * parent.height : parent.height;
+    background: @linear-gradient(ang, c0 0%, c1 25%, c2 50%, c3 75%, c4 100%);
+}
+
+export component Connect inherits Window {
+    in property <int> mode;
+    in property <int> edge;
+    in property <image> picture;
+    in property <bool> has-picture;
+    in property <float> shown: 1;
+    // the light: white, warmed a little by the accent (a quarter of it)
+    in property <color> light: Theme.accent.mix(#ffffff, 0.25);
+    // wipe: the feather's start and end (fractions in from the shared edge)
+    in property <float> wa;
+    in property <float> wb;
+    // drop: its centre and radius, and the rim of light (0..1)
+    in property <length> ccx;
+    in property <length> ccy;
+    in property <length> cr;
+    in property <float> rim;
+    // glow and ring: how strong (0..1), and where the ring is (fraction)
+    in property <float> amp;
+    in property <float> ring-at;
+    // pill: the capsule and the drop it buds
+    in property <length> cap-x;
+    in property <length> cap-y;
+    in property <length> cap-w;
+    in property <length> cap-h;
+    in property <length> drop-x;
+    in property <length> drop-y;
+    in property <length> drop-d;
+    in property <float> shape-alpha;
+    // fade from dark
+    in property <float> cover;
+    background: transparent;
+    no-frame: true;
+    title: "Display connect";
+
+    Rectangle {
+        clip: true;
+        opacity: shown;
+        // the arrived screen is dark until the effect fills it
+        if mode == 1 || mode == 2: Rectangle {
+            background: #000000;
+        }
+        if mode == 1 && has-picture: Image {
+            width: parent.width;
+            height: parent.height;
+            source: picture;
+            image-fit: fill;
+        }
+        // the wipe: a soft front (smoothstep twice: 0, 7%, 50%, 93%, 100%), dark beyond it
+        if mode == 1: Band {
+            edge: root.edge;
+            a: wa;
+            b: wb;
+            c0: #00000000;
+            c1: #00000011;
+            c2: #00000080;
+            c3: #000000ee;
+            c4: #000000;
+        }
+        if mode == 1: Band {
+            edge: root.edge;
+            a: wb;
+            b: 4;
+            c0: #000000;
+            c1: #000000;
+            c2: #000000;
+            c3: #000000;
+            c4: #000000;
+        }
+        // the drop, with the picture in it
+        if mode == 2: Rectangle {
+            x: ccx - cr;
+            y: ccy - cr;
+            width: 2 * cr;
+            height: 2 * cr;
+            border-radius: cr;
+            clip: true;
+            if has-picture: Image {
+                x: -parent.x;
+                y: -parent.y;
+                width: root.width;
+                height: root.height;
+                source: picture;
+                image-fit: fill;
+            }
+            if !has-picture: Rectangle {
+                background: #101012;
+            }
+        }
+        if mode == 2: Rectangle {
+            x: ccx - cr;
+            y: ccy - cr;
+            width: 2 * cr;
+            height: 2 * cr;
+            border-radius: cr;
+            border-width: 2px;
+            border-color: light.with-alpha(0.5 * rim);
+        }
+        // the ring of light at the wipe's front (warp)
+        if mode == 1 && rim > 0: Band {
+            edge: root.edge;
+            a: wb - 0.05;
+            b: wb + 0.05;
+            c0: light.with-alpha(0);
+            c1: light.with-alpha(0.25 * rim);
+            c2: light.with-alpha(0.45 * rim);
+            c3: light.with-alpha(0.25 * rim);
+            c4: light.with-alpha(0);
+        }
+        // beside it: a faint wide glow at the shared edge (exp(-d/0.14))
+        if mode == 3: Band {
+            edge: root.edge;
+            a: 0;
+            b: 0.56;
+            c0: light.with-alpha(1.0 * amp);
+            c1: light.with-alpha(0.37 * amp);
+            c2: light.with-alpha(0.135 * amp);
+            c3: light.with-alpha(0.05 * amp);
+            c4: light.with-alpha(0.02 * amp);
+        }
+        // beside it: a glass pill and the drop it buds
+        if mode == 4: Rectangle {
+            opacity: shape-alpha;
+            Rectangle {
+                x: cap-x;
+                y: cap-y;
+                width: cap-w;
+                height: cap-h;
+                border-radius: self.height / 2;
+                background: light.with-alpha(0.16);
+                border-width: 1.5px;
+                border-color: light.with-alpha(0.6);
+            }
+            Rectangle {
+                x: drop-x;
+                y: drop-y;
+                width: drop-d;
+                height: drop-d;
+                border-radius: self.height / 2;
+                background: light.with-alpha(0.16);
+                border-width: 1.5px;
+                border-color: light.with-alpha(0.6);
+            }
+        }
+        // beside it: a lens ring running to (or from) the edge, and a glow at the edge
+        if mode == 5: Band {
+            edge: root.edge;
+            a: ring-at - 0.06;
+            b: ring-at + 0.06;
+            c0: light.with-alpha(0);
+            c1: light.with-alpha(0.25 * amp);
+            c2: light.with-alpha(0.4 * amp);
+            c3: light.with-alpha(0.25 * amp);
+            c4: light.with-alpha(0);
+        }
+        if mode == 5: Band {
+            edge: root.edge;
+            a: 0;
+            b: 0.12;
+            c0: light.with-alpha(0.35 * amp);
+            c1: light.with-alpha(0.15 * amp);
+            c2: light.with-alpha(0.06 * amp);
+            c3: light.with-alpha(0.02 * amp);
+            c4: light.with-alpha(0);
+        }
+        if mode == 6: Rectangle {
+            background: #000000.with-alpha(cover);
+        }
+    }
+}

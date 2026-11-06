@@ -1637,3 +1637,273 @@ export component DeskMenu inherits Window {
         }
     }
 }
+
+// ── Edit Widgets' gallery and Widget Options ────────────────────────────────
+// (rust.surfaces: desktop; compare shell/modules/desktop/WidgetGallery.qml and
+// WidgetOptions.qml). The gallery is a glass sheet along the bottom of the
+// screen: pick a kind on the left, then click one of its sizes (the widget
+// itself, scaled down) to add it to the desktop. Done or Escape ends editing.
+
+export struct GalKind { id: string, label: string, icon: string, desc: string }
+export struct GalSize { key: string, name: string, w: length, h: length, widget: DeskWidget }
+
+export component Gallery inherits Window {
+    in property <[GalKind]> kinds;
+    in property <[GalSize]> sizes;
+    in property <int> picked;
+    in property <string> kind-label;
+    in property <string> kind-desc;
+    in property <length> row-h: 200px; // the tallest preview, scaled, and its name
+    in property <bool> shown;
+    in property <bool> on-glass;
+    in property <string> cookie12;
+    in property <string> cookie9;
+    callback pick(int);
+    callback add(int);
+    callback done();
+    callback closed(); // the fade out is over
+    // the sheet, for the glass (window px)
+    out property <float> body-x: m / 1px;
+    out property <float> body-y: m / 1px;
+    out property <float> body-w: (root.width - 2 * m) / 1px;
+    out property <float> body-h: 316;
+    out property <float> fade: min(1, progress);
+    public function focus-keys() {
+        keys.focus();
+    }
+    property <length> m: 24px;
+    property <length> preview-scale: 0.56;
+    property <float> progress: shown ? 1 : 0;
+    animate progress { duration: shown ? 520ms : 192ms; easing: shown ? spring(0.4) : cubic-bezier(0.4, 0.0, 1.0, 1.0); }
+    changed progress => {
+        if !shown && progress <= 0.001 {
+            closed();
+        }
+    }
+    background: transparent;
+    no-frame: true;
+    title: "Widget gallery";
+    default-font-family: Theme.font;
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.done();
+                return accept;
+            }
+            if e.text == Key.UpArrow {
+                root.pick(max(0, root.picked - 1));
+                return accept;
+            }
+            if e.text == Key.DownArrow {
+                root.pick(min(root.kinds.length - 1, root.picked + 1));
+                return accept;
+            }
+            reject
+        }
+        body := Rectangle {
+            x: m;
+            y: m + (1 - min(1, progress)) * 40px;
+            width: root.width - 2 * m;
+            height: 316px;
+            opacity: min(1, progress);
+            border-radius: 28px;
+            background: on-glass ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : Theme.panel;
+            border-width: Theme.material || on-glass ? 0px : 0.5px;
+            border-color: Theme.separator;
+            drop-shadow-blur: Theme.material ? 20px : 0px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.2);
+            // clicks on the sheet stay on it
+            TouchArea { }
+
+            // Kinds
+            Flickable {
+                x: 12px;
+                y: 12px;
+                width: 200px;
+                height: parent.height - 24px;
+                viewport-height: root.kinds.length * (Theme.material ? 42px : 38px);
+                for k[i] in root.kinds: Rectangle {
+                    property <bool> chosen: i == root.picked;
+                    y: i * (Theme.material ? 42px : 38px);
+                    width: 200px;
+                    height: Theme.material ? 40px : 36px;
+                    border-radius: Theme.material ? self.height / 2 : 10px;
+                    background: Theme.material ? (chosen ? Theme.m3-secondary-container : rowt.pressed ? Theme.m3-on-surface.with-alpha(0.1) : rowt.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+                        : chosen ? Theme.fill : rowt.has-hover ? Theme.fill-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: k.label;
+                    accessible-action-default => { root.pick(i); }
+                    SymIcon {
+                        x: Theme.material ? 14px : 10px;
+                        y: (parent.height - 18px) / 2;
+                        width: 18px;
+                        height: 18px;
+                        text: k.icon;
+                        font-size: 18px;
+                        fill: Theme.material && chosen;
+                        color: Theme.material ? (chosen ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+                    }
+                    Text {
+                        x: Theme.material ? 44px : 38px;
+                        y: (parent.height - self.height) / 2;
+                        text: k.label;
+                        color: Theme.material && chosen ? Theme.m3-on-secondary-container : Theme.label;
+                        font-size: Theme.body;
+                        font-weight: chosen ? 600 : 400;
+                        accessible-role: none;
+                    }
+                    rowt := TouchArea {
+                        clicked => { root.pick(i); }
+                    }
+                }
+            }
+
+            // Detail: name, what it shows, and its sizes
+            detail := Rectangle {
+                x: 12px + 200px + 24px;
+                y: 16px;
+                width: parent.width - self.x - 20px;
+                height: parent.height - 32px;
+
+                VerticalLayout {
+                    width: parent.width - donebtn.width - 16px;
+                    height: 80px;
+                    alignment: start;
+                    spacing: 4px;
+                    Text {
+                        text: root.kind-label;
+                        color: Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: root.kind-desc + " Click a size to add it.";
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                donebtn := Rectangle {
+                    x: parent.width - self.width;
+                    width: dl.preferred-width + (Theme.material ? 48px : 32px);
+                    height: Theme.material ? 40px : 32px;
+                    border-radius: Theme.material && dt.pressed ? 8px : self.height / 2;
+                    animate border-radius { duration: 150ms; }
+                    background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, dt.pressed ? 0.9 : dt.has-hover ? 0.92 : 1)
+                        : dt.pressed ? Theme.accent.darker(0.15) : Theme.accent;
+                    accessible-role: button;
+                    accessible-label: "Done";
+                    accessible-action-default => { root.done(); }
+                    dl := Text {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: "Done";
+                        color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+                        font-size: Theme.body;
+                        font-weight: 600;
+                        accessible-role: none;
+                    }
+                    dt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.done(); }
+                    }
+                }
+
+                // Size previews: the real widget, scaled down
+                HorizontalLayout {
+                    x: 0px;
+                    y: parent.height - root.row-h;
+                    width: parent.width;
+                    height: root.row-h;
+                    alignment: start;
+                    spacing: 20px;
+                    for s[si] in root.sizes: VerticalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        item := Rectangle {
+                            width: s.w * preview-scale;
+                            height: s.h * preview-scale;
+                            transform-scale: at.pressed ? 0.95 : at.has-hover ? 1.04 : 1;
+                            animate transform-scale { duration: 220ms; easing: spring(0.35); }
+                            accessible-role: button;
+                            accessible-label: "Add " + root.kind-label + ", " + s.name;
+                            accessible-action-default => { root.add(si); }
+                            Rectangle {
+                                width: s.w;
+                                height: s.h;
+                                transform-scale: preview-scale;
+                                transform-origin: { x: 0px, y: 0px };
+                                border-radius: s.widget.pill ? self.height / 2 : Desk.tile;
+                                background: Theme.material ? (s.widget.has-card ? s.widget.card : transparent) : Theme.platter;
+                                border-width: at.has-hover ? (Theme.material ? 5px : 3px) : Theme.material ? 0px : 1px;
+                                border-color: at.has-hover ? Theme.accent : Theme.dark ? #ffffff14 : #ffffff66;
+                                clip: true;
+                                Rectangle {
+                                    x: s.widget.pad-x;
+                                    y: s.widget.pad;
+                                    width: parent.width - 2 * s.widget.pad-x;
+                                    height: parent.height - 2 * s.widget.pad;
+                                    Content {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        w: s.widget;
+                                        cookie12: root.cookie12;
+                                        cookie9: root.cookie9;
+                                    }
+                                }
+                            }
+                            // Add badge
+                            Rectangle {
+                                x: -8px;
+                                y: -8px;
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: Theme.material ? Theme.m3-primary : Desk.green;
+                                visible: at.has-hover;
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: "\u{e3d4}";
+                                    font-family: "Phosphor-Bold";
+                                    font-size: 12px;
+                                    color: Theme.material ? Theme.m3-on-primary : #ffffff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    accessible-role: none;
+                                }
+                            }
+                            at := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.add(si); }
+                            }
+                        }
+                        // (Material: a tonal chip, the secondary container on hover)
+                        Rectangle {
+                            width: item.width;
+                            height: Theme.material ? 32px : 20px;
+                            Rectangle {
+                                width: nm.preferred-width + (Theme.material ? 24px : 0px);
+                                height: parent.height;
+                                x: (parent.width - self.width) / 2;
+                                border-radius: Theme.material && at.has-hover ? self.height / 2 : 8px;
+                                background: Theme.material ? (at.has-hover ? Theme.m3-secondary-container : Theme.m3-surface-container-highest) : transparent;
+                                nm := Text {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    text: s.name;
+                                    color: Theme.material ? (at.has-hover ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : Theme.secondary;
+                                    font-size: Theme.small;
+                                    font-weight: 500;
+                                    accessible-role: none;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

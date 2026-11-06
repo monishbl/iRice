@@ -29,6 +29,8 @@ enum Msg {
     Monitors(Value),
     #[allow(dead_code)]
     Reapply,
+    /// the 30 s ping for a plugin that is missing
+    Ping,
 }
 
 #[derive(Default)]
@@ -43,6 +45,10 @@ pub struct Appearance {
     reading_blur: bool,
     /// output -> the refresh rate before cool-down
     saved_rates: serde_json::Map<String, Value>,
+    /// the window frost the plugin was last told (None: not since it was found)
+    frost_sent: Option<f32>,
+    /// pings for the glass plugin: at start, and now and then while it is missing
+    ping_timer: slint::Timer,
 }
 
 /// The (width, height, rate) modes a monitor lists: "2560x1600@165.00Hz"
@@ -127,7 +133,23 @@ impl Appearance {
     }
 
     /// Something changed: say it, and do what Cool-down changes
+    /// GlassPlugin.qml's window frost and what is known of the plugin: its
+    /// version (2+: gloss, 3 and 4: see mouse.rs) in the state `glass`
+    fn glass_plugin(&mut self, h: &mut Host) {
+        let frost = cfg_num(h.cfg(), "appearance.glassWindowFrost", 0.75).clamp(0.0, 1.0) as f32;
+        let ok = h.st.shell.plugin;
+        if ok && self.frost_sent != Some(frost) {
+            h.st.shell.glass.window_frost(frost);
+            self.frost_sent = Some(frost);
+        }
+        if !ok {
+            self.frost_sent = None; // (a plugin that loads later starts blank)
+        }
+        h.set_state("glass", json!({"available": ok, "version": tessera_core::services::hypr::plugin_version(), "frost": frost}));
+    }
+
     fn changed(&mut self, h: &mut Host) {
+        self.glass_plugin(h);
         let active = self.cool.active(h.cfg());
         if !active && self.last_active {
             // coming back
@@ -251,11 +273,24 @@ impl Service for Appearance {
             }
         }
         h.st.shell.want("status");
+        // Is the plugin there? Asked at start (the first answer came before the loop), again
+        // after 1.5 s, and every 30 s while it is missing (plugins load after config reloads)
+        let glass = h.st.shell.glass.clone();
+        slint::Timer::single_shot(std::time::Duration::from_millis(1500), {
+            let g = glass.clone();
+            move || g.ping()
+        });
+        let send = h.sender("Appearance");
+        self.ping_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(30), move || send(Box::new(Msg::Ping)));
         self.read_tone(h);
         self.changed(h);
         // (once: puts back what a restart left, if cool-down has ended meanwhile)
         self.apply_blur(h);
         self.apply_rates(h);
+    }
+    fn plugin_changed(&mut self, h: &mut Host) {
+        self.frost_sent = None;
+        self.glass_plugin(h);
     }
     fn config_changed(&mut self, h: &mut Host) {
         self.read_tone(h);
@@ -318,6 +353,11 @@ impl Service for Appearance {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<Msg>() else { return };
         match *m {
+            Msg::Ping => {
+                if !h.st.shell.plugin {
+                    h.st.shell.glass.ping();
+                }
+            }
             Msg::Tone(pic, tone) => {
                 if pic == self.tone_for {
                     self.tone = tone;

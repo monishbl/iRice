@@ -1,0 +1,344 @@
+// A widget's options (rust.surfaces: widgetOptions; compare
+// shell/modules/desktop/WidgetOptions.qml in glass/Dialog.qml): what the
+// widget shows, set on the widget instead of in Settings. A centred dialog
+// over a light scrim; Escape or a click outside closes it.
+//   photos      the folder its pictures come from
+//   worldClock  the cities
+//   stocks      the symbols
+//   stack       Smart Rotate (every Widget Stack)
+//   system      how resource graphs are drawn
+
+import { Theme } from "@tessera/theme.slint";
+import { IconButton } from "@tessera/widgets.slint";
+
+component Lbl inherits Text {
+    color: Theme.label;
+    font-size: Theme.body;
+    font-weight: 500;
+    wrap: word-wrap;
+}
+
+component Hint inherits Text {
+    color: Theme.secondary;
+    font-size: Theme.small;
+    wrap: word-wrap;
+}
+
+// A text field (TextField.qml): it keeps what is typed as it loses focus
+component Field inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <string> label;
+    in property <bool> autofocus;
+    callback commit(string);
+    callback enter(string);
+    init => {
+        if root.autofocus {
+            input.focus();
+        }
+    }
+    height: 36px;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+    background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+    border-width: 1px;
+    border-color: input.has-focus ? (Theme.material ? Theme.m3-primary : Theme.accent) : transparent;
+    clip: true;
+    input := TextInput {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        single-line: true;
+        vertical-alignment: center;
+        color: Theme.label;
+        font-size: Theme.body + 1px;
+        selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+        accessible-label: root.label;
+        accepted => {
+            root.commit(self.text);
+            root.enter(self.text);
+        }
+        changed has-focus => {
+            if !self.has-focus {
+                root.commit(self.text);
+            }
+        }
+    }
+    if input.text == "": Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.tertiary;
+        font-size: Theme.body + 1px;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+// A switch (Switch.qml): Glass the accent when on, Material primary with a round thumb
+component Toggle inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled(bool);
+    width: Theme.material ? 52px : 40px;
+    height: Theme.material ? 32px : 24px;
+    border-radius: self.height / 2;
+    background: checked ? (Theme.material ? Theme.m3-primary : Theme.accent) : (Theme.material ? Theme.m3-surface-container-highest : Theme.toggle-off);
+    border-width: Theme.material && !checked ? 2px : 0px;
+    border-color: Theme.m3-outline;
+    animate background { duration: 150ms; }
+    accessible-role: checkbox;
+    accessible-label: label;
+    accessible-checked: checked;
+    accessible-action-default => { toggled(!checked); }
+    Rectangle {
+        property <length> d: Theme.material ? (checked ? 24px : 16px) : 20px;
+        width: d;
+        height: d;
+        y: (parent.height - d) / 2;
+        x: checked ? parent.width - d - (parent.height - d) / 2 : (parent.height - d) / 2;
+        border-radius: d / 2;
+        background: Theme.material ? (checked ? Theme.m3-on-primary : Theme.m3-outline) : #ffffff;
+        animate x, width, height { duration: 180ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { toggled(!checked); }
+    }
+}
+
+// Segmented.qml: a track with the chosen option on a pill (Glass), or a
+// connected button group with the chosen one filled (Material)
+component Segments inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <string> label;
+    callback selected(int);
+    height: Theme.material ? 36px : 30px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    accessible-label: label;
+    for o[i] in options: Rectangle {
+        property <bool> chosen: i == current;
+        property <length> w: (parent.width - 4px - (options.length - 1) * (Theme.material ? 2px : 0px)) / options.length;
+        x: 2px + i * (w + (Theme.material ? 2px : 0px));
+        y: Theme.material ? 0px : 2px;
+        width: w;
+        height: parent.height - (Theme.material ? 0px : 4px);
+        border-radius: Theme.material ? (chosen ? self.height / 2 : t.pressed ? 4px : 8px) : self.height / 2;
+        background: Theme.material ? (chosen ? Theme.m3-primary : Theme.m3-surface-container-highest) : chosen ? (Theme.dark ? #ffffff33 : #ffffff) : transparent;
+        animate background { duration: 150ms; }
+        accessible-role: tab;
+        accessible-label: o;
+        accessible-action-default => { root.selected(i); }
+        Text {
+            width: 100%;
+            height: 100%;
+            text: o;
+            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : Theme.label;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: chosen ? 600 : 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        t := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.selected(i); }
+        }
+    }
+}
+
+export component WidgetOptions inherits Window {
+    in property <string> kind; // photos | worldClock | stocks | stack | system
+    in property <string> heading;
+    in property <string> field-label;
+    in property <string> field-hint;
+    in property <string> placeholder;
+    in-out property <string> field-edit; // what is typed (set when it opens)
+    in property <bool> smart-rotate;
+    in property <int> graph; // 0 area, 1 bars, 2 line
+    in property <bool> shown;
+    in property <bool> on-glass;
+    // the dialog, for the glass (window px)
+    out property <float> fade: min(1, progress);
+    out property <float> scale: 0.96 + 0.04 * progress;
+    out property <float> body-x: card.x / 1px + m / 1px;
+    out property <float> body-y: card.y / 1px + m / 1px;
+    out property <float> body-w: card.width / 1px - 2 * m / 1px;
+    out property <float> body-h: card.height / 1px - 2 * m / 1px;
+    callback commit(string); // the field's text, as it loses focus
+    callback choose(); // the photos folder: the file chooser
+    callback rotate(bool);
+    callback graph-picked(int);
+    callback dismissed(); // Escape, or a click outside, or Done
+    callback closed(); // the fade is over
+    // (a field takes the focus itself when it is made)
+    public function focus-first() {
+        if !has-field {
+            keys.focus();
+        }
+    }
+    property <bool> has-field: kind == "photos" || kind == "worldClock" || kind == "stocks";
+    property <length> m: 24px;
+    property <length> pad: Theme.material ? 24px : 20px;
+    property <float> progress: shown ? 1 : 0;
+    animate progress {
+        duration: shown ? 520ms : 192ms;
+        easing: shown ? spring(0.4) : cubic-bezier(0.4, 0.0, 1.0, 1.0);
+    }
+    changed progress => {
+        if !shown && progress <= 0.001 {
+            closed();
+        }
+    }
+    function finish() {
+        if has-field {
+            root.commit(field-edit);
+        }
+        root.dismissed();
+    }
+    background: transparent;
+    no-frame: true;
+    title: "Widget options";
+    default-font-family: Theme.font;
+
+    // The scrim: a click outside closes
+    Rectangle {
+        background: #000000.with-alpha(0.25 * clamp(progress, 0, 1));
+        TouchArea {
+            clicked => { root.finish(); }
+        }
+    }
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape || e.text == Key.Return {
+                root.finish();
+                return accept;
+            }
+            reject
+        }
+        card := Rectangle {
+            width: 420px + 2 * pad + 2 * m;
+            height: col.preferred-height + 2 * pad + 2 * m;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2 - 40px;
+            opacity: fade;
+            transform-scale: scale;
+            Rectangle {
+                x: m;
+                y: m;
+                width: parent.width - 2 * m;
+                height: parent.height - 2 * m;
+                border-radius: 28px;
+                background: on-glass ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : Theme.panel;
+                border-width: Theme.material || on-glass ? 0px : 0.5px;
+                border-color: Theme.separator;
+                drop-shadow-blur: 24px;
+                drop-shadow-offset-y: 6px;
+                drop-shadow-color: Theme.dark ? #0000003d : #0000001a;
+                // (clicks on the dialog stay here)
+                TouchArea { }
+            }
+            col := VerticalLayout {
+                x: m + pad;
+                y: m + pad;
+                width: 420px;
+                height: parent.height - 2 * m - 2 * pad;
+                spacing: 16px;
+                alignment: start;
+                Text {
+                    text: heading;
+                    color: Theme.label;
+                    font-size: Theme.material ? Theme.large : Theme.title;
+                    font-weight: Theme.material ? 400 : 600;
+                }
+                // What the widget shows, typed in (photos, world clock, stocks)
+                if has-field: VerticalLayout {
+                    spacing: 8px;
+                    Lbl { text: field-label; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Field {
+                            text <=> root.field-edit;
+                            autofocus: true;
+                            placeholder: root.placeholder;
+                            label: field-label;
+                            commit(t) => { root.commit(t); }
+                            enter(t) => { root.dismissed(); }
+                        }
+                        if kind == "photos": IconButton {
+                            width: 36px;
+                            height: 36px;
+                            icon: "\u{e256}";
+                            icon-size: 18px;
+                            label: "Choose the folder";
+                            clicked => { root.choose(); }
+                        }
+                    }
+                    Hint { text: field-hint; }
+                }
+                // Smart Stacks
+                if kind == "stack": HorizontalLayout {
+                    spacing: 16px;
+                    VerticalLayout {
+                        spacing: 2px;
+                        alignment: center;
+                        Lbl { text: "Smart Rotate"; }
+                        Hint { text: "Brings forward what matters now: music, the next event, a low battery. For every Widget Stack."; }
+                    }
+                    Toggle {
+                        checked: smart-rotate;
+                        label: "Smart Rotate";
+                        toggled(on) => { root.rotate(on); }
+                    }
+                }
+                // System: resource graphs
+                if kind == "system": VerticalLayout {
+                    spacing: 8px;
+                    Lbl { text: "Graphs"; }
+                    HorizontalLayout {
+                        Segments {
+                            width: min(parent.width, 280px);
+                            options: ["Area", "Bars", "Line"];
+                            current: graph;
+                            label: "Graphs";
+                            selected(i) => { root.graph-picked(i); }
+                        }
+                    }
+                    Hint { text: "Also how the island, the menu bar's popovers and Quick Settings draw CPU, memory and network."; }
+                }
+                Rectangle {
+                    height: Theme.material ? 40px : 36px;
+                    HorizontalLayout {
+                        alignment: end;
+                        Rectangle {
+                            width: dl.preferred-width + (Theme.material ? 48px : 32px);
+                            border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+                            background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, dt.pressed ? 0.9 : dt.has-hover ? 0.92 : 1)
+                                : dt.pressed ? Theme.accent.darker(0.15) : dt.has-hover ? Theme.accent.brighter(0.08) : Theme.accent;
+                            accessible-role: button;
+                            accessible-label: "Done";
+                            accessible-action-default => { root.finish(); }
+                            dl := Text {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                text: "Done";
+                                color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+                                font-size: Theme.material ? 14px : Theme.small;
+                                font-weight: Theme.material ? 500 : 600;
+                                accessible-role: none;
+                            }
+                            dt := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.finish(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

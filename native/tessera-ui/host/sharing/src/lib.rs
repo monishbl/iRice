@@ -584,7 +584,7 @@ impl Sharing {
             levels.insert(a.clone(), self.fast_levels_for(a));
         }
         h.set_state("fastpair", json!({"levels": levels}));
-        h.set_state("shelf", json!({"count": self.shelf.items.len(), "opened": self.shelf.opened, "zone": self.shelf.zone, "probing": self.shelf.probing,
+        h.set_state("shelf", json!({"on": self.cfg_bool("shelf.menubar", true), "count": self.shelf.items.len(), "opened": self.shelf.opened, "zone": self.shelf.zone, "probing": self.shelf.probing,
             "probe": self.shelf.probe.as_ref().map(|p| json!({"x": p.0, "y": p.1, "screen": p.2}))}));
         h.set_state("transfers", self.transfers_state());
         h.set_state("appstore", self.store_state());

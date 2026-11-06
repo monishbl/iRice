@@ -9,6 +9,7 @@ pub mod common_island;
 pub mod device_alerts;
 pub mod devices_bridge;
 pub mod displays;
+pub mod displays_feed;
 pub mod input_bridge;
 pub mod keyboard_layout;
 pub mod keyfmt;
@@ -19,6 +20,7 @@ pub mod mouse;
 pub fn services() -> Vec<Box<dyn Service>> {
     vec![
         Box::new(displays::Displays::default()),
+        Box::new(displays_feed::DisplaysFeed::default()),
         Box::new(mouse::Mouse::default()),
         Box::new(keyboard_layout::KeyboardLayout::default()),
         Box::new(input_bridge::Input::default()),

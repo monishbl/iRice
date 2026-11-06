@@ -241,6 +241,8 @@ export struct AlertRow {
     action: string,
     action2: string,
     more: [string],
+    // a notification card's own buttons (Reply, its actions: up to two)
+    card-buttons: [string],
     picture: image,
     has-picture: bool,
     art: image,
@@ -324,7 +326,7 @@ component AlertView inherits Rectangle {
     in property <bool> first;
     in property <color> ink;
     in property <color> ink2;
-    callback act(int, string); // uid, "1" | "2" | "more <i>"
+    callback act(int, string); // uid, "1" | "2" | "more <i>" | "btn <i>" (a card's own button)
     callback dismiss(int);
     callback set-level(float);
     property <bool> in-view;
@@ -649,6 +651,18 @@ component AlertView inherits Rectangle {
                         wrap: word-wrap;
                         max-height: 60px;
                         overflow: elide;
+                    }
+                    // The notification's own actions (Reply, OK…), up to two
+                    if a.card-buttons.length > 0: HorizontalLayout {
+                        padding-top: 6px;
+                        spacing: 6px;
+                        alignment: start;
+                        for label[i] in a.card-buttons: Pill {
+                            text: label;
+                            filled: false;
+                            ink: root.ink;
+                            clicked => { root.act(a.uid, "btn " + i); }
+                        }
                     }
                 }
             }

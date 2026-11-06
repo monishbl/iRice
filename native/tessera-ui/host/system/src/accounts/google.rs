@@ -640,7 +640,7 @@ impl Google {
             self.write(d.request, &d.key, Some(json!({"hidden": true})));
         }
         let lk = locked();
-        let id = idle();
+        let id = idle_long();
         if self.was_locked && !lk {
             self.freshen(2 * 60_000); // unlocked, or woke up (sleep locks first)
         }
