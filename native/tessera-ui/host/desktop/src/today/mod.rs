@@ -305,7 +305,7 @@ impl Service for Hub {
         notes::send_folder(h);
     }
 
-    fn message(&mut self, h: &mut Host, msg: Box<dyn Any>) {
+    fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<Msg>() else { return };
         match *m {
             Msg::Second => self.second(h),

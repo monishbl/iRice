@@ -243,8 +243,9 @@ impl Ai {
                 if !v.is_empty() {
                     ks.set(&slot, &v, &label);
                 }
+                // (only once it's kept under the new slot: cleared first, it was lost)
+                clear_credential(old_key);
             });
-            clear_credential(old_key);
         }
     }
 

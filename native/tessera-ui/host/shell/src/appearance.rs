@@ -87,7 +87,8 @@ impl Appearance {
     }
 
     fn publish(&self, h: &mut Host) {
-        let c = self.cfg_cool(h);
+        // (a copy: h is written to below)
+        let c = &self.cfg_cool(h).clone();
         let active = self.cool.active(c);
         let why = if !active {
             if self.cool.snoozed || self.cool.declined { "Off until it cools or you plug in" } else { "" }

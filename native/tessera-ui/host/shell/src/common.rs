@@ -424,6 +424,8 @@ impl Kept {
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let quick = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let (tx, rx) = std::sync::mpsc::channel::<String>();
+        // (in a Mutex: each run's writer thread borrows it, and a Receiver alone isn't Sync)
+        let rx = std::sync::Mutex::new(rx);
         let (stop2, quick2) = (stop.clone(), quick.clone());
         std::thread::spawn(move || {
             while !stop2.load(Ordering::SeqCst) {
@@ -437,7 +439,9 @@ impl Kept {
                     let done = std::sync::atomic::AtomicBool::new(false);
                     std::thread::scope(|sc| {
                         sc.spawn(|| loop {
-                            match rx.recv_timeout(std::time::Duration::from_millis(300)) {
+                            let got = rx.lock().map(|r| r.recv_timeout(std::time::Duration::from_millis(300)));
+                            let Ok(got) = got else { break };
+                            match got {
                                 Ok(l) => {
                                     if let Some(i) = stdin.as_mut() {
                                         let _ = i.write_all(l.as_bytes());

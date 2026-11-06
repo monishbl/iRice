@@ -133,7 +133,7 @@ pub fn settings_act(h: &mut Host, ctx: &mut Ctx, group: &str, what: &str, a: &[V
         "repairShell" => h.ask("look.later", json!([800, "system.repairShell", []])),
         "installEmoji" => h.ask("system.installEmoji", json!([s(0)])),
         "buildPlugin" => {
-            let root = tessera_core::env::var("ROOT").unwrap_or_else(|_| data_dir().join("src").to_string_lossy().into_owned());
+            let root = tessera_core::env::var("ROOT").unwrap_or_else(|| data_dir().join("src").to_string_lossy().into_owned());
             launch_terminal(&["sh", "-c", "\"$1\" --load", "sh", &format!("{root}/tools/build-plugin.sh")], true);
         }
         "setWallpaper" => {
@@ -709,7 +709,10 @@ impl Bridges {
         self.tell_lock(h);
         self.tell_welcome(h);
         self.tell_overlay(h, true);
-        let (r, s) = self.sun.unwrap_or_else(tessera_core::wallpaper::sun);
+        let (r, s) = self.sun.unwrap_or_else(|| {
+            let (r, s) = tessera_core::wallpaper::sun();
+            (r as i64, s as i64)
+        });
         h.tell("background", json!({"sunrise": r, "sunset": s}));
         h.tell("wallpaper", json!({"sunrise": r, "sunset": s}));
     }
